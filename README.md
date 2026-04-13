@@ -2,6 +2,8 @@
 
 Monte Carlo симулятор дисперсии для покерных MTT. Аналог [PrimeDope Tournament Variance Calculator](https://www.primedope.com/tournament-variance-calculator/), написан с нуля с упором на честность модели.
 
+**🔗 Live:** https://tournament-variance-sim.vercel.app
+
 *EN version below ↓*
 
 ---
@@ -57,7 +59,7 @@ npm run lint      # eslint
 - [x] Фаза 1 — математика: ITM как output, реальные payout-таблицы, PrimeDope-compat калибровка
 - [x] Фаза 2 — compare-режим в UI
 - [x] Фаза 3 — i18n (RU+EN), демо-сценарии, tooltips
-- [ ] Фаза 4 — Vercel deploy
+- [x] Фаза 4 — Vercel deploy
 - [ ] Калибровка α на реальных данных (фонд на 1.5k игроков, валидация покрытия MC 90%-envelope на фактических P&L)
 
 ---
