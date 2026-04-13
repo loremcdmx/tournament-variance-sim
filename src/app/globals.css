@@ -1,26 +1,265 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-bg: var(--c-bg);
+  --color-bg-elev: var(--c-bg-elev);
+  --color-bg-elev-2: var(--c-bg-elev-2);
+  --color-border: var(--c-border);
+  --color-border-strong: var(--c-border-strong);
+  --color-fg: var(--c-fg);
+  --color-fg-muted: var(--c-fg-muted);
+  --color-fg-dim: var(--c-fg-dim);
+  --color-accent: var(--c-accent);
+  --color-accent-strong: var(--c-accent-strong);
+  --color-success: var(--c-success);
+  --color-danger: var(--c-danger);
+}
+
+:root,
+:root[data-theme="dark"] {
+  --c-bg: #07090a;
+  --c-bg-elev: #0d1113;
+  --c-bg-elev-2: #12181b;
+  --c-border: #1e2529;
+  --c-border-strong: #2e3940;
+  --c-fg: #f1f5f3;
+  --c-fg-muted: #9ca8a3;
+  --c-fg-dim: #5f6c68;
+
+  /* Playing-card suit palette — full spectrum, not two-color. */
+  --c-spade: #60a5fa;   /* blue — schedule / structure */
+  --c-heart: #f87171;   /* red — verdict / risk / losses */
+  --c-diamond: #fbbf24; /* gold — controls / calibration */
+  --c-club: #34d399;    /* green — results / profit (also default accent) */
+
+  /* "accent" == club green by default (brand primary). */
+  --c-accent: #10b981;
+  --c-accent-strong: #059669;
+  --c-success: #34d399;
+  --c-danger: #f87171;
+
+  /* PrimeDope's color — magenta, maximum contrast against felt-green */
+  --c-rival: #ec4899;
+  --c-rival-strong: #db2777;
+
+  --c-grid: rgba(96, 165, 250, 0.04);
+  --c-grid-strong: rgba(96, 165, 250, 0.08);
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --c-bg: #f8f9f5;
+  --c-bg-elev: #ffffff;
+  --c-bg-elev-2: #eef1ec;
+  --c-border: #d9ded4;
+  --c-border-strong: #b7bfb0;
+  --c-fg: #0b1210;
+  --c-fg-muted: #3f4c46;
+  --c-fg-dim: #6b7671;
+
+  --c-spade: #2563eb;
+  --c-heart: #dc2626;
+  --c-diamond: #b45309;
+  --c-club: #047857;
+
+  --c-accent: #047857;
+  --c-accent-strong: #065f46;
+  --c-success: #059669;
+  --c-danger: #dc2626;
+  --c-rival: #be185d;
+  --c-rival-strong: #9d174d;
+
+  --c-grid: rgba(37, 99, 235, 0.05);
+  --c-grid-strong: rgba(37, 99, 235, 0.09);
+  color-scheme: light;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-rival: var(--c-rival);
+  --color-rival-strong: var(--c-rival-strong);
+  --color-spade: var(--c-spade);
+  --color-heart: var(--c-heart);
+  --color-diamond: var(--c-diamond);
+  --color-club: var(--c-club);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Graph-paper ground + four-suit aurora — each suit blooms from a different corner. */
+body {
+  background-image:
+    linear-gradient(var(--c-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--c-grid) 1px, transparent 1px),
+    radial-gradient(
+      ellipse 55% 45% at 0% 0%,
+      rgba(96, 165, 250, 0.13),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 55% 45% at 100% 0%,
+      rgba(248, 113, 113, 0.10),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 85% 60%,
+      rgba(251, 191, 36, 0.09),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 70% 55% at 15% 75%,
+      rgba(52, 211, 153, 0.11),
+      transparent 65%
+    );
+  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-attachment: fixed;
+}
+
+:root[data-theme="light"] body {
+  background-image:
+    linear-gradient(var(--c-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--c-grid) 1px, transparent 1px),
+    radial-gradient(
+      ellipse 55% 45% at 0% 0%,
+      rgba(37, 99, 235, 0.08),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 55% 45% at 100% 0%,
+      rgba(220, 38, 38, 0.06),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 85% 60%,
+      rgba(180, 83, 9, 0.06),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 70% 55% at 15% 75%,
+      rgba(4, 120, 87, 0.07),
+      transparent 65%
+    );
+  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+}
+
+/* Corner brackets — CAD / terminal decoration for hero cards and stats. */
+.bracketed {
+  position: relative;
+}
+.bracketed::before,
+.bracketed::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--c-accent);
+  pointer-events: none;
+}
+.bracketed::before {
+  top: -1px;
+  left: -1px;
+  border-right: none;
+  border-bottom: none;
+}
+.bracketed::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: none;
+  border-top: none;
+}
+.bracketed-rival::before,
+.bracketed-rival::after {
+  border-color: var(--c-rival);
+}
+.bracketed-spade::before,
+.bracketed-spade::after {
+  border-color: var(--c-spade);
+}
+.bracketed-heart::before,
+.bracketed-heart::after {
+  border-color: var(--c-heart);
+}
+.bracketed-diamond::before,
+.bracketed-diamond::after {
+  border-color: var(--c-diamond);
+}
+
+/* Section number — huge editorial mono numeral. */
+.section-num {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-feature-settings: "tnum";
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--c-fg-dim);
+}
+
+/* Tiny "tag" pill — mono, uppercase, used for eyebrow labels */
+.eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-fg-dim);
+}
+
+/* Scrollbar polish */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+/* Number inputs — kill the ugly spin buttons */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* uPlot dark-theme overrides */
+.uplot,
+.uplot *,
+.uplot *::before,
+.uplot *::after {
+  box-sizing: border-box;
+}
+.uplot .u-title {
+  color: var(--color-fg);
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.uplot .u-legend {
+  color: var(--color-fg-muted);
+  font-size: 12px;
+}
+.uplot .u-axis {
+  color: var(--color-fg-dim);
+}
+
+/* Tabular numerals for stat cards */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
