@@ -1,6 +1,12 @@
 /// <reference lib="webworker" />
-import { compileSchedule, makeCheckpointGrid, simulateShard } from "./engine";
-import type { CalibrationMode, SimulationInput } from "./types";
+import {
+  buildResult,
+  compileSchedule,
+  makeCheckpointGrid,
+  mergeShards,
+  simulateShard,
+} from "./engine";
+import type { CalibrationMode, SimulationInput, SimulationResult } from "./types";
 import type { RawShard } from "./engine";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -43,6 +49,59 @@ export interface ShardErrorMsg {
   message: string;
 }
 
+/**
+ * Request to merge raw shards and build the final SimulationResult entirely
+ * inside the worker — keeps the expensive envelope sorts / histograms off
+ * the main thread so the UI never freezes at 100%.
+ */
+export interface BuildRequest {
+  type: "build";
+  jobId: number;
+  buildId: number;
+  input: SimulationInput;
+  calibrationMode: CalibrationMode;
+  shards: RawShard[];
+}
+
+export interface BuildResultMsg {
+  type: "build-result";
+  jobId: number;
+  buildId: number;
+  result: SimulationResult;
+}
+
+export interface BuildErrorMsg {
+  type: "build-error";
+  jobId: number;
+  buildId: number;
+  message: string;
+}
+
+/**
+ * Walk a SimulationResult and return every ArrayBuffer backing a typed
+ * array. Used as the transfer list on the return trip so the main thread
+ * gets zero-copy handoff of multi-MB buffers (finalProfits, envelopes,
+ * convergence lines, sample paths).
+ */
+function collectResultTransfers(r: SimulationResult): Transferable[] {
+  const out: Transferable[] = [];
+  out.push(r.finalProfits.buffer);
+  out.push(r.samplePaths.best.buffer);
+  out.push(r.samplePaths.worst.buffer);
+  for (const p of r.samplePaths.paths) out.push(p.buffer);
+  out.push(r.envelopes.mean.buffer);
+  out.push(r.envelopes.p15.buffer);
+  out.push(r.envelopes.p85.buffer);
+  out.push(r.envelopes.p025.buffer);
+  out.push(r.envelopes.p975.buffer);
+  out.push(r.envelopes.p0015.buffer);
+  out.push(r.envelopes.p9985.buffer);
+  out.push(r.convergence.mean.buffer);
+  out.push(r.convergence.seLo.buffer);
+  out.push(r.convergence.seHi.buffer);
+  return out;
+}
+
 function collectShardTransfers(shard: RawShard): Transferable[] {
   return [
     shard.finalProfits.buffer,
@@ -56,8 +115,12 @@ function collectShardTransfers(shard: RawShard): Transferable[] {
   ];
 }
 
-self.onmessage = (e: MessageEvent<ShardRequest>) => {
+self.onmessage = (e: MessageEvent<ShardRequest | BuildRequest>) => {
   const req = e.data;
+  if (req.type === "build") {
+    handleBuild(req);
+    return;
+  }
   if (req.type !== "shard") return;
   const { jobId, shardId, input, calibrationMode, sStart, sEnd } = req;
   try {
@@ -90,7 +153,10 @@ self.onmessage = (e: MessageEvent<ShardRequest>) => {
       grid: { K: grid.K, checkpointIdx: grid.checkpointIdx },
     };
     const transfers = collectShardTransfers(shard);
-    transfers.push(grid.checkpointIdx.buffer);
+    // Note: grid.checkpointIdx is Int32Array but we do NOT transfer it —
+    // the worker keeps using grid internally, and main thread reconstructs
+    // the K from the result. Transferring it twice would detach in one place
+    // and cause an AccessError the next time the worker processes a shard.
     self.postMessage(result, transfers);
   } catch (err) {
     const msg: ShardErrorMsg = {
@@ -102,5 +168,38 @@ self.onmessage = (e: MessageEvent<ShardRequest>) => {
     self.postMessage(msg);
   }
 };
+
+function handleBuild(req: BuildRequest) {
+  const { jobId, buildId, input, calibrationMode, shards } = req;
+  try {
+    const compiled = compileSchedule({ ...input, calibrationMode }, calibrationMode);
+    const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+    const K1 = grid.K + 1;
+    const merged = mergeShards(shards, input.samples, K1, input.schedule.length);
+    const result = buildResult(
+      { ...input, calibrationMode },
+      compiled,
+      merged,
+      calibrationMode,
+      grid,
+    );
+    const msg: BuildResultMsg = {
+      type: "build-result",
+      jobId,
+      buildId,
+      result,
+    };
+    const transfers = collectResultTransfers(result);
+    self.postMessage(msg, transfers);
+  } catch (err) {
+    const msg: BuildErrorMsg = {
+      type: "build-error",
+      jobId,
+      buildId,
+      message: err instanceof Error ? err.message : String(err),
+    };
+    self.postMessage(msg);
+  }
+}
 
 export {};

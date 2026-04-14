@@ -1,12 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  buildResult,
-  compileSchedule,
-  makeCheckpointGrid,
-  mergeShards,
-} from "./engine";
+import { compileSchedule, makeCheckpointGrid } from "./engine";
 import type { RawShard } from "./engine";
 import type {
   CalibrationMode,
@@ -14,6 +9,9 @@ import type {
   SimulationResult,
 } from "./types";
 import type {
+  BuildErrorMsg,
+  BuildRequest,
+  BuildResultMsg,
   ShardErrorMsg,
   ShardProgressMsg,
   ShardRequest,
@@ -212,7 +210,15 @@ export function useSimulation() {
       return new Promise((resolve, reject) => {
         let settled = false;
         let remaining = allSlots.length;
+        let buildsRemaining = 0;
+        let nextBuildId = 1;
+        const buildIdToPass = new Map<number, PassPlan["key"]>();
 
+        // shardId → slot (O(1) lookup in the message handler instead of
+        // scanning allSlots per message — ~20 ticks × n_shards messages
+        // per run, trivial but cleaner).
+        const slotById = new Map<number, ShardSlot>();
+        for (const s of allSlots) slotById.set(s.shardId, s);
         // Map slot → ctx pass + index within that pass for result placement
         const slotIndexInPass = new Map<number, number>();
         for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
@@ -224,14 +230,77 @@ export function useSimulation() {
           }
         }
 
+        const collectShardBuffers = (shards: RawShard[]): Transferable[] => {
+          const out: Transferable[] = [];
+          for (const sh of shards) {
+            out.push(sh.finalProfits.buffer);
+            out.push(sh.pathMatrix.buffer);
+            out.push(sh.maxDrawdowns.buffer);
+            out.push(sh.runningMins.buffer);
+            out.push(sh.longestBreakevens.buffer);
+            out.push(sh.longestCashless.buffer);
+            out.push(sh.recoveryLengths.buffer);
+            out.push(sh.rowProfits.buffer);
+          }
+          return out;
+        };
+
+        const dispatchBuild = (key: PassPlan["key"], workerIdx: number) => {
+          const ctx = ctxs[key];
+          const buildId = nextBuildId++;
+          buildIdToPass.set(buildId, key);
+          buildsRemaining++;
+          const shards = ctx.shards.filter((x): x is RawShard => x !== null);
+          const req: BuildRequest = {
+            type: "build",
+            jobId,
+            buildId,
+            input: {
+              ...ctx.plan.input,
+              calibrationMode: ctx.plan.calibrationMode,
+            },
+            calibrationMode: ctx.plan.calibrationMode,
+            shards,
+          };
+          // Transfer every shard buffer — the worker now owns them, the
+          // main thread doesn't need them again. Keeps the build entirely
+          // off the main thread and avoids a multi-MB structured clone.
+          pool.workers[workerIdx].postMessage(req, collectShardBuffers(shards));
+        };
+
         const handler = (e: MessageEvent) => {
           if (settled || jobIdRef.current !== jobId) return;
           const msg = e.data as
             | ShardProgressMsg
             | ShardResultMsg
-            | ShardErrorMsg;
+            | ShardErrorMsg
+            | BuildResultMsg
+            | BuildErrorMsg;
           if (msg.jobId !== jobId) return;
-          const slot = allSlots.find((s) => s.shardId === msg.shardId);
+          if (msg.type === "build-result") {
+            const key = buildIdToPass.get(msg.buildId);
+            if (key == null) return;
+            ctxs[key].result = msg.result;
+            buildsRemaining--;
+            if (buildsRemaining === 0) {
+              settled = true;
+              detach();
+              const out: Record<PassPlan["key"], SimulationResult> =
+                {} as never;
+              for (const k of Object.keys(ctxs) as PassPlan["key"][]) {
+                out[k] = ctxs[k].result!;
+              }
+              resolve(out);
+            }
+            return;
+          }
+          if (msg.type === "build-error") {
+            settled = true;
+            detach();
+            reject(new Error(msg.message));
+            return;
+          }
+          const slot = slotById.get(msg.shardId);
           if (!slot) return;
           if (msg.type === "shard-progress") {
             const delta = msg.done - slot.done;
@@ -247,47 +316,22 @@ export function useSimulation() {
             if (idx != null) ctx.shards[idx] = msg.shard;
             remaining--;
             if (remaining === 0) {
-              // Final shard in — push the bar to 100 % unconditionally and
-              // let the browser paint it before the synchronous post-
-              // processing (sort/histograms/quantiles) runs. Two rAFs: the
-              // first queues a style flush, the second fires *after* paint.
-              settled = true;
-              detach();
+              // All shards collected. Dispatch the build to workers instead
+              // of running on main thread — the envelope sorts / histograms
+              // used to cause a 2–5 s freeze at 99% on 100k-sample runs.
+              // Hand off to one worker per pass so a twin run parallelizes.
               lastEmit = 0;
               onProgress(1);
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  try {
-                    for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
-                      const ctx = ctxs[key];
-                      const merged = mergeShards(
-                        ctx.shards.filter((x): x is RawShard => x !== null),
-                        ctx.plan.input.samples,
-                        ctx.K1,
-                        ctx.plan.input.schedule.length,
-                      );
-                      ctx.result = buildResult(
-                        {
-                          ...ctx.plan.input,
-                          calibrationMode: ctx.plan.calibrationMode,
-                        },
-                        ctx.compiled,
-                        merged,
-                        ctx.plan.calibrationMode,
-                        ctx.grid,
-                      );
-                    }
-                    const out: Record<PassPlan["key"], SimulationResult> =
-                      {} as never;
-                    for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
-                      out[key] = ctxs[key].result!;
-                    }
-                    resolve(out);
-                  } catch (err) {
-                    reject(err);
-                  }
+              const keys = Object.keys(ctxs) as PassPlan["key"][];
+              try {
+                keys.forEach((k, i) => {
+                  dispatchBuild(k, i % W);
                 });
-              });
+              } catch (err) {
+                settled = true;
+                detach();
+                reject(err);
+              }
             } else {
               emitProgress();
             }

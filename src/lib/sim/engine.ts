@@ -2,7 +2,6 @@ import { getPayoutTable } from "./payouts";
 import {
   buildAliasTable,
   buildBinaryItmAssets,
-  buildCDF,
   buildFinishPMF,
   calibrateAlpha,
   itmProbability,
@@ -39,7 +38,6 @@ interface CompiledEntry {
   /** Number of paid places — the boundary for "did I cash" checks during
    *  re-entry rolls. */
   paidCount: number;
-  cdf: Float64Array;
   /** Vose's alias method: O(1) finish-place sampling in the hot loop.
    *  `aliasProb[i]` is the acceptance threshold for index i; when the
    *  fractional part of a scaled uniform is above it, we take `aliasIdx[i]`
@@ -434,7 +432,6 @@ function compileSingleEntry(
     }
   }
 
-  const cdf = buildCDF(pmf);
   const { prob: aliasProb, alias: aliasIdx } = buildAliasTable(pmf);
 
   // ---- bounty distribution across finish places -------------------------
@@ -575,7 +572,6 @@ function compileSingleEntry(
     maxEntries,
     reRate,
     paidCount,
-    cdf,
     aliasProb,
     aliasIdx,
     prizeByPlace,
@@ -760,7 +756,9 @@ export function buildResult(
 
   // Stats -------------------------------------------------------------------
   const mean = expectedProfitAccum / S;
-  const sorted = Float64Array.from(finalProfits).sort();
+  // Direct typed-array memcpy: .slice() on a Float64Array is a single
+  // memcpy, .from() iterates and boxes. Same for other sorted copies below.
+  const sorted = finalProfits.slice().sort();
   const pct = (p: number) =>
     sorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
   const median = pct(0.5);
@@ -823,15 +821,17 @@ export function buildResult(
     kellyFraction > 0 ? compiled.totalBuyIn / kellyFraction : Infinity;
 
   // Expected log-growth — the thing Kelly actually maximises. Only valid
-  // when the user has a bankroll. Ruin samples clamp to ln(1e-9) ≈ −20.7
-  // so they dominate only enough to punish over-betting, not annihilate
-  // the mean.
+  // when the user has a bankroll. Winsorize ruin samples at ln(0.01) ≈ −4.6
+  // instead of ln(1e-9) ≈ −20.7: the old floor collapsed the entire ruin
+  // tail to a single value, killing variance structure where it matters most
+  // for bankroll sizing. A 99% loss still strongly penalises over-betting.
+  const LOG_RUIN_FLOOR = Math.log(0.01);
   let logGrowthRate = 0;
   if (bankroll > 0) {
     let acc = 0;
     for (let s = 0; s < S; s++) {
       const ratio = 1 + finalProfits[s] / bankroll;
-      acc += ratio > 1e-9 ? Math.log(ratio) : Math.log(1e-9);
+      acc += ratio > 0.01 ? Math.log(ratio) : LOG_RUIN_FLOOR;
     }
     logGrowthRate = acc / S;
   }
@@ -934,10 +934,11 @@ export function buildResult(
   // Minimum bankroll for historical RoR ≤ threshold.
   // For each sample, "ruin" at bankroll B <=> runningMin <= -B.
   // Sort −runningMin ascending → the 1 − ε quantile gives B such that ε
-  // of samples go below.
-  const worstLosses = Float64Array.from(runningMins)
-    .map((v) => -v)
-    .sort();
+  // of samples go below. Inline negate into a single allocation (was
+  // .from().map().sort() — three passes, two intermediate buffers).
+  const worstLosses = new Float64Array(S);
+  for (let s = 0; s < S; s++) worstLosses[s] = -runningMins[s];
+  worstLosses.sort();
   const minBankrollRoR1pct = worstLosses[Math.floor(0.99 * (S - 1))];
   const minBankrollRoR5pct = worstLosses[Math.floor(0.95 * (S - 1))];
   const minBankrollRoR15pct = worstLosses[Math.floor(0.85 * (S - 1))];
@@ -1049,7 +1050,7 @@ export function buildResult(
   // Tail quantiles of max drawdown — a straight answer to
   // "how bad is a typical/5%/1% worst run". PrimeDope only shows a single
   // aggregate estimate; we expose the whole tail shape.
-  const ddSorted = Float64Array.from(maxDrawdowns).sort();
+  const ddSorted = maxDrawdowns.slice().sort();
   const ddPct = (p: number) =>
     ddSorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
   const maxDrawdownMedian = ddPct(0.5);
@@ -1102,21 +1103,28 @@ export function buildResult(
       : { binEdges: [0, 1], counts: [0] };
 
   // Decomposition -----------------------------------------------------------
+  // Single sequential pass over rowProfits (row-major by sample): accumulate
+  // ΣX and ΣX² per row, then compute mean/variance via E[X²]−E[X]². Replaces
+  // two stride-numRows column scans, better cache behavior for numRows>2.
   const decomposition: RowDecomposition[] = new Array(numRows);
   const rowMeans = new Float64Array(numRows);
-  for (let r = 0; r < numRows; r++) {
-    let acc = 0;
-    for (let s = 0; s < S; s++) acc += rowProfits[s * numRows + r];
-    rowMeans[r] = acc / S;
-  }
   const rowVariances = new Float64Array(numRows);
-  for (let r = 0; r < numRows; r++) {
-    let va = 0;
-    for (let s = 0; s < S; s++) {
-      const d = rowProfits[s * numRows + r] - rowMeans[r];
-      va += d * d;
+  const rowSumSq = new Float64Array(numRows);
+  for (let s = 0; s < S; s++) {
+    const base = s * numRows;
+    for (let r = 0; r < numRows; r++) {
+      const v = rowProfits[base + r];
+      rowMeans[r] += v;
+      rowSumSq[r] += v * v;
     }
-    rowVariances[r] = va / Math.max(1, S - 1);
+  }
+  for (let r = 0; r < numRows; r++) {
+    const m = rowMeans[r] / S;
+    rowMeans[r] = m;
+    // Sample variance: (ΣX² − S·m²) / (S−1). Clamp at 0 for the all-equal
+    // degenerate case where floating-point cancellation can dip negative.
+    rowVariances[r] =
+      S > 1 ? Math.max(0, (rowSumSq[r] - S * m * m) / (S - 1)) : 0;
   }
   const totalRowVarSum = rowVariances.reduce((a, b) => a + b, 0) || 1;
   for (let r = 0; r < numRows; r++) {
@@ -1384,7 +1392,9 @@ export interface CheckpointGrid {
 }
 
 export function makeCheckpointGrid(N: number): CheckpointGrid {
-  const K = Math.min(200, N);
+  // K=80 gives smooth trajectory charts while cutting envelope column sorts
+  // from 201 → 81 (~60% less main-thread work at 100k samples).
+  const K = Math.min(80, N);
   const checkpointIdx = new Int32Array(K + 1);
   for (let j = 0; j <= K; j++) checkpointIdx[j] = Math.round((j * N) / K);
   return { K, checkpointIdx };
@@ -1441,10 +1451,14 @@ export function simulateShard(
   const perPass = compiled.tournamentsPerPass;
   const flat = compiled.flat;
 
-  // Fire ~20 progress messages per shard. More than that thrashes the main
-  // thread (postMessage + handler O(n_shards) work per fire); fewer makes
-  // the bar feel laggy. 20 is the sweet spot for 50k-sample runs on 8 cores.
-  const nextProgressStep = Math.max(1, Math.floor(shardSize / 20));
+  // Adaptive progress ticks: tiny shards feel laggy with < 20 ticks, huge
+  // shards spam the main thread. Scale with log of shard size so a 5k shard
+  // fires ~20 and a 500k shard fires ~40, without ever dropping below 15.
+  const progressTicks = Math.max(
+    15,
+    Math.min(40, Math.round(15 + Math.log10(Math.max(1, shardSize / 1000)) * 10)),
+  );
+  const nextProgressStep = Math.max(1, Math.floor(shardSize / progressTicks));
   let nextProgressAt = nextProgressStep;
 
   for (let s = sStart; s < sEnd; s++) {
@@ -1574,7 +1588,10 @@ export function simulateShard(
             const lam = bkm[place];
             if (lam > 0) {
               let k: number;
-              if (lam < 20) {
+              // Knuth threshold at 30: at λ=20 Knuth averages ~20 uniforms
+              // and Gaussian still has ~0.5% tail bias; λ=30 is where the
+              // speed/accuracy tradeoff flips.
+              if (lam < 30) {
                 const L = Math.exp(-lam);
                 let p = 1;
                 k = 0;
@@ -1594,7 +1611,7 @@ export function simulateShard(
               // σ_sum² = ln(1 + (e^σ²−1)/k). Mean preserved at k·1 = k,
               // so bountyDraw×scale has the same expectation as bountyDraw.
               if (mystVar > 0 && k > 0 && bountyDraw > 0) {
-                const sigSum2 = Math.log(1 + mystExpM1 / k);
+                const sigSum2 = Math.log1p(mystExpM1 / k);
                 const sigSum = Math.sqrt(sigSum2);
                 const scale = Math.exp(
                   sigSum * gaussB() - 0.5 * sigSum2,
@@ -1624,8 +1641,9 @@ export function simulateShard(
               if (lam > 0) {
                 // Knuth Poisson for small λ (unbiased); Gaussian approximation
                 // for large λ where Poisson is too slow and the normal is tight.
+                // Threshold 30: see rationale above in the single-bullet path.
                 let k: number;
-                if (lam < 20) {
+                if (lam < 30) {
                   const L = Math.exp(-lam);
                   let p = 1;
                   k = 0;
@@ -1640,7 +1658,7 @@ export function simulateShard(
                 }
                 bountyDraw = (mean * k) / lam;
                 if (mystVar > 0 && k > 0 && bountyDraw > 0) {
-                  const sigSum2 = Math.log(1 + mystExpM1 / k);
+                  const sigSum2 = Math.log1p(mystExpM1 / k);
                   const sigSum = Math.sqrt(sigSum2);
                   const scale = Math.exp(
                     sigSum * gaussB() - 0.5 * sigSum2,
