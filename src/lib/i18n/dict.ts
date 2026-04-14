@@ -173,6 +173,25 @@ export const DICT = {
   },
   "controls.samples": { en: "Simulations", ru: "Симуляций" },
   "controls.bankroll": { en: "Bankroll (optional)", ru: "Банкролл (опц.)" },
+  "controls.compareMode": { en: "Twin-run mode", ru: "Режим сравнения" },
+  "controls.compareMode.random": {
+    en: "Two random runs (same model)",
+    ru: "Два рандомных прогона (одна модель)",
+  },
+  "controls.compareMode.primedope": {
+    en: "Ours vs PrimeDope (same seed)",
+    ru: "Наш vs PrimeDope (один сид)",
+  },
+  "twin.runA": { en: "Run A", ru: "Прогон A" },
+  "twin.runB": { en: "Run B", ru: "Прогон B" },
+  "twin.runA.cap": {
+    en: "First random sample of your schedule.",
+    ru: "Первая случайная выборка по твоему расписанию.",
+  },
+  "twin.runB.cap": {
+    en: "Second random sample — same model, different seed. Shows how much two fresh draws diverge.",
+    ru: "Вторая случайная выборка — та же модель, другой сид. Показывает, насколько расходятся два свежих рана.",
+  },
   "controls.finishModel": { en: "Skill model", ru: "Модель скилла" },
   "controls.alphaOverride": {
     en: "Skill sharpness (optional)",
@@ -679,6 +698,10 @@ export const DICT = {
   "help.samples": {
     en: "How many alternative futures to simulate — each one is one full replay of your schedule.\n\nExample: 10,000 = you get to see 10,000 different ways your schedule could unfold.\n\nEffect: more simulations ⇒ smoother numbers for swings, worst runs, and tail scenarios; slower to compute. 5k is quick, 50k is overkill-nice.",
     ru: "Сколько альтернативных вариантов будущего прогнать — каждый это один полный проход твоего расписания.\n\nПример: 10 000 = посмотришь 10 000 вариантов, как могло бы сложиться.\n\nЭффект: больше симуляций ⇒ точнее цифры по свингам, худшим прогонам и хвостам; дольше считается. 5k — быстро, 50k — с запасом.",
+  },
+  "help.compareMode": {
+    en: "What to put on the right side of the trajectory chart.\n\n• Two random runs — the same model rolled twice with different seeds. Shows how wildly two honest runs of the same setup can diverge.\n• Ours vs PrimeDope — our calibrated model on the left, PrimeDope's uniform-lift on the right, both on the same seed. Shows how the algorithm choice changes the answer on identical randomness.",
+    ru: "Что показать справа от траектории.\n\n• Два рандомных прогона — одна и та же модель прокатывается дважды с разными сидами. Видно, насколько могут разойтись два честных прогона одного и того же сетапа.\n• Наш vs PrimeDope — наша калиброванная модель слева, PrimeDope'овский uniform-lift справа, оба на одном сиде. Видно, как выбор алгоритма меняет ответ на одинаковом рандоме.",
   },
   "help.bankroll": {
     en: "Current bankroll in $. Unlocks risk-of-ruin, Kelly bankroll, and log-growth metrics.\n\nExample: 5000 = a $5k roll. 0 = ignore bankroll, skip ruin math.\n\nEffect: adds a −bankroll line on the trajectory chart; any sample that crosses it counts as ruined.",

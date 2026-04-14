@@ -229,6 +229,7 @@ export function useSimulation() {
       setError(null);
 
       const twin = !!input.compareWithPrimedope && !input.calibrationMode;
+      const mode2 = input.compareMode ?? "random";
 
       try {
         if (twin) {
@@ -239,9 +240,22 @@ export function useSimulation() {
             (f) => setProgress(f * 0.5),
           );
           if (jobIdRef.current !== jobId) return;
+          const secondInput =
+            mode2 === "primedope"
+              ? { ...input, compareWithPrimedope: false }
+              : {
+                  ...input,
+                  compareWithPrimedope: false,
+                  seed:
+                    (((input.seed ^ 0xa5a5a5a5) >>> 0) ^
+                      ((Math.random() * 0xffffffff) >>> 0)) >>>
+                    0,
+                };
+          const secondCalib: CalibrationMode =
+            mode2 === "primedope" ? "primedope-uniform-lift" : "alpha";
           const comparison = await runPass(
-            { ...input, compareWithPrimedope: false },
-            "primedope-uniform-lift",
+            secondInput,
+            secondCalib,
             jobId,
             (f) => setProgress(0.5 + f * 0.5),
           );

@@ -1,9 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-function nextSeed() {
-  return Math.floor(Math.random() * 2_147_483_647);
-}
 import type { FinishModelId } from "@/lib/sim/types";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { Card } from "./ui/Section";
@@ -18,6 +15,8 @@ export interface ControlsState {
   finishModelId: FinishModelId;
   alphaOverride: number | null;
   compareWithPrimedope: boolean;
+  /** Twin-run mode: "random" = two seeds, same model; "primedope" = same seed, our vs uniform-lift. */
+  compareMode: "random" | "primedope";
   /**
    * One-sigma uncertainty on your ROI estimate, as a fraction. E.g. 0.05
    * = "maybe my true ROI is ±5 pp from what I think". Zero by default.
@@ -138,7 +137,7 @@ export function ControlsPanel({
 
       {showAdvanced && (
       <>
-      {/* Advanced run knobs: bankroll + seed */}
+      {/* Advanced run knobs: bankroll */}
       <SectionTitle>{t("controls.section.advanced")}</SectionTitle>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={t("controls.bankroll")} hint={t("help.bankroll")}>
@@ -149,22 +148,17 @@ export function ControlsPanel({
             onChange={(v) => set("bankroll", Math.max(0, v))}
           />
         </Field>
-        <Field label={t("controls.seed")} hint={t("help.seed")}>
-          <div className="flex gap-2">
-            <NumInput
-              value={value.seed}
-              step={1}
-              onChange={(v) => set("seed", Math.floor(v))}
-            />
-            <button
-              type="button"
-              onClick={() => set("seed", nextSeed())}
-              className="shrink-0 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
-              title={t("controls.seedReroll")}
-            >
-              ⟳
-            </button>
-          </div>
+        <Field label={t("controls.compareMode")} hint={t("help.compareMode")}>
+          <select
+            value={value.compareMode}
+            onChange={(e) =>
+              set("compareMode", e.target.value as "random" | "primedope")
+            }
+            className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+          >
+            <option value="random">{t("controls.compareMode.random")}</option>
+            <option value="primedope">{t("controls.compareMode.primedope")}</option>
+          </select>
         </Field>
       </div>
 
@@ -346,23 +340,6 @@ export function ControlsPanel({
           </div>
         </div>
       )}
-
-      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2.5 text-xs transition-colors hover:border-[color:var(--color-border-strong)]">
-        <input
-          type="checkbox"
-          checked={value.compareWithPrimedope}
-          onChange={(e) => set("compareWithPrimedope", e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 accent-[color:var(--color-accent)]"
-        />
-        <span className="flex flex-col gap-0.5">
-          <span className="font-medium text-[color:var(--color-fg)]">
-            {t("controls.compareLabel")}
-          </span>
-          <span className="text-[11px] text-[color:var(--color-fg-dim)]">
-            {t("controls.compareHint")}
-          </span>
-        </span>
-      </label>
 
       </fieldset>
       <div className="mt-5 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-4 sm:flex-row sm:items-center">

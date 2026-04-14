@@ -19,6 +19,7 @@ interface Props {
   bankroll?: number;
   schedule?: TournamentRow[];
   scheduleRepeats?: number;
+  compareMode?: "random" | "primedope";
 }
 
 function fmt(template: string, vars: Record<string, string>): string {
@@ -168,6 +169,7 @@ export function ResultsView({
   bankroll = 0,
   schedule,
   scheduleRepeats,
+  compareMode = "random",
 }: Props) {
   const t = useT();
 
@@ -215,18 +217,30 @@ export function ResultsView({
           />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartPane
-              label={t("pd.ours")}
+              label={
+                compareMode === "primedope" ? t("pd.ours") : t("twin.runA")
+              }
               hueDot="#34d399"
-              caption={t("chart.trajectory.ours.cap")}
+              caption={
+                compareMode === "primedope"
+                  ? t("chart.trajectory.ours.cap")
+                  : t("twin.runA.cap")
+              }
             >
               <UplotChart data={primary.data} options={primary.opts} height={420} />
             </ChartPane>
             <ChartPane
-              label={t("pd.theirs")}
+              label={
+                compareMode === "primedope" ? t("pd.theirs") : t("twin.runB")
+              }
               hueDot="#f472b6"
-              caption={t("chart.trajectory.theirs.cap")}
+              caption={
+                compareMode === "primedope"
+                  ? t("chart.trajectory.theirs.cap")
+                  : t("twin.runB.cap")
+              }
               action={
-                schedule && scheduleRepeats ? (
+                compareMode === "primedope" && schedule && scheduleRepeats ? (
                   <PrimedopeReproduceButton
                     schedule={schedule}
                     scheduleRepeats={scheduleRepeats}
@@ -274,7 +288,7 @@ export function ResultsView({
 
       <VerdictCard result={result} bankroll={bankroll} />
 
-      {result.comparison && (
+      {result.comparison && compareMode === "primedope" && (
         <>
           <PDVerdict primary={result} other={result.comparison} />
           <PrimedopeDiff primary={result} other={result.comparison} />

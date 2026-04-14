@@ -20,6 +20,7 @@ const BASE_CONTROLS: ControlsState = {
   finishModelId: "power-law",
   alphaOverride: null,
   compareWithPrimedope: true,
+  compareMode: "random",
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
@@ -57,6 +58,7 @@ export const SCENARIOS: DemoScenario[] = [
       samples: 1000,
       bankroll: 1000,
       compareWithPrimedope: true,
+      compareMode: "primedope",
     },
   },
   {

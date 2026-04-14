@@ -163,6 +163,14 @@ export interface SimulationInput {
    * "we vs them" mode.
    */
   compareWithPrimedope?: boolean;
+  /**
+   * Twin-run mode for the side-by-side trajectory view. "random" (default)
+   * runs the same model twice with two different seeds — shows how much two
+   * fresh draws diverge. "primedope" runs our α-calibrated model on the left
+   * and PrimeDope's uniform-lift on the right with the same seed — shows
+   * how the algorithm choice changes the answer on identical randomness.
+   */
+  compareMode?: "random" | "primedope";
   /** Internal dispatch; callers should set compareWithPrimedope instead. */
   calibrationMode?: CalibrationMode;
   /**

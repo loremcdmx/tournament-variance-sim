@@ -42,7 +42,7 @@ export interface ModelPreset {
 const ZERO_SHOCKS: ModelPatch = {
   finishModelId: "power-law",
   alphaOverride: null,
-  compareWithPrimedope: false,
+  compareWithPrimedope: true,
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,

@@ -52,7 +52,8 @@ const initialControls: ControlsState = {
   seed: 42,
   finishModelId: "power-law",
   alphaOverride: null,
-  compareWithPrimedope: false,
+  compareWithPrimedope: true,
+  compareMode: "random",
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
@@ -95,7 +96,11 @@ export default function Home() {
     startTransition(() => {
       if (fromLocal) {
         setSchedule(fromLocal.schedule);
-        setControls({ ...initialControls, ...fromLocal.controls });
+        setControls({
+          ...initialControls,
+          ...fromLocal.controls,
+          compareWithPrimedope: true,
+        });
       }
       setHydrated(true);
     });
@@ -120,6 +125,7 @@ export default function Home() {
           c.finishModelId === "empirical" ? c.empiricalBuckets : undefined,
       },
       compareWithPrimedope: c.compareWithPrimedope,
+      compareMode: c.compareMode,
       roiStdErr: c.roiStdErr,
       roiShockPerTourney: c.roiShockPerTourney,
       roiShockPerSession: c.roiShockPerSession,
@@ -135,7 +141,12 @@ export default function Home() {
   );
 
   const onRun = useCallback(() => {
-    run(buildInput(schedule, controls));
+    const input = buildInput(schedule, controls);
+    input.seed =
+      (((Math.random() * 0xffffffff) >>> 0) ^
+        ((Date.now() & 0xffffffff) >>> 0)) >>>
+      0;
+    run(input);
   }, [schedule, controls, run, buildInput]);
 
   useEffect(() => {
@@ -246,7 +257,6 @@ export default function Home() {
           <p className="mt-6 max-w-2xl text-[15px] leading-relaxed text-[color:var(--color-fg-muted)]">
             {t("app.subtitle")}
           </p>
-          <div className="eyebrow mt-8">{t("app.runHint")}</div>
         </div>
 
         {/* Scenario grid */}
@@ -516,6 +526,7 @@ export default function Home() {
               bankroll={controls.bankroll}
               schedule={schedule}
               scheduleRepeats={controls.scheduleRepeats}
+              compareMode={controls.compareMode}
             />
           </Section>
         </>
