@@ -5,7 +5,7 @@ import {
   calibrateAlpha,
   buildCDF,
   sampleFromCDF,
-  buildUniformLiftPMF,
+  buildBinaryItmAssets,
   itmProbability,
 } from "./finishModel";
 import { getPayoutTable } from "./payouts";
@@ -105,74 +105,59 @@ describe("expectedWinnings × calibrateAlpha", () => {
   });
 });
 
-describe("buildUniformLiftPMF (PrimeDope-compat)", () => {
-  it("zero-edge case yields flat 1/N over the whole field", () => {
-    const N = 500;
-    const pool = N * 10; // no rake, no overlay — zero-edge target = pool/N
-    const target = pool / N;
-    const pmf = buildUniformLiftPMF(N, 75, target, pool);
-    for (let i = 0; i < N; i++) {
-      expect(pmf[i]).toBeCloseTo(1 / N, 10);
+describe("buildBinaryItmAssets (PrimeDope-compat)", () => {
+  it("pmf is uniform 1/N over the whole field", () => {
+    const { pmf } = buildBinaryItmAssets(500, 75, 12);
+    for (let i = 0; i < 500; i++) expect(pmf[i]).toBeCloseTo(1 / 500, 12);
+  });
+
+  it("ITM equals the natural paidCount/N (no skill lift on cashing rate)", () => {
+    const { pmf } = buildBinaryItmAssets(500, 75, 12);
+    expect(itmProbability(pmf, 75)).toBeCloseTo(75 / 500, 10);
+  });
+
+  it("every paid place gets the same flat avgCash, every unpaid gets 0", () => {
+    const { prizeByPlace } = buildBinaryItmAssets(300, 45, 13.2);
+    const expected = (13.2 * 300) / 45;
+    for (let i = 0; i < 45; i++) expect(prizeByPlace[i]).toBeCloseTo(expected, 8);
+    for (let i = 45; i < 300; i++) expect(prizeByPlace[i]).toBe(0);
+  });
+
+  it("realized expected winnings match targetWinnings exactly", () => {
+    for (const target of [5, 11, 12, 13.2, 50, 200]) {
+      const { pmf, prizeByPlace } = buildBinaryItmAssets(500, 75, target);
+      let ew = 0;
+      for (let i = 0; i < 500; i++) ew += pmf[i] * prizeByPlace[i];
+      expect(ew).toBeCloseTo(target, 6);
     }
   });
 
-  it("realized EW matches targetWinnings within tolerance for sensible ROI", () => {
-    const N = 500;
-    const paid = 75;
-    const pool = N * 10;
-    // Build a typical payout curve summing to 1
-    const payouts = new Array(paid).fill(0).map((_, i) => Math.pow(1.35, -i));
-    const s = payouts.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < paid; i++) payouts[i] /= s;
-
-    for (const targetROI of [-0.3, -0.1, 0, 0.1, 0.25, 0.5, 1.0]) {
-      const cost = 11;
-      const target = cost * (1 + targetROI);
-      const pmf = buildUniformLiftPMF(N, paid, target, pool);
-      const ew = expectedWinnings(pmf, payouts, pool);
-      expect(Math.abs(ew - target)).toBeLessThan(0.001);
-    }
-  });
-
-  it("all paid places get the exact same probability (no top-heavy bias)", () => {
-    const N = 300;
-    const paid = 45;
-    const pool = 3000;
-    const pmf = buildUniformLiftPMF(N, paid, 13.2, pool); // 20% ROI over $11
-    const first = pmf[0];
-    for (let i = 0; i < paid; i++) expect(pmf[i]).toBeCloseTo(first, 10);
-    // All unpaid places also equal to each other
-    const unpaidProb = pmf[paid];
-    for (let i = paid; i < N; i++) expect(pmf[i]).toBeCloseTo(unpaidProb, 10);
-    // Paid > unpaid (because ROI > 0)
-    expect(first).toBeGreaterThan(unpaidProb);
-  });
-
-  it("inflates ITM rate relative to zero-edge baseline", () => {
+  it("collapsing payouts to a flat avgCash strictly reduces per-tourney variance", () => {
+    // Compare variance of per-tourney winnings under binary-itm vs the
+    // top-heavy real payout curve at the same target.
     const N = 500;
     const paid = 75;
-    const baselineITM = paid / N; // 0.15
-    const pool = 5000;
-    const pmf = buildUniformLiftPMF(N, paid, 12, pool); // 20% ROI over $10
-    const itm = itmProbability(pmf, paid);
-    expect(itm).toBeGreaterThan(baselineITM);
-    expect(itm).toBeCloseTo(baselineITM * 1.2, 3); // ITM inflated by ~ROI lift
-  });
+    const target = 12;
+    const { pmf, prizeByPlace } = buildBinaryItmAssets(N, paid, target);
+    let varBinary = 0;
+    for (let i = 0; i < N; i++) varBinary += pmf[i] * (prizeByPlace[i] - target) ** 2;
 
-  it("clamps gracefully when target is unreachable", () => {
-    const N = 100;
-    const paid = 15;
-    const pool = 1000;
-    const pmf = buildUniformLiftPMF(N, paid, 50, pool); // absurd target
-    // Still a valid distribution — sums to 1 and non-negative
-    let s = 0;
-    for (let i = 0; i < N; i++) {
-      expect(pmf[i]).toBeGreaterThanOrEqual(0);
-      s += pmf[i];
+    const realPayouts = new Array(paid).fill(0).map((_, i) => Math.pow(1.45, -i));
+    const sum = realPayouts.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < paid; i++) realPayouts[i] /= sum;
+    const pool = (target * N) / 1; // scale pool so EW equals target under uniform 1/N
+    let varReal = 0;
+    for (let i = 0; i < paid; i++) {
+      const prize = realPayouts[i] * pool;
+      varReal += (1 / N) * (prize - target) ** 2;
     }
-    expect(s).toBeCloseTo(1, 10);
+    varReal += ((N - paid) / N) * target * target;
+    expect(varBinary).toBeLessThan(varReal);
   });
 });
+
+// Keep dummy import alive for tooling
+void expectedWinnings;
 
 describe("itmProbability", () => {
   it("matches analytical pmf sum on paid places", () => {

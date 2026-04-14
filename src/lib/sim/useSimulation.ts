@@ -58,6 +58,7 @@ export function useSimulation() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
 
   useEffect(() => {
     poolRef.current = spawnPool();
@@ -227,6 +228,8 @@ export function useSimulation() {
       setProgress(0);
       setResult(null);
       setError(null);
+      setElapsedMs(null);
+      const t0 = performance.now();
 
       const twin = !!input.compareWithPrimedope && !input.calibrationMode;
       const mode2 = input.compareMode ?? "random";
@@ -252,7 +255,7 @@ export function useSimulation() {
                     0,
                 };
           const secondCalib: CalibrationMode =
-            mode2 === "primedope" ? "primedope-uniform-lift" : "alpha";
+            mode2 === "primedope" ? "primedope-binary-itm" : "alpha";
           const comparison = await runPass(
             secondInput,
             secondCalib,
@@ -268,6 +271,7 @@ export function useSimulation() {
           setResult(res);
         }
         setProgress(1);
+        setElapsedMs(performance.now() - t0);
         setStatus("done");
       } catch (err) {
         if (jobIdRef.current !== jobId) return;
@@ -278,5 +282,5 @@ export function useSimulation() {
     [runPass],
   );
 
-  return { status, progress, result, error, run, cancel };
+  return { status, progress, result, error, elapsedMs, run, cancel };
 }

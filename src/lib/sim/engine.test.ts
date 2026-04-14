@@ -147,12 +147,13 @@ describe("engine", () => {
     const r = runSimulation(baseInput({ compareWithPrimedope: true }));
     expect(r.calibrationMode).toBe("alpha");
     expect(r.comparison).toBeDefined();
-    expect(r.comparison!.calibrationMode).toBe("primedope-uniform-lift");
+    expect(r.comparison!.calibrationMode).toBe("primedope-binary-itm");
     // Same tournamentsPerSample — compile is deterministic re: schedule size.
     expect(r.comparison!.tournamentsPerSample).toBe(r.tournamentsPerSample);
-    // Both calibrations aim at the same expected ROI, but uniform-lift
-    // inflates ITM and reduces drawdown depth.
-    expect(r.comparison!.stats.itmRate).toBeGreaterThan(r.stats.itmRate);
+    // Both calibrations aim at the same expected ROI, but binary-itm collapses
+    // payouts so deep finishes contribute no extra variance — drawdown shape
+    // and tail percentiles are structurally muted vs α-calibration.
+    expect(r.comparison!.stats.maxDrawdownMean).toBeLessThan(r.stats.maxDrawdownMean);
   });
 
   it("re-entry row inflates cost and mean proportionally", () => {

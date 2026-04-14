@@ -182,47 +182,37 @@ export function calibrateAlpha(
 }
 
 /**
- * PrimeDope-compat finish distribution — "uniform lift".
+ * PrimeDope-compat finish distribution — "binary ITM".
  *
- * Zero-edge baseline is flat 1/N over the whole field. A target ROI > 0 is
- * produced by multiplying **every paid place's probability** by a common
- * factor k, and taking the removed mass uniformly out of the unpaid places.
- * The lift is the same for 1st place and for the min-cash: skill does not
- * concentrate in deep finishes, it just inflates the ITM rate.
+ * PrimeDope's actual variance model collapses every paid place into a single
+ * Bernoulli "you cashed / you didn't" event. ITM rate is the natural
+ * paidCount/N (uniform-skill assumption — your edge does not change how often
+ * you cash, only how much you make when you do). Each paid place is assigned
+ * the same flat avgCash payoff, sized so the expected winnings hit the
+ * configured target. This eliminates ALL payout-shape variance: 1st place pays
+ * the same as min-cash. Matches PrimeDope's site nearly exactly because that
+ * is, structurally, what they do.
  *
- * Derivation (payouts[] sums to 1):
- *   E[W]   = Σ_paid (k/N) × payouts[i] × prizePool
- *          = (k/N) × prizePool × 1
- *          = k × prizePool / N
- *   ⇒ k   = targetWinnings × N / prizePool
- *
- * This is the structural flaw Muchomota Substack documents (2024) — cf. the
- * inflated ~21% ITM for a 20%-ROI target vs. ~17% measured in real samples.
- * Use this as the reference model for side-by-side "we vs PrimeDope".
+ * Returns BOTH the pmf and the per-place flat prize array, so the caller can
+ * skip the normal payouts × prizePool path.
  */
-export function buildUniformLiftPMF(
+export function buildBinaryItmAssets(
   N: number,
   paidCount: number,
   targetWinnings: number,
-  prizePool: number,
-): Float64Array {
+): { pmf: Float64Array; prizeByPlace: Float64Array } {
   const pmf = new Float64Array(N);
-  if (N <= 0) return pmf;
+  const prizeByPlace = new Float64Array(N);
+  if (N <= 0) return { pmf, prizeByPlace };
   const paid = Math.max(0, Math.min(paidCount, N));
-  if (paid === 0 || prizePool <= 0) {
-    pmf.fill(1 / N);
-    return pmf;
-  }
-  const rawK = (targetWinnings * N) / prizePool;
-  // Clamp: k × paid must never exceed N (all mass would spill out of [0,1])
-  const maxK = N / paid;
-  const k = Math.max(0, Math.min(rawK, maxK));
-  const paidProb = k / N;
-  const unpaidMass = Math.max(0, 1 - (k * paid) / N);
-  const unpaidProb = N > paid ? unpaidMass / (N - paid) : 0;
-  for (let i = 0; i < paid; i++) pmf[i] = paidProb;
-  for (let i = paid; i < N; i++) pmf[i] = unpaidProb;
-  return pmf;
+  // Flat 1/N — uniform-skill baseline.
+  pmf.fill(1 / N);
+  if (paid === 0) return { pmf, prizeByPlace };
+  // Average cash so that ITM × avgCash = targetWinnings.
+  // ITM = paid / N  →  avgCash = targetWinnings × N / paid.
+  const avgCash = (targetWinnings * N) / paid;
+  for (let i = 0; i < paid; i++) prizeByPlace[i] = avgCash;
+  return { pmf, prizeByPlace };
 }
 
 /**

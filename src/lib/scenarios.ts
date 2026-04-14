@@ -20,7 +20,7 @@ const BASE_CONTROLS: ControlsState = {
   finishModelId: "power-law",
   alphaOverride: null,
   compareWithPrimedope: true,
-  compareMode: "random",
+  compareMode: "primedope",
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
@@ -64,6 +64,7 @@ export const SCENARIOS: DemoScenario[] = [
   {
     id: "micro-grinder",
     labelKey: "demo.microGrinder",
+    disabled: true,
     description:
       "$1–$22 daily staples: GG Bounty Hunters $1/$5, PS Bounty Builder $11, PS Big $11, Global MILLION$.",
     schedule: [
@@ -138,6 +139,7 @@ export const SCENARIOS: DemoScenario[] = [
   {
     id: "mid-grinder",
     labelKey: "demo.midGrinder",
+    disabled: true,
     description:
       "Mid-stakes: PS Big $55, GG Bounty Hunters HR $55/$105, GG Masters $150, Thursday Thrill.",
     schedule: [
@@ -232,6 +234,7 @@ export const SCENARIOS: DemoScenario[] = [
   {
     id: "morning-night-reg",
     labelKey: "demo.morningNightReg",
+    disabled: true,
     description:
       "Утренний + ночной рег: мягкие утренние евро-филды и жирный ночной прайм-тайм на GG и PS.",
     schedule: [
@@ -597,6 +600,7 @@ export const SCENARIOS: DemoScenario[] = [
     id: "sunday-majors",
     labelKey: "demo.sundayMajors",
     icon: "/scenarios/sunday.svg",
+    disabled: true,
     description:
       "Sunday schedule: PS Sunday Million, GG Bounty Hunters HR Main, PS Bounty Builder HR.",
     schedule: [

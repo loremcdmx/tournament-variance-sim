@@ -53,7 +53,7 @@ const initialControls: ControlsState = {
   finishModelId: "power-law",
   alphaOverride: null,
   compareWithPrimedope: true,
-  compareMode: "random",
+  compareMode: "primedope",
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
@@ -88,7 +88,7 @@ export default function Home() {
     setUserPresets(loadUserPresets());
   }, []);
 
-  const { status, progress, result, error, run, cancel } = useSimulation();
+  const { status, progress, result, error, elapsedMs, run, cancel } = useSimulation();
 
   useEffect(() => {
     const fromUrl = loadFromUrlHash();
@@ -527,6 +527,10 @@ export default function Home() {
               schedule={schedule}
               scheduleRepeats={controls.scheduleRepeats}
               compareMode={controls.compareMode}
+              modelPresetId={controls.modelPresetId}
+              finishModelId={controls.finishModelId}
+              settings={controls}
+              elapsedMs={elapsedMs}
             />
           </Section>
         </>

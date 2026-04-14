@@ -143,11 +143,14 @@ export interface TournamentRow {
  * - "alpha" (default): the skilled-aware parametric calibration — binary-search
  *   α so the configured skill model (power-law / linear-skill / stretched-exp)
  *   hits the target ROI. Concentrates skill in deep finishes.
- * - "primedope-uniform-lift": reproduces PrimeDope's model. Paid places all get
- *   the same lifted probability k/N, unpaid places share the remaining mass.
- *   Finish-model id is ignored in this mode.
+ * - "primedope-binary-itm": reproduces PrimeDope's actual variance model. All
+ *   paid places are collapsed into a single Bernoulli "you cashed / you didn't"
+ *   outcome, with one fixed average-cash payoff equal to targetWinnings / ITM.
+ *   This eliminates payout-shape variance entirely (1st place pays the same as
+ *   min-cash) and matches PrimeDope's site nearly exactly. The finish-model id
+ *   is ignored in this mode.
  */
-export type CalibrationMode = "alpha" | "primedope-uniform-lift";
+export type CalibrationMode = "alpha" | "primedope-binary-itm";
 
 export interface SimulationInput {
   schedule: TournamentRow[];

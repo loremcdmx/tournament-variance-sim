@@ -1,8 +1,8 @@
 import { getPayoutTable } from "./payouts";
 import {
+  buildBinaryItmAssets,
   buildCDF,
   buildFinishPMF,
-  buildUniformLiftPMF,
   calibrateAlpha,
   itmProbability,
   sampleFromCDF,
@@ -229,6 +229,7 @@ function compileSingleEntry(
   // ---- finish distribution -----------------------------------------------
   let pmf: Float64Array;
   let alpha = 0;
+  let binaryItmPrizeOverride: Float64Array | null = null;
   // The player's expected total winnings target is `cost × (1+ROI)`. A
   // bounty lump contributes bountyEV directly; the regular prize pool must
   // therefore hit `targetTotal − bountyEV` on its own. We translate that
@@ -242,8 +243,10 @@ function compileSingleEntry(
   //   → E[prize per bullet] = singleCost × (1 + ROI) − bountyMean
   const targetRegular = Math.max(0.01, entryCostSingle * (1 + row.roi) - bountyMean);
   const effectiveROI = targetRegular / entryCostSingle - 1;
-  if (calibrationMode === "primedope-uniform-lift") {
-    pmf = buildUniformLiftPMF(N, paidCount, targetRegular, prizePool);
+  if (calibrationMode === "primedope-binary-itm") {
+    const assets = buildBinaryItmAssets(N, paidCount, targetRegular);
+    pmf = assets.pmf;
+    binaryItmPrizeOverride = assets.prizeByPlace;
   } else {
     alpha = calibrateAlpha(
       N,
@@ -258,8 +261,12 @@ function compileSingleEntry(
   const cdf = buildCDF(pmf);
 
   const prizeByPlace = new Float64Array(N);
-  for (let i = 0; i < Math.min(payouts.length, N); i++) {
-    prizeByPlace[i] = payouts[i] * prizePool;
+  if (binaryItmPrizeOverride) {
+    prizeByPlace.set(binaryItmPrizeOverride);
+  } else {
+    for (let i = 0; i < Math.min(payouts.length, N); i++) {
+      prizeByPlace[i] = payouts[i] * prizePool;
+    }
   }
 
   // ---- bounty distribution across finish places -------------------------
@@ -484,7 +491,7 @@ export function runSimulation(
     const comparison = runSimulation(
       {
         ...input,
-        calibrationMode: "primedope-uniform-lift",
+        calibrationMode: "primedope-binary-itm",
         compareWithPrimedope: false,
       },
       secondHalf,

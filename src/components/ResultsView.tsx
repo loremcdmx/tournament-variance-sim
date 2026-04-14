@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import type { DictKey } from "@/lib/i18n/dict";
+import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
+import type { ControlsState } from "./ControlsPanel";
 import { UplotChart } from "./charts/UplotChart";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
@@ -20,12 +22,37 @@ interface Props {
   schedule?: TournamentRow[];
   scheduleRepeats?: number;
   compareMode?: "random" | "primedope";
+  modelPresetId?: string;
+  finishModelId?: string;
+  settings?: ControlsState;
+  elapsedMs?: number | null;
+}
+
+function buildSettingsSummary(c: ControlsState | undefined): string | null {
+  if (!c) return null;
+  const parts: string[] = [];
+  parts.push(c.alphaOverride == null ? "α=auto" : `α=${c.alphaOverride.toFixed(2)}`);
+  if (c.roiStdErr > 0) parts.push(`σROI=${(c.roiStdErr * 100).toFixed(1)}%`);
+  if (c.roiShockPerTourney > 0) parts.push(`shock/t=${(c.roiShockPerTourney * 100).toFixed(1)}%`);
+  if (c.roiShockPerSession > 0) parts.push(`shock/s=${(c.roiShockPerSession * 100).toFixed(1)}%`);
+  if (c.roiDriftSigma > 0) parts.push(`drift=${(c.roiDriftSigma * 100).toFixed(1)}%`);
+  if (c.tiltFastGain !== 0) parts.push(`tilt-fast=${(c.tiltFastGain * 100).toFixed(0)}%`);
+  if (c.tiltSlowGain !== 0) parts.push(`tilt-slow=${(c.tiltSlowGain * 100).toFixed(0)}%`);
+  return parts.join(" · ");
 }
 
 function fmt(template: string, vars: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 }
 
+const compactMoney = (v: number) => {
+  const sign = v < 0 ? "−" : "";
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+  if (abs === 0) return "$0";
+  return `${sign}$${abs.toFixed(0)}`;
+};
 const money = (v: number) => {
   const sign = v < 0 ? "−" : "";
   const abs = Math.abs(v);
@@ -63,12 +90,168 @@ const HUES: Record<AccentHue, {
 };
 
 
+export interface RefLineSpec {
+  roi: number;
+  label: string;
+  color: string;
+}
+
+const REF_LINES: RefLineSpec[] = [
+  { roi: -1.0, label: "ROI −100%", color: "#dc2626" },
+  { roi: -0.2, label: "ROI −20%", color: "#fb923c" },
+  { roi: 0.2, label: "ROI +20%", color: "#a3e635" },
+  { roi: 0.5, label: "ROI +50%", color: "#22d3ee" },
+];
+
+function buildRefLine(x: ArrayLike<number>, slopePerX: number): Float64Array {
+  const out = new Float64Array(x.length);
+  for (let i = 0; i < x.length; i++) out[i] = x[i] * slopePerX;
+  return out;
+}
+
+function TrajectoryPlot({
+  assets,
+  height,
+}: {
+  assets: ReturnType<typeof buildTrajectoryAssets>;
+  height: number;
+}) {
+  const [cursor, setCursor] = useState<{
+    idx: number;
+    left: number;
+    top: number;
+    valY: number;
+  } | null>(null);
+  const xs = assets.data[0] as ArrayLike<number>;
+  const idx = cursor?.idx;
+  const tournaments = idx != null ? Math.round(xs[idx] ?? 0) : 0;
+
+  let nearest: TrajectoryLineMeta | null = null;
+  let nearestVal = 0;
+  if (cursor && idx != null) {
+    let bestDist = Infinity;
+    for (const line of assets.mainLines) {
+      const arr = assets.data[line.seriesIdx] as ArrayLike<number> | undefined;
+      if (!arr) continue;
+      const v = arr[idx];
+      if (v == null || !Number.isFinite(v)) continue;
+      const d = Math.abs(v - cursor.valY);
+      if (d < bestDist) {
+        bestDist = d;
+        nearest = line;
+        nearestVal = v;
+      }
+    }
+  }
+
+  const cumBuyIn = tournaments * assets.buyInPerTourney;
+  const roi = cumBuyIn > 0 ? nearestVal / cumBuyIn : 0;
+
+  const kindLabel = (k: TrajectoryLineMeta["kind"]): string => {
+    switch (k) {
+      case "mean": return "expected (mean)";
+      case "band": return "percentile band";
+      case "best": return "luckiest sim";
+      case "worst": return "unluckiest sim";
+      case "path": return "individual sim";
+      case "ref": return "ROI reference";
+    }
+  };
+  const likelihood = (line: TrajectoryLineMeta): string | null => {
+    if (line.kind === "ref") return null;
+    if (line.kind === "path") return "1 of N sample paths";
+    if (line.kind === "best") return "≈ top 1/N sims";
+    if (line.kind === "worst") return "≈ bottom 1/N sims";
+    if (line.percentile != null) {
+      const pct = line.percentile;
+      if (pct === 0.5) return "50% above / 50% below";
+      const tail = pct < 0.5 ? pct : 1 - pct;
+      const side = pct < 0.5 ? "below" : "above";
+      return `~${(tail * 100).toFixed(2)}% of runs ${side} this`;
+    }
+    return null;
+  };
+
+  return (
+    <div className="relative w-full">
+      <UplotChart
+        data={assets.data}
+        options={assets.opts}
+        height={height}
+        onCursor={setCursor}
+      />
+      {cursor && idx != null && nearest && (
+        <div
+          className="pointer-events-none absolute z-10 min-w-[200px] rounded border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 px-3 py-2 text-[11px] shadow-xl backdrop-blur"
+          style={{
+            left: Math.min(cursor.left + 12, 9999),
+            top: 8,
+          }}
+        >
+          <div className="mb-1.5 flex items-center gap-2 border-b border-[color:var(--color-border)]/50 pb-1">
+            <span
+              className="inline-block h-2 w-3 rounded-sm"
+              style={{ background: nearest.color }}
+            />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
+              {nearest.label}
+            </span>
+            <span className="ml-auto text-[9px] text-[color:var(--color-fg-dim)]">
+              {kindLabel(nearest.kind)}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">
+            <span className="text-[color:var(--color-fg-dim)]">tournaments</span>
+            <span className="text-right font-semibold text-[color:var(--color-fg)]">
+              {tournaments.toLocaleString()}
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">profit</span>
+            <span className="text-right font-semibold text-[color:var(--color-fg)]">
+              {compactMoney(nearestVal)}
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">ROI</span>
+            <span className="text-right font-semibold text-[color:var(--color-fg)]">
+              {cumBuyIn > 0 ? `${(roi * 100).toFixed(1)}%` : "—"}
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">buy-in spent</span>
+            <span className="text-right text-[color:var(--color-fg-muted)]">
+              {compactMoney(cumBuyIn)}
+            </span>
+          </div>
+          {likelihood(nearest) && (
+            <div className="mt-1.5 border-t border-[color:var(--color-border)]/50 pt-1 text-[10px] text-[color:var(--color-fg-dim)]">
+              {likelihood(nearest)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface TrajectoryLineMeta {
+  label: string;
+  color: string;
+  seriesIdx: number;
+  /** Probability that a real run lands at-or-below this line, if applicable. */
+  percentile?: number;
+  /** Free-form "what kind of line" tag for the tooltip. */
+  kind: "mean" | "band" | "best" | "worst" | "path" | "ref";
+}
+
 function buildTrajectoryAssets(
   r: SimulationResult,
   bankroll: number,
   hue: AccentHue,
   yRange?: { min: number; max: number },
-): { data: AlignedData; opts: Omit<Options, "width" | "height"> } {
+  overlay?: SimulationResult | null,
+): {
+  data: AlignedData;
+  opts: Omit<Options, "width" | "height">;
+  refStartIdx: number;
+  buyInPerTourney: number;
+  mainLines: TrajectoryLineMeta[];
+} {
   const x = r.samplePaths.x;
   const series: (Float64Array | number[])[] = [x];
   series.push(r.envelopes.mean);
@@ -83,6 +266,15 @@ function buildTrajectoryAssets(
   series.push(r.samplePaths.worst);
   if (bankroll > 0) {
     series.push(new Array<number>(x.length).fill(-bankroll));
+  }
+
+  // Reference ROI slope lines: profit(i) = roi * cumulative buy-in at i.
+  // x[N-1] is the total tournament count per sample; total buy-in is r.totalBuyIn.
+  const lastX = x[x.length - 1] || 1;
+  const buyInPerTourney = r.totalBuyIn / lastX;
+  const refStartIdx = series.length;
+  for (const ref of REF_LINES) {
+    series.push(buildRefLine(x, ref.roi * buyInPerTourney));
   }
 
   const c = HUES[hue];
@@ -105,8 +297,117 @@ function buildTrajectoryAssets(
   if (bankroll > 0) {
     uplotSeries.push({ stroke: "#ef4444", width: 1.5, dash: [4, 4] });
   }
+  for (const ref of REF_LINES) {
+    uplotSeries.push({
+      stroke: ref.color,
+      width: 1.25,
+      dash: [3, 4],
+      label: ref.label,
+    });
+  }
+
+  const mainLines: TrajectoryLineMeta[] = [
+    { label: "Mean", color: c.mean, seriesIdx: 1, percentile: 0.5, kind: "mean" },
+    { label: "p0.15", color: c.p0015, seriesIdx: 2, percentile: 0.0015, kind: "band" },
+    { label: "p99.85", color: c.p0015, seriesIdx: 3, percentile: 0.9985, kind: "band" },
+    { label: "p2.5", color: c.p025, seriesIdx: 4, percentile: 0.025, kind: "band" },
+    { label: "p97.5", color: c.p025, seriesIdx: 5, percentile: 0.975, kind: "band" },
+    { label: "p15", color: c.p15, seriesIdx: 6, percentile: 0.15, kind: "band" },
+    { label: "p85", color: c.p15, seriesIdx: 7, percentile: 0.85, kind: "band" },
+  ];
+  const samplePathStart = 8;
+  for (let i = 0; i < n; i++) {
+    mainLines.push({
+      label: `Run ${i + 1}`,
+      color: c.paths,
+      seriesIdx: samplePathStart + i,
+      kind: "path",
+    });
+  }
+  mainLines.push({ label: "Best run", color: "#34d399", seriesIdx: samplePathStart + n, kind: "best" });
+  mainLines.push({ label: "Worst run", color: "#f87171", seriesIdx: samplePathStart + n + 1, kind: "worst" });
+  for (let i = 0; i < REF_LINES.length; i++) {
+    const ref = REF_LINES[i];
+    mainLines.push({
+      label: ref.label,
+      color: ref.color,
+      seriesIdx: refStartIdx + i,
+      kind: "ref",
+    });
+  }
+
+  // Overlay must align to primary's x axis. uPlot uses one x per chart, so
+  // we resample the overlay envelopes onto primary's x-grid by index — they
+  // share the same checkpoint count (both passes use the same N), but if the
+  // grids ever diverge we fall back to a linear interp on tournament index.
+  if (overlay && overlay.envelopes.mean.length > 0) {
+    const ox = overlay.envelopes.x;
+    const resample = (src: Float64Array): Float64Array => {
+      if (src.length === x.length) {
+        // Most common path — both passes use identical checkpointIdx.
+        return src;
+      }
+      const out = new Float64Array(x.length);
+      const oxLast = ox[ox.length - 1] || 1;
+      for (let i = 0; i < x.length; i++) {
+        const t = x[i] / oxLast;
+        const f = t * (ox.length - 1);
+        const lo = Math.floor(f);
+        const hi = Math.min(ox.length - 1, lo + 1);
+        const frac = f - lo;
+        out[i] = src[lo] * (1 - frac) + src[hi] * frac;
+      }
+      return out;
+    };
+    const overlayStart = series.length;
+    series.push(resample(overlay.envelopes.mean));
+    series.push(resample(overlay.envelopes.p025));
+    series.push(resample(overlay.envelopes.p975));
+    const overlayColor = "#f472b6";
+    uplotSeries.push({
+      stroke: overlayColor,
+      width: 2.5,
+      label: "PrimeDope mean",
+    });
+    uplotSeries.push({
+      stroke: overlayColor,
+      width: 1.75,
+      dash: [6, 4],
+      label: "PrimeDope p2.5",
+    });
+    uplotSeries.push({
+      stroke: overlayColor,
+      width: 1.75,
+      dash: [6, 4],
+      label: "PrimeDope p97.5",
+    });
+    mainLines.push({
+      label: "PrimeDope mean",
+      color: overlayColor,
+      seriesIdx: overlayStart,
+      percentile: 0.5,
+      kind: "mean",
+    });
+    mainLines.push({
+      label: "PrimeDope p2.5",
+      color: overlayColor,
+      seriesIdx: overlayStart + 1,
+      percentile: 0.025,
+      kind: "band",
+    });
+    mainLines.push({
+      label: "PrimeDope p97.5",
+      color: overlayColor,
+      seriesIdx: overlayStart + 2,
+      percentile: 0.975,
+      kind: "band",
+    });
+  }
 
   return {
+    refStartIdx,
+    buyInPerTourney,
+    mainLines,
     data: series as AlignedData,
     opts: {
       scales: {
@@ -125,6 +426,8 @@ function buildTrajectoryAssets(
           stroke: "#8a8a95",
           grid: { stroke: "rgba(128,128,128,0.15)" },
           ticks: { stroke: "rgba(128,128,128,0.2)" },
+          size: 56,
+          values: (_u, splits) => splits.map(compactMoney),
         },
       ],
       series: uplotSeries,
@@ -169,7 +472,11 @@ export function ResultsView({
   bankroll = 0,
   schedule,
   scheduleRepeats,
-  compareMode = "random",
+  compareMode = "primedope",
+  modelPresetId,
+  finishModelId,
+  settings,
+  elapsedMs,
 }: Props) {
   const t = useT();
 
@@ -181,9 +488,10 @@ export function ResultsView({
     [result, pdChart, bankroll],
   );
 
+  const [overlayPd, setOverlayPd] = useState(false);
   const primary = useMemo(
-    () => buildTrajectoryAssets(result, bankroll, "felt", yRange),
-    [result, bankroll, yRange],
+    () => buildTrajectoryAssets(result, bankroll, "felt", yRange, overlayPd ? pdChart : null),
+    [result, bankroll, yRange, overlayPd, pdChart],
   );
   const secondary = useMemo(
     () =>
@@ -202,6 +510,24 @@ export function ResultsView({
 
   const s = result.stats;
   const roi = s.mean / result.totalBuyIn;
+  const modelPreset = modelPresetId
+    ? STANDARD_PRESETS.find((p) => p.id === modelPresetId)
+    : undefined;
+  const modelLabel = modelPreset
+    ? t(modelPreset.labelKey)
+    : finishModelId
+    ? t(`model.${finishModelId}` as DictKey)
+    : t("twin.runA");
+  const settingsSummary = buildSettingsSummary(settings);
+
+  const abi = useMemo(() => {
+    const xs = result.samplePaths.x;
+    const lastX = xs[xs.length - 1] || 1;
+    return result.totalBuyIn / lastX;
+  }, [result]);
+  const [distUnit, setDistUnit] = useState<"money" | "abi">("money");
+  const [ddUnit, setDdUnit] = useState<"money" | "abi">("money");
+  const tourneysWord = t("unit.tourneys");
 
   return (
     <div className="flex flex-col gap-5">
@@ -217,9 +543,8 @@ export function ResultsView({
           />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartPane
-              label={
-                compareMode === "primedope" ? t("pd.ours") : t("twin.runA")
-              }
+              label={modelLabel}
+              sublabel={settingsSummary}
               hueDot="#34d399"
               caption={
                 compareMode === "primedope"
@@ -227,12 +552,10 @@ export function ResultsView({
                   : t("twin.runA.cap")
               }
             >
-              <UplotChart data={primary.data} options={primary.opts} height={420} />
+              <TrajectoryPlot assets={primary} height={420} />
             </ChartPane>
             <ChartPane
-              label={
-                compareMode === "primedope" ? t("pd.theirs") : t("twin.runB")
-              }
+              label="PrimeDope"
               hueDot="#f472b6"
               caption={
                 compareMode === "primedope"
@@ -248,15 +571,35 @@ export function ResultsView({
                 ) : null
               }
             >
-              <UplotChart
-                data={secondary.data}
-                options={secondary.opts}
-                height={420}
-              />
+              <TrajectoryPlot assets={secondary} height={420} />
             </ChartPane>
           </div>
-          <div className="mt-3 text-[11px] text-[color:var(--color-fg-dim)]">
-            {t("chart.trajectory.sharedY")}
+          {compareMode === "primedope" && (
+            <div className="mt-3 rounded border border-[#f472b6]/30 bg-[#f472b6]/5 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#f472b6]">
+                ⚠ PrimeDope (right pane)
+              </div>
+              {t("chart.trajectory.pdWarning")}
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
+              <input
+                type="checkbox"
+                checked={overlayPd}
+                onChange={(e) => setOverlayPd(e.target.checked)}
+                className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
+              />
+              <span className="font-semibold text-[color:var(--color-fg)]">
+                {t("chart.trajectory.overlay")}
+              </span>
+              <span className="text-[color:var(--color-fg-dim)]">
+                — {t("chart.trajectory.overlayHint")}
+              </span>
+            </label>
+            <div className="text-[11px] text-[color:var(--color-fg-dim)]">
+              {t("chart.trajectory.sharedY")}
+            </div>
           </div>
         </Card>
       ) : (
@@ -269,22 +612,20 @@ export function ResultsView({
                 : t("chart.trajectory.sub")
             }
           />
-          <UplotChart data={primary.data} options={primary.opts} height={440} />
+          <TrajectoryPlot assets={primary} height={440} />
           {slotOverlay && (
             <div className="mt-4">
               <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
                 <span className="inline-block h-1.5 w-3 rounded-sm bg-[#f472b6]" />
                 {t("slot.saved")}
               </div>
-              <UplotChart
-                data={slotOverlay.data}
-                options={slotOverlay.opts}
-                height={240}
-              />
+              <TrajectoryPlot assets={slotOverlay} height={240} />
             </div>
           )}
         </Card>
       )}
+
+      <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
 
       <VerdictCard result={result} bankroll={bankroll} />
 
@@ -363,7 +704,7 @@ export function ResultsView({
         <MiniStat
           suit="diamond"
           label={t("stat.tFor95")}
-          value={intFmt(s.tournamentsFor95ROI) + "t"}
+          value={`${intFmt(s.tournamentsFor95ROI)} ${tourneysWord}`}
         />
         <MiniStat
           suit="heart"
@@ -415,7 +756,7 @@ export function ResultsView({
         <MiniStat
           suit="diamond"
           label={t("stat.longestBE")}
-          value={`${Math.round(s.longestBreakevenMean)}t`}
+          value={`${Math.round(s.longestBreakevenMean)} ${tourneysWord}`}
         />
         <MiniStat
           suit="heart"
@@ -471,7 +812,7 @@ export function ResultsView({
           label={t("stat.recoveryMedian")}
           value={
             Number.isFinite(s.recoveryMedian)
-              ? `${Math.round(s.recoveryMedian)}t`
+              ? `${Math.round(s.recoveryMedian)} ${tourneysWord}`
               : "—"
           }
         />
@@ -480,7 +821,7 @@ export function ResultsView({
           label={t("stat.recoveryP90")}
           value={
             Number.isFinite(s.recoveryP90)
-              ? `${Math.round(s.recoveryP90)}t`
+              ? `${Math.round(s.recoveryP90)} ${tourneysWord}`
               : "—"
           }
           tone="neg"
@@ -494,37 +835,47 @@ export function ResultsView({
         <MiniStat
           suit="diamond"
           label={t("stat.cashlessMean")}
-          value={`${s.longestCashlessMean.toFixed(1)}t`}
+          value={`${s.longestCashlessMean.toFixed(1)} ${tourneysWord}`}
         />
         <MiniStat
           suit="heart"
           label={t("stat.cashlessWorst")}
-          value={`${s.longestCashlessWorst}t`}
+          value={`${s.longestCashlessWorst} ${tourneysWord}`}
           tone="neg"
         />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card className="p-5">
-          <ChartHeader
-            title={t("chart.dist")}
-            subtitle={`${result.samples.toLocaleString()} ${t("app.samples")} · 60 bins`}
-          />
+          <div className="flex items-start justify-between gap-3">
+            <ChartHeader
+              title={t("chart.dist")}
+              subtitle={`${result.samples.toLocaleString()} ${t("app.samples")} · 60 bins`}
+            />
+            <UnitToggle value={distUnit} onChange={setDistUnit} t={t} />
+          </div>
           <DistributionChart
             binEdges={result.histogram.binEdges}
             counts={result.histogram.counts}
             color="#34d399"
+            scaleBy={distUnit === "abi" ? abi : undefined}
+            unitLabel={distUnit === "abi" ? "ABI" : "$"}
           />
         </Card>
         <Card className="p-5">
-          <ChartHeader
-            title={t("chart.ddDist")}
-            subtitle={t("chart.ddDist.sub")}
-          />
+          <div className="flex items-start justify-between gap-3">
+            <ChartHeader
+              title={t("chart.ddDist")}
+              subtitle={t("chart.ddDist.sub")}
+            />
+            <UnitToggle value={ddUnit} onChange={setDdUnit} t={t} />
+          </div>
           <DistributionChart
             binEdges={result.drawdownHistogram.binEdges}
             counts={result.drawdownHistogram.counts}
             color="#f87171"
+            scaleBy={ddUnit === "abi" ? abi : undefined}
+            unitLabel={ddUnit === "abi" ? "ABI" : "$"}
           />
         </Card>
       </div>
@@ -540,6 +891,7 @@ export function ResultsView({
           seLo={result.convergence.seLo}
           seHi={result.convergence.seHi}
         />
+        <ChartHelp text={t("chart.convergence.help")} />
       </Card>
 
       <Card className="p-5">
@@ -554,6 +906,7 @@ export function ResultsView({
         <div className="mt-2 text-[11px] text-[color:var(--color-fg-dim)]">
           {t("sens.note")}
         </div>
+        <ChartHelp text={t("chart.sensitivity.help")} />
       </Card>
 
       <Card className="p-5">
@@ -562,6 +915,7 @@ export function ResultsView({
           subtitle={t("chart.decomp.sub")}
         />
         <DecompositionChart rows={result.decomposition} />
+        <ChartHelp text={t("chart.decomp.help")} />
       </Card>
 
       {result.downswings.length > 0 && (
@@ -601,7 +955,7 @@ export function ResultsView({
                       {money(d.finalProfit)}
                     </td>
                     <td className="py-2 text-right tabular-nums text-[color:var(--color-fg-muted)]">
-                      {Math.round(d.longestBreakeven)}t
+                      {Math.round(d.longestBreakeven)} {tourneysWord}
                     </td>
                   </tr>
                 ))}
@@ -614,14 +968,126 @@ export function ResultsView({
   );
 }
 
+function UnitToggle({
+  value,
+  onChange,
+  t,
+}: {
+  value: "money" | "abi";
+  onChange: (v: "money" | "abi") => void;
+  t: (key: DictKey) => string;
+}) {
+  const btn = (mode: "money" | "abi", label: string) => (
+    <button
+      type="button"
+      onClick={() => onChange(mode)}
+      className={`px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition ${
+        value === mode
+          ? "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"
+          : "text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)]"
+      }`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="inline-flex shrink-0 items-stretch overflow-hidden rounded border border-[color:var(--color-border)]">
+      {btn("money", t("unit.money"))}
+      {btn("abi", t("unit.abi"))}
+    </div>
+  );
+}
+
+function ChartHelp({ text }: { text: string }) {
+  return (
+    <div className="mt-3 rounded border border-[color:var(--color-border)]/50 bg-[color:var(--color-bg-elev-2)]/30 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+      {text}
+    </div>
+  );
+}
+
+function SettingsDumpCard({
+  settings,
+  schedule,
+  result,
+  elapsedMs,
+}: {
+  settings?: ControlsState;
+  schedule?: TournamentRow[];
+  result: SimulationResult;
+  elapsedMs?: number | null;
+}) {
+  if (!settings || !schedule || schedule.length === 0) return null;
+  const r = schedule[0];
+  const totalEntries = schedule.reduce((acc, row) => acc + row.count, 0) * settings.scheduleRepeats;
+  const elapsedStr =
+    elapsedMs == null
+      ? "—"
+      : elapsedMs < 1000
+      ? `${elapsedMs.toFixed(0)} ms`
+      : elapsedMs < 60_000
+      ? `${(elapsedMs / 1000).toFixed(2)} s`
+      : `${Math.floor(elapsedMs / 60_000)}m ${((elapsedMs % 60_000) / 1000).toFixed(1)}s`;
+  const rows: Array<[string, string]> = [
+    ["compute time", elapsedStr],
+    ["samples", settings.samples.toLocaleString()],
+    ["scheduleRepeats", settings.scheduleRepeats.toLocaleString()],
+    ["totalTournaments", totalEntries.toLocaleString()],
+    ["totalBuyIn", `$${result.totalBuyIn.toLocaleString()}`],
+    ["bankroll", `$${settings.bankroll.toLocaleString()}`],
+    ["—", "—"],
+    ["players", r.players.toLocaleString()],
+    ["buyIn", `$${r.buyIn}`],
+    ["rake", `${(r.rake * 100).toFixed(1)}%`],
+    ["bountyFraction", `${((r.bountyFraction ?? 0) * 100).toFixed(0)}%`],
+    ["progressiveKO", r.progressiveKO ? "yes" : "no"],
+    ["payoutStructure", r.payoutStructure],
+    ["assumed ROI", `${(r.roi * 100).toFixed(1)}%`],
+    ["lateRegMult", `${r.lateRegMultiplier ?? 1}`],
+    ["maxEntries", `${r.maxEntries ?? 1}`],
+    ["icmFinalTable", r.icmFinalTable ? "yes" : "no"],
+    ["—", "—"],
+    ["finishModel", settings.finishModelId],
+    ["α (override)", settings.alphaOverride == null ? "auto" : settings.alphaOverride.toFixed(3)],
+    ["modelPreset", settings.modelPresetId],
+    ["compareMode", settings.compareMode],
+    ["—", "—"],
+    ["roiStdErr", `${(settings.roiStdErr * 100).toFixed(2)}%`],
+    ["roiShockPerTourney", `${(settings.roiShockPerTourney * 100).toFixed(2)}%`],
+    ["roiShockPerSession", `${(settings.roiShockPerSession * 100).toFixed(2)}%`],
+    ["roiDriftSigma", `${(settings.roiDriftSigma * 100).toFixed(2)}%`],
+    ["tiltFastGain", `${(settings.tiltFastGain * 100).toFixed(0)}%`],
+    ["tiltFastScale", `${settings.tiltFastScale}`],
+    ["tiltSlowGain", `${(settings.tiltSlowGain * 100).toFixed(0)}%`],
+    ["tiltSlowThreshold", `${settings.tiltSlowThreshold}`],
+  ];
+  return (
+    <Card className="p-4">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        Snapshot · settings
+      </div>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[11px] sm:grid-cols-3 lg:grid-cols-4">
+        {rows.map(([k, v], i) => (
+          <div key={`${k}-${i}`} className="flex justify-between gap-3">
+            <span className="text-[color:var(--color-fg-dim)]">{k}</span>
+            <span className="text-[color:var(--color-fg)]">{v}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function ChartPane({
   label,
+  sublabel,
   hueDot,
   caption,
   children,
   action,
 }: {
   label: string;
+  sublabel?: string | null;
   hueDot: string;
   caption: string;
   children: React.ReactNode;
@@ -629,7 +1095,7 @@ function ChartPane({
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30 p-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span
           className="inline-block h-2 w-2 rounded-full"
           style={{ background: hueDot }}
@@ -637,6 +1103,11 @@ function ChartPane({
         <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
           {label}
         </span>
+        {sublabel && (
+          <span className="text-[10px] font-mono text-[color:var(--color-fg-dim)]">
+            {sublabel}
+          </span>
+        )}
         {action && <div className="ml-auto">{action}</div>}
       </div>
       {children}

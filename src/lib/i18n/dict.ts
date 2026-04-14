@@ -382,7 +382,7 @@ export const DICT = {
   "stat.worstRun": { en: "Worst run", ru: "Худший прогон" },
   "stat.p1p5": { en: "Worst 1% / 5%", ru: "Худшие 1% / 5%" },
   "stat.p95p99": { en: "Top 5% / 1%", ru: "Топ 5% / 1%" },
-  "stat.longestBE": { en: "Longest BE streak", ru: "Долгая полоса бэ" },
+  "stat.longestBE": { en: "Longest break-even streak", ru: "Долгая полоса безубыточности" },
   "stat.minBR5": { en: "BR for 5% ruin", ru: "БР для 5% разорения" },
   "stat.bankrollOff": { en: "bankroll off", ru: "банкролл выкл" },
   "stat.ddBI": { en: "Downswing (BI)", ru: "Даунсвинг (бай-ины)" },
@@ -399,16 +399,28 @@ export const DICT = {
     ru: "Огибающие 70 % / 95 % / 99.7 % · 20 случайных сэмплов · лучший / худший",
   },
   "chart.trajectory.sub.vs": {
-    en: "Side-by-side: our α-calibration vs PrimeDope's uniform-lift — same seed, same schedule, identical Y-axis",
-    ru: "Бок-о-бок: наша α-калибровка против uniform-lift у PrimeDope — то же зерно, то же расписание, общая ось Y",
+    en: "Side-by-side: our α-calibration vs PrimeDope's binary-ITM — same seed, same schedule, identical Y-axis",
+    ru: "Бок-о-бок: наша α-калибровка против binary-ITM у PrimeDope — то же зерно, то же расписание, общая ось Y",
   },
   "chart.trajectory.ours.cap": {
-    en: "Skill concentrated in deep finishes — realistic swings",
-    ru: "Скилл сконцентрирован в глубоких финишах — реалистичные свинги",
+    en: "Real payout structure — top-heavy prizes drive realistic swings",
+    ru: "Реальная структура выплат — top-heavy призы создают реалистичные свинги",
   },
   "chart.trajectory.theirs.cap": {
-    en: "Flat skill lift across every paid place — understates variance",
-    ru: "Плоский лифт скилла по всем призовым — занижает дисперсию",
+    en: "All paid places collapsed into one flat avg-cash payoff — drastically understates variance",
+    ru: "Все призовые места схлопнуты в одну среднюю выплату — дисперсия резко занижена",
+  },
+  "chart.trajectory.pdWarning": {
+    en: "Why this is wrong: PrimeDope's site treats your tournament as a single Bernoulli flip — you cash X% of the time for one fixed average payout. 1st place pays the same as min-cash. This eliminates ALL top-heavy variance, makes drawdowns look ~30% shallower than reality, and guarantees you'll be wildly under-bankrolled if you trust it.",
+    ru: "Почему это неправильно: сайт PrimeDope сводит турнир к одному броску монетки — вы кешите X% времени за одну фиксированную среднюю выплату. 1-е место платит столько же, сколько минкеш. Это убирает ВСЮ дисперсию от top-heavy призовых, занижает даунсвинги примерно на 30% от реальности и гарантирует, что банкролл, рассчитанный по нему, будет дико недостаточным.",
+  },
+  "chart.trajectory.overlay": {
+    en: "Overlay PrimeDope on the left",
+    ru: "Наложить PrimeDope слева",
+  },
+  "chart.trajectory.overlayHint": {
+    en: "Show PrimeDope's narrower envelope (mean / p2.5 / p97.5) over our chart so the gap is unmistakable",
+    ru: "Показать узкие огибающие PrimeDope (среднее / p2.5 / p97.5) поверх нашего графика, чтобы разница была видна сразу",
   },
   "chart.trajectory.sharedY": {
     en: "Both charts share the same Y-axis range so the visual difference in envelope width is directly comparable.",
@@ -436,14 +448,31 @@ export const DICT = {
     ru: "Ожидаемая прибыль, если настоящий ROI отличается от заданного",
   },
 
+  "unit.money": { en: "$", ru: "$" },
+  "unit.abi": { en: "ABI", ru: "АБИ" },
+  "unit.tourneys": { en: "tournaments", ru: "турниров" },
+
+  "chart.convergence.help": {
+    en: "Y = running mean estimate of profit per simulation. The shaded band is the 95% confidence interval, which should narrow as samples accumulate. Look for: (a) the line stops drifting and stays flat — the run has enough samples to trust the mean; (b) the band is much narrower than the value of the mean — the estimate is precise. Bad signs: line still walking, band still wide.",
+    ru: "Y — текущая оценка среднего профита по симуляциям. Закрашенная полоса — 95% доверительный интервал, должен сужаться по мере накопления сэмплов. На что смотреть: (а) линия перестала дрейфовать и держится ровно — сэмплов достаточно, среднему можно верить; (б) ширина полосы сильно меньше значения среднего — оценка точная. Плохо: линия гуляет, полоса широкая.",
+  },
+  "chart.sensitivity.help": {
+    en: "X = how wrong your ROI input is in percentage points (e.g. −2pp means real ROI is 2pp lower than configured). Y = expected profit at that real ROI. Use this to ask: 'if my edge is actually 1–2pp worse than I think, am I still profitable?' Slope shows how much each pp of ROI is worth in $. A steep curve means your bottom line is very sensitive to whether your ROI estimate is right.",
+    ru: "X — насколько ваш ROI ошибочен (в процентных пунктах: −2пп = реальный ROI на 2пп ниже заданного). Y — ожидаемая прибыль при таком реальном ROI. Смысл: 'если мой эдж реально на 1–2пп хуже, чем я думаю, я ещё в плюсе?'. Наклон показывает, сколько $ стоит каждый пп ROI. Крутая кривая — итог сильно зависит от точности оценки ROI.",
+  },
+  "chart.decomp.help": {
+    en: "Each row of your schedule contributes some chunk of the total expected profit AND some chunk of the total variance. The bars compare these two contributions side-by-side. Rows where variance share >> EV share are the ones swinging your bankroll without proportionally rewarding you — they're high-variance, low-edge slots. Rows where EV share >> variance share are your stable money-makers.",
+    ru: "Каждая строка расписания вносит вклад и в общую ожидаемую прибыль, И в общую дисперсию. Столбики сравнивают эти два вклада бок-о-бок. Строки, где доля дисперсии >> доли EV — это турниры, которые шатают банкролл без пропорционального вознаграждения (высокая дисперсия, низкий эдж). Строки, где доля EV >> доли дисперсии — ваши стабильные кормильцы.",
+  },
+
   // PrimeDope diff
   "pd.title": {
-    en: "Ours (α-calibration) vs PrimeDope (uniform-lift)",
-    ru: "Мы (α-калибровка) против PrimeDope (uniform-lift)",
+    en: "Ours (α-calibration) vs PrimeDope (binary-ITM)",
+    ru: "Мы (α-калибровка) против PrimeDope (binary-ITM)",
   },
   "pd.subtitle": {
-    en: "Same seed, same schedule — only the finish-place distribution differs. PrimeDope flattens skill across paid places, so its ITM and drawdowns are structurally biased.",
-    ru: "Одно зерно, одно расписание — разница только в распределении мест. PrimeDope распределяет скилл плоско по призовым, из-за чего ITM и даунсвинги системно искажены.",
+    en: "Same seed, same schedule — only the payout model differs. PrimeDope collapses every paid place into a single average-cash payoff, so its drawdowns and tail percentiles are structurally muted.",
+    ru: "Одно зерно, одно расписание — разница только в модели выплат. PrimeDope сводит все призовые места к одной средней выплате, из-за чего даунсвинги и хвосты системно занижены.",
   },
   "pd.ours": { en: "ours", ru: "наши" },
   "pd.theirs": { en: "primedope", ru: "primedope" },
