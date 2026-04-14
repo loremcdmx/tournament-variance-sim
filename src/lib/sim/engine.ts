@@ -264,7 +264,17 @@ function compileSingleEntry(
   const costPerEntry = entryCostSingle * (1 + reentryExpected);
   // Field-average extra entries inflate the prize pool too.
   const effectiveSeats = N * (1 + reentryExpected);
-  const basePool = effectiveSeats * row.buyIn;
+  // Rake-SD coupling: in PD-binary-itm + primedopeStyleEV mode, we match
+  // PD's internal quirk of using the POST-RAKE pool as the variance
+  // driver while still computing EV against the pre-rake cost basis.
+  // (See notes/pokerdope_weaknesses.md §7.) The binary-ITM calibrator
+  // will inflate l so the mean outcome still hits `targetRegular`, but
+  // the tighter per-prize spread drops σ in proportion to rake.
+  const poolBuyInBasis =
+    calibrationMode === "primedope-binary-itm" && primedopeStyleEV
+      ? row.buyIn * (1 - row.rake)
+      : row.buyIn;
+  const basePool = effectiveSeats * poolBuyInBasis;
   const overlay = Math.max(0, (row.guarantee ?? 0) - basePool);
   let prizePool = basePool + overlay;
 

@@ -1,0 +1,142 @@
+{
+  "payoutInfo": [
+    {
+      "place": 1,
+      "prize": 90000
+    },
+    {
+      "place": 2,
+      "prize": 52500
+    },
+    {
+      "place": 3,
+      "prize": 37000
+    },
+    {
+      "place": 4,
+      "prize": 27000
+    },
+    {
+      "place": 5,
+      "prize": 22000
+    },
+    {
+      "place": 6,
+      "prize": 16000
+    },
+    {
+      "place": 7,
+      "prize": 11000
+    },
+    {
+      "place": 8,
+      "prize": 6000
+    },
+    {
+      "place": 9,
+      "prize": 4250
+    },
+    {
+      "place": 10,
+      "prize": 3250
+    },
+    {
+      "place": "11 - 15",
+      "prize": 3250
+    },
+    {
+      "place": "16 - 20",
+      "prize": 2250
+    },
+    {
+      "place": "21 - 25",
+      "prize": 1750
+    },
+    {
+      "place": "26 - 30",
+      "prize": 1500
+    },
+    {
+      "place": "31 - 35",
+      "prize": 1250
+    },
+    {
+      "place": "36 - 40",
+      "prize": 950
+    },
+    {
+      "place": "41 - 50",
+      "prize": 900
+    },
+    {
+      "place": "51 - 60",
+      "prize": 800
+    },
+    {
+      "place": "61 - 75",
+      "prize": 700
+    },
+    {
+      "place": "76 - 100",
+      "prize": 600
+    },
+    {
+      "place": "101 - 125",
+      "prize": 550
+    },
+    {
+      "place": "126 - 150",
+      "prize": 500
+    },
+    {
+      "place": "151 - 175",
+      "prize": 450
+    },
+    {
+      "place": "176 - 200",
+      "prize": 400
+    },
+    {
+      "place": "201 - 225",
+      "prize": 350
+    },
+    {
+      "place": "226 - 250",
+      "prize": 350
+    },
+    {
+      "place": "251 - 275",
+      "prize": 350
+    },
+    {
+      "place": "276 - 300",
+      "prize": 300
+    },
+    {
+      "place": "301 - 350",
+      "prize": 300
+    },
+    {
+      "place": "351 - 400",
+      "prize": 250
+    },
+    {
+      "place": "401 - 450",
+      "prize": 250
+    },
+    {
+      "place": "451 - 500",
+      "prize": 250
+    }
+  ],
+  "meta": {
+    "args": {
+      "players": "5000",
+      "places_paid": "500",
+      "buyin": "100",
+      "rake": "0",
+      "p": "payout_info"
+    },
+    "exec_time": 0
+  }
+}

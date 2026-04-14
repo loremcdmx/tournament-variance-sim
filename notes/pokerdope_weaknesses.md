@@ -73,8 +73,10 @@ Our engine clamps ITM to `[0, 1]` internally and rejects inputs at the form laye
 
 ## 2. Uniform-within-cashed-band flattens top-heavy variance
 
+> **Update 2026-04-14.** After dumping `sub_routine=payout_info` for every value in their paid-places dropdown, we now know PD does **not** use a resampled `h[8]` curve. They keep a separate live curve per paid count (34 in total) which is actually noticeably more top-heavy than the legacy h[8] family. We now inline those curves verbatim (`src/lib/sim/pdCurves.ts`) and match their `sd` to within <1% across our 8-scenario parity harness. The critique below (top-heavy edge concentration is still wrong) survives — it's about the **uniform Bernoulli across the cashed band**, not about the curve shape.
+
 ### What they do
-For each simulated tournament, draw a single Bernoulli with `p = itm`. If it hits, pick one of the `paid` places with **equal probability** (`1/paid`) and pay out the corresponding prize from their h[8] reference curve resampled to `paid` slots. If it misses, profit = -buyin.
+For each simulated tournament, draw a single Bernoulli with `p = itm`. If it hits, pick one of the `paid` places with **equal probability** (`1/paid`) and pay out the corresponding prize from their live per-paid payout curve (served by `sub_routine=payout_info`). If it misses, profit = -buyin.
 
 ### Why this is wrong
 In a real MTT, a skilled player's edge is concentrated disproportionately in the top finishes. The bottom-of-the-band min-cashes are only marginally more frequent for a winner than for a loser (both have to ladder to the cash bubble before losing all-in differences matter). Final tables and top-3 finishes scale super-linearly with skill. Uniform weighting collapses this entirely.
@@ -176,6 +178,16 @@ Probed three rake levels on the baseline (100p / $50 / +10 % / 1000 tourneys / s
 EV stays at exactly `buyin × roi × N` regardless of rake (they ignore rake in the cost basis — consistent with the site's documented convention). But SD clearly depends on rake in a very non-trivial way: from $5975 down to $4042 as rake climbs.
 
 **Why.** Their internal `prizepool` used for the SD computation is `players × (buyin − rake_amount)` — i.e. the real post-rake pool. At higher rake, prizes are smaller, so per-cash outcomes sit closer together and tournament-level variance drops. At rake=100 % the pool is zero and the whole variance computation divides by something that's eventually zero and the worker dies.
+
+**Confirmed math (2026-04-14).** Closed-form reconstruction matches PD's output across all three rake levels to rounding error:
+
+```
+pool_post = N × buyin × (1 − rake)
+l'        = target × paid / pool_post         // their inflated ITM
+σ² per t  = l'/paid × pool_post² × Σh²  −  target²
+```
+
+where `target = buyin × ROI` and `Σh² ≈ 0.141` for the live 100p/paid=15 curve. The `l'` inflation is how they preserve the user-facing EV (`target` stays independent of rake) while the `pool_post²` factor is what drags σ down with rake. Our engine now reproduces this exact coupling when `calibrationMode = primedope-binary-itm` + `primedopeStyleEV = true` (see `src/lib/sim/engine.ts:264`).
 
 **Why it matters.** The math here is internally inconsistent: if you pretend rake doesn't enter EV (their ROI is profit/buyin), then for consistency rake should also not enter SD. Either both use `buyin` as the scale (classic cash-game convention) or both use `buyin − rake` (turnover convention). Mixing the two means that two players with identical edge but playing different rake schedules get **wrongly different variance predictions**. A grinder switching from 5 % rake to 15 % rake venues will see their PD-estimated RoR bankroll silently drop even though nothing about their edge changed.
 

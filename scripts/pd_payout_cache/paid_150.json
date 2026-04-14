@@ -1,0 +1,102 @@
+{
+  "payoutInfo": [
+    {
+      "place": 1,
+      "prize": 33000
+    },
+    {
+      "place": 2,
+      "prize": 19500
+    },
+    {
+      "place": 3,
+      "prize": 12450
+    },
+    {
+      "place": 4,
+      "prize": 9450
+    },
+    {
+      "place": 5,
+      "prize": 7950
+    },
+    {
+      "place": 6,
+      "prize": 5700
+    },
+    {
+      "place": 7,
+      "prize": 4200
+    },
+    {
+      "place": 8,
+      "prize": 2700
+    },
+    {
+      "place": 9,
+      "prize": 1875
+    },
+    {
+      "place": 10,
+      "prize": 1425
+    },
+    {
+      "place": "11 - 15",
+      "prize": 1425
+    },
+    {
+      "place": "16 - 20",
+      "prize": 975
+    },
+    {
+      "place": "21 - 25",
+      "prize": 825
+    },
+    {
+      "place": "26 - 30",
+      "prize": 675
+    },
+    {
+      "place": "31 - 35",
+      "prize": 600
+    },
+    {
+      "place": "36 - 40",
+      "prize": 525
+    },
+    {
+      "place": "41 - 50",
+      "prize": 360
+    },
+    {
+      "place": "51 - 60",
+      "prize": 300
+    },
+    {
+      "place": "61 - 75",
+      "prize": 285
+    },
+    {
+      "place": "76 - 100",
+      "prize": 225
+    },
+    {
+      "place": "101 - 125",
+      "prize": 210
+    },
+    {
+      "place": "126 - 150",
+      "prize": 195
+    }
+  ],
+  "meta": {
+    "args": {
+      "players": "1500",
+      "places_paid": "150",
+      "buyin": "100",
+      "rake": "0",
+      "p": "payout_info"
+    },
+    "exec_time": 0
+  }
+}

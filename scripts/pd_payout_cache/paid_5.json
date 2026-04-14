@@ -1,0 +1,34 @@
+{
+  "payoutInfo": [
+    {
+      "place": 1,
+      "prize": 3700
+    },
+    {
+      "place": 2,
+      "prize": 2500
+    },
+    {
+      "place": 3,
+      "prize": 1500
+    },
+    {
+      "place": 4,
+      "prize": 1200
+    },
+    {
+      "place": 5,
+      "prize": 1100
+    }
+  ],
+  "meta": {
+    "args": {
+      "players": "100",
+      "places_paid": "5",
+      "buyin": "100",
+      "rake": "0",
+      "p": "payout_info"
+    },
+    "exec_time": 0
+  }
+}

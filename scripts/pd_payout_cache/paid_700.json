@@ -1,0 +1,158 @@
+{
+  "payoutInfo": [
+    {
+      "place": 1,
+      "prize": 108500
+    },
+    {
+      "place": 2,
+      "prize": 75250
+    },
+    {
+      "place": 3,
+      "prize": 44800
+    },
+    {
+      "place": 4,
+      "prize": 37800
+    },
+    {
+      "place": 5,
+      "prize": 30800
+    },
+    {
+      "place": 6,
+      "prize": 23800
+    },
+    {
+      "place": 7,
+      "prize": 16100
+    },
+    {
+      "place": 8,
+      "prize": 9100
+    },
+    {
+      "place": 9,
+      "prize": 6650
+    },
+    {
+      "place": 10,
+      "prize": 5250
+    },
+    {
+      "place": "11 - 15",
+      "prize": 5250
+    },
+    {
+      "place": "16 - 20",
+      "prize": 2450
+    },
+    {
+      "place": "21 - 25",
+      "prize": 2100
+    },
+    {
+      "place": "26 - 30",
+      "prize": 1400
+    },
+    {
+      "place": "31 - 35",
+      "prize": 1330
+    },
+    {
+      "place": "36 - 40",
+      "prize": 1120
+    },
+    {
+      "place": "41 - 50",
+      "prize": 1050
+    },
+    {
+      "place": "51 - 60",
+      "prize": 980
+    },
+    {
+      "place": "61 - 75",
+      "prize": 910
+    },
+    {
+      "place": "76 - 100",
+      "prize": 840
+    },
+    {
+      "place": "101 - 125",
+      "prize": 770
+    },
+    {
+      "place": "126 - 150",
+      "prize": 700
+    },
+    {
+      "place": "151 - 175",
+      "prize": 630
+    },
+    {
+      "place": "176 - 200",
+      "prize": 560
+    },
+    {
+      "place": "201 - 225",
+      "prize": 490
+    },
+    {
+      "place": "226 - 250",
+      "prize": 420
+    },
+    {
+      "place": "251 - 275",
+      "prize": 350
+    },
+    {
+      "place": "276 - 300",
+      "prize": 350
+    },
+    {
+      "place": "301 - 350",
+      "prize": 350
+    },
+    {
+      "place": "351 - 400",
+      "prize": 350
+    },
+    {
+      "place": "401 - 450",
+      "prize": 280
+    },
+    {
+      "place": "451 - 500",
+      "prize": 280
+    },
+    {
+      "place": "501 - 550",
+      "prize": 280
+    },
+    {
+      "place": "551 - 600",
+      "prize": 280
+    },
+    {
+      "place": "601 - 650",
+      "prize": 210
+    },
+    {
+      "place": "651 - 700",
+      "prize": 210
+    }
+  ],
+  "meta": {
+    "args": {
+      "players": "7000",
+      "places_paid": "700",
+      "buyin": "100",
+      "rake": "0",
+      "p": "payout_info"
+    },
+    "exec_time": 0
+  }
+}
