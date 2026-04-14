@@ -62,12 +62,24 @@ interface CompiledEntry {
    * null when bountyFraction === 0 (skip the array read entirely).
    */
   bountyByPlace: Float64Array | null;
+  /**
+   * Expected number of knockouts by finish place. Used by the hot loop to
+   * add within-place stochastic noise to the bounty haul: at a fixed place
+   * the realized KO count is Poisson-ish around `bountyKmean[place]`, so the
+   * realized bounty payout equals `bountyByPlace[place] × K / kmean` with K
+   * drawn from a Gaussian approximation around that mean. Mean is preserved
+   * exactly, but the per-tournament variance that was previously zero within
+   * place is now modelled. Shares null with bountyByPlace.
+   */
+  bountyKmean: Float64Array | null;
 }
 
 interface CompiledSchedule {
   flat: CompiledEntry[];
   totalBuyIn: number;
   tournamentsPerSample: number;
+  /** flat.length / scheduleRepeats — used as session boundary in the hot loop. */
+  tournamentsPerPass: number;
   rowCounts: number[];
   rowBuyIns: number[];
   rowLabels: string[];
@@ -132,10 +144,12 @@ export function compileSchedule(
     }
   }
 
+  const reps = Math.max(1, input.scheduleRepeats);
   return {
     flat,
     totalBuyIn,
     tournamentsPerSample: flat.length,
+    tournamentsPerPass: Math.max(1, Math.floor(flat.length / reps)),
     rowCounts,
     rowBuyIns,
     rowLabels,
@@ -151,7 +165,11 @@ function compileSingleEntry(
   model: SimulationInput["finishModel"],
   calibrationMode: CalibrationMode,
 ): CompiledEntry {
-  const N = Math.max(1, Math.floor(players));
+  // Late-registration: the real field at reg-close is the nominal field
+  // scaled by `lateRegMultiplier`. Scales prize pool and paid seats, and
+  // widens the finish-position shape. Defaults to 1 (no late reg).
+  const lateRegMult = Math.max(1, row.lateRegMultiplier ?? 1);
+  const N = Math.max(1, Math.floor(players * lateRegMult));
 
   // ---- re-entry accounting ------------------------------------------------
   // Expected number of *extra* entries per seat (beyond the first) under
@@ -172,7 +190,7 @@ function compileSingleEntry(
   const entryCostSingle = row.buyIn * (1 + row.rake);
   const costPerEntry = entryCostSingle * (1 + reentryExpected);
   // Field-average extra entries inflate the prize pool too.
-  const effectiveSeats = players * (1 + reentryExpected);
+  const effectiveSeats = N * (1 + reentryExpected);
   const basePool = effectiveSeats * row.buyIn;
   const overlay = Math.max(0, (row.guarantee ?? 0) - basePool);
   let prizePool = basePool + overlay;
@@ -247,16 +265,18 @@ function compileSingleEntry(
   // ---- bounty distribution across finish places -------------------------
   // Elimination-order model: the player finishing at 1-indexed place p was
   // alive for the first N−p busts. Expected eliminations over those busts
-  // equals H_{N−1} − H_{p−1}, using the "each alive non-buster is equally
-  // likely" assumption. The winner (p=1) collects H_{N−1} elims; the first
-  // to bust (p=N) collects 0. Total sums to N−1, which matches the number
-  // of eliminations per tournament.
+  // equals H_{N−1} − H_{p−1} (standard KO). For PKO we instead weight each
+  // of those KOs by the expected head-size at the moment it happened, using
+  // the accumulating-head recurrence below.
   //
-  // We then normalize the raw weights against the calibrated pmf so that
-  // Σ pmf[i] · bountyByPlace[i] === bountyMean. This preserves the ROI
-  // calibration (mean bounty per entry is unchanged) while shifting all
-  // the bounty variance onto the shape of the finish distribution.
+  // The final raw weights are normalized against the calibrated pmf so that
+  // Σ pmf[i] · bountyByPlace[i] === bountyMean. This preserves ROI
+  // calibration while shifting all the bounty variance onto the shape of
+  // the finish distribution. bountyKmean[i] holds the expected KO count at
+  // place i and is used by the hot loop to add within-place Poisson-style
+  // stochastic noise around the mean.
   let bountyByPlace: Float64Array | null = null;
+  let bountyKmean: Float64Array | null = null;
   if (bountyMean > 0 && N >= 2) {
     // Prefix harmonic numbers: Hprefix[k] = 1 + 1/2 + ... + 1/k, Hprefix[0] = 0.
     const Hprefix = new Float64Array(N);
@@ -266,39 +286,118 @@ function compileSingleEntry(
       Hprefix[k] = hAcc;
     }
     const totalH = Hprefix[N - 1]; // H_{N−1}
-    // Raw weights w[i] (0-indexed place): totalH − Hprefix[i].
+
     const raw = new Float64Array(N);
-    let Z = 0;
+    bountyKmean = new Float64Array(N);
+    // Expected KO count by 0-indexed place i = H_{N−1} − H_{p−1} with p=i+1.
     for (let i = 0; i < N; i++) {
-      const w = totalH - Hprefix[i];
-      raw[i] = w;
-      Z += pmf[i] * w;
+      bountyKmean[i] = totalH - Hprefix[i];
     }
+
+    if (row.progressiveKO) {
+      // Progressive PKO: head pool accumulates. At bust m (1..N−1) we have
+      // (N−m+1) alive players sharing total head mass T(m−1), starting at
+      // T(0)=N×B where B=per-seat bounty. Each KO pays avgHead/2 cash, and
+      // the same amount is consumed from the pool:
+      //   h(m)   = T(m−1) / (N−m+1)
+      //   cash_m = h(m) / 2
+      //   T(m)   = T(m−1) − cash_m
+      // Expected cash for finisher at 1-indexed place p is
+      //   Σ_{m=1..N−p} cash_m / (N−m)
+      // (they're 1 of (N−m) potential killers among alive non-victims), and
+      // the winner additionally collects T(N−1) as their final head at the
+      // end of the tournament.
+      //
+      // Per-seat B factors out — we're going to normalize away — so we
+      // initialise T(0)=N and read cash_m in the same arbitrary unit.
+      const cashAtBust = new Float64Array(N - 1); // cash_m for m=1..N−1 at index m−1
+      let T = N;
+      for (let m = 1; m <= N - 1; m++) {
+        const h = T / (N - m + 1);
+        const cash = h / 2;
+        cashAtBust[m - 1] = cash;
+        T -= cash;
+      }
+      const Tfinal = T; // head mass left with the winner
+
+      // cumulativeCash[j] = Σ_{m=1..j} cash_m / (N−m). Then for 1-indexed
+      // place p, bounty weight = cumulativeCash[N−p]. This is monotonically
+      // increasing in (N−p), so deep finishers win more — as expected, with
+      // the winner also getting the Tfinal top-up.
+      const cumulativeCash = new Float64Array(N); // index p-1 → player at place p
+      // Build forward sum of cash_m/(N−m) for m=1..N−1
+      const prefix = new Float64Array(N); // prefix[k] = sum over m=1..k of term
+      let acc = 0;
+      for (let m = 1; m <= N - 1; m++) {
+        acc += cashAtBust[m - 1] / (N - m);
+        prefix[m] = acc;
+      }
+      for (let i = 0; i < N; i++) {
+        const p = i + 1;
+        // Sum up to m = N−p:
+        const upto = N - p;
+        cumulativeCash[i] = upto > 0 ? prefix[upto] : 0;
+      }
+      // Winner (i=0) gets Tfinal on top of their in-game KO cash.
+      cumulativeCash[0] += Tfinal;
+
+      for (let i = 0; i < N; i++) raw[i] = cumulativeCash[i];
+    } else {
+      // Flat KO: raw weights = expected KO count = bountyKmean[i].
+      for (let i = 0; i < N; i++) raw[i] = bountyKmean[i];
+    }
+
+    // Normalize so Σ pmf[i]·bountyByPlace[i] = bountyMean (ROI intact).
+    let Z = 0;
+    for (let i = 0; i < N; i++) Z += pmf[i] * raw[i];
     bountyByPlace = new Float64Array(N);
     if (Z > 1e-12) {
       const scale = bountyMean / Z;
-      for (let i = 0; i < N; i++) {
-        bountyByPlace[i] = raw[i] * scale;
-      }
+      for (let i = 0; i < N; i++) bountyByPlace[i] = raw[i] * scale;
     } else {
-      // Degenerate: fall back to flat lump so we don't break mean EV.
       for (let i = 0; i < N; i++) bountyByPlace[i] = bountyMean;
+    }
+  }
+
+  // ---- staking transform --------------------------------------------------
+  // Applied after ROI calibration — the calibrator targets the player's
+  // *underlying* edge, then staking re-scales the P&L stream so downstream
+  // drawdown/variance/Kelly metrics reflect the player's actual cash flow:
+  //   player_slot_pnl = (1 − sold) × prize − cost × (1 − sold × markup)
+  // Bounty scales by (1 − sold) the same way prizes do.
+  const soldRaw = Math.max(0, Math.min(1, row.stakingSoldPct ?? 0));
+  const markup = Math.max(1, row.stakingMarkup ?? 1);
+  let singleCostOut = entryCostSingle;
+  let costPerEntryOut = costPerEntry;
+  let prizeOut = prizeByPlace;
+  let bountyOut = bountyByPlace;
+  if (soldRaw > 0) {
+    const keep = 1 - soldRaw;
+    const costFactor = 1 - soldRaw * markup;
+    singleCostOut = entryCostSingle * costFactor;
+    costPerEntryOut = costPerEntry * costFactor;
+    prizeOut = new Float64Array(N);
+    for (let i = 0; i < N; i++) prizeOut[i] = prizeByPlace[i] * keep;
+    if (bountyByPlace !== null) {
+      bountyOut = new Float64Array(N);
+      for (let i = 0; i < N; i++) bountyOut[i] = bountyByPlace[i] * keep;
     }
   }
 
   return {
     rowIdx: idx,
-    costPerEntry,
-    singleCost: entryCostSingle,
+    costPerEntry: costPerEntryOut,
+    singleCost: singleCostOut,
     maxEntries,
     reRate,
     paidCount,
     cdf,
-    prizeByPlace,
+    prizeByPlace: prizeOut,
     alpha,
     itm: itmProbability(pmf, paidCount),
     reentryExpected,
-    bountyByPlace,
+    bountyByPlace: bountyOut,
+    bountyKmean,
   };
 }
 
@@ -396,115 +495,44 @@ export function runSimulation(
   const compiled = compileSchedule(input, calibrationMode);
   const N = compiled.tournamentsPerSample;
   const S = input.samples;
-  const bankroll = input.bankroll;
-  const numRows = input.schedule.length;
 
   if (N === 0 || S === 0) throw new Error("Empty schedule or zero samples");
 
-  const K = Math.min(200, N);
-  const checkpointIdx = new Int32Array(K + 1);
-  for (let j = 0; j <= K; j++) checkpointIdx[j] = Math.round((j * N) / K);
+  const grid = makeCheckpointGrid(N);
+  const shard = simulateShard(input, compiled, 0, S, grid, onProgress);
+  return buildResult(input, compiled, shard, calibrationMode, grid);
+}
 
-  // Storage -----------------------------------------------------------------
-  const finalProfits = new Float64Array(S);
-  const pathMatrix = new Float64Array(S * (K + 1));
-  const maxDrawdowns = new Float64Array(S);
-  const runningMins = new Float64Array(S); // for min-BR inverse
-  const longestBreakevens = new Int32Array(S);
-  // Per-row × per-sample profit matrix (row-major: sample * numRows + row)
-  const rowProfits = new Float64Array(S * numRows);
-
-  let ruinedCount = 0;
+/**
+ * Aggregate a merged shard into a final SimulationResult. Separated from
+ * runSimulation so the parallel orchestrator can run shards in workers
+ * and call this on the merged result from the main thread.
+ */
+export function buildResult(
+  input: SimulationInput,
+  compiled: CompiledSchedule,
+  shard: RawShard,
+  calibrationMode: CalibrationMode,
+  grid: CheckpointGrid,
+): SimulationResult {
+  const N = compiled.tournamentsPerSample;
+  const S = input.samples;
+  const bankroll = input.bankroll;
+  const numRows = input.schedule.length;
+  const { K, checkpointIdx } = grid;
+  const {
+    finalProfits,
+    pathMatrix,
+    maxDrawdowns,
+    runningMins,
+    longestBreakevens,
+    longestCashless,
+    recoveryLengths,
+    rowProfits,
+    ruinedCount,
+  } = shard;
   let expectedProfitAccum = 0;
-
-  const nextProgressStep = Math.max(1, Math.floor(S / 50));
-  let nextProgressAt = nextProgressStep;
-
-  // Skill uncertainty: per-sample ROI shift, applied linearly to the
-  // running cumulative cost. Decoupled RNG stream so changing the
-  // σ does not reshuffle the finish-place samples.
-  const roiStdErr = Math.max(0, input.roiStdErr ?? 0);
-  const skillRng = mulberry32(mixSeed(input.seed, 0xbeef));
-  const flat = compiled.flat;
-
-  for (let s = 0; s < S; s++) {
-    const rng = mulberry32(mixSeed(input.seed, s));
-    const deltaROI = roiStdErr > 0 ? boxMuller(skillRng) * roiStdErr : 0;
-    let profit = 0;
-    let runningMax = 0;
-    let runningMin = 0;
-    let maxDD = 0;
-    let breakevenLen = 0;
-    let longestBreakeven = 0;
-    let ruined = false;
-
-    let nextCp = 1;
-    let nextCpIdx = checkpointIdx[1];
-    const pathBase = s * (K + 1);
-    const rowBase = s * numRows;
-
-    for (let i = 0; i < N; i++) {
-      const parent = flat[i];
-      const variants = parent.variants;
-      const t = variants
-        ? variants[(rng() * variants.length) | 0]
-        : parent;
-      const bp = t.bountyByPlace;
-      const prizes = t.prizeByPlace;
-      const cdf = t.cdf;
-      const single = t.singleCost;
-      const bulletCost = single - deltaROI * single;
-      const maxB = t.maxEntries;
-      let delta = 0;
-      if (maxB === 1) {
-        const place = sampleFromCDF(cdf, rng());
-        delta = prizes[place] + (bp !== null ? bp[place] : 0) - bulletCost;
-      } else {
-        const pc = t.paidCount;
-        const reRate = t.reRate;
-        for (let b = 0; b < maxB; b++) {
-          const place = sampleFromCDF(cdf, rng());
-          delta += prizes[place] + (bp !== null ? bp[place] : 0) - bulletCost;
-          if (place < pc) break;
-          if (b + 1 < maxB && rng() >= reRate) break;
-        }
-      }
-      profit += delta;
-      rowProfits[rowBase + t.rowIdx] += delta;
-
-      if (profit > runningMax) {
-        runningMax = profit;
-        breakevenLen = 0;
-      } else {
-        breakevenLen++;
-        if (breakevenLen > longestBreakeven) longestBreakeven = breakevenLen;
-      }
-      if (profit < runningMin) runningMin = profit;
-      const dd = runningMax - profit;
-      if (dd > maxDD) maxDD = dd;
-
-      if (bankroll > 0 && !ruined && profit <= -bankroll) ruined = true;
-
-      while (nextCp <= K && i + 1 === nextCpIdx) {
-        pathMatrix[pathBase + nextCp] = profit;
-        nextCp++;
-        if (nextCp <= K) nextCpIdx = checkpointIdx[nextCp];
-      }
-    }
-
-    finalProfits[s] = profit;
-    maxDrawdowns[s] = maxDD;
-    runningMins[s] = runningMin;
-    longestBreakevens[s] = longestBreakeven;
-    if (ruined) ruinedCount++;
-    expectedProfitAccum += profit;
-
-    if (onProgress && s + 1 >= nextProgressAt) {
-      onProgress(s + 1, S);
-      nextProgressAt += nextProgressStep;
-    }
-  }
-  onProgress?.(S, S);
+  for (let s = 0; s < S; s++) expectedProfitAccum += finalProfits[s];
 
   // Stats -------------------------------------------------------------------
   const mean = expectedProfitAccum / S;
@@ -690,9 +718,54 @@ export function runSimulation(
   }
   ddMean /= S;
 
+  // Tail quantiles of max drawdown — a straight answer to
+  // "how bad is a typical/5%/1% worst run". PrimeDope only shows a single
+  // aggregate estimate; we expose the whole tail shape.
+  const ddSorted = Float64Array.from(maxDrawdowns).sort();
+  const ddPct = (p: number) =>
+    ddSorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
+  const maxDrawdownMedian = ddPct(0.5);
+  const maxDrawdownP95 = ddPct(0.95);
+  const maxDrawdownP99 = ddPct(0.99);
+
   let beMean = 0;
   for (let s = 0; s < S; s++) beMean += longestBreakevens[s];
   beMean /= S;
+
+  // Cashless streak stats
+  let cashlessAcc = 0;
+  let cashlessWorst = 0;
+  for (let s = 0; s < S; s++) {
+    const v = longestCashless[s];
+    cashlessAcc += v;
+    if (v > cashlessWorst) cashlessWorst = v;
+  }
+  const longestCashlessMean = cashlessAcc / S;
+
+  // Recovery from deepest drawdown: -1 entries are "unrecovered" — we
+  // compute median / p90 over the recovered-only slice, and report the
+  // unrecovered share separately.
+  let unrecoveredCount = 0;
+  const recoveredOnly: number[] = [];
+  for (let s = 0; s < S; s++) {
+    const v = recoveryLengths[s];
+    if (v < 0) unrecoveredCount++;
+    else recoveredOnly.push(v);
+  }
+  recoveredOnly.sort((a, b) => a - b);
+  const recoveredCount = recoveredOnly.length;
+  const recoveryPct = (p: number) =>
+    recoveredCount === 0
+      ? 0
+      : recoveredOnly[
+          Math.min(
+            recoveredCount - 1,
+            Math.max(0, Math.floor(p * (recoveredCount - 1))),
+          )
+        ];
+  const recoveryMedian = recoveryPct(0.5);
+  const recoveryP90 = recoveryPct(0.9);
+  const recoveryUnrecoveredShare = unrecoveredCount / S;
 
   // Decomposition -----------------------------------------------------------
   const decomposition: RowDecomposition[] = new Array(numRows);
@@ -713,14 +786,26 @@ export function runSimulation(
   }
   const totalRowVarSum = rowVariances.reduce((a, b) => a + b, 0) || 1;
   for (let r = 0; r < numRows; r++) {
+    // Per-row Kelly: f* = mean / variance on the row's slot distribution.
+    // Only meaningful when the row has positive EV and non-zero variance;
+    // otherwise Kelly is undefined (we emit 0 / Infinity respectively).
+    const rv = rowVariances[r];
+    const rm = rowMeans[r];
+    const rowKellyFraction = rm > 0 && rv > 1e-9 ? rm / rv : 0;
+    const rowKellyBankroll =
+      rowKellyFraction > 0
+        ? compiled.rowBuyIns[r] / rowKellyFraction
+        : Number.POSITIVE_INFINITY;
     decomposition[r] = {
       rowId: compiled.rowIds[r],
       label: compiled.rowLabels[r],
-      mean: rowMeans[r],
-      stdDev: Math.sqrt(rowVariances[r]),
-      varianceShare: rowVariances[r] / totalRowVarSum,
+      mean: rm,
+      stdDev: Math.sqrt(rv),
+      varianceShare: rv / totalRowVarSum,
       tournamentsPerSample: compiled.rowCounts[r],
       totalBuyIn: compiled.rowBuyIns[r],
+      kellyFraction: rowKellyFraction,
+      kellyBankroll: rowKellyBankroll,
     };
   }
 
@@ -808,6 +893,14 @@ export function runSimulation(
       riskOfRuin: bankroll > 0 ? ruinedCount / S : 0,
       maxDrawdownMean: ddMean,
       maxDrawdownWorst: ddWorst,
+      maxDrawdownMedian,
+      maxDrawdownP95,
+      maxDrawdownP99,
+      recoveryMedian,
+      recoveryP90,
+      recoveryUnrecoveredShare,
+      longestCashlessMean,
+      longestCashlessWorst: cashlessWorst,
       longestBreakevenMean: beMean,
       var95,
       var99,
@@ -866,4 +959,403 @@ function histogramOf(
     counts[b]++;
   }
   return { binEdges, counts };
+}
+
+// =====================================================================
+// Sharded execution
+// ---------------------------------------------------------------------
+// The hot loop is extracted here so a worker pool can run disjoint
+// [sStart, sEnd) slices on different cores and the main thread can
+// merge the raw buffers back together before running aggregation.
+//
+// Determinism note: the serial engine used to carry a *single* shock RNG
+// stream across every sample in the run, which made output depend on
+// sample-visit order — fine serially, broken under sharding. The sharded
+// version seeds a fresh shock RNG per sample (mixSeed(seed ^ 0xbeef, s))
+// so splitting samples across workers produces the same aggregate as a
+// monolithic run. Individual sample numerics differ from the pre-shard
+// engine, but the statistical expectation is unchanged and all tests
+// live inside noise bounds rather than asserting exact byte values.
+// =====================================================================
+
+export interface RawShard {
+  sStart: number;
+  sEnd: number;
+  finalProfits: Float64Array;
+  pathMatrix: Float64Array;
+  maxDrawdowns: Float64Array;
+  runningMins: Float64Array;
+  longestBreakevens: Int32Array;
+  longestCashless: Int32Array;
+  recoveryLengths: Int32Array;
+  rowProfits: Float64Array;
+  ruinedCount: number;
+}
+
+export interface CheckpointGrid {
+  K: number;
+  checkpointIdx: Int32Array;
+}
+
+export function makeCheckpointGrid(N: number): CheckpointGrid {
+  const K = Math.min(200, N);
+  const checkpointIdx = new Int32Array(K + 1);
+  for (let j = 0; j <= K; j++) checkpointIdx[j] = Math.round((j * N) / K);
+  return { K, checkpointIdx };
+}
+
+export function simulateShard(
+  input: SimulationInput,
+  compiled: CompiledSchedule,
+  sStart: number,
+  sEnd: number,
+  grid: CheckpointGrid,
+  onProgress?: ProgressCb,
+): RawShard {
+  const { K, checkpointIdx } = grid;
+  const K1 = K + 1;
+  const N = compiled.tournamentsPerSample;
+  const numRows = input.schedule.length;
+  const bankroll = input.bankroll;
+  const shardSize = sEnd - sStart;
+
+  const finalProfits = new Float64Array(shardSize);
+  const pathMatrix = new Float64Array(shardSize * K1);
+  const maxDrawdowns = new Float64Array(shardSize);
+  const runningMins = new Float64Array(shardSize);
+  const longestBreakevens = new Int32Array(shardSize);
+  const longestCashless = new Int32Array(shardSize);
+  const recoveryLengths = new Int32Array(shardSize);
+  const rowProfits = new Float64Array(shardSize * numRows);
+  let ruinedCount = 0;
+
+  const roiStdErr = Math.max(0, input.roiStdErr ?? 0);
+  const sigTourney = Math.max(0, input.roiShockPerTourney ?? 0);
+  const sigSession = Math.max(0, input.roiShockPerSession ?? 0);
+  const sigDrift = Math.max(0, input.roiDriftSigma ?? 0);
+  const driftRho = Math.max(0, Math.min(0.999, input.roiDriftRho ?? 0.95));
+  const driftInnovScale = sigDrift * Math.sqrt(1 - driftRho * driftRho);
+
+  const tiltFastGain = input.tiltFastGain ?? 0;
+  const tiltFastScale = Math.max(1, input.tiltFastScale ?? 0);
+  const tiltFastOn = tiltFastGain !== 0 && tiltFastScale > 0;
+  const tiltSlowGain = input.tiltSlowGain ?? 0;
+  const tiltSlowThreshold = Math.max(0, input.tiltSlowThreshold ?? 0);
+  const tiltSlowMinDur = Math.max(
+    0,
+    Math.floor(input.tiltSlowMinDuration ?? 500),
+  );
+  const tiltSlowRecFrac = Math.max(
+    0,
+    Math.min(1, input.tiltSlowRecoveryFrac ?? 0.5),
+  );
+  const tiltSlowOn =
+    tiltSlowGain !== 0 && tiltSlowThreshold > 0 && tiltSlowMinDur > 0;
+
+  const perPass = compiled.tournamentsPerPass;
+  const flat = compiled.flat;
+
+  const nextProgressStep = Math.max(1, Math.floor(shardSize / 50));
+  let nextProgressAt = nextProgressStep;
+
+  for (let s = sStart; s < sEnd; s++) {
+    const localS = s - sStart;
+    const rng = mulberry32(mixSeed(input.seed, s));
+    // Per-sample shock RNG — decoupled from finish draws and
+    // independent of shard boundaries.
+    const skillRng = mulberry32(mixSeed((input.seed ^ 0xbeef) >>> 0, s));
+    // Dedicated RNG for within-place bounty noise — kept separate so adding
+    // a bounty flag doesn't perturb the finish-sampling stream (otherwise
+    // same-seed comparison tests between bounty and non-bounty runs drift).
+    const bRng = mulberry32(mixSeed((input.seed ^ 0xb01dface) >>> 0, s));
+
+    const deltaROI = roiStdErr > 0 ? boxMuller(skillRng) * roiStdErr : 0;
+    let drift = 0;
+    let sessionShock = 0;
+    let tiltState: -1 | 0 | 1 = 0;
+    let tiltAnchor = 0;
+    let tiltStreakLen = 0;
+    let tiltSwingMag = 0;
+    let profit = 0;
+    let runningMax = 0;
+    let runningMin = 0;
+    let maxDD = 0;
+    let breakevenLen = 0;
+    let longestBreakeven = 0;
+    let cashlessRun = 0;
+    let longestCashlessRun = 0;
+    let ddTroughIdx = -1;
+    let sampleRecoveryLen = -1;
+    let ruined = false;
+
+    let nextCp = 1;
+    let nextCpIdx = checkpointIdx[1];
+    const pathBase = localS * K1;
+    const rowBase = localS * numRows;
+
+    for (let i = 0; i < N; i++) {
+      if ((sigSession > 0 || sigDrift > 0) && i % perPass === 0) {
+        if (sigSession > 0) sessionShock = boxMuller(skillRng) * sigSession;
+        if (sigDrift > 0)
+          drift = driftRho * drift + boxMuller(skillRng) * driftInnovScale;
+      }
+      const tourneyShock =
+        sigTourney > 0 ? boxMuller(skillRng) * sigTourney : 0;
+
+      let tiltShift = 0;
+      if (tiltFastOn) {
+        const dd = runningMax - profit;
+        const upSwing = profit - runningMin;
+        const net = dd - upSwing;
+        tiltShift -= tiltFastGain * Math.tanh(net / tiltFastScale);
+      }
+      if (tiltSlowOn) {
+        if (tiltState === 0) {
+          const dd = runningMax - profit;
+          const up = profit - runningMin;
+          if (dd >= tiltSlowThreshold) {
+            tiltStreakLen++;
+            if (tiltStreakLen >= tiltSlowMinDur) {
+              tiltState = -1;
+              tiltAnchor = profit;
+              tiltSwingMag = dd;
+              tiltStreakLen = 0;
+            }
+          } else if (up >= tiltSlowThreshold) {
+            tiltStreakLen++;
+            if (tiltStreakLen >= tiltSlowMinDur) {
+              tiltState = 1;
+              tiltAnchor = profit;
+              tiltSwingMag = up;
+              tiltStreakLen = 0;
+            }
+          } else {
+            tiltStreakLen = 0;
+          }
+        } else if (tiltState === -1) {
+          tiltShift -= tiltSlowGain;
+          if (profit - tiltAnchor >= tiltSlowRecFrac * tiltSwingMag) {
+            tiltState = 0;
+            tiltStreakLen = 0;
+          }
+        } else {
+          tiltShift += tiltSlowGain;
+          if (tiltAnchor - profit >= tiltSlowRecFrac * tiltSwingMag) {
+            tiltState = 0;
+            tiltStreakLen = 0;
+          }
+        }
+      }
+
+      const effectiveDelta =
+        deltaROI + drift + sessionShock + tourneyShock + tiltShift;
+
+      const parent = flat[i];
+      const variants = parent.variants;
+      const t = variants
+        ? variants[(rng() * variants.length) | 0]
+        : parent;
+      const bp = t.bountyByPlace;
+      const bkm = t.bountyKmean;
+      const prizes = t.prizeByPlace;
+      const cdf = t.cdf;
+      const single = t.singleCost;
+      const bulletCost = single - effectiveDelta * single;
+      const maxB = t.maxEntries;
+      const pc = t.paidCount;
+      let delta = 0;
+      let cashedThisSlot = false;
+      if (maxB === 1) {
+        const place = sampleFromCDF(cdf, rng());
+        let bountyDraw = 0;
+        if (bp !== null) {
+          const mean = bp[place];
+          if (mean > 0 && bkm !== null) {
+            const lam = bkm[place];
+            if (lam > 0) {
+              let k: number;
+              if (lam < 20) {
+                const L = Math.exp(-lam);
+                let p = 1;
+                k = 0;
+                do {
+                  k++;
+                  p *= bRng();
+                } while (p > L);
+                k--;
+              } else {
+                const g = lam + boxMuller(bRng) * Math.sqrt(lam);
+                k = g < 0 ? 0 : g;
+              }
+              bountyDraw = (mean * k) / lam;
+            } else {
+              bountyDraw = mean;
+            }
+          } else {
+            bountyDraw = mean;
+          }
+        }
+        delta = prizes[place] + bountyDraw - bulletCost;
+        if (place < pc) cashedThisSlot = true;
+      } else {
+        const reRate = t.reRate;
+        for (let b = 0; b < maxB; b++) {
+          const place = sampleFromCDF(cdf, rng());
+          let bountyDraw = 0;
+          if (bp !== null) {
+            const mean = bp[place];
+            if (mean > 0 && bkm !== null) {
+              const lam = bkm[place];
+              if (lam > 0) {
+                // Knuth Poisson for small λ (unbiased); Gaussian approximation
+                // for large λ where Poisson is too slow and the normal is tight.
+                let k: number;
+                if (lam < 20) {
+                  const L = Math.exp(-lam);
+                  let p = 1;
+                  k = 0;
+                  do {
+                    k++;
+                    p *= bRng();
+                  } while (p > L);
+                  k--;
+                } else {
+                  const g = lam + boxMuller(bRng) * Math.sqrt(lam);
+                  k = g < 0 ? 0 : g;
+                }
+                bountyDraw = (mean * k) / lam;
+              } else {
+                bountyDraw = mean;
+              }
+            } else {
+              bountyDraw = mean;
+            }
+          }
+          delta += prizes[place] + bountyDraw - bulletCost;
+          if (place < pc) {
+            cashedThisSlot = true;
+            break;
+          }
+          if (b + 1 < maxB && rng() >= reRate) break;
+        }
+      }
+      profit += delta;
+      rowProfits[rowBase + t.rowIdx] += delta;
+
+      if (cashedThisSlot) {
+        cashlessRun = 0;
+      } else {
+        cashlessRun++;
+        if (cashlessRun > longestCashlessRun) longestCashlessRun = cashlessRun;
+      }
+
+      if (profit > runningMax) {
+        runningMax = profit;
+        breakevenLen = 0;
+        if (ddTroughIdx >= 0 && sampleRecoveryLen < 0) {
+          sampleRecoveryLen = i - ddTroughIdx;
+        }
+      } else {
+        breakevenLen++;
+        if (breakevenLen > longestBreakeven) longestBreakeven = breakevenLen;
+      }
+      if (profit < runningMin) runningMin = profit;
+      const dd = runningMax - profit;
+      if (dd > maxDD) {
+        maxDD = dd;
+        ddTroughIdx = i;
+        sampleRecoveryLen = -1;
+      }
+
+      if (bankroll > 0 && !ruined && profit <= -bankroll) ruined = true;
+
+      while (nextCp <= K && i + 1 === nextCpIdx) {
+        pathMatrix[pathBase + nextCp] = profit;
+        nextCp++;
+        if (nextCp <= K) nextCpIdx = checkpointIdx[nextCp];
+      }
+    }
+
+    finalProfits[localS] = profit;
+    maxDrawdowns[localS] = maxDD;
+    runningMins[localS] = runningMin;
+    longestBreakevens[localS] = longestBreakeven;
+    longestCashless[localS] = longestCashlessRun;
+    recoveryLengths[localS] = sampleRecoveryLen;
+    if (ruined) ruinedCount++;
+
+    if (onProgress && localS + 1 >= nextProgressAt) {
+      onProgress(localS + 1, shardSize);
+      nextProgressAt += nextProgressStep;
+    }
+  }
+  onProgress?.(shardSize, shardSize);
+
+  return {
+    sStart,
+    sEnd,
+    finalProfits,
+    pathMatrix,
+    maxDrawdowns,
+    runningMins,
+    longestBreakevens,
+    longestCashless,
+    recoveryLengths,
+    rowProfits,
+    ruinedCount,
+  };
+}
+
+/**
+ * Stitch disjoint shards covering [0, S) into a single RawShard with
+ * full-sized buffers. Fast-paths a single full-range shard by returning
+ * it directly (no copies).
+ */
+export function mergeShards(
+  shards: RawShard[],
+  S: number,
+  K1: number,
+  numRows: number,
+): RawShard {
+  if (
+    shards.length === 1 &&
+    shards[0].sStart === 0 &&
+    shards[0].sEnd === S
+  ) {
+    return shards[0];
+  }
+  const sorted = shards.slice().sort((a, b) => a.sStart - b.sStart);
+  const finalProfits = new Float64Array(S);
+  const pathMatrix = new Float64Array(S * K1);
+  const maxDrawdowns = new Float64Array(S);
+  const runningMins = new Float64Array(S);
+  const longestBreakevens = new Int32Array(S);
+  const longestCashless = new Int32Array(S);
+  const recoveryLengths = new Int32Array(S);
+  const rowProfits = new Float64Array(S * numRows);
+  let ruinedCount = 0;
+  for (const sh of sorted) {
+    finalProfits.set(sh.finalProfits, sh.sStart);
+    maxDrawdowns.set(sh.maxDrawdowns, sh.sStart);
+    runningMins.set(sh.runningMins, sh.sStart);
+    longestBreakevens.set(sh.longestBreakevens, sh.sStart);
+    longestCashless.set(sh.longestCashless, sh.sStart);
+    recoveryLengths.set(sh.recoveryLengths, sh.sStart);
+    pathMatrix.set(sh.pathMatrix, sh.sStart * K1);
+    rowProfits.set(sh.rowProfits, sh.sStart * numRows);
+    ruinedCount += sh.ruinedCount;
+  }
+  return {
+    sStart: 0,
+    sEnd: S,
+    finalProfits,
+    pathMatrix,
+    maxDrawdowns,
+    runningMins,
+    longestBreakevens,
+    longestCashless,
+    recoveryLengths,
+    rowProfits,
+    ruinedCount,
+  };
 }

@@ -45,11 +45,22 @@ export function DecompositionChart({ rows }: Props) {
                 >
                   {money(r.mean)}
                 </span>
-                <span className="text-[color:var(--color-fg-dim)]">
-                  σ {money(r.stdDev)}
+                <span
+                  className="text-[color:var(--color-fg-dim)]"
+                  title="Typical profit swing — one standard deviation on this row's P&L"
+                >
+                  ± {money(r.stdDev)}
                 </span>
                 <span className="text-[color:var(--color-fg-dim)]">
                   {(r.varianceShare * 100).toFixed(0)}% var
+                </span>
+                <span
+                  className="text-[color:var(--color-fg-dim)]"
+                  title="Per-row Kelly f* = mean/variance"
+                >
+                  {r.kellyFraction > 0
+                    ? `f* ${(r.kellyFraction * 100).toFixed(2)}%`
+                    : "f* —"}
                 </span>
               </div>
             </div>

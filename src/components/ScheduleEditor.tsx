@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type {
   FieldVariability,
   PayoutStructureId,
@@ -11,28 +11,145 @@ import { useT } from "@/lib/i18n/LocaleProvider";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 
-const STRUCTURES: { id: PayoutStructureId; label: string }[] = [
-  { id: "mtt-standard", label: "MTT · Standard (15% paid)" },
-  { id: "mtt-flat", label: "MTT · Flat (20% paid)" },
-  { id: "mtt-top-heavy", label: "MTT · Top-heavy (12% paid)" },
-  { id: "mtt-pokerstars", label: "MTT · PokerStars-like" },
-  { id: "mtt-gg", label: "MTT · GGPoker-like" },
-  { id: "mtt-sunday-million", label: "MTT · Sunday Million (real)" },
-  { id: "mtt-gg-bounty", label: "MTT · GG Bounty Builder (real)" },
-  { id: "sng-50-30-20", label: "SNG · 50/30/20" },
-  { id: "sng-65-35", label: "SNG · 65/35" },
-  { id: "winner-takes-all", label: "Winner takes all" },
-  { id: "custom", label: "Custom (paste %)" },
+// Parse "50+5", "50 + 5", "55", "$50+$5" → { buyIn: 50, rake: 0.1 }.
+// Plain single number is treated as net buy-in (prize-pool portion); the
+// caller keeps the existing rake in that case by passing `currentRake`.
+function parseBuyIn(
+  raw: string,
+  currentRake: number,
+): { buyIn: number; rake: number } | null {
+  const cleaned = raw.replace(/[$\s,]/g, "");
+  if (cleaned === "") return null;
+  const plus = cleaned.match(/^([\d.]+)\+([\d.]+)$/);
+  if (plus) {
+    const net = parseFloat(plus[1]);
+    const fee = parseFloat(plus[2]);
+    if (!isFinite(net) || !isFinite(fee) || net <= 0) return null;
+    return { buyIn: net, rake: fee / net };
+  }
+  const single = parseFloat(cleaned);
+  if (!isFinite(single) || single <= 0) return null;
+  return { buyIn: single, rake: currentRake };
+}
+
+function formatBuyIn(buyIn: number, rake: number): string {
+  const fee = buyIn * rake;
+  if (fee < 0.005) return buyIn.toString();
+  return `${round2(buyIn)}+${round2(fee)}`;
+}
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
+// Short labels for the dropdown row (≤ ~22 chars), full descriptions in title.
+const STRUCTURES: {
+  id: PayoutStructureId;
+  short: string;
+  full: string;
+}[] = [
+  { id: "mtt-standard", short: "MTT Standard 15%", full: "MTT · Standard (15% paid)" },
+  { id: "mtt-flat", short: "MTT Flat 20%", full: "MTT · Flat (20% paid)" },
+  { id: "mtt-top-heavy", short: "MTT Top-heavy 12%", full: "MTT · Top-heavy (12% paid)" },
+  { id: "mtt-pokerstars", short: "PokerStars MTT", full: "MTT · PokerStars-like" },
+  { id: "mtt-gg", short: "GGPoker MTT", full: "MTT · GGPoker-like" },
+  { id: "mtt-sunday-million", short: "Sunday Million", full: "MTT · Sunday Million (real)" },
+  { id: "mtt-gg-bounty", short: "GG Bounty Builder", full: "MTT · GG Bounty Builder (real)" },
+  { id: "satellite-ticket", short: "Satellite (10% seats)", full: "Satellite · ticket cliff (10% seats)" },
+  { id: "sng-50-30-20", short: "SNG 50/30/20", full: "SNG · 50/30/20" },
+  { id: "sng-65-35", short: "SNG 65/35", full: "SNG · 65/35" },
+  { id: "winner-takes-all", short: "Winner takes all", full: "Winner takes all" },
+  { id: "custom", short: "Custom %", full: "Custom (paste %)" },
 ];
 
 interface Props {
   schedule: TournamentRow[];
   onChange: (next: TournamentRow[]) => void;
+  disabled?: boolean;
 }
 
-export function ScheduleEditor({ schedule, onChange }: Props) {
+const IMPORT_PLACEHOLDER = `# label, players, buyIn (50+5 or plain), roi%, count, payout
+Bread & butter, 500, 50+5, 20, 1, mtt-standard
+Sunday major, 1500, 200+15, 10, 1, mtt-pokerstars
+Hyper turbo, 200, 20+2, 15, 3, sng-50-30-20`;
+
+const PAYOUT_IDS: PayoutStructureId[] = [
+  "mtt-standard",
+  "mtt-flat",
+  "mtt-top-heavy",
+  "mtt-pokerstars",
+  "mtt-gg",
+  "mtt-sunday-million",
+  "mtt-gg-bounty",
+  "satellite-ticket",
+  "sng-50-30-20",
+  "sng-65-35",
+  "winner-takes-all",
+  "custom",
+];
+
+function parseImportCSV(raw: string): {
+  rows: TournamentRow[];
+  errors: string[];
+} {
+  const rows: TournamentRow[] = [];
+  const errors: string[] = [];
+  const lines = raw.split(/\r?\n/);
+  lines.forEach((line, i) => {
+    const stripped = line.trim();
+    if (!stripped || stripped.startsWith("#")) return;
+    const cells = stripped.split(/\s*,\s*/);
+    if (cells.length < 3) {
+      errors.push(`line ${i + 1}: need at least label, players, buyIn`);
+      return;
+    }
+    const [label, playersStr, buyInStr, roiStr, countStr, payoutStr] = cells;
+    const players = parseInt(playersStr, 10);
+    if (!isFinite(players) || players < 2) {
+      errors.push(`line ${i + 1}: players must be ≥ 2`);
+      return;
+    }
+    const parsed = parseBuyIn(buyInStr ?? "", 0.1);
+    if (!parsed) {
+      errors.push(`line ${i + 1}: bad buy-in "${buyInStr}"`);
+      return;
+    }
+    const roiPct = roiStr ? parseFloat(roiStr) : 0;
+    const count = countStr ? Math.max(1, Math.floor(parseFloat(countStr))) : 1;
+    const payout = (
+      payoutStr && PAYOUT_IDS.includes(payoutStr as PayoutStructureId)
+        ? payoutStr
+        : "mtt-standard"
+    ) as PayoutStructureId;
+    rows.push({
+      id: crypto.randomUUID(),
+      label: label || `Imported ${rows.length + 1}`,
+      players,
+      buyIn: parsed.buyIn,
+      rake: parsed.rake,
+      roi: isFinite(roiPct) ? roiPct / 100 : 0,
+      payoutStructure: payout,
+      count,
+    });
+  });
+  return { rows, errors };
+}
+
+export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
   const t = useT();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
+
+  const applyImport = (text: string, mode: "append" | "replace") => {
+    const { rows, errors } = parseImportCSV(text);
+    setImportErrors(errors);
+    if (rows.length === 0) return;
+    onChange(mode === "replace" ? rows : [...schedule, ...rows]);
+    setImportText("");
+    setImportOpen(false);
+  };
 
   const update = (id: string, patch: Partial<TournamentRow>) => {
     onChange(schedule.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -73,6 +190,10 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
 
   return (
     <Card className="overflow-hidden">
+      <fieldset
+        disabled={disabled}
+        className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
+      >
       <div className="overflow-x-auto">
         <table className="w-full min-w-[960px] text-sm">
           <thead>
@@ -81,7 +202,6 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
               <Th hint={t("help.row.label")}>{t("row.label")}</Th>
               <Th align="right" hint={t("help.row.players")}>{t("row.players")}</Th>
               <Th align="right" hint={t("help.row.buyIn")}>{t("row.buyIn")}</Th>
-              <Th align="right" hint={t("help.row.rake")}>{t("row.rake")}</Th>
               <Th align="right" hint={t("help.row.roi")}>{t("row.roi")}</Th>
               <Th hint={t("help.row.payouts")}>{t("row.payouts")}</Th>
               <Th align="right" hint={t("help.row.count")}>{t("row.count")}</Th>
@@ -94,7 +214,12 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
               const hasAdv =
                 !!r.guarantee ||
                 (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
-                r.payoutStructure === "custom";
+                r.payoutStructure === "custom" ||
+                (r.lateRegMultiplier ?? 1) > 1 ||
+                (r.maxEntries ?? 1) > 1 ||
+                (r.bountyFraction ?? 0) > 0 ||
+                !!r.icmFinalTable ||
+                (r.stakingSoldPct ?? 0) > 0;
               return (
                 <RowGroup key={r.id}>
                   <tr
@@ -137,12 +262,12 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
                         )}
                       </button>
                     </Td>
-                    <Td className="min-w-[12rem]">
+                    <Td className="min-w-[18rem]">
                       <TextInput
                         value={r.label ?? ""}
                         onChange={(v) => update(r.id, { label: v })}
                         placeholder={t("row.unnamed")}
-                        className="w-full min-w-[10rem]"
+                        className="w-full min-w-[16rem]"
                       />
                     </Td>
                     <Td align="right">
@@ -154,17 +279,12 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
                       />
                     </Td>
                     <Td align="right">
-                      <NumInput
-                        value={r.buyIn}
-                        onChange={(v) => update(r.id, { buyIn: v })}
-                        step={1}
-                      />
-                    </Td>
-                    <Td align="right">
-                      <NumInput
-                        value={+(r.rake * 100).toFixed(2)}
-                        onChange={(v) => update(r.id, { rake: v / 100 })}
-                        step={0.5}
+                      <BuyInInput
+                        buyIn={r.buyIn}
+                        rake={r.rake}
+                        onChange={(buyIn, rake) =>
+                          update(r.id, { buyIn, rake })
+                        }
                       />
                     </Td>
                     <Td align="right">
@@ -177,6 +297,10 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
                     <Td>
                       <select
                         value={r.payoutStructure}
+                        title={
+                          STRUCTURES.find((s) => s.id === r.payoutStructure)
+                            ?.full ?? ""
+                        }
                         onChange={(e) => {
                           const next = e.target.value as PayoutStructureId;
                           update(r.id, { payoutStructure: next });
@@ -186,11 +310,11 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
                             setExpanded(ex);
                           }
                         }}
-                        className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+                        className="min-w-[10rem] w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
                       >
                         {STRUCTURES.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.label}
+                          <option key={s.id} value={s.id} title={s.full}>
+                            {s.short}
                           </option>
                         ))}
                       </select>
@@ -231,7 +355,7 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
                   </tr>
                   {isOpen && (
                     <tr className="border-b border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30">
-                      <td colSpan={9} className="px-6 py-4">
+                      <td colSpan={8} className="px-6 py-4">
                         <AdvancedRowPanel
                           row={r}
                           onChange={(patch) => update(r.id, patch)}
@@ -246,17 +370,102 @@ export function ScheduleEditor({ schedule, onChange }: Props) {
         </table>
       </div>
       <div className="border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/40 px-4 py-2.5">
-        <button
-          type="button"
-          onClick={add}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[color:var(--color-fg-muted)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)]"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          {t("row.addRow")}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={add}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[color:var(--color-fg-muted)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)]"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            {t("row.addRow")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setImportOpen((s) => !s)}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[color:var(--color-fg-muted)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)]"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 3v10M8 9l4 4 4-4M5 21h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {t("row.import")}
+          </button>
+        </div>
+        {importOpen && (
+          <div className="mt-3 flex flex-col gap-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+                {t("row.importTitle")}
+              </div>
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".csv,.txt,text/plain"
+                className="hidden"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (f) {
+                    const text = await f.text();
+                    setImportText(text);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => importFileRef.current?.click()}
+                className="rounded border border-[color:var(--color-border)] px-2 py-0.5 text-[10px] hover:border-[color:var(--color-border-strong)]"
+              >
+                {t("row.importFile")}
+              </button>
+            </div>
+            <textarea
+              value={importText}
+              rows={6}
+              placeholder={IMPORT_PLACEHOLDER}
+              onChange={(e) => setImportText(e.target.value)}
+              className="resize-y rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2.5 py-2 font-mono text-[11px] text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
+            />
+            {importErrors.length > 0 && (
+              <ul className="text-[10px] text-[color:var(--color-danger)]">
+                {importErrors.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => applyImport(importText, "append")}
+                disabled={!importText.trim()}
+                className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1 text-[11px] font-medium hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-40"
+              >
+                {t("row.importAppend")}
+              </button>
+              <button
+                type="button"
+                onClick={() => applyImport(importText, "replace")}
+                disabled={!importText.trim()}
+                className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1 text-[11px] font-medium hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-40"
+              >
+                {t("row.importReplace")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setImportOpen(false);
+                  setImportText("");
+                  setImportErrors([]);
+                }}
+                className="ml-auto text-[11px] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+              >
+                {t("row.importCancel")}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+      </fieldset>
     </Card>
   );
 }
@@ -384,6 +593,23 @@ function AdvancedRowPanel({
         )}
       </div>
 
+      {/* Late registration multiplier */}
+      <div className="flex flex-col gap-1.5">
+        <SectionLabel hint={t("row.lateRegHint")}>
+          {t("row.lateReg")}
+        </SectionLabel>
+        <NumInputBox
+          value={row.lateRegMultiplier ?? 1}
+          min={1}
+          step={0.05}
+          onChange={(v) =>
+            onChange({
+              lateRegMultiplier: Math.max(1, Math.min(5, v)),
+            })
+          }
+        />
+      </div>
+
       {/* Custom payouts */}
       {row.payoutStructure === "custom" && (
         <div className="flex flex-col gap-1.5">
@@ -493,6 +719,37 @@ function AdvancedRowPanel({
               />
             </FieldSmall>
           )}
+        </div>
+      </div>
+
+      {/* Staking */}
+      <div className="flex flex-col gap-1.5">
+        <SectionLabel hint={t("row.stakingHint")}>
+          {t("row.staking")}
+        </SectionLabel>
+        <div className="grid grid-cols-2 gap-2">
+          <FieldSmall label={t("row.stakingSold")}>
+            <NumInputBox
+              value={(row.stakingSoldPct ?? 0) * 100}
+              min={0}
+              step={5}
+              onChange={(v) =>
+                onChange({
+                  stakingSoldPct: Math.max(0, Math.min(1, v / 100)),
+                })
+              }
+            />
+          </FieldSmall>
+          <FieldSmall label={t("row.stakingMarkup")}>
+            <NumInputBox
+              value={row.stakingMarkup ?? 1}
+              min={1}
+              step={0.05}
+              onChange={(v) =>
+                onChange({ stakingMarkup: Math.max(1, Math.min(3, v)) })
+              }
+            />
+          </FieldSmall>
         </div>
       </div>
     </div>
@@ -611,6 +868,52 @@ function TextInput({
       className={
         "rounded-md border border-transparent bg-transparent px-2 py-1 text-sm text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-dim)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)] " +
         className
+      }
+    />
+  );
+}
+
+function BuyInInput({
+  buyIn,
+  rake,
+  onChange,
+}: {
+  buyIn: number;
+  rake: number;
+  onChange: (buyIn: number, rake: number) => void;
+}) {
+  const canonical = formatBuyIn(buyIn, rake);
+  const [local, setLocal] = useState(canonical);
+  const [focused, setFocused] = useState(false);
+  if (!focused && local !== canonical) setLocal(canonical);
+  const parsed = parseBuyIn(local, rake);
+  const invalid = local.trim() !== "" && parsed === null;
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={local}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        const p = parseBuyIn(local, rake);
+        if (p) {
+          onChange(p.buyIn, p.rake);
+          setLocal(formatBuyIn(p.buyIn, p.rake));
+        } else {
+          setLocal(canonical);
+        }
+      }}
+      onChange={(e) => {
+        setLocal(e.target.value);
+        const p = parseBuyIn(e.target.value, rake);
+        if (p) onChange(p.buyIn, p.rake);
+      }}
+      placeholder="50+5"
+      title="50+5 = $50 buy-in + $5 rake (or just a number)"
+      className={
+        "w-24 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)] " +
+        (invalid ? "border-[color:var(--color-danger)]/60" : "")
       }
     />
   );

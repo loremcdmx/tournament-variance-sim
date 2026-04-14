@@ -20,60 +20,66 @@
 
 :root,
 :root[data-theme="dark"] {
-  --c-bg: #07090a;
-  --c-bg-elev: #0d1113;
-  --c-bg-elev-2: #12181b;
-  --c-border: #1e2529;
-  --c-border-strong: #2e3940;
-  --c-fg: #f1f5f3;
-  --c-fg-muted: #9ca8a3;
-  --c-fg-dim: #5f6c68;
+  /* FirstFund palette — exact tokens from firstfund.pro. Flat, institutional. */
+  --c-bg: #08070d;
+  --c-bg-elev: #111018;
+  --c-bg-elev-2: #17161f;
+  --c-border: #242230;
+  --c-border-strong: #37344a;
+  --c-fg: #fafafa;
+  --c-fg-muted: #a5a2b0;
+  --c-fg-dim: #605d70;
 
-  /* Playing-card suit palette — full spectrum, not two-color. */
-  --c-spade: #60a5fa;   /* blue — schedule / structure */
-  --c-heart: #f87171;   /* red — verdict / risk / losses */
-  --c-diamond: #fbbf24; /* gold — controls / calibration */
-  --c-club: #34d399;    /* green — results / profit (also default accent) */
+  /* Suit palette — desaturated for structural use; only accent pops. */
+  --c-spade: #8b8d92;
+  --c-heart: #d9684a;
+  --c-diamond: #c8a04a;
+  --c-club: #6a8a6c;
 
-  /* "accent" == club green by default (brand primary). */
-  --c-accent: #10b981;
-  --c-accent-strong: #059669;
-  --c-success: #34d399;
-  --c-danger: #f87171;
+  /* FF yellow as primary accent, purple as secondary. */
+  --c-accent: #ffde51;
+  --c-accent-strong: #e8c53d;
+  --c-accent-2: #491b8a;
+  --c-accent-2-soft: #dad5ed;
+  --c-success: #7dc98a;
+  --c-danger: #ff6b6b;
 
-  /* PrimeDope's color — magenta, maximum contrast against felt-green */
-  --c-rival: #ec4899;
-  --c-rival-strong: #db2777;
+  /* PrimeDope's color — cool steel blue, contrasts against orange. */
+  --c-rival: #4a8bd9;
+  --c-rival-strong: #2c6dbd;
 
-  --c-grid: rgba(96, 165, 250, 0.04);
-  --c-grid-strong: rgba(96, 165, 250, 0.08);
+  --c-grid: rgba(255, 255, 255, 0.025);
+  --c-grid-strong: rgba(255, 255, 255, 0.05);
   color-scheme: dark;
 }
 
 :root[data-theme="light"] {
-  --c-bg: #f8f9f5;
+  /* FF light mode — f5f2f8 cream, purple ink. */
+  --c-bg: #f5f2f8;
   --c-bg-elev: #ffffff;
-  --c-bg-elev-2: #eef1ec;
-  --c-border: #d9ded4;
-  --c-border-strong: #b7bfb0;
-  --c-fg: #0b1210;
-  --c-fg-muted: #3f4c46;
-  --c-fg-dim: #6b7671;
+  --c-bg-elev-2: #ece7f3;
+  --c-border: #d9d4e4;
+  --c-border-strong: #aea7c0;
+  --c-fg: #0c0b12;
+  --c-fg-muted: #3e3a4c;
+  --c-fg-dim: #6e687d;
 
-  --c-spade: #2563eb;
-  --c-heart: #dc2626;
-  --c-diamond: #b45309;
-  --c-club: #047857;
+  --c-spade: #5a5b60;
+  --c-heart: #b54321;
+  --c-diamond: #8a6a1c;
+  --c-club: #3f5f41;
 
-  --c-accent: #047857;
-  --c-accent-strong: #065f46;
-  --c-success: #059669;
-  --c-danger: #dc2626;
-  --c-rival: #be185d;
-  --c-rival-strong: #9d174d;
+  --c-accent: #491b8a;
+  --c-accent-strong: #2e0f5a;
+  --c-accent-2: #ffde51;
+  --c-accent-2-soft: #fff4b8;
+  --c-success: #3f5f41;
+  --c-danger: #b54321;
+  --c-rival: #2c6dbd;
+  --c-rival-strong: #1d4f8c;
 
-  --c-grid: rgba(37, 99, 235, 0.05);
-  --c-grid-strong: rgba(37, 99, 235, 0.09);
+  --c-grid: rgba(0, 0, 0, 0.03);
+  --c-grid-strong: rgba(0, 0, 0, 0.05);
   color-scheme: light;
 }
 
@@ -95,60 +101,23 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Graph-paper ground + four-suit aurora — each suit blooms from a different corner. */
+/* FF-style: flat dark with a single subtle warm bloom from top-left,
+   no grid, no corner auroras. */
 body {
-  background-image:
-    linear-gradient(var(--c-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--c-grid) 1px, transparent 1px),
-    radial-gradient(
-      ellipse 55% 45% at 0% 0%,
-      rgba(96, 165, 250, 0.13),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 55% 45% at 100% 0%,
-      rgba(248, 113, 113, 0.10),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 60% 50% at 85% 60%,
-      rgba(251, 191, 36, 0.09),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 70% 55% at 15% 75%,
-      rgba(52, 211, 153, 0.11),
-      transparent 65%
-    );
-  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-image: radial-gradient(
+    ellipse 70% 55% at 10% -10%,
+    rgba(255, 222, 81, 0.05),
+    transparent 60%
+  );
   background-attachment: fixed;
 }
 
 :root[data-theme="light"] body {
-  background-image:
-    linear-gradient(var(--c-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--c-grid) 1px, transparent 1px),
-    radial-gradient(
-      ellipse 55% 45% at 0% 0%,
-      rgba(37, 99, 235, 0.08),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 55% 45% at 100% 0%,
-      rgba(220, 38, 38, 0.06),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 60% 50% at 85% 60%,
-      rgba(180, 83, 9, 0.06),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 70% 55% at 15% 75%,
-      rgba(4, 120, 87, 0.07),
-      transparent 65%
-    );
-  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-image: radial-gradient(
+    ellipse 70% 55% at 10% -10%,
+    rgba(73, 27, 138, 0.05),
+    transparent 60%
+  );
 }
 
 /* Corner brackets — CAD / terminal decoration for hero cards and stats. */

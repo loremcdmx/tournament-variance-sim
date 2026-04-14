@@ -6,6 +6,7 @@ export type PayoutStructureId =
   | "mtt-gg"
   | "mtt-sunday-million"
   | "mtt-gg-bounty"
+  | "satellite-ticket"
   | "sng-50-30-20"
   | "sng-65-35"
   | "winner-takes-all"
@@ -15,6 +16,7 @@ export type FinishModelId =
   | "power-law"
   | "linear-skill"
   | "stretched-exp"
+  | "plackett-luce"
   | "uniform"
   | "empirical";
 
@@ -44,6 +46,15 @@ export interface TournamentRow {
   /** Nominal field size; used as midpoint when variability = uniform. */
   players: number;
   fieldVariability?: FieldVariability;
+  /**
+   * Late-registration growth factor. When > 1, the real field at reg-close
+   * is `players × lateRegMultiplier` — more entries than were present when
+   * you sat down, scaling prize pool and paid seats but keeping your own
+   * finish-position distribution shape. Captures the "late-reg nightmare"
+   * dynamic: more dead-money, but also a wider field you must navigate.
+   * Defaults to 1 (no late reg). PrimeDope cannot model this at all.
+   */
+  lateRegMultiplier?: number;
 
   /** Base entry fee paid into the prize pool. */
   buyIn: number;
@@ -92,6 +103,17 @@ export interface TournamentRow {
   bountyFraction?: number;
 
   /**
+   * Progressive KO (PKO) flag. When true, bounty on each player's head
+   * grows as they eliminate opponents (classic PKO: half of victim's
+   * head goes to the eliminator's cash, half inflates their own head).
+   * The engine computes weights from an accumulating-head recurrence so
+   * deep finishers — especially the winner — capture disproportionately
+   * more bounty EV than a flat-bounty model predicts. Defaults to false
+   * (flat-bounty KO).
+   */
+  progressiveKO?: boolean;
+
+  /**
    * ICM final table flag. When true, the top `icmFinalTableSize` places
    * (default 9) have their raw $-payouts re-weighted through a
    * Malmuth-Harville ICM approximation before the finish sampler uses
@@ -101,6 +123,18 @@ export interface TournamentRow {
    */
   icmFinalTable?: boolean;
   icmFinalTableSize?: number;
+
+  /**
+   * Staking — share of action sold to a backer, in [0, 1]. Defaults to 0
+   * (play 100% of yourself). The ROI calibration is interpreted as the
+   * *underlying* player ROI before staking; the staking transform then
+   * rescales the per-slot P&L stream:
+   *   player_pnl = (1 − sold) × prize − cost × (1 − sold × markup)
+   * Markup ≥ 1 is the multiplier backers pay per unit of stake (1 = no
+   * markup, 1.2 = 20 % markup above face value).
+   */
+  stakingSoldPct?: number;
+  stakingMarkup?: number;
 }
 
 /**
@@ -141,6 +175,66 @@ export interface SimulationInput {
    * player than you think.
    */
   roiStdErr?: number;
+
+  /**
+   * Per-tournament ROI shock σ (in ROI fraction units). Each tournament gets
+   * an independent Normal(0, σ) draw added to the effective ROI. Models
+   * "the field at this specific tournament happened to be soft/tough".
+   * Uncorrelated noise — averages out as 1/√n with volume. Defaults to 0.
+   */
+  roiShockPerTourney?: number;
+  /**
+   * Per-session ROI shock σ. One Normal(0, σ) draw per *schedule pass* (one
+   * pass = one play of the full schedule), added to every tournament in
+   * that pass. Models "today the field is fishier than usual" or "today
+   * I'm in form / off form". Correlated within a session, independent
+   * across sessions. Defaults to 0.
+   */
+  roiShockPerSession?: number;
+  /**
+   * Slow ROI drift σ (long-run). An AR(1) process advanced once per
+   * schedule pass: drift_t = ρ · drift_{t−1} + Normal(0, σ · √(1−ρ²)),
+   * with ρ defaulting to 0.95 (≈20-session memory). Models meta shifts,
+   * roster turnover, seasonality. Defaults to 0.
+   */
+  roiDriftSigma?: number;
+  /** AR(1) persistence for roiDriftSigma. Defaults to 0.95 if unset. */
+  roiDriftRho?: number;
+
+  // -------- TILT mechanics — two flavors, can be used together ----------
+
+  /**
+   * FAST tilt — symmetric, immediate, smooth. ROI is shifted continuously
+   * by `−tiltFastGain · tanh(currentDrawdown / tiltFastScale)`. Always-on
+   * once gain ≠ 0; reacts within tens of tournaments. Use for nervous
+   * grinders whose play degrades the second they go down.
+   *
+   *  - tiltFastGain  ∈ [−1, 1]: max ROI shift at saturation (tanh=1).
+   *      −0.3 = lose 30 pp of ROI at deep drawdown (typical tilter).
+   *      +0.2 = play sharper when down (rare, focus types).
+   *  - tiltFastScale (in profit $): drawdown depth at which tanh ≈ 0.76.
+   *      Smaller = more sensitive. Defaults to 100 buy-ins-equivalent.
+   */
+  tiltFastGain?: number;
+  tiltFastScale?: number;
+
+  /**
+   * SLOW tilt — state-machine with hysteresis. Player sits in `normal`
+   * until they spend `tiltSlowMinDuration` tournaments straight in a
+   * drawdown deeper than `tiltSlowThreshold` (entry → `down`) or in
+   * an upswing higher than the same threshold (entry → `up`). While
+   * in `down`, ROI is shifted by `−tiltSlowGain`; while in `up`, by
+   * `+tiltSlowGain`. State exits ONLY after recovering
+   * `tiltSlowRecoveryFrac` of the original swing. Models the "I need
+   * to claw back half before I calm down" reality of long streaks.
+   *
+   * Defaults when unset: gain=0 (off), threshold=50 buy-ins,
+   * minDuration=500 tournaments, recoveryFrac=0.5.
+   */
+  tiltSlowGain?: number;
+  tiltSlowThreshold?: number;
+  tiltSlowMinDuration?: number;
+  tiltSlowRecoveryFrac?: number;
 }
 
 export interface RowDecomposition {
@@ -153,6 +247,18 @@ export interface RowDecomposition {
   varianceShare: number;
   tournamentsPerSample: number;
   totalBuyIn: number;
+  /**
+   * Per-row Kelly fraction f* = mean / variance (continuous Kelly limit),
+   * evaluated on the row's *slot* profit distribution. Zero or negative
+   * means this row is not a Kelly bet. Dimensionless.
+   */
+  kellyFraction: number;
+  /**
+   * Per-row Kelly bankroll: minimum roll at which playing *just this row*
+   * at its schedule frequency is the Kelly-optimal bet size. `totalBuyIn /
+   * kellyFraction` when kellyFraction > 0, else Infinity.
+   */
+  kellyBankroll: number;
 }
 
 export interface SimulationProgress {
@@ -252,6 +358,29 @@ export interface SimulationResult {
     riskOfRuin: number;
     maxDrawdownMean: number;
     maxDrawdownWorst: number;
+    /**
+     * Tail quantiles of the max drawdown across samples. "Typical" (median)
+     * vs 5% / 1% worst — direct answer to "how bad can a bad stretch get".
+     */
+    maxDrawdownMedian: number;
+    maxDrawdownP95: number;
+    maxDrawdownP99: number;
+    /**
+     * Recovery length after the deepest drawdown per sample — number of
+     * tournaments from the trough of maxDD back to the pre-drawdown peak.
+     * `recoveryUnrecoveredShare` is the fraction of samples that never
+     * recovered by end-of-schedule (infinite recovery).
+     */
+    recoveryMedian: number;
+    recoveryP90: number;
+    recoveryUnrecoveredShare: number;
+    /**
+     * Longest run of consecutive no-cash tournaments inside a sample.
+     * `longestCashlessMean` is the average across samples,
+     * `longestCashlessWorst` is the max.
+     */
+    longestCashlessMean: number;
+    longestCashlessWorst: number;
     longestBreakevenMean: number;
 
     /** Value at Risk (loss) at 95 % and 99 % — positive numbers */
@@ -316,4 +445,9 @@ export interface SimulationResult {
   };
 }
 
+/**
+ * @deprecated — the worker protocol moved to shard-based messages in
+ * `worker.ts` (ShardRequest / ShardResultMsg / ShardProgressMsg). Kept
+ * here as an unused alias only to avoid breaking any external imports.
+ */
 export type WorkerMessage = SimulationProgress | SimulationResult;

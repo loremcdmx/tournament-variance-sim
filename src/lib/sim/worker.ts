@@ -1,49 +1,105 @@
 /// <reference lib="webworker" />
-import { runSimulation } from "./engine";
-import type {
-  SimulationInput,
-  SimulationResult,
-  WorkerMessage,
-} from "./types";
+import { compileSchedule, makeCheckpointGrid, simulateShard } from "./engine";
+import type { CalibrationMode, SimulationInput } from "./types";
+import type { RawShard } from "./engine";
 
 declare const self: DedicatedWorkerGlobalScope;
 
-function collectTransfers(
-  result: SimulationResult,
-  transfers: Transferable[],
-): void {
-  transfers.push(result.finalProfits.buffer);
-  for (const p of result.samplePaths.paths) transfers.push(p.buffer);
-  transfers.push(
-    result.samplePaths.best.buffer,
-    result.samplePaths.worst.buffer,
-    result.envelopes.mean.buffer,
-    result.envelopes.p15.buffer,
-    result.envelopes.p85.buffer,
-    result.envelopes.p025.buffer,
-    result.envelopes.p975.buffer,
-    result.envelopes.p0015.buffer,
-    result.envelopes.p9985.buffer,
-  );
-  if (result.comparison) collectTransfers(result.comparison, transfers);
+/**
+ * Shard request — main thread asks this worker to run [sStart, sEnd)
+ * for a given SimulationInput + calibration mode. Workers are stateless
+ * between requests; the pool is owned by the main thread.
+ */
+export interface ShardRequest {
+  type: "shard";
+  jobId: number;
+  shardId: number;
+  input: SimulationInput;
+  calibrationMode: CalibrationMode;
+  sStart: number;
+  sEnd: number;
 }
 
-self.onmessage = (e: MessageEvent<SimulationInput>) => {
+export interface ShardProgressMsg {
+  type: "shard-progress";
+  jobId: number;
+  shardId: number;
+  done: number;
+  total: number;
+}
+
+export interface ShardResultMsg {
+  type: "shard-result";
+  jobId: number;
+  shardId: number;
+  shard: RawShard;
+  grid: { K: number; checkpointIdx: Int32Array };
+}
+
+export interface ShardErrorMsg {
+  type: "shard-error";
+  jobId: number;
+  shardId: number;
+  message: string;
+}
+
+function collectShardTransfers(shard: RawShard): Transferable[] {
+  return [
+    shard.finalProfits.buffer,
+    shard.pathMatrix.buffer,
+    shard.maxDrawdowns.buffer,
+    shard.runningMins.buffer,
+    shard.longestBreakevens.buffer,
+    shard.longestCashless.buffer,
+    shard.recoveryLengths.buffer,
+    shard.rowProfits.buffer,
+  ];
+}
+
+self.onmessage = (e: MessageEvent<ShardRequest>) => {
+  const req = e.data;
+  if (req.type !== "shard") return;
+  const { jobId, shardId, input, calibrationMode, sStart, sEnd } = req;
   try {
-    const result = runSimulation(e.data, (done, total) => {
-      const msg: WorkerMessage = { type: "progress", done, total };
-      self.postMessage(msg);
-    });
+    const compiled = compileSchedule({ ...input, calibrationMode }, calibrationMode);
+    const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
 
-    const transfers: Transferable[] = [];
-    collectTransfers(result, transfers);
+    const shard = simulateShard(
+      { ...input, calibrationMode },
+      compiled,
+      sStart,
+      sEnd,
+      grid,
+      (done, total) => {
+        const msg: ShardProgressMsg = {
+          type: "shard-progress",
+          jobId,
+          shardId,
+          done,
+          total,
+        };
+        self.postMessage(msg);
+      },
+    );
 
+    const result: ShardResultMsg = {
+      type: "shard-result",
+      jobId,
+      shardId,
+      shard,
+      grid: { K: grid.K, checkpointIdx: grid.checkpointIdx },
+    };
+    const transfers = collectShardTransfers(shard);
+    transfers.push(grid.checkpointIdx.buffer);
     self.postMessage(result, transfers);
   } catch (err) {
-    self.postMessage({
-      type: "error",
+    const msg: ShardErrorMsg = {
+      type: "shard-error",
+      jobId,
+      shardId,
       message: err instanceof Error ? err.message : String(err),
-    });
+    };
+    self.postMessage(msg);
   }
 };
 

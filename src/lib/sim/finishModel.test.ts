@@ -15,6 +15,7 @@ const MODELS: FinishModelConfig[] = [
   { id: "power-law" },
   { id: "linear-skill" },
   { id: "stretched-exp", beta: 1 },
+  { id: "plackett-luce" },
   { id: "uniform" },
 ];
 
@@ -37,6 +38,20 @@ describe("buildFinishPMF", () => {
       expect(pmf[i]).toBeLessThanOrEqual(pmf[i - 1]);
     }
   });
+
+  it("plackett-luce with alpha=0 (s=1) is uniform", () => {
+    const pmf = buildFinishPMF(100, { id: "plackett-luce" }, 0);
+    for (const v of pmf) expect(v).toBeCloseTo(0.01, 10);
+  });
+
+  it("plackett-luce is monotonic descending for alpha>0 (skill>1)", () => {
+    const pmf = buildFinishPMF(50, { id: "plackett-luce" }, 1.5);
+    for (let i = 1; i < pmf.length; i++) {
+      expect(pmf[i]).toBeLessThanOrEqual(pmf[i - 1]);
+    }
+    // Top place gets more mass than uniform baseline
+    expect(pmf[0]).toBeGreaterThan(1 / 50);
+  });
 });
 
 describe("expectedWinnings × calibrateAlpha", () => {
@@ -49,12 +64,12 @@ describe("expectedWinnings × calibrateAlpha", () => {
     // capped below ~0.7 on typical MTT payouts. We only test it on the
     // reachable range.
     const cases: { targetROI: number; models: string[] }[] = [
-      { targetROI: -0.3, models: ["power-law", "stretched-exp"] },
-      { targetROI: -0.1, models: ["power-law", "linear-skill", "stretched-exp"] },
-      { targetROI: 0, models: ["power-law", "linear-skill", "stretched-exp"] },
-      { targetROI: 0.1, models: ["power-law", "linear-skill", "stretched-exp"] },
-      { targetROI: 0.5, models: ["power-law", "stretched-exp"] },
-      { targetROI: 1.0, models: ["power-law", "stretched-exp"] },
+      { targetROI: -0.3, models: ["power-law", "stretched-exp", "plackett-luce"] },
+      { targetROI: -0.1, models: ["power-law", "linear-skill", "stretched-exp", "plackett-luce"] },
+      { targetROI: 0, models: ["power-law", "linear-skill", "stretched-exp", "plackett-luce"] },
+      { targetROI: 0.1, models: ["power-law", "linear-skill", "stretched-exp", "plackett-luce"] },
+      { targetROI: 0.5, models: ["power-law", "stretched-exp", "plackett-luce"] },
+      { targetROI: 1.0, models: ["power-law", "stretched-exp", "plackett-luce"] },
     ];
     for (const c of cases) {
       for (const m of MODELS) {

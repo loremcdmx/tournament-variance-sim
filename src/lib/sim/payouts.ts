@@ -41,6 +41,17 @@ export function getPayoutTable(
     case "mtt-gg-bounty":
       return ggBountyTable(players);
 
+    case "satellite-ticket": {
+      // Ticket satellite — every "paid" place wins the same ticket, no
+      // graduated prize. Ordering above the seat line is irrelevant to EV,
+      // which flattens upside variance hard (you can't "bink first" —
+      // first and min-cash are identical outcomes). We default to the
+      // top 10% of the field as seats; use the custom-payouts field to
+      // override with an exact seat count.
+      const seats = Math.max(1, Math.floor(players * 0.1));
+      return new Array(seats).fill(1 / seats);
+    }
+
     case "custom":
       if (custom && custom.length > 0) return normalize(custom.slice());
       return normalizedGeometric(Math.max(1, Math.floor(players * 0.15)), 1.35);

@@ -59,6 +59,53 @@ export function loadFromUrlHash(): PersistedState | null {
   return decodeState(hash);
 }
 
+// User-defined presets — saved schedules + controls, named by the user.
+export interface UserPreset {
+  id: string;
+  name: string;
+  createdAt: number;
+  state: PersistedState;
+}
+
+const PRESETS_KEY = "tvs:user-presets";
+
+export function loadUserPresets(): UserPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as UserPreset[];
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveUserPresets(presets: UserPreset[]) {
+  try {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+  } catch {
+    // ignore quota
+  }
+}
+
+export function addUserPreset(name: string, state: PersistedState): UserPreset {
+  const preset: UserPreset = {
+    id: `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    name: name.trim() || "Untitled",
+    createdAt: Date.now(),
+    state,
+  };
+  const all = loadUserPresets();
+  all.push(preset);
+  saveUserPresets(all);
+  return preset;
+}
+
+export function removeUserPreset(id: string) {
+  saveUserPresets(loadUserPresets().filter((p) => p.id !== id));
+}
+
 export function buildShareUrl(state: PersistedState): string {
   if (typeof window === "undefined") return "";
   const enc = encodeState(state);

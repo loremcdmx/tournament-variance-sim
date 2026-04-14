@@ -10,6 +10,7 @@ const STRUCTURES: PayoutStructureId[] = [
   "mtt-gg",
   "mtt-sunday-million",
   "mtt-gg-bounty",
+  "satellite-ticket",
   "sng-50-30-20",
   "sng-65-35",
   "winner-takes-all",
@@ -33,6 +34,14 @@ describe("payout tables", () => {
     const topH = getPayoutTable("mtt-top-heavy", 500)[0];
     const flat = getPayoutTable("mtt-flat", 500)[0];
     expect(topH).toBeGreaterThan(flat);
+  });
+
+  it("satellite-ticket pays every seat equally", () => {
+    const table = getPayoutTable("satellite-ticket", 500);
+    expect(table.length).toBe(50); // 10% of 500
+    for (let i = 1; i < table.length; i++) {
+      expect(table[i]).toBeCloseTo(table[0], 12);
+    }
   });
 });
 

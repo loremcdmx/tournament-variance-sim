@@ -74,6 +74,38 @@ export function buildFinishPMF(
       for (let i = 0; i < N; i++) pmf[i] /= s;
       return pmf;
     }
+    case "plackett-luce": {
+      // Plackett-Luce with one skilled player (skill s ≥ 0) against N−1
+      // identical baseline opponents (skill 1). The CDF of the skilled
+      // player's finish rank k is 1 − Π_{j=1..k}(N−j)/(N−j+s), yielding
+      //
+      //   P(rank = k) = tail(k−1) − tail(k), tail(k) = Π (N−j)/(N−j+s)
+      //
+      // For s = 1 the distribution is uniform; as s → ∞ all mass collapses
+      // to rank 1. It's the standard ranking model from psychometrics /
+      // sports ranking literature (Plackett 1975, Luce 1959) and gives a
+      // cleaner theoretical grounding than the ad-hoc i^−α power law.
+      //
+      // We reparametrize α → s = exp(α) so α ∈ ℝ is monotone increasing
+      // in skill, α = 0 ↔ uniform, and the existing α binary-search works
+      // without changing its search bounds.
+      const s = Math.max(1e-6, Math.exp(alpha));
+      let tail = 1;
+      let acc = 0;
+      for (let k = 1; k <= N; k++) {
+        const denom = N - k + s;
+        const newTail = denom > 0 ? tail * ((N - k) / denom) : 0;
+        const p = tail - newTail;
+        pmf[k - 1] = p;
+        acc += p;
+        tail = newTail;
+      }
+      // Guard against cumulative numerical drift on huge N.
+      if (acc > 0 && Math.abs(acc - 1) > 1e-9) {
+        for (let i = 0; i < N; i++) pmf[i] /= acc;
+      }
+      return pmf;
+    }
     case "power-law":
     default: {
       let s = 0;

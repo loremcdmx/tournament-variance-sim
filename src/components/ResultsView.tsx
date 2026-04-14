@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import type { SimulationResult } from "@/lib/sim/types";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useState } from "react";
+import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
+import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { UplotChart } from "./charts/UplotChart";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
@@ -16,6 +17,8 @@ interface Props {
   result: SimulationResult;
   compareResult?: SimulationResult | null;
   bankroll?: number;
+  schedule?: TournamentRow[];
+  scheduleRepeats?: number;
 }
 
 function fmt(template: string, vars: Record<string, string>): string {
@@ -159,7 +162,13 @@ function unionYRange(
   return { min: lo - pad, max: hi + pad };
 }
 
-export function ResultsView({ result, compareResult, bankroll = 0 }: Props) {
+export function ResultsView({
+  result,
+  compareResult,
+  bankroll = 0,
+  schedule,
+  scheduleRepeats,
+}: Props) {
   const t = useT();
 
   const pdChart = result.comparison;
@@ -216,6 +225,14 @@ export function ResultsView({ result, compareResult, bankroll = 0 }: Props) {
               label={t("pd.theirs")}
               hueDot="#f472b6"
               caption={t("chart.trajectory.theirs.cap")}
+              action={
+                schedule && scheduleRepeats ? (
+                  <PrimedopeReproduceButton
+                    schedule={schedule}
+                    scheduleRepeats={scheduleRepeats}
+                  />
+                ) : null
+              }
             >
               <UplotChart
                 data={secondary.data}
@@ -339,6 +356,23 @@ export function ResultsView({ result, compareResult, bankroll = 0 }: Props) {
           label={t("stat.avgMaxDD")}
           value={money(s.maxDrawdownMean)}
         />
+        <MiniStat
+          suit="heart"
+          label={t("stat.ddMedian")}
+          value={money(s.maxDrawdownMedian)}
+        />
+        <MiniStat
+          suit="heart"
+          label={t("stat.ddP95")}
+          value={money(s.maxDrawdownP95)}
+          tone="neg"
+        />
+        <MiniStat
+          suit="heart"
+          label={t("stat.ddP99")}
+          value={money(s.maxDrawdownP99)}
+          tone="neg"
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
@@ -414,6 +448,45 @@ export function ResultsView({ result, compareResult, bankroll = 0 }: Props) {
             bankroll > 0 ? (s.logGrowthRate * 100).toFixed(3) + "%" : "—"
           }
           tone={s.logGrowthRate > 0 ? "pos" : s.logGrowthRate < 0 ? "neg" : undefined}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <MiniStat
+          suit="diamond"
+          label={t("stat.recoveryMedian")}
+          value={
+            Number.isFinite(s.recoveryMedian)
+              ? `${Math.round(s.recoveryMedian)}t`
+              : "—"
+          }
+        />
+        <MiniStat
+          suit="heart"
+          label={t("stat.recoveryP90")}
+          value={
+            Number.isFinite(s.recoveryP90)
+              ? `${Math.round(s.recoveryP90)}t`
+              : "—"
+          }
+          tone="neg"
+        />
+        <MiniStat
+          suit="heart"
+          label={t("stat.recoveryUnrecovered")}
+          value={pct(s.recoveryUnrecoveredShare)}
+          tone={s.recoveryUnrecoveredShare > 0.05 ? "neg" : undefined}
+        />
+        <MiniStat
+          suit="diamond"
+          label={t("stat.cashlessMean")}
+          value={`${s.longestCashlessMean.toFixed(1)}t`}
+        />
+        <MiniStat
+          suit="heart"
+          label={t("stat.cashlessWorst")}
+          value={`${s.longestCashlessWorst}t`}
+          tone="neg"
         />
       </div>
 
@@ -532,11 +605,13 @@ function ChartPane({
   hueDot,
   caption,
   children,
+  action,
 }: {
   label: string;
   hueDot: string;
   caption: string;
   children: React.ReactNode;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30 p-3">
@@ -548,12 +623,111 @@ function ChartPane({
         <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
           {label}
         </span>
+        {action && <div className="ml-auto">{action}</div>}
       </div>
       {children}
       <div className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
         {caption}
       </div>
     </div>
+  );
+}
+
+function buildPrimedopeCheatSheet(
+  schedule: TournamentRow[],
+  scheduleRepeats: number,
+  locale: "en" | "ru",
+): string {
+  const r = schedule[0];
+  const totalTourneys = Math.round(
+    schedule.reduce((acc, row) => acc + row.count, 0) * scheduleRepeats,
+  );
+  const paidPct =
+    r.payoutStructure === "satellite-ticket"
+      ? 10
+      : r.payoutStructure === "mtt-flat"
+      ? 20
+      : r.payoutStructure === "mtt-top-heavy"
+      ? 12
+      : r.payoutStructure === "mtt-gg"
+      ? 18
+      : r.payoutStructure === "mtt-sunday-million"
+      ? 13.8
+      : 15;
+  const lines =
+    locale === "ru"
+      ? [
+          `# Введи в PrimeDope вручную:`,
+          `Number of tournaments: ${totalTourneys}`,
+          `Buy-in: $${r.buyIn}`,
+          `Rake: ${(r.rake * 100).toFixed(1)}%`,
+          `Field size: ${r.players}`,
+          `ROI: ${(r.roi * 100).toFixed(1)}%`,
+          `Places paid: ~${paidPct}% поля`,
+          ``,
+          schedule.length > 1
+            ? `⚠ В расписании ${schedule.length} строк — PrimeDope умеет только одну. Скопированы параметры первой строки (${r.label ?? r.id}).`
+            : ``,
+        ]
+      : [
+          `# Paste into PrimeDope manually:`,
+          `Number of tournaments: ${totalTourneys}`,
+          `Buy-in: $${r.buyIn}`,
+          `Rake: ${(r.rake * 100).toFixed(1)}%`,
+          `Field size: ${r.players}`,
+          `ROI: ${(r.roi * 100).toFixed(1)}%`,
+          `Places paid: ~${paidPct}% of field`,
+          ``,
+          schedule.length > 1
+            ? `⚠ Your schedule has ${schedule.length} rows — PrimeDope only handles one. The first row's values were copied (${r.label ?? r.id}).`
+            : ``,
+        ];
+  return lines.filter(Boolean).join("\n");
+}
+
+function PrimedopeReproduceButton({
+  schedule,
+  scheduleRepeats,
+}: {
+  schedule: TournamentRow[];
+  scheduleRepeats: number;
+}) {
+  const t = useT();
+  const { locale } = useLocale();
+  const [copied, setCopied] = useState(false);
+  const handleClick = async () => {
+    const cheat = buildPrimedopeCheatSheet(schedule, scheduleRepeats, locale);
+    try {
+      await navigator.clipboard.writeText(cheat);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // ignore — still open the tab
+    }
+    window.open(
+      "https://www.primedope.com/tournament-variance-calculator/",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title={t("pd.reproduce.hint")}
+      className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg)]"
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M14 3h7v7M10 14L21 3M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {copied ? t("pd.reproduce.copied") : t("pd.reproduce.label")}
+    </button>
   );
 }
 
@@ -969,6 +1143,20 @@ function PDVerdict({
             <span>{t("pdv.why3")}</span>
           </li>
         </ul>
+        <div className="mt-3 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 p-3 text-[11.5px] leading-relaxed text-[color:var(--color-fg-muted)]">
+          <span className="mr-1 font-semibold text-[color:var(--color-fg)]">
+            {t("pdv.externalTitle")}
+          </span>
+          {t("pdv.externalBody")}{" "}
+          <a
+            href="https://muchomota.substack.com/p/flaws-in-monte-carlo-simulations"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline decoration-dotted underline-offset-2 hover:text-[color:var(--color-fg)]"
+          >
+            muchomota, Substack 2024
+          </a>
+        </div>
         <div className="mt-3 border-t border-[color:var(--color-heart)]/20 pt-3 text-[12px] font-medium text-[color:var(--color-fg)]">
           {fmt(
             sigmaWorse || ddWorse ? t("pdv.takeaway") : t("pdv.takeawayNeg"),
