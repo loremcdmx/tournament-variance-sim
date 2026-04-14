@@ -389,7 +389,7 @@ export function ControlsPanel({
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="1" />
             </svg>
-            {t("controls.stop")} {Math.round(progress * 100)}%
+            {t("controls.stop")} {Math.min(100, Math.floor(progress * 100))}%
           </button>
         ) : (
           <button
@@ -407,8 +407,8 @@ export function ControlsPanel({
           <div className="flex-1">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
               <div
-                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width]"
-                style={{ width: `${Math.round(progress * 100)}%` }}
+                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300"
+                style={{ width: `${Math.min(100, progress * 100).toFixed(1)}%` }}
               />
             </div>
           </div>

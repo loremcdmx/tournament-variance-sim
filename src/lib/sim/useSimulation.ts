@@ -206,39 +206,50 @@ export function useSimulation() {
             const idx = slotIndexInPass.get(slot.shardId);
             if (idx != null) ctx.shards[idx] = msg.shard;
             remaining--;
-            emitProgress();
             if (remaining === 0) {
+              // Final shard in — push the bar to 100 % unconditionally and
+              // let the browser paint it before the synchronous post-
+              // processing (sort/histograms/quantiles) runs. Two rAFs: the
+              // first queues a style flush, the second fires *after* paint.
               settled = true;
               detach();
-              try {
-                for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
-                  const ctx = ctxs[key];
-                  const merged = mergeShards(
-                    ctx.shards.filter((x): x is RawShard => x !== null),
-                    ctx.plan.input.samples,
-                    ctx.K1,
-                    ctx.plan.input.schedule.length,
-                  );
-                  ctx.result = buildResult(
-                    {
-                      ...ctx.plan.input,
-                      calibrationMode: ctx.plan.calibrationMode,
-                    },
-                    ctx.compiled,
-                    merged,
-                    ctx.plan.calibrationMode,
-                    ctx.grid,
-                  );
-                }
-                const out: Record<PassPlan["key"], SimulationResult> =
-                  {} as never;
-                for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
-                  out[key] = ctxs[key].result!;
-                }
-                resolve(out);
-              } catch (err) {
-                reject(err);
-              }
+              lastEmit = 0;
+              onProgress(1);
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  try {
+                    for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
+                      const ctx = ctxs[key];
+                      const merged = mergeShards(
+                        ctx.shards.filter((x): x is RawShard => x !== null),
+                        ctx.plan.input.samples,
+                        ctx.K1,
+                        ctx.plan.input.schedule.length,
+                      );
+                      ctx.result = buildResult(
+                        {
+                          ...ctx.plan.input,
+                          calibrationMode: ctx.plan.calibrationMode,
+                        },
+                        ctx.compiled,
+                        merged,
+                        ctx.plan.calibrationMode,
+                        ctx.grid,
+                      );
+                    }
+                    const out: Record<PassPlan["key"], SimulationResult> =
+                      {} as never;
+                    for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
+                      out[key] = ctxs[key].result!;
+                    }
+                    resolve(out);
+                  } catch (err) {
+                    reject(err);
+                  }
+                });
+              });
+            } else {
+              emitProgress();
             }
           } else if (msg.type === "shard-error") {
             settled = true;
