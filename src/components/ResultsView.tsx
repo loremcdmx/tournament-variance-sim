@@ -645,9 +645,11 @@ export function ResultsView({
         </Card>
       )}
 
-      <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
-
       <VerdictCard result={result} bankroll={bankroll} />
+
+      <PrimedopeReportCard result={result} />
+
+      <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
 
       {result.comparison && compareMode === "primedope" && (
         <>
@@ -918,6 +920,54 @@ export function ResultsView({
         </Card>
       </div>
 
+      {/* Streak histograms — the grinder's "how bad/long can it get" row */}
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+        <Card className="p-5">
+          <ChartHeader
+            title={t("chart.longestBE")}
+            subtitle={t("chart.longestBE.sub")}
+          />
+          <DistributionChart
+            binEdges={result.longestBreakevenHistogram.binEdges}
+            counts={result.longestBreakevenHistogram.counts}
+            color="#fbbf24"
+          />
+          <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
+            {t("chart.unit.tourneys")}
+          </div>
+        </Card>
+        <Card className="p-5">
+          <ChartHeader
+            title={t("chart.longestCashless")}
+            subtitle={t("chart.longestCashless.sub")}
+          />
+          <DistributionChart
+            binEdges={result.longestCashlessHistogram.binEdges}
+            counts={result.longestCashlessHistogram.counts}
+            color="#f87171"
+          />
+          <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
+            {t("chart.unit.tourneys")}
+          </div>
+        </Card>
+        <Card className="p-5">
+          <ChartHeader
+            title={t("chart.recovery")}
+            subtitle={t("chart.recovery.sub")}
+          />
+          <DistributionChart
+            binEdges={result.recoveryHistogram.binEdges}
+            counts={result.recoveryHistogram.counts}
+            color="#34d399"
+          />
+          <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
+            {fmt(t("chart.recovery.unrecovered"), {
+              pct: pct(s.recoveryUnrecoveredShare),
+            })}
+          </div>
+        </Card>
+      </div>
+
       <Card className="p-5">
         <ChartHeader
           title={t("chart.convergence")}
@@ -1044,6 +1094,152 @@ function ChartHelp({ text }: { text: string }) {
   );
 }
 
+function PrimedopeReportCard({ result }: { result: SimulationResult }) {
+  // PrimeDope-style numeric dump — mirrors the layout of their site so users
+  // can put the two side by side and watch deltas as they tweak settings.
+  // When the run has a comparison twin (binary-ITM), shows both columns.
+  const cols: { label: string; res: SimulationResult; tone: string }[] = [
+    { label: "наша α-калибровка", res: result, tone: "#34d399" },
+  ];
+  if (result.comparison) {
+    cols.push({
+      label: "PrimeDope (binary-ITM)",
+      res: result.comparison,
+      tone: "#f472b6",
+    });
+  }
+
+  const fmt$ = (v: number) =>
+    `${v < 0 ? "-" : ""}$${Math.abs(Math.round(v)).toLocaleString()}`;
+  const fmtPct = (v: number) => `${(v * 100).toFixed(2)}%`;
+
+  const buildRows = (r: SimulationResult) => {
+    const N = r.tournamentsPerSample;
+    const cost = r.totalBuyIn;
+    const meanSim = r.stats.mean;
+    const sdSim = r.stats.stdDev;
+    // Math (analytic) EV from compile-time targets — not affected by MC noise.
+    const evMath = r.expectedProfit;
+    // Math SD from per-sample MC SE has the same expectation as sdSim, so
+    // we report sdSim under both columns; PrimeDope's "math" SD is just the
+    // closed-form binomial-ish estimate, which lines up with our sim within
+    // a few percent at S ≈ 1000+.
+    const ci = (k: number) => ({
+      lo: meanSim - k * sdSim,
+      hi: meanSim + k * sdSim,
+    });
+    const ci70 = ci(1.036); // 1.036σ ≈ 70 %
+    const ci95 = ci(1.96);
+    const ci997 = ci(3);
+    const probLoss = 1 - r.stats.probProfit;
+    return {
+      N,
+      cost,
+      evMath,
+      meanSim,
+      sdSim,
+      roiMath: cost > 0 ? evMath / cost : 0,
+      roiSim: cost > 0 ? meanSim / cost : 0,
+      ci70,
+      ci95,
+      ci997,
+      ror50: r.stats.minBankrollRoR50pct,
+      ror15: r.stats.minBankrollRoR15pct,
+      ror5: r.stats.minBankrollRoR5pct,
+      ror1: r.stats.minBankrollRoR1pct,
+      ror5Gauss: r.stats.minBankrollRoR5pctGaussian,
+      ror1Gauss: r.stats.minBankrollRoR1pctGaussian,
+      probLoss,
+      neverBelow: r.stats.neverBelowZeroFrac,
+    };
+  };
+
+  const rows = cols.map((c) => ({ ...c, data: buildRows(c.res) }));
+
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div className="flex flex-col gap-1">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        {title}
+      </div>
+      <div className="grid grid-cols-1 gap-1 font-mono text-[11px]">{children}</div>
+    </div>
+  );
+  const Line = ({ k, v }: { k: string; v: string }) => (
+    <div className="flex justify-between gap-3">
+      <span className="text-[color:var(--color-fg-dim)]">{k}</span>
+      <span className="tabular-nums text-[color:var(--color-fg)]">{v}</span>
+    </div>
+  );
+
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex items-baseline justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          PrimeDope-style report
+        </div>
+        <div className="text-[10px] text-[color:var(--color-fg-dim)]">
+          формат с сайта PrimeDope — для прямого сравнения
+        </div>
+      </div>
+      <div className={`grid gap-5 ${rows.length === 2 ? "lg:grid-cols-2" : "grid-cols-1"}`}>
+        {rows.map((col) => (
+          <div key={col.label} className="flex flex-col gap-3 rounded-lg border border-[color:var(--color-border)]/50 bg-[color:var(--color-bg-elev-2)]/30 p-3">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ background: col.tone }}
+              />
+              <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
+                {col.label}
+              </span>
+            </div>
+            <Section title="Return on investment, EV & SD">
+              <Line k="Total tournaments" v={col.data.N.toLocaleString()} />
+              <Line k="Sample size" v={col.res.samples.toLocaleString()} />
+              <Line k="Sum buy-ins" v={fmt$(col.data.cost)} />
+              <Line k="EV (mathematically)" v={fmt$(col.data.evMath)} />
+              <Line k="EV (simulated)" v={fmt$(col.data.meanSim)} />
+              <Line k="ROI (mathematically)" v={fmtPct(col.data.roiMath)} />
+              <Line k="ROI (simulated)" v={fmtPct(col.data.roiSim)} />
+              <Line k="SD (simulated)" v={fmt$(col.data.sdSim)} />
+            </Section>
+            <Section title="Confidence Intervals (simulated)">
+              <Line
+                k="70%"
+                v={`${fmt$(col.data.ci70.lo)} – ${fmt$(col.data.ci70.hi)}`}
+              />
+              <Line
+                k="95%"
+                v={`${fmt$(col.data.ci95.lo)} – ${fmt$(col.data.ci95.hi)}`}
+              />
+              <Line
+                k="99.7%"
+                v={`${fmt$(col.data.ci997.lo)} – ${fmt$(col.data.ci997.hi)}`}
+              />
+            </Section>
+            <Section title="Bankroll & risk of ruin">
+              <Line k="RoR 50%" v={fmt$(col.data.ror50)} />
+              <Line k="RoR 15%" v={fmt$(col.data.ror15)} />
+              <Line k="RoR 5%" v={fmt$(col.data.ror5)} />
+              <Line k="RoR 1%" v={fmt$(col.data.ror1)} />
+              <Line k="RoR 5% · Gaussian" v={fmt$(col.data.ror5Gauss)} />
+              <Line k="RoR 1% · Gaussian" v={fmt$(col.data.ror1Gauss)} />
+              <Line
+                k={`Runs that never dipped below 0`}
+                v={`${Math.round(col.data.neverBelow * col.res.samples)} / ${col.res.samples.toLocaleString()}`}
+              />
+              <Line
+                k={`Probability of loss after ${col.data.N.toLocaleString()} tournaments`}
+                v={fmtPct(col.data.probLoss)}
+              />
+            </Section>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function SettingsDumpCard({
   settings,
   schedule,
@@ -1078,7 +1274,6 @@ function SettingsDumpCard({
     ["buyIn", `$${r.buyIn}`],
     ["rake", `${(r.rake * 100).toFixed(1)}%`],
     ["bountyFraction", `${((r.bountyFraction ?? 0) * 100).toFixed(0)}%`],
-    ["progressiveKO", r.progressiveKO ? "yes" : "no"],
     ["payoutStructure", r.payoutStructure],
     ["assumed ROI", `${(r.roi * 100).toFixed(1)}%`],
     ["lateRegMult", `${r.lateRegMultiplier ?? 1}`],
@@ -1356,7 +1551,7 @@ function VerdictCard({
   const lines: { key: string; text: string; tone: "pos" | "neg" | "neutral" }[] =
     [];
 
-  // Expected profit
+  // Line 1 — expected outcome: what this schedule pays on average.
   lines.push({
     key: "ev",
     text: fmt(t(s.mean >= 0 ? "verdict.ev.good" : "verdict.ev.bad"), {
@@ -1366,32 +1561,44 @@ function VerdictCard({
     tone: s.mean >= 0 ? "pos" : "neg",
   });
 
-  // Probability of profit
-  let qKey: "verdict.prob.q.great" | "verdict.prob.q.good" | "verdict.prob.q.meh" | "verdict.prob.q.bad";
-  if (s.probProfit >= 0.8) qKey = "verdict.prob.q.great";
-  else if (s.probProfit >= 0.6) qKey = "verdict.prob.q.good";
-  else if (s.probProfit >= 0.45) qKey = "verdict.prob.q.meh";
-  else qKey = "verdict.prob.q.bad";
+  // Line 2 — upswings: how big the top 10 % of runs end up. 95th percentile
+  // is a realistic "good run" headline, not the lottery winner.
   lines.push({
-    key: "prob",
-    text: fmt(t("verdict.prob"), {
-      prob: pct(s.probProfit),
-      qual: t(qKey),
+    key: "upswing",
+    text: fmt(t("verdict.streak.upswing"), {
+      p95: money(s.p95),
+      best: money(s.max),
     }),
-    tone: s.probProfit >= 0.6 ? "pos" : s.probProfit >= 0.45 ? "neutral" : "neg",
+    tone: "pos",
   });
 
-  // Swing / worst 1% case
+  // Line 3 — downswings: tail drawdown. P95 max-DD is the honest "bad
+  // month" headline, not the average (which hides it under typical noise).
   lines.push({
-    key: "swing",
-    text: fmt(t("verdict.swing"), {
-      dd: money(s.maxDrawdownMean),
-      cvar99: money(s.cvar99),
+    key: "downswing",
+    text: fmt(t("verdict.streak.downswing"), {
+      ddMean: money(s.maxDrawdownMean),
+      ddP95: money(s.maxDrawdownP95),
+      ddBi: s.maxDrawdownBuyIns.toFixed(0),
+    }),
+    tone: s.maxDrawdownP95 > result.totalBuyIn * 0.5 ? "neg" : "neutral",
+  });
+
+  // Line 4 — dry spells: how long the fallow stretches run. Breakeven =
+  // consecutive tourneys with no net profit; cashless = consecutive non-
+  // ITM. Both are the "mental game" numbers a grinder cares about.
+  lines.push({
+    key: "dry",
+    text: fmt(t("verdict.streak.dry"), {
+      be: intFmt(Math.round(s.longestBreakevenMean)),
+      cashless: intFmt(Math.round(s.longestCashlessMean)),
+      cashlessWorst: intFmt(s.longestCashlessWorst),
     }),
     tone: "neutral",
   });
 
-  // Bankroll advice
+  // Line 5 — bankroll survival (only when a bankroll was set). This is
+  // the only line that depends on bankroll being configured.
   if (bankroll > 0) {
     lines.push({
       key: "br-with",
@@ -1401,8 +1608,7 @@ function VerdictCard({
       }),
       tone: s.riskOfRuin > 0.05 ? "neg" : s.riskOfRuin > 0.01 ? "neutral" : "pos",
     });
-  }
-  if (s.minBankrollRoR1pct > 0) {
+  } else if (s.minBankrollRoR1pct > 0) {
     lines.push({
       key: "br-need",
       text: fmt(t("verdict.bankroll.need"), {
@@ -1412,23 +1618,24 @@ function VerdictCard({
     });
   }
 
-  // Trust in ROI estimate
-  lines.push({
-    key: "trust",
-    text: fmt(t("verdict.trust"), {
-      n: intFmt(s.tournamentsFor95ROI),
-    }),
-    tone: "neutral",
-  });
-
-  // vs PrimeDope
-  if (result.comparison) {
-    const itmDiff = ((s.itmRate - result.comparison.stats.itmRate) * 100).toFixed(2);
-    const ddDiff = `${((s.maxDrawdownMean / Math.max(1, result.comparison.stats.maxDrawdownMean) - 1) * 100).toFixed(0)}%`;
+  // Monte Carlo run precision — tells user "is this sample count enough?"
+  // mcRoiErrorPct is 1.96·σ_MC / |mean|. Three buckets:
+  // MC-precision warning (only when the run is too noisy to trust — the
+  // good/meh cases would just clutter the streak verdict).
+  if (s.mcPrecisionScore < 0.5) {
+    const relPct = (v: number) =>
+      Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : "∞";
+    const needSamples = Number.isFinite(s.mcSamplesFor1Pct)
+      ? intFmt(s.mcSamplesFor1Pct)
+      : "∞";
     lines.push({
-      key: "vspd",
-      text: fmt(t("verdict.vsPD"), { itmDiff, ddDiff }),
-      tone: "neutral",
+      key: "mc",
+      text: fmt(t("verdict.precision.bad"), {
+        ci: money(s.mcCi95HalfWidthMean),
+        rel: relPct(s.mcRoiErrorPct),
+        need: needSamples,
+      }),
+      tone: "neg",
     });
   }
 

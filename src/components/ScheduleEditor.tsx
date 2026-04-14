@@ -166,6 +166,24 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
     next.splice(idx + 1, 0, copy);
     onChange(next);
   };
+  const cloneAsReentry = (id: string) => {
+    // A late re-entry is just another entry with lower skill edge (player
+    // arrives short / plays a bigger field). Clone the row, drop ROI by
+    // 5pp, and tag the label. User can tune further if needed.
+    const row = schedule.find((r) => r.id === id);
+    if (!row) return;
+    const baseLabel = row.label || "";
+    const copy = {
+      ...row,
+      id: crypto.randomUUID(),
+      roi: row.roi - 0.05,
+      label: baseLabel ? `${baseLabel} (re-entry)` : "(re-entry)",
+    };
+    const idx = schedule.findIndex((r) => r.id === id);
+    const next = [...schedule];
+    next.splice(idx + 1, 0, copy);
+    onChange(next);
+  };
   const toggleExpand = (id: string) => {
     const next = new Set(expanded);
     if (next.has(id)) next.delete(id);
@@ -218,8 +236,7 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                 (r.lateRegMultiplier ?? 1) > 1 ||
                 (r.maxEntries ?? 1) > 1 ||
                 (r.bountyFraction ?? 0) > 0 ||
-                !!r.icmFinalTable ||
-                (r.stakingSoldPct ?? 0) > 0;
+                !!r.icmFinalTable;
               return (
                 <RowGroup key={r.id}>
                   <tr
@@ -338,6 +355,14 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                             <rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
                             <path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                          </svg>
+                        </IconBtn>
+                        <IconBtn
+                          onClick={() => cloneAsReentry(r.id)}
+                          label={t("row.cloneAsReentry")}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <path d="M4 12a8 8 0 0 1 14-5.3L20 4v6h-6l2.3-2.3A6 6 0 1 0 18 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         </IconBtn>
                         <IconBtn
@@ -722,36 +747,62 @@ function AdvancedRowPanel({
         </div>
       </div>
 
-      {/* Staking */}
+      {/* Sit-through-pay-jumps play style */}
       <div className="flex flex-col gap-1.5">
-        <SectionLabel hint={t("row.stakingHint")}>
-          {t("row.staking")}
+        <SectionLabel hint={t("row.sitThroughHint")}>
+          {t("row.sitThrough")}
         </SectionLabel>
-        <div className="grid grid-cols-2 gap-2">
-          <FieldSmall label={t("row.stakingSold")}>
-            <NumInputBox
-              value={(row.stakingSoldPct ?? 0) * 100}
-              min={0}
-              step={5}
-              onChange={(v) =>
-                onChange({
-                  stakingSoldPct: Math.max(0, Math.min(1, v / 100)),
-                })
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-[color:var(--color-fg-muted)]">
+            <input
+              type="checkbox"
+              checked={row.sitThroughPayJumps ?? false}
+              onChange={(e) =>
+                onChange({ sitThroughPayJumps: e.target.checked })
               }
+              className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
             />
-          </FieldSmall>
-          <FieldSmall label={t("row.stakingMarkup")}>
-            <NumInputBox
-              value={row.stakingMarkup ?? 1}
-              min={1}
-              step={0.05}
-              onChange={(v) =>
-                onChange({ stakingMarkup: Math.max(1, Math.min(3, v)) })
-              }
-            />
-          </FieldSmall>
+            on
+          </label>
+          {row.sitThroughPayJumps && (
+            <FieldSmall label={t("row.sitThroughAgg")}>
+              <NumInputBox
+                value={Math.round((row.payJumpAggression ?? 0.5) * 100)}
+                min={0}
+                step={5}
+                onChange={(v) =>
+                  onChange({
+                    payJumpAggression: Math.max(0, Math.min(1, v / 100)),
+                  })
+                }
+              />
+            </FieldSmall>
+          )}
         </div>
       </div>
+
+      {/* Mystery bounty variance */}
+      {(row.bountyFraction ?? 0) > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <SectionLabel hint={t("row.mysteryHint")}>
+            {t("row.mystery")}
+          </SectionLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldSmall label="σ²">
+              <NumInputBox
+                value={+(row.mysteryBountyVariance ?? 0).toFixed(2)}
+                min={0}
+                step={0.1}
+                onChange={(v) =>
+                  onChange({
+                    mysteryBountyVariance: Math.max(0, Math.min(3, v)),
+                  })
+                }
+              />
+            </FieldSmall>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

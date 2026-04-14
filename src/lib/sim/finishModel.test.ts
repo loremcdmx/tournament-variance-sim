@@ -105,54 +105,63 @@ describe("expectedWinnings × calibrateAlpha", () => {
   });
 });
 
-describe("buildBinaryItmAssets (PrimeDope-compat)", () => {
-  it("pmf is uniform 1/N over the whole field", () => {
-    const { pmf } = buildBinaryItmAssets(500, 75, 12);
-    for (let i = 0; i < 500; i++) expect(pmf[i]).toBeCloseTo(1 / 500, 12);
+describe("buildBinaryItmAssets (PrimeDope two-bin uniform)", () => {
+  const payouts500 = getPayoutTable("mtt-standard", 500);
+  const paid500 = payouts500.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
+  const pool500 = 500 * 50;
+
+  it("pmf has two uniform bins summing to 1", () => {
+    const { pmf } = buildBinaryItmAssets(500, paid500, payouts500, pool500, 55);
+    let sum = 0;
+    for (let i = 0; i < 500; i++) sum += pmf[i];
+    expect(sum).toBeCloseTo(1, 10);
+    // All paid slots equal; all unpaid slots equal.
+    for (let i = 1; i < paid500; i++) expect(pmf[i]).toBeCloseTo(pmf[0], 12);
+    for (let i = paid500 + 1; i < 500; i++)
+      expect(pmf[i]).toBeCloseTo(pmf[paid500], 12);
   });
 
-  it("ITM equals the natural paidCount/N (no skill lift on cashing rate)", () => {
-    const { pmf } = buildBinaryItmAssets(500, 75, 12);
-    expect(itmProbability(pmf, 75)).toBeCloseTo(75 / 500, 10);
-  });
-
-  it("every paid place gets the same flat avgCash, every unpaid gets 0", () => {
-    const { prizeByPlace } = buildBinaryItmAssets(300, 45, 13.2);
-    const expected = (13.2 * 300) / 45;
-    for (let i = 0; i < 45; i++) expect(prizeByPlace[i]).toBeCloseTo(expected, 8);
-    for (let i = 45; i < 300; i++) expect(prizeByPlace[i]).toBe(0);
+  it("uses the real top-heavy payout curve on paid places", () => {
+    const { prizeByPlace } = buildBinaryItmAssets(
+      500,
+      paid500,
+      payouts500,
+      pool500,
+      55,
+    );
+    // 1st >> 2nd >> median paid place >> unpaid zeros.
+    expect(prizeByPlace[0]).toBeGreaterThan(prizeByPlace[1]);
+    expect(prizeByPlace[1]).toBeGreaterThan(prizeByPlace[Math.floor(paid500 / 2)]);
+    expect(prizeByPlace[paid500]).toBe(0);
+    expect(prizeByPlace[499]).toBe(0);
   });
 
   it("realized expected winnings match targetWinnings exactly", () => {
-    for (const target of [5, 11, 12, 13.2, 50, 200]) {
-      const { pmf, prizeByPlace } = buildBinaryItmAssets(500, 75, target);
+    for (const target of [5, 25, 50, 55, 100]) {
+      const { pmf, prizeByPlace } = buildBinaryItmAssets(
+        500,
+        paid500,
+        payouts500,
+        pool500,
+        target,
+      );
       let ew = 0;
       for (let i = 0; i < 500; i++) ew += pmf[i] * prizeByPlace[i];
-      expect(ew).toBeCloseTo(target, 6);
+      expect(ew).toBeCloseTo(target, 4);
     }
   });
 
-  it("collapsing payouts to a flat avgCash strictly reduces per-tourney variance", () => {
-    // Compare variance of per-tourney winnings under binary-itm vs the
-    // top-heavy real payout curve at the same target.
-    const N = 500;
-    const paid = 75;
-    const target = 12;
-    const { pmf, prizeByPlace } = buildBinaryItmAssets(N, paid, target);
-    let varBinary = 0;
-    for (let i = 0; i < N; i++) varBinary += pmf[i] * (prizeByPlace[i] - target) ** 2;
-
-    const realPayouts = new Array(paid).fill(0).map((_, i) => Math.pow(1.45, -i));
-    const sum = realPayouts.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < paid; i++) realPayouts[i] /= sum;
-    const pool = (target * N) / 1; // scale pool so EW equals target under uniform 1/N
-    let varReal = 0;
-    for (let i = 0; i < paid; i++) {
-      const prize = realPayouts[i] * pool;
-      varReal += (1 / N) * (prize - target) ** 2;
-    }
-    varReal += ((N - paid) / N) * target * target;
-    expect(varBinary).toBeLessThan(varReal);
+  it("ITM probability lifts above raw paid/N when target exceeds break-even", () => {
+    // Break-even target = pool/N (mean winnings at l = paid/N).
+    const breakEven = pool500 / 500;
+    const { pmf: itmLift } = buildBinaryItmAssets(
+      500,
+      paid500,
+      payouts500,
+      pool500,
+      breakEven * 1.2,
+    );
+    expect(itmProbability(itmLift, paid500)).toBeGreaterThan(paid500 / 500);
   });
 });
 

@@ -25,12 +25,8 @@ type Status = "idle" | "running" | "done" | "error";
 function poolSize(): number {
   if (typeof navigator === "undefined") return 1;
   const hc = navigator.hardwareConcurrency ?? 4;
-  // Use ~half of logical threads — on SMT systems that's roughly the
-  // physical-core count, which keeps SMT siblings free for the OS, the
-  // browser UI thread, and whatever else the user has running. Avoids
-  // the "fans spin up, Discord stutters" problem of saturating all
-  // cores. 7950X (hc=32) → 16, 5800X (hc=16) → 8, laptop quad
-  // (hc=8) → 4, dual-core fallback → 1.
+  // Use ~half of logical threads — keeps SMT siblings free for the OS,
+  // browser UI thread, and other apps. Avoids saturating cores.
   return Math.max(1, Math.min(16, Math.floor(hc / 2)));
 }
 
@@ -51,6 +47,23 @@ function spawnPool(): Pool {
   return { workers };
 }
 
+interface PassPlan {
+  key: "primary" | "comparison";
+  input: SimulationInput;
+  calibrationMode: CalibrationMode;
+  weight: number; // share of total progress (sums to 1 across passes)
+}
+
+interface ShardSlot {
+  passKey: PassPlan["key"];
+  shardId: number; // unique across both passes
+  workerIdx: number;
+  sStart: number;
+  sEnd: number;
+  total: number;
+  done: number;
+}
+
 export function useSimulation() {
   const poolRef = useRef<Pool | null>(null);
   const jobIdRef = useRef(0);
@@ -69,10 +82,6 @@ export function useSimulation() {
     };
   }, []);
 
-  // Cancel any in-flight run. Bumps jobId so pending promise resolvers
-  // bail out, then terminates and respawns the worker pool — postMessage
-  // has no cooperative cancellation, so the only way to actually stop
-  // the hot loop is to kill the worker. Respawn is cheap (~ms).
   const cancel = useCallback(() => {
     jobIdRef.current++;
     const old = poolRef.current;
@@ -82,137 +91,185 @@ export function useSimulation() {
     setProgress(0);
   }, []);
 
-  // Run a single calibration mode across the worker pool. Resolves with
-  // a fully-aggregated SimulationResult. Progress callback reports a
-  // [0, 1] fraction within this pass — callers normalize across twin
-  // runs themselves.
-  const runPass = useCallback(
-    (
-      input: SimulationInput,
-      calibrationMode: CalibrationMode,
+  // Dispatch ALL shards from ALL passes concurrently to the single pool.
+  // Each worker holds a queue of shards (web workers process postMessage
+  // serially) so total throughput equals one pass's throughput, but progress
+  // updates flow continuously across both passes — no "stall at 50 %".
+  const runJob = useCallback(
+    async (
       jobId: number,
-      onPassProgress: (frac: number) => void,
-    ): Promise<SimulationResult> => {
-      return new Promise((resolve, reject) => {
-        const pool = poolRef.current;
-        if (!pool) {
-          reject(new Error("worker pool not ready"));
-          return;
-        }
-        const W = pool.workers.length;
-        const S = input.samples;
-        const numRows = input.schedule.length;
+      passes: PassPlan[],
+      onProgress: (frac: number) => void,
+    ): Promise<Record<PassPlan["key"], SimulationResult>> => {
+      const pool = poolRef.current;
+      if (!pool) throw new Error("worker pool not ready");
+      const W = pool.workers.length;
 
-        // Compile once on the main thread too — we need the grid and
-        // compiled metadata for mergeShards + buildResult. Workers
-        // re-compile independently; the cost is negligible vs. the hot
-        // loop, and the two compilations are deterministic.
-        let compiled;
-        try {
-          compiled = compileSchedule(
-            { ...input, calibrationMode },
-            calibrationMode,
-          );
-        } catch (err) {
-          reject(err);
-          return;
-        }
+      // Compile + plan shards for each pass on the main thread. Compilation
+      // is cheap (<<1 ms) and we need the grid for mergeShards downstream.
+      type PassCtx = {
+        plan: PassPlan;
+        compiled: ReturnType<typeof compileSchedule>;
+        grid: ReturnType<typeof makeCheckpointGrid>;
+        K1: number;
+        shards: (RawShard | null)[];
+        shardBounds: Array<[number, number]>;
+        result: SimulationResult | null;
+      };
+      const ctxs: Record<PassPlan["key"], PassCtx> = {} as never;
+      const allSlots: ShardSlot[] = [];
+      let nextShardId = 0;
+      for (const plan of passes) {
+        const compiled = compileSchedule(
+          { ...plan.input, calibrationMode: plan.calibrationMode },
+          plan.calibrationMode,
+        );
         const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
-        const K1 = grid.K + 1;
-
-        const effectiveShards = Math.max(1, Math.min(W, S));
-        const shardBounds: Array<[number, number]> = [];
-        for (let i = 0; i < effectiveShards; i++) {
-          const lo = Math.floor((i * S) / effectiveShards);
-          const hi = Math.floor(((i + 1) * S) / effectiveShards);
-          if (hi > lo) shardBounds.push([lo, hi]);
+        const S = plan.input.samples;
+        const shardCount = Math.max(1, Math.min(W, S));
+        const bounds: Array<[number, number]> = [];
+        for (let i = 0; i < shardCount; i++) {
+          const lo = Math.floor((i * S) / shardCount);
+          const hi = Math.floor(((i + 1) * S) / shardCount);
+          if (hi > lo) bounds.push([lo, hi]);
         }
-        const n = shardBounds.length;
+        ctxs[plan.key] = {
+          plan,
+          compiled,
+          grid,
+          K1: grid.K + 1,
+          shards: bounds.map(() => null),
+          shardBounds: bounds,
+          result: null,
+        };
+        for (let i = 0; i < bounds.length; i++) {
+          allSlots.push({
+            passKey: plan.key,
+            shardId: nextShardId++,
+            workerIdx: i % W, // round-robin across pool
+            sStart: bounds[i][0],
+            sEnd: bounds[i][1],
+            total: bounds[i][1] - bounds[i][0],
+            done: 0,
+          });
+        }
+      }
 
-        const totalPerShard: number[] = shardBounds.map(([a, b]) => b - a);
-        const donePerShard: number[] = shardBounds.map(() => 0);
-        const shards: (RawShard | null)[] = shardBounds.map(() => null);
-        let remaining = n;
+      // Cached running totals — O(1) progress emission.
+      let totalAll = 0;
+      let doneAll = 0;
+      for (const s of allSlots) totalAll += s.total;
+
+      // Throttle UI updates: at most ~30 fps.
+      let lastEmit = 0;
+      const emitProgress = () => {
+        const now = performance.now();
+        if (now - lastEmit < 33 && doneAll < totalAll) return;
+        lastEmit = now;
+        onProgress(totalAll > 0 ? doneAll / totalAll : 0);
+      };
+
+      return new Promise((resolve, reject) => {
         let settled = false;
+        let remaining = allSlots.length;
 
-        const emitProgress = () => {
-          let total = 0;
-          let done = 0;
-          for (let i = 0; i < n; i++) {
-            total += totalPerShard[i];
-            done += donePerShard[i];
+        // Map slot → ctx pass + index within that pass for result placement
+        const slotIndexInPass = new Map<number, number>();
+        for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
+          let idx = 0;
+          for (const s of allSlots) {
+            if (s.passKey === key) {
+              slotIndexInPass.set(s.shardId, idx++);
+            }
           }
-          onPassProgress(total > 0 ? done / total : 0);
-        };
+        }
 
-        const handlers: Array<(e: MessageEvent) => void> = new Array(n);
-        const detach = () => {
-          for (let i = 0; i < n; i++) {
-            pool.workers[i].removeEventListener(
-              "message",
-              handlers[i] as EventListener,
-            );
-          }
-        };
-
-        for (let i = 0; i < n; i++) {
-          const worker = pool.workers[i];
-          const handler = (e: MessageEvent) => {
-            if (settled || jobIdRef.current !== jobId) return;
-            const msg = e.data as
-              | ShardProgressMsg
-              | ShardResultMsg
-              | ShardErrorMsg;
-            if (msg.jobId !== jobId || msg.shardId !== i) return;
-            if (msg.type === "shard-progress") {
-              donePerShard[i] = msg.done;
-              emitProgress();
-            } else if (msg.type === "shard-result") {
-              donePerShard[i] = totalPerShard[i];
-              shards[i] = msg.shard;
-              emitProgress();
-              remaining--;
-              if (remaining === 0) {
-                settled = true;
-                detach();
-                try {
-                  const merged = mergeShards(
-                    shards.filter((x): x is RawShard => x !== null),
-                    S,
-                    K1,
-                    numRows,
-                  );
-                  const out = buildResult(
-                    { ...input, calibrationMode },
-                    compiled,
-                    merged,
-                    calibrationMode,
-                    grid,
-                  );
-                  resolve(out);
-                } catch (err) {
-                  reject(err);
-                }
-              }
-            } else if (msg.type === "shard-error") {
+        const handler = (e: MessageEvent) => {
+          if (settled || jobIdRef.current !== jobId) return;
+          const msg = e.data as
+            | ShardProgressMsg
+            | ShardResultMsg
+            | ShardErrorMsg;
+          if (msg.jobId !== jobId) return;
+          const slot = allSlots.find((s) => s.shardId === msg.shardId);
+          if (!slot) return;
+          if (msg.type === "shard-progress") {
+            const delta = msg.done - slot.done;
+            slot.done = msg.done;
+            doneAll += delta;
+            emitProgress();
+          } else if (msg.type === "shard-result") {
+            const delta = slot.total - slot.done;
+            slot.done = slot.total;
+            doneAll += delta;
+            const ctx = ctxs[slot.passKey];
+            const idx = slotIndexInPass.get(slot.shardId);
+            if (idx != null) ctx.shards[idx] = msg.shard;
+            remaining--;
+            emitProgress();
+            if (remaining === 0) {
               settled = true;
               detach();
-              reject(new Error(msg.message));
+              try {
+                for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
+                  const ctx = ctxs[key];
+                  const merged = mergeShards(
+                    ctx.shards.filter((x): x is RawShard => x !== null),
+                    ctx.plan.input.samples,
+                    ctx.K1,
+                    ctx.plan.input.schedule.length,
+                  );
+                  ctx.result = buildResult(
+                    {
+                      ...ctx.plan.input,
+                      calibrationMode: ctx.plan.calibrationMode,
+                    },
+                    ctx.compiled,
+                    merged,
+                    ctx.plan.calibrationMode,
+                    ctx.grid,
+                  );
+                }
+                const out: Record<PassPlan["key"], SimulationResult> =
+                  {} as never;
+                for (const key of Object.keys(ctxs) as PassPlan["key"][]) {
+                  out[key] = ctxs[key].result!;
+                }
+                resolve(out);
+              } catch (err) {
+                reject(err);
+              }
             }
-          };
-          handlers[i] = handler;
-          worker.addEventListener("message", handler as EventListener);
+          } else if (msg.type === "shard-error") {
+            settled = true;
+            detach();
+            reject(new Error(msg.message));
+          }
+        };
 
+        const detach = () => {
+          for (const w of pool.workers) {
+            w.removeEventListener("message", handler as EventListener);
+          }
+        };
+
+        for (const w of pool.workers) {
+          w.addEventListener("message", handler as EventListener);
+        }
+
+        // Dispatch all shards. Workers process postMessage queues serially;
+        // round-robin assignment balances load across the pool.
+        for (const slot of allSlots) {
           const req: ShardRequest = {
             type: "shard",
             jobId,
-            shardId: i,
-            input,
-            calibrationMode,
-            sStart: shardBounds[i][0],
-            sEnd: shardBounds[i][1],
+            shardId: slot.shardId,
+            input: ctxs[slot.passKey].plan.input,
+            calibrationMode: ctxs[slot.passKey].plan.calibrationMode,
+            sStart: slot.sStart,
+            sEnd: slot.sEnd,
           };
-          worker.postMessage(req);
+          pool.workers[slot.workerIdx].postMessage(req);
         }
       });
     },
@@ -234,42 +291,41 @@ export function useSimulation() {
       const twin = !!input.compareWithPrimedope && !input.calibrationMode;
       const mode2 = input.compareMode ?? "random";
 
+      const passes: PassPlan[] = [
+        {
+          key: "primary",
+          input: { ...input, compareWithPrimedope: false },
+          calibrationMode: "alpha",
+          weight: twin ? 0.5 : 1,
+        },
+      ];
+      if (twin) {
+        const secondInput =
+          mode2 === "primedope"
+            ? { ...input, compareWithPrimedope: false }
+            : {
+                ...input,
+                compareWithPrimedope: false,
+                seed:
+                  (((input.seed ^ 0xa5a5a5a5) >>> 0) ^
+                    ((Math.random() * 0xffffffff) >>> 0)) >>>
+                  0,
+              };
+        passes.push({
+          key: "comparison",
+          input: secondInput,
+          calibrationMode:
+            mode2 === "primedope" ? "primedope-binary-itm" : "alpha",
+          weight: 0.5,
+        });
+      }
+
       try {
-        if (twin) {
-          const primary = await runPass(
-            { ...input, compareWithPrimedope: false },
-            "alpha",
-            jobId,
-            (f) => setProgress(f * 0.5),
-          );
-          if (jobIdRef.current !== jobId) return;
-          const secondInput =
-            mode2 === "primedope"
-              ? { ...input, compareWithPrimedope: false }
-              : {
-                  ...input,
-                  compareWithPrimedope: false,
-                  seed:
-                    (((input.seed ^ 0xa5a5a5a5) >>> 0) ^
-                      ((Math.random() * 0xffffffff) >>> 0)) >>>
-                    0,
-                };
-          const secondCalib: CalibrationMode =
-            mode2 === "primedope" ? "primedope-binary-itm" : "alpha";
-          const comparison = await runPass(
-            secondInput,
-            secondCalib,
-            jobId,
-            (f) => setProgress(0.5 + f * 0.5),
-          );
-          if (jobIdRef.current !== jobId) return;
-          setResult({ ...primary, comparison });
-        } else {
-          const mode: CalibrationMode = input.calibrationMode ?? "alpha";
-          const res = await runPass(input, mode, jobId, (f) => setProgress(f));
-          if (jobIdRef.current !== jobId) return;
-          setResult(res);
-        }
+        const out = await runJob(jobId, passes, (f) => setProgress(f));
+        if (jobIdRef.current !== jobId) return;
+        const primary = out.primary;
+        const comparison = twin ? out.comparison : undefined;
+        setResult(comparison ? { ...primary, comparison } : primary);
         setProgress(1);
         setElapsedMs(performance.now() - t0);
         setStatus("done");
@@ -279,7 +335,7 @@ export function useSimulation() {
         setStatus("error");
       }
     },
-    [runPass],
+    [runJob],
   );
 
   return { status, progress, result, error, elapsedMs, run, cancel };

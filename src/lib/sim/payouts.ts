@@ -29,6 +29,9 @@ export function getPayoutTable(
       return normalizedGeometric(paid, 1.6);
     }
 
+    case "mtt-primedope":
+      return primedopeTable(players);
+
     case "mtt-pokerstars":
       return pokerStarsTable(players);
 
@@ -62,6 +65,53 @@ export function getPayoutTable(
       return normalizedGeometric(paid, 1.35);
     }
   }
+}
+
+/**
+ * PrimeDope's "standard MTT" payout curve — the exact `h[8]` table from
+ * their legacy JS (`tmp_legacy.js`). At N = 100 this pays 15 places with
+ * 1st = 25.5 %, arithmetic-ish decay toward flat plateaus 10–12 (2.5 %)
+ * and 13–15 (2 %). Reverse-engineered and documented in
+ * `notes/primedope_sd_theories.md`. Using this curve puts our binary-ITM
+ * σ within ~2 % of PD's reported numbers.
+ *
+ * For fields other than 100p we preserve the curve shape by resampling
+ * the 15-slot reference onto `paid = floor(0.15·N)` places via piecewise
+ * linear interpolation of the cumulative distribution.
+ */
+const PRIMEDOPE_H8_FRACTIONS: readonly number[] = [
+  0.255, 0.16, 0.115, 0.09, 0.075, 0.06, 0.045, 0.035, 0.03, 0.025, 0.025,
+  0.025, 0.02, 0.02, 0.02,
+];
+
+function primedopeTable(players: number): number[] {
+  const paid = Math.max(1, Math.floor(players * 0.15));
+  if (paid === PRIMEDOPE_H8_FRACTIONS.length) {
+    return normalize(PRIMEDOPE_H8_FRACTIONS.slice());
+  }
+  // Resample by cumulative interpolation: treat h[8] as a density on [0,1]
+  // of rank-in-paid-bracket, and integrate it across `paid` equal-width
+  // buckets on the new field.
+  const src = PRIMEDOPE_H8_FRACTIONS;
+  const srcCum: number[] = new Array(src.length + 1);
+  srcCum[0] = 0;
+  for (let i = 0; i < src.length; i++) srcCum[i + 1] = srcCum[i] + src[i];
+  const total = srcCum[src.length];
+  const sampleCum = (t: number): number => {
+    // Map t ∈ [0,1] to a position in the source CDF, linearly interpolated.
+    const x = t * src.length;
+    const lo = Math.floor(x);
+    if (lo >= src.length) return total;
+    const frac = x - lo;
+    return srcCum[lo] + frac * (srcCum[lo + 1] - srcCum[lo]);
+  };
+  const out = new Array<number>(paid);
+  for (let i = 0; i < paid; i++) {
+    const a = sampleCum(i / paid);
+    const b = sampleCum((i + 1) / paid);
+    out[i] = b - a;
+  }
+  return normalize(out);
 }
 
 /**

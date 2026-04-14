@@ -280,7 +280,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     const totalH = Hprefix[N - 1];
     const raw = new Float64Array(N);
 
-    if (row.progressiveKO) {
+    {
       const cashAtBust = new Float64Array(N - 1);
       let T = N;
       for (let m = 1; m <= N - 1; m++) {
@@ -302,8 +302,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
         raw[i] = upto > 0 ? prefix[upto] : 0;
       }
       raw[0] += Tfinal;
-    } else {
-      for (let i = 0; i < N; i++) raw[i] = totalH - Hprefix[i];
+      void totalH;
     }
 
     let Z = 0;
@@ -395,7 +394,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     payoutStd,
     cv,
     bountyShare: bountyShareOfPayout,
-    progressivePko: !!row.progressiveKO && bountyFraction > 0,
+    progressivePko: bountyFraction > 0,
     top1EvShare,
     evWinner,
     evTop1,

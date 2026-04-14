@@ -4,6 +4,7 @@ import type { PayoutStructureId } from "./types";
 
 const STRUCTURES: PayoutStructureId[] = [
   "mtt-standard",
+  "mtt-primedope",
   "mtt-flat",
   "mtt-top-heavy",
   "mtt-pokerstars",
@@ -34,6 +35,45 @@ describe("payout tables", () => {
     const topH = getPayoutTable("mtt-top-heavy", 500)[0];
     const flat = getPayoutTable("mtt-flat", 500)[0];
     expect(topH).toBeGreaterThan(flat);
+  });
+
+  it("mtt-primedope matches PD h[8] byte-for-byte at N=100", () => {
+    // Reverse-engineered from tmp_legacy.js h[8] — the exact PrimeDope
+    // "15 places paid" table. See notes/primedope_sd_theories.md.
+    const expected = [
+      0.255, 0.16, 0.115, 0.09, 0.075, 0.06, 0.045, 0.035, 0.03, 0.025,
+      0.025, 0.025, 0.02, 0.02, 0.02,
+    ];
+    const table = getPayoutTable("mtt-primedope", 100);
+    expect(table).toHaveLength(15);
+    for (let i = 0; i < 15; i++) {
+      expect(table[i]).toBeCloseTo(expected[i], 6);
+    }
+  });
+
+  it("mtt-primedope reproduces PD's σ within MC noise on the 100p reference", () => {
+    // Two-bin uniform SD for the 100p/$50/10% ROI reference scenario.
+    // PD reports σ_1000 = $5607 (math) / $5789 (sim). Our analytic σ
+    // under mtt-primedope should land inside this range (±5 %).
+    const N = 100;
+    const buyIn = 50;
+    const pool = N * buyIn;
+    const target = buyIn * 1.1;
+    const fractions = getPayoutTable("mtt-primedope", N);
+    const paid = fractions.length;
+    const l = (target * paid) / pool;
+    const pPaid = l / paid;
+    let mu = 0;
+    let mu2 = 0;
+    for (let i = 0; i < paid; i++) {
+      const prize = fractions[i] * pool;
+      mu += pPaid * prize;
+      mu2 += pPaid * prize * prize;
+    }
+    const sd1 = Math.sqrt(mu2 - mu * mu);
+    const sd1k = sd1 * Math.sqrt(1000);
+    expect(sd1k).toBeGreaterThan(5350);
+    expect(sd1k).toBeLessThan(6100);
   });
 
   it("satellite-ticket pays every seat equally", () => {

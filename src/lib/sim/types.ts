@@ -1,5 +1,6 @@
 export type PayoutStructureId =
   | "mtt-standard"
+  | "mtt-primedope"
   | "mtt-flat"
   | "mtt-top-heavy"
   | "mtt-pokerstars"
@@ -103,17 +104,6 @@ export interface TournamentRow {
   bountyFraction?: number;
 
   /**
-   * Progressive KO (PKO) flag. When true, bounty on each player's head
-   * grows as they eliminate opponents (classic PKO: half of victim's
-   * head goes to the eliminator's cash, half inflates their own head).
-   * The engine computes weights from an accumulating-head recurrence so
-   * deep finishers — especially the winner — capture disproportionately
-   * more bounty EV than a flat-bounty model predicts. Defaults to false
-   * (flat-bounty KO).
-   */
-  progressiveKO?: boolean;
-
-  /**
    * ICM final table flag. When true, the top `icmFinalTableSize` places
    * (default 9) have their raw $-payouts re-weighted through a
    * Malmuth-Harville ICM approximation before the finish sampler uses
@@ -125,16 +115,29 @@ export interface TournamentRow {
   icmFinalTableSize?: number;
 
   /**
-   * Staking — share of action sold to a backer, in [0, 1]. Defaults to 0
-   * (play 100% of yourself). The ROI calibration is interpreted as the
-   * *underlying* player ROI before staking; the staking transform then
-   * rescales the per-slot P&L stream:
-   *   player_pnl = (1 − sold) × prize − cost × (1 − sold × markup)
-   * Markup ≥ 1 is the multiplier backers pay per unit of stake (1 = no
-   * markup, 1.2 = 20 % markup above face value).
+   * "Sit through pay jumps" play style — the player refuses to fold their
+   * way into mincashes and instead plays for deeper stacks. The transform
+   * is EV-preserving: a fraction `payJumpAggression` ∈ (0, 1] of the
+   * probability mass on bottom-half paid places is removed; half of it
+   * flows into top-half paid finishes (weighted by prize), the rest is
+   * dropped into busts. The EV-neutral split ratio is solved analytically
+   * from the paid-prize averages so calibrated ROI is preserved exactly.
+   * Captures a real trade-off: refusing to min-cash trades a lot of small
+   * wins for fewer-but-bigger ones, pushing all the variance outward.
+   * Defaults to 0 (disabled).
    */
-  stakingSoldPct?: number;
-  stakingMarkup?: number;
+  sitThroughPayJumps?: boolean;
+  payJumpAggression?: number;
+
+  /**
+   * Mystery-bounty variance multiplier. When > 0, each collected bounty is
+   * scaled by an independent log-normal draw with variance `mysteryBountyVariance`
+   * (in log space), so the per-KO $ value is right-skewed with occasional
+   * jackpots. The mean is preserved by design (log-normal `μ = −σ²/2`),
+   * so row-level EV is unchanged — only variance is reshaped. Use the
+   * typical 0.5–1.5 range for GG-style mystery bounties. Defaults to 0.
+   */
+  mysteryBountyVariance?: number;
 }
 
 /**
@@ -166,6 +169,15 @@ export interface SimulationInput {
    * "we vs them" mode.
    */
   compareWithPrimedope?: boolean;
+  /**
+   * "PrimeDope-style EV": ignore rake when computing the binary-ITM target
+   * winnings, so the comparison run matches PrimeDope's site numerically
+   * (their ROI is profit / sum-buy-ins, not profit / sum-cost). This is
+   * formally wrong — rake IS part of your cost basis — but lets the side-
+   * by-side comparison line up with their published SDs and bankroll
+   * requirements. Default: true. Only affects the binary-ITM comparison.
+   */
+  primedopeStyleEV?: boolean;
   /**
    * Twin-run mode for the side-by-side trajectory view. "random" (default)
    * runs the same model twice with two different seeds — shows how much two
@@ -272,12 +284,6 @@ export interface RowDecomposition {
   kellyBankroll: number;
 }
 
-export interface SimulationProgress {
-  type: "progress";
-  done: number;
-  total: number;
-}
-
 export interface SimulationResult {
   type: "result";
   samples: number;
@@ -330,6 +336,15 @@ export interface SimulationResult {
 
   /** Histogram of max drawdowns over all samples */
   drawdownHistogram: { binEdges: number[]; counts: number[] };
+  /**
+   * Streak histograms — sample-level distributions of the streak metrics
+   * (longest breakeven run, longest cashless run, recovery length).
+   * Recovery histogram uses only recovered samples; unrecovered share lives
+   * in stats.recoveryUnrecoveredShare.
+   */
+  longestBreakevenHistogram: { binEdges: number[]; counts: number[] };
+  longestCashlessHistogram: { binEdges: number[]; counts: number[] };
+  recoveryHistogram: { binEdges: number[]; counts: number[] };
 
   /**
    * ROI sensitivity scan. For a grid of hypothetical ROI deltas around
@@ -412,6 +427,52 @@ export interface SimulationResult {
     /** Minimum bankroll for which historical RoR ≤ 1 % in the samples */
     minBankrollRoR1pct: number;
     minBankrollRoR5pct: number;
+    /** Same idea at 15 % and 50 % thresholds — used for PrimeDope-mirror reports. */
+    minBankrollRoR15pct: number;
+    minBankrollRoR50pct: number;
+    /**
+     * PrimeDope-compatible analytic RoR readouts. Assumes profit is a
+     * Brownian motion with drift μ and volatility σ over N tournaments
+     * (per-tourney mean/SD derived from the schedule totals). Inverts the
+     * classical first-passage formula
+     *   P(ruin by N | B) = Φ((−B−μN)/(σ√N)) + exp(−2μB/σ²)·Φ((−B+μN)/(σ√N))
+     * numerically to find the bankroll B for which P(ruin) equals the
+     * target α. Gaussian tails systematically understate real risk on
+     * skewed prize distributions — these values are reported alongside
+     * the empirical ones so users can see PD's answer side-by-side with
+     * the honest one.
+     */
+    minBankrollRoR1pctGaussian: number;
+    minBankrollRoR5pctGaussian: number;
+    /** Gaussian ruin probability at the user's configured bankroll. */
+    riskOfRuinGaussian: number;
+
+    /**
+     * Monte Carlo precision readouts — how trustworthy this specific run is.
+     * All derived from the sample count S and the empirical SD; they tell
+     * the user "bumping samples higher makes the numbers N times tighter".
+     *
+     * - seMean   = stdDev / √S — 1σ noise on the reported mean.
+     * - seStdDev = stdDev / √(2·(S−1)) — 1σ noise on the reported stdDev
+     *   (Gaussian approximation; conservative for skewed distributions).
+     * - ci95HalfWidthMean = 1.96 × seMean — 95 % CI half-width on mean.
+     * - roiMcErrorPct — MC-uncertainty of the reported ROI as a percentage
+     *   of it, i.e. |1.96·seMean / mean|. Answers "is this +ROI real or
+     *   within MC noise?".
+     * - precisionScore ∈ [0, 1] — bucketed quality flag: 1.0 when
+     *   ci95 half-width < 1 % of mean, 0.5 when < 5 %, 0 otherwise. Used
+     *   by the UI to green/yellow/red the run.
+     * - samplesFor1Pct — projected S required to hit ≤ 1 % relative MC
+     *   error on mean (from current σ/|μ|). Infinite if mean ≤ 0.
+     */
+    mcSeMean: number;
+    mcSeStdDev: number;
+    mcCi95HalfWidthMean: number;
+    mcRoiErrorPct: number;
+    mcPrecisionScore: number;
+    mcSamplesFor1Pct: number;
+    /** Fraction of samples whose running min profit stayed ≥ 0 throughout. */
+    neverBelowZeroFrac: number;
     /**
      * Compile-time expected in-the-money rate across the whole schedule —
      * weighted mean of per-tournament ITM probability from the finish-place
@@ -453,12 +514,15 @@ export interface SimulationResult {
      * Much more intuitive than "$47,300" for cross-stake comparison.
      */
     maxDrawdownBuyIns: number;
+    /**
+     * Analytical per-tourney σ from the calibrated pmf (√(E[X²]−E[X]²) on
+     * prize+bounty), schedule-weighted. Independent of the MC run and used
+     * as a self-check next to the empirical per-tourney σ.
+     */
+    sigmaPerTournamentAnalytic: number;
+    /** Empirical per-tourney σ = stdDev / √N. Reported alongside the analytic
+     *  counterpart so the user can eyeball convergence / calibration drift. */
+    sigmaPerTournamentEmpirical: number;
   };
 }
 
-/**
- * @deprecated — the worker protocol moved to shard-based messages in
- * `worker.ts` (ShardRequest / ShardResultMsg / ShardProgressMsg). Kept
- * here as an unused alias only to avoid breaking any external imports.
- */
-export type WorkerMessage = SimulationProgress | SimulationResult;

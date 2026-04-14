@@ -17,6 +17,8 @@ export interface ControlsState {
   compareWithPrimedope: boolean;
   /** Twin-run mode: "random" = two seeds, same model; "primedope" = same seed, our vs uniform-lift. */
   compareMode: "random" | "primedope";
+  /** Match PrimeDope's (incorrect) buy-in-only EV calc on the comparison run. */
+  primedopeStyleEV: boolean;
   /**
    * One-sigma uncertainty on your ROI estimate, as a fraction. E.g. 0.05
    * = "maybe my true ROI is ±5 pp from what I think". Zero by default.
@@ -106,9 +108,9 @@ export function ControlsPanel({
       >
       <ModelPresetSelector value={value} onChange={onChange} />
 
-      {/* Section A — Run controls (minimal: just session count + sample count) */}
+      {/* Section A — Run controls (streak-grinder primary: sessions, samples, bankroll) */}
       <SectionTitle>{t("controls.section.run")}</SectionTitle>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
           <NumInput
             value={value.scheduleRepeats}
@@ -125,6 +127,14 @@ export function ControlsPanel({
             onChange={(v) => set("samples", Math.max(100, Math.floor(v)))}
           />
         </Field>
+        <Field label={t("controls.bankroll")} hint={t("help.bankroll")}>
+          <NumInput
+            value={value.bankroll}
+            min={0}
+            step={100}
+            onChange={(v) => set("bankroll", Math.max(0, v))}
+          />
+        </Field>
       </div>
 
       <button
@@ -137,16 +147,26 @@ export function ControlsPanel({
 
       {showAdvanced && (
       <>
-      {/* Advanced run knobs: bankroll */}
+      {/* Advanced run knobs: seed + PD compare */}
       <SectionTitle>{t("controls.section.advanced")}</SectionTitle>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label={t("controls.bankroll")} hint={t("help.bankroll")}>
-          <NumInput
-            value={value.bankroll}
-            min={0}
-            step={100}
-            onChange={(v) => set("bankroll", Math.max(0, v))}
-          />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Field label={t("controls.seed")} hint={t("help.seed")}>
+          <div className="flex gap-1">
+            <NumInput
+              value={value.seed}
+              min={0}
+              step={1}
+              onChange={(v) => set("seed", Math.max(0, Math.floor(v)))}
+            />
+            <button
+              type="button"
+              onClick={() => set("seed", Math.floor(Math.random() * 2 ** 30))}
+              className="shrink-0 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
+              title={t("controls.seedReroll")}
+            >
+              ⟳
+            </button>
+          </div>
         </Field>
         <Field label={t("controls.compareMode")} hint={t("help.compareMode")}>
           <select
@@ -161,6 +181,23 @@ export function ControlsPanel({
           </select>
         </Field>
       </div>
+      <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-[color:var(--color-fg-muted)]">
+        <input
+          type="checkbox"
+          checked={value.primedopeStyleEV}
+          onChange={(e) => set("primedopeStyleEV", e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-[color:var(--color-accent)]"
+        />
+        <span>
+          <span className="font-medium text-[color:var(--color-fg)]">
+            {t("controls.pdStyleEV.label")}
+          </span>{" "}
+          — {t("controls.pdStyleEV.body")}{" "}
+          <span className="text-[color:var(--color-fg-dim)]">
+            {t("controls.pdStyleEV.caveat")}
+          </span>
+        </span>
+      </label>
 
       {/* Section B — Skill model (how ROI maps to finish positions) */}
       <SectionTitle>{t("controls.section.skill")}</SectionTitle>

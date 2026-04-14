@@ -166,10 +166,11 @@ describe("engine", () => {
     expect(r.comparison!.calibrationMode).toBe("primedope-binary-itm");
     // Same tournamentsPerSample — compile is deterministic re: schedule size.
     expect(r.comparison!.tournamentsPerSample).toBe(r.tournamentsPerSample);
-    // Both calibrations aim at the same expected ROI, but binary-itm collapses
-    // payouts so deep finishes contribute no extra variance — drawdown shape
-    // and tail percentiles are structurally muted vs α-calibration.
-    expect(r.comparison!.stats.maxDrawdownMean).toBeLessThan(r.stats.maxDrawdownMean);
+    // Both calibrations aim at the same expected ROI. Binary-ITM is "no skill"
+    // (uniform 1/N finish) but keeps the real top-heavy payout curve, so it
+    // should still produce meaningful drawdown — just driven by pure luck.
+    expect(r.comparison!.stats.maxDrawdownMean).toBeGreaterThan(0);
+    expect(Number.isFinite(r.comparison!.stats.stdDev)).toBe(true);
   });
 
   it("re-entry row inflates cost and mean proportionally", () => {
@@ -373,5 +374,58 @@ describe("engine", () => {
       }),
     );
     expect(r.stats.itmRate).toBeGreaterThan(0.7);
+  });
+
+  it("sit-through-pay-jumps preserves realized mean ROI", () => {
+    const base = baseInput({ samples: 6000, seed: 123 });
+    const plain = runSimulation(base);
+    const withSit = runSimulation({
+      ...base,
+      schedule: base.schedule.map((r) => ({
+        ...r,
+        sitThroughPayJumps: true,
+        payJumpAggression: 0.5,
+      })),
+    });
+    const plainRoi = plain.stats.mean / plain.totalBuyIn;
+    const sitRoi = withSit.stats.mean / withSit.totalBuyIn;
+    const se =
+      withSit.stats.stdDev / Math.sqrt(withSit.samples) / withSit.totalBuyIn;
+    expect(Math.abs(sitRoi - plainRoi)).toBeLessThan(4 * se);
+    expect(withSit.stats.stdDev).toBeGreaterThan(plain.stats.stdDev);
+  });
+
+  it("mystery bounty variance preserves realized mean ROI but inflates stdDev", () => {
+    const base = baseInput({
+      samples: 6000,
+      seed: 321,
+      schedule: [
+        {
+          id: "mb",
+          label: "MB",
+          players: 500,
+          buyIn: 20,
+          rake: 0.1,
+          roi: 0.2,
+          payoutStructure: "mtt-standard",
+          bountyFraction: 0.5,
+          count: 1,
+        },
+      ],
+    });
+    const plain = runSimulation(base);
+    const withMyst = runSimulation({
+      ...base,
+      schedule: base.schedule.map((r) => ({
+        ...r,
+        mysteryBountyVariance: 0.5,
+      })),
+    });
+    const plainRoi = plain.stats.mean / plain.totalBuyIn;
+    const mystRoi = withMyst.stats.mean / withMyst.totalBuyIn;
+    const se =
+      withMyst.stats.stdDev / Math.sqrt(withMyst.samples) / withMyst.totalBuyIn;
+    expect(Math.abs(mystRoi - plainRoi)).toBeLessThan(4 * se);
+    expect(withMyst.stats.stdDev).toBeGreaterThan(plain.stats.stdDev);
   });
 });

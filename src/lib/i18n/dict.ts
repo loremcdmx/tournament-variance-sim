@@ -62,12 +62,6 @@ export const DICT = {
     en: "PrimeDope sanity check",
     ru: "Сверка с PrimeDope",
   },
-  "demo.microGrinder": { en: "Micro grinder", ru: "Микро-гриндер" },
-  "demo.midGrinder": { en: "Mid-stakes grinder", ru: "Средние лимиты" },
-  "demo.hyperNight": { en: "Hyper night", ru: "Вечер гиперов" },
-  "demo.sundayMajors": { en: "Sunday majors", ru: "Воскресные мейджоры" },
-  "demo.morningNightReg": { en: "Morning + night reg", ru: "Утренний/ночной рег" },
-  "demo.satelliteFeeder": { en: "Satellite feeder", ru: "Сателлит-фидер" },
   "demo.romeoPro": { en: "RomeoPro mode", ru: "Режим Ромеопро" },
 
   "userPreset.label": { en: "My presets", ru: "Мои пресеты" },
@@ -113,6 +107,10 @@ export const DICT = {
   },
   "row.guarantee": { en: "Guarantee $", ru: "Гарантия $" },
   "row.addRow": { en: "+ Add row", ru: "+ Добавить" },
+  "row.cloneAsReentry": {
+    en: "Clone as re-entry (ROI −5pp)",
+    ru: "Клон как ре-ентри (ROI −5pp)",
+  },
   "row.delete": { en: "Delete", ru: "Удалить" },
   "row.reentry": { en: "Re-entries", ru: "Ре-энтри" },
   "row.reentryRate": { en: "Re-entry rate", ru: "Доля ре-энтри" },
@@ -153,12 +151,19 @@ export const DICT = {
     en: "Flattens the top of the prize ladder the way real final-table deals do — 1st gets less, min-FT gets more. Total money unchanged.",
     ru: "Сглаживает верх призовой сетки так, как это делают реальные дилы на ФТ — первому меньше, мин-ФТ больше. Сумма выплат не меняется.",
   },
-  "row.staking": { en: "Staking", ru: "Бекинг" },
-  "row.stakingSold": { en: "Sold %", ru: "Продано %" },
-  "row.stakingMarkup": { en: "Markup", ru: "Маркап" },
-  "row.stakingHint": {
-    en: "% of your action sold to a backer at a markup. The ROI you set stays your pre-staking edge; downswings and bankroll stats are rescaled to match the cash you actually see.",
-    ru: "Какой % экшна ты продаёшь бекеру и с каким маркапом. ROI выше — это твой реальный эдж до бекинга; даунсвинги и БР-метрики пересчитываются под твой реальный кэш-флоу.",
+  "row.sitThrough": {
+    en: "Sit through pay jumps",
+    ru: "Играем мимо лесенки",
+  },
+  "row.sitThroughAgg": { en: "Aggression %", ru: "Агрессия %" },
+  "row.sitThroughHint": {
+    en: "You refuse to fold your way into mincashes and play for stacks instead. EV-preserving: probability mass on bottom-half paid places is shifted — some into deeper finishes (weighted by prize), the rest into busts. Total ROI is unchanged; variance goes up because mincashes stop absorbing bad runs.",
+    ru: "Ты отказываешься запаркинговаться в мин-кеш и играешь за стек. EV не меняется: часть вероятности из нижней половины призовых уходит наверх (пропорционально призу), остаток — в вылеты до денег. ROI остаётся тем же, но дисперсия растёт — мин-кеши больше не гасят плохие прогоны.",
+  },
+  "row.mystery": { en: "Mystery bounty σ²", ru: "Mystery bounty σ²" },
+  "row.mysteryHint": {
+    en: "Per-KO lognormal variance on the bounty value. 0 = flat bounties. 0.5–1 = moderate mystery skew. 1.5+ = GG-style jackpot distribution (occasional huge, mostly tiny). Mean is preserved, only variance is reshaped.",
+    ru: "Дисперсия лог-нормального разброса на ценность одной выбитой головы. 0 = плоские баунти. 0.5–1 = умеренный mystery-скью. 1.5+ = как у GG (редкие крупные, в основном мелкие). Среднее сохраняется — меняется только дисперсия.",
   },
   "row.lateReg": { en: "Late-reg ×", ru: "Late-reg ×" },
   "row.lateRegHint": {
@@ -172,7 +177,19 @@ export const DICT = {
     ru: "Сколько сессий сыграем",
   },
   "controls.samples": { en: "Simulations", ru: "Симуляций" },
-  "controls.bankroll": { en: "Bankroll (optional)", ru: "Банкролл (опц.)" },
+  "controls.bankroll": { en: "Bankroll", ru: "Банкролл" },
+  "controls.pdStyleEV.label": {
+    en: "Count EV the PrimeDope way",
+    ru: "Считать EV как PrimeDope",
+  },
+  "controls.pdStyleEV.body": {
+    en: "Drop rake from the cost and ROI on the right-hand comparison pane so the numbers line up with their site.",
+    ru: "Игнорировать рейк в стоимости и ROI на правой панели сравнения, чтобы цифры сошлись с их сайтом.",
+  },
+  "controls.pdStyleEV.caveat": {
+    en: "Formally wrong — rake is part of your cost. Without this, ROI is computed against the full buy-in+rake basis, which is the correct definition.",
+    ru: "Формально это неправильно: рейк — часть твоего расхода. Без галки ROI считается от полной стоимости (buy-in + rake), как и должно быть.",
+  },
   "controls.compareMode": { en: "Twin-run mode", ru: "Режим сравнения" },
   "controls.compareMode.random": {
     en: "Two random runs (same model)",
@@ -432,6 +449,26 @@ export const DICT = {
     en: "Per-sample worst peak-to-trough dip during the run",
     ru: "Худший пик-то-дно каждого сэмпла за прогон",
   },
+  "chart.longestBE": { en: "Longest breakeven run", ru: "Самая длинная безубыточная стрик" },
+  "chart.longestBE.sub": {
+    en: "How many tournaments in a row you spend going nowhere",
+    ru: "Сколько турниров подряд ты топчешься на месте",
+  },
+  "chart.longestCashless": { en: "Longest cashless run", ru: "Самая длинная безкэшевая стрик" },
+  "chart.longestCashless.sub": {
+    en: "How many tournaments in a row you fire without a cash",
+    ru: "Сколько турниров подряд летишь без ITM",
+  },
+  "chart.recovery": { en: "Recovery length", ru: "Длина восстановления" },
+  "chart.recovery.sub": {
+    en: "Tournaments from the trough of the deepest downswing back to the pre-downswing peak",
+    ru: "Сколько турниров с дна самого глубокого даунсвинга до возврата на прежний пик",
+  },
+  "chart.recovery.unrecovered": {
+    en: "{pct} of runs never recovered by end of schedule (not shown above)",
+    ru: "{pct} прогонов не восстановились до конца расписания (не показано на графике)",
+  },
+  "chart.unit.tourneys": { en: "units: tournaments", ru: "единицы: турниры" },
   "chart.convergence": { en: "Mean convergence", ru: "Сходимость среднего" },
   "chart.convergence.sub": {
     en: "Running estimate of E[profit] as samples accumulate · 95 % CI band",
@@ -523,6 +560,18 @@ export const DICT = {
     en: "Expect a typical peak-to-trough drop of {dd} along the way. In the worst 1 % of outcomes the loss goes to {cvar99}.",
     ru: "Жди типичного отката от пика до дна около {dd} по ходу прогона. В худших 1 % случаев убыток доходит до {cvar99}.",
   },
+  "verdict.streak.upswing": {
+    en: "Upswings: the top 5 % of runs finish at {p95} or better, with the absolute best landing at {best}.",
+    ru: "Апсвинги: верхние 5 % прогонов заканчиваются на {p95} и выше, абсолютный максимум — {best}.",
+  },
+  "verdict.streak.downswing": {
+    en: "Downswings: typical peak-to-trough drop is {ddMean} (~{ddBi} buy-ins); 5 % of runs dig at least {ddP95} deep. That's the hole you need to be mentally prepared to sit in.",
+    ru: "Даунсвинги: типичный откат от пика до дна — {ddMean} (~{ddBi} байинов); 5 % прогонов уходят минимум на {ddP95}. Это яма, в которой нужно уметь сидеть.",
+  },
+  "verdict.streak.dry": {
+    en: "Dry stretches: on average the longest breakeven run is {be} tourneys and the longest cashless run is {cashless}; the worst cashless stretch hits {cashlessWorst}.",
+    ru: "Сухие полосы: в среднем самая длинная безубыточная стрик — {be} турниров, самая длинная безкэшевая — {cashless}; худшая безкэшевая стрик доходит до {cashlessWorst}.",
+  },
   "verdict.bankroll.with": {
     en: "With a {br} bankroll, risk of ruin is {ror}.",
     ru: "С банкроллом {br} риск разорения — {ror}.",
@@ -534,6 +583,18 @@ export const DICT = {
   "verdict.trust": {
     en: "You need roughly {n} tournaments before your true ROI is measured to ±5 %. Anything less is short-run noise.",
     ru: "Нужно примерно {n} турниров, чтобы твой настоящий ROI замерился с точностью ±5 %. Всё короче — это шум.",
+  },
+  "verdict.precision.good": {
+    en: "Run precision: ±{ci} on EV (±{rel} of the reported ROI). {samples} samples is enough — pushing it higher barely tightens anything.",
+    ru: "Точность прогона: ±{ci} на EV (±{rel} от заявленного ROI). {samples} сэмплов — уже достаточно, дальше жать бесполезно.",
+  },
+  "verdict.precision.meh": {
+    en: "Run precision: ±{ci} on EV (±{rel} of the reported ROI). To tighten to ±1 % you'd need ≈{need} samples.",
+    ru: "Точность прогона: ±{ci} на EV (±{rel} от заявленного ROI). Чтобы дотянуть до ±1 %, нужно ≈{need} сэмплов.",
+  },
+  "verdict.precision.bad": {
+    en: "Run precision: ±{ci} on EV — that's ±{rel} of the reported ROI, so the number is within MC noise. Bump samples to ≈{need} before trusting the sign.",
+    ru: "Точность прогона: ±{ci} на EV — это ±{rel} от заявленного ROI, то есть цифра в пределах MC-шума. Подними сэмплы до ≈{need}, прежде чем верить знаку.",
   },
   "verdict.vsPD": {
     en: "Versus PrimeDope: our ITM is {itmDiff} pp lower and average drawdown is {ddDiff} deeper. PrimeDope assumes skill lifts every paid place equally — we model it concentrating toward deeper finishes, which matches real samples.",
@@ -733,8 +794,8 @@ export const DICT = {
     ru: "Что показать справа от траектории.\n\n• Два рандомных прогона — одна и та же модель прокатывается дважды с разными сидами. Видно, насколько могут разойтись два честных прогона одного и того же сетапа.\n• Наш vs PrimeDope — наша калиброванная модель слева, PrimeDope'овский uniform-lift справа, оба на одном сиде. Видно, как выбор алгоритма меняет ответ на одинаковом рандоме.",
   },
   "help.bankroll": {
-    en: "Current bankroll in $. Unlocks risk-of-ruin, Kelly bankroll, and log-growth metrics.\n\nExample: 5000 = a $5k roll. 0 = ignore bankroll, skip ruin math.\n\nEffect: adds a −bankroll line on the trajectory chart; any sample that crosses it counts as ruined.",
-    ru: "Текущий банкролл в $. Включает расчёт риска разорения, Kelly-банкролла и log-growth.\n\nПример: 5000 = банкролл $5k. 0 = банкролл игнорируется, ruin-математика отключается.\n\nЭффект: на графике траектории появится линия −банкролл; каждый сэмпл, который её пересёк, считается разорением.",
+    en: "Current bankroll in $. Enables risk-of-ruin, Kelly bankroll, and log-growth metrics.\n\nExample: 5000 = a $5k roll. 0 = ignore bankroll, skip ruin math.\n\nEffect: adds a −bankroll line on the trajectory chart; any sample that crosses it counts as ruined.",
+    ru: "Текущий банкролл в $. Включает риск разорения, Kelly-банкролл и log-growth.\n\nПример: 5000 = банкролл $5k. 0 = банкролл игнорируется, ruin-математика отключается.\n\nЭффект: на графике появится линия −банкролл; сэмпл, который её пересёк, считается разорением.",
   },
   "help.finishModel": {
     en: "How your skill distributes across finish places — does it mostly show up as deep runs, or as lots of small cashes?\n\nOptions:\n• Power-law — skill pays off deep; the closer to 1st, the bigger the lift. (default, best match to real samples)\n• Linear skill — steady lift toward the top, less dramatic\n• Stretched-exp — middle ground between those two\n• Plackett–Luce — classic ranking model, mathematically sound\n• Uniform — every paid place gets the same lift (PrimeDope-style — understates swings)\n• Empirical — built from a CSV of your own real finish history",

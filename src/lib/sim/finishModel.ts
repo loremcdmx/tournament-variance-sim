@@ -182,36 +182,56 @@ export function calibrateAlpha(
 }
 
 /**
- * PrimeDope-compat finish distribution — "binary ITM".
+ * PrimeDope-compat finish distribution (two-bin uniform).
  *
- * PrimeDope's actual variance model collapses every paid place into a single
- * Bernoulli "you cashed / you didn't" event. ITM rate is the natural
- * paidCount/N (uniform-skill assumption — your edge does not change how often
- * you cash, only how much you make when you do). Each paid place is assigned
- * the same flat avgCash payoff, sized so the expected winnings hit the
- * configured target. This eliminates ALL payout-shape variance: 1st place pays
- * the same as min-cash. Matches PrimeDope's site nearly exactly because that
- * is, structurally, what they do.
+ * PrimeDope's actual algorithm (verified against their legacy source):
+ *   u = rand();
+ *   if (u < l) place = uniform(0, paid);         // ITM — any paid slot
+ *   else       place = uniform(paid, N);         // unpaid — any non-ITM slot
+ * where `l` is the ITM probability chosen so expected winnings match the
+ * player's target. Paid places use the REAL top-heavy payout curve unchanged,
+ * so variance is dominated by the rare deep runs — exactly why PrimeDope's
+ * site shows the huge spreads on large MTTs.
  *
- * Returns BOTH the pmf and the per-place flat prize array, so the caller can
- * skip the normal payouts × prizePool path.
+ * Expressed as a pmf over places:
+ *   pmf[i<paid]  = l / paid
+ *   pmf[i>=paid] = (1 − l) / (N − paid)
+ *
+ * Mean winnings:
+ *   E[W] = (l / paid) × Σ payouts_paid × pool = l × pool / paid
+ * so we solve `l = target × paid / pool` and clamp to [0, 1].
  */
 export function buildBinaryItmAssets(
   N: number,
   paidCount: number,
+  payouts: readonly number[],
+  prizePool: number,
   targetWinnings: number,
 ): { pmf: Float64Array; prizeByPlace: Float64Array } {
   const pmf = new Float64Array(N);
   const prizeByPlace = new Float64Array(N);
   if (N <= 0) return { pmf, prizeByPlace };
   const paid = Math.max(0, Math.min(paidCount, N));
-  // Flat 1/N — uniform-skill baseline.
-  pmf.fill(1 / N);
-  if (paid === 0) return { pmf, prizeByPlace };
-  // Average cash so that ITM × avgCash = targetWinnings.
-  // ITM = paid / N  →  avgCash = targetWinnings × N / paid.
-  const avgCash = (targetWinnings * N) / paid;
-  for (let i = 0; i < paid; i++) prizeByPlace[i] = avgCash;
+  if (paid === 0 || prizePool <= 0) {
+    pmf.fill(1 / N);
+    return { pmf, prizeByPlace };
+  }
+
+  // Solve ITM rate so E[W] matches target. Clamp defensively.
+  let l = (targetWinnings * paid) / prizePool;
+  if (!Number.isFinite(l) || l < 0) l = 0;
+  if (l > 1) l = 1;
+
+  const pPaid = l / paid;
+  const pUnpaid = N > paid ? (1 - l) / (N - paid) : 0;
+  for (let i = 0; i < paid; i++) pmf[i] = pPaid;
+  for (let i = paid; i < N; i++) pmf[i] = pUnpaid;
+
+  // Real top-heavy payouts on paid places; zero elsewhere.
+  const maxPaid = Math.min(paid, payouts.length);
+  for (let i = 0; i < maxPaid; i++) {
+    prizeByPlace[i] = payouts[i] * prizePool;
+  }
   return { pmf, prizeByPlace };
 }
 
@@ -249,4 +269,58 @@ export function sampleFromCDF(cdf: Float64Array, u: number): number {
     else hi = mid;
   }
   return lo;
+}
+
+/**
+ * Vose's alias method preprocessing. Given a pmf, builds two arrays
+ * (`prob`, `alias`) such that a single draw uniformly from [0,N) combined
+ * with one comparison against `prob[i]` picks an index in O(1) — replacing
+ * the O(log N) binary search over the cdf. Preprocessing is O(N).
+ *
+ * Usage in the hot loop:
+ *   const r = rng() * N;
+ *   const i = r | 0;
+ *   const place = (r - i) < prob[i] ? i : alias[i];
+ */
+export function buildAliasTable(pmf: Float64Array): {
+  prob: Float64Array;
+  alias: Int32Array;
+} {
+  const N = pmf.length;
+  const prob = new Float64Array(N);
+  const alias = new Int32Array(N);
+  const scaled = new Float64Array(N);
+  for (let i = 0; i < N; i++) scaled[i] = pmf[i] * N;
+
+  // Two stacks for small (<1) and large (>=1) scaled probabilities.
+  const small = new Int32Array(N);
+  const large = new Int32Array(N);
+  let sTop = 0;
+  let lTop = 0;
+  for (let i = 0; i < N; i++) {
+    if (scaled[i] < 1) small[sTop++] = i;
+    else large[lTop++] = i;
+  }
+
+  while (sTop > 0 && lTop > 0) {
+    const l = small[--sTop];
+    const g = large[--lTop];
+    prob[l] = scaled[l];
+    alias[l] = g;
+    scaled[g] = scaled[g] + scaled[l] - 1;
+    if (scaled[g] < 1) small[sTop++] = g;
+    else large[lTop++] = g;
+  }
+  while (lTop > 0) {
+    const g = large[--lTop];
+    prob[g] = 1;
+    alias[g] = g;
+  }
+  while (sTop > 0) {
+    // Only reached via floating-point slack.
+    const l = small[--sTop];
+    prob[l] = 1;
+    alias[l] = l;
+  }
+  return { prob, alias };
 }

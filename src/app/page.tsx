@@ -54,6 +54,7 @@ const initialControls: ControlsState = {
   alphaOverride: null,
   compareWithPrimedope: true,
   compareMode: "primedope",
+  primedopeStyleEV: true,
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
@@ -126,6 +127,7 @@ export default function Home() {
       },
       compareWithPrimedope: c.compareWithPrimedope,
       compareMode: c.compareMode,
+      primedopeStyleEV: c.primedopeStyleEV,
       roiStdErr: c.roiStdErr,
       roiShockPerTourney: c.roiShockPerTourney,
       roiShockPerSession: c.roiShockPerSession,
@@ -279,18 +281,14 @@ export default function Home() {
               const range =
                 lo === hi ? `$${lo}` : `$${lo}–${hi}`;
               const active = activeScenarioId === s.id;
-              const disabled = s.disabled === true;
               return (
                 <button
                   key={s.id}
                   type="button"
-                  disabled={disabled}
                   onClick={() => loadScenario(s.id)}
-                  title={disabled ? `${s.description} (coming soon)` : s.description}
+                  title={s.description}
                   className={`group relative flex flex-col items-start gap-2 overflow-hidden border px-4 py-3 text-left transition-all ${
-                    disabled
-                      ? "cursor-not-allowed border-dashed border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/40 opacity-40"
-                      : active
+                    active
                       ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/5"
                       : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] hover:border-[color:var(--color-accent)]/60 hover:bg-[color:var(--color-bg-elev-2)]"
                   }`}

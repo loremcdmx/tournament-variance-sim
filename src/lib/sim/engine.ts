@@ -1,11 +1,11 @@
 import { getPayoutTable } from "./payouts";
 import {
+  buildAliasTable,
   buildBinaryItmAssets,
   buildCDF,
   buildFinishPMF,
   calibrateAlpha,
   itmProbability,
-  sampleFromCDF,
 } from "./finishModel";
 import { applyICMToPayoutTable } from "./icm";
 import { mulberry32, mixSeed } from "./rng";
@@ -40,6 +40,12 @@ interface CompiledEntry {
    *  re-entry rolls. */
   paidCount: number;
   cdf: Float64Array;
+  /** Vose's alias method: O(1) finish-place sampling in the hot loop.
+   *  `aliasProb[i]` is the acceptance threshold for index i; when the
+   *  fractional part of a scaled uniform is above it, we take `aliasIdx[i]`
+   *  instead. Built in O(N) once per compiled entry. */
+  aliasProb: Float64Array;
+  aliasIdx: Int32Array;
   prizeByPlace: Float64Array;
   alpha: number;
   /** Σ pmf[i] over paid places — exact ITM for this entry. */
@@ -63,6 +69,19 @@ interface CompiledEntry {
    */
   bountyByPlace: Float64Array | null;
   /**
+   * Mystery-bounty log-space variance σ² per KO. When > 0 the realized
+   * bounty haul is multiplied by a log-normal draw with mean 1 and log-
+   * variance σ²/k (Fenton–Wilkinson aggregate-of-k-lognormals approx),
+   * so each KO independently rolls a possibly-huge or possibly-tiny $
+   * value. Mean preserved, only variance added. 0 means flat bounties.
+   */
+  mysteryBountyLogVar: number;
+  /** Precomputed `exp(mysteryBountyLogVar) − 1`. Used by the Fenton–Wilkinson
+   *  scaling inside the hot loop — hoisted here to save one `Math.exp` call
+   *  per KO draw. Zero when `mysteryBountyLogVar` is zero (mystery bounty off).
+   */
+  mysteryBountyExpMinus1: number;
+  /**
    * Expected number of knockouts by finish place. Used by the hot loop to
    * add within-place stochastic noise to the bounty haul: at a fixed place
    * the realized KO count is Poisson-ish around `bountyKmean[place]`, so the
@@ -72,6 +91,12 @@ interface CompiledEntry {
    * place is now modelled. Shares null with bountyByPlace.
    */
   bountyKmean: Float64Array | null;
+  /**
+   * Analytical per-tourney σ from the calibrated pmf — √(E[X²]−E[X]²) on
+   * prize + bounty. Cheap, compile-time, and independent of the MC run;
+   * used to cross-check MC σ in diagnostics.
+   */
+  sigmaSingleAnalytic: number;
 }
 
 interface CompiledSchedule {
@@ -100,9 +125,10 @@ export function compileSchedule(
   // For each row, compile one or more variants depending on fieldVariability.
   // variants[r] is an array of { entry, weight } — weight is # of plays per
   // unit `count` consumed from this row.
+  const primedopeStyleEV = input.primedopeStyleEV ?? false;
   const variants: { entry: CompiledEntry; share: number }[][] =
     input.schedule.map((row, idx) =>
-      compileRowVariants(row, idx, input.finishModel, calibrationMode),
+      compileRowVariants(row, idx, input.finishModel, calibrationMode, primedopeStyleEV),
     );
 
   const flat: CompiledEntry[] = [];
@@ -164,7 +190,48 @@ function compileSingleEntry(
   players: number,
   model: SimulationInput["finishModel"],
   calibrationMode: CalibrationMode,
+  primedopeStyleEV = false,
 ): CompiledEntry {
+  // ---- input validation --------------------------------------------------
+  // Guard impossible values at compile time so the hot loop is never fed
+  // a broken row. Done once per row — negligible cost.
+  const label = row.label || row.id || `row ${idx}`;
+  if (!(row.players >= 1)) {
+    throw new Error(`engine: row "${label}" players must be ≥ 1 (got ${row.players})`);
+  }
+  if (!(row.buyIn >= 0)) {
+    throw new Error(`engine: row "${label}" buyIn must be ≥ 0 (got ${row.buyIn})`);
+  }
+  if (!(row.rake >= 0 && row.rake <= 1)) {
+    throw new Error(`engine: row "${label}" rake must be in [0,1] (got ${row.rake})`);
+  }
+  if (!Number.isFinite(row.roi)) {
+    throw new Error(`engine: row "${label}" roi must be finite (got ${row.roi})`);
+  }
+  if (row.bountyFraction != null && !(row.bountyFraction >= 0 && row.bountyFraction <= 0.9)) {
+    throw new Error(
+      `engine: row "${label}" bountyFraction must be in [0,0.9] (got ${row.bountyFraction})`,
+    );
+  }
+  if (row.payJumpAggression != null && !(row.payJumpAggression >= 0 && row.payJumpAggression <= 1)) {
+    throw new Error(
+      `engine: row "${label}" payJumpAggression must be in [0,1] (got ${row.payJumpAggression})`,
+    );
+  }
+  if (row.reentryRate != null && !(row.reentryRate >= 0 && row.reentryRate <= 1)) {
+    throw new Error(
+      `engine: row "${label}" reentryRate must be in [0,1] (got ${row.reentryRate})`,
+    );
+  }
+  if (row.maxEntries != null && !(row.maxEntries >= 1)) {
+    throw new Error(`engine: row "${label}" maxEntries must be ≥ 1 (got ${row.maxEntries})`);
+  }
+  if (row.mysteryBountyVariance != null && !(row.mysteryBountyVariance >= 0)) {
+    throw new Error(
+      `engine: row "${label}" mysteryBountyVariance must be ≥ 0 (got ${row.mysteryBountyVariance})`,
+    );
+  }
+
   // Late-registration: the real field at reg-close is the nominal field
   // scaled by `lateRegMultiplier`. Scales prize pool and paid seats, and
   // widens the finish-position shape. Defaults to 1 (no late reg).
@@ -187,7 +254,15 @@ function compileSingleEntry(
       reentryExpected = (reRate * (1 - Math.pow(reRate, M))) / (1 - reRate);
     }
   }
-  const entryCostSingle = row.buyIn * (1 + row.rake);
+  // PrimeDope's site computes everything (cost, EV, ROI, SD) on the bare
+  // buy-in, ignoring rake entirely. When this run is in PrimeDope-display
+  // mode, drop rake from the cost basis too — otherwise the displayed mean
+  // would diverge from PrimeDope's by exactly the rake. Applies to BOTH
+  // the alpha and binary-ITM calibrations so the side-by-side comparison
+  // is on the same accounting basis.
+  const entryCostSingle = primedopeStyleEV
+    ? row.buyIn
+    : row.buyIn * (1 + row.rake);
   const costPerEntry = entryCostSingle * (1 + reentryExpected);
   // Field-average extra entries inflate the prize pool too.
   const effectiveSeats = N * (1 + reentryExpected);
@@ -216,7 +291,19 @@ function compileSingleEntry(
   }
 
   // ---- raw payout curve --------------------------------------------------
-  let payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
+  // In the PrimeDope comparison run (binary-ITM), substitute PD's actual
+  // payout curve (h[8] from tmp_legacy.js) so the side-by-side matches
+  // their reported σ within Monte Carlo noise. The primary α-calibrated
+  // run still uses whatever curve the user selected.
+  const effectivePayoutStructure =
+    calibrationMode === "primedope-binary-itm"
+      ? "mtt-primedope"
+      : row.payoutStructure;
+  let payouts = getPayoutTable(
+    effectivePayoutStructure,
+    N,
+    row.customPayouts,
+  );
 
   // ---- ICM final-table reweight ------------------------------------------
   if (row.icmFinalTable) {
@@ -244,7 +331,16 @@ function compileSingleEntry(
   const targetRegular = Math.max(0.01, entryCostSingle * (1 + row.roi) - bountyMean);
   const effectiveROI = targetRegular / entryCostSingle - 1;
   if (calibrationMode === "primedope-binary-itm") {
-    const assets = buildBinaryItmAssets(N, paidCount, targetRegular);
+    // entryCostSingle has already dropped rake when pdDisplayMode is on, so
+    // targetRegular is naturally PrimeDope-style. Otherwise we calibrate
+    // against our normal cost-with-rake basis.
+    const assets = buildBinaryItmAssets(
+      N,
+      paidCount,
+      payouts,
+      prizePool,
+      targetRegular,
+    );
     pmf = assets.pmf;
     binaryItmPrizeOverride = assets.prizeByPlace;
   } else {
@@ -258,8 +354,6 @@ function compileSingleEntry(
     );
     pmf = buildFinishPMF(N, model, alpha);
   }
-  const cdf = buildCDF(pmf);
-
   const prizeByPlace = new Float64Array(N);
   if (binaryItmPrizeOverride) {
     prizeByPlace.set(binaryItmPrizeOverride);
@@ -268,6 +362,80 @@ function compileSingleEntry(
       prizeByPlace[i] = payouts[i] * prizePool;
     }
   }
+
+  // ---- "sit through pay jumps" transform --------------------------------
+  // Reshape pmf so the player min-cashes less and deep-runs more, with a
+  // compensating mass flowing into busts. EV-preserving by construction
+  // (the bust/top split is chosen so Σ pmf·prize is unchanged).
+  if (
+    row.sitThroughPayJumps &&
+    paidCount >= 4 &&
+    calibrationMode !== "primedope-binary-itm"
+  ) {
+    const q = Math.max(0, Math.min(1, row.payJumpAggression ?? 0.5));
+    if (q > 0) {
+      const half = Math.max(1, Math.floor(paidCount / 2));
+      // Top-half paid = [0, half); bottom-half paid = [half, paidCount).
+      let massBottom = 0;
+      let ePrizeBottom = 0; // Σ pmf[i]·prize[i] over bottom
+      let massTop = 0;
+      let ePrizeTop = 0;
+      for (let i = 0; i < half; i++) {
+        massTop += pmf[i];
+        ePrizeTop += pmf[i] * prizeByPlace[i];
+      }
+      for (let i = half; i < paidCount; i++) {
+        massBottom += pmf[i];
+        ePrizeBottom += pmf[i] * prizeByPlace[i];
+      }
+      const removed = q * massBottom;
+      if (removed > 0 && massTop > 0 && ePrizeTop > 0) {
+        // Per-$ top-redistribution uses mass weighted by prize: deeper
+        // finishes absorb more. Let x = fraction of `removed` that flows
+        // into top (rest goes to bust). EV delta vs original:
+        //   ΔEV = x · (ePrizeTop / massTop) · removed   ← top bonus
+        //       − (ePrizeBottom / massBottom) · removed ← bottom loss
+        // Set ΔEV = 0:
+        //   x = (ePrizeBottom / massBottom) · (massTop / ePrizeTop)
+        const avgBottom = ePrizeBottom / massBottom;
+        const avgTop = ePrizeTop / massTop;
+        let x = avgBottom / avgTop;
+        if (!Number.isFinite(x) || x < 0) x = 0;
+        if (x > 1) x = 1;
+        const toTop = removed * x;
+        const toBust = removed * (1 - x);
+        // Shrink bottom bracket.
+        const bottomScale = 1 - q;
+        for (let i = half; i < paidCount; i++) pmf[i] *= bottomScale;
+        // Distribute `toTop` across top paid proportional to pmf[i]·prize[i]
+        // (so pricier places pick up more of the absorption).
+        for (let i = 0; i < half; i++) {
+          pmf[i] += toTop * ((pmf[i] * prizeByPlace[i]) / ePrizeTop);
+        }
+        // Distribute `toBust` uniformly across unpaid places.
+        const bustCount = N - paidCount;
+        if (bustCount > 0 && toBust > 0) {
+          const perBust = toBust / bustCount;
+          for (let i = paidCount; i < N; i++) pmf[i] += perBust;
+        } else if (bustCount === 0) {
+          // Degenerate: no unpaid places. Fold toBust back into top instead.
+          for (let i = 0; i < half; i++) {
+            pmf[i] += toBust * ((pmf[i] * prizeByPlace[i]) / ePrizeTop);
+          }
+        }
+        // Floating-point guard: re-normalize to 1.
+        let s = 0;
+        for (let i = 0; i < N; i++) s += pmf[i];
+        if (s > 0 && Math.abs(s - 1) > 1e-12) {
+          const k = 1 / s;
+          for (let i = 0; i < N; i++) pmf[i] *= k;
+        }
+      }
+    }
+  }
+
+  const cdf = buildCDF(pmf);
+  const { prob: aliasProb, alias: aliasIdx } = buildAliasTable(pmf);
 
   // ---- bounty distribution across finish places -------------------------
   // Elimination-order model: the player finishing at 1-indexed place p was
@@ -301,7 +469,7 @@ function compileSingleEntry(
       bountyKmean[i] = totalH - Hprefix[i];
     }
 
-    if (row.progressiveKO) {
+    {
       // Progressive PKO: head pool accumulates. At bust m (1..N−1) we have
       // (N−m+1) alive players sharing total head mass T(m−1), starting at
       // T(0)=N×B where B=per-seat bounty. Each KO pays avgHead/2 cash, and
@@ -349,9 +517,6 @@ function compileSingleEntry(
       cumulativeCash[0] += Tfinal;
 
       for (let i = 0; i < N; i++) raw[i] = cumulativeCash[i];
-    } else {
-      // Flat KO: raw weights = expected KO count = bountyKmean[i].
-      for (let i = 0; i < N; i++) raw[i] = bountyKmean[i];
     }
 
     // Normalize so Σ pmf[i]·bountyByPlace[i] = bountyMean (ROI intact).
@@ -366,45 +531,65 @@ function compileSingleEntry(
     }
   }
 
-  // ---- staking transform --------------------------------------------------
-  // Applied after ROI calibration — the calibrator targets the player's
-  // *underlying* edge, then staking re-scales the P&L stream so downstream
-  // drawdown/variance/Kelly metrics reflect the player's actual cash flow:
-  //   player_slot_pnl = (1 − sold) × prize − cost × (1 − sold × markup)
-  // Bounty scales by (1 − sold) the same way prizes do.
-  const soldRaw = Math.max(0, Math.min(1, row.stakingSoldPct ?? 0));
-  const markup = Math.max(1, row.stakingMarkup ?? 1);
-  let singleCostOut = entryCostSingle;
-  let costPerEntryOut = costPerEntry;
-  let prizeOut = prizeByPlace;
-  let bountyOut = bountyByPlace;
-  if (soldRaw > 0) {
-    const keep = 1 - soldRaw;
-    const costFactor = 1 - soldRaw * markup;
-    singleCostOut = entryCostSingle * costFactor;
-    costPerEntryOut = costPerEntry * costFactor;
-    prizeOut = new Float64Array(N);
-    for (let i = 0; i < N; i++) prizeOut[i] = prizeByPlace[i] * keep;
-    if (bountyByPlace !== null) {
-      bountyOut = new Float64Array(N);
-      for (let i = 0; i < N; i++) bountyOut[i] = bountyByPlace[i] * keep;
+  // ---- pmf integrity check ------------------------------------------------
+  // Downstream hot-loop assumes pmf is a proper distribution. Catch bugs in
+  // finishModel / sit-through / ICM / custom-payout code paths before they
+  // leak into sampling.
+  if (process.env.NODE_ENV !== "production") {
+    let pmfSum = 0;
+    for (let i = 0; i < N; i++) {
+      const p = pmf[i];
+      if (!Number.isFinite(p) || p < 0) {
+        throw new Error(
+          `engine: pmf[${i}] invalid (${p}) for row "${row.label || row.id}"`,
+        );
+      }
+      pmfSum += p;
+    }
+    if (Math.abs(pmfSum - 1) > 1e-9) {
+      throw new Error(
+        `engine: pmf Σ=${pmfSum} off from 1 for row "${row.label || row.id}"`,
+      );
     }
   }
 
+  // ---- analytical per-tourney σ (self-check / diagnostic) ----------------
+  // σ² = E[X²] − E[X]² on (prize + bounty − singleCost). Cheap to compute
+  // from pmf and used as a sanity metric next to MC σ in the results view.
+  let eX = 0;
+  let eX2 = 0;
+  for (let i = 0; i < N; i++) {
+    const p = pmf[i];
+    if (p <= 0) continue;
+    const prize = prizeByPlace[i] + (bountyByPlace ? bountyByPlace[i] : 0);
+    eX += p * prize;
+    eX2 += p * prize * prize;
+  }
+  const varSingle = Math.max(0, eX2 - eX * eX);
+  const sigmaSingleAnalytic = Math.sqrt(varSingle);
+
   return {
     rowIdx: idx,
-    costPerEntry: costPerEntryOut,
-    singleCost: singleCostOut,
+    costPerEntry,
+    singleCost: entryCostSingle,
     maxEntries,
     reRate,
     paidCount,
     cdf,
-    prizeByPlace: prizeOut,
+    aliasProb,
+    aliasIdx,
+    prizeByPlace,
     alpha,
     itm: itmProbability(pmf, paidCount),
     reentryExpected,
-    bountyByPlace: bountyOut,
+    bountyByPlace,
     bountyKmean,
+    mysteryBountyLogVar: Math.max(0, row.mysteryBountyVariance ?? 0),
+    mysteryBountyExpMinus1:
+      row.mysteryBountyVariance && row.mysteryBountyVariance > 0
+        ? Math.exp(row.mysteryBountyVariance) - 1
+        : 0,
+    sigmaSingleAnalytic,
   };
 }
 
@@ -413,12 +598,13 @@ function compileRowVariants(
   idx: number,
   model: SimulationInput["finishModel"],
   calibrationMode: CalibrationMode,
+  primedopeStyleEV: boolean,
 ): { entry: CompiledEntry; share: number }[] {
   const fv = row.fieldVariability;
   if (!fv || fv.kind === "fixed") {
     return [
       {
-        entry: compileSingleEntry(row, idx, row.players, model, calibrationMode),
+        entry: compileSingleEntry(row, idx, row.players, model, calibrationMode, primedopeStyleEV),
         share: 1,
       },
     ];
@@ -430,7 +616,7 @@ function compileRowVariants(
     const mid = Math.round((lo + hi) / 2);
     return [
       {
-        entry: compileSingleEntry(row, idx, mid, model, calibrationMode),
+        entry: compileSingleEntry(row, idx, mid, model, calibrationMode, primedopeStyleEV),
         share: 1,
       },
     ];
@@ -442,7 +628,7 @@ function compileRowVariants(
     const t = (b + 0.5) / buckets;
     const players = Math.round(lo + t * (hi - lo));
     variants.push({
-      entry: compileSingleEntry(row, idx, players, model, calibrationMode),
+      entry: compileSingleEntry(row, idx, players, model, calibrationMode, primedopeStyleEV),
       share,
     });
   }
@@ -454,7 +640,9 @@ type ProgressCb = (done: number, total: number) => void;
 /**
  * Polar Box-Muller: maps two uniform draws to a standard normal. We burn
  * at most a couple of extra rng() calls per sample for the rejection —
- * negligible vs. the inner tournament loop.
+ * negligible vs. the inner tournament loop. Kept for paths that only need
+ * a single draw (e.g. per-sample deltaROI); hot-loop paths use makeGauss
+ * below which caches the second value.
  */
 function boxMuller(rng: () => number): number {
   let u = 0;
@@ -466,6 +654,35 @@ function boxMuller(rng: () => number): number {
     s = u * u + v * v;
   } while (s === 0 || s >= 1);
   return u * Math.sqrt((-2 * Math.log(s)) / s);
+}
+
+/**
+ * Marsaglia polar gaussian factory. The polar method natively yields two
+ * independent N(0,1) draws per accepted (u,v); `boxMuller` above discards
+ * the second. This factory caches it, halving `log`/`sqrt` cost on the
+ * second call. Bind one closure per RNG stream at the top of the hot loop.
+ */
+function makeGauss(rng: () => number): () => number {
+  let hasCached = false;
+  let cached = 0;
+  return () => {
+    if (hasCached) {
+      hasCached = false;
+      return cached;
+    }
+    let u = 0;
+    let v = 0;
+    let s = 0;
+    do {
+      u = rng() * 2 - 1;
+      v = rng() * 2 - 1;
+      s = u * u + v * v;
+    } while (s === 0 || s >= 1);
+    const m = Math.sqrt((-2 * Math.log(s)) / s);
+    cached = v * m;
+    hasCached = true;
+    return u * m;
+  };
 }
 
 export function runSimulation(
@@ -568,23 +785,34 @@ export function buildResult(
   const stdDev = Math.sqrt(varAcc / Math.max(1, S - 1));
   const downSigma = Math.sqrt(downVarAcc / Math.max(1, downCount - 1));
 
-  // Higher moments: skewness (m3/σ³) and excess kurtosis (m4/σ⁴ − 3).
-  // Use population divisor S — we want descriptive moments of the sample,
-  // not an unbiased estimator of the underlying distribution.
-  let m3 = 0;
-  let m4 = 0;
+  // Higher moments: bias-corrected sample skewness (G1) and excess kurtosis
+  // (G2) per standard formulas. Population moments under-estimate both for
+  // the skewed MTT distribution; these are the same estimators Excel,
+  // numpy.scipy.stats and R use by default.
+  //   G1 = [S/((S−1)(S−2))] · Σ z_i³
+  //   G2 = [S(S+1)/((S−1)(S−2)(S−3))] · Σ z_i⁴ − 3(S−1)²/((S−2)(S−3))
+  // where z_i = (x_i − mean)/stdDev and stdDev is the sample SD (already
+  // computed above with the S−1 divisor).
+  let sumZ3 = 0;
+  let sumZ4 = 0;
   if (stdDev > 0) {
     for (let s = 0; s < S; s++) {
       const z = (finalProfits[s] - mean) / stdDev;
       const z2 = z * z;
-      m3 += z2 * z;
-      m4 += z2 * z2;
+      sumZ3 += z2 * z;
+      sumZ4 += z2 * z2;
     }
-    m3 /= S;
-    m4 /= S;
   }
-  const skewness = m3;
-  const kurtosis = m4 > 0 ? m4 - 3 : 0;
+  let skewness = 0;
+  let kurtosis = 0;
+  if (stdDev > 0 && S >= 3) {
+    skewness = (S / ((S - 1) * (S - 2))) * sumZ3;
+  }
+  if (stdDev > 0 && S >= 4) {
+    const a = (S * (S + 1)) / ((S - 1) * (S - 2) * (S - 3));
+    const b = (3 * (S - 1) * (S - 1)) / ((S - 2) * (S - 3));
+    kurtosis = a * sumZ4 - b;
+  }
 
   // Kelly: f* ≈ μ / σ² for continuous outcomes. Only meaningful if +EV.
   // We report the fraction and the implied bankroll = totalBuyIn / f*.
@@ -646,6 +874,63 @@ export function buildResult(
       ? Math.ceil(Math.pow((1.96 * sigmaPerTourn) / (0.05 * costPer), 2))
       : 0;
 
+  // Monte Carlo precision readouts -----------------------------------------
+  const mcSeMean = S > 0 ? stdDev / Math.sqrt(S) : 0;
+  const mcSeStdDev = S > 1 ? stdDev / Math.sqrt(2 * (S - 1)) : 0;
+  const mcCi95HalfWidthMean = 1.96 * mcSeMean;
+  const mcRoiErrorPct =
+    Math.abs(mean) > 1e-6
+      ? Math.abs(mcCi95HalfWidthMean / mean)
+      : Number.POSITIVE_INFINITY;
+  const mcPrecisionScore =
+    mcRoiErrorPct < 0.01 ? 1 : mcRoiErrorPct < 0.05 ? 0.5 : 0;
+  // Projected S for ≤1 % relative MC error on mean: solve (1.96·σ/√S)/μ = 0.01
+  //   → S = (1.96·σ / (0.01·μ))²
+  const mcSamplesFor1Pct =
+    mean > 1e-6 && stdDev > 0
+      ? Math.ceil(Math.pow((1.96 * stdDev) / (0.01 * mean), 2))
+      : Number.POSITIVE_INFINITY;
+
+  // Gaussian analytic RoR — PrimeDope-compatible readout ------------------
+  // Per-tourney mean/σ from total-horizon stats. First-passage of Brownian
+  // motion with drift: P(ruin by N | B) = Φ((−B−μ·N)/(σ·√N)) +
+  // exp(−2μ·B/σ²) · Φ((−B+μ·N)/(σ·√N)). Invert numerically by bisection.
+  const muPerTourn = N > 0 ? mean / N : 0;
+  const sigmaPerTournRuin = N > 0 ? stdDev / Math.sqrt(N) : 0;
+  const gaussianRuinProb = (B: number): number => {
+    if (B <= 0) return 1;
+    if (sigmaPerTournRuin <= 0 || N <= 0) return muPerTourn >= 0 ? 0 : 1;
+    const sqrtN = Math.sqrt(N);
+    const denom = sigmaPerTournRuin * sqrtN;
+    const a = (-B - muPerTourn * N) / denom;
+    const b = (-B + muPerTourn * N) / denom;
+    const var1 = sigmaPerTournRuin * sigmaPerTournRuin;
+    const expArg = (-2 * muPerTourn * B) / var1;
+    // Clamp exp arg to avoid Infinity — for strongly negative drift this
+    // term blows up but is capped at 1 (a probability).
+    const expTerm = expArg > 700 ? 1 : Math.exp(expArg);
+    const p = normalCdf(a) + Math.min(1, expTerm) * normalCdf(b);
+    return Math.min(1, Math.max(0, p));
+  };
+  const solveGaussianBankroll = (alpha: number): number => {
+    if (sigmaPerTournRuin <= 0) return 0;
+    // Bracket: 0 → ruin prob = 1. Upper bound: scale with σ√N × 10.
+    let lo = 0;
+    let hi = Math.max(100, stdDev * 10);
+    // Expand hi until ruin prob drops below alpha.
+    for (let k = 0; k < 20 && gaussianRuinProb(hi) > alpha; k++) hi *= 2;
+    for (let k = 0; k < 64; k++) {
+      const mid = 0.5 * (lo + hi);
+      if (gaussianRuinProb(mid) > alpha) lo = mid;
+      else hi = mid;
+    }
+    return 0.5 * (lo + hi);
+  };
+  const minBankrollRoR1pctGaussian = solveGaussianBankroll(0.01);
+  const minBankrollRoR5pctGaussian = solveGaussianBankroll(0.05);
+  const riskOfRuinGaussian =
+    bankroll > 0 ? gaussianRuinProb(bankroll) : 0;
+
   // Minimum bankroll for historical RoR ≤ threshold.
   // For each sample, "ruin" at bankroll B <=> runningMin <= -B.
   // Sort −runningMin ascending → the 1 − ε quantile gives B such that ε
@@ -655,10 +940,29 @@ export function buildResult(
     .sort();
   const minBankrollRoR1pct = worstLosses[Math.floor(0.99 * (S - 1))];
   const minBankrollRoR5pct = worstLosses[Math.floor(0.95 * (S - 1))];
+  const minBankrollRoR15pct = worstLosses[Math.floor(0.85 * (S - 1))];
+  const minBankrollRoR50pct = worstLosses[Math.floor(0.5 * (S - 1))];
+  // "Runs that never dipped below 0" — fraction of samples whose running
+  // minimum profit stayed non-negative over the entire schedule.
+  let neverBelowZero = 0;
+  for (let s = 0; s < S; s++) if (runningMins[s] >= 0) neverBelowZero++;
+  const neverBelowZeroFrac = neverBelowZero / S;
 
   // Histograms --------------------------------------------------------------
   const histogram = histogramOf(finalProfits, 60);
   const drawdownHistogram = histogramOf(maxDrawdowns, 50, true);
+  // Streak histograms — distribution of max drawdown / longest cashless /
+  // longest breakeven / recovery length across samples. Int32Array → Float64
+  // copy is cheap. Recovery uses recovered-only (unrecovered share is
+  // reported separately in stats).
+  const longestBreakevenF = new Float64Array(S);
+  const longestCashlessF = new Float64Array(S);
+  for (let s = 0; s < S; s++) {
+    longestBreakevenF[s] = longestBreakevens[s];
+    longestCashlessF[s] = longestCashless[s];
+  }
+  const longestBreakevenHistogram = histogramOf(longestBreakevenF, 40, true);
+  const longestCashlessHistogram = histogramOf(longestCashlessF, 40, true);
 
   // Envelopes ---------------------------------------------------------------
   const K1 = K + 1;
@@ -673,22 +977,34 @@ export function buildResult(
   const p0015 = new Float64Array(K1);
   const p9985 = new Float64Array(K1);
 
-  const col = new Float64Array(S);
+  // Envelope percentiles: sorting K1 full columns of a 1M-sample run is
+  // ≈80 × O(S log S) ≈ 1.6 B ops — freezes the worker at 99% for tens of
+  // seconds. Subsample uniformly for the quantile computation (mean still
+  // runs on the full S, which is just an additive loop and cheap).
+  // Accuracy at the reported percentiles: p0015 / p9985 need ≥ 1 / (1-p)
+  // samples minimum, so we cap at ≥ 20k; 50k keeps all six percentiles
+  // within ~0.3 σ of the exact answer and runs in ~200 ms total.
+  const ENV_CAP = 50_000;
+  const envS = Math.min(S, ENV_CAP);
+  const envStride = S / envS;
+  const col = new Float64Array(envS);
   for (let j = 0; j < K1; j++) {
+    // Mean on the full S (cheap accumulator, no sort needed).
     let acc = 0;
-    for (let s = 0; s < S; s++) {
-      const v = pathMatrix[s * K1 + j];
-      col[s] = v;
-      acc += v;
-    }
+    for (let s = 0; s < S; s++) acc += pathMatrix[s * K1 + j];
     mean_[j] = acc / S;
+    // Percentiles on a stratified subsample of size envS.
+    for (let s = 0; s < envS; s++) {
+      const src = Math.min(S - 1, Math.floor(s * envStride));
+      col[s] = pathMatrix[src * K1 + j];
+    }
     col.sort();
-    p15[j] = col[Math.floor(0.15 * (S - 1))];
-    p85[j] = col[Math.floor(0.85 * (S - 1))];
-    p025[j] = col[Math.floor(0.025 * (S - 1))];
-    p975[j] = col[Math.floor(0.975 * (S - 1))];
-    p0015[j] = col[Math.floor(0.0015 * (S - 1))];
-    p9985[j] = col[Math.floor(0.9985 * (S - 1))];
+    p15[j] = col[Math.floor(0.15 * (envS - 1))];
+    p85[j] = col[Math.floor(0.85 * (envS - 1))];
+    p025[j] = col[Math.floor(0.025 * (envS - 1))];
+    p975[j] = col[Math.floor(0.975 * (envS - 1))];
+    p0015[j] = col[Math.floor(0.0015 * (envS - 1))];
+    p9985[j] = col[Math.floor(0.9985 * (envS - 1))];
   }
 
   // Sample paths ------------------------------------------------------------
@@ -778,6 +1094,12 @@ export function buildResult(
   const recoveryMedian = recoveryPct(0.5);
   const recoveryP90 = recoveryPct(0.9);
   const recoveryUnrecoveredShare = unrecoveredCount / S;
+  const recoveredF = new Float64Array(recoveredOnly.length);
+  for (let i = 0; i < recoveredOnly.length; i++) recoveredF[i] = recoveredOnly[i];
+  const recoveryHistogram =
+    recoveredF.length > 0
+      ? histogramOf(recoveredF, 40, true)
+      : { binEdges: [0, 1], counts: [0] };
 
   // Decomposition -----------------------------------------------------------
   const decomposition: RowDecomposition[] = new Array(numRows);
@@ -866,8 +1188,13 @@ export function buildResult(
     if (idxConv < convPoints && s + 1 === convX[idxConv]) {
       const n = s + 1;
       const m = cumSum / n;
-      const varr = Math.max(0, cumSqSum / n - m * m);
-      const se = Math.sqrt(varr / n);
+      // Population-moment estimator scaled to sample variance:
+      //   s² = (Σx² − n·m²) / (n − 1)
+      // SE of the running mean = s / √n. Using /n instead of /(n−1) shrinks
+      // the band by √(n/(n−1)) — off by 15 % at n=4, <0.5 % at n=100.
+      const sampleVar =
+        n > 1 ? Math.max(0, cumSqSum - n * m * m) / (n - 1) : 0;
+      const se = Math.sqrt(sampleVar / n);
       convMean[idxConv] = m;
       convSeLo[idxConv] = m - 1.96 * se;
       convSeHi[idxConv] = m + 1.96 * se;
@@ -885,6 +1212,9 @@ export function buildResult(
     finalProfits,
     histogram,
     drawdownHistogram,
+    longestBreakevenHistogram,
+    longestCashlessHistogram,
+    recoveryHistogram,
     samplePaths: { x, paths, best, worst, sampleIndices: chosen },
     envelopes: { x, mean: mean_, p15, p85, p025, p975, p0015, p9985 },
     decomposition,
@@ -923,6 +1253,18 @@ export function buildResult(
       tournamentsFor95ROI,
       minBankrollRoR1pct,
       minBankrollRoR5pct,
+      minBankrollRoR15pct,
+      minBankrollRoR50pct,
+      minBankrollRoR1pctGaussian,
+      minBankrollRoR5pctGaussian,
+      riskOfRuinGaussian,
+      mcSeMean,
+      mcSeStdDev,
+      mcCi95HalfWidthMean,
+      mcRoiErrorPct,
+      mcPrecisionScore,
+      mcSamplesFor1Pct,
+      neverBelowZeroFrac,
       itmRate: compiled.itmRate,
       skewness,
       kurtosis,
@@ -933,8 +1275,40 @@ export function buildResult(
         compiled.totalBuyIn > 0
           ? ddMean / (compiled.totalBuyIn / N)
           : 0,
+      sigmaPerTournamentAnalytic: (() => {
+        // √( Σ σᵢ² / N ) — per-tourney σ assuming independent rows. Matches
+        // how stdDev/√N is interpreted on the MC side.
+        if (compiled.flat.length === 0) return 0;
+        let acc = 0;
+        for (const e of compiled.flat) {
+          const s = e.sigmaSingleAnalytic;
+          acc += s * s;
+        }
+        return Math.sqrt(acc / compiled.flat.length);
+      })(),
+      sigmaPerTournamentEmpirical: sigmaPerTourn,
     },
   };
+}
+
+/**
+ * Hastings approximation for the standard normal CDF Φ(z). Same algorithm
+ * used by PrimeDope's legacy JS (function `q` at line 1192 of tmp_legacy.js)
+ * so the Gaussian-RoR readout lines up with theirs bit-for-bit.
+ */
+function normalCdf(z: number): number {
+  const sign = z < 0 ? -1 : 1;
+  const a = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * a);
+  const y =
+    1 -
+    (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t -
+      0.284496736) *
+      t +
+      0.254829592) *
+      t *
+      Math.exp(-a * a);
+  return 0.5 * (1 + sign * y);
 }
 
 function countProfits(arr: Float64Array): number {
@@ -1067,7 +1441,10 @@ export function simulateShard(
   const perPass = compiled.tournamentsPerPass;
   const flat = compiled.flat;
 
-  const nextProgressStep = Math.max(1, Math.floor(shardSize / 50));
+  // Fire ~20 progress messages per shard. More than that thrashes the main
+  // thread (postMessage + handler O(n_shards) work per fire); fewer makes
+  // the bar feel laggy. 20 is the sweet spot for 50k-sample runs on 8 cores.
+  const nextProgressStep = Math.max(1, Math.floor(shardSize / 20));
   let nextProgressAt = nextProgressStep;
 
   for (let s = sStart; s < sEnd; s++) {
@@ -1080,8 +1457,12 @@ export function simulateShard(
     // a bounty flag doesn't perturb the finish-sampling stream (otherwise
     // same-seed comparison tests between bounty and non-bounty runs drift).
     const bRng = mulberry32(mixSeed((input.seed ^ 0xb01dface) >>> 0, s));
+    // Cached-pair gaussians bound to each stream — halves log/sqrt cost
+    // relative to the discarding boxMuller.
+    const gaussSkill = makeGauss(skillRng);
+    const gaussB = makeGauss(bRng);
 
-    const deltaROI = roiStdErr > 0 ? boxMuller(skillRng) * roiStdErr : 0;
+    const deltaROI = roiStdErr > 0 ? gaussSkill() * roiStdErr : 0;
     let drift = 0;
     let sessionShock = 0;
     let tiltState: -1 | 0 | 1 = 0;
@@ -1107,12 +1488,12 @@ export function simulateShard(
 
     for (let i = 0; i < N; i++) {
       if ((sigSession > 0 || sigDrift > 0) && i % perPass === 0) {
-        if (sigSession > 0) sessionShock = boxMuller(skillRng) * sigSession;
+        if (sigSession > 0) sessionShock = gaussSkill() * sigSession;
         if (sigDrift > 0)
-          drift = driftRho * drift + boxMuller(skillRng) * driftInnovScale;
+          drift = driftRho * drift + gaussSkill() * driftInnovScale;
       }
       const tourneyShock =
-        sigTourney > 0 ? boxMuller(skillRng) * sigTourney : 0;
+        sigTourney > 0 ? gaussSkill() * sigTourney : 0;
 
       let tiltShift = 0;
       if (tiltFastOn) {
@@ -1170,15 +1551,22 @@ export function simulateShard(
       const bp = t.bountyByPlace;
       const bkm = t.bountyKmean;
       const prizes = t.prizeByPlace;
-      const cdf = t.cdf;
+      const aliasProb = t.aliasProb;
+      const aliasIdx = t.aliasIdx;
+      const aliasN = aliasProb.length;
       const single = t.singleCost;
       const bulletCost = single - effectiveDelta * single;
       const maxB = t.maxEntries;
       const pc = t.paidCount;
+      const mystVar = t.mysteryBountyLogVar;
+      const mystExpM1 = t.mysteryBountyExpMinus1;
       let delta = 0;
       let cashedThisSlot = false;
       if (maxB === 1) {
-        const place = sampleFromCDF(cdf, rng());
+        // Vose alias: one uniform → O(1) finish draw.
+        const r0 = rng() * aliasN;
+        const i0 = r0 | 0;
+        const place = r0 - i0 < aliasProb[i0] ? i0 : aliasIdx[i0];
         let bountyDraw = 0;
         if (bp !== null) {
           const mean = bp[place];
@@ -1196,10 +1584,23 @@ export function simulateShard(
                 } while (p > L);
                 k--;
               } else {
-                const g = lam + boxMuller(bRng) * Math.sqrt(lam);
+                const g = lam + gaussB() * Math.sqrt(lam);
                 k = g < 0 ? 0 : g;
               }
               bountyDraw = (mean * k) / lam;
+              // Mystery-bounty multiplier: Fenton–Wilkinson lognormal
+              // approximation of a sum of k i.i.d. lognormal(0, σ²) draws.
+              // Per-KO variance is σ². Aggregate log-variance scales as
+              // σ_sum² = ln(1 + (e^σ²−1)/k). Mean preserved at k·1 = k,
+              // so bountyDraw×scale has the same expectation as bountyDraw.
+              if (mystVar > 0 && k > 0 && bountyDraw > 0) {
+                const sigSum2 = Math.log(1 + mystExpM1 / k);
+                const sigSum = Math.sqrt(sigSum2);
+                const scale = Math.exp(
+                  sigSum * gaussB() - 0.5 * sigSum2,
+                );
+                bountyDraw *= scale;
+              }
             } else {
               bountyDraw = mean;
             }
@@ -1212,7 +1613,9 @@ export function simulateShard(
       } else {
         const reRate = t.reRate;
         for (let b = 0; b < maxB; b++) {
-          const place = sampleFromCDF(cdf, rng());
+          const r1 = rng() * aliasN;
+          const i1 = r1 | 0;
+          const place = r1 - i1 < aliasProb[i1] ? i1 : aliasIdx[i1];
           let bountyDraw = 0;
           if (bp !== null) {
             const mean = bp[place];
@@ -1232,10 +1635,18 @@ export function simulateShard(
                   } while (p > L);
                   k--;
                 } else {
-                  const g = lam + boxMuller(bRng) * Math.sqrt(lam);
+                  const g = lam + gaussB() * Math.sqrt(lam);
                   k = g < 0 ? 0 : g;
                 }
                 bountyDraw = (mean * k) / lam;
+                if (mystVar > 0 && k > 0 && bountyDraw > 0) {
+                  const sigSum2 = Math.log(1 + mystExpM1 / k);
+                  const sigSum = Math.sqrt(sigSum2);
+                  const scale = Math.exp(
+                    sigSum * gaussB() - 0.5 * sigSum2,
+                  );
+                  bountyDraw *= scale;
+                }
               } else {
                 bountyDraw = mean;
               }
