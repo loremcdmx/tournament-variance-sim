@@ -145,6 +145,16 @@ async function fetchPD(sc: Scenario): Promise<PdResponse> {
   return json;
 }
 
+function quantileSorted(sorted: Float64Array, q: number): number {
+  const n = sorted.length;
+  if (n === 0) return 0;
+  const idx = q * (n - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
 function runOurs(sc: Scenario) {
   const row: TournamentRow = {
     id: "r",
@@ -168,6 +178,8 @@ function runOurs(sc: Scenario) {
     primedopeStyleEV: true,
   };
   const r = runSimulation(input);
+  const sorted = new Float64Array(r.finalProfits);
+  sorted.sort();
   return {
     mean: r.stats.mean,
     sd: r.stats.stdDev,
@@ -176,6 +188,11 @@ function runOurs(sc: Scenario) {
     minBR5: r.stats.minBankrollRoR5pct,
     minBR1: r.stats.minBankrollRoR1pct,
     ruinFrac: r.stats.riskOfRuin,
+    neverBelowZeroFrac: r.stats.neverBelowZeroFrac,
+    // PD conf intervals: conf70 = [15%, 85%], conf95 = [2.5%, 97.5%], conf997 = [0.15%, 99.85%]
+    conf70: [quantileSorted(sorted, 0.15), quantileSorted(sorted, 0.85)] as const,
+    conf95: [quantileSorted(sorted, 0.025), quantileSorted(sorted, 0.975)] as const,
+    conf997: [quantileSorted(sorted, 0.0015), quantileSorted(sorted, 0.9985)] as const,
   };
 }
 
@@ -207,6 +224,8 @@ async function main() {
 
   let worstEvErr = 0;
   let worstSdErr = 0;
+  let worstMinBRErr = 0;
+  let worstConfErr = 0;
 
   for (const sc of scenarios) {
     process.stdout.write(`  fetching ${sc.name} … `);
@@ -217,30 +236,70 @@ async function main() {
     const evErr = relErr(ours.mean, pd.ev);
     const sdErrMath = relErr(ours.sd, pd.sd);
     const sdErrSim = relErr(ours.sd, pd.sdSimulated);
-    worstEvErr = Math.max(worstEvErr, Math.abs(evErr));
+    // Skip EV worst-case accumulation when |pd.ev| is trivially small vs SD —
+    // break-even scenarios blow up relative errors on essentially-zero means.
+    if (Math.abs(pd.ev) > 0.01 * pd.sd) {
+      worstEvErr = Math.max(worstEvErr, Math.abs(evErr));
+    }
     worstSdErr = Math.max(worstSdErr, Math.abs(sdErrMath));
+
+    // min-bankroll percentiles: PD reports `minNpercentile` as a negative
+    // profit number (the running-min dollar depth you need to cover). Ours
+    // are positive bankrolls, which should match −pd.min*percentile.
+    const pdMinBR50 = -pd.min50percentile;
+    const pdMinBR15 = -pd.min15percentile;
+    const pdMinBR5 = -pd.min05percentile;
+    const pdMinBR1 = -pd.min01percentile;
+    const minBR50Err = relErr(ours.minBR50, pdMinBR50);
+    const minBR15Err = relErr(ours.minBR15, pdMinBR15);
+    const minBR5Err = relErr(ours.minBR5, pdMinBR5);
+    const minBR1Err = relErr(ours.minBR1, pdMinBR1);
+    worstMinBRErr = Math.max(
+      worstMinBRErr,
+      ...[minBR50Err, minBR15Err, minBR5Err, minBR1Err].map(Math.abs),
+    );
+
+    // Conf-interval quantile errors (both bounds)
+    const confErrs = [
+      relErr(ours.conf70[0], pd.conf70[0]),
+      relErr(ours.conf70[1], pd.conf70[1]),
+      relErr(ours.conf95[0], pd.conf95[0]),
+      relErr(ours.conf95[1], pd.conf95[1]),
+      relErr(ours.conf997[0], pd.conf997[0]),
+      relErr(ours.conf997[1], pd.conf997[1]),
+    ];
+    worstConfErr = Math.max(worstConfErr, ...confErrs.map(Math.abs));
 
     console.log();
     console.log(
       `${sc.name}  |  ${sc.players}p, paid=${sc.placesPaid}, $${sc.buyIn} +${sc.rakePct}%, ROI ${sc.roiPct}%, N=${sc.number}, BR=${sc.bankroll}`,
     );
     console.log(
-      `                  ${pad("EV", 10)}  ${pad("SD", 10)}  ${pad("min50%", 10)}  ${pad("min15%", 10)}  ${pad("min5%", 10)}  ${pad("min1%", 10)}  ${pad("RoR", 8)}`,
+      `                  ${pad("EV", 10)}  ${pad("SD", 10)}  ${pad("min50%", 10)}  ${pad("min15%", 10)}  ${pad("min5%", 10)}  ${pad("min1%", 10)}  ${pad("RoR", 8)}  ${pad("neverBZ", 9)}`,
     );
     console.log(
-      `  PD  math    :  ${pad(money(pd.ev), 10)}  ${pad(money(pd.sd), 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 8)}`,
+      `  PD  math    :  ${pad(money(pd.ev), 10)}  ${pad(money(pd.sd), 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 8)}  ${pad("-", 9)}`,
     );
     console.log(
-      `  PD  sim(${pad(pd.samplesize, 4)}):  ${pad(money(pd.evSimulated), 10)}  ${pad(money(pd.sdSimulated), 10)}  ${pad(money(-pd.min50percentile), 10)}  ${pad(money(-pd.min15percentile), 10)}  ${pad(money(-pd.min05percentile), 10)}  ${pad(money(-pd.min01percentile), 10)}  ${pad(pct(pd.riskOfRuin), 8)}`,
+      `  PD  sim(${pad(pd.samplesize, 4)}):  ${pad(money(pd.evSimulated), 10)}  ${pad(money(pd.sdSimulated), 10)}  ${pad(money(pdMinBR50), 10)}  ${pad(money(pdMinBR15), 10)}  ${pad(money(pdMinBR5), 10)}  ${pad(money(pdMinBR1), 10)}  ${pad(pct(pd.riskOfRuin), 8)}  ${pad(String(pd.neverBelowZero), 9)}`,
     );
     console.log(
-      `  OUR sim(50k):  ${pad(money(ours.mean), 10)}  ${pad(money(ours.sd), 10)}  ${pad(money(ours.minBR50), 10)}  ${pad(money(ours.minBR15), 10)}  ${pad(money(ours.minBR5), 10)}  ${pad(money(ours.minBR1), 10)}  ${pad(pct(ours.ruinFrac), 8)}`,
+      `  OUR sim(50k):  ${pad(money(ours.mean), 10)}  ${pad(money(ours.sd), 10)}  ${pad(money(ours.minBR50), 10)}  ${pad(money(ours.minBR15), 10)}  ${pad(money(ours.minBR5), 10)}  ${pad(money(ours.minBR1), 10)}  ${pad(pct(ours.ruinFrac), 8)}  ${pad(pct(ours.neverBelowZeroFrac), 9)}`,
+    );
+    console.log(
+      `  Δ vs PD-sim :  ${pad((evErr * 100).toFixed(2) + "%", 10)}  ${pad((sdErrSim * 100).toFixed(2) + "%", 10)}  ${pad((minBR50Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR15Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR5Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR1Err * 100).toFixed(1) + "%", 10)}`,
     );
     console.log(
       `  Δ vs PD-math:  ${pad((evErr * 100).toFixed(2) + "%", 10)}  ${pad((sdErrMath * 100).toFixed(2) + "%", 10)}`,
     );
     console.log(
-      `  Δ vs PD-sim :  ${pad(((ours.mean - pd.evSimulated) / Math.max(1, Math.abs(pd.evSimulated)) * 100).toFixed(2) + "%", 10)}  ${pad((sdErrSim * 100).toFixed(2) + "%", 10)}`,
+      `  conf70 :  PD [${money(pd.conf70[0])}, ${money(pd.conf70[1])}]  OUR [${money(ours.conf70[0])}, ${money(ours.conf70[1])}]  Δ [${(confErrs[0] * 100).toFixed(1)}%, ${(confErrs[1] * 100).toFixed(1)}%]`,
+    );
+    console.log(
+      `  conf95 :  PD [${money(pd.conf95[0])}, ${money(pd.conf95[1])}]  OUR [${money(ours.conf95[0])}, ${money(ours.conf95[1])}]  Δ [${(confErrs[2] * 100).toFixed(1)}%, ${(confErrs[3] * 100).toFixed(1)}%]`,
+    );
+    console.log(
+      `  conf997:  PD [${money(pd.conf997[0])}, ${money(pd.conf997[1])}]  OUR [${money(ours.conf997[0])}, ${money(ours.conf997[1])}]  Δ [${(confErrs[4] * 100).toFixed(1)}%, ${(confErrs[5] * 100).toFixed(1)}%]`,
     );
   }
 
@@ -250,10 +309,13 @@ async function main() {
     `WORST ERRORS vs PD (math):  EV ${(worstEvErr * 100).toFixed(2)}%, SD ${(worstSdErr * 100).toFixed(2)}%`,
   );
   console.log(
-    "Expected: EV < 1% (MC noise on our side), SD < 2% (their SD formula has a small systematic bias vs uniform-band).",
+    `WORST ERRORS vs PD (sim) :  minBR ${(worstMinBRErr * 100).toFixed(1)}%, conf-bounds ${(worstConfErr * 100).toFixed(1)}%`,
   );
   console.log(
-    "Percentiles: their numbers come from only 1000–5000 MC samples, so treat ±15% as noise floor on those.",
+    "Expected: EV < 1%, SD < 1% (both closed-form, no MC noise on PD side).",
+  );
+  console.log(
+    "minBR / conf bounds: PD uses 5000 samples, we use 50k — expect ±5-15% noise on tail quantiles at their S.",
   );
   console.log("=".repeat(100));
 }
