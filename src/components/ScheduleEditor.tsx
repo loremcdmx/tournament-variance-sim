@@ -212,8 +212,8 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
         disabled={disabled}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[960px] text-sm">
+      <div>
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-left text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               <Th> </Th>
@@ -279,12 +279,12 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                         )}
                       </button>
                     </Td>
-                    <Td className="min-w-[18rem]">
+                    <Td className="w-full">
                       <TextInput
                         value={r.label ?? ""}
                         onChange={(v) => update(r.id, { label: v })}
                         placeholder={t("row.unnamed")}
-                        className="w-full min-w-[16rem]"
+                        className="w-full"
                       />
                     </Td>
                     <Td align="right">
@@ -327,7 +327,7 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                             setExpanded(ex);
                           }
                         }}
-                        className="min-w-[10rem] w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+                        className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
                       >
                         {STRUCTURES.map((s) => (
                           <option key={s.id} value={s.id} title={s.full}>
@@ -862,7 +862,7 @@ function Th({
   return (
     <th
       className={
-        "px-4 py-2.5 font-medium " + (align === "right" ? "text-right" : "")
+        "px-2 py-2.5 font-medium first:pl-4 last:pr-4 " + (align === "right" ? "text-right" : "")
       }
     >
       <span
@@ -889,7 +889,7 @@ function Td({
   return (
     <td
       className={
-        "px-4 py-2 align-middle " +
+        "px-2 py-2 align-middle first:pl-4 last:pr-4 " +
         (align === "right" ? "text-right " : "") +
         className
       }
@@ -963,7 +963,7 @@ function BuyInInput({
       placeholder="50+5"
       title="50+5 = $50 buy-in + $5 rake (or just a number)"
       className={
-        "w-24 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)] " +
+        "w-20 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)] " +
         (invalid ? "border-[color:var(--color-danger)]/60" : "")
       }
     />
@@ -991,7 +991,7 @@ function NumInput({
         const v = parseFloat(e.target.value);
         if (!Number.isNaN(v)) onChange(v);
       }}
-      className="w-20 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]"
+      className="w-16 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]"
     />
   );
 }

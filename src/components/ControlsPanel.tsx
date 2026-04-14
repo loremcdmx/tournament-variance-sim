@@ -461,13 +461,16 @@ function Field({
   children: React.ReactNode;
   hint?: React.ReactNode;
 }) {
+  // h-full + mt-auto pushes the input to the bottom of the grid cell so
+  // wrapping labels (e.g. "Сколько сессий сыграем") don't shove their
+  // input down and break horizontal alignment with neighbouring fields.
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+    <label className="flex h-full flex-col gap-1.5">
+      <span className="flex items-start gap-1.5 text-[10px] font-medium uppercase leading-tight tracking-[0.15em] text-[color:var(--color-fg-dim)]">
         {label}
         {hint && <InfoTooltip content={hint} />}
       </span>
-      {children}
+      <div className="mt-auto">{children}</div>
     </label>
   );
 }

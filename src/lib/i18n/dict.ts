@@ -72,6 +72,15 @@ export const DICT = {
   },
   "userPreset.mine": { en: "Saved", ru: "Сохранено" },
   "userPreset.delete": { en: "Delete", ru: "Удалить" },
+  "userPreset.share": {
+    en: "Copy share link",
+    ru: "Скопировать ссылку",
+  },
+  "userPreset.shareCopied": { en: "Link copied", ru: "Ссылка скопирована" },
+  "userPreset.shareFallback": {
+    en: "Copy this link manually:",
+    ru: "Скопируй ссылку вручную:",
+  },
   "userPreset.promptName": {
     en: "Name this preset:",
     ru: "Название пресета:",
@@ -277,7 +286,7 @@ export const DICT = {
   },
   "controls.tiltSlowMinDuration": {
     en: "Slow tilt: how long the streak must last",
-    ru: "Медленный тильт: длительность стрика",
+    ru: "Медленный тильт: длительность серии",
   },
 
   // ---- model preset selector ----
@@ -404,7 +413,7 @@ export const DICT = {
   "stat.worstRun": { en: "Worst run", ru: "Худший прогон" },
   "stat.p1p5": { en: "Worst 1% / 5%", ru: "Худшие 1% / 5%" },
   "stat.p95p99": { en: "Top 5% / 1%", ru: "Топ 5% / 1%" },
-  "stat.longestBE": { en: "Longest break-even streak", ru: "Долгая полоса безубыточности" },
+  "stat.longestBE": { en: "Longest break-even streak", ru: "Долгая серия без прогресса" },
   "stat.minBR5": { en: "BR for 5% ruin", ru: "БР для 5% разорения" },
   "stat.bankrollOff": { en: "bankroll off", ru: "банкролл выкл" },
   "stat.ddBI": { en: "Downswing (BI)", ru: "Даунсвинг (бай-ины)" },
@@ -452,6 +461,30 @@ export const DICT = {
     en: "Both charts share the same Y-axis range so the visual difference in envelope width is directly comparable.",
     ru: "У обоих графиков общий диапазон по оси Y — ширина огибающих видна на глаз и напрямую сравнима.",
   },
+  "chart.trajectory.gapTitle": {
+    en: "How big is the gap",
+    ru: "Насколько велик разрыв",
+  },
+  "chart.trajectory.gapSpread": {
+    en: "95% final-profit spread",
+    ru: "95%-й разброс итогового профита",
+  },
+  "chart.trajectory.gapDd": {
+    en: "Worst-case drawdown (p97.5)",
+    ru: "Худший даунсвинг (p97.5)",
+  },
+  "chart.trajectory.gapRatio": {
+    en: "{ratio}× wider than PrimeDope",
+    ru: "в {ratio}× шире, чем PrimeDope",
+  },
+  "chart.trajectory.gapRatioDeeper": {
+    en: "{ratio}× deeper than PrimeDope",
+    ru: "в {ratio}× глубже, чем PrimeDope",
+  },
+  "chart.trajectory.gapExplain": {
+    en: "The gap is real, not a rendering bug: our model concentrates cash probability on top finishes (where 80%+ of the prize pool lives), while PrimeDope treats every paid place as equally likely. Same mean profit, radically different tails — and the tails are what eat your bankroll.",
+    ru: "Разрыв реальный, а не глюк отрисовки: наша модель концентрирует вероятность призовых мест в верху (там где живёт 80%+ всего призового фонда), а PrimeDope считает, что любое призовое место равновероятно. Среднее одинаковое, но хвосты радикально разные — а банкролл едят именно хвосты.",
+  },
   "chart.dist": { en: "Distribution of final profit", ru: "Распределение итогового профита" },
   "chart.ddDist": { en: "Max drawdown distribution", ru: "Распределение макс. даунсвинга" },
   "chart.ddDist.sub": {
@@ -497,6 +530,72 @@ export const DICT = {
   "unit.money": { en: "$", ru: "$" },
   "unit.abi": { en: "ABI", ru: "АБИ" },
   "unit.tourneys": { en: "tournaments", ru: "турниров" },
+  "unit.displayLabel": { en: "Display in", ru: "Показывать в" },
+
+  "lineStyle.label": { en: "Line style", ru: "Стиль линий" },
+  "runs.label": { en: "Runs shown", ru: "Показано ранов" },
+  "refLines.label": { en: "Ref ROI", ru: "ROI линии" },
+  "refLines.title": { en: "ROI reference lines", ru: "Опорные ROI линии" },
+  "refLines.enabled": { en: "Show line", ru: "Показывать линию" },
+  "refLines.color": { en: "Line color", ru: "Цвет линии" },
+  "refLines.roi": { en: "ROI %", ru: "ROI %" },
+  "refLines.remove": { en: "Remove", ru: "Удалить" },
+  "refLines.add": { en: "Add line", ru: "Добавить линию" },
+  "section.verdict": { en: "Verdict", ru: "Вердикт" },
+  "section.primedopeReport": { en: "PrimeDope report", ru: "PrimeDope отчёт" },
+  "section.pdWeakness": { en: "PokerDope model flaws", ru: "Минусы модели PokerDope" },
+  "section.settingsDump": { en: "Run settings", ru: "Настройки прогона" },
+  "section.pdVerdict": { en: "PrimeDope verdict", ru: "Вердикт PrimeDope" },
+  "section.pdDiff": { en: "PrimeDope diff", ru: "Разница с PrimeDope" },
+  "lineStyle.customize": { en: "Customize", ru: "Настроить" },
+  "lineStyle.reset": { en: "Reset", ru: "Сброс" },
+  "lineStyle.resetAll": { en: "Reset all", ru: "Сбросить всё" },
+  "lineStyle.width": { en: "Width", ru: "Толщина" },
+  "lineStyle.line.mean": { en: "Mean winnings", ru: "Средний выигрыш" },
+  "lineStyle.line.ev": { en: "EV", ru: "EV" },
+  "lineStyle.line.best": { en: "Luckiest run", ru: "Лучший прогон" },
+  "lineStyle.line.worst": { en: "Unluckiest run", ru: "Худший прогон" },
+  "presets.export": { en: "Export", ru: "Экспорт" },
+  "presets.import": { en: "Import", ru: "Импорт" },
+  "presets.importError": {
+    en: "Could not read that file — expected JSON exported from variance.lab.",
+    ru: "Не смог прочитать файл — ожидается JSON, экспортированный из variance.lab.",
+  },
+  "presets.importDone": {
+    en: "Imported {n} preset(s).",
+    ru: "Импортировано пресетов: {n}.",
+  },
+  "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
+  "changelog.v03.title": { en: "v0.3 — current", ru: "v0.3 — текущая" },
+  "changelog.v03.preview": {
+    en: "Redesigned right-side tournament preview (narrative layout, top-heaviness callout).",
+    ru: "Переделан правый виджет турнира — новый нарратив, акцент на top-heavy структуру.",
+  },
+  "changelog.v03.unit": {
+    en: "$/ABI unit toggle on trajectory, distribution and drawdown charts.",
+    ru: "Переключатель $/АБИ на графиках траектории, распределения и даунсвингов.",
+  },
+  "changelog.v03.presets": {
+    en: "Line style presets (Hand2Note, PT4, HM3, PokerDope) with live preview and per-line color/width overrides.",
+    ru: "Пресеты стилей линий (Hand2Note, PT4, HM3, PokerDope) с живым превью и индивидуальной настройкой цвета/толщины.",
+  },
+  "changelog.v03.exportImport": {
+    en: "Export/import your presets as a JSON file, or copy a share link from any saved preset — move them between devices without an account.",
+    ru: "Экспорт/импорт пользовательских пресетов в JSON или копирование share-ссылки прямо с карточки — переносите между устройствами без регистрации.",
+  },
+  "changelog.v03.ru": {
+    en: "Plain-Russian pass across stats and tooltips.",
+    ru: "Прошёлся по русской локализации — убрал корявости в статах и подсказках.",
+  },
+  "changelog.v03.layout": {
+    en: "Controls panel alignment + fixed empty space under the Run button.",
+    ru: "Выровнял панель настроек и убрал пустоту под кнопкой запуска.",
+  },
+  "changelog.next": {
+    en: "Coming next: per-line color/width overrides on top of presets.",
+    ru: "Дальше: индивидуальная настройка цвета и толщины линий поверх пресетов.",
+  },
+  "footer.madeBy": { en: "made by", ru: "сделал" },
 
   "chart.convergence.help": {
     en: "Y = running mean estimate of profit per simulation. The shaded band is the 95% confidence interval, which should narrow as samples accumulate. Look for: (a) the line stops drifting and stays flat — the run has enough samples to trust the mean; (b) the band is much narrower than the value of the mean — the estimate is precise. Bad signs: line still walking, band still wide.",
@@ -710,10 +809,32 @@ export const DICT = {
     ru: "PrimeDope моделирует скилл как плоский лифт по призовым: каждое призовое место получает одинаковый повышенный шанс k/N. Это математически чистенько, но неверно — настоящие скилл-игроки чаще заходят глубоко, а не на мин-кеше. Наша α-калибровка натягивает параметрическую модель (power-law / stretched-exp / линейная) так, чтобы кеши смещались к верху — это воспроизводит наблюдение Muchomota (2024), что реальный ITM на ~3 пп ниже, чем у PrimeDope при 20% ROI. Это бьёт и по даунсвингам — плоский ITM занижает свинги.",
   },
   // Preview
-  "preview.title": { en: "Per-entry EV map", ru: "Разрез EV по одной покупке" },
+  "preview.title": { en: "One tournament under the microscope", ru: "Один турнир под микроскопом" },
   "preview.sub": {
-    en: "Where the expected value actually lives for a single entry. Bounty-aware, PKO-aware.",
-    ru: "Откуда реально берётся ожидание одной покупки. Учитывает ноки и прогрессивные баунти.",
+    en: "For a single entry to this tournament: what the buy-in is, what your expected profit per entry looks like, and where that expectation actually comes from.",
+    ru: "Что происходит, когда ты заносишь в этот турнир один раз: какой баин, какой средний профит с одного входа и откуда это среднее реально набирается.",
+  },
+  "preview.eyebrow": { en: "One tournament", ru: "Один турнир" },
+  "preview.youPay": { en: "Buy-in", ru: "Баин" },
+  "preview.avgReturn": { en: "EV profit", ru: "EV профит" },
+  "preview.playersLabel": { en: "players", ru: "соперников" },
+  "preview.itmLine": {
+    en: "ITM {pct} (1 cash every {n} entries)",
+    ru: "ITM {pct} (1 кеш в среднем на {n} входов)",
+  },
+  "preview.sigmaLabel": { en: "variance", ru: "диспа" },
+  "preview.heroTitle": { en: "Where the average hides", ru: "Где прячется твоё среднее" },
+  "preview.heroBodyTop1": {
+    en: "{share} of your expected return comes from 1st place — which you take 1 in {odds} entries.",
+    ru: "{share} всего ожидания приходит с 1-го места, а его ты берёшь 1 раз из {odds}.",
+  },
+  "preview.heroBodyTopN": {
+    en: "{share} of your expected return comes from top-{n} finishes — which happen 1 in {odds} entries.",
+    ru: "{share} всего ожидания приходит с топ-{n} финишей, а они случаются 1 раз из {odds}.",
+  },
+  "preview.heroTagline": {
+    en: "That's why tournament swings are brutal: most of the money is locked inside rare finishes.",
+    ru: "Поэтому колебания в турнирах такие злые: большая часть денег заперта в редких финишах.",
   },
   "preview.rowPicker": {
     en: "Row",
@@ -728,7 +849,7 @@ export const DICT = {
   "preview.statCv": { en: "Payout CV", ru: "CV выплаты" },
   "preview.statCvHint": {
     en: "std ÷ mean of single-tourney payout — tail thickness",
-    ru: "σ ÷ среднее одной покупки — толщина хвоста",
+    ru: "σ ÷ среднее одного турнира — толщина хвоста",
   },
   "preview.statBounty": { en: "Bounty share", ru: "Доля ноков" },
   "preview.statBountyPko": {
@@ -744,17 +865,21 @@ export const DICT = {
     ru: "фризаут",
   },
   "preview.evBreakdown": {
-    en: "EV by finish tier — top bar = EV, bottom bar = share of finishes",
-    ru: "EV по группам финишей — верхний бар = EV, нижний = доля финишей",
+    en: "Where the profit comes from",
+    ru: "Откуда приходит профит",
   },
+  "preview.colEv": { en: "% of EV", ru: "% EV" },
+  "preview.colField": { en: "top %", ru: "топ %" },
+  "preview.barEvLabel": { en: "share of EV", ru: "доля EV" },
+  "preview.barFieldLabel": { en: "share of finishes", ru: "доля финишей" },
   "preview.tierWinner": { en: "1st place", ru: "1-е место" },
   "preview.tierTop1": { en: "Top 1%", ru: "Топ 1%" },
   "preview.tierTop10": { en: "Top 10%", ru: "Топ 10%" },
   "preview.tierRestItm": { en: "Rest of cashes", ru: "Остальные кеши" },
   "preview.tierOotm": { en: "OOTM bust", ru: "Без денег" },
   "preview.footnote": {
-    en: "Comparing the two bars shows the variance story: when the EV bar is far wider than the field bar, a huge share of your expected return is locked inside a tiny slice of finishes — that's what makes MTT variance vicious.",
-    ru: "Сравнение двух полосок читается так: если бар EV заметно шире, чем доля финишей — огромная часть твоего ожидания заперта в крошечном срезе результатов, и именно поэтому турнирная диспа такая злая.",
+    en: "If the top (EV) bar is much wider than the bottom (finishes) bar in the same colour, that slice of finishes carries way more money than its share of the field — and that's exactly where your variance lives.",
+    ru: "Если верхний (EV) бар в каком-то цвете сильно шире нижнего (финиши) — этот кусок финишей приносит сильно больше денег, чем его доля в поле. Именно там и живёт твоя дисперсия.",
   },
 
   // Footer

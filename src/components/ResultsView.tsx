@@ -1,10 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type ReactEventHandler,
+} from "react";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
+import {
+  DEFAULT_LINE_STYLE_PRESET,
+  LINE_STYLE_PRESETS,
+  LINE_STYLE_PRESET_ORDER,
+  OVERRIDABLE_LINE_KEYS,
+  PRIMEDOPE_PANE_PRESET,
+  applyLineStyleOverrides,
+  loadLineStylePreset,
+  loadLineStyleOverrides,
+  saveLineStylePreset,
+  saveLineStyleOverrides,
+  type LineStylePreset,
+  type LineStylePresetId,
+  type LineStyleOverrides,
+  type OverridableLineKey,
+} from "@/lib/lineStyles";
 import type { ControlsState } from "./ControlsPanel";
 import { UplotChart } from "./charts/UplotChart";
 import { DistributionChart } from "./charts/DistributionChart";
@@ -61,6 +86,39 @@ const money = (v: number) => {
   return `${sign}$${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 };
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+// Unit-aware money formatters. The module-level `money` / `compactMoney`
+// defined above stay as the USD defaults; the Context lets ResultsView
+// swap them for ABI-denominated versions without threading props through
+// every helper card.
+function makeAbiMoney(abi: number) {
+  const safe = abi > 0 ? abi : 1;
+  const fmt = (v: number, digits: number) => {
+    const sign = v < 0 ? "−" : "";
+    const n = Math.abs(v) / safe;
+    return `${sign}${n.toFixed(digits)} ABI`;
+  };
+  return {
+    money: (v: number) => fmt(v, Math.abs(v) / safe >= 100 ? 0 : 1),
+    compactMoney: (v: number) => {
+      const sign = v < 0 ? "−" : "";
+      const n = Math.abs(v) / safe;
+      if (n >= 1000) return `${sign}${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k ABI`;
+      if (n >= 100) return `${sign}${n.toFixed(0)} ABI`;
+      if (n === 0) return "0 ABI";
+      return `${sign}${n.toFixed(1)} ABI`;
+    },
+  };
+}
+
+interface MoneyFmt {
+  money: (v: number) => string;
+  compactMoney: (v: number) => string;
+}
+
+const defaultMoneyFmt: MoneyFmt = { money, compactMoney };
+const MoneyFmtContext = createContext<MoneyFmt>(defaultMoneyFmt);
+const useMoneyFmt = () => useContext(MoneyFmtContext);
 const intFmt = (v: number) =>
   v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -96,12 +154,55 @@ export interface RefLineSpec {
   color: string;
 }
 
-const REF_LINES: RefLineSpec[] = [
-  { roi: -1.0, label: "ROI −100%", color: "#dc2626" },
-  { roi: -0.2, label: "ROI −20%", color: "#fb923c" },
-  { roi: 0.2, label: "ROI +20%", color: "#a3e635" },
-  { roi: 0.5, label: "ROI +50%", color: "#22d3ee" },
+export interface RefLineConfig extends RefLineSpec {
+  enabled: boolean;
+}
+
+const DEFAULT_REF_LINES: RefLineConfig[] = [
+  { roi: -1.0, label: "ROI −100%", color: "#dc2626", enabled: true },
+  { roi: -0.2, label: "ROI −20%", color: "#fb923c", enabled: true },
+  { roi: 0.2, label: "ROI +20%", color: "#a3e635", enabled: true },
+  { roi: 0.5, label: "ROI +50%", color: "#22d3ee", enabled: true },
 ];
+
+const REF_LINES_STORAGE_KEY = "tvs.refLines.v1";
+
+function loadRefLines(): RefLineConfig[] {
+  if (typeof localStorage === "undefined") return DEFAULT_REF_LINES;
+  try {
+    const raw = localStorage.getItem(REF_LINES_STORAGE_KEY);
+    if (!raw) return DEFAULT_REF_LINES;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_REF_LINES;
+    return parsed
+      .filter(
+        (r): r is RefLineConfig =>
+          r &&
+          typeof r.roi === "number" &&
+          Number.isFinite(r.roi) &&
+          typeof r.label === "string" &&
+          typeof r.color === "string" &&
+          typeof r.enabled === "boolean",
+      )
+      .slice(0, 16);
+  } catch {
+    return DEFAULT_REF_LINES;
+  }
+}
+
+function saveRefLines(v: RefLineConfig[]) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(REF_LINES_STORAGE_KEY, JSON.stringify(v));
+  } catch {}
+}
+
+function roiLabel(roi: number): string {
+  const pct = Math.round(roi * 100);
+  if (pct === 0) return "ROI 0%";
+  const sign = pct > 0 ? "+" : "−";
+  return `ROI ${sign}${Math.abs(pct)}%`;
+}
 
 function buildRefLine(x: ArrayLike<number>, slopePerX: number): Float64Array {
   const out = new Float64Array(x.length);
@@ -116,6 +217,7 @@ function TrajectoryPlot({
   assets: ReturnType<typeof buildTrajectoryAssets>;
   height: number;
 }) {
+  const { compactMoney } = useMoneyFmt();
   const [cursor, setCursor] = useState<{
     idx: number;
     left: number;
@@ -245,6 +347,10 @@ function buildTrajectoryAssets(
   hue: AccentHue,
   yRange?: { min: number; max: number },
   overlay?: SimulationResult | null,
+  axisFmt: (v: number) => string = compactMoney,
+  preset: LineStylePreset = LINE_STYLE_PRESETS[DEFAULT_LINE_STYLE_PRESET],
+  visibleRuns: number = 20,
+  refLines: RefLineConfig[] = DEFAULT_REF_LINES,
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
@@ -253,19 +359,114 @@ function buildTrajectoryAssets(
   mainLines: TrajectoryLineMeta[];
 } {
   const x = r.samplePaths.x;
+  // Lockstep builders: every series push is mirrored by a uplot series push,
+  // and indices come straight from series.length so anything conditional
+  // (best/worst, bankroll, ref lines) just works.
   const series: (Float64Array | number[])[] = [x];
-  series.push(r.envelopes.mean);
-  series.push(r.envelopes.p0015);
-  series.push(r.envelopes.p9985);
-  series.push(r.envelopes.p025);
-  series.push(r.envelopes.p975);
-  series.push(r.envelopes.p15);
-  series.push(r.envelopes.p85);
-  for (const p of r.samplePaths.paths) series.push(p);
-  series.push(r.samplePaths.best);
-  series.push(r.samplePaths.worst);
+  const uplotSeries: Options["series"] = [{}];
+  const mainLines: TrajectoryLineMeta[] = [];
+  const pushSeries = (
+    data: Float64Array | number[],
+    opt: NonNullable<Options["series"]>[number],
+  ): number => {
+    const idx = series.length;
+    series.push(data);
+    uplotSeries.push(opt);
+    return idx;
+  };
+
+  // "Runs shown = 0" should give a clean chart: no sample paths, no best/worst,
+  // and no percentile envelope curves either (the six p-lines look like spaghetti
+  // and the user counts them as "runs"). Mean/EV/ref/bankroll always stay.
+  const pathCount = Math.max(
+    0,
+    Math.min(visibleRuns, r.samplePaths.paths.length),
+  );
+  const showBands = pathCount > 0;
+
+  const meanIdx = pushSeries(r.envelopes.mean, {
+    stroke: preset.mean.stroke,
+    width: preset.mean.width,
+    dash: preset.mean.dash,
+  });
+  mainLines.push({
+    label: "Mean",
+    color: preset.mean.stroke,
+    seriesIdx: meanIdx,
+    percentile: 0.5,
+    kind: "mean",
+  });
+
+  if (showBands) {
+    const p0015Idx = pushSeries(r.envelopes.p0015, {
+      stroke: preset.bandExtreme.stroke,
+      width: preset.bandExtreme.width,
+    });
+    const p9985Idx = pushSeries(r.envelopes.p9985, {
+      stroke: preset.bandExtreme.stroke,
+      width: preset.bandExtreme.width,
+    });
+    const p025Idx = pushSeries(r.envelopes.p025, {
+      stroke: preset.bandWide.stroke,
+      width: preset.bandWide.width,
+    });
+    const p975Idx = pushSeries(r.envelopes.p975, {
+      stroke: preset.bandWide.stroke,
+      width: preset.bandWide.width,
+    });
+    const p15Idx = pushSeries(r.envelopes.p15, {
+      stroke: preset.bandNarrow.stroke,
+      width: preset.bandNarrow.width,
+    });
+    const p85Idx = pushSeries(r.envelopes.p85, {
+      stroke: preset.bandNarrow.stroke,
+      width: preset.bandNarrow.width,
+    });
+    mainLines.push(
+      { label: "p0.15", color: preset.bandExtreme.stroke, seriesIdx: p0015Idx, percentile: 0.0015, kind: "band" },
+      { label: "p99.85", color: preset.bandExtreme.stroke, seriesIdx: p9985Idx, percentile: 0.9985, kind: "band" },
+      { label: "p2.5", color: preset.bandWide.stroke, seriesIdx: p025Idx, percentile: 0.025, kind: "band" },
+      { label: "p97.5", color: preset.bandWide.stroke, seriesIdx: p975Idx, percentile: 0.975, kind: "band" },
+      { label: "p15", color: preset.bandNarrow.stroke, seriesIdx: p15Idx, percentile: 0.15, kind: "band" },
+      { label: "p85", color: preset.bandNarrow.stroke, seriesIdx: p85Idx, percentile: 0.85, kind: "band" },
+    );
+  }
+  for (let i = 0; i < pathCount; i++) {
+    const idx = pushSeries(r.samplePaths.paths[i], {
+      stroke: preset.path.stroke,
+      width: preset.path.width,
+    });
+    mainLines.push({
+      label: `Run ${i + 1}`,
+      color: preset.path.stroke,
+      seriesIdx: idx,
+      kind: "path",
+    });
+  }
+
+  // Best/worst are also "runs" — when the user drags "runs shown" to 0 they
+  // should disappear too, otherwise the chart still has two highlighted sims.
+  if (pathCount > 0) {
+    const bestIdx = pushSeries(r.samplePaths.best, {
+      stroke: preset.best.stroke,
+      width: preset.best.width,
+      dash: preset.best.dash,
+    });
+    const worstIdx = pushSeries(r.samplePaths.worst, {
+      stroke: preset.worst.stroke,
+      width: preset.worst.width,
+      dash: preset.worst.dash,
+    });
+    mainLines.push({ label: "Best run", color: preset.best.stroke, seriesIdx: bestIdx, kind: "best" });
+    mainLines.push({ label: "Worst run", color: preset.worst.stroke, seriesIdx: worstIdx, kind: "worst" });
+  }
+
   if (bankroll > 0) {
-    series.push(new Array<number>(x.length).fill(-bankroll));
+    pushSeries(new Array<number>(x.length).fill(-bankroll), {
+      stroke: preset.bankrollLine.stroke,
+      width: preset.bankrollLine.width,
+      dash: preset.bankrollLine.dash,
+    });
   }
 
   // Reference ROI slope lines: profit(i) = roi * cumulative buy-in at i.
@@ -273,88 +474,43 @@ function buildTrajectoryAssets(
   const lastX = x[x.length - 1] || 1;
   const buyInPerTourney = r.totalBuyIn / lastX;
   const refStartIdx = series.length;
-  for (const ref of REF_LINES) {
-    series.push(buildRefLine(x, ref.roi * buyInPerTourney));
+  for (const ref of refLines) {
+    if (!ref.enabled) continue;
+    const idx = pushSeries(buildRefLine(x, ref.roi * buyInPerTourney), {
+      stroke: ref.color,
+      width: preset.refLine.width,
+      dash: preset.refLine.dash,
+      label: ref.label,
+    });
+    mainLines.push({
+      label: ref.label,
+      color: ref.color,
+      seriesIdx: idx,
+      kind: "ref",
+    });
   }
 
   // EV line — the calibrated expected profit slope, drawn perfectly
   // straight from (0,0) to (lastX, expectedProfit). This is what the
   // sim is *supposed* to converge to: the schedule's total target EV.
   const evSlope = r.expectedProfit / lastX;
-  const evLineIdx = series.length;
-  series.push(buildRefLine(x, evSlope));
-
-  const c = HUES[hue];
-  const n = r.samplePaths.paths.length;
-  const uplotSeries: Options["series"] = [
-    {},
-    { stroke: c.mean, width: 2 },
-    { stroke: c.p0015, width: 1 },
-    { stroke: c.p0015, width: 1 },
-    { stroke: c.p025, width: 1 },
-    { stroke: c.p025, width: 1 },
-    { stroke: c.p15, width: 1 },
-    { stroke: c.p15, width: 1 },
-  ];
-  for (let i = 0; i < n; i++) {
-    uplotSeries.push({ stroke: c.paths, width: 1 });
-  }
-  uplotSeries.push({ stroke: "#34d399", width: 1.5 });
-  uplotSeries.push({ stroke: "#f87171", width: 1.5 });
-  if (bankroll > 0) {
-    uplotSeries.push({ stroke: "#ef4444", width: 1.5, dash: [4, 4] });
-  }
-  for (const ref of REF_LINES) {
-    uplotSeries.push({
-      stroke: ref.color,
-      width: 1.25,
-      dash: [3, 4],
-      label: ref.label,
-    });
-  }
-  // EV line — solid, gold, very thick. Drawn after refs so it sits
-  // visually on top of the dashed reference slopes.
-  uplotSeries.push({
-    stroke: "#fbbf24",
-    width: 3.5,
+  const evLineIdx = pushSeries(buildRefLine(x, evSlope), {
+    stroke: preset.ev.stroke,
+    width: preset.ev.width,
+    dash: preset.ev.dash,
     label: "EV",
   });
-
-  const mainLines: TrajectoryLineMeta[] = [
-    { label: "Mean", color: c.mean, seriesIdx: 1, percentile: 0.5, kind: "mean" },
-    { label: "p0.15", color: c.p0015, seriesIdx: 2, percentile: 0.0015, kind: "band" },
-    { label: "p99.85", color: c.p0015, seriesIdx: 3, percentile: 0.9985, kind: "band" },
-    { label: "p2.5", color: c.p025, seriesIdx: 4, percentile: 0.025, kind: "band" },
-    { label: "p97.5", color: c.p025, seriesIdx: 5, percentile: 0.975, kind: "band" },
-    { label: "p15", color: c.p15, seriesIdx: 6, percentile: 0.15, kind: "band" },
-    { label: "p85", color: c.p15, seriesIdx: 7, percentile: 0.85, kind: "band" },
-  ];
-  const samplePathStart = 8;
-  for (let i = 0; i < n; i++) {
-    mainLines.push({
-      label: `Run ${i + 1}`,
-      color: c.paths,
-      seriesIdx: samplePathStart + i,
-      kind: "path",
-    });
-  }
-  mainLines.push({ label: "Best run", color: "#34d399", seriesIdx: samplePathStart + n, kind: "best" });
-  mainLines.push({ label: "Worst run", color: "#f87171", seriesIdx: samplePathStart + n + 1, kind: "worst" });
-  for (let i = 0; i < REF_LINES.length; i++) {
-    const ref = REF_LINES[i];
-    mainLines.push({
-      label: ref.label,
-      color: ref.color,
-      seriesIdx: refStartIdx + i,
-      kind: "ref",
-    });
-  }
   mainLines.push({
     label: "EV",
-    color: "#fbbf24",
+    color: preset.ev.stroke,
     seriesIdx: evLineIdx,
     kind: "ref",
   });
+
+  // `hue` is only used for tinting the legacy tooltip swatches for the
+  // best/worst paths on the comparison pane — the actual envelope and
+  // line colors all come from the line-style preset now.
+  void HUES[hue];
 
   // Overlay must align to primary's x axis. uPlot uses one x per chart, so
   // we resample the overlay envelopes onto primary's x-grid by index — they
@@ -362,19 +518,46 @@ function buildTrajectoryAssets(
   // grids ever diverge we fall back to a linear interp on tournament index.
   if (overlay && overlay.envelopes.mean.length > 0) {
     const ox = overlay.envelopes.x;
+    // Resample overlay onto primary's x-axis by linearly interpolating in
+    // *tournament-index* space (x[i] is a real tournament count, not a
+    // fraction). The previous implementation stretched overlay to primary's
+    // full extent via x[i]/oxLast, which was wrong whenever the two passes
+    // had different totals or non-identical checkpoint grids — PD's curve
+    // ended up shifted and squashed instead of aligned tournament-to-tournament.
     const resample = (src: Float64Array): Float64Array => {
-      if (src.length === x.length) {
-        // Most common path — both passes use identical checkpointIdx.
-        return src;
+      if (src.length === x.length && ox.length === x.length) {
+        let same = true;
+        for (let i = 0; i < x.length; i++) {
+          if (ox[i] !== x[i]) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return src;
       }
       const out = new Float64Array(x.length);
-      const oxLast = ox[ox.length - 1] || 1;
+      const oxLen = ox.length;
+      const oxFirst = ox[0];
+      const oxLast = ox[oxLen - 1];
       for (let i = 0; i < x.length; i++) {
-        const t = x[i] / oxLast;
-        const f = t * (ox.length - 1);
-        const lo = Math.floor(f);
-        const hi = Math.min(ox.length - 1, lo + 1);
-        const frac = f - lo;
+        const xi = x[i];
+        if (xi <= oxFirst) {
+          out[i] = src[0];
+          continue;
+        }
+        if (xi >= oxLast) {
+          out[i] = src[oxLen - 1];
+          continue;
+        }
+        let lo = 0;
+        let hi = oxLen - 1;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          if (ox[mid] <= xi) lo = mid;
+          else hi = mid;
+        }
+        const span = ox[hi] - ox[lo];
+        const frac = span > 0 ? (xi - ox[lo]) / span : 0;
         out[i] = src[lo] * (1 - frac) + src[hi] * frac;
       }
       return out;
@@ -447,7 +630,7 @@ function buildTrajectoryAssets(
           grid: { stroke: "rgba(128,128,128,0.15)" },
           ticks: { stroke: "rgba(128,128,128,0.2)" },
           size: 56,
-          values: (_u, splits) => splits.map(compactMoney),
+          values: (_u, splits) => splits.map(axisFmt),
         },
       ],
       series: uplotSeries,
@@ -509,24 +692,6 @@ export function ResultsView({
   );
 
   const [overlayPd, setOverlayPd] = useState(false);
-  const primary = useMemo(
-    () => buildTrajectoryAssets(result, bankroll, "felt", yRange, overlayPd ? pdChart : null),
-    [result, bankroll, yRange, overlayPd, pdChart],
-  );
-  const secondary = useMemo(
-    () =>
-      pdChart
-        ? buildTrajectoryAssets(pdChart, bankroll, "magenta", yRange)
-        : null,
-    [pdChart, bankroll, yRange],
-  );
-  const slotOverlay = useMemo(
-    () =>
-      compareResult
-        ? buildTrajectoryAssets(compareResult, bankroll, "magenta")
-        : null,
-    [compareResult, bankroll],
-  );
 
   const s = result.stats;
   const roi = s.mean / result.totalBuyIn;
@@ -545,12 +710,149 @@ export function ResultsView({
     const lastX = xs[xs.length - 1] || 1;
     return result.totalBuyIn / lastX;
   }, [result]);
-  const [distUnit, setDistUnit] = useState<"money" | "abi">("money");
-  const [ddUnit, setDdUnit] = useState<"money" | "abi">("money");
+  const [unit, setUnit] = useState<"money" | "abi">("money");
+  const moneyFmt = useMemo<MoneyFmt>(
+    () => (unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt),
+    [unit, abi],
+  );
+  // Shadow the module-level formatters inside ResultsView so existing
+  // money(...) / compactMoney(...) call sites pick up the unit-aware pair.
+  // eslint-disable-next-line @typescript-eslint/no-shadow
+  const { money, compactMoney } = moneyFmt;
   const tourneysWord = t("unit.tourneys");
 
+  const [lineStylePresetId, setLineStylePresetIdRaw] =
+    useState<LineStylePresetId>(DEFAULT_LINE_STYLE_PRESET);
+  const [lineOverrides, setLineOverridesRaw] = useState<LineStyleOverrides>({});
+  // Hydrate from localStorage post-mount so SSR markup matches initial render.
+  useEffect(() => {
+    setLineStylePresetIdRaw(loadLineStylePreset());
+    setLineOverridesRaw(loadLineStyleOverrides());
+  }, []);
+  const setLineStylePresetId = (id: LineStylePresetId) => {
+    setLineStylePresetIdRaw(id);
+    saveLineStylePreset(id);
+  };
+  const setLineOverrides = (ov: LineStyleOverrides) => {
+    setLineOverridesRaw(ov);
+    saveLineStyleOverrides(ov);
+  };
+  const linePreset = useMemo(
+    () => applyLineStyleOverrides(LINE_STYLE_PRESETS[lineStylePresetId], lineOverrides),
+    [lineStylePresetId, lineOverrides],
+  );
+
+  const maxRuns = result.samplePaths.paths.length;
+  const [visibleRuns, setVisibleRuns] = useState(maxRuns);
+  useEffect(() => {
+    setVisibleRuns((cur) => Math.min(cur, maxRuns));
+  }, [maxRuns]);
+
+  const [refLines, setRefLinesRaw] = useState<RefLineConfig[]>(DEFAULT_REF_LINES);
+  useEffect(() => {
+    setRefLinesRaw(loadRefLines());
+  }, []);
+  const setRefLines = (v: RefLineConfig[]) => {
+    setRefLinesRaw(v);
+    saveRefLines(v);
+  };
+
+  const primary = useMemo(
+    () =>
+      buildTrajectoryAssets(
+        result,
+        bankroll,
+        "felt",
+        yRange,
+        overlayPd ? pdChart : null,
+        compactMoney,
+        linePreset,
+        visibleRuns,
+        refLines,
+      ),
+    [result, bankroll, yRange, overlayPd, pdChart, compactMoney, linePreset, visibleRuns, refLines],
+  );
+  const secondary = useMemo(
+    () =>
+      pdChart
+        ? buildTrajectoryAssets(
+            pdChart,
+            bankroll,
+            "magenta",
+            yRange,
+            undefined,
+            compactMoney,
+            PRIMEDOPE_PANE_PRESET,
+            visibleRuns,
+            refLines,
+          )
+        : null,
+    [pdChart, bankroll, yRange, compactMoney, visibleRuns, refLines],
+  );
+  const slotOverlay = useMemo(
+    () =>
+      compareResult
+        ? buildTrajectoryAssets(
+            compareResult,
+            bankroll,
+            "magenta",
+            undefined,
+            undefined,
+            compactMoney,
+            PRIMEDOPE_PANE_PRESET,
+            visibleRuns,
+            refLines,
+          )
+        : null,
+    [compareResult, bankroll, compactMoney, visibleRuns, refLines],
+  );
+
   return (
+    <MoneyFmtContext.Provider value={moneyFmt}>
     <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+            {t("lineStyle.label")}
+          </div>
+          <LineStylePresetPicker
+            value={lineStylePresetId}
+            onChange={setLineStylePresetId}
+            t={t}
+          />
+          <LineStyleCustomizer
+            preset={LINE_STYLE_PRESETS[lineStylePresetId]}
+            overrides={lineOverrides}
+            onChange={setLineOverrides}
+            t={t}
+          />
+          <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+            {t("runs.label")}
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={maxRuns}
+            step={1}
+            value={visibleRuns}
+            onChange={(e) => setVisibleRuns(Number(e.target.value))}
+            className="h-1 w-28 cursor-pointer accent-[color:var(--color-accent)]"
+            aria-label={t("runs.label")}
+          />
+          <span className="w-10 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
+            {visibleRuns}/{maxRuns}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+            {t("unit.displayLabel")}
+          </div>
+          <UnitToggle value={unit} onChange={setUnit} t={t} />
+        </div>
+      </div>
       {secondary ? (
         <Card className="p-5">
           <ChartHeader
@@ -561,6 +863,14 @@ export function ResultsView({
                 : t("chart.trajectory.sub.vs")
             }
           />
+          {compareMode === "primedope" && pdChart && (
+            <GapExplainer
+              ours={result}
+              pd={pdChart}
+              money={money}
+              t={t}
+            />
+          )}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="flex flex-col gap-3">
               <ChartPane
@@ -657,16 +967,30 @@ export function ResultsView({
         </Card>
       )}
 
-      <VerdictCard result={result} bankroll={bankroll} />
+      <CollapsibleSection id="verdict" title={t("section.verdict")}>
+        <VerdictCard result={result} bankroll={bankroll} />
+      </CollapsibleSection>
 
-      <PrimedopeReportCard result={result} />
+      <CollapsibleSection id="pdReport" title={t("section.primedopeReport")}>
+        <PrimedopeReportCard result={result} />
+      </CollapsibleSection>
 
-      <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
+      <CollapsibleSection id="pdWeakness" title={t("section.pdWeakness")}>
+        <PokerDopeWeaknessCard />
+      </CollapsibleSection>
+
+      <CollapsibleSection id="settingsDump" title={t("section.settingsDump")}>
+        <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
+      </CollapsibleSection>
 
       {result.comparison && compareMode === "primedope" && (
         <>
-          <PDVerdict primary={result} other={result.comparison} />
-          <PrimedopeDiff primary={result} other={result.comparison} />
+          <CollapsibleSection id="pdVerdict" title={t("section.pdVerdict")}>
+            <PDVerdict primary={result} other={result.comparison} />
+          </CollapsibleSection>
+          <CollapsibleSection id="pdDiff" title={t("section.pdDiff")}>
+            <PrimedopeDiff primary={result} other={result.comparison} />
+          </CollapsibleSection>
         </>
       )}
 
@@ -886,14 +1210,13 @@ export function ResultsView({
               title={t("chart.dist")}
               subtitle={`${result.samples.toLocaleString()} ${t("app.samples")} · 60 bins`}
             />
-            <UnitToggle value={distUnit} onChange={setDistUnit} t={t} />
           </div>
           <DistributionChart
             binEdges={result.histogram.binEdges}
             counts={result.histogram.counts}
             color="#34d399"
-            scaleBy={distUnit === "abi" ? abi : undefined}
-            unitLabel={distUnit === "abi" ? "ABI" : "$"}
+            scaleBy={unit === "abi" ? abi : undefined}
+            unitLabel={unit === "abi" ? "ABI" : "$"}
             overlay={
               overlayPd && pdChart
                 ? {
@@ -911,14 +1234,13 @@ export function ResultsView({
               title={t("chart.ddDist")}
               subtitle={t("chart.ddDist.sub")}
             />
-            <UnitToggle value={ddUnit} onChange={setDdUnit} t={t} />
           </div>
           <DistributionChart
             binEdges={result.drawdownHistogram.binEdges}
             counts={result.drawdownHistogram.counts}
             color="#f87171"
-            scaleBy={ddUnit === "abi" ? abi : undefined}
-            unitLabel={ddUnit === "abi" ? "ABI" : "$"}
+            scaleBy={unit === "abi" ? abi : undefined}
+            unitLabel={unit === "abi" ? "ABI" : "$"}
             overlay={
               overlayPd && pdChart
                 ? {
@@ -1064,6 +1386,419 @@ export function ResultsView({
           </div>
         </Card>
       )}
+    </div>
+    </MoneyFmtContext.Provider>
+  );
+}
+
+function LineStylePresetPicker({
+  value,
+  onChange,
+  t,
+}: {
+  value: LineStylePresetId;
+  onChange: (v: LineStylePresetId) => void;
+  t: (key: DictKey) => string;
+}) {
+  const active = LINE_STYLE_PRESETS[value];
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as LineStylePresetId)}
+        className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] outline-none hover:border-[color:var(--color-accent)] focus:border-[color:var(--color-accent)]"
+        title={active.description}
+      >
+        {LINE_STYLE_PRESET_ORDER.map((id) => (
+          <option key={id} value={id}>
+            {LINE_STYLE_PRESETS[id].label}
+          </option>
+        ))}
+      </select>
+      {/* Mini preview: mean stroke + dashed EV stroke so you can see the
+          style without running a sim. */}
+      <svg
+        width="42"
+        height="14"
+        viewBox="0 0 42 14"
+        aria-hidden
+        className="shrink-0"
+      >
+        <line
+          x1="1"
+          y1="9"
+          x2="41"
+          y2="5"
+          stroke={active.mean.stroke}
+          strokeWidth={active.mean.width}
+          strokeLinecap="round"
+        />
+        <line
+          x1="1"
+          y1="11"
+          x2="41"
+          y2="8"
+          stroke={active.ev.stroke}
+          strokeWidth={active.ev.width}
+          strokeDasharray={active.ev.dash?.join(" ") ?? "0"}
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function LineStyleCustomizer({
+  preset,
+  overrides,
+  onChange,
+  t,
+}: {
+  preset: LineStylePreset;
+  overrides: LineStyleOverrides;
+  onChange: (ov: LineStyleOverrides) => void;
+  t: (key: DictKey) => string;
+}) {
+  const labelKey = (k: OverridableLineKey): DictKey =>
+    ({
+      mean: "lineStyle.line.mean",
+      ev: "lineStyle.line.ev",
+      best: "lineStyle.line.best",
+      worst: "lineStyle.line.worst",
+    })[k] as DictKey;
+
+  const setKey = (k: OverridableLineKey, patch: { stroke?: string; width?: number }) => {
+    const current = overrides[k] ?? {};
+    const next: LineStyleOverrides = {
+      ...overrides,
+      [k]: { ...current, ...patch },
+    };
+    onChange(next);
+  };
+
+  const resetKey = (k: OverridableLineKey) => {
+    const next = { ...overrides };
+    delete next[k];
+    onChange(next);
+  };
+
+  const hasAny = OVERRIDABLE_LINE_KEYS.some((k) => overrides[k]);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  useCloseDetailsOnOutsideClick(detailsRef);
+
+  return (
+    <details ref={detailsRef} className="group relative">
+      <summary className="cursor-pointer select-none rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)]">
+        {t("lineStyle.customize")}
+      </summary>
+      <div className="absolute left-0 top-full z-10 mt-1 w-72 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg">
+        <div className="flex flex-col gap-2">
+          {OVERRIDABLE_LINE_KEYS.map((k) => {
+            const base = preset[k];
+            const ov = overrides[k] ?? {};
+            const stroke = ov.stroke ?? base.stroke;
+            const width = ov.width ?? base.width;
+            // color input needs a hex value — fall back to preset color if it's a named/rgba.
+            const hex = /^#([0-9a-f]{3}){1,2}$/i.test(stroke) ? stroke : "#34d399";
+            return (
+              <div key={k} className="flex items-center gap-2 text-[11px]">
+                <span className="w-24 truncate text-[color:var(--color-fg-dim)]">
+                  {t(labelKey(k))}
+                </span>
+                <input
+                  type="color"
+                  value={hex}
+                  onChange={(e) => setKey(k, { stroke: e.target.value })}
+                  className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0"
+                  aria-label={t(labelKey(k))}
+                />
+                <input
+                  type="range"
+                  min={0.5}
+                  max={4}
+                  step={0.25}
+                  value={width}
+                  onChange={(e) => setKey(k, { width: Number(e.target.value) })}
+                  className="flex-1"
+                  aria-label={t("lineStyle.width")}
+                />
+                <span className="w-6 text-right tabular-nums text-[color:var(--color-fg-dim)]">
+                  {width.toFixed(2)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => resetKey(k)}
+                  disabled={!overrides[k]}
+                  className="rounded px-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)] disabled:opacity-30"
+                  title={t("lineStyle.reset")}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => onChange({})}
+            disabled={!hasAny}
+            className="mt-1 self-end rounded border border-[color:var(--color-border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:opacity-30"
+          >
+            {t("lineStyle.resetAll")}
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function CollapsibleSection({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: ReactNode;
+}) {
+  const storageKey = `tvs.collapse.${id}.v1`;
+  const ref = useRef<HTMLDetailsElement>(null);
+  // Controlled `open` on <details> is historically flaky because the browser
+  // toggles the attribute synchronously on click, competing with React's
+  // render. Use a ref: hydrate open state post-mount from localStorage, then
+  // let the browser own the attribute and just persist changes in onToggle.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof localStorage === "undefined") return;
+    try {
+      const v = localStorage.getItem(storageKey);
+      el.open = v === "1";
+    } catch {}
+  }, [storageKey]);
+  const onToggle: ReactEventHandler<HTMLDetailsElement> = (e) => {
+    try {
+      localStorage.setItem(
+        storageKey,
+        e.currentTarget.open ? "1" : "0",
+      );
+    } catch {}
+  };
+  return (
+    <details
+      ref={ref}
+      onToggle={onToggle}
+      className="group rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-1)]"
+    >
+      <summary className="flex cursor-pointer select-none items-center justify-between gap-3 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)]">
+        <span>{title}</span>
+        <span className="text-[10px] transition-transform group-open:rotate-90">
+          ▶
+        </span>
+      </summary>
+      <div className="border-t border-[color:var(--color-border)] p-0">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+/**
+ * Close a <details> popover when the user clicks outside it. Native <details>
+ * only toggles on summary click; without this, the customizer stays pinned
+ * open until the user explicitly clicks the summary again.
+ */
+function useCloseDetailsOnOutsideClick(
+  ref: React.RefObject<HTMLDetailsElement | null>,
+) {
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      const el = ref.current;
+      if (!el || !el.open) return;
+      const target = e.target as Node | null;
+      if (target && !el.contains(target)) el.open = false;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const el = ref.current;
+      if (!el || !el.open) return;
+      if (e.key === "Escape") el.open = false;
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ref]);
+}
+
+function RefLineCustomizer({
+  value,
+  onChange,
+  t,
+}: {
+  value: RefLineConfig[];
+  onChange: (v: RefLineConfig[]) => void;
+  t: (key: DictKey) => string;
+}) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  useCloseDetailsOnOutsideClick(detailsRef);
+  const setAt = (i: number, patch: Partial<RefLineConfig>) => {
+    const next = value.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
+    onChange(next);
+  };
+  const removeAt = (i: number) => {
+    onChange(value.filter((_, idx) => idx !== i));
+  };
+  const addLine = () => {
+    const next: RefLineConfig[] = [
+      ...value,
+      { roi: 0, label: roiLabel(0), color: "#94a3b8", enabled: true },
+    ];
+    onChange(next);
+  };
+  const reset = () => onChange(DEFAULT_REF_LINES);
+
+  return (
+    <details ref={detailsRef} className="group relative">
+      <summary className="cursor-pointer select-none rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)]">
+        {t("refLines.label")}
+      </summary>
+      <div className="absolute left-0 top-full z-10 mt-1 w-80 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg">
+        <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          <span>{t("refLines.title")}</span>
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)]"
+          >
+            {t("lineStyle.resetAll")}
+          </button>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          {value.map((ref, i) => {
+            const hex = /^#([0-9a-f]{3}){1,2}$/i.test(ref.color) ? ref.color : "#94a3b8";
+            const pctValue = Math.round(ref.roi * 100);
+            return (
+              <div key={i} className="flex items-center gap-2 text-[11px]">
+                <input
+                  type="checkbox"
+                  checked={ref.enabled}
+                  onChange={(e) => setAt(i, { enabled: e.target.checked })}
+                  className="h-3 w-3 cursor-pointer accent-[color:var(--color-accent)]"
+                  aria-label={t("refLines.enabled")}
+                />
+                <input
+                  type="color"
+                  value={hex}
+                  onChange={(e) => setAt(i, { color: e.target.value })}
+                  className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0"
+                  aria-label={t("refLines.color")}
+                />
+                <span className="text-[color:var(--color-fg-dim)]">ROI</span>
+                <input
+                  type="number"
+                  value={pctValue}
+                  step={5}
+                  onChange={(e) => {
+                    const raw = Number(e.target.value);
+                    if (!Number.isFinite(raw)) return;
+                    const nextRoi = raw / 100;
+                    setAt(i, { roi: nextRoi, label: roiLabel(nextRoi) });
+                  }}
+                  className="w-14 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)] px-1 py-0.5 text-right font-mono tabular-nums text-[color:var(--color-fg)]"
+                  aria-label={t("refLines.roi")}
+                />
+                <span className="text-[color:var(--color-fg-dim)]">%</span>
+                <button
+                  type="button"
+                  onClick={() => removeAt(i)}
+                  className="ml-auto rounded px-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-danger)]"
+                  title={t("refLines.remove")}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={addLine}
+          className="mt-2 w-full rounded border border-dashed border-[color:var(--color-border)] py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)]"
+        >
+          + {t("refLines.add")}
+        </button>
+      </div>
+    </details>
+  );
+}
+
+function GapExplainer({
+  ours,
+  pd,
+  money,
+  t,
+}: {
+  ours: SimulationResult;
+  pd: SimulationResult;
+  money: (v: number) => string;
+  t: (key: DictKey) => string;
+}) {
+  const spreadOurs = Math.max(0, ours.stats.p95 - ours.stats.p05);
+  const spreadPd = Math.max(0, pd.stats.p95 - pd.stats.p05);
+  const spreadRatio = spreadPd > 1e-6 ? spreadOurs / spreadPd : 0;
+  const ddOurs = ours.stats.maxDrawdownP95;
+  const ddPd = pd.stats.maxDrawdownP95;
+  const ddRatio = ddPd > 1e-6 ? ddOurs / ddPd : 0;
+  const fmtRatio = (r: number) =>
+    r >= 10 ? r.toFixed(0) : r >= 1.1 ? r.toFixed(1) : r.toFixed(2);
+  const fillRatio = (key: DictKey, r: number) =>
+    t(key).replace("{ratio}", fmtRatio(r));
+  return (
+    <div className="mt-3 mb-4 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/50 p-3">
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+        {t("chart.trajectory.gapTitle")}
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-0.5">
+          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("chart.trajectory.gapSpread")}
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[15px] font-bold tabular-nums text-[color:var(--color-fg)]">
+              {money(spreadOurs)}
+            </span>
+            <span className="text-[11px] tabular-nums text-[color:var(--color-fg-dim)]">
+              vs {money(spreadPd)}
+            </span>
+          </div>
+          {spreadRatio > 0 && (
+            <div className="text-[11px] font-semibold text-[color:var(--color-accent)]">
+              {fillRatio("chart.trajectory.gapRatio", spreadRatio)}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("chart.trajectory.gapDd")}
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[15px] font-bold tabular-nums text-[color:var(--color-fg)]">
+              {money(ddOurs)}
+            </span>
+            <span className="text-[11px] tabular-nums text-[color:var(--color-fg-dim)]">
+              vs {money(ddPd)}
+            </span>
+          </div>
+          {ddRatio > 0 && (
+            <div className="text-[11px] font-semibold text-[color:var(--color-accent)]">
+              {fillRatio("chart.trajectory.gapRatioDeeper", ddRatio)}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="mt-2 border-t border-[color:var(--color-border)] pt-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+        {t("chart.trajectory.gapExplain")}
+      </div>
     </div>
   );
 }
@@ -1249,6 +1984,148 @@ function PrimedopeReportCard({ result }: { result: SimulationResult }) {
         ))}
       </div>
     </Card>
+  );
+}
+
+// Findings from hitting PD's live API with pathological inputs. Full dossier
+// + raw probe responses: notes/pokerdope_weaknesses.md, scripts/pd_probe.mjs,
+// scripts/pd_cache/. Collapsed by default so it doesn't shout at users who
+// just want the numbers.
+function PokerDopeWeaknessCard() {
+  return (
+    <Card className="rounded-none border-0 p-4">
+      <div className="flex flex-col gap-3 text-[11px] leading-relaxed text-[color:var(--color-fg)]">
+        <p className="text-[color:var(--color-fg-dim)]">
+          Реальные проблемы калькулятора Primedope, найденные прогоном их API
+          напрямую (<code>scripts/pd_probe.mjs</code>). Каждый пункт
+          воспроизводим, сырые ответы в <code>scripts/pd_cache/</code>, полный
+          разбор в <code>notes/pokerdope_weaknesses.md</code>.
+        </p>
+
+        <div className="grid gap-2 lg:grid-cols-2">
+          <WeakBlock
+            tag="CRITICAL"
+            tone="#f87171"
+            title="4 независимых краш-вектора в один запрос"
+          >
+            Бэк PD роняется на: (1) ROI, при котором{" "}
+            <code>(1 + ROI) × paid / players ≥ 1</code>; (2){" "}
+            <code>buyin = $0.01</code>; (3) <code>places_paid == players</code>;
+            (4) <code>rake = 100%</code>. Каждый из них возвращает{" "}
+            <code>500</code>, а после пары таких весь <code>prime.php</code>{" "}
+            отдаёт <code>502 Bad Gateway</code> всем пользователям на 5–15+
+            минут. Подтверждено с независимого IP (Anthropic WebFetch видит тот
+            же 502).
+          </WeakBlock>
+
+          <WeakBlock
+            tag="MODEL"
+            tone="#fbbf24"
+            title="ITM линейно связан с ROI"
+          >
+            Их формула <code>itm = (1 + ROI) × paid / players</code>{" "}
+            предполагает, что вся доходность берётся из повышенного рейта
+            выхода в деньги. Игнорируется концентрация эджа в топ-финишах и
+            overflow-ит при ROI выше порога. У нас edge настраивается через
+            профиль модели финишей (power-law + shape), а ITM клэмпится.
+          </WeakBlock>
+
+          <WeakBlock
+            tag="MODEL"
+            tone="#fbbf24"
+            title="Uniform-внутри-призовой-зоны"
+          >
+            Все призовые места у них равновероятны — 1-е место = min-cash.
+            Для +5% игрока на 1000-max PD даёт SD ≈ $2.8k, а реалистичная
+            модель с топ-тяжёлой концентрацией выносит ближе к $4–5k из-за
+            редких фин-тейблов.
+          </WeakBlock>
+
+          <WeakBlock
+            tag="NOISE"
+            tone="#60a5fa"
+            title="RoR-порог скачет ±14% между рефрешами"
+          >
+            Три одинаковых запроса baseline со <code>samples=500</code> дали{" "}
+            <code>min01percentile</code> −$8113 / −$9307 / −$8981: спред $1195
+            на среднем $8800 = 13.6% MC-джиттер. Банкролл, рассчитанный на
+            «1% риск ruin», получается разным на каждом клике. У нас 50k
+            сэмплов + детерминированный seed.
+          </WeakBlock>
+
+          <WeakBlock
+            tag="UX"
+            tone="#a78bfa"
+            title="Sample size 1000 по умолчанию"
+          >
+            Для стабильных хвостовых квантилей (1%/5%/15% RoR) нужны десятки
+            тысяч сэмплов. PD считает на 1000 и нигде не показывает CI на эти
+            числа — пользователь не знает, что видит шумовые ±10%.
+          </WeakBlock>
+
+          <WeakBlock
+            tag="INCONSISTENCY"
+            tone="#fb923c"
+            title="Рейк тихо меняет SD, хотя EV его игнорирует"
+          >
+            Один и тот же +10% ROI на 100p/$50/N=1000 даёт SD{" "}
+            <code>$5975</code> при rake=0, <code>$5607</code> при rake=11%,{" "}
+            <code>$4042</code> при rake=50%. EV при этом константен ($5000).
+            Внутри они используют <code>buyin − rake</code> как базу prizepool
+            для SD, но <code>buyin</code> как базу для EV — математически
+            непоследовательно. Игрок, перешедший с 5% на 15% рейк, получит
+            «меньший» требуемый банкролл на ровном месте.
+          </WeakBlock>
+
+          <WeakBlock
+            tag="QUIRK"
+            tone="#2dd4bf"
+            title="Running-min RoR без bankroll-management"
+          >
+            На 20 000 турниров с +10% ROI и $1k банкроллом PD выдаёт{" "}
+            <code>RoR = 70.8%</code>: если траектория хоть раз коснулась нуля,
+            вы «разорены» навсегда, даже если дальше восстановились. Реальные
+            игроки перезаряжают/занимают/понижают стейк — в PD этого нет. У нас
+            рядом с running-min показывается ещё и аналитический Brownian
+            first-passage, чтобы видеть разрыв.
+          </WeakBlock>
+        </div>
+
+        <div className="text-[10px] text-[color:var(--color-fg-dim)]">
+          Собрано 2026-04-14. Воспроизвести:{" "}
+          <code>node scripts/pd_probe.mjs</code> (кеширует ответы).
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function WeakBlock({
+  tag,
+  tone,
+  title,
+  children,
+}: {
+  tag: string;
+  tone: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-[color:var(--color-border)]/50 bg-[color:var(--color-bg-elev-2)]/30 p-3">
+      <div className="flex items-center gap-2">
+        <span
+          className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-black"
+          style={{ background: tone }}
+        >
+          {tag}
+        </span>
+        <span className="text-[11px] font-semibold text-[color:var(--color-fg)]">
+          {title}
+        </span>
+      </div>
+      <div className="text-[color:var(--color-fg-dim)]">{children}</div>
+    </div>
   );
 }
 
@@ -1556,6 +2433,7 @@ function VerdictCard({
   bankroll: number;
 }) {
   const t = useT();
+  const { money } = useMoneyFmt();
   const s = result.stats;
   const roi = s.mean / result.totalBuyIn;
   const roiStr = `${(roi * 100).toFixed(1)}%`;
@@ -1778,6 +2656,7 @@ function PDVerdict({
   other: SimulationResult;
 }) {
   const t = useT();
+  const { money } = useMoneyFmt();
   const ours = primary.stats;
   const theirs = other.stats;
 
@@ -1918,6 +2797,7 @@ function PrimedopeDiff({
   other: SimulationResult;
 }) {
   const t = useT();
+  const { money } = useMoneyFmt();
   const ours = primary.stats;
   const theirs = other.stats;
   const pctPp = (a: number, b: number) =>

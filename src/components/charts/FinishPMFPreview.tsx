@@ -44,8 +44,6 @@ export function FinishPMFPreview({ row, model }: Props) {
   ];
   const evTotal = evTiers.reduce((a, b) => a + b, 0) || 1;
 
-  // Share-of-EV and share-of-field per tier. OOTM gets a field-only bar under
-  // the EV bar so you can see "x% of finishes bring 0 EV" side-by-side.
   const evShares = evTiers.map((v) => v / evTotal);
   const fieldShares = [
     stats.fieldWinner,
@@ -55,159 +53,165 @@ export function FinishPMFPreview({ row, model }: Props) {
     stats.fieldOotm,
   ];
 
-  const moneyFmt = (v: number) =>
-    v === 0
-      ? "0"
-      : Math.abs(v) < 10
-      ? `$${v.toFixed(2)}`
-      : `$${Math.round(v).toLocaleString()}`;
+  const moneyFmt = (v: number) => {
+    if (v === 0) return "$0";
+    const sign = v < 0 ? "-" : "";
+    const abs = Math.abs(v);
+    if (abs < 1000) {
+      const hasFraction = Math.abs(abs - Math.round(abs)) > 0.005;
+      return `${sign}$${hasFraction ? abs.toFixed(2) : Math.round(abs).toString()}`;
+    }
+    return `${sign}$${Math.round(abs).toLocaleString()}`;
+  };
 
-  const pct = (v: number) => `${(v * 100).toFixed(v < 0.001 ? 2 : 1)}%`;
+  const pct = (v: number) =>
+    `${(v * 100).toFixed(v < 0.001 ? 2 : v < 0.1 ? 1 : 0)}%`;
+
+  const itmOne = stats.itm > 0 ? Math.max(1, Math.round(1 / stats.itm)) : 0;
+  const netProfitPerEntry = stats.evPerEntry - stats.cost;
+
+  // Top-heaviness hero: share of EV that lives in places 1..cutTop1
+  // (i.e. winner + top-1% tier) and how often such a finish lands.
+  const topShare = stats.evWinner + stats.evTop1;
+  const topField = stats.fieldWinner + stats.fieldTop1;
+  const topEvShareFrac = evTotal > 0 ? topShare / evTotal : 0;
+  const topOdds = topField > 0 ? Math.max(1, Math.round(1 / topField)) : 0;
+  const heroBodyKey =
+    stats.topPlaces <= 1 ? "preview.heroBodyTop1" : "preview.heroBodyTopN";
+  const heroBody = t(heroBodyKey)
+    .replace("{share}", pct(topEvShareFrac))
+    .replace("{n}", String(stats.topPlaces))
+    .replace("{odds}", topOdds > 0 ? String(topOdds) : "∞");
+
+  const itmLine = t("preview.itmLine")
+    .replace("{n}", itmOne > 0 ? String(itmOne) : "∞")
+    .replace("{pct}", pct(stats.itm));
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-0.5">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
+    <div className="flex flex-col gap-5">
+      {/* Eyebrow + tournament identity */}
+      <div className="flex flex-col gap-1">
+        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--color-fg-dim)]">
+          {t("preview.eyebrow")}
+        </div>
+        <div className="text-sm font-semibold text-[color:var(--color-fg)]">
           {row.label || t("row.unnamed")}
         </div>
-        <div className="text-[10px] text-[color:var(--color-fg-dim)] tabular-nums">
-          N={row.players} · buy-in {moneyFmt(stats.cost)} · α={stats.alpha.toFixed(2)}
+        <div className="text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+          {row.players} {t("preview.playersLabel")} · α {stats.alpha.toFixed(2)}
+          {stats.progressivePko
+            ? ` · ${t("preview.statBountyPko")}`
+            : stats.bountyShare > 0
+              ? ` · ${t("preview.statBountyFlat")}`
+              : ""}
         </div>
       </div>
 
-      {/* Stat callouts — 4 key numbers that actually describe variance */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat
-          label={t("preview.statItm")}
-          value={pct(stats.itm)}
-          hint={`1 in ${stats.itm > 0 ? Math.round(1 / stats.itm) : "∞"}`}
-        />
-        <Stat
-          label={t("preview.statTop1")}
-          value={pct(stats.top1EvShare)}
-          hint={t("preview.statTop1Hint")}
-          accent
-        />
-        <Stat
-          label={t("preview.statCv")}
-          value={stats.cv.toFixed(1)}
-          hint={t("preview.statCvHint")}
-        />
-        <Stat
-          label={t("preview.statBounty")}
-          value={stats.bountyShare > 0 ? pct(stats.bountyShare) : "—"}
-          hint={
-            stats.progressivePko
-              ? t("preview.statBountyPko")
-              : stats.bountyShare > 0
-              ? t("preview.statBountyFlat")
-              : t("preview.statBountyNone")
-          }
-        />
-      </div>
-
-      {/* Stacked bar: where your EV actually comes from */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-          <span>{t("preview.evBreakdown")}</span>
-          <span className="tabular-nums text-[color:var(--color-fg-muted)]">
-            EV/entry {moneyFmt(stats.evPerEntry)} · σ {moneyFmt(stats.payoutStd)}
+      {/* Buy-in → avg profit */}
+      <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+              {t("preview.youPay")}
+            </div>
+            <div className="text-[22px] font-bold leading-none tabular-nums text-[color:var(--color-fg)]">
+              {moneyFmt(stats.cost)}
+            </div>
+          </div>
+          <div className="pb-1 text-lg text-[color:var(--color-fg-dim)]">→</div>
+          <div className="flex flex-col items-end gap-0.5">
+            <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+              {t("preview.avgReturn")}
+            </div>
+            <div
+              className={`text-[22px] font-bold leading-none tabular-nums ${
+                netProfitPerEntry >= 0
+                  ? "text-[color:var(--color-accent)]"
+                  : "text-[color:var(--color-danger)]"
+              }`}
+            >
+              {netProfitPerEntry >= 0 ? "+" : ""}
+              {moneyFmt(netProfitPerEntry)}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--color-border)] pt-2 text-[11px] text-[color:var(--color-fg-muted)]">
+          <span>{itmLine}</span>
+          <span className="tabular-nums text-[color:var(--color-fg-dim)]">
+            {t("preview.sigmaLabel")} {moneyFmt(stats.payoutStd)}
           </span>
         </div>
+      </div>
 
-        <div className="flex h-6 w-full overflow-hidden rounded-sm border border-[color:var(--color-border)]">
+      {/* Hero: top-heaviness — the point of the whole widget */}
+      <div className="rounded-md border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/5 p-3">
+        <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)]">
+          {t("preview.heroTitle")}
+        </div>
+        <div className="text-[12px] leading-snug text-[color:var(--color-fg)]">
+          {heroBody}
+        </div>
+        <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("preview.heroTagline")}
+        </div>
+      </div>
+
+      {/* Tier-by-tier breakdown: shared grid template for header + rows */}
+      <div className="flex flex-col gap-1.5">
+        <div className="grid grid-cols-[10px_minmax(0,1fr)_minmax(48px,1.25fr)_2.75rem_2.75rem] items-center gap-x-2 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          <span />
+          <span>{t("preview.evBreakdown")}</span>
+          <span />
+          <span className="text-right tabular-nums">{t("preview.colEv")}</span>
+          <span className="text-right tabular-nums">{t("preview.colField")}</span>
+        </div>
+        <div className="flex flex-col divide-y divide-[color:var(--color-border)]/60">
           {TIERS.map((tier, i) => {
-            const share = evShares[i];
-            if (share <= 0.0005) return null;
+            const evShare = evShares[i];
+            const fieldShare = fieldShares[i];
+            if (evShare <= 0.0005 && fieldShare <= 0.0005) return null;
             return (
               <div
                 key={tier.key}
-                className="relative flex items-center justify-center"
-                style={{ width: `${share * 100}%`, background: tier.color }}
-                title={`${t(tier.labelKey)} · ${pct(share)} EV`}
+                className="grid grid-cols-[10px_minmax(0,1fr)_minmax(48px,1.25fr)_2.75rem_2.75rem] items-center gap-x-2 py-1.5 text-[11px]"
               >
-                {share > 0.08 && (
-                  <span className="text-[9px] font-bold text-black/80 tabular-nums">
-                    {Math.round(share * 100)}%
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Field-share bar — same tiers, but showing how rare each outcome is */}
-        <div className="flex h-1.5 w-full overflow-hidden rounded-sm">
-          {TIERS.map((tier, i) => {
-            const share = fieldShares[i];
-            if (share <= 0) return null;
-            return (
-              <div
-                key={tier.key}
-                style={{
-                  width: `${share * 100}%`,
-                  background: tier.color,
-                  opacity: 0.35,
-                }}
-                title={`${t(tier.labelKey)} · ${pct(share)} of finishes`}
-              />
-            );
-          })}
-        </div>
-
-        {/* Legend with per-tier EV contributions */}
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-[color:var(--color-fg-muted)] sm:grid-cols-5">
-          {TIERS.map((tier, i) => (
-            <div key={tier.key} className="flex items-center gap-1.5">
-              <span
-                className="inline-block h-2 w-2 flex-shrink-0"
-                style={{ background: tier.color }}
-              />
-              <div className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate">{t(tier.labelKey)}</span>
-                <span className="tabular-nums text-[color:var(--color-fg-dim)]">
-                  {pct(evShares[i])} · {pct(fieldShares[i])}
+                <span
+                  className="h-2.5 w-2.5 rounded-sm"
+                  style={{ background: tier.color }}
+                />
+                <span className="text-[color:var(--color-fg)]">
+                  {t(tier.labelKey)}
+                </span>
+                <div className="relative h-2 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
+                  {/* Field share — background pill */}
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-sm"
+                    style={{
+                      width: `${fieldShare * 100}%`,
+                      background: tier.color,
+                      opacity: 0.3,
+                    }}
+                  />
+                  {/* EV share — solid foreground */}
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-sm"
+                    style={{
+                      width: `${evShare * 100}%`,
+                      background: tier.color,
+                    }}
+                  />
+                </div>
+                <span className="text-right font-mono tabular-nums text-[color:var(--color-fg)]">
+                  {pct(evShare)}
+                </span>
+                <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+                  {pct(fieldShare)}
                 </span>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
-
-      <div className="text-[10px] leading-relaxed text-[color:var(--color-fg-dim)]">
-        {t("preview.footnote")}
-      </div>
-    </div>
-  );
-}
-
-interface StatProps {
-  label: string;
-  value: string;
-  hint?: string;
-  accent?: boolean;
-}
-
-function Stat({ label, value, hint, accent }: StatProps) {
-  return (
-    <div className="flex flex-col gap-0.5 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-2">
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-        {label}
-      </div>
-      <div
-        className={`text-[18px] font-bold leading-none tabular-nums ${
-          accent
-            ? "text-[color:var(--color-accent)]"
-            : "text-[color:var(--color-fg)]"
-        }`}
-      >
-        {value}
-      </div>
-      {hint && (
-        <div className="text-[9px] leading-tight text-[color:var(--color-fg-dim)]">
-          {hint}
-        </div>
-      )}
     </div>
   );
 }
@@ -221,7 +225,7 @@ interface RowStats {
   cv: number;
   bountyShare: number;
   progressivePko: boolean;
-  top1EvShare: number;
+  topPlaces: number;
   evWinner: number;
   evTop1: number;
   evTop10: number;
@@ -268,7 +272,6 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     prizeByPlace[i] = payouts[i] * prizePool;
   }
 
-  // Bounty weights — same code path as engine.ts (flat or progressive PKO).
   const bountyByPlace = new Float64Array(N);
   if (bountyMean > 0 && N >= 2) {
     const Hprefix = new Float64Array(N);
@@ -313,33 +316,22 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     }
   }
 
-  // Per-place total payout, ITM cutoff, moments.
   const totalByPlace = new Float64Array(N);
   let totalEv = 0;
   let totalEv2 = 0;
-  let paidCount = 0;
   for (let i = 0; i < N; i++) {
     totalByPlace[i] = prizeByPlace[i] + bountyByPlace[i];
     totalEv += pmf[i] * totalByPlace[i];
     totalEv2 += pmf[i] * totalByPlace[i] * totalByPlace[i];
-    if (payouts[i] > 0 || bountyByPlace[i] > 0) paidCount++;
   }
   const payoutVar = Math.max(0, totalEv2 - totalEv * totalEv);
   const payoutStd = Math.sqrt(payoutVar);
   const cv = totalEv > 1e-9 ? payoutStd / totalEv : 0;
 
-  // ITM = Σ pmf over places that cash (prize places only — bounty-only busts
-  // are not "cashing" in the usual sense).
   let itm = 0;
   const paidMtt = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
   for (let i = 0; i < paidMtt; i++) itm += pmf[i];
 
-  // Tier boundaries. We bucket by finish place:
-  //   winner = place 1
-  //   top1 = places 2..ceil(N*0.01)
-  //   top10 = places ..ceil(N*0.10)
-  //   restItm = the rest of the cashing places
-  //   ootm = everything else
   const cutTop1 = Math.max(1, Math.ceil(N * 0.01));
   const cutTop10 = Math.max(cutTop1, Math.ceil(N * 0.1));
   const cutItm = Math.max(cutTop10, paidMtt);
@@ -376,7 +368,6 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     }
   }
 
-  const top1EvShare = totalEv > 1e-9 ? (evWinner + evTop1) / totalEv : 0;
   const bountyShareOfPayout =
     totalEv > 1e-9
       ? (() => {
@@ -395,7 +386,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     cv,
     bountyShare: bountyShareOfPayout,
     progressivePko: bountyFraction > 0,
-    top1EvShare,
+    topPlaces: cutTop1,
     evWinner,
     evTop1,
     evTop10,

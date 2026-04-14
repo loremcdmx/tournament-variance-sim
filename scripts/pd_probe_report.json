@@ -1,0 +1,1122 @@
+{
+  "generatedAt": "2026-04-14T22:18:28.555Z",
+  "results": [
+    {
+      "cat": "A",
+      "name": "A1 +400% ROI",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 400,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 2000
+      },
+      "note": "itm=(1+4)*15/100=0.75 — still valid but extreme",
+      "ev": 200000,
+      "sd": 9704.29672876917,
+      "evSim": 200218.69177500173,
+      "sdSim": 9481.502157900542,
+      "sdRatio": 0.9770416572065305,
+      "riskOfRuin": 0,
+      "min50": 0,
+      "min15": 50,
+      "min05": 50,
+      "min01": 100,
+      "probLoss": 0,
+      "conf70": [
+        190537.63000000137,
+        209805.0175000018
+      ],
+      "conf95": [
+        181671.33875000098,
+        218949.21125000186
+      ],
+      "conf997": [
+        171876.19900000113,
+        232839.62592500256
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 4,
+      "neverBelowZero": 1591,
+      "samplesize": 2000
+    },
+    {
+      "cat": "B",
+      "name": "B1 1000p +5% ROI",
+      "inputs": {
+        "players": 1000,
+        "places_paid": 150,
+        "buyin": 10,
+        "rake": 10,
+        "roi": 5,
+        "number": 1000,
+        "bankroll": 500,
+        "samples": 2000
+      },
+      "note": "large field — top prize dominates reality, PD flattens",
+      "ev": 500.00000000000045,
+      "sd": 2782.927325677047,
+      "evSim": 585.4251499999984,
+      "sdSim": 2719.517526202485,
+      "sdRatio": 0.9772147124039126,
+      "riskOfRuin": 0.8045,
+      "min50": 1433.0999999999997,
+      "min15": 2970.7000000000025,
+      "min05": 3889.280000000003,
+      "min01": 4863.457,
+      "probLoss": 0.448,
+      "conf70": [
+        -2229.175000000002,
+        3390.829999999997
+      ],
+      "conf95": [
+        -3910.959999999998,
+        6755.345000000004
+      ],
+      "conf997": [
+        -5259.860649999999,
+        9777.7835
+      ],
+      "sumBuyins": 10000,
+      "evRoi": 0.050000000000000044,
+      "neverBelowZero": 5,
+      "samplesize": 2000
+    },
+    {
+      "cat": "B",
+      "name": "B2 WTA 100p/1",
+      "inputs": {
+        "players": 100,
+        "places_paid": 1,
+        "buyin": 50,
+        "rake": 10,
+        "roi": 10,
+        "number": 500,
+        "bankroll": 1000,
+        "samples": 2000
+      },
+      "note": "winner-take-all — extreme top-heavy, tests flatten vs reality",
+      "ev": 2500.0000000000027,
+      "sd": 11056.106909758066,
+      "evSim": 2297,
+      "sdSim": 11372.314672044562,
+      "sdRatio": 1.028600280810184,
+      "riskOfRuin": 0.8945,
+      "min50": 6100,
+      "min15": 12500,
+      "min05": 16152.5,
+      "min01": 20500,
+      "probLoss": 0.438,
+      "conf70": [
+        -11500,
+        15500
+      ],
+      "conf95": [
+        -16000,
+        24500
+      ],
+      "conf997": [
+        -25000,
+        38006.74999999933
+      ],
+      "sumBuyins": 25000,
+      "evRoi": 0.1000000000000001,
+      "neverBelowZero": 9,
+      "samplesize": 2000
+    },
+    {
+      "cat": "B",
+      "name": "B3 HU 2p/1",
+      "inputs": {
+        "players": 2,
+        "places_paid": 1,
+        "buyin": 50,
+        "rake": 10,
+        "roi": 10,
+        "number": 500,
+        "bankroll": 500,
+        "samples": 2000
+      },
+      "note": "heads-up — minimum viable field",
+      "ev": 2500.0000000000023,
+      "sd": 981.0708435174291,
+      "evSim": 2468.765,
+      "sdSim": 996.4387210335617,
+      "sdRatio": 1.0156643912289087,
+      "riskOfRuin": 0.078,
+      "min50": 120,
+      "min15": 380,
+      "min05": 590,
+      "min01": 910,
+      "probLoss": 0.0065,
+      "conf70": [
+        1460,
+        3530
+      ],
+      "conf95": [
+        560,
+        4340
+      ],
+      "conf997": [
+        -340.27,
+        5420.269999999973
+      ],
+      "sumBuyins": 25000,
+      "evRoi": 0.10000000000000009,
+      "neverBelowZero": 271,
+      "samplesize": 2000
+    },
+    {
+      "cat": "C",
+      "name": "C1 baseline s=500 run1",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 500
+      },
+      "note": "low sample — noisy percentiles",
+      "ev": 5000.000000000015,
+      "sd": 5607.418523705896,
+      "evSim": 4885.445600000002,
+      "sdSim": 5308.0678075718615,
+      "sdRatio": 0.9466152357152402,
+      "riskOfRuin": 0.65,
+      "min50": 1568.374999999999,
+      "min15": 4272.750000000002,
+      "min05": 6341.460000000003,
+      "min01": 8112.609000000009,
+      "probLoss": 0.166,
+      "conf70": [
+        -329.76750000000806,
+        10279.477500000039
+      ],
+      "conf95": [
+        -5474.9687500000055,
+        15236.443750000031
+      ],
+      "conf997": [
+        -9938.543474999973,
+        19824.25802500004
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.1000000000000003,
+      "neverBelowZero": 9,
+      "samplesize": 500
+    },
+    {
+      "cat": "C",
+      "name": "C2 baseline s=500 run2",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 500
+      },
+      "note": "same scenario, different call — measures their RNG jitter",
+      "ev": 5000.000000000015,
+      "sd": 5607.418523705896,
+      "evSim": 4546.711600000001,
+      "sdSim": 5320.884599495233,
+      "sdRatio": 0.9489009206287502,
+      "riskOfRuin": 0.658,
+      "min50": 1642.2250000000001,
+      "min15": 4370.3050000000085,
+      "min05": 6207.735000000004,
+      "min01": 9307.194500000005,
+      "probLoss": 0.194,
+      "conf70": [
+        -971.9025000000099,
+        10117.274999999989
+      ],
+      "conf95": [
+        -4892.130000000009,
+        14781.208750000027
+      ],
+      "conf997": [
+        -8311.521124999977,
+        20616.92762499991
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.1000000000000003,
+      "neverBelowZero": 8,
+      "samplesize": 500
+    },
+    {
+      "cat": "C",
+      "name": "C3 baseline s=500 run3",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 500
+      },
+      "note": "third call — 3-way spread",
+      "ev": 5000.000000000015,
+      "sd": 5607.418523705896,
+      "evSim": 5506.621100000001,
+      "sdSim": 5454.787055834528,
+      "sdRatio": 0.9727804394792177,
+      "riskOfRuin": 0.652,
+      "min50": 1545.9499999999996,
+      "min15": 4111.4500000000035,
+      "min05": 6155.777500000007,
+      "min01": 8980.495500000003,
+      "probLoss": 0.154,
+      "conf70": [
+        -46.96999999999908,
+        11571.090000000024
+      ],
+      "conf95": [
+        -4919.608750000011,
+        15729.058750000022
+      ],
+      "conf997": [
+        -8650.148325000006,
+        22304.55007499983
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.1000000000000003,
+      "neverBelowZero": 5,
+      "samplesize": 500
+    },
+    {
+      "cat": "C",
+      "name": "C4 baseline s=10000",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 10000
+      },
+      "note": "high sample — test server limit / latency",
+      "ev": 5000.000000000015,
+      "sd": 5607.418523705896,
+      "evSim": 4917.613760000002,
+      "sdSim": 5644.126467178715,
+      "sdRatio": 1.0065463177605938,
+      "riskOfRuin": 0.6702,
+      "min50": 1748.6499999999994,
+      "min15": 4427.2375,
+      "min05": 6551.552500000003,
+      "min01": 9165.349,
+      "probLoss": 0.1949,
+      "conf70": [
+        -965.4500000000013,
+        10778.100000000004
+      ],
+      "conf95": [
+        -5691.572500000005,
+        16274.072500000031
+      ],
+      "conf997": [
+        -10274.876700000006,
+        23723.230100000066
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.1000000000000003,
+      "neverBelowZero": 156,
+      "samplesize": 10000
+    },
+    {
+      "cat": "C",
+      "name": "C5 baseline s=50000",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 50000
+      },
+      "note": "very high sample — does server accept?",
+      "ev": 5000.000000000015,
+      "sd": 5607.418523705896,
+      "evSim": 4999.518146000002,
+      "sdSim": 5644.980649747805,
+      "sdRatio": 1.0066986485640605,
+      "riskOfRuin": 0.66422,
+      "min50": 1692.3500000000047,
+      "min15": 4394.0375,
+      "min05": 6518.605000000005,
+      "min01": 9202.159999999994,
+      "probLoss": 0.18828,
+      "conf70": [
+        -854.2,
+        10876.000000000022
+      ],
+      "conf95": [
+        -5678.000000000008,
+        16443.061250000042
+      ],
+      "conf997": [
+        -10537.420024999998,
+        23144.66335000003
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.1000000000000003,
+      "neverBelowZero": 924,
+      "samplesize": 50000
+    },
+    {
+      "cat": "D",
+      "name": "D1 ROI=0 exact",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 10,
+        "roi": 0,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 2000
+      },
+      "note": "break-even — check math SD non-zero",
+      "ev": -5.773159728050814e-12,
+      "sd": 5402.476284075666,
+      "evSim": -130.307,
+      "sdSim": 5438.708551117719,
+      "sdRatio": 1.0067066036270906,
+      "riskOfRuin": 0.8585,
+      "min50": 3639.5,
+      "min15": 7502.95,
+      "min05": 10183.175,
+      "min01": 13161.035,
+      "probLoss": 0.521,
+      "conf70": [
+        -5630.675,
+        5447.874999999997
+      ],
+      "conf95": [
+        -10445,
+        11245.899999999994
+      ],
+      "conf997": [
+        -14738.35775,
+        17208.546249999898
+      ],
+      "sumBuyins": 50000,
+      "evRoi": -1.1546319456101628e-16,
+      "neverBelowZero": 14,
+      "samplesize": 2000
+    },
+    {
+      "cat": "D",
+      "name": "D2 ROI=-99%",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 10,
+        "roi": -99,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 2000
+      },
+      "note": "near-total loser — itm≈0, almost all samples ruin",
+      "ev": -49500,
+      "sd": 562.6877464455754,
+      "evSim": -49480.58975,
+      "sdSim": 586.0513162854747,
+      "sdRatio": 1.041521376620486,
+      "riskOfRuin": 1,
+      "min50": 49703,
+      "min15": 50000,
+      "min05": 50000,
+      "min01": 50000,
+      "probLoss": 1,
+      "conf70": [
+        -50000,
+        -48826.625
+      ],
+      "conf95": [
+        -50000,
+        -47920.100000000006
+      ],
+      "conf997": [
+        -50000,
+        -46759.70975000003
+      ],
+      "sumBuyins": 50000,
+      "evRoi": -0.99,
+      "neverBelowZero": 0,
+      "samplesize": 2000
+    },
+    {
+      "cat": "D",
+      "name": "D3 ROI=-100%",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 10,
+        "roi": -100,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 2000
+      },
+      "note": "itm=0 exactly — does their math divide-by-zero?",
+      "ev": -50000,
+      "sd": 0,
+      "evSim": -50000,
+      "sdSim": 0,
+      "sdRatio": null,
+      "riskOfRuin": 1,
+      "min50": 50000,
+      "min15": 50000,
+      "min05": 50000,
+      "min01": 50000,
+      "probLoss": 1,
+      "conf70": [
+        -50000,
+        -50000
+      ],
+      "conf95": [
+        -50000,
+        -50000
+      ],
+      "conf997": [
+        -50000,
+        -50000
+      ],
+      "sumBuyins": 50000,
+      "evRoi": -1,
+      "neverBelowZero": 0,
+      "samplesize": 2000
+    },
+    {
+      "cat": "D",
+      "name": "D4 N=1 single",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 1,
+        "bankroll": 1000,
+        "samples": 2000
+      },
+      "note": "single tourney — SD should equal per-tourney SD",
+      "ev": 5.000000000000014,
+      "sd": 177.3221432872951,
+      "evSim": 2.756975,
+      "sdSim": 172.8865730908545,
+      "sdRatio": 0.9749858076706521,
+      "riskOfRuin": 0,
+      "min50": 50,
+      "min15": 50,
+      "min05": 50,
+      "min01": 50,
+      "probLoss": 0.821,
+      "conf70": [
+        -50,
+        43.45
+      ],
+      "conf95": [
+        -50,
+        421.7
+      ],
+      "conf997": [
+        -50,
+        1196
+      ],
+      "sumBuyins": 50,
+      "evRoi": 0.10000000000000028,
+      "neverBelowZero": 358,
+      "samplesize": 2000
+    },
+    {
+      "cat": "D",
+      "name": "D5 N=20000 long",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 20000,
+        "bankroll": 1000,
+        "samples": 1000
+      },
+      "note": "20k tourneys — their server seems to choke beyond this",
+      "ev": 100000.00000000029,
+      "sd": 25077.1379945958,
+      "evSim": 100525.32589999719,
+      "sdSim": 25109.299388193507,
+      "sdRatio": 1.0012824985692004,
+      "riskOfRuin": 0.708,
+      "min50": 2029.4249999999997,
+      "min15": 5527.782500000004,
+      "min05": 8819.222500000022,
+      "min01": 13165.282000000001,
+      "probLoss": 0,
+      "conf70": [
+        74843.43249999578,
+        125761.22249999628
+      ],
+      "conf95": [
+        51322.067499998084,
+        148025.7962500004
+      ],
+      "conf997": [
+        21186.834375000453,
+        173451.05592500456
+      ],
+      "sumBuyins": 1000000,
+      "evRoi": 0.1000000000000003,
+      "neverBelowZero": 12,
+      "samplesize": 1000
+    },
+    {
+      "cat": "D",
+      "name": "D7 buyin=$100k",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 100000,
+        "rake": 11,
+        "roi": 10,
+        "number": 100,
+        "bankroll": 5000000,
+        "samples": 2000
+      },
+      "note": "huge buyin — scaling test",
+      "ev": 999999.9999999991,
+      "sd": 3546442.8657459025,
+      "evSim": 1007488.85,
+      "sdSim": 3632541.7552687093,
+      "sdRatio": 1.024277534640248,
+      "riskOfRuin": 0.0455,
+      "min50": 1726650,
+      "min15": 3657930,
+      "min05": 4896630,
+      "min01": 6306500,
+      "probLoss": 0.4305,
+      "conf70": [
+        -2595200,
+        4785569.999999997
+      ],
+      "conf95": [
+        -5150167.5,
+        8967012.499999994
+      ],
+      "conf997": [
+        -7036633.75,
+        13728441.299999896
+      ],
+      "sumBuyins": 10000000,
+      "evRoi": 0.09999999999999991,
+      "neverBelowZero": 66,
+      "samplesize": 2000
+    },
+    {
+      "cat": "D",
+      "name": "D8 500p paid=40",
+      "inputs": {
+        "players": 500,
+        "places_paid": 40,
+        "buyin": 10,
+        "rake": 10,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 300,
+        "samples": 2000
+      },
+      "note": "tight ITM 8% (not the usual 15%)",
+      "ev": 1000.0000000000014,
+      "sd": 2278.2719877134955,
+      "evSim": 921.930875,
+      "sdSim": 2214.282551133207,
+      "sdRatio": 0.9719131706287145,
+      "riskOfRuin": 0.819,
+      "min50": 982,
+      "min15": 2237.725,
+      "min05": 3068.275,
+      "min01": 3903.18,
+      "probLoss": 0.3615,
+      "conf70": [
+        -1405.6750000000002,
+        3242.9374999999986
+      ],
+      "conf95": [
+        -3052.61875,
+        5608.362499999999
+      ],
+      "conf997": [
+        -4172.8645,
+        7772.9423749999805
+      ],
+      "sumBuyins": 10000,
+      "evRoi": 0.10000000000000013,
+      "neverBelowZero": 11,
+      "samplesize": 2000
+    },
+    {
+      "cat": "G",
+      "name": "G1 tight BR",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 100,
+        "samples": 2000
+      },
+      "note": "bankroll=2 buyins, +10% ROI — should ruin often even as winner",
+      "ev": 5000.000000000015,
+      "sd": 5607.418523705896,
+      "evSim": 4964.798000000002,
+      "sdSim": 5555.814748060236,
+      "sdRatio": 0.9907972313057246,
+      "riskOfRuin": 0.956,
+      "min50": 1713.35,
+      "min15": 4158.547500000005,
+      "min05": 6488.0700000000015,
+      "min01": 9493.995999999997,
+      "probLoss": 0.1855,
+      "conf70": [
+        -716.9175000000032,
+        10939.635000000038
+      ],
+      "conf95": [
+        -5536.601250000005,
+        16056.578750000044
+      ],
+      "conf997": [
+        -10151.004275000005,
+        23025.441174999953
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.1000000000000003,
+      "neverBelowZero": 29,
+      "samplesize": 2000
+    },
+    {
+      "cat": "G",
+      "name": "G2 huge BR",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 100000,
+        "samples": 2000
+      },
+      "note": "200 buyins — near-zero ruin",
+      "ev": 5000.000000000015,
+      "sd": 5607.418523705896,
+      "evSim": 4863.789675000003,
+      "sdSim": 5722.813427295815,
+      "sdRatio": 1.0205789710723527,
+      "riskOfRuin": 0,
+      "min50": 1752.6750000000022,
+      "min15": 4591.425000000004,
+      "min05": 6814.81250000001,
+      "min01": 8902.252000000008,
+      "probLoss": 0.2145,
+      "conf70": [
+        -1198.1850000000159,
+        11037.535000000016
+      ],
+      "conf95": [
+        -5803.156250000008,
+        16039.33500000005
+      ],
+      "conf997": [
+        -9282.920525000005,
+        22826.412699999848
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.1000000000000003,
+      "neverBelowZero": 38,
+      "samplesize": 2000
+    },
+    {
+      "cat": "G",
+      "name": "G3 winner ruin",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 11,
+        "roi": 20,
+        "number": 1000,
+        "bankroll": 200,
+        "samples": 2000
+      },
+      "note": "+20% ROI, 4 buyins — how often does winner still bust?",
+      "ev": 10000.000000000016,
+      "sd": 5831.089949572036,
+      "evSim": 9935.194350000014,
+      "sdSim": 5730.369951082852,
+      "sdRatio": 0.9827270717206864,
+      "riskOfRuin": 0.8465,
+      "min50": 955.7750000000008,
+      "min15": 2750.4925,
+      "min05": 4214.060000000002,
+      "min01": 6034.373000000006,
+      "probLoss": 0.038,
+      "conf70": [
+        4093.532499999985,
+        16125.88750000006
+      ],
+      "conf95": [
+        -1157.245000000002,
+        20858.12875000004
+      ],
+      "conf997": [
+        -6866.690675000016,
+        27346.01737500001
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.20000000000000032,
+      "neverBelowZero": 62,
+      "samplesize": 2000
+    },
+    {
+      "cat": "H",
+      "name": "H1 rake=0%",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 0,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 2000
+      },
+      "note": "no rake — pure skill premium",
+      "ev": 5000.000000000009,
+      "sd": 5975.21966123422,
+      "evSim": 5076.03,
+      "sdSim": 5947.6581390577585,
+      "sdRatio": 0.9953873625173524,
+      "riskOfRuin": 0.696,
+      "min50": 1887.5,
+      "min15": 4745.75,
+      "min05": 7112.75,
+      "min01": 9571.55,
+      "probLoss": 0.1935,
+      "conf70": [
+        -1055,
+        11468.749999999996
+      ],
+      "conf95": [
+        -6451.875,
+        17075.999999999993
+      ],
+      "conf997": [
+        -10721.6125,
+        23105.337499999965
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.10000000000000019,
+      "neverBelowZero": 30,
+      "samplesize": 2000
+    },
+    {
+      "cat": "H",
+      "name": "H2 rake=50%",
+      "inputs": {
+        "players": 100,
+        "places_paid": 15,
+        "buyin": 50,
+        "rake": 50,
+        "roi": 10,
+        "number": 1000,
+        "bankroll": 1000,
+        "samples": 2000
+      },
+      "note": "half rake — does EV formula still use buyin only?",
+      "ev": 4999.999999999998,
+      "sd": 4042.168353742828,
+      "evSim": 5125.04,
+      "sdSim": 4078.184078686248,
+      "sdRatio": 1.0089100012150833,
+      "riskOfRuin": 0.4865,
+      "min50": 970,
+      "min15": 2512.5,
+      "min05": 3795.25,
+      "min01": 5714.15,
+      "probLoss": 0.098,
+      "conf70": [
+        978.8749999999998,
+        9332.5
+      ],
+      "conf95": [
+        -2667.625,
+        13048.499999999995
+      ],
+      "conf997": [
+        -6198.4,
+        19685.01875
+      ],
+      "sumBuyins": 50000,
+      "evRoi": 0.09999999999999996,
+      "neverBelowZero": 47,
+      "samplesize": 2000
+    }
+  ],
+  "findings": [
+    {
+      "key": "A",
+      "title": "ITM-формула ломается при ROI выше порога",
+      "detail": [
+        {
+          "scenario": "A1 +400% ROI",
+          "itmTheoretical": 0.75,
+          "ev": 200000,
+          "sd": 9704.29672876917,
+          "evRoi": 4
+        }
+      ]
+    },
+    {
+      "key": "math_vs_sim",
+      "title": "SD (math) vs SD (simulated) — internal consistency",
+      "detail": [
+        {
+          "name": "A1 +400% ROI",
+          "sd": 9704.29672876917,
+          "sdSim": 9481.502157900542,
+          "ratio": 0.9770416572065305
+        },
+        {
+          "name": "B1 1000p +5% ROI",
+          "sd": 2782.927325677047,
+          "sdSim": 2719.517526202485,
+          "ratio": 0.9772147124039126
+        },
+        {
+          "name": "B2 WTA 100p/1",
+          "sd": 11056.106909758066,
+          "sdSim": 11372.314672044562,
+          "ratio": 1.028600280810184
+        },
+        {
+          "name": "B3 HU 2p/1",
+          "sd": 981.0708435174291,
+          "sdSim": 996.4387210335617,
+          "ratio": 1.0156643912289087
+        },
+        {
+          "name": "C1 baseline s=500 run1",
+          "sd": 5607.418523705896,
+          "sdSim": 5308.0678075718615,
+          "ratio": 0.9466152357152402
+        },
+        {
+          "name": "C2 baseline s=500 run2",
+          "sd": 5607.418523705896,
+          "sdSim": 5320.884599495233,
+          "ratio": 0.9489009206287502
+        },
+        {
+          "name": "C3 baseline s=500 run3",
+          "sd": 5607.418523705896,
+          "sdSim": 5454.787055834528,
+          "ratio": 0.9727804394792177
+        },
+        {
+          "name": "C4 baseline s=10000",
+          "sd": 5607.418523705896,
+          "sdSim": 5644.126467178715,
+          "ratio": 1.0065463177605938
+        },
+        {
+          "name": "C5 baseline s=50000",
+          "sd": 5607.418523705896,
+          "sdSim": 5644.980649747805,
+          "ratio": 1.0066986485640605
+        },
+        {
+          "name": "D1 ROI=0 exact",
+          "sd": 5402.476284075666,
+          "sdSim": 5438.708551117719,
+          "ratio": 1.0067066036270906
+        },
+        {
+          "name": "D2 ROI=-99%",
+          "sd": 562.6877464455754,
+          "sdSim": 586.0513162854747,
+          "ratio": 1.041521376620486
+        },
+        {
+          "name": "D4 N=1 single",
+          "sd": 177.3221432872951,
+          "sdSim": 172.8865730908545,
+          "ratio": 0.9749858076706521
+        },
+        {
+          "name": "D5 N=20000 long",
+          "sd": 25077.1379945958,
+          "sdSim": 25109.299388193507,
+          "ratio": 1.0012824985692004
+        },
+        {
+          "name": "D7 buyin=$100k",
+          "sd": 3546442.8657459025,
+          "sdSim": 3632541.7552687093,
+          "ratio": 1.024277534640248
+        },
+        {
+          "name": "D8 500p paid=40",
+          "sd": 2278.2719877134955,
+          "sdSim": 2214.282551133207,
+          "ratio": 0.9719131706287145
+        },
+        {
+          "name": "G1 tight BR",
+          "sd": 5607.418523705896,
+          "sdSim": 5555.814748060236,
+          "ratio": 0.9907972313057246
+        },
+        {
+          "name": "G2 huge BR",
+          "sd": 5607.418523705896,
+          "sdSim": 5722.813427295815,
+          "ratio": 1.0205789710723527
+        },
+        {
+          "name": "G3 winner ruin",
+          "sd": 5831.089949572036,
+          "sdSim": 5730.369951082852,
+          "ratio": 0.9827270717206864
+        },
+        {
+          "name": "H1 rake=0%",
+          "sd": 5975.21966123422,
+          "sdSim": 5947.6581390577585,
+          "ratio": 0.9953873625173524
+        },
+        {
+          "name": "H2 rake=50%",
+          "sd": 4042.168353742828,
+          "sdSim": 4078.184078686248,
+          "ratio": 1.0089100012150833
+        }
+      ]
+    },
+    {
+      "key": "repro",
+      "title": "RoR percentile reproducibility (identical inputs, 3 runs)",
+      "detail": {
+        "runs": [
+          {
+            "name": "C1 baseline s=500 run1",
+            "min01": 8112.609000000009,
+            "min05": 6341.460000000003,
+            "min15": 4272.750000000002,
+            "ror": 0.65
+          },
+          {
+            "name": "C2 baseline s=500 run2",
+            "min01": 9307.194500000005,
+            "min05": 6207.735000000004,
+            "min15": 4370.3050000000085,
+            "ror": 0.658
+          },
+          {
+            "name": "C3 baseline s=500 run3",
+            "min01": 8980.495500000003,
+            "min05": 6155.777500000007,
+            "min15": 4111.4500000000035,
+            "ror": 0.652
+          }
+        ],
+        "min01Spread": 1194.5854999999965,
+        "min01Mean": 8800.09966666667,
+        "min01RelSpread": 0.1357468148372103
+      }
+    },
+    {
+      "key": "degenerate",
+      "title": "Degenerate inputs (break-even, -100% ROI, N=1, extreme buyins)",
+      "detail": [
+        {
+          "name": "D1 ROI=0 exact",
+          "note": "break-even — check math SD non-zero",
+          "ev": -5.773159728050814e-12,
+          "sd": 5402.476284075666,
+          "riskOfRuin": 0.8585,
+          "probLoss": 0.521
+        },
+        {
+          "name": "D2 ROI=-99%",
+          "note": "near-total loser — itm≈0, almost all samples ruin",
+          "ev": -49500,
+          "sd": 562.6877464455754,
+          "riskOfRuin": 1,
+          "probLoss": 1
+        },
+        {
+          "name": "D3 ROI=-100%",
+          "note": "itm=0 exactly — does their math divide-by-zero?",
+          "ev": -50000,
+          "sd": 0,
+          "riskOfRuin": 1,
+          "probLoss": 1
+        },
+        {
+          "name": "D4 N=1 single",
+          "note": "single tourney — SD should equal per-tourney SD",
+          "ev": 5.000000000000014,
+          "sd": 177.3221432872951,
+          "riskOfRuin": 0,
+          "probLoss": 0.821
+        },
+        {
+          "name": "D5 N=20000 long",
+          "note": "20k tourneys — their server seems to choke beyond this",
+          "ev": 100000.00000000029,
+          "sd": 25077.1379945958,
+          "riskOfRuin": 0.708,
+          "probLoss": 0
+        },
+        {
+          "name": "D7 buyin=$100k",
+          "note": "huge buyin — scaling test",
+          "ev": 999999.9999999991,
+          "sd": 3546442.8657459025,
+          "riskOfRuin": 0.0455,
+          "probLoss": 0.4305
+        },
+        {
+          "name": "D8 500p paid=40",
+          "note": "tight ITM 8% (not the usual 15%)",
+          "ev": 1000.0000000000014,
+          "sd": 2278.2719877134955,
+          "riskOfRuin": 0.819,
+          "probLoss": 0.3615
+        }
+      ]
+    }
+  ]
+}

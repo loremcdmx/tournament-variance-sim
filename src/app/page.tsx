@@ -23,11 +23,13 @@ import type {
 } from "@/lib/sim/types";
 import {
   addUserPreset,
+  buildShareUrl,
   loadFromUrlHash,
   loadLocal,
   loadUserPresets,
   removeUserPreset,
   saveLocal,
+  saveUserPresets,
   type PersistedState,
   type UserPreset,
 } from "@/lib/persistence";
@@ -230,6 +232,64 @@ export default function Home() {
     if (activeScenarioId === id) setActiveScenarioId(null);
   };
 
+  const onExportUserPresets = () => {
+    const all = loadUserPresets();
+    const payload = { format: "tvs.userPresets", v: 1, presets: all };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.download = `variance-lab-presets-${stamp}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const [shareCopiedId, setShareCopiedId] = useState<string | null>(null);
+  const onSharePreset = async (p: UserPreset) => {
+    const url = buildShareUrl(p.state);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt(t("userPreset.shareFallback"), url);
+    }
+    setShareCopiedId(p.id);
+    window.setTimeout(() => {
+      setShareCopiedId((cur) => (cur === p.id ? null : cur));
+    }, 1800);
+  };
+
+  const onImportUserPresets = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const incoming: UserPreset[] | null =
+        parsed && parsed.format === "tvs.userPresets" && Array.isArray(parsed.presets)
+          ? (parsed.presets as UserPreset[])
+          : null;
+      if (!incoming) {
+        window.alert(t("presets.importError"));
+        return;
+      }
+      const existing = loadUserPresets();
+      const byId = new Map(existing.map((p) => [p.id, p]));
+      for (const p of incoming) {
+        if (!p || typeof p !== "object" || !p.id || !p.state) continue;
+        byId.set(p.id, p);
+      }
+      const merged = Array.from(byId.values());
+      saveUserPresets(merged);
+      setUserPresets(merged);
+      window.alert(
+        t("presets.importDone").replace("{n}", String(incoming.length)),
+      );
+    } catch {
+      window.alert(t("presets.importError"));
+    }
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-10 sm:py-14">
       <header className="flex flex-col gap-6">
@@ -246,7 +306,7 @@ export default function Home() {
 
         {/* Editorial hero — FF-style, full width, no side stats */}
         <div className="relative py-10 sm:py-16">
-          <div className="eyebrow mb-6">/ variance.lab — v1</div>
+          <div className="eyebrow mb-6">/ variance.lab — v0.3</div>
           <h1 className="text-[56px] font-black uppercase leading-[0.88] tracking-[-0.02em] sm:text-[96px] lg:text-[128px]">
             <span className="text-[color:var(--color-fg)]">
               {t("app.title").split(" ")[0]}
@@ -337,15 +397,38 @@ export default function Home() {
 
           {/* User-saved presets */}
           <div className="mt-2 flex flex-col gap-2 border-t border-[color:var(--color-border)] pt-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="eyebrow">{t("userPreset.label")}</span>
-              <button
-                type="button"
-                onClick={onSaveUserPreset}
-                className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
-              >
-                + {t("userPreset.saveCurrent")}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onExportUserPresets}
+                  disabled={userPresets.length === 0}
+                  className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-40"
+                >
+                  ↓ {t("presets.export")}
+                </button>
+                <label className="cursor-pointer border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]">
+                  ↑ {t("presets.import")}
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) onImportUserPresets(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={onSaveUserPreset}
+                  className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
+                >
+                  + {t("userPreset.saveCurrent")}
+                </button>
+              </div>
             </div>
             {userPresets.length === 0 ? (
               <div className="text-[11px] text-[color:var(--color-fg-dim)]">
@@ -401,14 +484,29 @@ export default function Home() {
                           {p.name}
                         </div>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteUserPreset(p.id)}
-                        aria-label={t("userPreset.delete")}
-                        className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center text-[color:var(--color-fg-dim)] opacity-0 transition-opacity hover:text-[color:var(--color-accent)] group-hover:opacity-100"
-                      >
-                        ×
-                      </button>
+                      <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => onSharePreset(p)}
+                          aria-label={t("userPreset.share")}
+                          title={
+                            shareCopiedId === p.id
+                              ? t("userPreset.shareCopied")
+                              : t("userPreset.share")
+                          }
+                          className="flex h-5 w-5 items-center justify-center text-[11px] text-[color:var(--color-fg-dim)] transition-colors hover:text-[color:var(--color-accent)]"
+                        >
+                          {shareCopiedId === p.id ? "✓" : "↗"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteUserPreset(p.id)}
+                          aria-label={t("userPreset.delete")}
+                          className="flex h-5 w-5 items-center justify-center text-[color:var(--color-fg-dim)] transition-colors hover:text-[color:var(--color-accent)]"
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -440,7 +538,7 @@ export default function Home() {
         title={t("section.controls.title")}
         subtitle={t("section.controls.subtitle")}
       >
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.6fr_1fr]">
+        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1.6fr_1fr]">
           <ControlsPanel
             value={controls}
             onChange={(c) => {
@@ -539,20 +637,48 @@ export default function Home() {
         </>
       )}
 
-      <footer className="mt-4 border-t border-[color:var(--color-border)] pt-6 text-xs text-[color:var(--color-fg-dim)]">
-        {t("footer.line")}{" "}
-        <span className="text-[color:var(--color-fg-muted)]">
-          {t("footer.state")}
-        </span>
-        {" · "}
-        <a
-          href="https://github.com/loremcdmx/tournament-variance-sim"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]"
-        >
-          {t("footer.github")}
-        </a>
+      <footer className="mt-4 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-6 text-xs text-[color:var(--color-fg-dim)]">
+        <div>
+          {t("footer.line")}{" "}
+          <span className="text-[color:var(--color-fg-muted)]">
+            {t("footer.state")}
+          </span>
+          {" · "}
+          <a
+            href="https://github.com/loremcdmx/tournament-variance-sim"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]"
+          >
+            {t("footer.github")}
+          </a>
+          {" · "}
+          {t("footer.madeBy")}{" "}
+          <a
+            href="https://t.me/loremnopoker"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]"
+          >
+            LoremCDMX
+          </a>
+        </div>
+        <details className="group">
+          <summary className="cursor-pointer select-none text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]">
+            {t("changelog.title")}
+          </summary>
+          <div className="mt-3 space-y-2 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v03.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v03.preview")}</li>
+              <li>{t("changelog.v03.unit")}</li>
+              <li>{t("changelog.v03.presets")}</li>
+              <li>{t("changelog.v03.exportImport")}</li>
+              <li>{t("changelog.v03.ru")}</li>
+              <li>{t("changelog.v03.layout")}</li>
+            </ul>
+          </div>
+        </details>
       </footer>
     </div>
   );
