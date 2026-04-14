@@ -127,6 +127,22 @@ describe("engine", () => {
     }
   });
 
+  it("worst displayed sample line is the deepest peak-to-trough drawdown", () => {
+    const r = runSimulation(baseInput());
+    // The displayed worst trajectory line should have a peak-to-trough
+    // span equal to the worst max drawdown across all samples — so the
+    // visible peak-to-trough on the chart matches the reported stat.
+    let runMax = -Infinity;
+    let dd = 0;
+    for (let i = 0; i < r.samplePaths.worst.length; i++) {
+      const v = r.samplePaths.worst[i];
+      if (v > runMax) runMax = v;
+      const span = runMax - v;
+      if (span > dd) dd = span;
+    }
+    expect(dd).toBeCloseTo(r.stats.maxDrawdownWorst, 6);
+  });
+
   it("downswing catalog is top-10 sorted by depth descending", () => {
     const r = runSimulation(baseInput());
     expect(r.downswings.length).toBeLessThanOrEqual(10);

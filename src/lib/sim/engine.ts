@@ -707,11 +707,16 @@ export function buildResult(
     pathMatrix.slice(idx * K1, idx * K1 + K1),
   );
 
+  // "Best" = sample with the highest final profit (the upswing fairy tale).
+  // "Worst" = sample with the deepest peak-to-trough drawdown — NOT lowest
+  // final profit. This way the visual peak-to-trough span on the worst line
+  // matches the reported max-downswing stat exactly, instead of being some
+  // unrelated path that just happened to end at the bottom.
   let bestIdx = 0;
   let worstIdx = 0;
   for (let s = 1; s < S; s++) {
     if (finalProfits[s] > finalProfits[bestIdx]) bestIdx = s;
-    if (finalProfits[s] < finalProfits[worstIdx]) worstIdx = s;
+    if (maxDrawdowns[s] > maxDrawdowns[worstIdx]) worstIdx = s;
   }
   const best = pathMatrix.slice(bestIdx * K1, bestIdx * K1 + K1);
   const worst = pathMatrix.slice(worstIdx * K1, worstIdx * K1 + K1);
