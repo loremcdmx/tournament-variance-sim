@@ -277,6 +277,13 @@ function buildTrajectoryAssets(
     series.push(buildRefLine(x, ref.roi * buyInPerTourney));
   }
 
+  // EV line — the calibrated expected profit slope, drawn perfectly
+  // straight from (0,0) to (lastX, expectedProfit). This is what the
+  // sim is *supposed* to converge to: the schedule's total target EV.
+  const evSlope = r.expectedProfit / lastX;
+  const evLineIdx = series.length;
+  series.push(buildRefLine(x, evSlope));
+
   const c = HUES[hue];
   const n = r.samplePaths.paths.length;
   const uplotSeries: Options["series"] = [
@@ -305,6 +312,13 @@ function buildTrajectoryAssets(
       label: ref.label,
     });
   }
+  // EV line — solid, gold, very thick. Drawn after refs so it sits
+  // visually on top of the dashed reference slopes.
+  uplotSeries.push({
+    stroke: "#fbbf24",
+    width: 3.5,
+    label: "EV",
+  });
 
   const mainLines: TrajectoryLineMeta[] = [
     { label: "Mean", color: c.mean, seriesIdx: 1, percentile: 0.5, kind: "mean" },
@@ -335,6 +349,12 @@ function buildTrajectoryAssets(
       kind: "ref",
     });
   }
+  mainLines.push({
+    label: "EV",
+    color: "#fbbf24",
+    seriesIdx: evLineIdx,
+    kind: "ref",
+  });
 
   // Overlay must align to primary's x axis. uPlot uses one x per chart, so
   // we resample the overlay envelopes onto primary's x-grid by index — they
