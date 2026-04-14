@@ -52,6 +52,17 @@ interface Props {
   onCancel: () => void;
   running: boolean;
   progress: number;
+  /** Projected run duration in ms, or null when no prior run exists. */
+  estimatedMs?: number | null;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(1, Math.round(ms / 100) * 100)} мс`;
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)} с`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)} с`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.round((ms % 60_000) / 1000);
+  return s === 0 ? `${m} мин` : `${m} мин ${s} с`;
 }
 
 export function ControlsPanel({
@@ -61,6 +72,7 @@ export function ControlsPanel({
   onCancel,
   running,
   progress,
+  estimatedMs,
 }: Props) {
   const t = useT();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -392,16 +404,26 @@ export function ControlsPanel({
             {t("controls.stop")} {Math.min(100, Math.floor(progress * 100))}%
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={onRun}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M6 4l14 8-14 8V4z" fill="currentColor" />
-            </svg>
-            {t("controls.run")}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onRun}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M6 4l14 8-14 8V4z" fill="currentColor" />
+              </svg>
+              {t("controls.run")}
+            </button>
+            {estimatedMs != null && estimatedMs > 0 && (
+              <span
+                className="text-[11px] text-[color:var(--color-fg-dim)]"
+                title={t("controls.eta.hint")}
+              >
+                {t("controls.eta")} ≈ {formatDuration(estimatedMs)}
+              </span>
+            )}
+          </>
         )}
         {running && (
           <div className="flex-1">

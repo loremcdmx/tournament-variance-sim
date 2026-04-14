@@ -89,7 +89,7 @@ export default function Home() {
     setUserPresets(loadUserPresets());
   }, []);
 
-  const { status, progress, result, error, elapsedMs, run, cancel } = useSimulation();
+  const { status, progress, result, error, elapsedMs, run, cancel, estimateMs } = useSimulation();
 
   useEffect(() => {
     const fromUrl = loadFromUrlHash();
@@ -451,6 +451,11 @@ export default function Home() {
             onCancel={cancel}
             running={running}
             progress={progress}
+            estimatedMs={estimateMs(
+              controls.samples,
+              controls.scheduleRepeats,
+              schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
+            )}
           />
           {previewRow && (
             <Card className="p-5">

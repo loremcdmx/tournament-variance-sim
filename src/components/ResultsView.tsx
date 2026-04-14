@@ -562,46 +562,58 @@ export function ResultsView({
             }
           />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <ChartPane
-              label={modelLabel}
-              sublabel={settingsSummary}
-              hueDot="#34d399"
-              caption={
-                compareMode === "primedope"
-                  ? t("chart.trajectory.ours.cap")
-                  : t("twin.runA.cap")
-              }
-            >
-              <TrajectoryPlot assets={primary} height={420} />
-            </ChartPane>
-            <ChartPane
-              label="PrimeDope"
-              hueDot="#f472b6"
-              caption={
-                compareMode === "primedope"
-                  ? t("chart.trajectory.theirs.cap")
-                  : t("twin.runB.cap")
-              }
-              action={
-                compareMode === "primedope" && schedule && scheduleRepeats ? (
-                  <PrimedopeReproduceButton
-                    schedule={schedule}
-                    scheduleRepeats={scheduleRepeats}
-                  />
-                ) : null
-              }
-            >
-              <TrajectoryPlot assets={secondary} height={420} />
-            </ChartPane>
-          </div>
-          {compareMode === "primedope" && (
-            <div className="mt-3 rounded border border-[#f472b6]/30 bg-[#f472b6]/5 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#f472b6]">
-                ⚠ PrimeDope (right pane)
-              </div>
-              {t("chart.trajectory.pdWarning")}
+            <div className="flex flex-col gap-3">
+              <ChartPane
+                label={modelLabel}
+                sublabel={settingsSummary}
+                hueDot="#34d399"
+                caption={
+                  compareMode === "primedope"
+                    ? t("chart.trajectory.ours.cap")
+                    : t("twin.runA.cap")
+                }
+              >
+                <TrajectoryPlot assets={primary} height={420} />
+              </ChartPane>
+              {compareMode === "primedope" && (
+                <div className="rounded border border-[#34d399]/30 bg-[#34d399]/5 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#34d399]">
+                    ✓ {modelLabel}
+                  </div>
+                  {t("chart.trajectory.oursFix")}
+                </div>
+              )}
             </div>
-          )}
+            <div className="flex flex-col gap-3">
+              <ChartPane
+                label="PrimeDope"
+                hueDot="#f472b6"
+                caption={
+                  compareMode === "primedope"
+                    ? t("chart.trajectory.theirs.cap")
+                    : t("twin.runB.cap")
+                }
+                action={
+                  compareMode === "primedope" && schedule && scheduleRepeats ? (
+                    <PrimedopeReproduceButton
+                      schedule={schedule}
+                      scheduleRepeats={scheduleRepeats}
+                    />
+                  ) : null
+                }
+              >
+                <TrajectoryPlot assets={secondary} height={420} />
+              </ChartPane>
+              {compareMode === "primedope" && (
+                <div className="rounded border border-[#f472b6]/30 bg-[#f472b6]/5 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#f472b6]">
+                    ⚠ PrimeDope
+                  </div>
+                  {t("chart.trajectory.pdWarning")}
+                </div>
+              )}
+            </div>
+          </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <label className="flex cursor-pointer items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
               <input

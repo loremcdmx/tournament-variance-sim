@@ -64,6 +64,31 @@ interface ShardSlot {
   done: number;
 }
 
+const RATE_KEY = "tvs.lastRateMsPerWork.v1";
+
+function workUnits(samples: number, scheduleRepeats: number, rowCount: number) {
+  return Math.max(1, samples * scheduleRepeats * Math.max(1, rowCount));
+}
+
+function loadRate(): number | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(RATE_KEY);
+    if (!raw) return null;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRate(r: number) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(RATE_KEY, String(r));
+  } catch {}
+}
+
 export function useSimulation() {
   const poolRef = useRef<Pool | null>(null);
   const jobIdRef = useRef(0);
@@ -72,6 +97,21 @@ export function useSimulation() {
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const [lastRateMs, setLastRateMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    setLastRateMs(loadRate());
+  }, []);
+
+  // Project a run's duration for the given work size. Returns null when
+  // no prior run has been recorded — caller can hide the hint.
+  const estimateMs = useCallback(
+    (samples: number, scheduleRepeats: number, rowCount: number) => {
+      if (lastRateMs == null) return null;
+      return workUnits(samples, scheduleRepeats, rowCount) * lastRateMs;
+    },
+    [lastRateMs],
+  );
 
   useEffect(() => {
     poolRef.current = spawnPool();
@@ -338,8 +378,28 @@ export function useSimulation() {
         const comparison = twin ? out.comparison : undefined;
         setResult(comparison ? { ...primary, comparison } : primary);
         setProgress(1);
-        setElapsedMs(performance.now() - t0);
+        const elapsed = performance.now() - t0;
+        setElapsedMs(elapsed);
         setStatus("done");
+        // Record a smoothed rate (ms per work unit) so the next run can
+        // show an ETA. Weight is on *this* run at 60 % so a single slow
+        // tab doesn't permanently bias the estimate.
+        const rowCountTotal = input.schedule.reduce(
+          (a, r) => a + Math.max(1, Math.floor(r.count)),
+          0,
+        );
+        const work = workUnits(
+          input.samples,
+          Math.max(1, input.scheduleRepeats),
+          rowCountTotal,
+        );
+        const rate = elapsed / work;
+        if (Number.isFinite(rate) && rate > 0) {
+          const prev = loadRate();
+          const next = prev == null ? rate : 0.4 * prev + 0.6 * rate;
+          saveRate(next);
+          setLastRateMs(next);
+        }
       } catch (err) {
         if (jobIdRef.current !== jobId) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -349,5 +409,14 @@ export function useSimulation() {
     [runJob],
   );
 
-  return { status, progress, result, error, elapsedMs, run, cancel };
+  return {
+    status,
+    progress,
+    result,
+    error,
+    elapsedMs,
+    run,
+    cancel,
+    estimateMs,
+  };
 }
