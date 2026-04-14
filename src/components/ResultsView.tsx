@@ -880,6 +880,15 @@ export function ResultsView({
             color="#34d399"
             scaleBy={distUnit === "abi" ? abi : undefined}
             unitLabel={distUnit === "abi" ? "ABI" : "$"}
+            overlay={
+              overlayPd && pdChart
+                ? {
+                    binEdges: pdChart.histogram.binEdges,
+                    counts: pdChart.histogram.counts,
+                    label: "PrimeDope",
+                  }
+                : null
+            }
           />
         </Card>
         <Card className="p-5">
@@ -896,6 +905,15 @@ export function ResultsView({
             color="#f87171"
             scaleBy={ddUnit === "abi" ? abi : undefined}
             unitLabel={ddUnit === "abi" ? "ABI" : "$"}
+            overlay={
+              overlayPd && pdChart
+                ? {
+                    binEdges: pdChart.drawdownHistogram.binEdges,
+                    counts: pdChart.drawdownHistogram.counts,
+                    label: "PrimeDope",
+                  }
+                : null
+            }
           />
         </Card>
       </div>
