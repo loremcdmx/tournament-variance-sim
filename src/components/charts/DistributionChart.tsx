@@ -12,7 +12,7 @@ interface Props {
   height?: number;
   /** When set, divides x by this to display in average buy-ins. */
   scaleBy?: number;
-  unitLabel?: "$" | "ABI" | "tourneys";
+  unitLabel?: "$" | "ABI" | "tourneys" | "seats";
   /**
    * Show the Y axis as a percentage of total mass instead of raw sample
    * counts. Each bar and the overlay (if any) are normalised by the sum of
@@ -146,7 +146,9 @@ export function DistributionChart({
                   ? compactNum(v, "$")
                   : unitLabel === "ABI"
                     ? `${compactNum(v)} BI`
-                    : compactNum(v),
+                    : unitLabel === "seats"
+                      ? compactNum(v)
+                      : compactNum(v),
               ),
           },
           {

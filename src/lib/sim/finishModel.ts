@@ -246,15 +246,15 @@ export function calibrateShelledItm(
   const ftEnd = Math.min(9, paid);
   // Cumulative locks (monotone clamp). All are bounded to [0, itmRate].
   const locks = shellLocks ?? {};
-  let cumFirst =
+  const cumFirst =
     locks.first != null
       ? Math.max(0, Math.min(clampedItm, locks.first))
       : undefined;
-  let cumTop3 =
+  const cumTop3 =
     locks.top3 != null
       ? Math.max(cumFirst ?? 0, Math.min(clampedItm, locks.top3))
       : undefined;
-  let cumFt =
+  const cumFt =
     locks.ft != null
       ? Math.max(cumTop3 ?? cumFirst ?? 0, Math.min(clampedItm, locks.ft))
       : undefined;

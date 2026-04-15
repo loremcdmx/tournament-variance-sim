@@ -116,6 +116,10 @@ export const DICT = {
   },
   "row.payoutCompat.min": { en: "min", ru: "мин" },
   "row.payoutCompat.max": { en: "max", ru: "макс" },
+  "row.payoutCompat.unavailable": {
+    en: "Unavailable for this field size",
+    ru: "Не подходит под размер поля",
+  },
   "row.count": {
     en: "Entries",
     ru: "Количество входов",
@@ -497,7 +501,7 @@ export const DICT = {
     en: "Median number of tourneys needed to climb back from the bottom of the deepest downswing to the previous peak. Samples that never recover are excluded.",
     ru: "Медиана турниров, нужных чтобы подняться со дна самого глубокого даунсвинга обратно к прежнему пику. Сэмплы, которые так и не отмазались, не учитываются.",
   },
-  "stat.recoveryP90": { en: "Long comeback (1-in-10)", ru: "Долгая отмазка (1 из 10)" },
+  "stat.recoveryP90": { en: "Long comeback", ru: "Долгая отмазка" },
   "stat.recoveryP90.tip": {
     en: "90th percentile of comeback length: in 1 future out of 10 the climb back from the bottom takes at least this many tourneys. Samples that never recover are excluded.",
     ru: "90-й перцентиль длины отмазки: в 1 из 10 вариантов подъём со дна занимает минимум столько турниров. Сэмплы, которые не отмазались, не учитываются.",
@@ -544,7 +548,6 @@ export const DICT = {
     ru: "Минимальный банкролл, при котором риск разорения на этой дистанции падает до 5%. Меньше — шанс слива быстро растёт; больше — спишь спокойнее.",
   },
   "stat.bankrollOff": { en: "bankroll off", ru: "банкролл выкл" },
-  "stat.ddBI": { en: "Downswing (BI)", ru: "Даунсвинг (бай-ины)" },
   "stat.skew": { en: "Profit tilt", ru: "Перекос профита" },
   "stat.kurt": { en: "Tail fatness", ru: "Толщина хвостов" },
   "stat.kelly": { en: "Kelly fraction", ru: "Доля по Келли" },
@@ -552,6 +555,33 @@ export const DICT = {
   "stat.logG": { en: "BR growth rate", ru: "Темп роста БР" },
 
   // Results — charts
+  "chart.satellite": {
+    en: "Satellite — tickets won per session",
+    ru: "Сателлит — билеты за сессию",
+  },
+  "chart.satellite.sub": {
+    en: "Ticket-cliff payouts make bankroll trajectory a step function — show the seat distribution instead",
+    ru: "У плоских выплат траектория банкролла — ступенчатая; вместо неё показываем распределение числа билетов",
+  },
+  "chart.satellite.hist": {
+    en: "Seats won per session",
+    ru: "Выиграно билетов за сессию",
+  },
+  "chart.satellite.note": {
+    en: "Every cash pays the same ticket — ordering above the cash line is irrelevant. Shots per seat = 1 / cash rate.",
+    ru: "Каждый кеш — один и тот же билет, место в деньгах ни на что не влияет. Шансы на билет = 1 / cash rate.",
+  },
+  "chart.satellite.mixedNote": {
+    en: "Hybrid schedule — this card summarises only the satellite row(s); the $ trajectory above mixes it with the rest of the schedule.",
+    ru: "Гибридное расписание — эта карточка показывает только сателлитные строки; долларовая траектория выше смешивает их с остальным.",
+  },
+  "sat.kpi.expectedSeats": { en: "E[seats]", ru: "Ожидаемые билеты" },
+  "sat.kpi.cashRate": { en: "Cash rate", ru: "Частота кэша" },
+  "sat.kpi.shotsPerSeat": { en: "Shots per seat", ru: "Попыток на билет" },
+  "sat.kpi.netPerSession": { en: "Net / session", ru: "Нетто / сессия" },
+  "sat.kpi.seatPrice": { en: "Seat price", ru: "Цена билета" },
+  "sat.kpi.seats": { en: "Seats", ru: "Мест" },
+  "sat.perSession": { en: "tourneys / session", ru: "турниров в сессии" },
   "chart.trajectory": { en: "Bankroll trajectory", ru: "Траектория банкролла" },
   "chart.trajectory.sub": {
     en: "Envelopes at 70 % / 95 % / 99.7 % confidence · 20 random samples · best / worst",
@@ -750,33 +780,9 @@ export const DICT = {
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
   "changelog.v04.title": { en: "v0.4 — current", ru: "v0.4 — текущая" },
-  "changelog.v04.streaks": {
-    en: "Reworked the 'break-even grind' / 'no-ITM streak' / 'comeback' widgets — they now show how often AND how long such streaks happen, with '?' tooltips spelling out the exact criteria.",
-    ru: "Переделал виджеты «игра в ноль» / «серии без ИТМ» / «отмазка» — теперь показывают и как часто, и как долго случаются стрики, а в тултипе «?» расписаны точные критерии.",
-  },
-  "changelog.v04.upswings": {
-    en: "Downswings catalog: switched from top-10 to top-3 (the tail was indistinguishable) and added a side-by-side top-3 upswings table.",
-    ru: "Каталог даунсвингов: с топ-10 на топ-3 (хвост неотличим) и рядом добавлен топ-3 апсвингов.",
-  },
-  "changelog.v04.yPct": {
-    en: "Profit, drawdown and streak histograms now read as % of runs on the Y axis instead of raw sample counts.",
-    ru: "Гистограммы профита, даунсвингов и стриков теперь по Y в % от прогонов, а не в сыром количестве сэмплов.",
-  },
-  "changelog.v04.tooltips": {
-    en: "Added plain-language '?' tooltips to every stat tile — what the number means, which samples are included, when to worry.",
-    ru: "На каждую плитку статистики добавлен тултип «?» простым языком — что значит число, какие сэмплы учитываются, когда пора беспокоиться.",
-  },
-  "changelog.v04.rename": {
-    en: "Renames: 'recovery' → 'comeback' (отмазка), 'long break-even streak' → 'break-even grind' (игра в ноль), 'tourneys w/o ITM' → 'max streak w/o ITM'.",
-    ru: "Переименования: «отыгрывание» → «отмазка», «долгая серия без прогресса» → «игра в ноль», «турниров без ИТМ» → «макс. серия без ИТМ».",
-  },
-  "changelog.v04.overlay": {
-    en: "PrimeDope overlay now mirrors only the lines you have enabled on your own chart (best/worst/p5/p95) — mean and the mystery near-zero EV dash are gone.",
-    ru: "Наложение PrimeDope теперь повторяет только включённые у тебя линии (лучший/худший/p5/p95) — среднее и та пунктирная «почти-нулевая» EV убраны.",
-  },
-  "changelog.v04.kelly": {
-    en: "Removed the Kelly BR stat tile — noisy metric, misleading for tournament schedules.",
-    ru: "Убрал плитку «БР по Келли» — шумная метрика, для турнирных расписаний вводит в заблуждение.",
+  "changelog.v04.summary": {
+    en: "New 'streaks & comeback' block — dedicated widgets for break-even grind, cashless runs and recovery, plus a top-3 upswings table next to downswings. Every stat tile now has a plain-language '?' tooltip explaining what the number means and when it should worry you.",
+    ru: "Новый блок «стрики и отмазка» — отдельные виджеты под «игру в ноль», серии без ИТМ и отыгрывание, а рядом с топ-3 даунсвингов теперь топ-3 апсвингов. На каждой плитке статы — «?»-тултип простым языком: что за цифра и когда из-за неё стоит беспокоиться.",
   },
   "changelog.v03.title": { en: "v0.3", ru: "v0.3" },
   "changelog.v03.preview": {

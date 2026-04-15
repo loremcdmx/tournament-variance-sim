@@ -54,7 +54,7 @@ const STRUCTURES: {
   { id: "mtt-gg", short: "GGPoker MTT", full: "MTT · GGPoker-like" },
   { id: "mtt-sunday-million", short: "Sunday Million", full: "MTT · Sunday Million (real)" },
   { id: "mtt-gg-bounty", short: "GG Bounty Builder", full: "MTT · GG Bounty Builder (real)" },
-  { id: "satellite-ticket", short: "Satellite (10% seats)", full: "Satellite · ticket cliff (10% seats)" },
+  { id: "satellite-ticket", short: "Satellite (tickets)", full: "Satellite · ticket cliff (10% seats)" },
   { id: "sng-50-30-20", short: "SNG 50/30/20", full: "SNG · 50/30/20" },
   { id: "sng-65-35", short: "SNG 65/35", full: "SNG · 65/35" },
   { id: "winner-takes-all", short: "Winner takes all", full: "Winner takes all" },
@@ -327,8 +327,11 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                     <Td align="right">
                       <NumInput
                         value={r.players}
-                        onChange={(v) => update(r.id, { players: v })}
+                        onChange={(v) =>
+                          update(r.id, { players: Math.floor(v) })
+                        }
                         min={2}
+                        max={1_000_000}
                         step={1}
                       />
                     </Td>
@@ -345,55 +348,85 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                       <NumInput
                         value={+(r.roi * 100).toFixed(2)}
                         onChange={(v) => update(r.id, { roi: v / 100 })}
+                        min={-99}
+                        max={10_000}
                         step={1}
                       />
                     </Td>
                     <Td>
-                      <select
-                        value={r.payoutStructure}
-                        title={
-                          STRUCTURES.find((s) => s.id === r.payoutStructure)
-                            ?.full ?? ""
-                        }
-                        onChange={(e) => {
-                          const next = e.target.value as PayoutStructureId;
-                          update(r.id, { payoutStructure: next });
-                          if (next === "custom") {
-                            const ex = new Set(expanded);
-                            ex.add(r.id);
-                            setExpanded(ex);
-                          }
-                        }}
-                        className="h-8 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]"
-                      >
-                        {STRUCTURES.map((s) => {
-                          const compat = payoutCompat(s.id, r.players);
-                          const disabled = !compat.ok;
-                          const reasonText = !compat.ok
-                            ? compat.reason === "tooFew"
-                              ? `${t("row.payoutCompat.tooFew")} (${t("row.payoutCompat.min")} ${compat.range.min})`
-                              : `${t("row.payoutCompat.tooMany")} (${t("row.payoutCompat.max")} ${compat.range.max === Infinity ? "∞" : compat.range.max})`
-                            : "";
-                          return (
-                            <option
-                              key={s.id}
-                              value={s.id}
-                              disabled={disabled}
-                              title={disabled ? `${s.full} — ${reasonText}` : s.full}
-                            >
-                              {disabled ? `· ${s.short} — ${reasonText}` : s.short}
-                            </option>
-                          );
-                        })}
-                      </select>
+                      {(() => {
+                        const grouped = STRUCTURES.map((s) => ({
+                          s,
+                          compat: payoutCompat(s.id, r.players),
+                        }));
+                        const available = grouped.filter((g) => g.compat.ok);
+                        const unavailable = grouped.filter((g) => !g.compat.ok);
+                        const current = grouped.find(
+                          (g) => g.s.id === r.payoutStructure,
+                        );
+                        const currentDisabled = current && !current.compat.ok;
+                        const describe = (g: (typeof grouped)[number]) => {
+                          if (g.compat.ok) return "";
+                          return g.compat.reason === "tooFew"
+                            ? `${t("row.payoutCompat.tooFew")} (${t("row.payoutCompat.min")} ${g.compat.range.min})`
+                            : `${t("row.payoutCompat.tooMany")} (${t("row.payoutCompat.max")} ${g.compat.range.max === Infinity ? "∞" : g.compat.range.max})`;
+                        };
+                        return (
+                          <select
+                            value={r.payoutStructure}
+                            title={current?.s.full ?? ""}
+                            onChange={(e) => {
+                              const next = e.target.value as PayoutStructureId;
+                              update(r.id, { payoutStructure: next });
+                              if (next === "custom") {
+                                const ex = new Set(expanded);
+                                ex.add(r.id);
+                                setExpanded(ex);
+                              }
+                            }}
+                            className={
+                              "h-8 w-full rounded-md border px-2.5 text-xs outline-none transition-colors focus:border-[color:var(--color-accent)] " +
+                              (currentDisabled
+                                ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
+                                : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
+                            }
+                          >
+                            {available.map(({ s }) => (
+                              <option key={s.id} value={s.id} title={s.full}>
+                                {s.short}
+                              </option>
+                            ))}
+                            {unavailable.length > 0 && (
+                              <optgroup
+                                label={`— ${t("row.payoutCompat.unavailable")} —`}
+                              >
+                                {unavailable.map((g) => {
+                                  const reasonText = describe(g);
+                                  return (
+                                    <option
+                                      key={g.s.id}
+                                      value={g.s.id}
+                                      disabled
+                                      title={`${g.s.full} — ${reasonText}`}
+                                    >
+                                      {`✕ ${g.s.short} — ${reasonText}`}
+                                    </option>
+                                  );
+                                })}
+                              </optgroup>
+                            )}
+                          </select>
+                        );
+                      })()}
                     </Td>
                     <Td align="right">
                       <NumInput
                         value={r.count}
                         onChange={(v) =>
-                          update(r.id, { count: Math.max(1, Math.floor(v)) })
+                          update(r.id, { count: Math.floor(v) })
                         }
                         min={1}
+                        max={100_000}
                         step={1}
                       />
                     </Td>
@@ -584,14 +617,19 @@ function AdvancedRowPanel({
         <input
           type="number"
           min={0}
+          max={1_000_000_000}
           step={100}
           value={row.guarantee ?? ""}
           placeholder={t("row.noGuarantee")}
           onChange={(e) => {
-            const v = e.target.value;
-            onChange({
-              guarantee: v === "" ? undefined : Math.max(0, parseFloat(v)),
-            });
+            const raw = e.target.value;
+            if (raw === "") {
+              onChange({ guarantee: undefined });
+              return;
+            }
+            const v = Number(raw);
+            if (!Number.isFinite(v) || v < 0 || v > 1_000_000_000) return;
+            onChange({ guarantee: v });
           }}
           className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
         />
@@ -630,10 +668,11 @@ function AdvancedRowPanel({
               <NumInputBox
                 value={fv.min}
                 min={2}
+                max={1_000_000}
                 step={1}
                 onChange={(v) =>
                   onChange({
-                    fieldVariability: { ...fv, min: Math.max(2, Math.floor(v)) },
+                    fieldVariability: { ...fv, min: Math.floor(v) },
                   })
                 }
               />
@@ -642,10 +681,11 @@ function AdvancedRowPanel({
               <NumInputBox
                 value={fv.max}
                 min={2}
+                max={1_000_000}
                 step={1}
                 onChange={(v) =>
                   onChange({
-                    fieldVariability: { ...fv, max: Math.max(2, Math.floor(v)) },
+                    fieldVariability: { ...fv, max: Math.floor(v) },
                   })
                 }
               />
@@ -654,13 +694,11 @@ function AdvancedRowPanel({
               <NumInputBox
                 value={fv.buckets ?? 5}
                 min={1}
+                max={20}
                 step={1}
                 onChange={(v) =>
                   onChange({
-                    fieldVariability: {
-                      ...fv,
-                      buckets: Math.max(1, Math.min(20, Math.floor(v))),
-                    },
+                    fieldVariability: { ...fv, buckets: Math.floor(v) },
                   })
                 }
               />
@@ -677,12 +715,9 @@ function AdvancedRowPanel({
         <NumInputBox
           value={row.lateRegMultiplier ?? 1}
           min={1}
+          max={5}
           step={0.05}
-          onChange={(v) =>
-            onChange({
-              lateRegMultiplier: Math.max(1, Math.min(5, v)),
-            })
-          }
+          onChange={(v) => onChange({ lateRegMultiplier: v })}
         />
       </div>
 
@@ -722,22 +757,18 @@ function AdvancedRowPanel({
             <NumInputBox
               value={row.maxEntries ?? 1}
               min={1}
+              max={100}
               step={1}
-              onChange={(v) =>
-                onChange({ maxEntries: Math.max(1, Math.floor(v)) })
-              }
+              onChange={(v) => onChange({ maxEntries: Math.floor(v) })}
             />
           </FieldSmall>
           <FieldSmall label={t("row.reentryRate")}>
             <NumInputBox
               value={+((row.reentryRate ?? ((row.maxEntries ?? 1) > 1 ? 1 : 0)) * 100).toFixed(0)}
               min={0}
+              max={100}
               step={10}
-              onChange={(v) =>
-                onChange({
-                  reentryRate: Math.max(0, Math.min(1, v / 100)),
-                })
-              }
+              onChange={(v) => onChange({ reentryRate: v / 100 })}
             />
           </FieldSmall>
         </div>
@@ -765,12 +796,9 @@ function AdvancedRowPanel({
               onChange({ itmRate: undefined });
               return;
             }
-            const v = parseFloat(raw);
-            onChange({
-              itmRate: Number.isFinite(v)
-                ? Math.max(0, Math.min(1, v / 100))
-                : undefined,
-            });
+            const v = Number(raw);
+            if (!Number.isFinite(v) || v < 0 || v > 100) return;
+            onChange({ itmRate: v / 100 });
           }}
           className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
         />
@@ -788,12 +816,14 @@ function AdvancedRowPanel({
           step={5}
           value={+((row.bountyFraction ?? 0) * 100).toFixed(1)}
           onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            onChange({
-              bountyFraction: Number.isFinite(v)
-                ? Math.max(0, Math.min(0.9, v / 100))
-                : undefined,
-            });
+            const raw = e.target.value;
+            if (raw === "") {
+              onChange({ bountyFraction: undefined });
+              return;
+            }
+            const v = Number(raw);
+            if (!Number.isFinite(v) || v < 0 || v > 90) return;
+            onChange({ bountyFraction: v / 100 });
           }}
           className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
         />
@@ -819,11 +849,10 @@ function AdvancedRowPanel({
               <NumInputBox
                 value={row.icmFinalTableSize ?? 9}
                 min={2}
+                max={50}
                 step={1}
                 onChange={(v) =>
-                  onChange({
-                    icmFinalTableSize: Math.max(2, Math.floor(v)),
-                  })
+                  onChange({ icmFinalTableSize: Math.floor(v) })
                 }
               />
             </FieldSmall>
@@ -853,12 +882,9 @@ function AdvancedRowPanel({
               <NumInputBox
                 value={Math.round((row.payJumpAggression ?? 0.5) * 100)}
                 min={0}
+                max={100}
                 step={5}
-                onChange={(v) =>
-                  onChange({
-                    payJumpAggression: Math.max(0, Math.min(1, v / 100)),
-                  })
-                }
+                onChange={(v) => onChange({ payJumpAggression: v / 100 })}
               />
             </FieldSmall>
           )}
@@ -876,12 +902,9 @@ function AdvancedRowPanel({
               <NumInputBox
                 value={+(row.mysteryBountyVariance ?? 0).toFixed(2)}
                 min={0}
+                max={3}
                 step={0.1}
-                onChange={(v) =>
-                  onChange({
-                    mysteryBountyVariance: Math.max(0, Math.min(3, v)),
-                  })
-                }
+                onChange={(v) => onChange({ mysteryBountyVariance: v })}
               />
             </FieldSmall>
           </div>
@@ -913,25 +936,78 @@ function NumInputBox({
   onChange,
   step,
   min,
+  max,
 }: {
   value: number;
   onChange: (v: number) => void;
   step?: number;
   min?: number;
+  max?: number;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const display =
+    draft !== null ? draft : Number.isFinite(value) ? String(value) : "";
+  const invalid = computeInvalid(draft, min, max);
   return (
     <input
       type="number"
-      value={Number.isFinite(value) ? value : ""}
+      value={display}
       min={min}
+      max={max}
       step={step}
+      inputMode="decimal"
       onChange={(e) => {
-        const v = parseFloat(e.target.value);
-        if (!Number.isNaN(v)) onChange(v);
+        const raw = e.target.value;
+        setDraft(raw);
+        const v = Number(raw);
+        if (raw.trim() === "" || !Number.isFinite(v)) return;
+        if (min !== undefined && v < min) return;
+        if (max !== undefined && v > max) return;
+        onChange(v);
       }}
-      className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+      onBlur={() => commitDraft(draft, value, min, max, onChange, setDraft)}
+      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
+        invalid
+          ? "border-rose-500/70 ring-1 ring-rose-500/30"
+          : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"
+      }`}
     />
   );
+}
+
+function computeInvalid(
+  draft: string | null,
+  min: number | undefined,
+  max: number | undefined,
+): boolean {
+  if (draft === null) return false;
+  if (draft.trim() === "") return true;
+  const v = Number(draft);
+  if (!Number.isFinite(v)) return true;
+  if (min !== undefined && v < min) return true;
+  if (max !== undefined && v > max) return true;
+  return false;
+}
+
+function commitDraft(
+  draft: string | null,
+  value: number,
+  min: number | undefined,
+  max: number | undefined,
+  onChange: (v: number) => void,
+  setDraft: (v: string | null) => void,
+) {
+  if (draft === null) return;
+  const v = Number(draft);
+  if (draft.trim() === "" || !Number.isFinite(v)) {
+    setDraft(null);
+    return;
+  }
+  const lo = min ?? -Infinity;
+  const hi = max ?? Infinity;
+  const clamped = Math.min(hi, Math.max(lo, v));
+  if (clamped !== value) onChange(clamped);
+  setDraft(null);
 }
 
 function Th({
@@ -1062,23 +1138,41 @@ function NumInput({
   onChange,
   step,
   min,
+  max,
 }: {
   value: number;
   onChange: (v: number) => void;
   step?: number;
   min?: number;
+  max?: number;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const display =
+    draft !== null ? draft : Number.isFinite(value) ? String(value) : "";
+  const invalid = computeInvalid(draft, min, max);
   return (
     <input
       type="number"
-      value={Number.isFinite(value) ? value : ""}
+      value={display}
       min={min}
+      max={max}
       step={step}
+      inputMode="decimal"
       onChange={(e) => {
-        const v = parseFloat(e.target.value);
-        if (!Number.isNaN(v)) onChange(v);
+        const raw = e.target.value;
+        setDraft(raw);
+        const v = Number(raw);
+        if (raw.trim() === "" || !Number.isFinite(v)) return;
+        if (min !== undefined && v < min) return;
+        if (max !== undefined && v > max) return;
+        onChange(v);
       }}
-      className={INPUT_BASE + " w-20 text-right tabular-nums"}
+      onBlur={() => commitDraft(draft, value, min, max, onChange, setDraft)}
+      className={
+        INPUT_BASE +
+        " w-20 text-right tabular-nums " +
+        (invalid ? "!border-rose-500/70 ring-1 ring-rose-500/30" : "")
+      }
     />
   );
 }

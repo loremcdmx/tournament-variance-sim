@@ -105,20 +105,21 @@ export function ControlsPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empError, setEmpError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const runStartRef = useRef<number | null>(null);
-  const [nowMs, setNowMs] = useState(0);
+  // Track elapsed-since-run-start via interval-driven state. The start
+  // timestamp is captured inside the effect closure, so nothing impure
+  // runs in render and no ref is read during render.
+  const [runElapsedMs, setRunElapsedMs] = useState<number | null>(null);
   useEffect(() => {
-    if (running) {
-      if (runStartRef.current == null) runStartRef.current = performance.now();
-      const id = window.setInterval(() => setNowMs(performance.now()), 250);
-      return () => window.clearInterval(id);
-    }
-    runStartRef.current = null;
-    return undefined;
+    if (!running) return undefined;
+    const start = performance.now();
+    const id = window.setInterval(() => {
+      setRunElapsedMs(performance.now() - start);
+    }, 250);
+    return () => window.clearInterval(id);
   }, [running]);
   const remainingMs = (() => {
-    if (!running || runStartRef.current == null) return null;
-    const elapsed = nowMs - runStartRef.current;
+    if (!running || runElapsedMs == null) return null;
+    const elapsed = runElapsedMs;
     // Blend elapsed-rate projection with the prior estimate: early in the run
     // progress is noisy (shard startup, finish PMF calibration), so fall back
     // to estimatedMs until ≥10 % done. After that, use elapsed/progress so a
@@ -138,21 +139,35 @@ export function ControlsPanel({
 
   const handleEmpiricalPaste = (raw: string) => {
     setEmpError(null);
-    const positions = raw
-      .split(/[\s,;]+/)
-      .map((s) => parseInt(s, 10))
-      .filter((n) => Number.isFinite(n) && n >= 1);
+    // Caps to keep a pasted 100-MB file from pegging the main thread and to
+    // stop a malicious buckets[Number.MAX_SAFE_INTEGER-1] allocation.
+    const MAX_ENTRIES = 500_000;
+    const MAX_PLACE = 100_000;
+    const positions: number[] = [];
+    for (const tok of raw.split(/[\s,;]+/)) {
+      if (positions.length >= MAX_ENTRIES) break;
+      if (!/^\d+$/.test(tok)) continue;
+      const n = Number(tok);
+      if (!Number.isFinite(n) || n < 1 || n > MAX_PLACE) continue;
+      positions.push(n);
+    }
     if (positions.length === 0) {
       onChange({ ...value, empiricalBuckets: undefined });
       return;
     }
-    const maxPlace = Math.max(...positions);
+    let maxPlace = 0;
+    for (const p of positions) if (p > maxPlace) maxPlace = p;
     const buckets = new Array<number>(maxPlace).fill(0);
     for (const p of positions) buckets[p - 1] += 1;
     onChange({ ...value, empiricalBuckets: buckets });
   };
 
   const handleFile = async (file: File) => {
+    const MAX_FILE_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_FILE_BYTES) {
+      setEmpError(t("controls.empFileError"));
+      return;
+    }
     try {
       const text = await file.text();
       handleEmpiricalPaste(text);
@@ -182,24 +197,27 @@ export function ControlsPanel({
           <NumInput
             value={value.scheduleRepeats}
             min={1}
+            max={100_000}
             step={1}
-            onChange={(v) => set("scheduleRepeats", Math.max(1, Math.floor(v)))}
+            onChange={(v) => set("scheduleRepeats", Math.floor(v))}
           />
         </Field>
         <Field label={t("controls.samples")} hint={t("help.samples")}>
           <NumInput
             value={value.samples}
             min={100}
+            max={1_000_000}
             step={1000}
-            onChange={(v) => set("samples", Math.max(100, Math.floor(v)))}
+            onChange={(v) => set("samples", Math.floor(v))}
           />
         </Field>
         <Field label={t("controls.bankroll")} hint={t("help.bankroll")}>
           <NumInput
             value={value.bankroll}
             min={0}
+            max={1_000_000_000}
             step={100}
-            onChange={(v) => set("bankroll", Math.max(0, v))}
+            onChange={(v) => set("bankroll", v)}
           />
         </Field>
       </div>
@@ -224,8 +242,9 @@ export function ControlsPanel({
             <NumInput
               value={value.seed}
               min={0}
+              max={2 ** 31 - 1}
               step={1}
-              onChange={(v) => set("seed", Math.max(0, Math.floor(v)))}
+              onChange={(v) => set("seed", Math.floor(v))}
             />
             <button
               type="button"
@@ -291,11 +310,20 @@ export function ControlsPanel({
           <input
             type="number"
             step={0.1}
+            min={0.1}
+            max={10}
             value={value.alphaOverride ?? ""}
             placeholder={t("controls.alphaPlaceholder")}
             onChange={(e) => {
-              const v = e.target.value;
-              setModel("alphaOverride", v === "" ? null : parseFloat(v));
+              const raw = e.target.value;
+              if (raw === "") {
+                setModel("alphaOverride", null);
+                return;
+              }
+              const v = Number(raw);
+              if (!Number.isFinite(v)) return;
+              if (v < 0.1 || v > 10) return;
+              setModel("alphaOverride", v);
             }}
             className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
           />
@@ -304,8 +332,9 @@ export function ControlsPanel({
           <NumInput
             value={value.roiStdErr}
             min={0}
+            max={5}
             step={0.01}
-            onChange={(v) => setModel("roiStdErr", Math.max(0, v))}
+            onChange={(v) => setModel("roiStdErr", v)}
           />
         </Field>
       </div>
@@ -317,24 +346,27 @@ export function ControlsPanel({
           <NumInput
             value={value.roiShockPerTourney}
             min={0}
+            max={5}
             step={0.01}
-            onChange={(v) => setModel("roiShockPerTourney", Math.max(0, v))}
+            onChange={(v) => setModel("roiShockPerTourney", v)}
           />
         </Field>
         <Field label={t("controls.roiShockPerSession")} hint={t("help.roiShockPerSession")}>
           <NumInput
             value={value.roiShockPerSession}
             min={0}
+            max={5}
             step={0.01}
-            onChange={(v) => setModel("roiShockPerSession", Math.max(0, v))}
+            onChange={(v) => setModel("roiShockPerSession", v)}
           />
         </Field>
         <Field label={t("controls.roiDriftSigma")} hint={t("help.roiDriftSigma")}>
           <NumInput
             value={value.roiDriftSigma}
             min={0}
+            max={5}
             step={0.005}
-            onChange={(v) => setModel("roiDriftSigma", Math.max(0, v))}
+            onChange={(v) => setModel("roiDriftSigma", v)}
           />
         </Field>
       </div>
@@ -348,6 +380,8 @@ export function ControlsPanel({
         <Field label={t("controls.tiltFastGain")} hint={t("help.tiltFastGain")}>
           <NumInput
             value={value.tiltFastGain}
+            min={-5}
+            max={5}
             step={0.05}
             onChange={(v) => setModel("tiltFastGain", v)}
           />
@@ -356,14 +390,17 @@ export function ControlsPanel({
           <NumInput
             value={value.tiltFastScale}
             min={0}
+            max={1_000_000}
             step={100}
-            onChange={(v) => setModel("tiltFastScale", Math.max(0, v))}
+            onChange={(v) => setModel("tiltFastScale", v)}
           />
         </Field>
         <div /> {/* spacer */}
         <Field label={t("controls.tiltSlowGain")} hint={t("help.tiltSlowGain")}>
           <NumInput
             value={value.tiltSlowGain}
+            min={-5}
+            max={5}
             step={0.05}
             onChange={(v) => setModel("tiltSlowGain", v)}
           />
@@ -372,16 +409,18 @@ export function ControlsPanel({
           <NumInput
             value={value.tiltSlowThreshold}
             min={0}
+            max={1_000_000}
             step={100}
-            onChange={(v) => setModel("tiltSlowThreshold", Math.max(0, v))}
+            onChange={(v) => setModel("tiltSlowThreshold", v)}
           />
         </Field>
         <Field label={t("controls.tiltSlowMinDuration")} hint={t("help.tiltSlowMinDuration")}>
           <NumInput
             value={value.tiltSlowMinDuration}
             min={0}
+            max={100_000}
             step={50}
-            onChange={(v) => setModel("tiltSlowMinDuration", Math.max(0, Math.floor(v)))}
+            onChange={(v) => setModel("tiltSlowMinDuration", Math.floor(v))}
           />
         </Field>
       </div>
@@ -544,44 +583,71 @@ function NumInput({
   onChange,
   step,
   min,
+  max,
 }: {
   value: number;
   onChange: (v: number) => void;
   step?: number;
   min?: number;
+  max?: number;
 }) {
+  // Local draft lets the user fully clear the field or type a below-min
+  // number mid-edit without us force-correcting each keystroke. Parent state
+  // only updates when the draft parses to a number inside [min, max]; on
+  // blur we either commit a clamped value or revert to the last good one.
+  const [draft, setDraft] = useState<string | null>(null);
+  const display =
+    draft !== null ? draft : Number.isFinite(value) ? String(value) : "";
+
+  let invalid = false;
+  if (draft !== null) {
+    if (draft.trim() === "") {
+      invalid = true;
+    } else {
+      const v = Number(draft);
+      if (!Number.isFinite(v)) invalid = true;
+      else if (min !== undefined && v < min) invalid = true;
+      else if (max !== undefined && v > max) invalid = true;
+    }
+  }
+
   return (
     <input
       type="number"
-      value={Number.isFinite(value) ? value : ""}
+      value={display}
       min={min}
+      max={max}
       step={step}
+      inputMode="decimal"
       onChange={(e) => {
-        const v = parseFloat(e.target.value);
-        if (!Number.isNaN(v)) onChange(v);
+        const raw = e.target.value;
+        setDraft(raw);
+        if (raw.trim() === "") return;
+        const v = Number(raw);
+        if (!Number.isFinite(v)) return;
+        if (min !== undefined && v < min) return;
+        if (max !== undefined && v > max) return;
+        onChange(v);
       }}
-      className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+      onBlur={() => {
+        if (draft === null) return;
+        const v = Number(draft);
+        if (!Number.isFinite(v)) {
+          setDraft(null);
+          return;
+        }
+        const lo = min ?? -Infinity;
+        const hi = max ?? Infinity;
+        const clamped = Math.min(hi, Math.max(lo, v));
+        if (clamped !== value) onChange(clamped);
+        setDraft(null);
+      }}
+      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
+        invalid
+          ? "border-rose-500/70 ring-1 ring-rose-500/30"
+          : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"
+      }`}
     />
-  );
-}
-
-function Spinner() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      className="animate-spin"
-      fill="none"
-    >
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.25" />
-      <path
-        d="M21 12a9 9 0 0 0-9-9"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 

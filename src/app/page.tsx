@@ -17,6 +17,7 @@ import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { SCENARIOS } from "@/lib/scenarios";
 import type {
   SimulationInput,
@@ -87,12 +88,13 @@ export default function Home() {
   const [compareSlot, setCompareSlot] = useState<CompareSlot | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
-  const [userPresets, setUserPresets] = useState<UserPreset[]>([]);
+  const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
+    "tvs:user-presets",
+    loadUserPresets,
+    saveUserPresets,
+    [],
+  );
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setUserPresets(loadUserPresets());
-  }, []);
 
   const { status, progress, result, error, elapsedMs, run, cancel, estimateMs } = useSimulation();
 
@@ -787,13 +789,7 @@ export default function Home() {
           <div className="mt-3 space-y-3 pl-2">
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v04.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v04.streaks")}</li>
-              <li>{t("changelog.v04.upswings")}</li>
-              <li>{t("changelog.v04.yPct")}</li>
-              <li>{t("changelog.v04.tooltips")}</li>
-              <li>{t("changelog.v04.rename")}</li>
-              <li>{t("changelog.v04.overlay")}</li>
-              <li>{t("changelog.v04.kelly")}</li>
+              <li>{t("changelog.v04.summary")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v03.title")}</div>
             <ul className="list-disc space-y-1 pl-5">

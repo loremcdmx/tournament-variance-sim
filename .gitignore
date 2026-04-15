@@ -44,3 +44,6 @@ next-env.d.ts
 *.log
 
 .vercel
+
+# scratch files
+tmp_legacy*

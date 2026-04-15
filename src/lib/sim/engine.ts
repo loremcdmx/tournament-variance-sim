@@ -1109,7 +1109,7 @@ export function buildResult(
     mean_[j] = acc / S;
     // Percentiles on a stratified subsample of size envS.
     for (let s = 0; s < envS; s++) {
-      const src = Math.min(S - 1, Math.floor(s * envStride));
+      const src = Math.min(S - 1, (s * envStride) | 0);
       col[s] = pathMatrix[src * K1 + j];
     }
     col.sort();
@@ -1336,6 +1336,7 @@ export function buildResult(
     expectedProfit: mean,
     calibrationMode,
     finalProfits,
+    rowProfits,
     histogram,
     drawdownHistogram,
     longestBreakevenHistogram,
@@ -1467,23 +1468,42 @@ function histogramFromCounts(
   bins: number,
 ): { binEdges: number[]; counts: number[] } {
   let maxLen = 0;
-  for (let i = countsByLen.length - 1; i > 0; i--) {
-    if (countsByLen[i] > 0) {
-      maxLen = i;
+  let total = 0;
+  for (let i = 1; i < countsByLen.length; i++) {
+    const c = countsByLen[i];
+    if (c > 0) {
+      total += c;
+      if (i > maxLen) maxLen = i;
+    }
+  }
+  if (maxLen === 0 || total === 0) {
+    return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
+  }
+  // Long-tail guard: a single run with a monster streak used to stretch the
+  // x-axis to the absolute max, crushing 99% of the mass into the first
+  // bin. Clip the visible range to the p99 of the weighted distribution
+  // and fold overflow into the last bin. `max` stays available via
+  // stats.longestBreakevenMean / -Worst for users who want the extreme.
+  const cutoff = total * 0.99;
+  let cum = 0;
+  let pLen = maxLen;
+  for (let i = 1; i <= maxLen; i++) {
+    cum += countsByLen[i];
+    if (cum >= cutoff) {
+      pLen = i;
       break;
     }
   }
-  if (maxLen === 0) {
-    return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
-  }
-  const hi = maxLen;
+  // Keep at least a handful of bins of dynamic range, and never exceed the
+  // true max length.
+  const hi = Math.max(1, Math.min(maxLen, pLen));
   const binEdges: number[] = new Array(bins + 1);
   for (let i = 0; i <= bins; i++) binEdges[i] = (hi * i) / bins;
   const counts: number[] = new Array(bins).fill(0);
   for (let len = 1; len <= maxLen; len++) {
     const c = countsByLen[len];
     if (c === 0) continue;
-    let b = Math.floor((len / hi) * bins);
+    let b = len >= hi ? bins - 1 : Math.floor((len / hi) * bins);
     if (b < 0) b = 0;
     else if (b >= bins) b = bins - 1;
     counts[b] += c;
@@ -1700,6 +1720,16 @@ export function simulateShard(
   );
   const tiltSlowOn =
     tiltSlowGain !== 0 && tiltSlowThreshold > 0 && tiltSlowMinDur > 0;
+  // Hot-loop fast path: when every shock/tilt source is off, effectiveDelta
+  // is provably 0 every iteration, so we can skip the whole block and the
+  // session/drift modulo check per tournament.
+  const hasShocks =
+    roiStdErr > 0 ||
+    sigSession > 0 ||
+    sigDrift > 0 ||
+    sigTourney > 0 ||
+    tiltFastOn ||
+    tiltSlowOn;
 
   const perPass = compiled.tournamentsPerPass;
   const flat = compiled.flat;
@@ -1762,6 +1792,8 @@ export function simulateShard(
     let nextHiCpIdx = hiCheckpointIdx[1];
 
     for (let i = 0; i < N; i++) {
+      let effectiveDelta = 0;
+      if (hasShocks) {
       if ((sigSession > 0 || sigDrift > 0) && i % perPass === 0) {
         if (sigSession > 0) sessionShock = gaussSkill() * sigSession;
         if (sigDrift > 0)
@@ -1815,8 +1847,9 @@ export function simulateShard(
         }
       }
 
-      const effectiveDelta =
+      effectiveDelta =
         deltaROI + drift + sessionShock + tourneyShock + tiltShift;
+      }
 
       const parent = flat[i];
       const variants = parent.variants;

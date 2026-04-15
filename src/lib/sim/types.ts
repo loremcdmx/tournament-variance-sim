@@ -363,6 +363,14 @@ export interface SimulationResult {
   comparison?: SimulationResult;
 
   finalProfits: Float64Array;
+  /**
+   * Per-row per-sample profit, row-major: index = sample * numRows + rowIdx.
+   * numRows equals `decomposition.length`; rowIdx matches
+   * `decomposition[r].rowId` in schedule order. Used by the satellite card
+   * in mixed schedules to derive per-sample seats-won from the satellite
+   * rows only.
+   */
+  rowProfits: Float64Array;
   histogram: { binEdges: number[]; counts: number[] };
 
   samplePaths: {

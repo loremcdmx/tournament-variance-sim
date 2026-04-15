@@ -332,10 +332,9 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
               onRowChange({ itmRate: undefined, finishBuckets: undefined });
               return;
             }
-            const v = parseFloat(raw);
-            onRowChange({
-              itmRate: Number.isFinite(v) ? Math.max(0, Math.min(1, v / 100)) : undefined,
-            });
+            const v = Number(raw);
+            if (!Number.isFinite(v) || v < 0 || v > 100) return;
+            onRowChange({ itmRate: v / 100 });
           }}
           className="w-20 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
         />
@@ -377,10 +376,10 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
                         patchBuckets({ [bucket.key]: undefined } as Record<string, undefined>);
                         return;
                       }
-                      const v = parseFloat(raw);
-                      if (!Number.isFinite(v)) return;
+                      const v = Number(raw);
+                      if (!Number.isFinite(v) || v < 0 || v > 100) return;
                       patchBuckets({
-                        [bucket.key]: Math.max(0, Math.min(1, v / 100)),
+                        [bucket.key]: v / 100,
                       } as Record<string, number>);
                     }}
                     className="w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
@@ -641,7 +640,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
 
   // Shell panel stats — probabilities from the final PMF, directly readable.
   const ftEndShell = Math.min(9, paidCount);
-  let shellP1 = pmf[0] ?? 0;
+  const shellP1 = pmf[0] ?? 0;
   let shellTop3Sum = 0;
   for (let i = 0; i < Math.min(3, paidCount); i++) shellTop3Sum += pmf[i];
   let shellFtSum = 0;

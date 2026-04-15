@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import {
   STANDARD_PRESETS,
   applyModelPatch,
   extractModelPatch,
   loadUserPresets,
+  saveUserPresets,
   addUserPreset,
   deleteUserPreset,
   exportPresetToFile,
@@ -25,13 +27,14 @@ interface Props {
 export function ModelPresetSelector({ value, onChange }: Props) {
   const t = useT();
   const { advanced } = useAdvancedMode();
-  const [userPresets, setUserPresets] = useState<UserPreset[]>([]);
+  const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
+    "tvs.userPresets.v1",
+    loadUserPresets,
+    saveUserPresets,
+    [],
+  );
   const [open, setOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    setUserPresets(loadUserPresets());
-  }, []);
 
   const activeStd = STANDARD_PRESETS.find((p) => p.id === value.modelPresetId);
   const activeUser = userPresets.find((p) => p.id === value.modelPresetId);
@@ -40,11 +43,6 @@ export function ModelPresetSelector({ value, onChange }: Props) {
     : activeUser
       ? activeUser.name
       : t("preset.custom.label");
-  const activeTagline = activeStd
-    ? t(activeStd.taglineKey)
-    : activeUser
-      ? t("preset.user.tagline")
-      : t("preset.custom.tagline");
 
   const pickStandard = (id: string) => {
     const p = STANDARD_PRESETS.find((x) => x.id === id);

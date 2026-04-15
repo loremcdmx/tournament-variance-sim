@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Research scripts and legacy dumps — not shipped, looser typing is fine.
+    "scripts/**",
+    "tmp_legacy*",
   ]),
 ]);
 

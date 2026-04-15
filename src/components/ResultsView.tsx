@@ -13,6 +13,7 @@ import {
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
 import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
@@ -829,47 +830,44 @@ export function ResultsView({
     const fmt = unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt;
     return { ...fmt, unit, setUnit };
   }, [unit, abi]);
-  // Shadow the module-level formatters inside ResultsView so existing
-  // money(...) / compactMoney(...) call sites pick up the unit-aware pair.
-  // eslint-disable-next-line @typescript-eslint/no-shadow
-  const { money, compactMoney } = moneyFmt;
+  // Shadow the module-level formatter inside ResultsView so existing
+  // money(...) call sites pick up the unit-aware pair.
+  const { money } = moneyFmt;
   const tourneysWord = t("unit.tourneys");
 
-  const [lineStylePresetId, setLineStylePresetIdRaw] =
-    useState<LineStylePresetId>(DEFAULT_LINE_STYLE_PRESET);
-  const [lineOverrides, setLineOverridesRaw] = useState<LineStyleOverrides>({});
-  // Hydrate from localStorage post-mount so SSR markup matches initial render.
-  useEffect(() => {
-    setLineStylePresetIdRaw(loadLineStylePreset());
-    setLineOverridesRaw(loadLineStyleOverrides());
-  }, []);
-  const setLineStylePresetId = (id: LineStylePresetId) => {
-    setLineStylePresetIdRaw(id);
-    saveLineStylePreset(id);
-  };
-  const setLineOverrides = (ov: LineStyleOverrides) => {
-    setLineOverridesRaw(ov);
-    saveLineStyleOverrides(ov);
-  };
+  const [lineStylePresetId, setLineStylePresetId] =
+    useLocalStorageState<LineStylePresetId>(
+      "tvs.lineStylePreset.v1",
+      loadLineStylePreset,
+      saveLineStylePreset,
+      DEFAULT_LINE_STYLE_PRESET,
+    );
+  const [lineOverrides, setLineOverrides] =
+    useLocalStorageState<LineStyleOverrides>(
+      "tvs.lineStyleOverrides.v1",
+      loadLineStyleOverrides,
+      saveLineStyleOverrides,
+      {},
+    );
   const linePreset = useMemo(
     () => applyLineStyleOverrides(LINE_STYLE_PRESETS[lineStylePresetId], lineOverrides),
     [lineStylePresetId, lineOverrides],
   );
 
   const maxRuns = result.samplePaths.paths.length;
-  const [visibleRuns, setVisibleRuns] = useState(maxRuns);
-  useEffect(() => {
-    setVisibleRuns((cur) => Math.min(cur, maxRuns));
-  }, [maxRuns]);
+  // Desired slider value is preserved even when a new sim lowers maxRuns
+  // temporarily — we re-clamp on each render instead of mutating state in
+  // an effect (which would trip react-hooks/set-state-in-effect).
+  const [desiredVisibleRuns, setDesiredVisibleRuns] = useState(maxRuns);
+  const visibleRuns = Math.min(desiredVisibleRuns, maxRuns);
+  const setVisibleRuns = setDesiredVisibleRuns;
 
-  const [refLines, setRefLinesRaw] = useState<RefLineConfig[]>(DEFAULT_REF_LINES);
-  useEffect(() => {
-    setRefLinesRaw(loadRefLines());
-  }, []);
-  const setRefLines = (v: RefLineConfig[]) => {
-    setRefLinesRaw(v);
-    saveRefLines(v);
-  };
+  const [refLines, setRefLines] = useLocalStorageState<RefLineConfig[]>(
+    "tvs.refLines.v1",
+    loadRefLines,
+    saveRefLines,
+    DEFAULT_REF_LINES,
+  );
 
   return (
     <AbiContext.Provider value={abi}>
@@ -883,7 +881,6 @@ export function ResultsView({
           <LineStylePresetPicker
             value={lineStylePresetId}
             onChange={setLineStylePresetId}
-            t={t}
           />
           <LineStyleCustomizer
             preset={LINE_STYLE_PRESETS[lineStylePresetId]}
@@ -940,6 +937,18 @@ export function ResultsView({
           modelPresetId={modelPresetId}
         />
       </UnitScope>
+
+      {hasSatelliteRow(schedule) &&
+        !isSatelliteOnlySchedule(schedule) &&
+        scheduleRepeats != null && (
+          <SatelliteCard
+            result={result}
+            schedule={schedule!}
+            scheduleRepeats={scheduleRepeats}
+            bankroll={bankroll}
+            allSatellite={false}
+          />
+        )}
 
       {advanced && (
         <CollapsibleSection id="verdict" title={t("section.verdict")}>
@@ -1063,12 +1072,6 @@ export function ResultsView({
           value={money(s.maxDrawdownP99)}
           tone="neg"
           tip={t("stat.ddP99.tip")}
-        />
-        <MiniStat
-          suit="heart"
-          label={t("stat.ddBI")}
-          value={`${s.maxDrawdownBuyIns.toFixed(1)} BI`}
-          tone="neg"
         />
       </StatGroup>
 
@@ -1292,6 +1295,258 @@ export function ResultsView({
   );
 }
 
+// ---------------------------------------------------------------------
+// Satellite mode
+// ---------------------------------------------------------------------
+// Ticket-cliff satellites pay the same ticket to every cashing place and
+// nothing to everyone else. Per-sample trajectories become step functions
+// (long flat losses punctuated by vertical cash spikes), which reads as
+// "broken" in the bankroll trajectory chart even though the math is right.
+// When the run's schedule is entirely made of satellite rows we swap the
+// TrajectoryCard for this alternate widget: KPI strip (expected seats,
+// cash rate, shots per seat, net $) + a seats-per-session histogram.
+
+function isSatelliteOnlySchedule(
+  schedule: TournamentRow[] | undefined,
+): schedule is TournamentRow[] {
+  if (!schedule || schedule.length === 0) return false;
+  return schedule.every((r) => r.payoutStructure === "satellite-ticket");
+}
+
+function hasSatelliteRow(schedule: TournamentRow[] | undefined): boolean {
+  if (!schedule || schedule.length === 0) return false;
+  return schedule.some((r) => r.payoutStructure === "satellite-ticket");
+}
+
+interface SatelliteStats {
+  tourneysPerSession: number;
+  seats: number;
+  seatPrice: number;
+  expectedSeats: number;
+  seatsP05: number;
+  seatsMedian: number;
+  seatsP95: number;
+  cashRate: number;
+  shotsPerSeat: number;
+  netPerSession: number;
+  rowCount: number;
+  histogram: { binEdges: number[]; counts: number[] };
+}
+
+function computeSatelliteStats(
+  result: SimulationResult,
+  schedule: TournamentRow[],
+  scheduleRepeats: number,
+): SatelliteStats | null {
+  // Gather satellite rows only — works for both all-satellite and mixed
+  // schedules. Per-row per-sample profits come from result.rowProfits
+  // (row-major: sample * numRows + rowIdx), which lets us isolate the
+  // satellite contribution even when other rows bleed cash in the same run.
+  const numRows = result.decomposition.length;
+  const rowProfits = result.rowProfits;
+  interface SatRow {
+    rpIdx: number;
+    seatPrice: number;
+    costPerSession: number;
+    seats: number;
+    tourneysPerSession: number;
+    players: number;
+  }
+  const satRows: SatRow[] = [];
+  for (const row of schedule) {
+    if (row.payoutStructure !== "satellite-ticket") continue;
+    const rpIdx = result.decomposition.findIndex((d) => d.rowId === row.id);
+    if (rpIdx < 0) continue;
+    const players = Math.max(
+      10,
+      Math.floor(row.players * (row.lateRegMultiplier ?? 1)),
+    );
+    const seats = Math.max(1, Math.floor(players * 0.1));
+    const seatPrice = (players * row.buyIn) / seats;
+    const costPerTourney = row.buyIn * (1 + row.rake);
+    const tourneysPerSession = row.count * scheduleRepeats;
+    const costPerSession = tourneysPerSession * costPerTourney;
+    satRows.push({
+      rpIdx,
+      seatPrice,
+      costPerSession,
+      seats,
+      tourneysPerSession,
+      players,
+    });
+  }
+  if (satRows.length === 0) return null;
+
+  const S = result.finalProfits.length;
+  const seatsWon = new Float64Array(S);
+  let sum = 0;
+  for (let i = 0; i < S; i++) {
+    const base = i * numRows;
+    let v = 0;
+    for (const sr of satRows) {
+      const profit = rowProfits[base + sr.rpIdx];
+      v += (profit + sr.costPerSession) / sr.seatPrice;
+    }
+    seatsWon[i] = v;
+    sum += v;
+  }
+  const mean = S > 0 ? sum / S : 0;
+  const sorted = new Float64Array(seatsWon);
+  sorted.sort();
+  const pct = (p: number): number => {
+    if (S === 0) return 0;
+    const idx = Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))));
+    return sorted[idx];
+  };
+
+  // Integer-friendly histogram: bin width ≥ 1 seat, capped at 40 bins.
+  const lo = sorted[0];
+  const hi = sorted[S - 1];
+  const span = Math.max(1, hi - lo);
+  const nBins = Math.min(40, Math.max(8, Math.ceil(span)));
+  const binEdges = new Array<number>(nBins + 1);
+  for (let i = 0; i <= nBins; i++) binEdges[i] = lo + (span * i) / nBins;
+  const counts = new Array<number>(nBins).fill(0);
+  for (let i = 0; i < S; i++) {
+    let b = Math.floor(((seatsWon[i] - lo) / span) * nBins);
+    if (b < 0) b = 0;
+    else if (b >= nBins) b = nBins - 1;
+    counts[b]++;
+  }
+
+  // Cash rate across satellite rows only: Σ(seats)/Σ(players). Matches
+  // result.stats.itmRate for all-sat schedules and stays honest for mixed.
+  let satSeatsTotal = 0;
+  let satPlayersTotal = 0;
+  for (const sr of satRows) {
+    satSeatsTotal += sr.seats;
+    satPlayersTotal += sr.players;
+  }
+  const cashRate = satPlayersTotal > 0 ? satSeatsTotal / satPlayersTotal : 0;
+  const shotsPerSeat = cashRate > 0 ? 1 / cashRate : Infinity;
+
+  // Net $ from satellite rows: sum of their decomposition means. For an
+  // all-sat schedule this equals result.stats.mean; for mixed it isolates
+  // the satellite contribution from the non-sat rows.
+  let netPerSession = 0;
+  for (const sr of satRows)
+    netPerSession += result.decomposition[sr.rpIdx].mean;
+
+  const tourneysPerSession = satRows.reduce(
+    (acc, sr) => acc + sr.tourneysPerSession,
+    0,
+  );
+  // Footer displays first satellite row as the representative; when the
+  // schedule has multiple sat rows we surface that count via rowCount.
+  const repr = satRows[0];
+
+  return {
+    tourneysPerSession,
+    seats: repr.seats,
+    seatPrice: repr.seatPrice,
+    expectedSeats: mean,
+    seatsP05: pct(0.05),
+    seatsMedian: pct(0.5),
+    seatsP95: pct(0.95),
+    cashRate,
+    shotsPerSeat,
+    netPerSession,
+    rowCount: satRows.length,
+    histogram: { binEdges, counts },
+  };
+}
+
+function SatelliteCard({
+  result,
+  schedule,
+  scheduleRepeats,
+  bankroll,
+  allSatellite,
+}: {
+  result: SimulationResult;
+  schedule: TournamentRow[];
+  scheduleRepeats: number;
+  bankroll: number;
+  allSatellite: boolean;
+}) {
+  const t = useT();
+  const { money } = useMoneyFmt();
+  const stats = useMemo(
+    () => computeSatelliteStats(result, schedule, scheduleRepeats),
+    [result, schedule, scheduleRepeats],
+  );
+  if (!stats) return null;
+  return (
+    <Card className="p-5">
+      <ChartHeader
+        title={t("chart.satellite")}
+        subtitle={
+          bankroll > 0
+            ? `${t("chart.satellite.sub")} · bankroll ${money(bankroll)}`
+            : t("chart.satellite.sub")
+        }
+        showUnitToggle={false}
+      />
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <MiniStat
+          label={t("sat.kpi.expectedSeats")}
+          value={stats.expectedSeats.toFixed(1)}
+          suit="spade"
+        />
+        <MiniStat
+          label={t("sat.kpi.cashRate")}
+          value={`${(stats.cashRate * 100).toFixed(2)}%`}
+          suit="heart"
+        />
+        <MiniStat
+          label={t("sat.kpi.shotsPerSeat")}
+          value={
+            Number.isFinite(stats.shotsPerSeat)
+              ? stats.shotsPerSeat.toFixed(1)
+              : "∞"
+          }
+          suit="club"
+        />
+        <MiniStat
+          label={t("sat.kpi.netPerSession")}
+          value={money(stats.netPerSession)}
+          tone={stats.netPerSession >= 0 ? "pos" : "neg"}
+          suit="diamond"
+        />
+      </div>
+      <div className="mb-2 flex items-end justify-between gap-3 text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        <span>{t("chart.satellite.hist")}</span>
+        <span className="normal-case tracking-normal">
+          {stats.tourneysPerSession.toLocaleString("ru-RU")}{" "}
+          {t("sat.perSession")}
+        </span>
+      </div>
+      <DistributionChart
+        binEdges={stats.histogram.binEdges}
+        counts={stats.histogram.counts}
+        color="#4ade80"
+        height={260}
+        unitLabel="seats"
+      />
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px]">
+        <div className="text-[color:var(--color-fg-dim)]">
+          {allSatellite
+            ? t("chart.satellite.note")
+            : t("chart.satellite.mixedNote")}
+        </div>
+        <div className="font-mono text-[color:var(--color-fg-muted)]">
+          P5–P95: {stats.seatsP05.toFixed(0)}–{stats.seatsP95.toFixed(0)}{" "}
+          <span className="text-[color:var(--color-fg-dim)]">·</span>{" "}
+          {t("sat.kpi.seats")}: {stats.seats}
+          {stats.rowCount > 1 ? ` ×${stats.rowCount}` : ""}{" "}
+          <span className="text-[color:var(--color-fg-dim)]">·</span>{" "}
+          {t("sat.kpi.seatPrice")}: {money(stats.seatPrice)}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /**
  * Trajectory Card. Lives inside its own UnitScope so flipping the unit
  * toggle in the card header only affects this widget's formatters (the
@@ -1404,6 +1659,22 @@ function TrajectoryCard({
         : null,
     [compareResult, bankroll, compactMoney, visibleRuns, refLines, lineOverrides],
   );
+
+  // All-satellite schedules swap the $ trajectory for a seats-per-session
+  // histogram + KPI strip (trajectories are step functions for flat payouts
+  // and read as "broken"). Hooks above still run; this branch only changes
+  // the rendered tree.
+  if (isSatelliteOnlySchedule(schedule) && scheduleRepeats != null) {
+    return (
+      <SatelliteCard
+        result={result}
+        schedule={schedule}
+        scheduleRepeats={scheduleRepeats}
+        bankroll={bankroll}
+        allSatellite
+      />
+    );
+  }
 
   if (secondary) {
     return (
@@ -1675,11 +1946,9 @@ function DownswingsCard({
 function LineStylePresetPicker({
   value,
   onChange,
-  t,
 }: {
   value: LineStylePresetId;
   onChange: (v: LineStylePresetId) => void;
-  t: (key: DictKey) => string;
 }) {
   const active = LINE_STYLE_PRESETS[value];
   return (
@@ -2004,9 +2273,12 @@ function RefLineCustomizer({
                   type="number"
                   value={pctValue}
                   step={5}
+                  min={-99}
+                  max={10_000}
                   onChange={(e) => {
                     const raw = Number(e.target.value);
                     if (!Number.isFinite(raw)) return;
+                    if (raw < -99 || raw > 10_000) return;
                     const nextRoi = raw / 100;
                     setAt(i, { roi: nextRoi, label: roiLabel(nextRoi) });
                   }}
