@@ -1,0 +1,62 @@
+{
+  "tournamentTypes": 1,
+  "countTournaments": 5000,
+  "samplesize": 5000,
+  "min50percentile": -3636.9375,
+  "min15percentile": -8754.921875,
+  "min05percentile": -12805.715625,
+  "min01percentile": -18125.50875,
+  "neverBelowZero": 13,
+  "riskOfRuin": 0.9426,
+  "sumBuyins": 125000,
+  "ev": 6250.000000000005,
+  "evSimulated": 6216.15745,
+  "roi": 0.05000000000000004,
+  "roiSimulated": 0.0497292596,
+  "sd": 9622.78752980393,
+  "sdSimulated": 9719.271616824699,
+  "countLoss": 1322,
+  "probLoss": 0.2644,
+  "conf70": [
+    -3892.8125,
+    16377.8125
+  ],
+  "conf70roi": [
+    -0.0311425,
+    0.1310225
+  ],
+  "conf95": [
+    -12318.2140625,
+    25527.292187499985
+  ],
+  "conf95roi": [
+    -0.0985457125,
+    0.20421833749999987
+  ],
+  "conf997": [
+    -22131.03659375,
+    37663.87824999995
+  ],
+  "conf997roi": [
+    -0.17704829275,
+    0.3013110259999996
+  ],
+  "histogram": "https://www.pokerdope.de/images/Primedope Tournament Variance Histogram mtt5000xUSD25(50-300)(r5R5).png",
+  "randomRuns": "https://www.pokerdope.de/images/Primedope Tournament Variance Samples mtt5000xUSD25(50-300)(r5R5).png",
+  "meta": {
+    "args": {
+      "num_tournaments": "1",
+      "samples": "5000",
+      "bankroll": "300",
+      "showConfidenceIntervals": "true",
+      "players0": "300",
+      "places_paid0": "50",
+      "buyin0": "25",
+      "rake0": "5",
+      "roi0": "5",
+      "number0": "5000",
+      "p": "calc"
+    },
+    "exec_time": 3931
+  }
+}

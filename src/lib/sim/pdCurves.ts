@@ -6,6 +6,10 @@
  * 30, 35, 40, 50, 60, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300,
  * 350, 400, 450, 500, 550, 600, 700.
  *
+ * Last scrape: 2026-04 (paid=15 1st place = 28 %). Re-run the scraper
+ * periodically and diff against the table below — PD updates these
+ * silently and our parity tests go stale when they drift.
+ *
  * Each curve is an anchor list `[[place, fraction], …]` where anchor
  * `(p, f)` means places `prev+1..p` each pay out `f` of the prize pool
  * (PD's `Distribution.generate` convention). Fractions sum to 1.

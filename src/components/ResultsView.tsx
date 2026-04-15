@@ -3,6 +3,7 @@
 import {
   createContext,
   useContext,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -12,6 +13,7 @@ import {
 } from "react";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import { plural, WORDS } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
@@ -28,6 +30,7 @@ import {
   loadLineStyleOverrides,
   saveLineStylePreset,
   saveLineStyleOverrides,
+  type LineStyle,
   type LineStylePreset,
   type LineStylePresetId,
   type LineStyleOverrides,
@@ -53,6 +56,16 @@ interface Props {
   finishModelId?: string;
   settings?: ControlsState;
   elapsedMs?: number | null;
+  availableRuns?: number;
+  activeRunIdx?: number;
+  onSelectRun?: (idx: number) => void;
+  backgroundStatus?: "idle" | "computing" | "full";
+  onUsePdPayoutsChange?: (v: boolean) => void;
+  onUsePdFinishModelChange?: (v: boolean) => void;
+  onUsePdRakeMathChange?: (v: boolean) => void;
+  pdOverrideResult?: SimulationResult | null;
+  pdOverrideStatus?: "idle" | "running" | "done" | "error";
+  pdOverrideProgress?: number;
 }
 
 function buildSettingsSummary(c: ControlsState | undefined): string | null {
@@ -401,6 +414,65 @@ interface TrajectoryLineMeta {
   kind: "mean" | "band" | "best" | "worst" | "path" | "ref";
 }
 
+type RunMode = "worst" | "random" | "best";
+
+/** Extract r,g,b from a CSS color string — supports rgb/rgba/#rrggbb. Returns
+ *  [200,200,200] as a soft fallback so path rendering never crashes on an
+ *  unexpected preset value. */
+function parseRgb(css: string): [number, number, number] {
+  const m = css.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])];
+  const hex = css.match(/^#([0-9a-f]{6})$/i);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  }
+  return [200, 200, 200];
+}
+
+/** Per-run path color + width scaled to the number of visible runs.
+ *  Few runs → brighter, thicker, visually distinct. Many runs → faint,
+ *  thinner, so the envelope underneath still reads through the crowd. */
+function pathStyleForCount(
+  base: LineStyle,
+  count: number,
+): { stroke: string; width: number } {
+  const [r, g, b] = parseRgb(base.stroke);
+  const n = Math.max(1, count);
+  const alpha = Math.min(0.9, Math.max(0.04, 0.9 / Math.sqrt(n)));
+  const width = Math.min(1.6, Math.max(0.55, 1.55 - 0.115 * Math.log2(n)));
+  return { stroke: `rgba(${r},${g},${b},${alpha.toFixed(3)})`, width };
+}
+
+/** Pick `count` path indices from `paths` according to `mode`, sorted by
+ *  each path's final (last-point) profit. Best = top-N, worst = bottom-N,
+ *  random = first N in natural engine order (paths are already captured
+ *  unsorted, so a prefix is an unbiased sample). */
+function pickRunIndices(
+  paths: Float64Array[],
+  count: number,
+  mode: RunMode,
+): number[] {
+  const total = paths.length;
+  if (count <= 0 || total === 0) return [];
+  if (count >= total) return Array.from({ length: total }, (_, i) => i);
+  if (mode === "random") {
+    return Array.from({ length: count }, (_, i) => i);
+  }
+  const ranked: { idx: number; v: number }[] = new Array(total);
+  for (let i = 0; i < total; i++) {
+    const p = paths[i];
+    const v = p.length > 0 ? p[p.length - 1] : 0;
+    ranked[i] = { idx: i, v };
+  }
+  ranked.sort((a, b) => a.v - b.v);
+  const slice =
+    mode === "worst"
+      ? ranked.slice(0, count)
+      : ranked.slice(total - count);
+  return slice.map((r) => r.idx).sort((a, b) => a - b);
+}
+
 function buildTrajectoryAssets(
   r: SimulationResult,
   bankroll: number,
@@ -409,9 +481,10 @@ function buildTrajectoryAssets(
   overlay?: SimulationResult | null,
   axisFmt: (v: number) => string = compactMoney,
   preset: LineStylePreset = LINE_STYLE_PRESETS[DEFAULT_LINE_STYLE_PRESET],
-  visibleRuns: number = 20,
+  visibleRuns: number = 50,
   refLines: RefLineConfig[] = DEFAULT_REF_LINES,
   lineOverrides: LineStyleOverrides = {},
+  runMode: RunMode = "random",
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
@@ -444,6 +517,7 @@ function buildTrajectoryAssets(
     Math.min(visibleRuns, r.samplePaths.paths.length),
   );
   const showBands = pathCount > 0;
+  const pickedIndices = pickRunIndices(r.samplePaths.paths, pathCount, runMode);
 
   const meanIdx = pushSeries(r.envelopes.mean, {
     stroke: preset.mean.stroke,
@@ -492,14 +566,16 @@ function buildTrajectoryAssets(
       { label: "p85", color: preset.bandNarrow.stroke, seriesIdx: p85Idx, percentile: 0.85, kind: "band" },
     );
   }
-  for (let i = 0; i < pathCount; i++) {
-    const idx = pushSeries(r.samplePaths.paths[i], {
-      stroke: preset.path.stroke,
-      width: preset.path.width,
+  const pathStyle = pathStyleForCount(preset.path, pickedIndices.length);
+  for (let i = 0; i < pickedIndices.length; i++) {
+    const runIdx = pickedIndices[i];
+    const idx = pushSeries(r.samplePaths.paths[runIdx], {
+      stroke: pathStyle.stroke,
+      width: pathStyle.width,
     });
     mainLines.push({
-      label: `Run ${i + 1}`,
-      color: preset.path.stroke,
+      label: `Run ${runIdx + 1}`,
+      color: pathStyle.stroke,
       seriesIdx: idx,
       kind: "path",
     });
@@ -786,11 +862,21 @@ export function ResultsView({
   finishModelId,
   settings,
   elapsedMs,
+  availableRuns = 0,
+  activeRunIdx = 0,
+  onSelectRun,
+  backgroundStatus = "idle",
+  onUsePdPayoutsChange,
+  onUsePdFinishModelChange,
+  onUsePdRakeMathChange,
+  pdOverrideResult,
+  pdOverrideStatus = "idle",
+  pdOverrideProgress = 0,
 }: Props) {
   const t = useT();
   const { advanced } = useAdvancedMode();
 
-  const pdChart = result.comparison;
+  const pdChart = pdOverrideResult ?? result.comparison;
   // When comparing against PrimeDope on a PKO schedule, the right pane
   // actually shows "same schedule, bounties stripped" because PrimeDope
   // has no PKO support — useSimulation swaps the pass. Detect from the
@@ -806,7 +892,10 @@ export function ResultsView({
     [result, pdChart, bankroll],
   );
 
-  const [overlayPd, setOverlayPd] = useState(false);
+  // Default ON in compare mode: the whole point of the side-by-side view is
+  // to see how the two models differ, and the tail-level differences live in
+  // the histograms (max-DD, final profit), not the trajectory fan.
+  const [overlayPd, setOverlayPd] = useState(true);
 
   const s = result.stats;
   const roi = s.mean / result.totalBuyIn;
@@ -854,13 +943,21 @@ export function ResultsView({
     [lineStylePresetId, lineOverrides],
   );
 
-  const maxRuns = result.samplePaths.paths.length;
+  const maxRunsAvailable = result.samplePaths.paths.length;
+  const runsCap = Math.min(500, maxRunsAvailable);
+  const maxRuns = runsCap;
   // Desired slider value is preserved even when a new sim lowers maxRuns
   // temporarily — we re-clamp on each render instead of mutating state in
   // an effect (which would trip react-hooks/set-state-in-effect).
-  const [desiredVisibleRuns, setDesiredVisibleRuns] = useState(maxRuns);
+  const [desiredVisibleRuns, setDesiredVisibleRuns] = useState(Math.min(50, maxRuns));
   const visibleRuns = Math.min(desiredVisibleRuns, maxRuns);
   const setVisibleRuns = setDesiredVisibleRuns;
+  const [runMode, setRunMode] = useState<RunMode>("random");
+  const deferredRunMode = useDeferredValue(runMode);
+  // Heavy trajectory rebuild (uPlot series allocation + path binding) lags
+  // on every drag tick when maxRuns is in the hundreds. useDeferredValue keeps
+  // the slider input responsive by letting the chart catch up asynchronously.
+  const deferredVisibleRuns = useDeferredValue(visibleRuns);
 
   const [refLines, setRefLines] = useLocalStorageState<RefLineConfig[]>(
     "tvs.refLines.v1",
@@ -873,6 +970,41 @@ export function ResultsView({
     <AbiContext.Provider value={abi}>
     <MoneyFmtContext.Provider value={moneyFmt}>
     <div className="flex flex-col gap-5">
+      {availableRuns > 0 && onSelectRun ? (
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--color-fg-dim)]">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
+            {t("seedBatch.label")}
+          </span>
+          <button
+            type="button"
+            onClick={() => onSelectRun(Math.max(0, activeRunIdx - 1))}
+            disabled={activeRunIdx <= 0}
+            className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-0.5 font-mono text-[11px] text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={t("seedBatch.prev")}
+          >
+            ‹
+          </button>
+          <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+            {activeRunIdx + 1}/{availableRuns}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              onSelectRun(Math.min(availableRuns - 1, activeRunIdx + 1))
+            }
+            disabled={activeRunIdx >= availableRuns - 1}
+            className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-0.5 font-mono text-[11px] text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={t("seedBatch.next")}
+          >
+            ›
+          </button>
+          {backgroundStatus === "computing" ? (
+            <span className="italic">{t("seedBatch.computing")}</span>
+          ) : backgroundStatus === "full" ? (
+            <span>{t("seedBatch.full")}</span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
@@ -904,13 +1036,38 @@ export function ResultsView({
             className="h-1 w-28 cursor-pointer accent-[color:var(--color-accent)]"
             aria-label={t("runs.label")}
           />
-          <span className="w-10 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
-            {visibleRuns}/{maxRuns}
-          </span>
+          {advanced ? (
+            <>
+              <input
+                type="number"
+                min={0}
+                max={maxRuns}
+                step={1}
+                value={visibleRuns}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  if (!Number.isFinite(raw)) return;
+                  setVisibleRuns(Math.max(0, Math.min(maxRuns, Math.round(raw))));
+                }}
+                className="w-14 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+                aria-label={t("runs.label")}
+                title={`max ${maxRuns} (captured paths)`}
+              />
+              <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+                /{maxRuns}
+              </span>
+            </>
+          ) : (
+            <span className="w-10 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
+              {visibleRuns}/{maxRuns}
+            </span>
+          )}
+          <RunModeSlider value={runMode} onChange={setRunMode} t={t} />
         </div>
       </div>
       <UnitScope id="trajectory">
         <TrajectoryCard
+          settings={settings}
           result={result}
           compareResult={compareResult ?? null}
           bankroll={bankroll}
@@ -926,7 +1083,8 @@ export function ResultsView({
           settingsSummary={settingsSummary}
           linePreset={linePreset}
           lineOverrides={lineOverrides}
-          visibleRuns={visibleRuns}
+          visibleRuns={deferredVisibleRuns}
+          runMode={deferredRunMode}
           refLines={refLines}
           pdPresetFlip={modelPresetId === "primedope" && compareMode === "primedope"}
           honestLabel={
@@ -935,6 +1093,14 @@ export function ResultsView({
               : t("twin.runB")
           }
           modelPresetId={modelPresetId}
+          usePdPayouts={settings?.usePrimedopePayouts ?? true}
+          onUsePdPayoutsChange={onUsePdPayoutsChange}
+          usePdFinishModel={settings?.usePrimedopeFinishModel ?? true}
+          onUsePdFinishModelChange={onUsePdFinishModelChange}
+          usePdRakeMath={settings?.usePrimedopeRakeMath ?? true}
+          onUsePdRakeMathChange={onUsePdRakeMathChange}
+          pdOverrideStatus={pdOverrideStatus}
+          pdOverrideProgress={pdOverrideProgress}
         />
       </UnitScope>
 
@@ -976,7 +1142,7 @@ export function ResultsView({
         </CollapsibleSection>
       )}
 
-      {result.comparison && compareMode === "primedope" && (
+      {advanced && result.comparison && compareMode === "primedope" && (
         <CollapsibleSection id="pdDiff" title={t("section.pdDiff")}>
           <PrimedopeDiff primary={result} other={result.comparison} />
         </CollapsibleSection>
@@ -1553,6 +1719,7 @@ function SatelliteCard({
  * trajectory hover tooltip and bankroll/subtitle text).
  */
 function TrajectoryCard({
+  settings,
   result,
   compareResult,
   bankroll,
@@ -1569,11 +1736,21 @@ function TrajectoryCard({
   linePreset,
   lineOverrides,
   visibleRuns,
+  runMode,
   refLines,
   pdPresetFlip,
   honestLabel,
   modelPresetId,
+  usePdPayouts,
+  onUsePdPayoutsChange,
+  usePdFinishModel,
+  onUsePdFinishModelChange,
+  usePdRakeMath,
+  onUsePdRakeMathChange,
+  pdOverrideStatus,
+  pdOverrideProgress,
 }: {
+  settings?: ControlsState;
   result: SimulationResult;
   compareResult: SimulationResult | null;
   bankroll: number;
@@ -1590,13 +1767,24 @@ function TrajectoryCard({
   linePreset: LineStylePreset;
   lineOverrides: LineStyleOverrides;
   visibleRuns: number;
+  runMode: RunMode;
   refLines: RefLineConfig[];
   pdPresetFlip: boolean;
   honestLabel: string;
   modelPresetId?: string;
+  usePdPayouts: boolean;
+  onUsePdPayoutsChange?: (v: boolean) => void;
+  usePdFinishModel: boolean;
+  onUsePdFinishModelChange?: (v: boolean) => void;
+  usePdRakeMath: boolean;
+  onUsePdRakeMathChange?: (v: boolean) => void;
+  pdOverrideStatus?: "idle" | "running" | "done" | "error";
+  pdOverrideProgress?: number;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { money, compactMoney } = useMoneyFmt();
+  const { advanced } = useAdvancedMode();
   const oursCapKey: DictKey =
     modelPresetId === "naive"
       ? "chart.trajectory.ours.cap.naive"
@@ -1620,8 +1808,9 @@ function TrajectoryCard({
         visibleRuns,
         refLines,
         lineOverrides,
+        runMode,
       ),
-    [result, bankroll, yRange, overlayPd, pdChart, compactMoney, linePreset, visibleRuns, refLines, lineOverrides],
+    [result, bankroll, yRange, overlayPd, pdChart, compactMoney, linePreset, visibleRuns, refLines, lineOverrides, runMode],
   );
   const secondary = useMemo(
     () =>
@@ -1637,9 +1826,10 @@ function TrajectoryCard({
             visibleRuns,
             refLines,
             lineOverrides,
+            runMode,
           )
         : null,
-    [pdChart, bankroll, yRange, compactMoney, visibleRuns, refLines, lineOverrides],
+    [pdChart, bankroll, yRange, compactMoney, visibleRuns, refLines, lineOverrides, runMode],
   );
   const slotOverlay = useMemo(
     () =>
@@ -1655,9 +1845,10 @@ function TrajectoryCard({
             visibleRuns,
             refLines,
             lineOverrides,
+            runMode,
           )
         : null,
-    [compareResult, bankroll, compactMoney, visibleRuns, refLines, lineOverrides],
+    [compareResult, bankroll, compactMoney, visibleRuns, refLines, lineOverrides, runMode],
   );
 
   // All-satellite schedules swap the $ trajectory for a seats-per-session
@@ -1687,6 +1878,11 @@ function TrajectoryCard({
               : t("chart.trajectory.sub.vs")
           }
         />
+        {locale === "ru" && (
+          <div className="mt-2 mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
+            ⚠️ Графики — work in progress. Модели финишей и калибровка против PrimeDope ещё калибруются; формы кривых и σ могут заметно меняться от версии к версии.
+          </div>
+        )}
         {compareMode === "primedope" && pdChart && !pdPkoFallback && !pdPresetFlip && (
           <GapExplainer ours={result} pd={pdChart} money={money} t={t} />
         )}
@@ -1695,13 +1891,14 @@ function TrajectoryCard({
             label={modelLabel}
             sublabel={settingsSummary}
             hueDot="#34d399"
+            itmRate={result.stats.itmRate}
             caption={
               compareMode === "primedope"
                 ? t(oursCapKey)
                 : t("twin.runA.cap")
             }
           >
-            <TrajectoryPlot assets={primary} height={420} />
+            <TrajectoryPlot assets={primary} height={540} />
           </ChartPane>
           <ChartPane
             label={
@@ -1709,9 +1906,12 @@ function TrajectoryCard({
                 ? honestLabel
                 : pdPkoFallback
                 ? t("chart.trajectory.noKoLabel")
-                : "PrimeDope"
+                : usePdPayouts && usePdFinishModel && usePdRakeMath
+                ? "PrimeDope (faithful)"
+                : "PrimeDope (custom)"
             }
             hueDot="#f472b6"
+            itmRate={pdChart?.stats.itmRate}
             caption={
               pdPresetFlip
                 ? t("twin.runB.cap")
@@ -1723,18 +1923,42 @@ function TrajectoryCard({
             }
             action={
               compareMode === "primedope" &&
-              !pdPkoFallback &&
-              !pdPresetFlip &&
               schedule &&
               scheduleRepeats ? (
-                <PrimedopeReproduceButton
-                  schedule={schedule}
-                  scheduleRepeats={scheduleRepeats}
-                />
+                <div className="flex items-center gap-2">
+                  <PdCompareToggles
+                    usePdPayouts={usePdPayouts}
+                    onUsePdPayoutsChange={onUsePdPayoutsChange}
+                    usePdFinishModel={usePdFinishModel}
+                    onUsePdFinishModelChange={onUsePdFinishModelChange}
+                    usePdRakeMath={usePdRakeMath}
+                    onUsePdRakeMathChange={onUsePdRakeMathChange}
+                    pdOverrideStatus={pdOverrideStatus}
+                    pdOverrideProgress={pdOverrideProgress}
+                  />
+                  {advanced && (
+                    <CopyPdDiagButton
+                      settings={settings}
+                      schedule={schedule}
+                      scheduleRepeats={scheduleRepeats}
+                      bankroll={bankroll}
+                      result={result}
+                      pdChart={pdChart}
+                      pdOverrideStatus={pdOverrideStatus ?? "idle"}
+                      usePdPayouts={usePdPayouts}
+                      usePdFinishModel={usePdFinishModel}
+                      usePdRakeMath={usePdRakeMath}
+                    />
+                  )}
+                  <PrimedopeReproduceButton
+                    schedule={schedule}
+                    scheduleRepeats={scheduleRepeats}
+                  />
+                </div>
               ) : null
             }
           >
-            <TrajectoryPlot assets={secondary} height={420} />
+            <TrajectoryPlot assets={secondary} height={540} />
           </ChartPane>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -1779,6 +2003,11 @@ function TrajectoryCard({
             : t("chart.trajectory.sub")
         }
       />
+      {locale === "ru" && (
+        <div className="mt-2 mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
+          ⚠️ Графики — work in progress. Модели финишей и калибровка против PrimeDope ещё калибруются; формы кривых и σ могут заметно меняться от версии к версии.
+        </div>
+      )}
       <TrajectoryPlot assets={primary} height={440} />
       {slotOverlay && (
         <div className="mt-4">
@@ -1940,6 +2169,39 @@ function DownswingsCard({
         </div>
       </div>
     </Card>
+  );
+}
+
+function RunModeSlider({
+  value,
+  onChange,
+  t,
+}: {
+  value: RunMode;
+  onChange: (v: RunMode) => void;
+  t: ReturnType<typeof useT>;
+}) {
+  const modes: RunMode[] = ["worst", "random", "best"];
+  const idx = modes.indexOf(value);
+  return (
+    <div
+      className="ml-2 flex items-center gap-1.5"
+      title={t("runs.mode.title")}
+    >
+      <input
+        type="range"
+        min={0}
+        max={2}
+        step={1}
+        value={idx < 0 ? 1 : idx}
+        onChange={(e) => onChange(modes[Number(e.target.value)] ?? "random")}
+        className="h-1 w-20 cursor-pointer accent-[color:var(--color-accent)]"
+        aria-label={t("runs.mode.title")}
+      />
+      <span className="w-12 text-right font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        {t(`runs.mode.${value}` as DictKey)}
+      </span>
+    </div>
   );
 }
 
@@ -2330,8 +2592,16 @@ function GapExplainer({
   const ddOurs = ours.stats.maxDrawdownWorst;
   const ddPd = pd.stats.maxDrawdownWorst;
   const ddRatio = ddPd > 1e-6 ? ddOurs / ddPd : 0;
+  const itmOurs = ours.stats.itmRate;
+  const itmPd = pd.stats.itmRate;
+  const itmDelta = itmOurs - itmPd;
+  const rorOurs = ours.stats.minBankrollRoR1pct;
+  const rorPd = pd.stats.minBankrollRoR1pct;
+  const rorRatio = rorPd > 1e-6 ? rorOurs / rorPd : 0;
   const fmtRatio = (r: number) =>
     r >= 10 ? r.toFixed(0) : r >= 1.1 ? r.toFixed(1) : r.toFixed(2);
+  const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const fmtPpDelta = (d: number) => `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)} pp`;
   const fillRatio = (key: DictKey, r: number) =>
     t(key).replace("{ratio}", fmtRatio(r));
   return (
@@ -2339,7 +2609,7 @@ function GapExplainer({
       <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
         {t("chart.trajectory.gapTitle")}
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="flex flex-col gap-0.5">
           <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             {t("chart.trajectory.gapSpread")}
@@ -2373,6 +2643,46 @@ function GapExplainer({
           {ddRatio > 0 && (
             <div className="text-[11px] font-semibold text-[color:var(--color-accent)]">
               {fillRatio("chart.trajectory.gapRatioDeeper", ddRatio)}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("chart.trajectory.gapItm")}
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[15px] font-bold tabular-nums text-[color:var(--color-fg)]">
+              {fmtPct(itmOurs)}
+            </span>
+            <span className="text-[11px] tabular-nums text-[color:var(--color-fg-dim)]">
+              vs {fmtPct(itmPd)}
+            </span>
+          </div>
+          <div
+            className={`text-[11px] font-semibold tabular-nums ${
+              Math.abs(itmDelta) < 0.002
+                ? "text-[color:var(--color-fg-dim)]"
+                : "text-[color:var(--color-accent)]"
+            }`}
+          >
+            {fmtPpDelta(itmDelta)}
+          </div>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("chart.trajectory.gapRor")}
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[15px] font-bold tabular-nums text-[color:var(--color-fg)]">
+              {money(rorOurs)}
+            </span>
+            <span className="text-[11px] tabular-nums text-[color:var(--color-fg-dim)]">
+              vs {money(rorPd)}
+            </span>
+          </div>
+          {rorRatio > 0 && (
+            <div className="text-[11px] font-semibold text-[color:var(--color-accent)]">
+              {fillRatio("chart.trajectory.gapRatio", rorRatio)}
             </div>
           )}
         </div>
@@ -2687,7 +2997,7 @@ function PokerDopeWeaknessCard() {
       <div className="flex flex-col gap-4 text-[11px] leading-relaxed text-[color:var(--color-fg)]">
         <p className="text-[color:var(--color-fg-dim)]">
           Чем PrimeDope реально врёт, если ты грайндер MTT и решил им
-          пересчитать банкролл. Всё воспроизводится прогоном их API напрямую
+          пересчитать банкролл. Всё воспроизводится раном их API напрямую
           (<code>scripts/pd_probe.mjs</code>), сырые ответы в{" "}
           <code>scripts/pd_cache/</code>, полный разбор в{" "}
           <code>notes/pokerdope_weaknesses.md</code>.
@@ -2707,25 +3017,27 @@ function PokerDopeWeaknessCard() {
               tone="#f87171"
               title="ITM жёстко привязан к ROI одной формулой"
             >
-              У них <code>itm = (1 + ROI) × paid / players</code>. Перевод: PD
-              считает, что весь твой эдж берётся из того, что ты чаще
-              обкешиваешься. Чем выше ROI — тем больше ИТМ, других вариантов
-              модели нет.
+              У них одна формула на всё:{" "}
+              <code>itm = (1 + ROI) × paid / players</code>. По-человечески — PD
+              думает, что весь твой профит идёт оттого, что ты просто чаще
+              попадаешь в призы. Выше ROI → PD механически накидывает тебе
+              больший ИТМ-рейт, и никаких других вариантов модели.
               <br />
               <br />
-              Реальность другая: грайндер с +30% ROI кешится почти с той же
-              частотой что нулевой игрок, но бежит ГЛУБЖЕ — больше фин-тейблов,
-              больше 1-3 мест, больше крашевых финишей. Эдж сидит в хвосте, а
-              не в частоте min-cash.
+              Только в реалке так не бывает. Рег с +30% ROI обкешивается
+              примерно так же часто, как нулевик — но заходит ГЛУБЖЕ.
+              Больше финалок, больше топ-3, больше выносов турика
+              целиком. Твой эдж живёт в хвосте — в тех редких забегах,
+              где ты забираешь верхние места, а не в минкешах.
               <br />
               <br />
-              <b>Последствие:</b> PD двумя концами промахивается. Для топ-рега
-              с высоким ROI он (а) завышает ИТМ-рейт (говорит «ты в деньгах
-              22%» вместо реальных ~17%), и (б) недооценивает дисперсию по
-              глубоким финишам — потому что в модели эдж «размазан» по всему
-              призовому интервалу. На ROI выше порога{" "}
-              <code>(1+ROI)·paid/players ≥ 1</code> формула вообще переполняется
-              и сервер отдаёт 500.
+              <b>Что из этого следует:</b> PD врёт сразу в две стороны.
+              Топ-регу он (а) рисует ИТМ типа 22% вместо реальных ~17% и (б)
+              занижает свинги по глубоким забегам — потому что в его голове
+              профит размазан ровным слоем по всей призовой зоне. А если ROI
+              задрать совсем высоко и формула переполнится{" "}
+              (<code>(1+ROI)·paid/players ≥ 1</code>) — у них тупо падает
+              сервер и отдаёт 500-ку.
             </WeakBlock>
 
             <WeakBlock
@@ -2733,24 +3045,25 @@ function PokerDopeWeaknessCard() {
               tone="#f87171"
               title="Все призовые места равновероятны (uniform inside cash)"
             >
-              Когда PD решил «ты в деньгах», он дальше кидает равномерно
-              между всеми оплачиваемыми местами. 1-е место = min-cash по
-              вероятности.
+              Как только PD решает «ты в призах», дальше он тупо кидает
+              монетку между всеми оплачиваемыми местами равновесно. Для него
+              1-е место — ровно такая же вероятность, как минкеш. По-честному
+              так не бывает никогда.
               <br />
               <br />
-              Для +5% ROI игрока на 1000-максе PD возвращает SD ≈{" "}
-              <code>$2.8k</code>. Реалистичная модель с топ-тяжёлой
-              концентрацией (наш power-law или эмпирический профиль) даёт
-              <code> $4–5k</code> на той же сетке — в полтора-два раза больше.
-              Разница — это редкие глубокие забеги, которые PD равняет с
-              мин-кэшами.
+              Для +5% ROI регуляра на 1000-максе PD рисует разброс{" "}
+              <code>$2.8k</code>. Нормальная модель с топ-тяжёлой выплатой
+              (наш power-law или живой профиль с рук) на той же сетке даёт
+              <code> $4–5k</code> — в полтора-два раза сильнее качает. Эта
+              разница и есть те самые редкие забеги на финалку, которые PD
+              уравнивает с минкешами.
               <br />
               <br />
-              <b>Последствие:</b> 1%-хвост и RoR у PD систематически занижены.
-              Банкролл, который PD объявил «1% риск разорения», в реальности
-              скорее <b>3–5% риск</b>. Kelly-фракция, которую PD показывает,
-              тоже завышена — игрок тащит больше роллз в игру, чем реально
-              безопасно.
+              <b>Что из этого следует:</b> хвосты у PD подрезаны, и риск
+              разорения занижен системно. Банкролл, под которым PD написал
+              «1% шанс забастовать», в реалке ближе к <b>3–5%</b>.
+              И Келли-фракция, которую он сверху отрисует, тоже завышена —
+              игрок тащит в игру больше роллов, чем реально безопасно.
             </WeakBlock>
 
             <WeakBlock
@@ -2758,42 +3071,89 @@ function PokerDopeWeaknessCard() {
               tone="#f87171"
               title="Рейк тихо меняет SD, хотя в EV его игнорируют"
             >
-              Один и тот же прогон (100p / $50 / N=1000 / +10% ROI) даёт: SD{" "}
-              <code>$5975</code> при rake=0%, <code>$5607</code> при rake=11%,{" "}
-              <code>$4042</code> при rake=50%. EV во всех трёх случаях
-              <code> $5000</code> константой.
+              Один и тот же забег (100p / $50 / 1000 туриков / +10% ROI) у PD
+              выдаёт: разброс <code>$5975</code> при rake=0%, <code>$5607</code>{" "}
+              при rake=11% и <code>$4042</code> при rake=50%. А вот EV во всех
+              трёх случаях — жёстко <code>$5000</code>. Фокус-покус.
               <br />
               <br />
-              Под капотом у них <code>buyin − rake</code> как база призового
-              фонда для подсчёта SD, но <code>buyin</code> как база для EV.
-              Математически несовместимо.
+              Под капотом у них так: для подсчёта призового фонда (по которому
+              считается как колбасит) они берут <code>buyin − rake</code>, а для
+              EV — полный <code>buyin</code>. Это две разные математические
+              вселенные в одной формуле, сшиты скотчем.
               <br />
               <br />
-              <b>Последствие:</b> игрок, перешедший с низкорейковой 5% сетки
-              на высокорейковую 15% (рукн/субботние мажоры), увидит в PD{" "}
-              <i>меньший</i> требуемый банкролл на ровном месте. Реальный
-              ответ — банкролл должен быть <i>больше</i>, потому что на
-              высоком рейке маржа тоньше и дисперсия кусается сильнее.
+              <b>Что из этого следует:</b> регуляр, переехавший с 5%-рейковой
+              сетки на 15%-мажоры, в PD увидит что банкролл нужен{" "}
+              <i>меньше</i>. Это прямо противоположно правде. На высоком рейке
+              твоя маржа тоньше, а качает наоборот жёстче — банкролл нужен{" "}
+              <i>больше</i>, не меньше. PD уверенно ведёт игрока в неправильную
+              сторону.
             </WeakBlock>
 
             <WeakBlock
               tag="CRITICAL"
               tone="#f87171"
-              title="RoR по running-min без банкролл-менеджмента"
+              title="EV посчитан мимо кассы — рейк молча исчез"
             >
-              На 20 000 турниров с +10% ROI и $1k банкроллом PD выдаёт{" "}
-              <code>RoR = 70.8%</code>. Считается как «любая точка траектории,
-              которая коснулась нуля — значит разорён навсегда». Перезарядов,
-              займов, спуска на нижний лимит в модели нет.
+              PD считает твой ожидаемый профит по формуле{" "}
+              <code>buyin × ROI</code>. Пример: $50+$5.50 турик, +10% ROI,
+              1000 штук. PD рисует EV = <code>$5000</code>. Красиво и круглое.
               <br />
               <br />
-              <b>Последствие:</b> цифра RoR у PD реально пугает юзера сильнее,
-              чем должна. Реальный рейк-бэк грайндер теряет банкролл раз в
-              несколько лет на ровном месте, потому что он <i>управляет</i>{" "}
-              ним — PD этой степени свободы просто не видит. У нас рядом с
-              running-min показывается аналитический Brownian first-passage,
-              чтобы видеть разрыв между «коснулся нуля один раз» и «реально
-              бэнкрол убит».
+              Только ты платишь из кармана не $50, а <code>$55</code> — бай +
+              фи. И отбиваешь ты с дистанции именно эти реальные деньги, а не
+              абстрактный прайзпул без рейка. Честный EV считается через
+              полный кост: 1000 × $55 × 10% = <code>$5500</code>. Разница{" "}
+              <b>$500 на ровном месте</b>, и это ровно тот рейк, который PD
+              молча съел.
+              <br />
+              <br />
+              Вторая часть того же бага: для подсчёта как колбасит PD берёт{" "}
+              <code>buyin − rake</code> (урезанную базу), а для EV —{" "}
+              <code>buyin</code> (полный). Две разные базы в одной модели,
+              такого в честной математике не бывает.
+              <br />
+              <br />
+              <b>Что из этого следует:</b> PD системно занижает тебе EV на
+              величину рейка. Для 10% рейка это −10% от всего твоего эджа —
+              ты реально зарабатываешь больше, чем PD тебе рисует. У нас EV
+              всегда считается через реальный кост <code>buyin + fee</code>,
+              а в колонке сравнения с PD мы намеренно повторяем их баг один в
+              один, чтобы ты глазами видел долларовую разницу.
+            </WeakBlock>
+
+            <WeakBlock
+              tag="CRITICAL"
+              tone="#f87171"
+              title="RoR через гауссов хвост — хвосты MTT считаются неправильно"
+            >
+              На 20 000 туриков с +10% ROI и $1k банкролла PD рисует{" "}
+              <code>RoR = 70.8%</code>. Считает он аналитически: Brownian
+              first-passage по формуле{" "}
+              <code>Φ((−B−μN)/(σ√N)) + exp(−2μB/σ²)·Φ((−B+μN)/(σ√N))</code>,
+              где хвост распределения — гауссовский. Проверено в их легаси-JS
+              (функция <code>p(a)</code>, Beasley-Springer-Moro inverse normal,
+              и <code>q()</code>, Hastings Φ-аппроксимация).
+              <br />
+              <br />
+              Проблема: реальная призовая PMF в MTT сильно скошена — большая
+              масса в нуле, редкие жирные спайки наверху. Гауссовский хвост
+              такое распределение системно недооценивает: редкие глубокие
+              серии минусов в гауссовской модели встречаются реже, чем в
+              настоящем random walk на скошенной PMF. Плюс в модели нет
+              никакого банкролл-менеджмента — ни спуска на лимит ниже, ни
+              брейка.
+              <br />
+              <br />
+              <b>Что из этого следует:</b> для турнирного графика PD врёт в
+              обе стороны одновременно. На коротких дистанциях он RoR
+              недооценивает (гауссов хвост тоньше реального), на сверхдлинных
+              — переоценивает (модель «бастует за весь период хоть один раз»
+              вместо «бастует сейчас»). У нас рядом с эмпирическим running-min
+              RoR мы показываем аналитический гауссовский — тот же алгоритм,
+              что у PD — чтобы глазами видеть разрыв между честной тяжёлой
+              хвостовой статистикой и PD-совместимой аппроксимацией.
             </WeakBlock>
           </div>
         </div>
@@ -2812,24 +3172,27 @@ function PokerDopeWeaknessCard() {
               tone="#fb923c"
               title="PKO ноки вообще не поддерживаются"
             >
-              У PD нет поля для bounty-фракции. Грайнд ромео-сетки, где 60%
-              волюма — $22 GG PKO или PS BB с нок-пулом 50% от бай-ина, ты
-              физически не можешь в PD вбить корректно. Типичный workaround
-              юзера — вбить полный бай-ин как обычный фризаут, — и дальше PD
-              считает такой «фризаут за $22» с топ-тяжёлой выплатой только в
-              ИТМ. В реальности в PKO ты забираешь кэш с каждого нока всю
-              дорогу, задолго до пузыря — средний грайндер на 2500-поле уносит
-              2–4 головы даже когда выбит 800-м. Это режет per-tourney σ
-              процентов на 30–40 против эквивалентного фризаута.
+              У PD вообще нет поля под bounty-фракцию. Типичное расписание
+              рега, где больше половины волюма — это $22 GG PKO или PS
+              Bounty Builder с нок-пулом 50% от бая, ты физически не можешь в
+              PD вбить честно. Единственный воркэраунд — зарегать полный бай
+              как обычный фризаут, и PD начинает колбасить тебе «$22 фриз с
+              топ-тяжёлой выплатой только в призах».
               <br />
               <br />
-              <b>Последствие:</b> PD завышает требуемый банкролл на PKO-сетке
-              примерно в 1.3–1.5× относительно честной модели. Игрок, который
-              послушался PD, перегружен банкроллом и играет не тот лимит;
-              игрок, который наоборот мысленно скинул «ну там же ноки» — не
-              знает, сколько скидывать. У нас PKO моделируется отдельным
-              bounty-распределением по местам (harmonic KO-count + Poisson), и
-              ROI делится на prize-часть + bounty-часть.
+              А по жизни в PKO ты уносишь головы весь турнир — задолго до
+              пузыря. Средний рег на 2500-поле забирает 2–4 ноки, даже когда
+              его самого закопали 800-м. Это режет раскачку процентов на
+              30–40 против эквивалентного фризаута.
+              <br />
+              <br />
+              <b>Что из этого следует:</b> PD завышает требуемый банкролл на
+              PKO-сетке примерно в 1.3–1.5 раза против честной модели. Кто
+              послушал PD — перегружен роллом и играет не тот лимит. Кто
+              мысленно скинул «ну там же ноки, попроще» — не знает сколько
+              скидывать и часто режет слишком много. У нас PKO моделируется
+              отдельным распределением нок-аутов по местам (harmonic KO-count
+              + Poisson), а ROI честно бьётся на prize-часть и bounty-часть.
             </WeakBlock>
           </div>
         </div>
@@ -2848,28 +3211,29 @@ function PokerDopeWeaknessCard() {
               tone="#a78bfa"
               title="4 краш-вектора кладут весь калькулятор на 15 минут"
             >
-              Сервер PD роняется на:
+              Сервер PD падает на четырёх входах:
               <br />
               (1) ROI такой, что <code>(1+ROI)·paid/players ≥ 1</code>
               <br />
               (2) <code>buyin = $0.01</code>
               <br />
-              (3) <code>places_paid == players</code> (легитимный выбор для
+              (3) <code>places_paid == players</code> (легальный выбор для
               10-ки SNG)
               <br />
               (4) <code>rake = 100%</code>
               <br />
               <br />
-              Каждый кидает <code>500</code>, а после пары таких весь{" "}
-              <code>prime.php</code> отдаёт <code>502 Bad Gateway</code> всем
-              юзерам, включая тех, кто просто открыл baseline. Восстановление
-              ~5–15 минут. Подтверждено с независимого IP (Anthropic WebFetch
-              видит тот же 502).
+              Каждый из них роняет сервак в 500, а после пары таких запросов
+              весь <code>prime.php</code> начинает отдавать{" "}
+              <code>502 Bad Gateway</code> всем подряд — включая тех, кто
+              просто открыл baseline-калькулятор. Лежит по 5–15 минут.
+              Проверено с двух независимых IP.
               <br />
               <br />
-              <b>Последствие:</b> один неосторожный клик (или один троллящий
-              юзер) флэтлайнит калькулятор для всех остальных. На стороне PD
-              нет input-валидации, клиентский JS форвардит что ввели.
+              <b>Что из этого следует:</b> один случайный клик мышкой — или
+              один троллящий юзер — флэтлайнит их калькулятор для всех
+              остальных. Валидации ввода на стороне PD нет вообще, клиентский
+              JS тупо форвардит что ввели.
             </WeakBlock>
           </div>
         </div>
@@ -2990,6 +3354,7 @@ function ChartPane({
   caption,
   children,
   action,
+  itmRate,
 }: {
   label: string;
   sublabel?: string | null;
@@ -2997,6 +3362,7 @@ function ChartPane({
   caption: string;
   children: React.ReactNode;
   action?: React.ReactNode;
+  itmRate?: number;
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30 p-3">
@@ -3011,6 +3377,23 @@ function ChartPane({
         {sublabel && (
           <span className="text-[10px] font-mono text-[color:var(--color-fg-dim)]">
             {sublabel}
+          </span>
+        )}
+        {itmRate != null && (
+          <span
+            className="flex items-center gap-1.5 text-[10px] tabular-nums text-[color:var(--color-fg-dim)]"
+            title={`In-the-money rate: ${(itmRate * 100).toFixed(2)}%`}
+          >
+            <span>ITM {(itmRate * 100).toFixed(1)}%</span>
+            <span className="relative inline-block h-1.5 w-14 overflow-hidden rounded bg-[color:var(--color-border)]">
+              <span
+                className="absolute inset-y-0 left-0"
+                style={{
+                  width: `${Math.min(100, itmRate * 100 * 3)}%`,
+                  background: hueDot,
+                }}
+              />
+            </span>
           </span>
         )}
         {action && <div className="ml-auto">{action}</div>}
@@ -3075,6 +3458,115 @@ function buildPrimedopeCheatSheet(
   return lines.filter(Boolean).join("\n");
 }
 
+function PdCompareToggles({
+  usePdPayouts,
+  onUsePdPayoutsChange,
+  usePdFinishModel,
+  onUsePdFinishModelChange,
+  usePdRakeMath,
+  onUsePdRakeMathChange,
+  pdOverrideStatus,
+  pdOverrideProgress,
+}: {
+  usePdPayouts: boolean;
+  onUsePdPayoutsChange?: (v: boolean) => void;
+  usePdFinishModel: boolean;
+  onUsePdFinishModelChange?: (v: boolean) => void;
+  usePdRakeMath: boolean;
+  onUsePdRakeMathChange?: (v: boolean) => void;
+  pdOverrideStatus?: "idle" | "running" | "done" | "error";
+  pdOverrideProgress?: number;
+}) {
+  const t = useT();
+  const row = (
+    checked: boolean,
+    onChange: ((v: boolean) => void) | undefined,
+    labelKey: DictKey,
+    hintKey: DictKey,
+  ) =>
+    onChange ? (
+      <div className="flex items-center gap-1">
+        <label className="flex cursor-pointer items-center gap-1 text-[10px] text-[color:var(--color-fg-muted)]">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => onChange(e.target.checked)}
+            className="h-3 w-3 accent-[color:var(--color-accent)]"
+          />
+          <span>{t(labelKey)}</span>
+        </label>
+        <span
+          className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-[color:var(--color-border)] text-[9px] font-bold text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
+          title={t(hintKey)}
+        >
+          ?
+        </span>
+      </div>
+    ) : null;
+  const faithful = usePdPayouts && usePdFinishModel && usePdRakeMath;
+  const canRestore =
+    !!onUsePdPayoutsChange &&
+    !!onUsePdFinishModelChange &&
+    !!onUsePdRakeMathChange;
+  const restoreFaithful = () => {
+    onUsePdPayoutsChange?.(true);
+    onUsePdFinishModelChange?.(true);
+    onUsePdRakeMathChange?.(true);
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={faithful || !canRestore ? undefined : restoreFaithful}
+        disabled={faithful || !canRestore}
+        title={
+          faithful
+            ? t("pd.faithful.onHint")
+            : canRestore
+            ? t("pd.faithful.offHint")
+            : undefined
+        }
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wider ${
+          faithful
+            ? "cursor-default border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent)]"
+            : "cursor-pointer border-amber-500/60 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20"
+        }`}
+      >
+        <span>{faithful ? "✓" : "!"}</span>
+        <span>{faithful ? t("pd.faithful.on") : t("pd.faithful.off")}</span>
+      </button>
+      {row(
+        usePdPayouts,
+        onUsePdPayoutsChange,
+        "chart.trajectory.pdPayouts",
+        "chart.trajectory.pdPayouts.hint",
+      )}
+      {row(
+        usePdFinishModel,
+        onUsePdFinishModelChange,
+        "chart.trajectory.pdFinishModel",
+        "chart.trajectory.pdFinishModel.hint",
+      )}
+      {row(
+        usePdRakeMath,
+        onUsePdRakeMathChange,
+        "chart.trajectory.pdRakeMath",
+        "chart.trajectory.pdRakeMath.hint",
+      )}
+      {pdOverrideStatus === "running" && (
+        <div className="h-1 w-16 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
+          <div
+            className="h-full bg-[color:var(--color-accent)] transition-[width] duration-100"
+            style={{
+              width: `${Math.max(2, Math.min(100, (pdOverrideProgress ?? 0) * 100))}%`,
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PrimedopeReproduceButton({
   schedule,
   scheduleRepeats,
@@ -3117,6 +3609,135 @@ function PrimedopeReproduceButton({
         />
       </svg>
       {copied ? t("pd.reproduce.copied") : t("pd.reproduce.label")}
+    </button>
+  );
+}
+
+function CopyPdDiagButton({
+  settings,
+  schedule,
+  scheduleRepeats,
+  bankroll,
+  result,
+  pdChart,
+  pdOverrideStatus,
+  usePdPayouts,
+  usePdFinishModel,
+  usePdRakeMath,
+}: {
+  settings?: ControlsState;
+  schedule: TournamentRow[];
+  scheduleRepeats: number;
+  bankroll: number;
+  result: SimulationResult;
+  pdChart: SimulationResult | null | undefined;
+  pdOverrideStatus: "idle" | "running" | "done" | "error";
+  usePdPayouts: boolean;
+  usePdFinishModel: boolean;
+  usePdRakeMath: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const handleClick = async () => {
+    const statSummary = (r: SimulationResult | null | undefined) => {
+      if (!r) return null;
+      const s = r.stats as Record<string, unknown>;
+      const num = (k: string) =>
+        typeof s[k] === "number" ? (s[k] as number) : undefined;
+      const round = (v: number | undefined) =>
+        v == null ? undefined : Math.round(v);
+      const fix4 = (v: number | undefined) =>
+        v == null ? undefined : Number(v.toFixed(4));
+      return {
+        mean: round(num("mean")),
+        stdDev: round(num("stdDev")),
+        median: round(num("median")),
+        min: round(num("min")),
+        max: round(num("max")),
+        p01: round(num("p01")),
+        p05: round(num("p05")),
+        p95: round(num("p95")),
+        p99: round(num("p99")),
+        maxDrawdownMean: round(num("maxDrawdownMean")),
+        maxDrawdownMedian: round(num("maxDrawdownMedian")),
+        maxDrawdownP95: round(num("maxDrawdownP95")),
+        maxDrawdownP99: round(num("maxDrawdownP99")),
+        maxDrawdownWorst: round(num("maxDrawdownWorst")),
+        minBankrollRoR1pct: round(num("minBankrollRoR1pct")),
+        minBankrollRoR5pct: round(num("minBankrollRoR5pct")),
+        itmRate: fix4(num("itmRate")),
+        probProfit: fix4(num("probProfit")),
+        riskOfRuin: fix4(num("riskOfRuin")),
+        sigmaPerTourneyEmpirical: (() => {
+          const v = num("sigmaPerTournamentEmpirical");
+          return v == null ? undefined : Number(v.toFixed(2));
+        })(),
+        sigmaPerTourneyMath: (() => {
+          const v = num("sigmaPerTournamentMath");
+          return v == null ? undefined : Number(v.toFixed(2));
+        })(),
+        spreadMaxMinusMean:
+          num("max") != null && num("mean") != null
+            ? Math.round((num("max") as number) - (num("mean") as number))
+            : undefined,
+      };
+    };
+    const dump = {
+      timestamp: new Date().toISOString(),
+      scheduleRepeats,
+      bankroll,
+      schedule: schedule.map((r) => ({
+        players: r.players,
+        buyIn: r.buyIn,
+        rake: r.rake,
+        roi: r.roi,
+        payoutStructure: r.payoutStructure,
+        count: r.count,
+        bountyFraction: r.bountyFraction,
+      })),
+      pdFlagsFromProps: {
+        usePdPayouts,
+        usePdFinishModel,
+        usePdRakeMath,
+      },
+      settingsPdFlags: settings
+        ? {
+            compareWithPrimedope: settings.compareWithPrimedope,
+            usePrimedopePayouts: settings.usePrimedopePayouts,
+            usePrimedopeFinishModel: settings.usePrimedopeFinishModel,
+            usePrimedopeRakeMath: settings.usePrimedopeRakeMath,
+            compareMode: settings.compareMode,
+            modelPresetId: settings.modelPresetId,
+            samples: settings.samples,
+            seed: settings.seed,
+          }
+        : null,
+      pdOverrideStatus,
+      primary: statSummary(result),
+      pdPane: statSummary(pdChart ?? null),
+      comparisonPresent: !!result.comparison,
+      pdOverrideVsComparison:
+        pdChart && result.comparison
+          ? pdChart === result.comparison
+            ? "same-as-result.comparison"
+            : "pdOverrideResult-different-from-result.comparison"
+          : null,
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(dump, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      /* noop */
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title="Copy PD diagnostic logs to clipboard"
+      className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg)]"
+    >
+      {copied ? "copied ✓" : "copy PD logs"}
     </button>
   );
 }
@@ -3228,6 +3849,7 @@ function VerdictCard({
   bankroll: number;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { money } = useMoneyFmt();
   const s = result.stats;
   const roi = s.mean / result.totalBuyIn;
@@ -3272,10 +3894,12 @@ function VerdictCard({
   // Line 4 — dry spells: how long the fallow stretches run. Breakeven =
   // consecutive tourneys with no net profit; cashless = consecutive non-
   // ITM. Both are the "mental game" numbers a grinder cares about.
+  const beRounded = Math.round(s.longestBreakevenMean);
   lines.push({
     key: "dry",
     text: fmt(t("verdict.streak.dry"), {
-      be: intFmt(Math.round(s.longestBreakevenMean)),
+      be: intFmt(beRounded),
+      _tournament: plural(locale, beRounded, WORDS.tournament),
       cashless: intFmt(Math.round(s.longestCashlessMean)),
       cashlessWorst: intFmt(s.longestCashlessWorst),
     }),
@@ -3313,12 +3937,16 @@ function VerdictCard({
     const needSamples = Number.isFinite(s.mcSamplesFor1Pct)
       ? intFmt(s.mcSamplesFor1Pct)
       : "∞";
+    const needForPlural = Number.isFinite(s.mcSamplesFor1Pct)
+      ? s.mcSamplesFor1Pct
+      : 5;
     lines.push({
       key: "mc",
       text: fmt(t("verdict.precision.bad"), {
         ci: money(s.mcCi95HalfWidthMean),
         rel: relPct(s.mcRoiErrorPct),
         need: needSamples,
+        _need: plural(locale, needForPlural, WORDS.sample),
       }),
       tone: "neg",
     });
@@ -3383,7 +4011,20 @@ function PrimedopeDiff({
     `${((a / Math.max(1e-9, b) - 1) * 100).toFixed(1)} %`;
   const diffMoney = (a: number, b: number) =>
     `${a - b >= 0 ? "+" : "−"}${money(Math.abs(a - b))}`;
-  const rows: { label: string; ours: string; theirs: string; delta: string }[] = [
+  const rows: {
+    label: string;
+    ours: string;
+    theirs: string;
+    delta: string;
+    highlight?: boolean;
+  }[] = [
+    {
+      label: t("pd.row.ev"),
+      ours: money(ours.mean),
+      theirs: money(theirs.mean),
+      delta: diffMoney(ours.mean, theirs.mean),
+      highlight: true,
+    },
     {
       label: t("pd.row.itm"),
       ours: pct(ours.itmRate),
@@ -3473,6 +4114,14 @@ function PrimedopeDiff({
           </span>
         </div>
       </div>
+      <div className="mb-3 rounded border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/6 px-3 py-2 text-[11px] leading-relaxed">
+        <div className="font-semibold text-[color:var(--color-accent)]">
+          {t("pd.evDelta.title")}
+        </div>
+        <div className="mt-0.5 text-[color:var(--color-fg-muted)]">
+          {t("pd.evDelta.body")}
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[520px] text-sm">
           <thead>
@@ -3487,9 +4136,19 @@ function PrimedopeDiff({
             {rows.map((r) => (
               <tr
                 key={r.label}
-                className="border-b border-[color:var(--color-border)]/60 last:border-b-0"
+                className={
+                  r.highlight
+                    ? "border-b border-[color:var(--color-border)] bg-[color:var(--color-accent)]/8"
+                    : "border-b border-[color:var(--color-border)]/60 last:border-b-0"
+                }
               >
-                <td className="py-2 text-[color:var(--color-fg-muted)]">
+                <td
+                  className={
+                    r.highlight
+                      ? "py-2.5 font-semibold text-[color:var(--color-fg)]"
+                      : "py-2 text-[color:var(--color-fg-muted)]"
+                  }
+                >
                   {r.label}
                 </td>
                 <td className="py-2 text-right font-semibold tabular-nums text-[color:var(--color-fg)]">
@@ -3498,7 +4157,13 @@ function PrimedopeDiff({
                 <td className="py-2 text-right tabular-nums text-[#f472b6]">
                   {r.theirs}
                 </td>
-                <td className="py-2 text-right tabular-nums text-[color:var(--color-fg-muted)]">
+                <td
+                  className={
+                    r.highlight
+                      ? "py-2 text-right font-semibold tabular-nums text-[color:var(--color-accent)]"
+                      : "py-2 text-right tabular-nums text-[color:var(--color-fg-muted)]"
+                  }
+                >
                   {r.delta}
                 </td>
               </tr>

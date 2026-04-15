@@ -26,7 +26,6 @@ const wrap = (row: TournamentRow): SimulationInput => ({
   seed: 42,
   finishModel: { id: "power-law" },
   calibrationMode: "primedope-binary-itm",
-  primedopeStyleEV: true,
 });
 
 interface Vector {

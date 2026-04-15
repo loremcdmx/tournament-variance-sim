@@ -19,7 +19,6 @@ const base = {
   seed: 42,
   finishModel: { id: "power-law" as const },
   compareWithPrimedope: true,
-  primedopeStyleEV: true,
 };
 
 const r = runSimulation(base);

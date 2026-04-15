@@ -1,3 +1,20 @@
+/**
+ * Core Monte Carlo engine. Runs inside Web Workers (see `worker.ts`), never
+ * on the main thread. The public surface is small — `compileSchedule`,
+ * `simulateShard`, `mergeShards`, `buildResult` — and is orchestrated by
+ * `useSimulation.ts` on the UI side.
+ *
+ * Determinism contract: `SimulationInput + seed → byte-identical
+ * SimulationResult` regardless of worker pool size or shard dispatch order.
+ * Enforced by `engine.test.ts`. No `Math.random`, no `Date.now`, no wall
+ * clock. Only `mulberry32` seeded via `mixSeed(baseSeed, sampleIdx, rowIdx,
+ * bulletIdx)`, where `sampleIdx` is the GLOBAL index in `[0, samples)`.
+ *
+ * Hot loop allocation rule: no `new Float64Array(...)` inside the per-sample
+ * inner loop. All scratch buffers are preallocated per shard and reused.
+ *
+ * See `docs/ARCHITECTURE.md` for data flow, hot-loop shape, and storage.
+ */
 import { getPayoutTable } from "./payouts";
 import {
   buildAliasTable,
@@ -148,10 +165,26 @@ export function compileSchedule(
   // For each row, compile one or more variants depending on fieldVariability.
   // variants[r] is an array of { entry, weight } — weight is # of plays per
   // unit `count` consumed from this row.
-  const primedopeStyleEV = input.primedopeStyleEV ?? false;
+  // PD's "prize pool = buyin − rake for SD, = buyin for EV" inconsistency is
+  // applied whenever we're running under primedope-binary-itm calibration.
+  // That's how their closed-form σ is computed; matching it is the whole
+  // point of this compare mode.
+  const primedopeCompare = calibrationMode === "primedope-binary-itm";
+  const primedopeStyleEV = primedopeCompare;
+  // Three independent PD-flavour toggles, all default ON when compare mode
+  // is active — the PD pane then reproduces the live site to within ~0.2%
+  // SD. Flipping any of them off isolates that single PD quirk's
+  // contribution to σ. Validated by `scripts/pd_ui_parity.ts`.
+  const forcePrimedopePayouts =
+    primedopeCompare && input.usePrimedopePayouts !== false;
+  const usePdFinishModel =
+    primedopeCompare && input.usePrimedopeFinishModel !== false;
+  const usePdRakeMath =
+    primedopeCompare && input.usePrimedopeRakeMath !== false;
+  const pdFlags = { usePdFinishModel, usePdRakeMath };
   const variants: { entry: CompiledEntry; share: number }[][] =
     input.schedule.map((row, idx) =>
-      compileRowVariants(row, idx, input.finishModel, calibrationMode, primedopeStyleEV),
+      compileRowVariants(row, idx, input.finishModel, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
     );
 
   const flat: CompiledEntry[] = [];
@@ -214,6 +247,8 @@ function compileSingleEntry(
   model: SimulationInput["finishModel"],
   calibrationMode: CalibrationMode,
   primedopeStyleEV = false,
+  forcePrimedopePayouts = false,
+  pdFlags: PdCompareFlags = { usePdFinishModel: false, usePdRakeMath: false },
 ): CompiledEntry {
   // ---- input validation --------------------------------------------------
   // Guard impossible values at compile time so the hot loop is never fed
@@ -301,7 +336,9 @@ function compileSingleEntry(
   // will inflate l so the mean outcome still hits `targetRegular`, but
   // the tighter per-prize spread drops σ in proportion to rake.
   const poolBuyInBasis =
-    calibrationMode === "primedope-binary-itm" && primedopeStyleEV
+    calibrationMode === "primedope-binary-itm" &&
+    primedopeStyleEV &&
+    pdFlags.usePdRakeMath
       ? row.buyIn * (1 - row.rake)
       : row.buyIn;
   const basePool = effectiveSeats * poolBuyInBasis;
@@ -329,14 +366,14 @@ function compileSingleEntry(
   }
 
   // ---- raw payout curve --------------------------------------------------
-  // In the PrimeDope comparison run (binary-ITM), substitute PD's actual
-  // payout curve (h[8] from tmp_legacy.js) so the side-by-side matches
-  // their reported σ within Monte Carlo noise. The primary α-calibrated
-  // run still uses whatever curve the user selected.
-  const effectivePayoutStructure =
-    calibrationMode === "primedope-binary-itm"
-      ? "mtt-primedope"
-      : row.payoutStructure;
+  // Both passes honour the user's selected payout by default, so the
+  // PrimeDope comparison isolates the *finish-model* effect. Only when
+  // `usePrimedopePayouts` is explicitly set does the binary-ITM pass
+  // switch onto PD's native curve — that's the "reproduce PD's σ on
+  // their reference scenarios" escape hatch, not the default behaviour.
+  const effectivePayoutStructure = forcePrimedopePayouts
+    ? "mtt-primedope"
+    : row.payoutStructure;
   let payouts = getPayoutTable(
     effectivePayoutStructure,
     N,
@@ -368,7 +405,7 @@ function compileSingleEntry(
   //   → E[prize per bullet] = singleCost × (1 + ROI) − bountyMean
   const targetRegular = Math.max(0.01, entryCostSingle * (1 + row.roi) - bountyMean);
   const effectiveROI = targetRegular / entryCostSingle - 1;
-  if (calibrationMode === "primedope-binary-itm") {
+  if (calibrationMode === "primedope-binary-itm" && pdFlags.usePdFinishModel) {
     // entryCostSingle has already dropped rake when pdDisplayMode is on, so
     // targetRegular is naturally PrimeDope-style. Otherwise we calibrate
     // against our normal cost-with-rake basis.
@@ -435,26 +472,32 @@ function compileSingleEntry(
       let ePrizeBottom = 0; // Σ pmf[i]·prize[i] over bottom
       let massTop = 0;
       let ePrizeTop = 0;
+      let ePrize2Top = 0; // Σ pmf[i]·prize[i]² over top
       for (let i = 0; i < half; i++) {
         massTop += pmf[i];
         ePrizeTop += pmf[i] * prizeByPlace[i];
+        ePrize2Top += pmf[i] * prizeByPlace[i] * prizeByPlace[i];
       }
       for (let i = half; i < paidCount; i++) {
         massBottom += pmf[i];
         ePrizeBottom += pmf[i] * prizeByPlace[i];
       }
       const removed = q * massBottom;
-      if (removed > 0 && massTop > 0 && ePrizeTop > 0) {
-        // Per-$ top-redistribution uses mass weighted by prize: deeper
-        // finishes absorb more. Let x = fraction of `removed` that flows
-        // into top (rest goes to bust). EV delta vs original:
-        //   ΔEV = x · (ePrizeTop / massTop) · removed   ← top bonus
-        //       − (ePrizeBottom / massBottom) · removed ← bottom loss
+      if (removed > 0 && massTop > 0 && ePrizeTop > 0 && ePrize2Top > 0) {
+        // Top is redistributed in proportion to pmf[i]·prize[i] so deeper
+        // finishes absorb more. That means the prize-weighted mean gain
+        // per unit of `toTop` is (Σ pmf·prize²) / (Σ pmf·prize) = T2/T1
+        // — NOT the plain conditional mean ePrizeTop/massTop. Getting this
+        // wrong leaks EV (the old derivation assumed pmf-weighted redist).
+        //
+        // EV delta setting:
+        //   ΔEV = x · removed · (ePrize2Top / ePrizeTop)   ← top bonus
+        //       − removed · (ePrizeBottom / massBottom)    ← bottom loss
         // Set ΔEV = 0:
-        //   x = (ePrizeBottom / massBottom) · (massTop / ePrizeTop)
+        //   x = (ePrizeBottom / massBottom) · (ePrizeTop / ePrize2Top)
         const avgBottom = ePrizeBottom / massBottom;
-        const avgTop = ePrizeTop / massTop;
-        let x = avgBottom / avgTop;
+        const prizeWeightedTop = ePrize2Top / ePrizeTop;
+        let x = avgBottom / prizeWeightedTop;
         if (!Number.isFinite(x) || x < 0) x = 0;
         if (x > 1) x = 1;
         const toTop = removed * x;
@@ -691,18 +734,25 @@ function compileSingleEntry(
   };
 }
 
+interface PdCompareFlags {
+  usePdFinishModel: boolean;
+  usePdRakeMath: boolean;
+}
+
 function compileRowVariants(
   row: TournamentRow,
   idx: number,
   model: SimulationInput["finishModel"],
   calibrationMode: CalibrationMode,
   primedopeStyleEV: boolean,
+  forcePrimedopePayouts: boolean,
+  pdFlags: PdCompareFlags = { usePdFinishModel: false, usePdRakeMath: false },
 ): { entry: CompiledEntry; share: number }[] {
   const fv = row.fieldVariability;
   if (!fv || fv.kind === "fixed") {
     return [
       {
-        entry: compileSingleEntry(row, idx, row.players, model, calibrationMode, primedopeStyleEV),
+        entry: compileSingleEntry(row, idx, row.players, model, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
         share: 1,
       },
     ];
@@ -714,7 +764,7 @@ function compileRowVariants(
     const mid = Math.round((lo + hi) / 2);
     return [
       {
-        entry: compileSingleEntry(row, idx, mid, model, calibrationMode, primedopeStyleEV),
+        entry: compileSingleEntry(row, idx, mid, model, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
         share: 1,
       },
     ];
@@ -726,7 +776,7 @@ function compileRowVariants(
     const t = (b + 0.5) / buckets;
     const players = Math.round(lo + t * (hi - lo));
     variants.push({
-      entry: compileSingleEntry(row, idx, players, model, calibrationMode, primedopeStyleEV),
+      entry: compileSingleEntry(row, idx, players, model, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
       share,
     });
   }
@@ -734,25 +784,6 @@ function compileRowVariants(
 }
 
 type ProgressCb = (done: number, total: number) => void;
-
-/**
- * Polar Box-Muller: maps two uniform draws to a standard normal. We burn
- * at most a couple of extra rng() calls per sample for the rejection —
- * negligible vs. the inner tournament loop. Kept for paths that only need
- * a single draw (e.g. per-sample deltaROI); hot-loop paths use makeGauss
- * below which caches the second value.
- */
-function boxMuller(rng: () => number): number {
-  let u = 0;
-  let v = 0;
-  let s = 0;
-  do {
-    u = rng() * 2 - 1;
-    v = rng() * 2 - 1;
-    s = u * u + v * v;
-  } while (s === 0 || s >= 1);
-  return u * Math.sqrt((-2 * Math.log(s)) / s);
-}
 
 /**
  * Marsaglia polar gaussian factory. The polar method natively yields two
@@ -1061,11 +1092,12 @@ export function buildResult(
   // longest breakeven / recovery length across samples. Int32Array → Float64
   // copy is cheap. Recovery uses recovered-only (unrecovered share is
   // reported separately in stats).
-  // Streak histograms now count EVERY breakeven / cashless streak across
-  // every sample (not just the longest per sample). The chart answers "how
-  // often do streaks of a given length occur" rather than "how often does a
-  // sample's longest streak fall in this bucket" — a much stronger signal
-  // for grinders asking "how common is a 50-tourney brick".
+  // Cashless histogram counts EVERY cashless streak across every sample —
+  // answers "how often do streaks of a given length occur". The breakeven
+  // histogram is a different shape: the "playing for nothing" metric is
+  // the longest horizontal chord of the profit trajectory, which is a
+  // single number per sample, so its histogram is a distribution over
+  // samples ("how many runs have a longest-chord of this length").
   const longestBreakevenHistogram = histogramFromCounts(
     shard.breakevenStreakCounts,
     40,
@@ -1591,8 +1623,10 @@ export interface RawShard {
   longestBreakevens: Int32Array;
   longestCashless: Int32Array;
   recoveryLengths: Int32Array;
-  /** Per-length histograms of ALL breakeven / cashless streaks within the
-   *  shard (not just the longest per sample). Index = streak length in
+  /** Per-length histograms. `breakevenStreakCounts` counts one entry per
+   *  sample at the length of its longest horizontal chord (the new
+   *  "playing for nothing" metric). `cashlessStreakCounts` still counts
+   *  EVERY cashless streak across every sample. Index = length in
    *  tournaments. Length = N + 1. Merged additively across shards. */
   breakevenStreakCounts: Int32Array;
   cashlessStreakCounts: Int32Array;
@@ -1706,10 +1740,18 @@ export function simulateShard(
   const hiK = hiGrid.K;
   const hiK1 = hiK + 1;
   const hiCheckpointIdx = hiGrid.checkpointIdx;
-  // Only the leading shard (sStart===0) captures the visible sample paths.
-  // Follow-up shards would produce paths well past the first ~20 rendered
-  // ones, so we skip their allocation entirely.
-  const wantHiResPaths = sStart === 0 ? Math.min(20, shardSize) : 0;
+  // Hi-res path budget is split proportionally across shards so the visible
+  // run count stays ≈ HI_RES_GLOBAL_CAP regardless of pool / oversubscription.
+  // Under 4×W oversub with W=16 and S=10k, a single shard holds ~156 samples —
+  // if only shard 0 captured paths we'd cap the slider at ~156 instead of 1000.
+  const HI_RES_GLOBAL_CAP = 1000;
+  const wantHiResPaths = Math.min(
+    shardSize,
+    Math.max(
+      1,
+      Math.ceil((shardSize / Math.max(1, input.samples)) * HI_RES_GLOBAL_CAP),
+    ),
+  );
   const hiResPaths: Float64Array[] = new Array(wantHiResPaths);
   for (let i = 0; i < wantHiResPaths; i++) hiResPaths[i] = new Float64Array(hiK1);
   const hiResBestPath = new Float64Array(hiK1);
@@ -1791,8 +1833,6 @@ export function simulateShard(
     let runningMin = 0;
     let maxDD = 0;
     let maxUp = 0;
-    let breakevenLen = 0;
-    let longestBreakeven = 0;
     let cashlessRun = 0;
     let longestCashlessRun = 0;
     let ddTroughIdx = -1;
@@ -2019,15 +2059,10 @@ export function simulateShard(
       }
 
       if (profit > runningMax) {
-        if (breakevenLen > 0) breakevenStreakCounts[breakevenLen]++;
         runningMax = profit;
-        breakevenLen = 0;
         if (ddTroughIdx >= 0 && sampleRecoveryLen < 0) {
           sampleRecoveryLen = i - ddTroughIdx;
         }
-      } else {
-        breakevenLen++;
-        if (breakevenLen > longestBreakeven) longestBreakeven = breakevenLen;
       }
       if (profit < runningMin) runningMin = profit;
       const dd = runningMax - profit;
@@ -2068,12 +2103,40 @@ export function simulateShard(
       hiResWorstPath.set(hiResScratch);
     }
 
-    // End-of-sample: any streak still open at the last tournament was never
-    // terminated — count it once so the histogram reflects it. Without this
-    // flush, samples where the grinder never recovers / never hits a peak
-    // would be missing from the "how often" totals.
-    if (breakevenLen > 0) breakevenStreakCounts[breakevenLen]++;
+    // End-of-sample: any cashless streak still open at the last tournament
+    // was never terminated — count it so the histogram reflects it.
     if (cashlessRun > 0) cashlessStreakCounts[cashlessRun]++;
+
+    // "Playing for nothing" = longest horizontal chord of the profit
+    // trajectory: max(j − i) such that the path, interpolated between
+    // checkpoint samples, revisits level profit[i] at time j. Computed
+    // here on the K=80 checkpoint grid for cheap O(K²) scanning with
+    // early-termination; result is scaled from grid steps to tournaments.
+    let longestChordGrid = 0;
+    for (let ii = 0; ii < K1 - 1; ii++) {
+      if (K1 - 1 - ii <= longestChordGrid) break;
+      const Pi = pathMatrix[pathBase + ii];
+      for (let jj = K1 - 1; jj > ii; jj--) {
+        if (jj - ii <= longestChordGrid) break;
+        const a = pathMatrix[pathBase + jj - 1];
+        const b = pathMatrix[pathBase + jj];
+        const lo = a < b ? a : b;
+        const hi = a < b ? b : a;
+        if (lo <= Pi && Pi <= hi) {
+          // Skip the trivial case where the segment only touches Pi at
+          // its left endpoint (which is time ii itself): that isn't a
+          // distinct second point.
+          if (jj === ii + 1 && a === Pi && b !== Pi) break;
+          longestChordGrid = jj - ii;
+          break;
+        }
+      }
+    }
+    const longestBreakeven =
+      K > 0 ? Math.round((longestChordGrid / K) * N) : 0;
+    if (longestBreakeven > 0 && longestBreakeven <= N) {
+      breakevenStreakCounts[longestBreakeven]++;
+    }
 
     finalProfits[localS] = profit;
     maxDrawdowns[localS] = maxDD;
@@ -2163,12 +2226,15 @@ export function mergeShards(
     }
     ruinedCount += sh.ruinedCount;
   }
-  // Hi-res aggregation: leading shard owns the visible sample paths, global
-  // best/worst taken by scanning per-shard extrema (each shard already swapped
-  // its own locally-extreme scratch into shardBest/WorstPath during simulation).
+  // Hi-res aggregation: concatenate per-shard hiResPaths in sStart order so
+  // the slider exposes the union of each shard's budget (not just shard 0).
+  // Global best/worst are still picked by scanning per-shard extrema.
   const leading = sorted[0];
   const hiResCheckpointIdx = leading.hiResCheckpointIdx;
-  const hiResPaths = leading.hiResPaths;
+  const hiResPaths: Float64Array[] = [];
+  for (const sh of sorted) {
+    for (const p of sh.hiResPaths) hiResPaths.push(p);
+  }
   let bestShard = leading;
   let worstShard = leading;
   for (const sh of sorted) {

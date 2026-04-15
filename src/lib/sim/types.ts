@@ -1,3 +1,13 @@
+/**
+ * Canonical type definitions for the simulator. Everything downstream of
+ * `SimulationInput` / `SimulationResult` lives here. If a type leaks beyond
+ * `src/lib/sim/` it should be re-exported explicitly — the boundary is load-
+ * bearing for worker-message serialization.
+ *
+ * Adding a new stochastic channel / payout structure / finish model: add the
+ * field here first, then thread it through `engine.ts` and (if user-visible)
+ * `dict.ts`.
+ */
 export type PayoutStructureId =
   | "mtt-standard"
   | "mtt-primedope"
@@ -35,6 +45,27 @@ export interface FinishModelConfig {
   empiricalBuckets?: number[];
 }
 
+/**
+ * High-level game format for a tournament row. Drives sensible defaults
+ * for re-entry / bounty / mystery fields in the editor and feeds a
+ * single badge into the preview. The engine itself reads the underlying
+ * fields (`maxEntries`, `bountyFraction`, `mysteryBountyVariance`), so
+ * gameType is purely a UX grouping — switching it just rewrites those
+ * fields to preset values.
+ *
+ * - "freezeout":         one entry per player, no bounty.
+ * - "freezeout-reentry": re-entry allowed, no bounty.
+ * - "pko":               progressive knockout — half the buy-in into bounty.
+ * - "mystery":           mystery bounty — log-normal per-KO variance.
+ * - "mystery-royale":    mystery bounty with jackpot-tier right tail.
+ */
+export type GameType =
+  | "freezeout"
+  | "freezeout-reentry"
+  | "pko"
+  | "mystery"
+  | "mystery-royale";
+
 export type FieldVariability =
   | { kind: "fixed" }
   | { kind: "uniform"; min: number; max: number; buckets?: number };
@@ -43,6 +74,14 @@ export interface TournamentRow {
   id: string;
   label?: string;
   tags?: string[];
+
+  /**
+   * High-level format (freezeout, re-entry, PKO, mystery, mystery-royale).
+   * Undefined is treated as a plain freezeout for backward compat — the
+   * legacy rows have `maxEntries`/`bountyFraction` set directly and don't
+   * need to know about gameType. See `GameType` for the full taxonomy.
+   */
+  gameType?: GameType;
 
   /** Nominal field size; used as midpoint when variability = uniform. */
   players: number;
@@ -224,15 +263,6 @@ export interface SimulationInput {
    */
   compareWithPrimedope?: boolean;
   /**
-   * "PrimeDope-style EV": ignore rake when computing the binary-ITM target
-   * winnings, so the comparison run matches PrimeDope's site numerically
-   * (their ROI is profit / sum-buy-ins, not profit / sum-cost). This is
-   * formally wrong — rake IS part of your cost basis — but lets the side-
-   * by-side comparison line up with their published SDs and bankroll
-   * requirements. Default: true. Only affects the binary-ITM comparison.
-   */
-  primedopeStyleEV?: boolean;
-  /**
    * Twin-run mode for the side-by-side trajectory view. "random" (default)
    * runs the same model twice with two different seeds — shows how much two
    * fresh draws diverge. "primedope" runs our α-calibrated model on the left
@@ -250,6 +280,42 @@ export interface SimulationInput {
   modelPresetId?: string;
   /** Internal dispatch; callers should set compareWithPrimedope instead. */
   calibrationMode?: CalibrationMode;
+  /**
+   * When true, the PrimeDope comparison pass (binary-ITM) also forcibly
+   * substitutes PD's native payout curve (`mtt-primedope`) for every row
+   * in the schedule, regardless of the user's selected payout structure.
+   *
+   * Default: `false` — both passes honour `row.payoutStructure`, so the
+   * only thing that differs between the α pane and the PD pane is the
+   * finish model. That's usually what users want: "how much does our
+   * algorithm change the answer on an identical setup?" rather than
+   * "how much does PD's whole stack (model + payout) differ from ours".
+   *
+   * Enable this flag when you explicitly want to reproduce PD's σ on
+   * their reference scenarios — PD's own math assumes their native
+   * curves, and the flag routes the binary-ITM pass onto those same
+   * curves so the numbers land where PD reports them.
+   */
+  usePrimedopePayouts?: boolean;
+  /**
+   * PrimeDope comparison toggles: when the run is in `primedope-binary-itm`
+   * mode, each flag independently controls whether the PD pass keeps PD's
+   * native behaviour for that aspect. All three default to `true`, so the
+   * PD pane reproduces the live site exactly; flipping any flag off isolates
+   * how much that single PD quirk is contributing to the σ gap.
+   *
+   * - `usePrimedopeFinishModel`: binary-ITM (uniform-over-paid) vs our α-model.
+   * - `usePrimedopeRakeMath`: post-rake pool as variance driver (PD's §7 quirk)
+   *   vs the consistent pre-rake pool we use outside compare mode.
+   */
+  usePrimedopeFinishModel?: boolean;
+  usePrimedopeRakeMath?: boolean;
+  /**
+   * PD-style EV: when true, SD calc ignores rake in cost basis so our numbers
+   * match PrimeDope byte-for-byte. Only meaningful under
+   * `calibrationMode: "primedope-binary-itm"`.
+   */
+  primedopeStyleEV?: boolean;
   /**
    * One-sigma uncertainty on the player's true ROI, expressed as a fraction
    * (e.g. 0.05 = ±5 pp on the configured target). Defaults to 0 — the

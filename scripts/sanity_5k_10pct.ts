@@ -69,8 +69,8 @@ checks.push([
   pct(s.probProfit) + " (median " + m(s.median) + " < mean " + m(s.mean) + " — right-skew)",
 ]);
 checks.push([
-  "median negative (right-skew sanity)",
-  s.median < 0 && s.mean > 0,
+  "median < mean (right-skew sanity)",
+  s.median < s.mean && s.mean > 0,
   `med ${m(s.median)}, mean ${m(s.mean)}`,
 ]);
 checks.push([

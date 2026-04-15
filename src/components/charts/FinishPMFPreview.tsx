@@ -8,7 +8,9 @@ import {
 } from "@/lib/sim/finishModel";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import type { DictKey } from "@/lib/i18n/dict";
+import { plural, WORDS } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 
 interface Props {
@@ -17,6 +19,10 @@ interface Props {
   /** If provided, the fixed-ITM shape controls panel is shown below the
    *  tier breakdown and can edit row.itmRate / row.finishBuckets. */
   onRowChange?: (updates: Partial<TournamentRow>) => void;
+  /** When true, the global ITM cascade is driving row.itmRate — hide
+   *  / disable the shape editor so the user knows tweaks would be
+   *  overridden on the next render. */
+  itmLocked?: boolean;
 }
 
 type TierKey =
@@ -28,6 +34,8 @@ type TierKey =
   | "top10"
   | "ft"
   | "restItm"
+  | "firstMincash"
+  | "bubble"
   | "ootm";
 
 type TierLabelKey =
@@ -39,18 +47,38 @@ type TierLabelKey =
   | "preview.tierTop10"
   | "preview.tierFt"
   | "preview.tierRestItm"
+  | "preview.probFirstCash"
+  | "preview.probBubble"
   | "preview.tierOotm";
 
 interface TierRow {
   key: TierKey;
   labelKey: TierLabelKey;
   color: string;
+  /** Dollar EV contributed by places in this tier (gross). */
   ev: number;
+  /** Skill-calibrated share of finishes in this tier (Σ pmf). */
   field: number;
+  /** Equilibrium (uniform 1/N) share — the "zero-skill" baseline. */
+  eqShare: number;
+  /** Net dollar contribution to ROI per entry: ev − field × entryCost.
+   *  Sums across disjoint tiers to evPerEntry − entryCost = net profit. */
+  netDollars: number;
+  /** Same calc but at zero-skill equilibrium (uniform 1/N PMF). Sum
+   *  across all disjoint tiers equals −rake per entry, since at random
+   *  play the expected return is exactly the prize pool divided by
+   *  players, and entryCost = buyIn × (1 + rake). */
+  eqNetDollars: number;
+  /** Seat count used in the label suffix. For cumulative-label tiers
+   *  (winner, top0.1%, top0.5%, top1%, top5%, top10%, final table) this
+   *  is `hi` — the cumulative top cut the label refers to. For disjoint
+   *  tiers (rest-ITM, first min-cash, bubble, OOTM) it's the band width. */
+  displaySeats: number;
 }
 
-export function FinishPMFPreview({ row, model, onRowChange }: Props) {
+export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) {
   const t = useT();
+  const { locale } = useLocale();
   const { advanced } = useAdvancedMode();
 
   const stats = useMemo(() => computeRowStats(row, model), [row, model]);
@@ -69,10 +97,6 @@ export function FinishPMFPreview({ row, model, onRowChange }: Props) {
     return `${sign}$${Math.round(abs).toLocaleString()}`;
   };
 
-  const pct = (v: number) =>
-    `${(v * 100).toFixed(v < 0.001 ? 2 : v < 0.1 ? 1 : 0)}%`;
-
-  const itmOne = stats.itm > 0 ? Math.max(1, Math.round(1 / stats.itm)) : 0;
   const netProfitPerEntry = stats.evPerEntry - stats.cost;
 
   // Top-heaviness hero. For small/medium fields we describe the top-1%
@@ -120,10 +144,6 @@ export function FinishPMFPreview({ row, model, onRowChange }: Props) {
             String(Math.max(1, Math.round(1 / stats.halfMassField))),
           )
       : null;
-
-  const itmLine = t("preview.itmLine")
-    .replace("{n}", itmOne > 0 ? String(itmOne) : "∞")
-    .replace("{pct}", pct(stats.itm));
 
   return (
     <div className="flex flex-col gap-5">
@@ -173,12 +193,6 @@ export function FinishPMFPreview({ row, model, onRowChange }: Props) {
             </div>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--color-border)] pt-2 text-[11px] text-[color:var(--color-fg-muted)]">
-          <span>{itmLine}</span>
-          <span className="tabular-nums text-[color:var(--color-fg-dim)]">
-            {t("preview.sigmaLabel")} {moneyFmt(stats.payoutStd)}
-          </span>
-        </div>
       </div>
 
       {/* Hero: top-heaviness — the point of the whole widget */}
@@ -199,68 +213,247 @@ export function FinishPMFPreview({ row, model, onRowChange }: Props) {
         </div>
       </div>
 
-      {/* Tier-by-tier breakdown: shared grid template for header + rows */}
+      {/* Tier-by-tier breakdown + discrete position rows. Shared grid
+          template: swatch | label | bar | %EV | field % | equilibrium % | $ ROI */}
       <div className="flex flex-col gap-1.5">
-        <div className="grid grid-cols-[10px_minmax(0,1fr)_minmax(48px,1.25fr)_2.75rem_2.75rem] items-center gap-x-2 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        <div className="grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
           <span />
           <span>{t("preview.evBreakdown")}</span>
           <span />
           <span className="text-right tabular-nums">{t("preview.colEv")}</span>
           <span className="text-right tabular-nums">{t("preview.colField")}</span>
+          <span className="text-right tabular-nums">{t("preview.colEq")}</span>
+          <span className="text-right tabular-nums">{t("preview.colRoi")}</span>
         </div>
         <div className="flex flex-col divide-y divide-[color:var(--color-border)]/60">
-          {stats.tiers.map((tier) => {
-            const evShare = tier.ev / evTotal;
-            const fieldShare = tier.field;
-            if (evShare <= 0.0005 && fieldShare <= 0.0005) return null;
-            return (
-              <div
-                key={tier.key}
-                className="grid grid-cols-[10px_minmax(0,1fr)_minmax(48px,1.25fr)_2.75rem_2.75rem] items-center gap-x-2 py-1.5 text-[11px]"
-              >
-                <span
-                  className="h-2.5 w-2.5 rounded-sm"
-                  style={{ background: tier.color }}
-                />
-                <span className="text-[color:var(--color-fg)]">
-                  {t(tier.labelKey)}
-                </span>
-                <div className="relative h-2 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
-                  {/* Field share — background pill */}
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-sm"
-                    style={{
-                      width: `${fieldShare * 100}%`,
-                      background: tier.color,
-                      opacity: 0.3,
-                    }}
-                  />
-                  {/* EV share — solid foreground */}
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-sm"
-                    style={{
-                      width: `${evShare * 100}%`,
-                      background: tier.color,
-                    }}
-                  />
-                </div>
-                <span className="text-right font-mono tabular-nums text-[color:var(--color-fg)]">
-                  {pct(evShare)}
-                </span>
-                <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
-                  {pct(fieldShare)}
-                </span>
-              </div>
+          {(() => {
+            const rows: React.ReactNode[] = [];
+            // Disjoint tiers + interleaved cumulative summary rows (top3
+            // and FT) injected right after the winner tier, so "топ3" and
+            // "финалка" sit next to "1st place" instead of at the end.
+            for (const tier of stats.tiers) {
+              const evShare = tier.ev / evTotal;
+              const fieldShare = tier.field;
+              if (evShare <= 0.0005 && fieldShare <= 0.0005) continue;
+              const tierSeats = Math.max(1, tier.displaySeats);
+              rows.push(
+                <EvBreakdownRow
+                  key={tier.key}
+                  label={t(tier.labelKey)}
+                  color={tier.color}
+                  evShare={evShare}
+                  fieldShare={fieldShare}
+                  eqShare={tier.eqShare}
+                  netDollars={tier.netDollars}
+                  seats={tierSeats}
+                  seatsWord={plural(locale, tierSeats, WORDS.person)}
+                />,
+              );
+              if (tier.key === "winner") {
+                for (const p of stats.positions) {
+                  const posSeats = Math.max(
+                    1,
+                    Math.round(p.eqShare * row.players),
+                  );
+                  rows.push(
+                    <EvBreakdownRow
+                      key={`pos-${p.key}`}
+                      label={t(p.labelKey)}
+                      color={p.color}
+                      evShare={p.ev}
+                      fieldShare={p.field}
+                      eqShare={p.eqShare}
+                      netDollars={p.netDollars}
+                      seats={posSeats}
+                      seatsWord={plural(locale, posSeats, WORDS.person)}
+                      cumulative
+                    />,
+                  );
+                }
+              }
+            }
+            // Footer: the column-wise sum of net $ across disjoint tiers
+            // equals net profit per entry — the user asked for ROI to
+            // literally appear as the bottom of this column.
+            const tierNetSum = stats.tiers.reduce(
+              (a, x) => a + x.netDollars,
+              0,
             );
-          })}
+            const tierEqNetSum = stats.tiers.reduce(
+              (a, x) => a + x.eqNetDollars,
+              0,
+            );
+            rows.push(
+              <EvBreakdownFooter
+                key="__footer__"
+                label={t("preview.evBreakdownTotal")}
+                netDollars={tierNetSum}
+              />,
+            );
+            rows.push(
+              <EvBreakdownFooter
+                key="__footer_eq__"
+                label={t("preview.evBreakdownEq")}
+                netDollars={tierEqNetSum}
+                muted
+              />,
+            );
+            return rows;
+          })()}
         </div>
       </div>
 
-      {advanced && onRowChange && (
+      {advanced && onRowChange && !itmLocked && (
         <ShapeControls row={row} stats={stats} onRowChange={onRowChange} />
+      )}
+      {advanced && itmLocked && (
+        <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("preview.itmLocked")}
+        </div>
       )}
     </div>
   );
+}
+
+function EvBreakdownRow({
+  label,
+  color,
+  evShare,
+  fieldShare,
+  eqShare,
+  netDollars,
+  seats,
+  seatsWord,
+  cumulative,
+}: {
+  label: string;
+  color: string;
+  evShare: number;
+  fieldShare: number;
+  eqShare: number;
+  netDollars: number;
+  seats: number;
+  seatsWord: string;
+  cumulative?: boolean;
+}) {
+  const labelClass = cumulative
+    ? "italic text-[color:var(--color-fg-dim)]"
+    : "text-[color:var(--color-fg)]";
+  const netClass =
+    netDollars > 0
+      ? "text-[color:var(--color-accent)]"
+      : netDollars < 0
+        ? "text-[color:var(--color-danger)]"
+        : "text-[color:var(--color-fg-dim)]";
+  return (
+    <div className="grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px]">
+      <span
+        className="h-2.5 w-2.5 rounded-sm"
+        style={{ background: color }}
+      />
+      <span className={labelClass}>
+        {label}
+        {seats > 1 && (
+          <span className="ml-1 text-[color:var(--color-fg-dim)]">
+            · {seats.toLocaleString()} {seatsWord}
+          </span>
+        )}
+      </span>
+      <div className="relative h-2 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
+        <div
+          className="absolute inset-y-0 left-0 rounded-sm"
+          style={{
+            width: `${Math.min(100, Math.max(0, eqShare * 100))}%`,
+            background: color,
+            opacity: 0.3,
+          }}
+        />
+        <div
+          className="absolute inset-y-0 left-0 rounded-sm"
+          style={{
+            width: `${Math.min(100, Math.max(0, evShare * 100))}%`,
+            background: color,
+          }}
+        />
+      </div>
+      <span className="text-right font-mono tabular-nums text-[color:var(--color-fg)]">
+        {pct(evShare)}
+      </span>
+      <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+        {pct(fieldShare)}
+      </span>
+      <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+        {fmtEq(eqShare)}
+      </span>
+      <span
+        className={`text-right font-mono tabular-nums ${cumulative ? "opacity-60 " : ""}${netClass}`}
+      >
+        {fmtSignedMoney(netDollars)}
+      </span>
+    </div>
+  );
+}
+
+function EvBreakdownFooter({
+  label,
+  netDollars,
+  muted,
+}: {
+  label: string;
+  netDollars: number;
+  muted?: boolean;
+}) {
+  const netClass = muted
+    ? "text-[color:var(--color-fg-dim)]"
+    : netDollars > 0
+      ? "text-[color:var(--color-accent)]"
+      : netDollars < 0
+        ? "text-[color:var(--color-danger)]"
+        : "text-[color:var(--color-fg-dim)]";
+  return (
+    <div
+      className={
+        muted
+          ? "grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-0.5 text-[10px] font-normal"
+          : "mt-0.5 grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 border-t border-[color:var(--color-border)] pt-1.5 text-[11px] font-semibold"
+      }
+    >
+      <span />
+      <span className="col-span-5 text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        {label}
+      </span>
+      <span className={`text-right font-mono tabular-nums ${netClass}`}>
+        {fmtSignedMoney(netDollars)}
+      </span>
+    </div>
+  );
+}
+
+function fmtSignedMoney(v: number): string {
+  if (!Number.isFinite(v) || Math.abs(v) < 0.005) return "$0";
+  const sign = v < 0 ? "−" : "+";
+  const abs = Math.abs(v);
+  if (abs < 1000) {
+    const hasFraction = Math.abs(abs - Math.round(abs)) > 0.005;
+    return `${sign}$${hasFraction ? abs.toFixed(2) : Math.round(abs).toString()}`;
+  }
+  return `${sign}$${Math.round(abs).toLocaleString()}`;
+}
+
+function pct(v: number): string {
+  if (!(v > 0)) return "0%";
+  if (v >= 0.1) return `${(v * 100).toFixed(0)}%`;
+  if (v >= 0.01) return `${(v * 100).toFixed(1)}%`;
+  if (v >= 0.0001) return `${(v * 100).toFixed(3)}%`;
+  return `${(v * 100).toFixed(4)}%`;
+}
+
+function fmtEq(p: number): string {
+  if (!(p > 0)) return "—";
+  if (p >= 0.1) return `${(p * 100).toFixed(0)}%`;
+  if (p >= 0.01) return `${(p * 100).toFixed(1)}%`;
+  if (p >= 0.0001) return `${(p * 100).toFixed(3)}%`;
+  return `${(p * 100).toFixed(4)}%`;
 }
 
 // ---------------------------------------------------------------------------
@@ -513,8 +706,32 @@ interface RowStats {
   shellP1: number;
   shellTop3: number;
   shellFt: number;
+  /** Equilibrium probability of busting exactly at the bubble (first OOTM place). */
+  shellBubble: number;
+  /** Equilibrium probability of the last paid place — first mincash after the bubble. */
+  shellFirstCash: number;
+  /** Discrete position rows (top 1, top 3, final table, first cash, bubble)
+   *  appended to the evBreakdown table. Each already carries EV share +
+   *  field/equilibrium probability — rendered with the same row shape as
+   *  tier rows but with an added rightmost equilibrium % column. */
+  positions: PositionRow[];
   /** Number of paid places (= payouts that are > 0). */
   paidCount: number;
+}
+
+interface PositionRow {
+  key: string;
+  labelKey: DictKey;
+  color: string;
+  /** Fraction of total EV contributed by this slice. */
+  ev: number;
+  /** Skill-calibrated share of finishes in this slice. */
+  field: number;
+  /** Equilibrium share of this slice (width / N). */
+  eqShare: number;
+  /** Net dollar contribution: Σ ev$ − field × entryCost. Not summed into the
+   *  footer (position rows overlap with tiers and each other). */
+  netDollars: number;
 }
 
 /**
@@ -672,57 +889,94 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   }
   const cuts: TierCut[] = [];
   cuts.push({ key: "winner", labelKey: "preview.tierWinner", color: "#ffde51", hi: 1 });
-  // High-field granularity: show top 0.1% / 0.5% / 1% / 5% / 10%; low-field
-  // collapses to just top 1% / top 10% (original layout).
-  const highField = N >= 300;
-  const veryHighField = N >= 1000;
-  if (veryHighField) {
+  // Decide between the fanned-out percentile tiers and a single FT tier.
+  // For small fields top0.1% / 0.5% / 1% / 5% / 10% are all narrower than
+  // the 9-seat final table, which makes the breakdown noisy and visually
+  // dominated by zero-width rows. In that case we collapse all top% bands
+  // into one FT-wide tier — the FT then stands in as the "top of the cash
+  // ladder" summary slice.
+  const maxTopBandWidth = Math.ceil(N * 0.1);
+  const hideTopBandsForFt = maxTopBandWidth < ftEnd;
+  let ftIsTier = false;
+  if (hideTopBandsForFt) {
     cuts.push({
-      key: "top01",
-      labelKey: "preview.tierTop01",
-      color: "#fb923c",
-      hi: Math.ceil(N * 0.001),
+      key: "ft",
+      labelKey: "preview.tierFt",
+      color: "#a855f7",
+      hi: ftEnd,
+    });
+    ftIsTier = true;
+  } else {
+    // High-field granularity: show top 0.1% / 0.5% / 1% / 5% / 10%; low-field
+    // collapses to just top 1% / top 10% (original layout).
+    const highField = N >= 300;
+    const veryHighField = N >= 1000;
+    if (veryHighField) {
+      cuts.push({
+        key: "top01",
+        labelKey: "preview.tierTop01",
+        color: "#fb923c",
+        hi: Math.ceil(N * 0.001),
+      });
+    }
+    if (highField) {
+      cuts.push({
+        key: "top05",
+        labelKey: "preview.tierTop05",
+        color: "#f97316",
+        hi: Math.ceil(N * 0.005),
+      });
+    }
+    cuts.push({
+      key: "top1",
+      labelKey: "preview.tierTop1",
+      color: "#ea580c",
+      hi: Math.ceil(N * 0.01),
+    });
+    if (highField) {
+      cuts.push({
+        key: "top5",
+        labelKey: "preview.tierTop5",
+        color: "#c026d3",
+        hi: Math.ceil(N * 0.05),
+      });
+    }
+    cuts.push({
+      key: "top10",
+      labelKey: "preview.tierTop10",
+      color: "#a855f7",
+      hi: Math.ceil(N * 0.1),
     });
   }
-  if (highField) {
+  // Bottom of the cash ladder — the user wants a disjoint chain:
+  //   restItm (everything paid below top-10%, excluding first min-cash)
+  //   → firstMincash (the last paid place)
+  //   → bubble (the first unpaid place)
+  //   → ootm (rest of the unpaid field)
+  // prevHi auto-drops cuts that collapse to zero width (small fields where
+  // firstMincash / bubble are already absorbed by a higher tier).
+  if (paidCount >= 2) {
     cuts.push({
-      key: "top05",
-      labelKey: "preview.tierTop05",
-      color: "#f97316",
-      hi: Math.ceil(N * 0.005),
+      key: "restItm",
+      labelKey: "preview.tierRestItm",
+      color: "#64748b",
+      hi: paidCount - 1,
+    });
+    cuts.push({
+      key: "firstMincash",
+      labelKey: "preview.probFirstCash",
+      color: "#94a3b8",
+      hi: paidCount,
     });
   }
-  cuts.push({
-    key: "top1",
-    labelKey: "preview.tierTop1",
-    color: "#ea580c",
-    hi: Math.ceil(N * 0.01),
-  });
-  if (highField) {
+  if (paidCount < N) {
     cuts.push({
-      key: "top5",
-      labelKey: "preview.tierTop5",
-      color: "#c026d3",
-      hi: Math.ceil(N * 0.05),
+      key: "bubble",
+      labelKey: "preview.probBubble",
+      color: "#475569",
+      hi: paidCount + 1,
     });
   }
-  cuts.push({
-    key: "top10",
-    labelKey: "preview.tierTop10",
-    color: "#a855f7",
-    hi: Math.ceil(N * 0.1),
-  });
-  if (highField && ftEnd > 0 && ftEnd < Math.ceil(N * 0.1)) {
-    // Rare edge case: FT sits inside top10. Skip adding as a separate row
-    // to keep tiers strictly non-overlapping; final-table stats stay
-    // available via ftField/ftEvShare for the hero line.
-  }
-  cuts.push({
-    key: "restItm",
-    labelKey: "preview.tierRestItm",
-    color: "#64748b",
-    hi: paidCount,
-  });
   cuts.push({
     key: "ootm",
     labelKey: "preview.tierOotm",
@@ -740,16 +994,33 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     if (hi <= prevHi) continue;
     let evTier = 0;
     let fTier = 0;
+    let totalTierSum = 0;
     for (let i = prevHi; i < hi; i++) {
       evTier += evByPlace[i];
       fTier += pmf[i];
+      totalTierSum += totalByPlace[i];
     }
+    const width = hi - prevHi;
+    const eqShareTier = N > 0 ? width / N : 0;
+    const evEqTier = N > 0 ? totalTierSum / N : 0;
+    const isCumulativeLabel =
+      c.key === "winner" ||
+      c.key === "top01" ||
+      c.key === "top05" ||
+      c.key === "top1" ||
+      c.key === "top5" ||
+      c.key === "top10" ||
+      c.key === "ft";
     tiers.push({
       key: c.key,
       labelKey: c.labelKey,
       color: c.color,
       ev: evTier,
       field: fTier,
+      eqShare: eqShareTier,
+      netDollars: evTier - fTier * entryCost,
+      eqNetDollars: evEqTier - eqShareTier * entryCost,
+      displaySeats: isCumulativeLabel ? hi : width,
     });
     prevHi = hi;
   }
@@ -770,6 +1041,57 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   for (let i = 0; i < Math.min(3, paidCount); i++) shellTop3Sum += pmf[i];
   let shellFtSum = 0;
   for (let i = 0; i < ftEndShell; i++) shellFtSum += pmf[i];
+  const shellBubble = paidCount < N ? (pmf[paidCount] ?? 0) : 0;
+  const shellFirstCash = paidCount > 0 ? (pmf[paidCount - 1] ?? 0) : 0;
+
+  // Position-specific rows appended to the evBreakdown table. These are
+  // discrete places (not percentile bands), so field share == equilibrium
+  // probability by definition — we still expose both columns so the row
+  // format matches the tier rows above.
+  const evShareRange = (hi: number) => {
+    if (!(totalEv > 1e-9) || hi <= 0) return 0;
+    let s = 0;
+    for (let i = 0; i < hi && i < N; i++) s += evByPlace[i];
+    return s / totalEv;
+  };
+  // firstCash / bubble are rendered as disjoint tiers (see cuts above).
+  // Positions carries the cumulative summary rows top3 / FT — rendered
+  // immediately after the winner tier so the "top of the cash ladder"
+  // summary sits at the head of the table. top1 (1st place alone) is
+  // dropped because it always duplicates the winner tier. ft is dropped
+  // when it is already a disjoint tier (the hide-top-bands case).
+  const evDollarsRange = (hi: number): number => {
+    if (hi <= 0) return 0;
+    let s = 0;
+    for (let i = 0; i < hi && i < N; i++) s += evByPlace[i];
+    return s;
+  };
+  const positions: PositionRow[] = [];
+  if (paidCount >= 2) {
+    const top3Hi = Math.min(3, paidCount);
+    const top3Ev$ = evDollarsRange(top3Hi);
+    positions.push({
+      key: "top3",
+      labelKey: "preview.probTop3",
+      color: "#fb923c",
+      ev: evShareRange(top3Hi),
+      field: shellTop3Sum,
+      eqShare: N > 0 ? top3Hi / N : 0,
+      netDollars: top3Ev$ - shellTop3Sum * entryCost,
+    });
+  }
+  if (!ftIsTier && ftEnd > 0) {
+    const ftEv$ = evDollarsRange(ftEnd);
+    positions.push({
+      key: "ft",
+      labelKey: "preview.probFt",
+      color: "#a855f7",
+      ev: ftEvShare,
+      field: shellFtSum,
+      eqShare: N > 0 ? ftEnd / N : 0,
+      netDollars: ftEv$ - shellFtSum * entryCost,
+    });
+  }
 
   return {
     alpha,
@@ -794,6 +1116,9 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     shellP1,
     shellTop3: shellTop3Sum,
     shellFt: shellFtSum,
+    shellBubble,
+    shellFirstCash,
+    positions,
     paidCount,
   };
 }

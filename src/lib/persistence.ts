@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * localStorage + share-URL persistence. Stores only serializable input
+ * state (schedule + controls) — never `SimulationResult`, never worker
+ * state. All reads validate and fall back cleanly on schema drift; this
+ * is a boundary where defensive parsing is intentional.
+ */
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import type { TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";

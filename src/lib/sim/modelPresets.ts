@@ -16,6 +16,9 @@ export type ModelFieldKey =
   | "finishModelId"
   | "alphaOverride"
   | "compareWithPrimedope"
+  | "usePrimedopePayouts"
+  | "usePrimedopeFinishModel"
+  | "usePrimedopeRakeMath"
   | "roiStdErr"
   | "roiShockPerTourney"
   | "roiShockPerSession"
@@ -43,6 +46,9 @@ const ZERO_SHOCKS: ModelPatch = {
   finishModelId: "power-law",
   alphaOverride: null,
   compareWithPrimedope: true,
+  usePrimedopePayouts: true,
+  usePrimedopeFinishModel: true,
+  usePrimedopeRakeMath: true,
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
@@ -63,11 +69,11 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     patch: {
       ...ZERO_SHOCKS,
       // PrimeDope-equivalent: uniform-lift calibration, no shocks, no tilt,
-      // no skill model nuance. We trigger it via compareWithPrimedope=true
-      // because that's the existing dispatch path; the engine will run the
-      // primedope-uniform-lift calibration as the *primary* result when the
-      // selector is set this way (see runSimulation twin-run logic).
+      // no skill model nuance. This preset is the one place where forcing
+      // the PD payout curve onto the comparison pane is correct — it's
+      // explicitly "reproduce PD's reference σ on their own curve".
       compareWithPrimedope: true,
+      usePrimedopePayouts: true,
     },
   },
   {
@@ -138,6 +144,9 @@ export function extractModelPatch(state: ControlsState): ModelPatch {
     finishModelId: state.finishModelId,
     alphaOverride: state.alphaOverride,
     compareWithPrimedope: state.compareWithPrimedope,
+    usePrimedopePayouts: state.usePrimedopePayouts,
+    usePrimedopeFinishModel: state.usePrimedopeFinishModel,
+    usePrimedopeRakeMath: state.usePrimedopeRakeMath,
     roiStdErr: state.roiStdErr,
     roiShockPerTourney: state.roiShockPerTourney,
     roiShockPerSession: state.roiShockPerSession,

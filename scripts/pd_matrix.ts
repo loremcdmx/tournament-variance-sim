@@ -167,7 +167,6 @@ function runScenario(sc: Scenario) {
     seed: 42,
     finishModel: { id: "power-law" },
     calibrationMode: "primedope-binary-itm",
-    primedopeStyleEV: true,
   };
   return runSimulation(input);
 }

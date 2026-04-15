@@ -5,17 +5,23 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ScheduleEditor } from "@/components/ScheduleEditor";
 import { ControlsPanel, type ControlsState } from "@/components/ControlsPanel";
+import { ModelPresetSelector } from "@/components/ModelPresetSelector";
 import { ResultsView } from "@/components/ResultsView";
+import { BenchConvergenceCard } from "@/components/BenchConvergenceCard";
+import { PayoutStructureCard } from "@/components/PayoutStructureCard";
 import { Section, Card } from "@/components/ui/Section";
 import { CornerToggles } from "@/components/ui/CornerToggles";
 import { FinishPMFPreview } from "@/components/charts/FinishPMFPreview";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
+import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import { plural, WORDS } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { SCENARIOS } from "@/lib/scenarios";
@@ -58,8 +64,10 @@ const initialControls: ControlsState = {
   finishModelId: "power-law",
   alphaOverride: null,
   compareWithPrimedope: true,
+  usePrimedopePayouts: true,
+  usePrimedopeFinishModel: true,
+  usePrimedopeRakeMath: true,
   compareMode: "primedope",
-  primedopeStyleEV: true,
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
@@ -72,6 +80,8 @@ const initialControls: ControlsState = {
   tiltSlowRecoveryFrac: 0.5,
   modelPresetId: "naive",
   empiricalBuckets: undefined,
+  itmGlobalEnabled: false,
+  itmGlobalPct: 15,
 };
 
 interface CompareSlot {
@@ -82,6 +92,7 @@ interface CompareSlot {
 
 export default function Home() {
   const t = useT();
+  const { locale } = useLocale();
   const { advanced } = useAdvancedMode();
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
@@ -96,7 +107,25 @@ export default function Home() {
   );
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
 
-  const { status, progress, result, error, elapsedMs, run, cancel, estimateMs } = useSimulation();
+  const {
+    status,
+    progress,
+    result,
+    error,
+    elapsedMs,
+    run,
+    cancel,
+    estimateMs,
+    availableRuns,
+    activeRunIdx,
+    selectRun,
+    backgroundStatus,
+    runPdOnly,
+    pdStatus,
+    pdProgress,
+    pdResultOverride,
+  } = useSimulation();
+  const lastRunInputRef = useRef<SimulationInput | null>(null);
 
   useEffect(() => {
     const fromUrl = loadFromUrlHash();
@@ -133,9 +162,11 @@ export default function Home() {
           c.finishModelId === "empirical" ? c.empiricalBuckets : undefined,
       },
       compareWithPrimedope: c.compareWithPrimedope,
+      usePrimedopePayouts: c.usePrimedopePayouts,
+      usePrimedopeFinishModel: c.usePrimedopeFinishModel,
+      usePrimedopeRakeMath: c.usePrimedopeRakeMath,
       compareMode: c.compareMode,
       modelPresetId: c.modelPresetId,
-      primedopeStyleEV: c.primedopeStyleEV,
       roiStdErr: c.roiStdErr,
       roiShockPerTourney: c.roiShockPerTourney,
       roiShockPerSession: c.roiShockPerSession,
@@ -148,6 +179,19 @@ export default function Home() {
       tiltSlowRecoveryFrac: c.tiltSlowRecoveryFrac,
     }),
     [],
+  );
+
+  const itmTargetCfg = useMemo(
+    () => ({
+      enabled: controls.itmGlobalEnabled,
+      pct: controls.itmGlobalPct,
+    }),
+    [controls.itmGlobalEnabled, controls.itmGlobalPct],
+  );
+  const itmTargetLocked = isItmTargetActive(itmTargetCfg);
+  const effectiveSchedule = useMemo(
+    () => applyItmTarget(schedule, itmTargetCfg),
+    [schedule, itmTargetCfg],
   );
 
   const previewModel = useMemo(
@@ -163,19 +207,50 @@ export default function Home() {
   );
 
   const feasibility = useMemo(
-    () => validateSchedule(schedule, previewModel),
-    [schedule, previewModel],
+    () => validateSchedule(effectiveSchedule, previewModel),
+    [effectiveSchedule, previewModel],
   );
 
   const onRun = useCallback(() => {
     if (!feasibility.ok) return;
-    const input = buildInput(schedule, controls);
-    input.seed =
+    const freshSeed =
       (((Math.random() * 0xffffffff) >>> 0) ^
         ((Date.now() & 0xffffffff) >>> 0)) >>>
       0;
+    const nextControls = { ...controls, seed: freshSeed };
+    setControls(nextControls);
+    const input = buildInput(effectiveSchedule, nextControls);
+    lastRunInputRef.current = input;
     run(input);
-  }, [schedule, controls, run, buildInput, feasibility.ok]);
+  }, [effectiveSchedule, controls, run, buildInput, feasibility.ok]);
+
+  const onUsePdPayoutsChange = useCallback(
+    (v: boolean) => {
+      setControls((c) => ({ ...c, usePrimedopePayouts: v }));
+      const base = lastRunInputRef.current;
+      if (!base) return;
+      runPdOnly({ ...base, usePrimedopePayouts: v });
+    },
+    [runPdOnly],
+  );
+  const onUsePdFinishModelChange = useCallback(
+    (v: boolean) => {
+      setControls((c) => ({ ...c, usePrimedopeFinishModel: v }));
+      const base = lastRunInputRef.current;
+      if (!base) return;
+      runPdOnly({ ...base, usePrimedopeFinishModel: v });
+    },
+    [runPdOnly],
+  );
+  const onUsePdRakeMathChange = useCallback(
+    (v: boolean) => {
+      setControls((c) => ({ ...c, usePrimedopeRakeMath: v }));
+      const base = lastRunInputRef.current;
+      if (!base) return;
+      runPdOnly({ ...base, usePrimedopeRakeMath: v });
+    },
+    [runPdOnly],
+  );
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -191,12 +266,12 @@ export default function Home() {
   const running = status === "running";
 
   const previewRow = useMemo(() => {
-    if (!schedule.length) return undefined;
+    if (!effectiveSchedule.length) return undefined;
     const found = previewRowId
-      ? schedule.find((r) => r.id === previewRowId)
+      ? effectiveSchedule.find((r) => r.id === previewRowId)
       : undefined;
-    return found ?? schedule[0];
-  }, [schedule, previewRowId]);
+    return found ?? effectiveSchedule[0];
+  }, [effectiveSchedule, previewRowId]);
 
   const fixRowAuto = useCallback(
     (rowId: string) => {
@@ -328,7 +403,9 @@ export default function Home() {
       saveUserPresets(merged);
       setUserPresets(merged);
       window.alert(
-        t("presets.importDone").replace("{n}", String(incoming.length)),
+        t("presets.importDone")
+          .replace("{n}", String(incoming.length))
+          .replace("{_preset}", plural(locale, incoming.length, WORDS.preset)),
       );
     } catch {
       window.alert(t("presets.importError"));
@@ -336,35 +413,31 @@ export default function Home() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-10 sm:py-14">
-      <header className="flex flex-col gap-6">
-        {/* Top strip: kicker + toggles */}
-        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--color-border)] pb-3">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-[color:var(--color-accent)] text-[10px] font-bold text-[color:var(--color-accent)]">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-5 sm:px-6 sm:py-6 xl:max-w-[1400px] 2xl:max-w-[1700px] 3xl:max-w-[2000px] 4xl:max-w-[2400px]">
+      <header className="flex flex-col gap-4">
+        {/* Compact brand strip: ♠ + kicker + title + version + toggles in one row */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[color:var(--color-border)] pb-3">
+          <div className="flex items-baseline gap-3">
+            <span className="inline-flex h-6 w-6 translate-y-[2px] items-center justify-center self-center rounded-sm border border-[color:var(--color-accent)] text-[10px] font-bold text-[color:var(--color-accent)]">
               ♠
             </span>
-            <div className="eyebrow">{t("app.kicker")}</div>
+            <h1 className="text-[22px] font-black uppercase leading-none tracking-[-0.01em] sm:text-[28px]">
+              <span className="text-[color:var(--color-fg)]">
+                {t("app.title").split(" ")[0]}
+              </span>{" "}
+              <span className="text-[color:var(--color-accent)]">
+                {t("app.title").split(" ").slice(1).join(" ") || t("app.title")}
+              </span>
+            </h1>
+            <span className="eyebrow hidden text-[color:var(--color-fg-dim)] sm:inline">
+              v0.3
+            </span>
           </div>
           <CornerToggles />
         </div>
 
-        {/* Editorial hero — FF-style, full width, no side stats */}
-        <div className="relative pt-4 pb-3 sm:pt-6 sm:pb-4">
-          <h1 className="text-[56px] font-black uppercase leading-[0.88] tracking-[-0.02em] sm:text-[96px] lg:text-[128px]">
-            <span className="text-[color:var(--color-fg)]">
-              {t("app.title").split(" ")[0]}
-            </span>
-            <br />
-            <span className="text-[color:var(--color-accent)]">
-              {t("app.title").split(" ").slice(1).join(" ") || t("app.title")}
-            </span>
-          </h1>
-          <div className="eyebrow mt-2 text-right text-[color:var(--color-fg-dim)]">v0.3</div>
-        </div>
-
-        {/* Scenario grid */}
-        <div className="flex flex-col gap-3">
+        {/* Scenario grid — kicked straight to the top so it's in the first viewport */}
+        <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="eyebrow">{t("demo.label")}</span>
             {compareSlot && (
@@ -389,7 +462,7 @@ export default function Home() {
                   type="button"
                   onClick={() => loadScenario(s.id)}
                   title={s.description}
-                  className={`group relative flex flex-col items-start gap-2 overflow-hidden border px-4 py-3 text-left transition-all ${
+                  className={`group relative flex flex-col items-start gap-1.5 overflow-hidden border px-3 py-2 text-left transition-all ${
                     active
                       ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/5"
                       : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] hover:border-[color:var(--color-accent)]/60 hover:bg-[color:var(--color-bg-elev-2)]"
@@ -437,10 +510,22 @@ export default function Home() {
             })}
           </div>
 
-          {/* User-saved presets */}
-          <div className="mt-2 flex flex-col gap-2 border-t border-[color:var(--color-border)] pt-3">
+          {/* User-saved presets — collapsible so they don't push the schedule below the fold */}
+          <details className="group mt-1 border-t border-[color:var(--color-border)] pt-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-accent)]">
+              <span className="eyebrow flex items-center gap-2">
+                <span className="inline-block transition-transform group-open:rotate-90">▸</span>
+                {t("userPreset.label")}
+                {userPresets.length > 0 && (
+                  <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+                    ({userPresets.length})
+                  </span>
+                )}
+              </span>
+            </summary>
+            <div className="mt-2 flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="eyebrow">{t("userPreset.label")}</span>
+              <span className="eyebrow invisible">{t("userPreset.label")}</span>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -554,7 +639,8 @@ export default function Home() {
                 })}
               </div>
             )}
-          </div>
+            </div>
+          </details>
         </div>
       </header>
 
@@ -563,6 +649,27 @@ export default function Home() {
         suit="spade"
         title={t("section.schedule.title")}
       >
+        <div className="mb-4 grid grid-cols-1 items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="min-w-0">
+            <ModelPresetSelector
+              value={controls}
+              onChange={(c) => {
+                setControls(c);
+                setActiveScenarioId(null);
+              }}
+            />
+          </div>
+          <div className="min-w-0">
+            <GlobalItmControl
+              value={controls}
+              onChange={(c) => {
+                setControls(c);
+                setActiveScenarioId(null);
+              }}
+              disabled={running}
+            />
+          </div>
+        </div>
         <ScheduleEditor
           schedule={schedule}
           onChange={(s) => {
@@ -570,6 +677,9 @@ export default function Home() {
             setActiveScenarioId(null);
           }}
           disabled={running}
+          globalItmPct={
+            controls.itmGlobalEnabled ? controls.itmGlobalPct : null
+          }
         />
       </Section>
 
@@ -580,48 +690,48 @@ export default function Home() {
         subtitle={t("section.controls.subtitle")}
       >
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1.6fr_1fr]">
-          <ControlsPanel
-            value={controls}
-            onChange={(c) => {
-              setControls(c);
-              setActiveScenarioId(null);
-            }}
-            onRun={onRun}
-            onCancel={cancel}
-            running={running}
-            progress={progress}
-            estimatedMs={estimateMs(
-              controls.samples,
-              controls.scheduleRepeats,
-              schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
-            )}
-            tournamentsPerSession={
-              schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0) *
-              Math.max(1, controls.scheduleRepeats)
-            }
-            doneSummary={
-              status === "done" && result
-                ? {
-                    mean: result.stats.mean,
-                    median: result.stats.median,
-                    roi: result.stats.mean / result.totalBuyIn,
-                    probProfit: result.stats.probProfit,
-                    riskOfRuin: result.stats.riskOfRuin,
-                    elapsedMs,
-                    resultsAnchorId: "results-top",
-                  }
-                : null
-            }
-          />
+          <div className="flex min-w-0 flex-col gap-5">
+            <ControlsPanel
+              value={controls}
+              onChange={(c) => {
+                setControls(c);
+                setActiveScenarioId(null);
+              }}
+              onRun={onRun}
+              onCancel={cancel}
+              running={running}
+              progress={progress}
+              estimatedMs={estimateMs(
+                controls.samples,
+                controls.scheduleRepeats,
+                schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
+              )}
+              tournamentsPerSession={
+                schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0) *
+                Math.max(1, controls.scheduleRepeats)
+              }
+              doneSummary={
+                status === "done" && result
+                  ? {
+                      mean: result.stats.mean,
+                      median: result.stats.median,
+                      roi: result.stats.mean / result.totalBuyIn,
+                      probProfit: result.stats.probProfit,
+                      riskOfRuin: result.stats.riskOfRuin,
+                      elapsedMs,
+                      resultsAnchorId: "results-top",
+                    }
+                  : null
+              }
+            />
+            <PayoutStructureCard schedule={schedule} />
+          </div>
           {previewRow && (
             <Card className="p-5">
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="flex flex-col gap-0.5">
                   <div className="text-sm font-semibold text-[color:var(--color-fg)]">
                     {t("preview.title")}
-                  </div>
-                  <div className="text-xs text-[color:var(--color-fg-dim)]">
-                    {t("preview.sub")}
                   </div>
                 </div>
                 {schedule.length > 1 && (
@@ -642,6 +752,7 @@ export default function Home() {
               <FinishPMFPreview
                 row={previewRow}
                 model={previewModel}
+                itmLocked={itmTargetLocked}
                 onRowChange={(updates) =>
                   setSchedule((prev) =>
                     prev.map((r) =>
@@ -751,7 +862,20 @@ export default function Home() {
               finishModelId={controls.finishModelId}
               settings={controls}
               elapsedMs={elapsedMs}
+              availableRuns={availableRuns}
+              activeRunIdx={activeRunIdx}
+              onSelectRun={selectRun}
+              backgroundStatus={backgroundStatus}
+              onUsePdPayoutsChange={onUsePdPayoutsChange}
+              onUsePdFinishModelChange={onUsePdFinishModelChange}
+              onUsePdRakeMathChange={onUsePdRakeMathChange}
+              pdOverrideResult={pdResultOverride}
+              pdOverrideStatus={pdStatus}
+              pdOverrideProgress={pdProgress}
             />
+            <div className="mt-6">
+              <BenchConvergenceCard />
+            </div>
           </Section>
         </>
       )}
@@ -825,5 +949,55 @@ function TextBtn({
     >
       {children}
     </button>
+  );
+}
+
+function GlobalItmControl({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ControlsState;
+  onChange: (next: ControlsState) => void;
+  disabled?: boolean;
+}) {
+  const t = useT();
+  return (
+    <div className="flex h-full flex-col gap-2 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+          <input
+            type="checkbox"
+            checked={value.itmGlobalEnabled}
+            disabled={disabled}
+            onChange={(e) =>
+              onChange({ ...value, itmGlobalEnabled: e.target.checked })
+            }
+            className="h-3.5 w-3.5 cursor-pointer accent-[color:var(--color-accent)]"
+          />
+          {t("controls.itmTarget.label")}
+        </label>
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={0.5}
+            max={99}
+            step={0.5}
+            value={value.itmGlobalPct}
+            disabled={disabled || !value.itmGlobalEnabled}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (!Number.isFinite(v)) return;
+              onChange({ ...value, itmGlobalPct: v });
+            }}
+            className="w-20 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-right text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+          />
+          <span className="text-[11px] text-[color:var(--color-fg-dim)]">%</span>
+        </div>
+      </div>
+      <p className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+        {t("controls.itmTarget.body")}
+      </p>
+    </div>
   );
 }

@@ -6,7 +6,6 @@ import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
-import { ModelPresetSelector } from "./ModelPresetSelector";
 
 export interface ControlsState {
   scheduleRepeats: number;
@@ -16,10 +15,18 @@ export interface ControlsState {
   finishModelId: FinishModelId;
   alphaOverride: number | null;
   compareWithPrimedope: boolean;
+  /**
+   * When true, the PrimeDope comparison pass also substitutes PD's native
+   * payout curve. Default false — both passes use the user's selected
+   * payout so the A/B diff isolates the finish-model effect.
+   */
+  usePrimedopePayouts: boolean;
+  /** Keep PD's binary-ITM (uniform-over-paid) finish model on the PD pane. */
+  usePrimedopeFinishModel: boolean;
+  /** Keep PD's post-rake-pool variance quirk on the PD pane. */
+  usePrimedopeRakeMath: boolean;
   /** Twin-run mode: "random" = two seeds, same model; "primedope" = same seed, our vs uniform-lift. */
   compareMode: "random" | "primedope";
-  /** Match PrimeDope's (incorrect) buy-in-only EV calc on the comparison run. */
-  primedopeStyleEV: boolean;
   /**
    * One-sigma uncertainty on your ROI estimate, as a fraction. E.g. 0.05
    * = "maybe my true ROI is ±5 pp from what I think". Zero by default.
@@ -38,6 +45,10 @@ export interface ControlsState {
   tiltSlowRecoveryFrac: number;
   /** Active model preset id. "custom" when user has hand-tuned. */
   modelPresetId: string;
+  /** Global player ITM% default. Applied to every row that doesn't carry
+   *  an explicit per-row `itmRate` override. Whole-number percent. */
+  itmGlobalEnabled: boolean;
+  itmGlobalPct: number;
   /**
    * Empirical histogram buckets in arbitrary units. Parsed out of CSV /
    * paste upload — each line is one finishing position from a real
@@ -188,8 +199,6 @@ export function ControlsPanel({
         disabled={running}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      <ModelPresetSelector value={value} onChange={onChange} />
-
       {/* Section A — Run controls (streak-grinder primary: sessions, samples, bankroll) */}
       <SectionTitle>{t("controls.section.run")}</SectionTitle>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -269,24 +278,6 @@ export function ControlsPanel({
           </select>
         </Field>
       </div>
-      <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-[color:var(--color-fg-muted)]">
-        <input
-          type="checkbox"
-          checked={value.primedopeStyleEV}
-          onChange={(e) => set("primedopeStyleEV", e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-[color:var(--color-accent)]"
-        />
-        <span>
-          <span className="font-medium text-[color:var(--color-fg)]">
-            {t("controls.pdStyleEV.label")}
-          </span>{" "}
-          — {t("controls.pdStyleEV.body")}{" "}
-          <span className="text-[color:var(--color-fg-dim)]">
-            {t("controls.pdStyleEV.caveat")}
-          </span>
-        </span>
-      </label>
-
       {/* Section B — Skill model (how ROI maps to finish positions) */}
       <SectionTitle>{t("controls.section.skill")}</SectionTitle>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

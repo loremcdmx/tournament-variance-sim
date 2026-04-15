@@ -37,12 +37,14 @@ describe("payout tables", () => {
     expect(topH).toBeGreaterThan(flat);
   });
 
-  it("mtt-primedope matches PD h[8] byte-for-byte at N=100", () => {
-    // Reverse-engineered from tmp_legacy.js h[8] — the exact PrimeDope
-    // "15 places paid" table. See notes/primedope_sd_theories.md.
+  it("mtt-primedope matches PD's live paid=15 curve byte-for-byte at N=100", () => {
+    // Scraped from the live `sub_routine=payout_info` endpoint (see
+    // pdCurves.ts top-of-file comment). PD updated their table post-
+    // tmp_legacy.js: 1st is now 28 % (was 25.5 %), tail is flat 2.1 %
+    // for places 10–15 instead of the old stepped 2.5/2.5/2.5/2/2/2.
     const expected = [
-      0.255, 0.16, 0.115, 0.09, 0.075, 0.06, 0.045, 0.035, 0.03, 0.025,
-      0.025, 0.025, 0.02, 0.02, 0.02,
+      0.28, 0.17, 0.106, 0.086, 0.076, 0.053, 0.043, 0.033, 0.027,
+      0.021, 0.021, 0.021, 0.021, 0.021, 0.021,
     ];
     const table = getPayoutTable("mtt-primedope", 100);
     expect(table).toHaveLength(15);

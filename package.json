@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "postinstall": "git config core.hooksPath .githooks || true",
+    "bench:convergence": "tsx scripts/bench_convergence.ts"
   },
   "dependencies": {
     "lz-string": "^1.5.0",

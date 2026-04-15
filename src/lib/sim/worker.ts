@@ -1,4 +1,13 @@
 /// <reference lib="webworker" />
+/**
+ * Thin dispatcher for the engine. A worker receives `BuildRequest`
+ * (compile the schedule once) or `ShardRequest` (simulate a contiguous
+ * `[sStart, sEnd)` slice), runs the pure engine, and posts progress +
+ * results back. Stateless between messages — the compiled schedule is
+ * serialized in every `ShardRequest` so workers never share mutable state.
+ *
+ * Do not put React, DOM, or timing calls here. Keep it mechanical.
+ */
 import {
   buildResult,
   compileSchedule,

@@ -1,0 +1,37 @@
+{
+  "id": "gg-mini-coinhunter-pko-2026-04-14",
+  "source": "GGPoker",
+  "tournament": "₹11 Mini CoinHunter PKO",
+  "gameType": "NLH",
+  "format": "bounty",
+  "currency": "INR",
+  "buyIn": 11,
+  "entries": 541,
+  "uniqueEntries": 437,
+  "reEntries": 104,
+  "prizePool": 5474,
+  "paid": 62,
+  "capturedAt": "2026-04-14",
+  "partial": true,
+  "partialNote": "Only top 34 of 62 paid places captured; tail (35..62) not visible in screenshot.",
+  "bounty": {
+    "type": "progressive",
+    "pctOfBuyIn": 50,
+    "note": "50% of eliminated player's current bounty is added to the knocker's head; remaining 50% is paid in cash. Regular-side pool (₹5474) is the non-bounty column only."
+  },
+  "places": [
+    { "from": 1,  "to": 1,  "prize": 377.61 },
+    { "from": 2,  "to": 2,  "prize": 377.54 },
+    { "from": 3,  "to": 3,  "prize": 277.82 },
+    { "from": 4,  "to": 4,  "prize": 205.25 },
+    { "from": 5,  "to": 5,  "prize": 152.35 },
+    { "from": 6,  "to": 6,  "prize": 113.57 },
+    { "from": 7,  "to": 7,  "prize": 85.31 },
+    { "from": 8,  "to": 9,  "prize": 64.82 },
+    { "from": 10, "to": 11, "prize": 49.63 },
+    { "from": 12, "to": 13, "prize": 38.22 },
+    { "from": 14, "to": 20, "prize": 29.92 },
+    { "from": 21, "to": 27, "prize": 23.54 },
+    { "from": 28, "to": 34, "prize": 18.84 }
+  ]
+}

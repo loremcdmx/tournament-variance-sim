@@ -24,6 +24,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runSimulation } from "../src/lib/sim/engine";
+import { primedopeCurveForPaid } from "../src/lib/sim/pdCurves";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
 interface Scenario {
@@ -38,38 +39,12 @@ interface Scenario {
   samples: number; // PD sample size for their MC — affects their percentiles
 }
 
-// Reference 15-slot PD curve — only used to seed our engine's customPayouts.
-// PD's server computes its own curve from (players, places_paid), but our
-// engine needs an explicit vector. We pre-resample identically to how PD does
-// it internally (CDF-stretch of h[8]) so the inputs agree.
-const PD_H8 = [
-  0.255, 0.16, 0.115, 0.09, 0.075, 0.06, 0.045, 0.035, 0.03, 0.025, 0.025,
-  0.025, 0.02, 0.02, 0.02,
-];
-
+// Use the engine's own PD curve family (`src/lib/sim/pdCurves.ts`) — 34
+// native curves scraped from PD's `sub_routine=payout_info` endpoint.
+// Previously this script used a local `pd_curves.json` which only covered
+// paid ≤ 31 and silently clamped larger fields onto a wrong curve.
 function pdCurveAt(paid: number): number[] {
-  if (paid === PD_H8.length) return PD_H8.slice();
-  const srcCum: number[] = new Array(PD_H8.length + 1);
-  srcCum[0] = 0;
-  for (let i = 0; i < PD_H8.length; i++) srcCum[i + 1] = srcCum[i] + PD_H8[i];
-  const total = srcCum[PD_H8.length];
-  const sampleCum = (t: number): number => {
-    const x = t * PD_H8.length;
-    const lo = Math.floor(x);
-    if (lo >= PD_H8.length) return total;
-    const frac = x - lo;
-    return srcCum[lo] + frac * (srcCum[lo + 1] - srcCum[lo]);
-  };
-  const out = new Array<number>(paid);
-  let sum = 0;
-  for (let i = 0; i < paid; i++) {
-    const a = sampleCum(i / paid);
-    const b = sampleCum((i + 1) / paid);
-    out[i] = b - a;
-    sum += out[i];
-  }
-  for (let i = 0; i < paid; i++) out[i] /= sum;
-  return out;
+  return primedopeCurveForPaid(paid);
 }
 
 interface PdResponse {
@@ -170,12 +145,11 @@ function runOurs(sc: Scenario) {
   const input: SimulationInput = {
     schedule: [row],
     scheduleRepeats: 1,
-    samples: 50_000,
+    samples: 2_000_000,
     bankroll: sc.bankroll,
     seed: 42,
     finishModel: { id: "power-law" },
     calibrationMode: "primedope-binary-itm",
-    primedopeStyleEV: true,
   };
   const r = runSimulation(input);
   const sorted = new Float64Array(r.finalProfits);
@@ -284,7 +258,7 @@ async function main() {
       `  PD  sim(${pad(pd.samplesize, 4)}):  ${pad(money(pd.evSimulated), 10)}  ${pad(money(pd.sdSimulated), 10)}  ${pad(money(pdMinBR50), 10)}  ${pad(money(pdMinBR15), 10)}  ${pad(money(pdMinBR5), 10)}  ${pad(money(pdMinBR1), 10)}  ${pad(pct(pd.riskOfRuin), 8)}  ${pad(String(pd.neverBelowZero), 9)}`,
     );
     console.log(
-      `  OUR sim(50k):  ${pad(money(ours.mean), 10)}  ${pad(money(ours.sd), 10)}  ${pad(money(ours.minBR50), 10)}  ${pad(money(ours.minBR15), 10)}  ${pad(money(ours.minBR5), 10)}  ${pad(money(ours.minBR1), 10)}  ${pad(pct(ours.ruinFrac), 8)}  ${pad(pct(ours.neverBelowZeroFrac), 9)}`,
+      `  OUR sim(2M)  :  ${pad(money(ours.mean), 10)}  ${pad(money(ours.sd), 10)}  ${pad(money(ours.minBR50), 10)}  ${pad(money(ours.minBR15), 10)}  ${pad(money(ours.minBR5), 10)}  ${pad(money(ours.minBR1), 10)}  ${pad(pct(ours.ruinFrac), 8)}  ${pad(pct(ours.neverBelowZeroFrac), 9)}`,
     );
     console.log(
       `  Δ vs PD-sim :  ${pad((evErr * 100).toFixed(2) + "%", 10)}  ${pad((sdErrSim * 100).toFixed(2) + "%", 10)}  ${pad((minBR50Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR15Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR5Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR1Err * 100).toFixed(1) + "%", 10)}`,
@@ -312,10 +286,10 @@ async function main() {
     `WORST ERRORS vs PD (sim) :  minBR ${(worstMinBRErr * 100).toFixed(1)}%, conf-bounds ${(worstConfErr * 100).toFixed(1)}%`,
   );
   console.log(
-    "Expected: EV < 1%, SD < 1% (both closed-form, no MC noise on PD side).",
+    "Expected: EV < 2%, SD < 0.2% (both closed-form, no MC noise on PD side).",
   );
   console.log(
-    "minBR / conf bounds: PD uses 5000 samples, we use 50k — expect ±5-15% noise on tail quantiles at their S.",
+    "minBR / conf bounds: PD uses 5000 samples, we use 500k — expect ±5-20% noise on tail quantiles driven entirely by PD's low S.",
   );
   console.log("=".repeat(100));
 }

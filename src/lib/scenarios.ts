@@ -1,3 +1,9 @@
+/**
+ * Declarative demo scenarios shown in the landing grid. Each entry is a
+ * ready-to-run `{schedule, controls}` snapshot with an i18n key for the
+ * label and blurb. Pure data — rendered by `page.tsx`, no engine coupling
+ * beyond the shared `TournamentRow` / `ControlsState` types.
+ */
 import type { ControlsState } from "@/components/ControlsPanel";
 import type { TournamentRow } from "./sim/types";
 import type { DictKey } from "./i18n/dict";
@@ -19,8 +25,10 @@ const BASE_CONTROLS: ControlsState = {
   finishModelId: "power-law",
   alphaOverride: null,
   compareWithPrimedope: true,
+  usePrimedopePayouts: true,
+  usePrimedopeFinishModel: true,
+  usePrimedopeRakeMath: true,
   compareMode: "primedope",
-  primedopeStyleEV: true,
   roiStdErr: 0,
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
@@ -32,6 +40,8 @@ const BASE_CONTROLS: ControlsState = {
   tiltSlowMinDuration: 500,
   tiltSlowRecoveryFrac: 0.5,
   modelPresetId: "naive",
+  itmGlobalEnabled: false,
+  itmGlobalPct: 15,
 };
 
 export const SCENARIOS: DemoScenario[] = [
@@ -59,6 +69,9 @@ export const SCENARIOS: DemoScenario[] = [
       bankroll: 1000,
       compareWithPrimedope: true,
       compareMode: "primedope",
+      // Explicit opt-in on the "reproduce PD" demo — this is the one scenario
+      // where the PD pane is supposed to run on PD's native curve.
+      usePrimedopePayouts: true,
     },
   },
   {

@@ -1,3 +1,8 @@
+/**
+ * Tracker-inspired color/width presets for the trajectory chart. One entry
+ * per recognizable style (HM2, H2N, HM3, PT4, PokerCraft, PokerDope). Pure
+ * data — consumed by `ResultsView` when rendering uPlot series.
+ */
 export type LineStylePresetId =
   | "hm"
   | "h2n"
@@ -56,17 +61,17 @@ const hm: LineStylePreset = {
   label: "Holdem Manager 2",
   description: "Классический HM2: лаймовая Net Won и синяя пунктирная All-In EV Adjusted.",
   mean: { stroke: "#8dc63f", width: 2.75 },
-  ev: { stroke: "#1e90ff", width: 1.75, dash: [6, 4] },
+  ev: { stroke: "#60a5fa", width: 1.5 },
   best: { stroke: "#c5e17a", width: 1.25 },
   worst: { stroke: "#7ec0ff", width: 1.25 },
   p05: { stroke: "#e57373", width: 1.5, dash: [5, 3] },
   p95: { stroke: "#9ccc65", width: 1.5, dash: [5, 3] },
-  path: { stroke: "rgba(148,163,184,0.22)", width: 1 },
+  path: { stroke: "rgba(141,198,63,0.16)", width: 0.85 },
   bandExtreme: { stroke: "rgba(141,198,63,0.10)", width: 1 },
   bandWide: { stroke: "rgba(141,198,63,0.20)", width: 1 },
   bandNarrow: { stroke: "rgba(141,198,63,0.36)", width: 1 },
   refLine: { stroke: "#94a3b8", width: 1, dash: [3, 4] },
-  bankrollLine: { stroke: "#ef4444", width: 1.5, dash: [4, 4] },
+  bankrollLine: { stroke: "#ef4444", width: 1.5 },
 };
 
 // Hand2Note: emerald Amount Won + yellow dashed All-In EV.
@@ -75,17 +80,17 @@ const h2n: LineStylePreset = {
   label: "Hand2Note",
   description: "Hand2Note: изумрудная Amount Won и жёлтая пунктирная All-In EV.",
   mean: { stroke: "#21a355", width: 2.75 },
-  ev: { stroke: "#f4c542", width: 1.75, dash: [6, 4] },
+  ev: { stroke: "#fcd34d", width: 1.5 },
   best: { stroke: "#86efac", width: 1.25 },
   worst: { stroke: "#fde68a", width: 1.25 },
   p05: { stroke: "#f87171", width: 1.5, dash: [5, 3] },
   p95: { stroke: "#4ade80", width: 1.5, dash: [5, 3] },
-  path: { stroke: "rgba(148,163,184,0.25)", width: 1 },
+  path: { stroke: "rgba(74,222,128,0.18)", width: 0.85 },
   bandExtreme: { stroke: "rgba(33,163,85,0.10)", width: 1 },
   bandWide: { stroke: "rgba(33,163,85,0.20)", width: 1 },
   bandNarrow: { stroke: "rgba(33,163,85,0.36)", width: 1 },
   refLine: { stroke: "#64748b", width: 1, dash: [3, 4] },
-  bankrollLine: { stroke: "#ef4444", width: 1.5, dash: [4, 4] },
+  bankrollLine: { stroke: "#ef4444", width: 1.5 },
 };
 
 // Holdem Manager 3: fresh green Net Winnings + solid blue All-In EV on dark.
@@ -99,12 +104,12 @@ const hm3: LineStylePreset = {
   worst: { stroke: "#90caf9", width: 1.25 },
   p05: { stroke: "#f5a623", width: 1.5, dash: [5, 3] },
   p95: { stroke: "#8bc34a", width: 1.5, dash: [5, 3] },
-  path: { stroke: "rgba(148,163,184,0.22)", width: 1 },
+  path: { stroke: "rgba(139,195,74,0.16)", width: 0.85 },
   bandExtreme: { stroke: "rgba(139,195,74,0.10)", width: 1 },
   bandWide: { stroke: "rgba(139,195,74,0.20)", width: 1 },
   bandNarrow: { stroke: "rgba(139,195,74,0.36)", width: 1 },
   refLine: { stroke: "#94a3b8", width: 1, dash: [3, 4] },
-  bankrollLine: { stroke: "#ef4444", width: 1.5, dash: [4, 4] },
+  bankrollLine: { stroke: "#ef4444", width: 1.5 },
 };
 
 // PokerTracker 4: green Won + yellow Net Expected (All-In Adjusted).
@@ -113,17 +118,17 @@ const pt4: LineStylePreset = {
   label: "PokerTracker 4",
   description: "PT4: зелёная Won и жёлтая Net Expected (All-In Adjusted).",
   mean: { stroke: "#2e7d32", width: 2.75 },
-  ev: { stroke: "#fbc02d", width: 1.75, dash: [5, 3] },
+  ev: { stroke: "#fbc02d", width: 1.5 },
   best: { stroke: "#81c784", width: 1.25 },
   worst: { stroke: "#fff59d", width: 1.25 },
   p05: { stroke: "#e53935", width: 1.5, dash: [5, 3] },
   p95: { stroke: "#2e7d32", width: 1.5, dash: [5, 3] },
-  path: { stroke: "rgba(148,163,184,0.22)", width: 1 },
+  path: { stroke: "rgba(129,199,132,0.18)", width: 0.85 },
   bandExtreme: { stroke: "rgba(46,125,50,0.10)", width: 1 },
   bandWide: { stroke: "rgba(46,125,50,0.20)", width: 1 },
   bandNarrow: { stroke: "rgba(46,125,50,0.36)", width: 1 },
   refLine: { stroke: "#94a3b8", width: 1, dash: [3, 4] },
-  bankrollLine: { stroke: "#ef4444", width: 1.5, dash: [4, 4] },
+  bankrollLine: { stroke: "#ef4444", width: 1.5 },
 };
 
 // GG PokerCraft: bright green Total Winnings + yellow All-In Adjusted.
@@ -132,17 +137,17 @@ const pokercraft: LineStylePreset = {
   label: "PokerCraft (GG)",
   description: "PokerCraft (GGPoker): ярко-зелёная Total Winnings и жёлтая All-In Adjusted.",
   mean: { stroke: "#4caf50", width: 2.75 },
-  ev: { stroke: "#ffd54f", width: 1.75, dash: [6, 4] },
+  ev: { stroke: "#ffd54f", width: 1.5 },
   best: { stroke: "#a5d6a7", width: 1.25 },
   worst: { stroke: "#ffe082", width: 1.25 },
   p05: { stroke: "#fb923c", width: 1.5, dash: [5, 3] },
   p95: { stroke: "#4caf50", width: 1.5, dash: [5, 3] },
-  path: { stroke: "rgba(148,163,184,0.22)", width: 1 },
+  path: { stroke: "rgba(165,214,167,0.18)", width: 0.85 },
   bandExtreme: { stroke: "rgba(76,175,80,0.10)", width: 1 },
   bandWide: { stroke: "rgba(76,175,80,0.20)", width: 1 },
   bandNarrow: { stroke: "rgba(76,175,80,0.36)", width: 1 },
   refLine: { stroke: "#94a3b8", width: 1, dash: [3, 4] },
-  bankrollLine: { stroke: "#ef4444", width: 1.5, dash: [4, 4] },
+  bankrollLine: { stroke: "#ef4444", width: 1.5 },
 };
 
 // PokerDope / Primedope variance calculator: near-black straight EV line and
@@ -158,12 +163,12 @@ const pokerdope: LineStylePreset = {
   worst: { stroke: "#cbd5e1", width: 1.25 },
   p05: { stroke: "#2e7d32", width: 2.5, dash: [6, 4] },
   p95: { stroke: "#2e7d32", width: 2.5, dash: [6, 4] },
-  path: { stroke: "rgba(148,163,184,0.18)", width: 1 },
+  path: { stroke: "rgba(134,239,172,0.18)", width: 0.85 },
   bandExtreme: { stroke: "rgba(134,239,172,0.18)", width: 1 },
   bandWide: { stroke: "rgba(134,239,172,0.32)", width: 1 },
   bandNarrow: { stroke: "rgba(46,125,50,0.42)", width: 1 },
   refLine: { stroke: "#64748b", width: 1, dash: [3, 4] },
-  bankrollLine: { stroke: "#ef4444", width: 1.5, dash: [4, 4] },
+  bankrollLine: { stroke: "#ef4444", width: 1.5 },
 };
 
 export const LINE_STYLE_PRESETS: Record<LineStylePresetId, LineStylePreset> = {
@@ -320,7 +325,7 @@ export const PRIMEDOPE_PANE_PRESET: LineStylePreset = {
   label: "PrimeDope",
   description: "",
   mean: { stroke: "#f472b6", width: 2.5 },
-  ev: { stroke: "#fbbf24", width: 1.5, dash: [6, 4] },
+  ev: { stroke: "#fbbf24", width: 1.5 },
   best: { stroke: "#fbcfe8", width: 1.25 },
   worst: { stroke: "#fecdd3", width: 1.25 },
   p05: { stroke: "#f472b6", width: 1.5, dash: [5, 3] },
@@ -330,5 +335,5 @@ export const PRIMEDOPE_PANE_PRESET: LineStylePreset = {
   bandWide: { stroke: "rgba(236,72,153,0.20)", width: 1 },
   bandNarrow: { stroke: "rgba(236,72,153,0.38)", width: 1 },
   refLine: { stroke: "#64748b", width: 1, dash: [3, 4] },
-  bankrollLine: { stroke: "#ef4444", width: 1.5, dash: [4, 4] },
+  bankrollLine: { stroke: "#ef4444", width: 1.5 },
 };

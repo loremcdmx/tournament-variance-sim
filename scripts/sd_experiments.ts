@@ -35,7 +35,6 @@ const REF: SimulationInput = {
   seed: 42,
   finishModel: { id: "power-law" },
   compareWithPrimedope: true,
-  primedopeStyleEV: true,
 };
 
 const N_TOURNEYS = 1000;

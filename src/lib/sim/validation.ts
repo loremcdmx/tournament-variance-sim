@@ -1,3 +1,10 @@
+/**
+ * Pre-run feasibility checks on `TournamentRow`s. Catches inputs that
+ * would make α-calibration impossible (target ROI outside the achievable
+ * band for the given payout structure + field) and surfaces them to the
+ * UI as structured warnings rather than silent clamps. Runs on the main
+ * thread before the worker dispatch.
+ */
 import { calibrateShelledItm } from "./finishModel";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";

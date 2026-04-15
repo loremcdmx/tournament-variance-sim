@@ -4,6 +4,12 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
+  /* Custom breakpoints for FullHD (1920) and 4K (2560+) displays. Default
+     Tailwind caps at 2xl=1536px; without these, 4K users see a narrow
+     strip centered in a sea of empty margin. */
+  --breakpoint-3xl: 1920px;
+  --breakpoint-4xl: 2560px;
+
   --color-bg: var(--c-bg);
   --color-bg-elev: var(--c-bg-elev);
   --color-bg-elev-2: var(--c-bg-elev-2);

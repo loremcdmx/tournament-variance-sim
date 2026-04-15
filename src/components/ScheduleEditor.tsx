@@ -7,7 +7,11 @@ import type {
   TournamentRow,
 } from "@/lib/sim/types";
 import { parsePayoutString } from "@/lib/sim/payouts";
+import {
+  inferGameType,
+} from "@/lib/sim/gameType";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 
@@ -42,18 +46,43 @@ function round2(v: number): number {
 }
 
 // Short labels for the dropdown row (≤ ~22 chars), full descriptions in title.
+// `real` entries are calibrated to specific real-world 2026 payout samples
+// captured in `data/payout-samples/`. They live in a pinned optgroup above
+// the generic presets so users who want authentic structures find them first.
 const STRUCTURES: {
   id: PayoutStructureId;
   short: string;
   full: string;
+  real?: boolean;
 }[] = [
+  {
+    id: "mtt-pokerstars",
+    short: "PokerStars SCOOP (2026)",
+    full: "PokerStars SCOOP 119-L Main · calibrated to 2026-03-25 sample",
+    real: true,
+  },
+  {
+    id: "mtt-sunday-million",
+    short: "Sunday Million (2026)",
+    full: "PokerStars Sunday Million · real 2026 curve",
+    real: true,
+  },
+  {
+    id: "mtt-gg",
+    short: "CoinPoker Mini CoinMasters (2026)",
+    full: "CoinPoker Mini CoinMasters · calibrated to 2026-04-14 sample",
+    real: true,
+  },
+  {
+    id: "mtt-gg-bounty",
+    short: "CoinPoker Mini CoinHunter PKO (2026)",
+    full: "CoinPoker Mini CoinHunter PKO · calibrated to 2026-04-14 sample",
+    real: true,
+  },
+  { id: "mtt-primedope", short: "PrimeDope payouts", full: "PrimeDope native payout curves (15% paid)" },
   { id: "mtt-standard", short: "MTT Standard 15%", full: "MTT · Standard (15% paid)" },
   { id: "mtt-flat", short: "MTT Flat 20%", full: "MTT · Flat (20% paid)" },
   { id: "mtt-top-heavy", short: "MTT Top-heavy 12%", full: "MTT · Top-heavy (12% paid)" },
-  { id: "mtt-pokerstars", short: "PokerStars MTT", full: "MTT · PokerStars-like" },
-  { id: "mtt-gg", short: "GGPoker MTT", full: "MTT · GGPoker-like" },
-  { id: "mtt-sunday-million", short: "Sunday Million", full: "MTT · Sunday Million (real)" },
-  { id: "mtt-gg-bounty", short: "GG Bounty Builder", full: "MTT · GG Bounty Builder (real)" },
   { id: "satellite-ticket", short: "Satellite (tickets)", full: "Satellite · ticket cliff (10% seats)" },
   { id: "sng-50-30-20", short: "SNG 50/30/20", full: "SNG · 50/30/20" },
   { id: "sng-65-35", short: "SNG 65/35", full: "SNG · 65/35" },
@@ -65,6 +94,9 @@ interface Props {
   schedule: TournamentRow[];
   onChange: (next: TournamentRow[]) => void;
   disabled?: boolean;
+  /** When set, rows with no explicit itmRate inherit this default (shown
+   *  as the placeholder on the per-row input). Pass null to disable. */
+  globalItmPct?: number | null;
 }
 
 const IMPORT_PLACEHOLDER = `# label, players, buyIn (50+5 or plain), roi%, count, payout
@@ -171,8 +203,14 @@ function parseImportCSV(raw: string): {
   return { rows, errors };
 }
 
-export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
+export function ScheduleEditor({
+  schedule,
+  onChange,
+  disabled,
+  globalItmPct = null,
+}: Props) {
   const t = useT();
+  const { advanced } = useAdvancedMode();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
@@ -258,6 +296,7 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
               <Th align="right" hint={t("help.row.players")}>{t("row.players")}</Th>
               <Th align="right" hint={t("help.row.buyIn")}>{t("row.buyIn")}</Th>
               <Th align="right" hint={t("help.row.roi")}>{t("row.roi")}</Th>
+              <Th align="right" hint={t("row.fixedItmHint")}>{t("row.fixedItm")}</Th>
               <Th hint={t("help.row.payouts")}>{t("row.payouts")}</Th>
               <Th align="right" hint={t("help.row.count")}>{t("row.count")}</Th>
               <Th> </Th>
@@ -265,12 +304,10 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
           </thead>
           <tbody>
             {schedule.map((r, i) => {
-              const isOpen = expanded.has(r.id);
+              const isOpen = advanced && expanded.has(r.id);
               const hasAdv =
-                !!r.guarantee ||
                 (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
                 r.payoutStructure === "custom" ||
-                (r.lateRegMultiplier ?? 1) > 1 ||
                 (r.maxEntries ?? 1) > 1 ||
                 (r.bountyFraction ?? 0) > 0 ||
                 !!r.icmFinalTable;
@@ -285,8 +322,9 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                     <Td>
                       <button
                         type="button"
-                        onClick={() => toggleExpand(r.id)}
-                        title={t("row.advanced")}
+                        onClick={() => advanced && toggleExpand(r.id)}
+                        disabled={!advanced}
+                        title={advanced ? t("row.advanced") : t("controls.expandAdvanced")}
                         aria-label={t("row.advanced")}
                         className={
                           "inline-flex h-6 w-6 items-center justify-center rounded text-[color:var(--color-fg-dim)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)] " +
@@ -353,6 +391,33 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                         step={1}
                       />
                     </Td>
+                    <Td align="right">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        placeholder={
+                          globalItmPct != null ? `${globalItmPct}` : "auto"
+                        }
+                        value={
+                          r.itmRate != null
+                            ? +(r.itmRate * 100).toFixed(2)
+                            : ""
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") {
+                            update(r.id, { itmRate: undefined });
+                            return;
+                          }
+                          const v = Number(raw);
+                          if (!Number.isFinite(v) || v < 0 || v > 100) return;
+                          update(r.id, { itmRate: v / 100 });
+                        }}
+                        className="h-8 w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-right text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
+                      />
+                    </Td>
                     <Td>
                       {(() => {
                         const grouped = STRUCTURES.map((s) => ({
@@ -391,11 +456,40 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                                 : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
                             }
                           >
-                            {available.map(({ s }) => (
-                              <option key={s.id} value={s.id} title={s.full}>
-                                {s.short}
-                              </option>
-                            ))}
+                            {available.some(({ s }) => s.real) && (
+                              <optgroup
+                                label={`— ${t("row.payoutGroup.real2026")} —`}
+                              >
+                                {available
+                                  .filter(({ s }) => s.real)
+                                  .map(({ s }) => (
+                                    <option
+                                      key={s.id}
+                                      value={s.id}
+                                      title={s.full}
+                                    >
+                                      ★ {s.short}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )}
+                            {available.some(({ s }) => !s.real) && (
+                              <optgroup
+                                label={`— ${t("row.payoutGroup.generic")} —`}
+                              >
+                                {available
+                                  .filter(({ s }) => !s.real)
+                                  .map(({ s }) => (
+                                    <option
+                                      key={s.id}
+                                      value={s.id}
+                                      title={s.full}
+                                    >
+                                      {s.short}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )}
                             {unavailable.length > 0 && (
                               <optgroup
                                 label={`— ${t("row.payoutCompat.unavailable")} —`}
@@ -464,7 +558,7 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                   </tr>
                   {isOpen && (
                     <tr className="border-b border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30">
-                      <td colSpan={8} className="px-6 py-4">
+                      <td colSpan={10} className="px-6 py-4">
                         <AdvancedRowPanel
                           row={r}
                           onChange={(patch) => update(r.id, patch)}
@@ -607,34 +701,12 @@ function AdvancedRowPanel({
 }) {
   const t = useT();
   const fv: FieldVariability = row.fieldVariability ?? { kind: "fixed" };
+  const gt = inferGameType(row);
+  const showReentry = gt === "freezeout-reentry";
+  const showBounty = gt === "pko" || gt === "mystery" || gt === "mystery-royale";
+  const showMysteryVar = gt === "mystery" || gt === "mystery-royale";
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-      {/* Guarantee / overlay */}
-      <div className="flex flex-col gap-1.5">
-        <SectionLabel hint={t("row.guaranteeHint")}>
-          {t("row.guarantee")}
-        </SectionLabel>
-        <input
-          type="number"
-          min={0}
-          max={1_000_000_000}
-          step={100}
-          value={row.guarantee ?? ""}
-          placeholder={t("row.noGuarantee")}
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === "") {
-              onChange({ guarantee: undefined });
-              return;
-            }
-            const v = Number(raw);
-            if (!Number.isFinite(v) || v < 0 || v > 1_000_000_000) return;
-            onChange({ guarantee: v });
-          }}
-          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
-        />
-      </div>
-
       {/* Field variability */}
       <div className="flex flex-col gap-1.5">
         <SectionLabel hint={t("row.fieldHint")}>
@@ -707,20 +779,6 @@ function AdvancedRowPanel({
         )}
       </div>
 
-      {/* Late registration multiplier */}
-      <div className="flex flex-col gap-1.5">
-        <SectionLabel hint={t("row.lateRegHint")}>
-          {t("row.lateReg")}
-        </SectionLabel>
-        <NumInputBox
-          value={row.lateRegMultiplier ?? 1}
-          min={1}
-          max={5}
-          step={0.05}
-          onChange={(v) => onChange({ lateRegMultiplier: v })}
-        />
-      </div>
-
       {/* Custom payouts */}
       {row.payoutStructure === "custom" && (
         <div className="flex flex-col gap-1.5">
@@ -748,86 +806,60 @@ function AdvancedRowPanel({
       )}
 
       {/* Re-entry */}
-      <div className="flex flex-col gap-1.5">
-        <SectionLabel hint={t("row.reentryHint")}>
-          {t("row.reentry")}
-        </SectionLabel>
-        <div className="grid grid-cols-2 gap-2">
-          <FieldSmall label={t("row.reentry")}>
-            <NumInputBox
-              value={row.maxEntries ?? 1}
-              min={1}
-              max={100}
-              step={1}
-              onChange={(v) => onChange({ maxEntries: Math.floor(v) })}
-            />
-          </FieldSmall>
-          <FieldSmall label={t("row.reentryRate")}>
-            <NumInputBox
-              value={+((row.reentryRate ?? ((row.maxEntries ?? 1) > 1 ? 1 : 0)) * 100).toFixed(0)}
-              min={0}
-              max={100}
-              step={10}
-              onChange={(v) => onChange({ reentryRate: v / 100 })}
-            />
-          </FieldSmall>
+      {showReentry && (
+        <div className="flex flex-col gap-1.5">
+          <SectionLabel hint={t("row.reentryHint")}>
+            {t("row.reentry")}
+          </SectionLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldSmall label={t("row.reentry")}>
+              <NumInputBox
+                value={row.maxEntries ?? 1}
+                min={1}
+                max={100}
+                step={1}
+                onChange={(v) => onChange({ maxEntries: Math.floor(v) })}
+              />
+            </FieldSmall>
+            <FieldSmall label={t("row.reentryRate")}>
+              <NumInputBox
+                value={+((row.reentryRate ?? ((row.maxEntries ?? 1) > 1 ? 1 : 0)) * 100).toFixed(0)}
+                min={0}
+                max={100}
+                step={10}
+                onChange={(v) => onChange({ reentryRate: v / 100 })}
+              />
+            </FieldSmall>
+          </div>
         </div>
-      </div>
-
-      {/* Fixed ITM rate */}
-      <div className="flex flex-col gap-1.5">
-        <SectionLabel hint={t("row.fixedItmHint")}>
-          {t("row.fixedItm")}
-        </SectionLabel>
-        <input
-          type="number"
-          min={0}
-          max={100}
-          step={0.5}
-          placeholder="auto"
-          value={
-            row.itmRate != null
-              ? +(row.itmRate * 100).toFixed(2)
-              : ""
-          }
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === "") {
-              onChange({ itmRate: undefined });
-              return;
-            }
-            const v = Number(raw);
-            if (!Number.isFinite(v) || v < 0 || v > 100) return;
-            onChange({ itmRate: v / 100 });
-          }}
-          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
-        />
-      </div>
+      )}
 
       {/* Bounty / PKO */}
-      <div className="flex flex-col gap-1.5">
-        <SectionLabel hint={t("row.bountyHint")}>
-          {t("row.bounty")}
-        </SectionLabel>
-        <input
-          type="number"
-          min={0}
-          max={90}
-          step={5}
-          value={+((row.bountyFraction ?? 0) * 100).toFixed(1)}
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === "") {
-              onChange({ bountyFraction: undefined });
-              return;
-            }
-            const v = Number(raw);
-            if (!Number.isFinite(v) || v < 0 || v > 90) return;
-            onChange({ bountyFraction: v / 100 });
-          }}
-          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
-        />
-      </div>
+      {showBounty && (
+        <div className="flex flex-col gap-1.5">
+          <SectionLabel hint={t("row.bountyHint")}>
+            {t("row.bounty")}
+          </SectionLabel>
+          <input
+            type="number"
+            min={0}
+            max={90}
+            step={5}
+            value={+((row.bountyFraction ?? 0) * 100).toFixed(1)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") {
+                onChange({ bountyFraction: undefined });
+                return;
+              }
+              const v = Number(raw);
+              if (!Number.isFinite(v) || v < 0 || v > 90) return;
+              onChange({ bountyFraction: v / 100 });
+            }}
+            className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+          />
+        </div>
+      )}
 
       {/* ICM FT */}
       <div className="flex flex-col gap-1.5">
@@ -892,7 +924,7 @@ function AdvancedRowPanel({
       </div>
 
       {/* Mystery bounty variance */}
-      {(row.bountyFraction ?? 0) > 0 && (
+      {showMysteryVar && (
         <div className="flex flex-col gap-1.5">
           <SectionLabel hint={t("row.mysteryHint")}>
             {t("row.mystery")}

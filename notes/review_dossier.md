@@ -1,6 +1,6 @@
 # DOSSIER — Deep Review (2026-04-14)
 
-Готовится к проходу после твоего возвращения из зала. Прорабатываем сверху вниз, по шагам. Каждый шаг — самостоятельный «эпизод», после которого фиксируем решение (принять / отложить / выбросить).
+Разбор по шагам, сверху вниз. Каждый шаг — самостоятельный «эпизод», после которого фиксируется решение (принять / отложить / выбросить).
 
 ---
 
@@ -364,7 +364,7 @@ checkpoint writes (K+1 logarithmically spaced)
 
 ### 7.2. Приятные (по времени)
 
-- **B1. ES (expected shortfall) / CVaR в verdict-card** (сейчас в MiniStat, но не озвучен). «В 5% худших сценариев ты теряешь $X за период».
+- **B1. ES (expected shortfall) / CVaR в verdict-card** (сейчас в MiniStat, но не озвучен). «В 5% худших сценариев игрок теряет $X за период».
 - **B2. Auto-detect shard count**: `navigator.hardwareConcurrency` уже используется, но сделать live UI-отображение «used 4 of 8 cores».
 - **B3. Antithetic variates** в hot-loop (опциональный флаг): каждый второй sample — зеркально по главному RNG. Снижает MC variance на ~2× для mean. Риск: усложнение shard-determinism.
 - **B4. Stratified sampling по финиш-месту**: вместо uniform inside ITM bin — stratify, чтобы каждое место было sampled чаще. Снижает variance on-σ.
@@ -429,7 +429,7 @@ checkpoint writes (K+1 logarithmically spaced)
 
 ---
 
-## 9. План работ (по шагам, пройдём после зала)
+## 9. План работ (по шагам)
 
 > Каждый шаг — self-contained, после каждого тесты + typecheck + отметка в review_dossier.
 
@@ -507,15 +507,15 @@ checkpoint writes (K+1 logarithmically spaced)
 
 ---
 
-## 10. Open questions (нужно твоё решение)
+## 10. Open questions
 
 - **Q1**. Оставляем ли `mtt-primedope` shape-locked на `h[8]` рядом с новым `mtt-primedope-large` селектором? Или заменяем целиком?
 - **Q2**. Population vs sample skewness — fix «тихо» или добавить feature flag `legacyMoments: true` для старых снимков?
-- **Q3**. Input validation — throw (жёсткий) или warning (мягкий с silent clamp)? Я предлагаю throw в compile, чтобы UI мог показывать «поле X невалидно».
+- **Q3**. Input validation — throw (жёсткий) или warning (мягкий с silent clamp)? Предпочтительный вариант: throw в compile, чтобы UI мог показывать «поле X невалидно».
 - **Q4**. Gaussian RoR в verdict card — показывать **всегда** (даже когда совпадает с empirical) или только при расхождении ≥10%?
 - **Q5**. Sensitivity chart — оставить одноpar (δROI) или сделать multi-parameter heatmap? Второе дороже, но мощнее.
 - **Q6**. Tilt controls — отдельная accordion или вообще скрыть за «advanced»? Сейчас они выглядят overwhelming.
-- **Q7**. RoR callout в verdict: показывать обе цифры (empirical + Gaussian) или только «честную» empirical? Я за обе с коротким объяснением — для PD-юзера это будет знаково.
+- **Q7**. RoR callout в verdict: показывать обе цифры (empirical + Gaussian) или только «честную» empirical? Предпочтительный вариант: обе с коротким объяснением — для PD-юзера это знаково.
 - **Q8**. Do we want a per-tournament “analytical EV dial” sidebar (see A3)? Полезно для sanity-check, но занимает место.
 
 ---

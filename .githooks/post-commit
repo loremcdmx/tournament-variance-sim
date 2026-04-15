@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Post-commit: if the commit changed anything under src/lib/sim/**, spawn
+# the convergence bench in the background. The bench writes a fresh
+# public/bench/convergence.json and creates a second commit with [skip ci]
+# so Vercel doesn't rebuild for the data drop.
+#
+# Safe-by-default:
+#   - .bench.lock guards against concurrent runs (flock-style on POSIX,
+#     atomic dir-create on Windows/git-bash).
+#   - auto-commit only fires on a clean working tree.
+#   - auto-push only fires when local `dev` is ahead of `origin/dev` and
+#     we're currently on `dev`; otherwise it logs and bails out.
+#   - [skip ci] in the commit message tells Vercel to skip the build.
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Short-circuit if the last commit didn't touch the engine.
+if ! git diff-tree --no-commit-id --name-only -r HEAD | grep -q '^src/lib/sim/'; then
+  exit 0
+fi
+
+# Don't recurse: if the most recent commit is already the bench's own
+# auto-commit, bail out.
+if git log -1 --pretty=%B | grep -q '\[skip ci\] bench: refresh convergence.json'; then
+  exit 0
+fi
+
+LOCK_DIR="$REPO_ROOT/.bench.lock"
+LOG="$REPO_ROOT/.bench.log"
+
+# Atomic lock via mkdir — works on Windows + POSIX without flock.
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "[bench] another run is in progress ($LOCK_DIR exists); skipping" >> "$LOG"
+  exit 0
+fi
+
+# Detach a background worker. It's a bash subshell so trap cleans the lock
+# even on crash. stdout/stderr tee into .bench.log so the user can tail it.
+(
+  trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+  {
+    echo "=== bench start $(date) ==="
+    npx tsx scripts/bench_convergence.ts
+    STATUS=$?
+    echo "=== bench exit=$STATUS ==="
+    if [ "$STATUS" -ne 0 ]; then
+      exit 0
+    fi
+
+    # Only auto-commit if the working tree is otherwise clean and the JSON
+    # actually changed.
+    if ! git diff --quiet -- public/bench/convergence.json; then
+      if [ -z "$(git status --porcelain -- . ':!public/bench/convergence.json')" ]; then
+        CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+        git add public/bench/convergence.json
+        git commit -m "[skip ci] bench: refresh convergence.json" \
+          -m "Automated convergence bench run. No source changes." || true
+        echo "[bench] committed convergence.json on $CURRENT_BRANCH"
+
+        # Auto-push only on dev, only if we're ahead of origin/dev.
+        if [ "$CURRENT_BRANCH" = "dev" ]; then
+          git fetch origin dev --quiet || true
+          LOCAL="$(git rev-parse dev)"
+          REMOTE="$(git rev-parse origin/dev 2>/dev/null || echo '')"
+          if [ -n "$REMOTE" ]; then
+            BASE="$(git merge-base dev origin/dev)"
+            if [ "$LOCAL" != "$REMOTE" ] && [ "$REMOTE" = "$BASE" ]; then
+              git push origin dev --quiet && echo "[bench] pushed dev"
+            else
+              echo "[bench] skipping push: dev diverged or already up to date"
+            fi
+          fi
+        fi
+      else
+        echo "[bench] working tree dirty; skipping auto-commit"
+      fi
+    else
+      echo "[bench] convergence.json unchanged; skipping commit"
+    fi
+  } >> "$LOG" 2>&1
+) &
+disown 2>/dev/null || true
+
+exit 0

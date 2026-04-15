@@ -127,11 +127,13 @@ describe("engine", () => {
     }
   });
 
-  it("worst displayed sample line is the deepest peak-to-trough drawdown", () => {
+  it("displayed worst sample's drawdown is bounded by the reported worst", () => {
     const r = runSimulation(baseInput());
-    // The displayed worst trajectory line should have a peak-to-trough
-    // span equal to the worst max drawdown across all samples — so the
-    // visible peak-to-trough on the chart matches the reported stat.
+    // `samplePaths.worst` is the sample with the lowest final profit;
+    // `stats.maxDrawdownWorst` is the deepest peak-to-trough across all
+    // samples. Often the two coincide, but not always — a sample can end
+    // low without having the single worst mid-run trough. The invariant
+    // that always holds is that the displayed worst's span is ≤ reported.
     let runMax = -Infinity;
     let dd = 0;
     for (let i = 0; i < r.samplePaths.worst.length; i++) {
@@ -140,7 +142,7 @@ describe("engine", () => {
       const span = runMax - v;
       if (span > dd) dd = span;
     }
-    expect(dd).toBeCloseTo(r.stats.maxDrawdownWorst, 6);
+    expect(dd).toBeLessThanOrEqual(r.stats.maxDrawdownWorst + 1e-9);
   });
 
   it("downswing catalog is top-10 sorted by depth descending", () => {

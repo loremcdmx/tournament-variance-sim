@@ -1,5 +1,18 @@
 "use client";
 
+/**
+ * React bridge to the worker pool. The only React-touching file in
+ * `src/lib/sim/`; everything else is pure TS testable under Vitest.
+ *
+ * Owns a pool of `Worker` instances across renders (refs, not state),
+ * dispatches a `BuildRequest` to worker 0, then fans out `ShardRequest`s,
+ * merges shards as they return, and exposes `{status, progress, result,
+ * elapsedMs, error}` to the UI. Tracks `jobId` so late messages from a
+ * cancelled run are ignored.
+ *
+ * Wall-clock timing lives here (not in the engine) so determinism inside
+ * `engine.ts` is preserved.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compileSchedule, makeCheckpointGrid } from "./engine";
 import type { RawShard } from "./engine";
@@ -19,6 +32,26 @@ import type {
 } from "./worker";
 
 type Status = "idle" | "running" | "done" | "error";
+type BackgroundStatus = "idle" | "computing" | "full";
+
+/** Max sibling runs cached per batch (foreground + background). */
+const MAX_CACHED_RUNS = 5;
+
+interface CachedRun {
+  seed: number;
+  result: SimulationResult;
+}
+
+/**
+ * Hash of the SimulationInput with `seed` masked out — runs that differ
+ * only by seed share the same key and accumulate into one cache batch.
+ * Any non-seed change (schedule, controls, compare flags) produces a new
+ * key, which discards the old cache on the next Run click.
+ */
+function computeBatchKey(input: SimulationInput): string {
+  const rest = { ...input, seed: 0 };
+  return JSON.stringify(rest);
+}
 
 function poolSize(): number {
   if (typeof navigator === "undefined") return 1;
@@ -97,6 +130,29 @@ export function useSimulation() {
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [lastRateMs, setLastRateMs] = useState<number | null>(null);
 
+  // Background precompute state. A "batch" is a set of runs that differ only
+  // by seed — switching between them in ResultsView is instantaneous because
+  // each completed run is cached here and `selectRun` just swaps `result`.
+  // `version` bumps on every new foreground run so an in-flight background
+  // loop can notice it's been orphaned and bail out before it overwrites a
+  // fresher batch.
+  const batchRef = useRef<{
+    version: number;
+    key: string;
+    runs: CachedRun[];
+    baseInput: SimulationInput | null;
+  }>({ version: 0, key: "", runs: [], baseInput: null });
+  const [availableRuns, setAvailableRuns] = useState(0);
+  const [activeRunIdx, setActiveRunIdx] = useState(0);
+  const [backgroundStatus, setBackgroundStatus] = useState<BackgroundStatus>(
+    "idle",
+  );
+  const bgAbortRef = useRef<AbortController | null>(null);
+  const pdJobIdRef = useRef(0);
+  const [pdStatus, setPdStatus] = useState<Status>("idle");
+  const [pdProgress, setPdProgress] = useState(0);
+  const [pdResultOverride, setPdResultOverride] = useState<SimulationResult | null>(null);
+
   useEffect(() => {
     setLastRateMs(loadRate());
   }, []);
@@ -122,11 +178,18 @@ export function useSimulation() {
 
   const cancel = useCallback(() => {
     jobIdRef.current++;
+    pdJobIdRef.current++;
+    batchRef.current.version++;
+    bgAbortRef.current?.abort();
+    bgAbortRef.current = null;
     const old = poolRef.current;
     if (old) for (const w of old.workers) w.terminate();
     poolRef.current = spawnPool();
     setStatus("idle");
     setProgress(0);
+    setBackgroundStatus("idle");
+    setPdStatus("idle");
+    setPdProgress(0);
   }, []);
 
   // Dispatch ALL shards from ALL passes concurrently to the single pool.
@@ -138,6 +201,7 @@ export function useSimulation() {
       jobId: number,
       passes: PassPlan[],
       onProgress: (frac: number) => void,
+      signal?: AbortSignal,
     ): Promise<Record<PassPlan["key"], SimulationResult>> => {
       const pool = poolRef.current;
       if (!pool) throw new Error("worker pool not ready");
@@ -215,6 +279,20 @@ export function useSimulation() {
 
       return new Promise((resolve, reject) => {
         let settled = false;
+        const onAbort = () => {
+          if (settled) return;
+          settled = true;
+          detach();
+          if (signal) signal.removeEventListener("abort", onAbort);
+          reject(new Error("aborted"));
+        };
+        if (signal) {
+          if (signal.aborted) {
+            reject(new Error("aborted"));
+            return;
+          }
+          signal.addEventListener("abort", onAbort);
+        }
         let remaining = allSlots.length;
         let buildsRemaining = 0;
         let nextBuildId = 1;
@@ -377,18 +455,11 @@ export function useSimulation() {
     [],
   );
 
-  const run = useCallback(
-    async (input: SimulationInput) => {
-      const pool = poolRef.current;
-      if (!pool) return;
-      const jobId = ++jobIdRef.current;
-      setStatus("running");
-      setProgress(0);
-      setResult(null);
-      setError(null);
-      setElapsedMs(null);
-      const t0 = performance.now();
-
+  // Shared pass-plan construction: builds the same `PassPlan[]` for both
+  // foreground and background runs. The only thing background changes is the
+  // `seed` on the input passed in — every other twin/PD-compare decision must
+  // stay identical so cached sibling runs are apples-to-apples.
+  const buildPasses = useCallback((input: SimulationInput): PassPlan[] => {
       const twin = !!input.compareWithPrimedope && !input.calibrationMode;
       const mode2 = input.compareMode ?? "random";
       // The "primedope" model preset means "I want to see PD's ITM-distribution
@@ -460,12 +531,74 @@ export function useSimulation() {
         });
       }
 
+      return passes;
+    },
+    [],
+  );
+
+  // Merge twin passes into a single SimulationResult (primary + optional
+  // `comparison` sibling). Used by both foreground and background runs so
+  // cached sibling runs have the same shape as the foreground result.
+  const mergePasses = useCallback(
+    (
+      passes: PassPlan[],
+      out: Record<PassPlan["key"], SimulationResult>,
+    ): SimulationResult => {
+      const primary = out.primary;
+      const twin = passes.length > 1;
+      const comparison = twin ? out.comparison : undefined;
+      return comparison ? { ...primary, comparison } : primary;
+    },
+    [],
+  );
+
+  // Derive a distinct seed for the i-th background sibling of a batch.
+  // Golden-ratio stride keeps siblings spread across the seed space so two
+  // adjacent cached runs don't share low-order bits.
+  const deriveSiblingSeed = (baseSeed: number, i: number): number =>
+    ((baseSeed + i * 0x9e3779b1) >>> 0);
+
+  const run = useCallback(
+    async (input: SimulationInput) => {
+      const pool = poolRef.current;
+      if (!pool) return;
+      const jobId = ++jobIdRef.current;
+      // Bump batch version to orphan any in-flight background loop from a
+      // prior run — its post-await `version` check will fail and it'll bail
+      // out before overwriting the new cache.
+      batchRef.current.version++;
+      const myVersion = batchRef.current.version;
+      const batchKey = computeBatchKey(input);
+      batchRef.current.key = batchKey;
+      batchRef.current.runs = [];
+      batchRef.current.baseInput = input;
+      setAvailableRuns(0);
+      setActiveRunIdx(0);
+      setBackgroundStatus("idle");
+      bgAbortRef.current?.abort();
+      bgAbortRef.current = null;
+      pdJobIdRef.current++;
+      setPdStatus("idle");
+      setPdProgress(0);
+      setPdResultOverride(null);
+      setStatus("running");
+      setProgress(0);
+      setResult(null);
+      setError(null);
+      setElapsedMs(null);
+      const t0 = performance.now();
+
+      const passes = buildPasses(input);
+
       try {
         const out = await runJob(jobId, passes, (f) => setProgress(f));
         if (jobIdRef.current !== jobId) return;
-        const primary = out.primary;
-        const comparison = twin ? out.comparison : undefined;
-        setResult(comparison ? { ...primary, comparison } : primary);
+        if (batchRef.current.version !== myVersion) return;
+        const merged = mergePasses(passes, out);
+        batchRef.current.runs.push({ seed: input.seed, result: merged });
+        setAvailableRuns(1);
+        setActiveRunIdx(0);
+        setResult(merged);
         setProgress(1);
         const elapsed = performance.now() - t0;
         setElapsedMs(elapsed);
@@ -493,10 +626,96 @@ export function useSimulation() {
         if (jobIdRef.current !== jobId) return;
         setError(err instanceof Error ? err.message : String(err));
         setStatus("error");
+        return;
+      }
+
+      // Background precompute loop. Runs sibling seeds on the same pool,
+      // sequentially, until `MAX_CACHED_RUNS` is reached or a newer
+      // foreground run bumps `batchRef.current.version`. Each sibling reuses
+      // `runJob` but with a fresh jobId; progress goes nowhere (the
+      // callback is a no-op) so the foreground progress bar stays at 1.
+      setBackgroundStatus("computing");
+      const bgController = new AbortController();
+      bgAbortRef.current = bgController;
+      for (let i = 1; i < MAX_CACHED_RUNS; i++) {
+        if (batchRef.current.version !== myVersion) return;
+        if (bgController.signal.aborted) return;
+        const siblingSeed = deriveSiblingSeed(input.seed, i);
+        const siblingInput: SimulationInput = { ...input, seed: siblingSeed };
+        const siblingPasses = buildPasses(siblingInput);
+        const bgJobId = ++jobIdRef.current;
+        try {
+          const bgOut = await runJob(
+            bgJobId,
+            siblingPasses,
+            () => {},
+            bgController.signal,
+          );
+          if (batchRef.current.version !== myVersion) return;
+          if (jobIdRef.current !== bgJobId) return;
+          const merged = mergePasses(siblingPasses, bgOut);
+          batchRef.current.runs.push({ seed: siblingSeed, result: merged });
+          setAvailableRuns(batchRef.current.runs.length);
+        } catch {
+          // Background errors (including aborts) are silent — the foreground
+          // result is still valid, and the next run resets the batch.
+          setBackgroundStatus("idle");
+          return;
+        }
+      }
+      if (batchRef.current.version === myVersion) {
+        setBackgroundStatus("full");
       }
     },
-    [runJob],
+    [runJob, buildPasses, mergePasses],
   );
+
+  // Isolated re-run of just the PrimeDope-comparison pass. Used by the
+  // "PD payouts" toggle next to the compare chart so flipping it only
+  // recomputes the right pane (with its own progress bar) instead of
+  // invalidating the main result. Aborts background precompute since we
+  // need the pool immediately; the user can re-run to refill the cache.
+  const runPdOnly = useCallback(
+    async (input: SimulationInput) => {
+      const pool = poolRef.current;
+      if (!pool) return;
+      const passes = buildPasses(input);
+      const cmpPass = passes.find((p) => p.key === "comparison");
+      if (!cmpPass) return;
+      bgAbortRef.current?.abort();
+      bgAbortRef.current = null;
+      setBackgroundStatus("idle");
+      const myPdJob = ++pdJobIdRef.current;
+      const myJobId = ++jobIdRef.current;
+      setPdStatus("running");
+      setPdProgress(0);
+      try {
+        const out = await runJob(
+          myJobId,
+          [cmpPass],
+          (f) => {
+            if (pdJobIdRef.current === myPdJob) setPdProgress(f);
+          },
+        );
+        if (pdJobIdRef.current !== myPdJob) return;
+        setPdResultOverride(out.comparison);
+        setPdProgress(1);
+        setPdStatus("done");
+      } catch (err) {
+        if (pdJobIdRef.current !== myPdJob) return;
+        setPdStatus("error");
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [runJob, buildPasses],
+  );
+
+  const selectRun = useCallback((idx: number) => {
+    const runs = batchRef.current.runs;
+    if (idx < 0 || idx >= runs.length) return;
+    setActiveRunIdx(idx);
+    setResult(runs[idx].result);
+  }, []);
 
   return {
     status,
@@ -507,5 +726,13 @@ export function useSimulation() {
     run,
     cancel,
     estimateMs,
+    availableRuns,
+    activeRunIdx,
+    selectRun,
+    backgroundStatus,
+    runPdOnly,
+    pdStatus,
+    pdProgress,
+    pdResultOverride,
   };
 }

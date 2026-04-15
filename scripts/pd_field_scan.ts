@@ -90,7 +90,6 @@ function runOurs(sc: Scenario, mode: CalibrationMode) {
     seed: 42,
     finishModel: { id: "power-law" },
     calibrationMode: mode,
-    primedopeStyleEV: mode === "primedope-binary-itm",
   };
   return runSimulation(input);
 }

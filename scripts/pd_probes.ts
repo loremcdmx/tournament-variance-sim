@@ -124,7 +124,6 @@ function runOurs(rows: RowSpec[], samples = 50_000, bankroll = 1000) {
     seed: 42,
     finishModel: { id: "power-law" },
     calibrationMode: "primedope-binary-itm",
-    primedopeStyleEV: true,
   };
   return runSimulation(input);
 }
