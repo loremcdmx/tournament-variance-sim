@@ -1,3 +1,4 @@
+import { buildFreezeCashPMF } from "./freezeShape";
 import type { FinishModelConfig } from "./types";
 
 /**
@@ -13,6 +14,27 @@ export function buildFinishPMF(
   switch (model.id) {
     case "uniform": {
       pmf.fill(1 / N);
+      return pmf;
+    }
+    case "freeze-realdata-step":
+      return buildFreezeCashPMF(N, "step", 0);
+    case "freeze-realdata-linear":
+      return buildFreezeCashPMF(N, "linear", 0);
+    case "freeze-realdata-tilt":
+      return buildFreezeCashPMF(N, "tilt", alpha);
+    case "powerlaw-realdata-influenced": {
+      // Same power-law shape as the plain "power-law" model. The
+      // "real-data-influenced" label means the surrounding defaults (global
+      // ITM = 18.7%, matching our 1.5k-player sample) shape the distribution;
+      // α is still solved upstream against the user's target ROI so this
+      // model obeys global/per-row ROI settings instead of pinning them.
+      let s = 0;
+      for (let i = 1; i <= N; i++) {
+        const v = Math.pow(i, -alpha);
+        pmf[i - 1] = v;
+        s += v;
+      }
+      for (let i = 0; i < N; i++) pmf[i] /= s;
       return pmf;
     }
     case "empirical": {
@@ -147,8 +169,14 @@ export function calibrateAlpha(
   model: FinishModelConfig,
 ): number {
   if (model.alpha !== undefined) return model.alpha;
-  if (model.id === "uniform" || model.id === "empirical") return 0;
-
+  if (
+    model.id === "uniform" ||
+    model.id === "empirical" ||
+    model.id === "freeze-realdata-step" ||
+    model.id === "freeze-realdata-linear" ||
+    model.id === "freeze-realdata-tilt"
+  )
+    return 0;
   const targetWinnings = costPerEntry * (1 + targetROI);
   const range =
     model.id === "stretched-exp" ? { lo: -5, hi: 8 } : { lo: -6, hi: 25 };
@@ -221,6 +249,40 @@ export function calibrateShelledItm(
   const clampedItm = Math.max(0, Math.min(1, itmRate));
 
   const emptyShells = { first: 0, top3: 0, ft: 0 };
+
+  // Real-data freeze shapes embed the sample's empirical ITM (18.7%) and
+  // cash-band width (15.5%). Per-row itmRate / shell locks don't apply —
+  // we build the full PMF directly and report whatever E[W] it produces.
+  if (
+    model.id === "freeze-realdata-step" ||
+    model.id === "freeze-realdata-linear" ||
+    model.id === "freeze-realdata-tilt"
+  ) {
+    const alpha = model.alpha ?? 0;
+    const full = buildFinishPMF(N, model, alpha);
+    let ew = 0;
+    for (let i = 0; i < Math.min(payouts.length, N); i++) {
+      ew += full[i] * payouts[i] * prizePool;
+    }
+    const ftEnd = Math.min(9, N);
+    const sumR = (from: number, toExcl: number) => {
+      let s = 0;
+      for (let i = from; i < Math.min(toExcl, N); i++) s += full[i];
+      return s;
+    };
+    return {
+      alpha,
+      pmf: full,
+      currentWinnings: ew,
+      feasible: true,
+      shells: {
+        first: full[0] ?? 0,
+        top3: sumR(0, Math.min(3, N)),
+        ft: sumR(0, ftEnd),
+      },
+    };
+  }
+
   if (paid === 0 || prizePool <= 0 || clampedItm <= 0) {
     pmf.fill(1 / Math.max(1, N));
     return { alpha: 0, pmf, currentWinnings: 0, feasible: true, shells: emptyShells };

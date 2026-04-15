@@ -97,6 +97,8 @@ interface Props {
   /** When set, rows with no explicit itmRate inherit this default (shown
    *  as the placeholder on the per-row input). Pass null to disable. */
   globalItmPct?: number | null;
+  /** Optional extras rendered in the toolbar row (right of Add / Import). */
+  toolbarExtras?: React.ReactNode;
 }
 
 const IMPORT_PLACEHOLDER = `# label, players, buyIn (50+5 or plain), roi%, count, payout
@@ -208,6 +210,7 @@ export function ScheduleEditor({
   onChange,
   disabled,
   globalItmPct = null,
+  toolbarExtras,
 }: Props) {
   const t = useT();
   const { advanced } = useAdvancedMode();
@@ -287,8 +290,8 @@ export function ScheduleEditor({
         disabled={disabled}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      <div>
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-left text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               <Th> </Th>
@@ -573,7 +576,7 @@ export function ScheduleEditor({
         </table>
       </div>
       <div className="border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/40 px-4 py-2.5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={add}
@@ -594,6 +597,9 @@ export function ScheduleEditor({
             </svg>
             {t("row.import")}
           </button>
+          {toolbarExtras && (
+            <div className="ml-auto flex items-center gap-2">{toolbarExtras}</div>
+          )}
         </div>
         {importOpen && (
           <div className="mt-3 flex flex-col gap-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">

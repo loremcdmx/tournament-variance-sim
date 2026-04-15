@@ -43,7 +43,7 @@ export interface ModelPreset {
 // the fields they care about, so we keep new fields backwards-compat by
 // extending here.
 const ZERO_SHOCKS: ModelPatch = {
-  finishModelId: "power-law",
+  finishModelId: "powerlaw-realdata-influenced",
   alphaOverride: null,
   compareWithPrimedope: true,
   usePrimedopePayouts: true,
@@ -72,6 +72,7 @@ export const STANDARD_PRESETS: ModelPreset[] = [
       // no skill model nuance. This preset is the one place where forcing
       // the PD payout curve onto the comparison pane is correct — it's
       // explicitly "reproduce PD's reference σ on their own curve".
+      finishModelId: "power-law",
       compareWithPrimedope: true,
       usePrimedopePayouts: true,
     },
@@ -82,7 +83,6 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     taglineKey: "preset.naive.tagline",
     patch: {
       ...ZERO_SHOCKS,
-      finishModelId: "power-law",
     },
   },
   {
@@ -91,7 +91,6 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     taglineKey: "preset.realisticSolo.tagline",
     patch: {
       ...ZERO_SHOCKS,
-      finishModelId: "power-law",
       roiStdErr: 0.03,
       roiShockPerTourney: 0.30,
       roiShockPerSession: 0.05,
@@ -108,7 +107,6 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     patch: {
       ...ZERO_SHOCKS,
       // LoremCDMX: calibrated for "stable reg in a structured grind"
-      finishModelId: "power-law",
       roiStdErr: 0.02,
       roiShockPerTourney: 0.25,
       roiShockPerSession: 0.04,

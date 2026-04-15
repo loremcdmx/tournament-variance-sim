@@ -29,7 +29,11 @@ export type FinishModelId =
   | "stretched-exp"
   | "plackett-luce"
   | "uniform"
-  | "empirical";
+  | "empirical"
+  | "freeze-realdata-step"
+  | "freeze-realdata-linear"
+  | "freeze-realdata-tilt"
+  | "powerlaw-realdata-influenced";
 
 export interface FinishModelConfig {
   id: FinishModelId;
@@ -459,6 +463,10 @@ export interface SimulationResult {
     p975: Float64Array;
     p0015: Float64Array;
     p9985: Float64Array;
+    /** Pointwise minimum across all samples — "absolute worst run" envelope */
+    min: Float64Array;
+    /** Pointwise maximum across all samples — "absolute best run" envelope */
+    max: Float64Array;
   };
 
   /** Per-row per-sample profit breakdown (variance decomposition) */

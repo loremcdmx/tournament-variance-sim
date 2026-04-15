@@ -58,7 +58,7 @@ export function PayoutStructureCard({ schedule }: Props) {
   const minCashBuyIns = (table[paid - 1] * row.players).toFixed(2);
 
   return (
-    <Card className="p-5">
+    <Card className="flex h-full flex-col p-5">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <div className="text-sm font-semibold text-[color:var(--color-fg)]">

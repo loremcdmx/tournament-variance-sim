@@ -34,15 +34,15 @@ export function Section({
 }: Props) {
   const meta = SUIT_META[suit];
   return (
-    <section id={anchorId} className="flex flex-col gap-6 scroll-mt-24">
+    <section id={anchorId} className="flex flex-col gap-3 scroll-mt-24">
       {/* Editorial masthead: numeral / eyebrow / title sit on one baseline,
           with a heavy double-rule divider beneath. */}
-      <header className="flex flex-col gap-3">
+      <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex items-end gap-5">
+          <div className="flex items-end gap-4">
             {number && (
               <span
-                className="section-num text-[64px] sm:text-[92px]"
+                className="section-num text-[44px] sm:text-[64px]"
                 style={{ color: meta.colorVar }}
                 aria-hidden
               >
@@ -57,7 +57,7 @@ export function Section({
                 <span className="text-[12px] leading-none">{meta.glyph}</span>
                 <span>/ {title}</span>
               </div>
-              <h2 className="text-[22px] font-bold uppercase leading-[1.05] tracking-[-0.01em] text-[color:var(--color-fg)] sm:text-[28px]">
+              <h2 className="text-[20px] font-bold uppercase leading-[1.05] tracking-[-0.01em] text-[color:var(--color-fg)] sm:text-[24px]">
                 {title}
               </h2>
               {subtitle && (
@@ -89,7 +89,7 @@ export function Card({
   return (
     <div
       className={
-        "relative border-t-[2px] border-x border-b border-t-[color:var(--color-fg)]/70 border-x-[color:var(--color-border)] border-b-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/60 " +
+        "relative min-w-0 border-t-[2px] border-x border-b border-t-[color:var(--color-fg)]/70 border-x-[color:var(--color-border)] border-b-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/60 " +
         className
       }
     >

@@ -46,6 +46,22 @@ export const DICT = {
   "model.uniform": { en: "Uniform finish model", ru: "Равномерная модель" },
   "model.empirical": { en: "Empirical finish model", ru: "Эмпирическая модель" },
   "model.plackett-luce": { en: "Plackett–Luce finish model", ru: "Модель Плакетта–Льюса" },
+  "model.freeze-realdata-step": {
+    en: "Freezeout real-data (step)",
+    ru: "Фризаут по реал-дате (шаги)",
+  },
+  "model.freeze-realdata-linear": {
+    en: "Freezeout real-data (linear)",
+    ru: "Фризаут по реал-дате (линейная)",
+  },
+  "model.freeze-realdata-tilt": {
+    en: "Freezeout real-data (hybrid tilt)",
+    ru: "Фризаут по реал-дате (гибрид tilt)",
+  },
+  "model.powerlaw-realdata-influenced": {
+    en: "Power-law (real-data influenced α)",
+    ru: "Power-law (α под реал-дату)",
+  },
 
   // Sections
   "section.schedule.title": { en: "Schedule", ru: "Расписание" },
@@ -779,10 +795,17 @@ export const DICT = {
     en: "incl. overflow (heavy-tail clip)",
     ru: "с учётом хвоста (обрезан)",
   },
-  "chart.convergence": { en: "Mean convergence", ru: "Сходимость среднего" },
+  "chart.convergence": { en: "ROI convergence", ru: "Сходимость ROI" },
   "chart.convergence.sub": {
-    en: "Running estimate of E[profit] as samples accumulate · 95 % CI band",
-    ru: "Текущая оценка E[profit] по мере накопления сэмплов · 95 % ДИ",
+    en: "How many tournaments you need to play before your observed ROI stops lying to you",
+    ru: "Сколько турниров надо сыграть, чтобы твой наблюдаемый ROI перестал тебя обманывать",
+  },
+  "chart.convergence.col.target": { en: "ROI range", ru: "Диапазон ROI" },
+  "chart.convergence.col.tourneys": { en: "Tournaments", ru: "Турниров" },
+  "chart.convergence.col.fields": { en: "Field multiples", ru: "Множителей поля" },
+  "chart.convergence.assumptions": {
+    en: "Read a row as: «play this many tournaments and, with the chosen CI confidence, your observed ROI will land inside the target band around the true one». AFS pretends you're playing a different average field size, ROI pretends your true edge is different (both shift σ), CI picks how strict «trust the number» should be (90 % = loose, 99.9 % = paranoid). Assumes independent tournaments; σ_ROI ∝ field^0.372 · (1 + 0.374·ROI), fitted empirically across an 18-field × 7-ROI engine sweep.",
+    ru: "Читать строку так: «сыграй столько турниров — и с выбранной доверительностью твой наблюдаемый ROI окажется в указанной полосе вокруг истинного». AFS позволяет представить другой средний размер филда, ROI — другой истинный эдж (оба двигают σ), CI — выбрать, насколько строго «верить цифре» (90 % — мягко, 99,9 % — параноидально). Предполагается, что турниры независимы; σ_ROI ∝ field^0.372 · (1 + 0.374·ROI) — эмпирический фит по свипу движка 18 филдов × 7 ROI.",
   },
   "chart.decomp": { en: "Per-row EV decomposition", ru: "Декомпозиция EV по строкам" },
   "chart.decomp.sub": {
@@ -801,6 +824,26 @@ export const DICT = {
   "unit.displayLabel": { en: "Display in", ru: "Показывать в" },
 
   "lineStyle.label": { en: "Line style", ru: "Стиль линий" },
+  "lineStyle.preset.classic.label": { en: "Classic", ru: "Классика" },
+  "lineStyle.preset.classic.desc": {
+    en: "Amber mean + cool blue EV. Balanced readability on dark.",
+    ru: "Янтарная основная + прохладная синяя EV. Универсальная читаемость на тёмном фоне.",
+  },
+  "lineStyle.preset.duotone.label": { en: "Duotone", ru: "Дуотон" },
+  "lineStyle.preset.duotone.desc": {
+    en: "Teal + magenta complementary pair. Maximum line separation.",
+    ru: "Бирюза и магента — комплементарная пара. Максимальное разделение линий.",
+  },
+  "lineStyle.preset.mono.label": { en: "Monochrome", ru: "Монохром" },
+  "lineStyle.preset.mono.desc": {
+    en: "Near-monochrome slate. Minimal palette for clean screenshots.",
+    ru: "Почти монохромная сланцевая палитра. Минимум цвета — удобно для скриншотов.",
+  },
+  "lineStyle.preset.vivid.label": { en: "Vivid", ru: "Яркий" },
+  "lineStyle.preset.vivid.desc": {
+    en: "Saturated purple + yellow. Loud but harmonic editorial accent.",
+    ru: "Насыщенная пурпурная и жёлтая палитра. Громкая, но гармоничная.",
+  },
   "runs.label": { en: "Runs shown", ru: "Показано ранов" },
   "seedBatch.label": { en: "Seed variant", ru: "Вариант сида" },
   "seedBatch.prev": { en: "Previous cached run", ru: "Предыдущий кэшированный ран" },
@@ -900,8 +943,8 @@ export const DICT = {
   "footer.madeBy": { en: "made by", ru: "сделал" },
 
   "chart.convergence.help": {
-    en: "Y = running mean estimate of profit per simulation. The shaded band is the 95% confidence interval, which should narrow as samples accumulate. Look for: (a) the line stops drifting and stays flat — the run has enough samples to trust the mean; (b) the band is much narrower than the value of the mean — the estimate is precise. Bad signs: line still walking, band still wide.",
-    ru: "Y — текущая оценка среднего профита по симуляциям. Закрашенная полоса — 95% доверительный интервал, должен сужаться по мере накопления сэмплов. На что смотреть: (а) линия перестала дрейфовать и держится ровно — сэмплов достаточно, среднему можно верить; (б) ширина полосы сильно меньше значения среднего — оценка точная. Плохо: линия гуляет, полоса широкая.",
+    en: "Simple idea: the fewer tournaments you've played, the more your observed ROI is just noise. This table tells you, for each target ROI band, how many tournaments you need to grind before the number on your dashboard means anything. «±2 %» doesn't say your ROI is exactly right — it says that with the chosen confidence level the truth lies within 2 pp of what you see. Wider band → fewer tournaments. The CI slider controls how strict «trust» is: 95 % is the classic «19 out of 20», 99 % stricter, 99.9 % paranoid. The second column expresses the same count in full fields of the selected AFS. The AFS slider assumes a different average field size — bigger fields are more top-heavy, same certainty takes more tourneys; σ ∝ field^0.372. The ROI slider assumes a different true edge — higher ROI means a higher probability of deep runs, which actually widens the tail, so σ ∝ (1 + 0.374·ROI). Both coefficients are fits to the engine across an 18-field × 7-ROI sweep.",
+    ru: "Простая идея: чем меньше ты сыграл, тем больше твой наблюдаемый ROI — просто шум. Таблица говорит, для каждой целевой полосы точности, сколько турниров надо отмотать, чтобы цифра на дашборде что-то значила. «±2 %» не значит, что твой ROI ровно такой — это значит, что с выбранным уровнем доверия истинный ROI лежит в пределах 2 пп от наблюдаемого. Шире полоса — меньше турниров надо. Ползунок CI задаёт строгость «доверия»: 95 % — классический «19 из 20», 99 % — строже, 99,9 % — паранойя. Вторая колонка показывает то же количество в «полных полях» выбранного AFS. Ползунок AFS позволяет предположить другой средний размер поля — у больших филдов хвост тяжелее, та же уверенность требует больше турниров; σ ∝ field^0.372. Ползунок ROI — другой истинный эдж: чем выше ROI, тем чаще доходишь до глубоких мест, и хвост шире, поэтому σ ∝ (1 + 0,374·ROI). Оба коэффициента — эмпирические фиты по свипу движка 18 филдов × 7 ROI.",
   },
   "chart.sensitivity.help": {
     en: "X = how wrong your ROI input is in percentage points (e.g. −2pp means real ROI is 2pp lower than configured). Y = expected profit at that real ROI. Use this to ask: 'if my edge is actually 1–2pp worse than I think, am I still profitable?' Slope shows how much each pp of ROI is worth in $. A steep curve means your bottom line is very sensitive to whether your ROI estimate is right.",
@@ -928,6 +971,11 @@ export const DICT = {
   "pd.reproduce.hint": {
     en: "PrimeDope has no pre-fill URL — we open their site and copy a cheat-sheet of your values to the clipboard so you can paste them in.",
     ru: "PrimeDope не поддерживает предзаполнение — мы открываем их сайт и кладём шпаргалку с твоими параметрами в буфер обмена, чтобы ты вставил их вручную.",
+  },
+  "pd.refresh.label": { en: "Refresh", ru: "Обновить" },
+  "pd.refresh.hint": {
+    en: "Re-run the PrimeDope pane with the current checkbox settings.",
+    ru: "Пересчитать правый пейн с текущими галочками PD.",
   },
   "pd.faithful.on": { en: "faithful", ru: "faithful" },
   "pd.faithful.off": { en: "custom", ru: "custom" },
@@ -971,56 +1019,6 @@ export const DICT = {
     ru: "Платят {paid} из {total} мест ({pct}%). Мин-кэш ≈ {min}× бай-инов.",
   },
   "payouts.rowPicker": { en: "Pick row", ru: "Выбрать строку" },
-
-  // Bench convergence card
-  "bench.title": {
-    en: "Convergence vs. PrimeDope",
-    ru: "Сходимость vs. PrimeDope",
-  },
-  "bench.calibrationTitle": {
-    en: "PrimeDope calibration check",
-    ru: "Сверка калибровки с PrimeDope",
-  },
-  "bench.calibrationRef": {
-    en: "Reference scenario: ${buyIn}+${fee} MTT, target ROI +{roi}%, {tourneys} tournaments per row, {samples} MC samples per point.",
-    ru: "Эталонный сценарий: MTT ${buyIn}+${fee}, таргет ROI +{roi}%, {tourneys} турниров на строку, {samples} MC сэмплов на точку.",
-  },
-  "bench.calibrationExplainer": {
-    en: "We re-run the same schedule across different field sizes and check that our 90% confidence band for ROI matches PrimeDope's. If ours and PD agree to within 0.3%, the engine's variance model is sound.",
-    ru: "Мы прогоняем тот же график на разных размерах поля и смотрим, совпадает ли наш 90% доверительный коридор ROI с коридором PrimeDope. Если наш и PD сходятся в пределах 0.3%, модель дисперсии в движке корректна.",
-  },
-  "bench.th.players": { en: "Field", ru: "Поле" },
-  "bench.th.players.hint": {
-    en: "Number of players in the MTT. Larger fields mean higher top-heavy variance per entry.",
-    ru: "Размер поля MTT. Чем больше поле, тем выше топ-хэви дисперсия на заход.",
-  },
-  "bench.th.ours": { en: "Our band ±", ru: "Наш коридор ±" },
-  "bench.th.ours.hint": {
-    en: "Half-width of our 90% confidence interval for ROI, in percentage points. ±5% means the middle 90% of outcomes fall in [mean-5%, mean+5%]. Narrower is more predictable.",
-    ru: "Половина ширины нашего 90% доверительного интервала ROI, в процентах. ±5% значит, что средние 90% исходов попадают в [среднее-5%, среднее+5%]. Чем уже — тем стабильнее.",
-  },
-  "bench.th.pd": { en: "PD band ±", ru: "PD коридор ±" },
-  "bench.th.pd.hint": {
-    en: "Same half-width, computed by PrimeDope's calibration on the same scenario. Our job is to match this.",
-    ru: "Та же полуширина, посчитанная калибровкой PrimeDope на том же сценарии. Наша задача — совпадать с ней.",
-  },
-  "bench.th.delta": { en: "Δ (ours − PD)", ru: "Δ (наш − PD)" },
-  "bench.th.delta.hint": {
-    en: "Difference between our band and PD's. Positive = we predict more variance than PD. Highlighted amber if > 0.3%.",
-    ru: "Разница между нашим коридором и PD. Плюс — мы предсказываем больше дисперсии, чем PD. Подсвечено оранжевым если > 0.3%.",
-  },
-  "bench.calibrationVerdictGood": {
-    en: "✓ Our 90% band matches PD within {delta} on average — engine is calibrated.",
-    ru: "✓ Наш 90% коридор совпадает с PD в пределах {delta} в среднем — движок откалиброван.",
-  },
-  "bench.calibrationVerdictDrift": {
-    en: "△ Our band drifts from PD by {delta} on average — calibration needs review.",
-    ru: "△ Наш коридор расходится с PD на {delta} в среднем — стоит перепроверить калибровку.",
-  },
-  "bench.unavailable": {
-    en: "Bench data not built. Run `npm run bench:convergence` once.",
-    ru: "Эталон не собран. Запусти `npm run bench:convergence` один раз.",
-  },
 
   // Verdict — plain-language summary card
   "verdict.title": {
@@ -1253,8 +1251,8 @@ export const DICT = {
     ru: "В равновесии (−рейк)",
   },
   "preview.probTop1": { en: "1st place", ru: "1-е место" },
-  "preview.probTop3": { en: "Top 3", ru: "Топ-3" },
-  "preview.probFt": { en: "Final table", ru: "Финалка" },
+  "preview.probTop3": { en: "Places 2–3", ru: "Места 2–3" },
+  "preview.probFt": { en: "Places 4–9", ru: "Места 4–9" },
   "preview.probFirstCash": {
     en: "First min-cash (after bubble)",
     ru: "Первый мин-кеш (после бабла)",
@@ -1322,7 +1320,7 @@ export const DICT = {
   },
 
   // Downswing catalog
-  "dd.title": { en: "Worst downswings", ru: "Худшие даунсвинги" },
+  "dd.title": { en: "Toughest streaks", ru: "Самые жёсткие стрики" },
   "dd.sub": {
     en: "Top-3 deepest downswings and top-3 biggest upswings across samples",
     ru: "Топ-3 самых глубоких даунсвинга и топ-3 самых больших апсвинга по сэмплам",

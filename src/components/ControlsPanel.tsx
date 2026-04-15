@@ -295,14 +295,18 @@ export function ControlsPanel({
             <option value="plackett-luce">Plackett-Luce</option>
             <option value="uniform">Uniform</option>
             <option value="empirical">Empirical (CSV)</option>
+            <option value="freeze-realdata-step">Freeze / real-data — step</option>
+            <option value="freeze-realdata-linear">Freeze / real-data — linear</option>
+            <option value="freeze-realdata-tilt">Freeze / real-data — tilt (α)</option>
+            <option value="powerlaw-realdata-influenced">Power-law — real-data α</option>
           </select>
         </Field>
         <Field label={t("controls.alphaOverride")} hint={t("help.alphaOverride")}>
           <input
             type="number"
-            step={0.1}
-            min={0.1}
-            max={10}
+            step={value.finishModelId === "freeze-realdata-tilt" ? 0.05 : 0.1}
+            min={value.finishModelId === "freeze-realdata-tilt" ? -0.5 : 0.1}
+            max={value.finishModelId === "freeze-realdata-tilt" ? 0.5 : 10}
             value={value.alphaOverride ?? ""}
             placeholder={t("controls.alphaPlaceholder")}
             onChange={(e) => {
@@ -313,7 +317,10 @@ export function ControlsPanel({
               }
               const v = Number(raw);
               if (!Number.isFinite(v)) return;
-              if (v < 0.1 || v > 10) return;
+              const isTilt = value.finishModelId === "freeze-realdata-tilt";
+              const lo = isTilt ? -0.5 : 0.1;
+              const hi = isTilt ? 0.5 : 10;
+              if (v < lo || v > hi) return;
               setModel("alphaOverride", v);
             }}
             className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"

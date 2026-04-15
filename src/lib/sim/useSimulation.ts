@@ -176,21 +176,30 @@ export function useSimulation() {
     };
   }, []);
 
+  // Drain the pool. Web workers process postMessage FIFO and have no
+  // in-band cancel — terminate + respawn is the only way to drop stale
+  // shards still sitting in a worker's queue. Without this, new shards
+  // dispatched by the next run land behind seconds of background /
+  // PD-only work and the progress bar stays at ~1 ms until it clears.
+  const resetPool = useCallback(() => {
+    const old = poolRef.current;
+    if (old) for (const w of old.workers) w.terminate();
+    poolRef.current = spawnPool();
+  }, []);
+
   const cancel = useCallback(() => {
     jobIdRef.current++;
     pdJobIdRef.current++;
     batchRef.current.version++;
     bgAbortRef.current?.abort();
     bgAbortRef.current = null;
-    const old = poolRef.current;
-    if (old) for (const w of old.workers) w.terminate();
-    poolRef.current = spawnPool();
+    resetPool();
     setStatus("idle");
     setProgress(0);
     setBackgroundStatus("idle");
     setPdStatus("idle");
     setPdProgress(0);
-  }, []);
+  }, [resetPool]);
 
   // Dispatch ALL shards from ALL passes concurrently to the single pool.
   // Each worker holds a queue of shards (web workers process postMessage
@@ -560,8 +569,10 @@ export function useSimulation() {
 
   const run = useCallback(
     async (input: SimulationInput) => {
-      const pool = poolRef.current;
-      if (!pool) return;
+      if (!poolRef.current) return;
+      bgAbortRef.current?.abort();
+      bgAbortRef.current = null;
+      resetPool();
       const jobId = ++jobIdRef.current;
       // Bump batch version to orphan any in-flight background loop from a
       // prior run — its post-await `version` check will fail and it'll bail
@@ -575,8 +586,6 @@ export function useSimulation() {
       setAvailableRuns(0);
       setActiveRunIdx(0);
       setBackgroundStatus("idle");
-      bgAbortRef.current?.abort();
-      bgAbortRef.current = null;
       pdJobIdRef.current++;
       setPdStatus("idle");
       setPdProgress(0);
@@ -667,7 +676,7 @@ export function useSimulation() {
         setBackgroundStatus("full");
       }
     },
-    [runJob, buildPasses, mergePasses],
+    [runJob, buildPasses, mergePasses, resetPool],
   );
 
   // Isolated re-run of just the PrimeDope-comparison pass. Used by the
@@ -677,13 +686,13 @@ export function useSimulation() {
   // need the pool immediately; the user can re-run to refill the cache.
   const runPdOnly = useCallback(
     async (input: SimulationInput) => {
-      const pool = poolRef.current;
-      if (!pool) return;
+      if (!poolRef.current) return;
       const passes = buildPasses(input);
       const cmpPass = passes.find((p) => p.key === "comparison");
       if (!cmpPass) return;
       bgAbortRef.current?.abort();
       bgAbortRef.current = null;
+      resetPool();
       setBackgroundStatus("idle");
       const myPdJob = ++pdJobIdRef.current;
       const myJobId = ++jobIdRef.current;
@@ -707,7 +716,7 @@ export function useSimulation() {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [runJob, buildPasses],
+    [runJob, buildPasses, resetPool],
   );
 
   const selectRun = useCallback((idx: number) => {

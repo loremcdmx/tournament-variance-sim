@@ -108,6 +108,8 @@ function collectResultTransfers(r: SimulationResult): Transferable[] {
   out.push(r.envelopes.p975.buffer);
   out.push(r.envelopes.p0015.buffer);
   out.push(r.envelopes.p9985.buffer);
+  out.push(r.envelopes.min.buffer);
+  out.push(r.envelopes.max.buffer);
   out.push(r.convergence.mean.buffer);
   out.push(r.convergence.seLo.buffer);
   out.push(r.convergence.seHi.buffer);

@@ -1386,6 +1386,8 @@ export function buildResult(
       p975: upsampleToGrid(p975, checkpointIdx, hiCheckpointIdx),
       p0015: upsampleToGrid(p0015, checkpointIdx, hiCheckpointIdx),
       p9985: upsampleToGrid(p9985, checkpointIdx, hiCheckpointIdx),
+      min: shard.hiResMin,
+      max: shard.hiResMax,
     },
     decomposition,
     sensitivity: { deltas: sensDeltas, expectedProfits: sensProfits },
@@ -1645,6 +1647,10 @@ export interface RawShard {
    *  across multi-shard merges). ±Infinity for empty shards. */
   hiResBestFinal: number;
   hiResWorstFinal: number;
+  /** Pointwise min/max across every sample in this shard, on the hi-res
+   *  checkpoint grid. Merged across shards via pointwise min/max. */
+  hiResMin: Float64Array;
+  hiResMax: Float64Array;
 }
 
 export interface CheckpointGrid {
@@ -1759,6 +1765,15 @@ export function simulateShard(
   const hiResScratch = new Float64Array(hiK1);
   let hiResBestFinal = Number.NEGATIVE_INFINITY;
   let hiResWorstFinal = Number.POSITIVE_INFINITY;
+  // Pointwise min/max across ALL samples in this shard, computed on the
+  // hi-res grid (not the K=80 low-res grid). Checkpoint 0 is t=0 / profit=0
+  // for every sample, so the envelope pins to 0 there.
+  const hiResMin = new Float64Array(hiK1);
+  const hiResMax = new Float64Array(hiK1);
+  for (let j = 1; j < hiK1; j++) {
+    hiResMin[j] = Number.POSITIVE_INFINITY;
+    hiResMax[j] = Number.NEGATIVE_INFINITY;
+  }
 
   const roiStdErr = Math.max(0, input.roiStdErr ?? 0);
   const sigTourney = Math.max(0, input.roiShockPerTourney ?? 0);
@@ -2083,6 +2098,8 @@ export function simulateShard(
       }
       while (nextHiCp <= hiK && i + 1 === nextHiCpIdx) {
         hiResScratch[nextHiCp] = profit;
+        if (profit < hiResMin[nextHiCp]) hiResMin[nextHiCp] = profit;
+        if (profit > hiResMax[nextHiCp]) hiResMax[nextHiCp] = profit;
         nextHiCp++;
         if (nextHiCp <= hiK) nextHiCpIdx = hiCheckpointIdx[nextHiCp];
       }
@@ -2175,6 +2192,8 @@ export function simulateShard(
     hiResWorstPath,
     hiResBestFinal,
     hiResWorstFinal,
+    hiResMin,
+    hiResMax,
   };
 }
 
@@ -2241,6 +2260,19 @@ export function mergeShards(
     if (sh.hiResBestFinal > bestShard.hiResBestFinal) bestShard = sh;
     if (sh.hiResWorstFinal < worstShard.hiResWorstFinal) worstShard = sh;
   }
+  // Pointwise min/max across shards.
+  const mergedHiResMin = new Float64Array(leading.hiResMin.length);
+  const mergedHiResMax = new Float64Array(leading.hiResMax.length);
+  mergedHiResMin.set(leading.hiResMin);
+  mergedHiResMax.set(leading.hiResMax);
+  for (let i = 1; i < sorted.length; i++) {
+    const mn = sorted[i].hiResMin;
+    const mx = sorted[i].hiResMax;
+    for (let j = 0; j < mergedHiResMin.length; j++) {
+      if (mn[j] < mergedHiResMin[j]) mergedHiResMin[j] = mn[j];
+      if (mx[j] > mergedHiResMax[j]) mergedHiResMax[j] = mx[j];
+    }
+  }
   return {
     sStart: 0,
     sEnd: S,
@@ -2262,5 +2294,7 @@ export function mergeShards(
     hiResWorstPath: worstShard.hiResWorstPath,
     hiResBestFinal: bestShard.hiResBestFinal,
     hiResWorstFinal: worstShard.hiResWorstFinal,
+    hiResMin: mergedHiResMin,
+    hiResMax: mergedHiResMax,
   };
 }

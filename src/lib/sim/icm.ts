@@ -22,12 +22,20 @@
  * reality better than raw nominal payouts do.
  */
 
+export const ICM_MAX_PLAYERS = 9;
+
 export function icmEquities(
   stacks: number[],
   payouts: number[],
 ): number[] {
   const n = stacks.length;
   if (n === 0) return [];
+  if (n > ICM_MAX_PLAYERS) {
+    throw new Error(
+      `icmEquities: bitmask DP capped at ${ICM_MAX_PLAYERS} players (got ${n}). ` +
+        `Cap callers to the top-${ICM_MAX_PLAYERS} stacks or use applyICMToPayoutTable instead.`,
+    );
+  }
   const pSum = payouts.reduce((a, b) => a + b, 0);
   if (pSum === 0) return new Array(n).fill(0);
 

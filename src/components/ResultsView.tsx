@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useDeferredValue,
   useEffect,
@@ -11,7 +12,12 @@ import {
   type ReactNode,
   type ReactEventHandler,
 } from "react";
-import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
+import type uPlot from "uplot";
+import type {
+  FinishModelId,
+  SimulationResult,
+  TournamentRow,
+} from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -21,6 +27,7 @@ import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
   DEFAULT_LINE_STYLE_PRESET,
   LINE_STYLE_PRESETS,
+  LINE_STYLE_PRESET_META,
   LINE_STYLE_PRESET_ORDER,
   OVERRIDABLE_LINE_KEYS,
   PRIMEDOPE_PANE_PRESET,
@@ -45,6 +52,22 @@ import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 import type { AlignedData, Options } from "uplot";
 
+// Typed map FinishModelId → DictKey. Adding a new FinishModelId without
+// a dict entry is a compile error instead of a runtime "Cannot read
+// properties of undefined (reading 'ru')" crash in LocaleProvider.
+const FINISH_MODEL_LABEL_KEY: Record<FinishModelId, DictKey> = {
+  "power-law": "model.power-law",
+  "linear-skill": "model.linear-skill",
+  "stretched-exp": "model.stretched-exp",
+  "plackett-luce": "model.plackett-luce",
+  uniform: "model.uniform",
+  empirical: "model.empirical",
+  "freeze-realdata-step": "model.freeze-realdata-step",
+  "freeze-realdata-linear": "model.freeze-realdata-linear",
+  "freeze-realdata-tilt": "model.freeze-realdata-tilt",
+  "powerlaw-realdata-influenced": "model.powerlaw-realdata-influenced",
+};
+
 interface Props {
   result: SimulationResult;
   compareResult?: SimulationResult | null;
@@ -53,7 +76,7 @@ interface Props {
   scheduleRepeats?: number;
   compareMode?: "random" | "primedope";
   modelPresetId?: string;
-  finishModelId?: string;
+  finishModelId?: FinishModelId;
   settings?: ControlsState;
   elapsedMs?: number | null;
   availableRuns?: number;
@@ -63,6 +86,7 @@ interface Props {
   onUsePdPayoutsChange?: (v: boolean) => void;
   onUsePdFinishModelChange?: (v: boolean) => void;
   onUsePdRakeMathChange?: (v: boolean) => void;
+  onPdRefresh?: () => void;
   pdOverrideResult?: SimulationResult | null;
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
@@ -195,6 +219,52 @@ function UnitScope({ id, children }: { id: string; children: ReactNode }) {
 const intFmt = (v: number) =>
   v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
+/**
+ * Relative delta of `cur` against `pd` as a signed fraction. Null when PD is
+ * unavailable or the PD anchor is too small for a meaningful ratio.
+ */
+function pctDelta(cur: number, pd: number): number | null {
+  if (!Number.isFinite(cur) || !Number.isFinite(pd)) return null;
+  const anchor = Math.abs(pd);
+  if (anchor < 1e-9) return null;
+  return (cur - pd) / anchor;
+}
+
+/** Picks the larger-magnitude delta of two pairs, preserving sign. */
+function pickWorstDelta(
+  a: number | null,
+  b: number | null,
+): number | null {
+  if (a == null) return b;
+  if (b == null) return a;
+  return Math.abs(a) >= Math.abs(b) ? a : b;
+}
+
+/**
+ * Histogram quantile by linear interpolation inside the containing bin.
+ * Used to surface tail divergence (p95) on streak/drawdown histograms.
+ */
+function histogramQuantile(
+  binEdges: number[],
+  counts: number[],
+  q: number,
+): number {
+  let total = 0;
+  for (let i = 0; i < counts.length; i++) total += counts[i];
+  if (total <= 0) return binEdges[0] ?? 0;
+  const target = q * total;
+  let acc = 0;
+  for (let i = 0; i < counts.length; i++) {
+    const next = acc + counts[i];
+    if (next >= target) {
+      const frac = counts[i] > 0 ? (target - acc) / counts[i] : 0;
+      return binEdges[i] + frac * (binEdges[i + 1] - binEdges[i]);
+    }
+    acc = next;
+  }
+  return binEdges[binEdges.length - 1];
+}
+
 type AccentHue = "felt" | "magenta";
 
 const HUES: Record<AccentHue, {
@@ -286,9 +356,11 @@ function buildRefLine(x: ArrayLike<number>, slopePerX: number): Float64Array {
 function TrajectoryPlot({
   assets,
   height,
+  visibleRuns,
 }: {
   assets: ReturnType<typeof buildTrajectoryAssets>;
   height: number;
+  visibleRuns: number;
 }) {
   const { compactMoney } = useMoneyFmt();
   const [cursor, setCursor] = useState<{
@@ -297,15 +369,56 @@ function TrajectoryPlot({
     top: number;
     valY: number;
   } | null>(null);
+  const plotRef = useRef<uPlot | null>(null);
+  const handlePlotReady = useCallback((plot: uPlot | null) => {
+    plotRef.current = plot;
+  }, []);
+
+  // Imperative visibility layer: instead of rebuilding the uPlot instance
+  // on every slider tick, flip `show` on the pre-built path/band/best/worst
+  // series. `plot.batch` collapses all the per-series toggles into a single
+  // redraw, so a 0→500 drag costs one repaint, not five hundred.
+  useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const vis = assets.visibility;
+    const showBands = visibleRuns > 0;
+    plot.batch(() => {
+      for (let r = 0; r < vis.pathSeriesIdx.length; r++) {
+        plot.setSeries(vis.pathSeriesIdx[r], { show: r < visibleRuns }, false);
+      }
+      for (const sIdx of vis.bandSeriesIdx) {
+        plot.setSeries(sIdx, { show: showBands }, false);
+      }
+      for (const sIdx of vis.bestSeriesIdxs) {
+        plot.setSeries(sIdx, { show: showBands }, false);
+      }
+      for (const sIdx of vis.worstSeriesIdxs) {
+        plot.setSeries(sIdx, { show: showBands }, false);
+      }
+      for (const sIdx of vis.overlayBestSeriesIdxs) {
+        plot.setSeries(sIdx, { show: showBands }, false);
+      }
+      for (const sIdx of vis.overlayWorstSeriesIdxs) {
+        plot.setSeries(sIdx, { show: showBands }, false);
+      }
+    });
+  }, [assets, visibleRuns]);
+
   const xs = assets.data[0] as ArrayLike<number>;
   const idx = cursor?.idx;
   const tournaments = idx != null ? Math.round(xs[idx] ?? 0) : 0;
+  const showBands = visibleRuns > 0;
 
   let nearest: TrajectoryLineMeta | null = null;
   let nearestVal = 0;
   if (cursor && idx != null) {
     let bestDist = Infinity;
     for (const line of assets.mainLines) {
+      // Skip lines whose series is currently hidden so the tooltip never
+      // labels an invisible path as the nearest one.
+      if (line.kind === "path" && (line.rank ?? 0) >= visibleRuns) continue;
+      if (!showBands && (line.kind === "band" || line.kind === "best" || line.kind === "worst")) continue;
       const arr = assets.data[line.seriesIdx] as ArrayLike<number> | undefined;
       if (!arr) continue;
       const v = arr[idx];
@@ -322,12 +435,12 @@ function TrajectoryPlot({
   const cumBuyIn = tournaments * assets.buyInPerTourney;
   const roi = cumBuyIn > 0 ? nearestVal / cumBuyIn : 0;
 
-  const kindLabel = (k: TrajectoryLineMeta["kind"]): string => {
-    switch (k) {
+  const kindLabel = (line: TrajectoryLineMeta): string => {
+    switch (line.kind) {
       case "mean": return "expected (mean)";
       case "band": return "percentile band";
-      case "best": return "luckiest sim";
-      case "worst": return "unluckiest sim";
+      case "best": return line.variant === "agg" ? "pointwise max envelope" : "luckiest sim";
+      case "worst": return line.variant === "agg" ? "pointwise min envelope" : "unluckiest sim";
       case "path": return "individual sim";
       case "ref": return "ROI reference";
     }
@@ -335,8 +448,8 @@ function TrajectoryPlot({
   const likelihood = (line: TrajectoryLineMeta): string | null => {
     if (line.kind === "ref") return null;
     if (line.kind === "path") return "1 of N sample paths";
-    if (line.kind === "best") return "≈ top 1/N sims";
-    if (line.kind === "worst") return "≈ bottom 1/N sims";
+    if (line.kind === "best") return line.variant === "agg" ? "max across all runs at this X" : "≈ top 1/N sims";
+    if (line.kind === "worst") return line.variant === "agg" ? "min across all runs at this X" : "≈ bottom 1/N sims";
     if (line.percentile != null) {
       const pct = line.percentile;
       if (pct === 0.5) return "50% above / 50% below";
@@ -354,6 +467,7 @@ function TrajectoryPlot({
         options={assets.opts}
         height={height}
         onCursor={setCursor}
+        onPlotReady={handlePlotReady}
       />
       {cursor && idx != null && nearest && (
         <div
@@ -372,7 +486,7 @@ function TrajectoryPlot({
               {nearest.label}
             </span>
             <span className="ml-auto text-[9px] text-[color:var(--color-fg-dim)]">
-              {kindLabel(nearest.kind)}
+              {kindLabel(nearest)}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">
@@ -412,6 +526,12 @@ interface TrajectoryLineMeta {
   percentile?: number;
   /** Free-form "what kind of line" tag for the tooltip. */
   kind: "mean" | "band" | "best" | "worst" | "path" | "ref";
+  /** For best/worst lines: "real" = single sample path, "agg" = pointwise envelope. */
+  variant?: "real" | "agg";
+  /** Display rank for path lines — the i-th most-preferred run to show.
+   *  Undefined for non-path lines. Used to skip hidden paths in the cursor
+   *  tooltip so it never highlights an invisible series. */
+  rank?: number;
 }
 
 type RunMode = "worst" | "random" | "best";
@@ -444,20 +564,20 @@ function pathStyleForCount(
   return { stroke: `rgba(${r},${g},${b},${alpha.toFixed(3)})`, width };
 }
 
-/** Pick `count` path indices from `paths` according to `mode`, sorted by
- *  each path's final (last-point) profit. Best = top-N, worst = bottom-N,
- *  random = first N in natural engine order (paths are already captured
- *  unsorted, so a prefix is an unbiased sample). */
-function pickRunIndices(
+/** Rank all path indices by display preference for the given mode, most
+ *  preferred first. The first k elements are the paths that should be
+ *  visible when `visibleRuns === k`, so adjusting the slider becomes a
+ *  pure visibility toggle on a fixed series set instead of a rebuild.
+ *  Random = natural engine order (an unbiased prefix sample). Best/worst
+ *  = sort by each path's final (last-point) profit, descending/ascending. */
+function rankedRunIndices(
   paths: Float64Array[],
-  count: number,
   mode: RunMode,
 ): number[] {
   const total = paths.length;
-  if (count <= 0 || total === 0) return [];
-  if (count >= total) return Array.from({ length: total }, (_, i) => i);
+  if (total === 0) return [];
   if (mode === "random") {
-    return Array.from({ length: count }, (_, i) => i);
+    return Array.from({ length: total }, (_, i) => i);
   }
   const ranked: { idx: number; v: number }[] = new Array(total);
   for (let i = 0; i < total; i++) {
@@ -465,12 +585,22 @@ function pickRunIndices(
     const v = p.length > 0 ? p[p.length - 1] : 0;
     ranked[i] = { idx: i, v };
   }
-  ranked.sort((a, b) => a.v - b.v);
-  const slice =
-    mode === "worst"
-      ? ranked.slice(0, count)
-      : ranked.slice(total - count);
-  return slice.map((r) => r.idx).sort((a, b) => a - b);
+  ranked.sort((a, b) => (mode === "worst" ? a.v - b.v : b.v - a.v));
+  return ranked.map((r) => r.idx);
+}
+
+/** Metadata for the imperative visibility layer: which uPlot series indices
+ *  correspond to path runs (in rank order), percentile bands, and best/worst
+ *  highlight lines. The trajectory chart keeps these series alive across
+ *  slider drags and calls `plot.setSeries(i, { show })` to toggle them,
+ *  avoiding a full uPlot teardown on every frame. */
+interface TrajectoryVisibilityMap {
+  pathSeriesIdx: number[];
+  bandSeriesIdx: number[];
+  bestSeriesIdxs: number[];
+  worstSeriesIdxs: number[];
+  overlayBestSeriesIdxs: number[];
+  overlayWorstSeriesIdxs: number[];
 }
 
 function buildTrajectoryAssets(
@@ -481,16 +611,19 @@ function buildTrajectoryAssets(
   overlay?: SimulationResult | null,
   axisFmt: (v: number) => string = compactMoney,
   preset: LineStylePreset = LINE_STYLE_PRESETS[DEFAULT_LINE_STYLE_PRESET],
-  visibleRuns: number = 50,
+  maxPathCount: number = 500,
   refLines: RefLineConfig[] = DEFAULT_REF_LINES,
   lineOverrides: LineStyleOverrides = {},
   runMode: RunMode = "random",
+  showRealExtremes: boolean = false,
+  showAggExtremes: boolean = true,
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
   refStartIdx: number;
   buyInPerTourney: number;
   mainLines: TrajectoryLineMeta[];
+  visibility: TrajectoryVisibilityMap;
 } {
   const x = r.samplePaths.x;
   // Lockstep builders: every series push is mirrored by a uplot series push,
@@ -509,15 +642,26 @@ function buildTrajectoryAssets(
     return idx;
   };
 
-  // "Runs shown = 0" should give a clean chart: no sample paths, no best/worst,
-  // and no percentile envelope curves either (the six p-lines look like spaghetti
-  // and the user counts them as "runs"). Mean/EV/ref/bankroll always stay.
-  const pathCount = Math.max(
-    0,
-    Math.min(visibleRuns, r.samplePaths.paths.length),
+  // Build *all* path series up front (capped at maxPathCount), so the
+  // "runs shown" slider only toggles visibility instead of recreating the
+  // uPlot instance. The imperative visibility layer in TrajectoryPlot
+  // hides the trailing paths + bands + best/worst when the user drags the
+  // slider — driven by plot.setSeries() on a stable series layout.
+  const rankedIndices = rankedRunIndices(r.samplePaths.paths, runMode);
+  const builtPathCount = Math.min(maxPathCount, rankedIndices.length);
+  // Fix the per-path alpha/width to a mid-density compromise so the chart
+  // still reads when most paths are hidden. The slider used to scale these
+  // live, which forced an options rebuild on every tick.
+  const pathStyle = pathStyleForCount(
+    preset.path,
+    Math.max(1, Math.min(builtPathCount, 80)),
   );
-  const showBands = pathCount > 0;
-  const pickedIndices = pickRunIndices(r.samplePaths.paths, pathCount, runMode);
+  const pathSeriesIdx: number[] = [];
+  const bandSeriesIdx: number[] = [];
+  const bestSeriesIdxs: number[] = [];
+  const worstSeriesIdxs: number[] = [];
+  const overlayBestSeriesIdxs: number[] = [];
+  const overlayWorstSeriesIdxs: number[] = [];
 
   const meanIdx = pushSeries(r.envelopes.mean, {
     stroke: preset.mean.stroke,
@@ -532,7 +676,7 @@ function buildTrajectoryAssets(
     kind: "mean",
   });
 
-  if (showBands) {
+  {
     const p0015Idx = pushSeries(r.envelopes.p0015, {
       stroke: preset.bandExtreme.stroke,
       width: preset.bandExtreme.width,
@@ -557,6 +701,7 @@ function buildTrajectoryAssets(
       stroke: preset.bandNarrow.stroke,
       width: preset.bandNarrow.width,
     });
+    bandSeriesIdx.push(p0015Idx, p9985Idx, p025Idx, p975Idx, p15Idx, p85Idx);
     mainLines.push(
       { label: "p0.15", color: preset.bandExtreme.stroke, seriesIdx: p0015Idx, percentile: 0.0015, kind: "band" },
       { label: "p99.85", color: preset.bandExtreme.stroke, seriesIdx: p9985Idx, percentile: 0.9985, kind: "band" },
@@ -566,39 +711,65 @@ function buildTrajectoryAssets(
       { label: "p85", color: preset.bandNarrow.stroke, seriesIdx: p85Idx, percentile: 0.85, kind: "band" },
     );
   }
-  const pathStyle = pathStyleForCount(preset.path, pickedIndices.length);
-  for (let i = 0; i < pickedIndices.length; i++) {
-    const runIdx = pickedIndices[i];
+
+  for (let rank = 0; rank < builtPathCount; rank++) {
+    const runIdx = rankedIndices[rank];
     const idx = pushSeries(r.samplePaths.paths[runIdx], {
       stroke: pathStyle.stroke,
       width: pathStyle.width,
     });
+    pathSeriesIdx.push(idx);
     mainLines.push({
       label: `Run ${runIdx + 1}`,
       color: pathStyle.stroke,
       seriesIdx: idx,
       kind: "path",
+      rank,
     });
   }
 
-  // Best/worst are also "runs" — when the user drags "runs shown" to 0 they
-  // should disappear too, otherwise the chart still has two highlighted sims.
-  if (pathCount > 0) {
-    if (isLineEnabled("best", lineOverrides)) {
-      const bestIdx = pushSeries(r.samplePaths.best, {
-        stroke: preset.best.stroke,
-        width: preset.best.width,
-        dash: preset.best.dash,
-      });
-      mainLines.push({ label: "Best run", color: preset.best.stroke, seriesIdx: bestIdx, kind: "best" });
+  // Preset best/worst colors are intentionally pale (background sample
+  // highlights). For the explicit "real vs aggregated" lines the user asked
+  // for, override with saturated hues so the four curves stand out from the
+  // band fill and from each other: real = bold solid, agg = lighter dashed
+  // in the same hue family. On the PrimeDope pane (`hue === "magenta"`) we
+  // use the same pink palette as the overlay on the main pane, so the PD
+  // lines read as "same entity" in both views.
+  const isPdPane = hue === "magenta";
+  const BEST_REAL = isPdPane
+    ? { stroke: "#ec4899", width: 2.25 }
+    : { stroke: "#22c55e", width: 2.25 };
+  const BEST_AGG = isPdPane
+    ? { stroke: "#f9a8d4", width: 2, dash: [10, 5] as number[] }
+    : { stroke: "#86efac", width: 2, dash: [10, 5] as number[] };
+  const WORST_REAL = isPdPane
+    ? { stroke: "#ec4899", width: 2.25 }
+    : { stroke: "#ef4444", width: 2.25 };
+  const WORST_AGG = isPdPane
+    ? { stroke: "#f9a8d4", width: 2, dash: [10, 5] as number[] }
+    : { stroke: "#fca5a5", width: 2, dash: [10, 5] as number[] };
+  if (isLineEnabled("best", lineOverrides)) {
+    if (showRealExtremes) {
+      const idx = pushSeries(r.samplePaths.best, BEST_REAL);
+      bestSeriesIdxs.push(idx);
+      mainLines.push({ label: "Real best run", color: BEST_REAL.stroke, seriesIdx: idx, kind: "best", variant: "real" });
     }
-    if (isLineEnabled("worst", lineOverrides)) {
-      const worstIdx = pushSeries(r.samplePaths.worst, {
-        stroke: preset.worst.stroke,
-        width: preset.worst.width,
-        dash: preset.worst.dash,
-      });
-      mainLines.push({ label: "Worst run", color: preset.worst.stroke, seriesIdx: worstIdx, kind: "worst" });
+    if (showAggExtremes) {
+      const idx = pushSeries(r.envelopes.max, BEST_AGG);
+      bestSeriesIdxs.push(idx);
+      mainLines.push({ label: "Aggregated best", color: BEST_AGG.stroke, seriesIdx: idx, kind: "best", variant: "agg" });
+    }
+  }
+  if (isLineEnabled("worst", lineOverrides)) {
+    if (showRealExtremes) {
+      const idx = pushSeries(r.samplePaths.worst, WORST_REAL);
+      worstSeriesIdxs.push(idx);
+      mainLines.push({ label: "Real worst run", color: WORST_REAL.stroke, seriesIdx: idx, kind: "worst", variant: "real" });
+    }
+    if (showAggExtremes) {
+      const idx = pushSeries(r.envelopes.min, WORST_AGG);
+      worstSeriesIdxs.push(idx);
+      mainLines.push({ label: "Aggregated worst", color: WORST_AGG.stroke, seriesIdx: idx, kind: "worst", variant: "agg" });
     }
   }
 
@@ -663,20 +834,19 @@ function buildTrajectoryAssets(
     });
   }
 
-  // EV line — the calibrated expected profit slope, drawn perfectly
-  // straight from (0,0) to (lastX, expectedProfit). This is what the
-  // sim is *supposed* to converge to: the schedule's total target EV.
-  const evSlope = r.expectedProfit / lastX;
-  const evLineIdx = pushSeries(buildRefLine(x, evSlope), {
-    stroke: preset.ev.stroke,
-    width: preset.ev.width,
-    dash: preset.ev.dash,
-    label: "EV",
+  // Neutral zero line — a simple straight rule at y=0. Drawn once, solid,
+  // in a muted grey so it reads as an axis reference rather than another
+  // data series. Removes the prior optical doubling where a separate dashed
+  // EV series rode right on top of the empirical mean at large N.
+  const zeroLineIdx = pushSeries(buildRefLine(x, 0), {
+    stroke: "#6b7280",
+    width: 1,
+    label: "zero",
   });
   mainLines.push({
-    label: "EV",
-    color: preset.ev.stroke,
-    seriesIdx: evLineIdx,
+    label: "zero",
+    color: "#6b7280",
+    seriesIdx: zeroLineIdx,
     kind: "ref",
   });
 
@@ -746,7 +916,7 @@ function buildTrajectoryAssets(
       label: string,
       kind: TrajectoryLineMeta["kind"],
       dash?: number[],
-    ) => {
+    ): number => {
       const idx = pushSeries(resample(src), {
         stroke: overlayColor,
         width: 1.75,
@@ -754,22 +924,49 @@ function buildTrajectoryAssets(
         label,
       });
       mainLines.push({ label, color: overlayColor, seriesIdx: idx, kind });
+      return idx;
     };
-    if (pathCount > 0 && isLineEnabled("best", lineOverrides)) {
-      pushOverlay(
-        overlay.samplePaths.best as Float64Array,
-        "PrimeDope best",
-        "best",
-        [6, 4],
-      );
+    // Magenta hue family for PD overlay extremes — keeps the "this is PD"
+    // signal while matching the real-vs-agg language of the main lines. All
+    // overlay lines are dashed on this pane so the user can tell at a glance
+    // which curves belong to the PD reference vs the primary simulation;
+    // the PD pane on the right renders the same colors without dashes.
+    const pushOverlayExtreme = (
+      src: Float64Array,
+      label: string,
+      kind: TrajectoryLineMeta["kind"],
+      variant: "real" | "agg",
+    ): number => {
+      const stroke = variant === "real" ? "#ec4899" : "#f9a8d4";
+      const width = variant === "real" ? 2.25 : 2;
+      const dash = variant === "real" ? [6, 4] : [10, 5];
+      const idx = pushSeries(resample(src), { stroke, width, dash, label });
+      mainLines.push({ label, color: stroke, seriesIdx: idx, kind, variant });
+      return idx;
+    };
+    if (isLineEnabled("best", lineOverrides)) {
+      if (showRealExtremes) {
+        overlayBestSeriesIdxs.push(
+          pushOverlayExtreme(overlay.samplePaths.best as Float64Array, "PrimeDope real best", "best", "real"),
+        );
+      }
+      if (showAggExtremes) {
+        overlayBestSeriesIdxs.push(
+          pushOverlayExtreme(overlay.envelopes.max as Float64Array, "PrimeDope agg best", "best", "agg"),
+        );
+      }
     }
-    if (pathCount > 0 && isLineEnabled("worst", lineOverrides)) {
-      pushOverlay(
-        overlay.samplePaths.worst as Float64Array,
-        "PrimeDope worst",
-        "worst",
-        [6, 4],
-      );
+    if (isLineEnabled("worst", lineOverrides)) {
+      if (showRealExtremes) {
+        overlayWorstSeriesIdxs.push(
+          pushOverlayExtreme(overlay.samplePaths.worst as Float64Array, "PrimeDope real worst", "worst", "real"),
+        );
+      }
+      if (showAggExtremes) {
+        overlayWorstSeriesIdxs.push(
+          pushOverlayExtreme(overlay.envelopes.min as Float64Array, "PrimeDope agg worst", "worst", "agg"),
+        );
+      }
     }
     if (isLineEnabled("p05", lineOverrides) && overlay.envelopes.p05) {
       pushOverlay(overlay.envelopes.p05, "PrimeDope p5", "band", [4, 3]);
@@ -783,6 +980,14 @@ function buildTrajectoryAssets(
     refStartIdx,
     buyInPerTourney,
     mainLines,
+    visibility: {
+      pathSeriesIdx,
+      bandSeriesIdx,
+      bestSeriesIdxs,
+      worstSeriesIdxs,
+      overlayBestSeriesIdxs,
+      overlayWorstSeriesIdxs,
+    },
     data: series as AlignedData,
     opts: {
       scales: {
@@ -836,10 +1041,10 @@ function unionYRange(
     for (const v of r.envelopes.p9985) {
       if (v > hi) hi = v;
     }
-    for (const v of r.samplePaths.worst) {
+    for (const v of r.envelopes.min) {
       if (v < lo) lo = v;
     }
-    for (const v of r.samplePaths.best) {
+    for (const v of r.envelopes.max) {
       if (v > hi) hi = v;
     }
   }
@@ -869,6 +1074,7 @@ export function ResultsView({
   onUsePdPayoutsChange,
   onUsePdFinishModelChange,
   onUsePdRakeMathChange,
+  onPdRefresh,
   pdOverrideResult,
   pdOverrideStatus = "idle",
   pdOverrideProgress = 0,
@@ -898,6 +1104,7 @@ export function ResultsView({
   const [overlayPd, setOverlayPd] = useState(true);
 
   const s = result.stats;
+  const pdStats = pdChart?.stats;
   const roi = s.mean / result.totalBuyIn;
   const modelPreset = modelPresetId
     ? STANDARD_PRESETS.find((p) => p.id === modelPresetId)
@@ -905,7 +1112,7 @@ export function ResultsView({
   const modelLabel = modelPreset
     ? t(modelPreset.labelKey)
     : finishModelId
-    ? t(`model.${finishModelId}` as DictKey)
+    ? t(FINISH_MODEL_LABEL_KEY[finishModelId])
     : t("twin.runA");
   const settingsSummary = buildSettingsSummary(settings);
 
@@ -1089,7 +1296,7 @@ export function ResultsView({
           pdPresetFlip={modelPresetId === "primedope" && compareMode === "primedope"}
           honestLabel={
             finishModelId
-              ? t(`model.${finishModelId}` as DictKey)
+              ? t(FINISH_MODEL_LABEL_KEY[finishModelId])
               : t("twin.runB")
           }
           modelPresetId={modelPresetId}
@@ -1099,6 +1306,7 @@ export function ResultsView({
           onUsePdFinishModelChange={onUsePdFinishModelChange}
           usePdRakeMath={settings?.usePrimedopeRakeMath ?? true}
           onUsePdRakeMathChange={onUsePdRakeMathChange}
+          onPdRefresh={onPdRefresh}
           pdOverrideStatus={pdOverrideStatus}
           pdOverrideProgress={pdOverrideProgress}
         />
@@ -1155,12 +1363,16 @@ export function ResultsView({
           value={money(s.mean)}
           sub={`ROI ${(roi * 100).toFixed(1)}% · median ${money(s.median)}`}
           tone={s.mean >= 0 ? "pos" : "neg"}
+          pdValue={pdStats ? money(pdStats.mean) : undefined}
+          pdDelta={pdStats ? pctDelta(s.mean, pdStats.mean) : null}
         />
         <BigStat
           suit="spade"
           label={t("stat.probProfit")}
           value={pct(s.probProfit)}
           sub={`${intFmt(s.tournamentsFor95ROI)} ${tourneysWord} ${t("stat.tFor95.sub")}`}
+          pdValue={pdStats ? pct(pdStats.probProfit) : undefined}
+          pdDelta={pdStats ? pctDelta(s.probProfit, pdStats.probProfit) : null}
         />
         <BigStat
           suit="heart"
@@ -1172,6 +1384,9 @@ export function ResultsView({
               : `min BR 1% = ${money(s.minBankrollRoR1pct)}`
           }
           tone={s.riskOfRuin > 0.05 ? "neg" : undefined}
+          pdValue={pdStats ? pct(pdStats.riskOfRuin) : undefined}
+          pdDelta={pdStats ? pctDelta(s.riskOfRuin, pdStats.riskOfRuin) : null}
+          emphasizeTail
         />
       </div>
 
@@ -1182,18 +1397,45 @@ export function ResultsView({
           value={money(s.min)}
           tone="neg"
           tip={t("stat.worstRun.tip")}
+          pdValue={pdStats ? money(pdStats.min) : undefined}
+          pdDelta={pdStats ? pctDelta(s.min, pdStats.min) : null}
+          emphasizeTail
         />
         <MiniStat
           suit="heart"
           label={t("stat.p1p5")}
           value={`${money(s.p01)} / ${money(s.p05)}`}
           tip={t("stat.p1p5.tip")}
+          pdValue={
+            pdStats ? `${money(pdStats.p01)} / ${money(pdStats.p05)}` : undefined
+          }
+          pdDelta={
+            pdStats
+              ? pickWorstDelta(
+                  pctDelta(s.p01, pdStats.p01),
+                  pctDelta(s.p05, pdStats.p05),
+                )
+              : null
+          }
+          emphasizeTail
         />
         <MiniStat
           suit="club"
           label={t("stat.p95p99")}
           value={`${money(s.p95)} / ${money(s.p99)}`}
           tip={t("stat.p95p99.tip")}
+          pdValue={
+            pdStats ? `${money(pdStats.p95)} / ${money(pdStats.p99)}` : undefined
+          }
+          pdDelta={
+            pdStats
+              ? pickWorstDelta(
+                  pctDelta(s.p95, pdStats.p95),
+                  pctDelta(s.p99, pdStats.p99),
+                )
+              : null
+          }
+          emphasizeTail
         />
         <MiniStat
           suit="club"
@@ -1201,6 +1443,9 @@ export function ResultsView({
           value={money(s.max)}
           tone="pos"
           tip={t("stat.bestRun.tip")}
+          pdValue={pdStats ? money(pdStats.max) : undefined}
+          pdDelta={pdStats ? pctDelta(s.max, pdStats.max) : null}
+          emphasizeTail
         />
       </StatGroup>
 
@@ -1210,12 +1455,22 @@ export function ResultsView({
           label={t("stat.ddMedian")}
           value={money(s.maxDrawdownMedian)}
           tip={t("stat.ddMedian.tip")}
+          pdValue={pdStats ? money(pdStats.maxDrawdownMedian) : undefined}
+          pdDelta={
+            pdStats
+              ? pctDelta(s.maxDrawdownMedian, pdStats.maxDrawdownMedian)
+              : null
+          }
         />
         <MiniStat
           suit="heart"
           label={t("stat.avgMaxDD")}
           value={money(s.maxDrawdownMean)}
           tip={t("stat.avgMaxDD.tip")}
+          pdValue={pdStats ? money(pdStats.maxDrawdownMean) : undefined}
+          pdDelta={
+            pdStats ? pctDelta(s.maxDrawdownMean, pdStats.maxDrawdownMean) : null
+          }
         />
         <MiniStat
           suit="heart"
@@ -1223,6 +1478,11 @@ export function ResultsView({
           value={money(s.maxDrawdownP95)}
           tone="neg"
           tip={t("stat.ddP95.tip")}
+          pdValue={pdStats ? money(pdStats.maxDrawdownP95) : undefined}
+          pdDelta={
+            pdStats ? pctDelta(s.maxDrawdownP95, pdStats.maxDrawdownP95) : null
+          }
+          emphasizeTail
         />
         <MiniStat
           suit="heart"
@@ -1230,6 +1490,11 @@ export function ResultsView({
           value={money(s.maxDrawdownP99)}
           tone="neg"
           tip={t("stat.ddP99.tip")}
+          pdValue={pdStats ? money(pdStats.maxDrawdownP99) : undefined}
+          pdDelta={
+            pdStats ? pctDelta(s.maxDrawdownP99, pdStats.maxDrawdownP99) : null
+          }
+          emphasizeTail
         />
       </StatGroup>
 
@@ -1239,6 +1504,16 @@ export function ResultsView({
           label={t("stat.longestBE")}
           value={`${Math.round(s.longestBreakevenMean)} ${tourneysWord}`}
           tip={t("stat.longestBE.tip")}
+          pdValue={
+            pdStats
+              ? `${Math.round(pdStats.longestBreakevenMean)} ${tourneysWord}`
+              : undefined
+          }
+          pdDelta={
+            pdStats
+              ? pctDelta(s.longestBreakevenMean, pdStats.longestBreakevenMean)
+              : null
+          }
         />
         <MiniStat
           suit="heart"
@@ -1246,6 +1521,15 @@ export function ResultsView({
           value={`${s.longestCashlessWorst} ${tourneysWord}`}
           tone="neg"
           tip={t("stat.cashlessWorst.tip")}
+          pdValue={
+            pdStats ? `${pdStats.longestCashlessWorst} ${tourneysWord}` : undefined
+          }
+          pdDelta={
+            pdStats
+              ? pctDelta(s.longestCashlessWorst, pdStats.longestCashlessWorst)
+              : null
+          }
+          emphasizeTail
         />
         <MiniStat
           suit="diamond"
@@ -1256,6 +1540,14 @@ export function ResultsView({
               : "—"
           }
           tip={t("stat.recoveryMedian.tip")}
+          pdValue={
+            pdStats && Number.isFinite(pdStats.recoveryMedian)
+              ? `${Math.round(pdStats.recoveryMedian)} ${tourneysWord}`
+              : undefined
+          }
+          pdDelta={
+            pdStats ? pctDelta(s.recoveryMedian, pdStats.recoveryMedian) : null
+          }
         />
         <MiniStat
           suit="heart"
@@ -1267,6 +1559,13 @@ export function ResultsView({
           }
           tone="neg"
           tip={t("stat.recoveryP90.tip")}
+          pdValue={
+            pdStats && Number.isFinite(pdStats.recoveryP90)
+              ? `${Math.round(pdStats.recoveryP90)} ${tourneysWord}`
+              : undefined
+          }
+          pdDelta={pdStats ? pctDelta(s.recoveryP90, pdStats.recoveryP90) : null}
+          emphasizeTail
         />
         <MiniStat
           suit="heart"
@@ -1274,6 +1573,16 @@ export function ResultsView({
           value={pct(s.recoveryUnrecoveredShare)}
           tone={s.recoveryUnrecoveredShare > 0.05 ? "neg" : undefined}
           tip={t("stat.recoveryUnrecovered.tip")}
+          pdValue={pdStats ? pct(pdStats.recoveryUnrecoveredShare) : undefined}
+          pdDelta={
+            pdStats
+              ? pctDelta(
+                  s.recoveryUnrecoveredShare,
+                  pdStats.recoveryUnrecoveredShare,
+                )
+              : null
+          }
+          emphasizeTail
         />
       </StatGroup>
 
@@ -1283,6 +1592,12 @@ export function ResultsView({
           label={t("stat.minBR5")}
           value={money(s.minBankrollRoR5pct)}
           tip={t("stat.minBR5.tip")}
+          pdValue={pdStats ? money(pdStats.minBankrollRoR5pct) : undefined}
+          pdDelta={
+            pdStats
+              ? pctDelta(s.minBankrollRoR5pct, pdStats.minBankrollRoR5pct)
+              : null
+          }
         />
       </StatGroup>
 
@@ -1327,83 +1642,144 @@ export function ResultsView({
         </UnitScope>
       </div>
 
-      {/* Streak histograms — the grinder's "how bad/long can it get" row */}
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <Card className="p-5">
           <ChartHeader
-            title={t("chart.longestBE")}
-            subtitle={t("chart.longestBE.sub")}
+            title={t("chart.convergence")}
+            subtitle={t("chart.convergence.sub")}
             showUnitToggle={false}
-            tip={t("chart.longestBE.tip")}
           />
-          <DistributionChart
-            binEdges={result.longestBreakevenHistogram.binEdges}
-            counts={result.longestBreakevenHistogram.counts}
-            color="#fbbf24"
-            unitLabel="tourneys"
-            yAsPct
-          />
-          <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
-            {t("chart.unit.tourneys")}
-          </div>
+          <ConvergenceChart result={result} schedule={schedule} />
+          <ChartHelp text={t("chart.convergence.help")} />
         </Card>
-        <Card className="p-5">
-          <ChartHeader
-            title={t("chart.longestCashless")}
-            subtitle={t("chart.longestCashless.sub")}
-            showUnitToggle={false}
-            tip={t("chart.longestCashless.tip")}
-          />
-          <DistributionChart
-            binEdges={result.longestCashlessHistogram.binEdges}
-            counts={result.longestCashlessHistogram.counts}
-            color="#f87171"
-            unitLabel="tourneys"
-            yAsPct
-          />
-          <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
-            {t("chart.unit.tourneys")}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <ChartHeader
-            title={t("chart.recovery")}
-            subtitle={t("chart.recovery.sub")}
-            showUnitToggle={false}
-            tip={t("chart.recovery.tip")}
-          />
-          <DistributionChart
-            binEdges={result.recoveryHistogram.binEdges}
-            counts={result.recoveryHistogram.counts}
-            color="#34d399"
-            unitLabel="tourneys"
-            yAsPct
-          />
-          <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
-            {fmt(t("chart.recovery.unrecovered"), {
-              pct: pct(s.recoveryUnrecoveredShare),
-            })}
-          </div>
-        </Card>
+        {result.downswings.length > 0 && (
+          <UnitScope id="downswings">
+            <DownswingsCard
+              downswings={result.downswings}
+              upswings={result.upswings}
+              tourneysWord={tourneysWord}
+              streaks={
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="flex flex-col">
+                    <div className="sm:min-h-[68px]">
+                      <ChartHeader
+                        title={t("chart.longestBE")}
+                        subtitle={t("chart.longestBE.sub")}
+                        showUnitToggle={false}
+                        tip={t("chart.longestBE.tip")}
+                      />
+                    </div>
+                    <DistributionChart
+                      binEdges={result.longestBreakevenHistogram.binEdges}
+                      counts={result.longestBreakevenHistogram.counts}
+                      color="#fbbf24"
+                      unitLabel="tourneys"
+                      yAsPct
+                      overlay={
+                        overlayPd && pdChart
+                          ? {
+                              binEdges:
+                                pdChart.longestBreakevenHistogram.binEdges,
+                              counts:
+                                pdChart.longestBreakevenHistogram.counts,
+                              label: "PrimeDope",
+                            }
+                          : undefined
+                      }
+                    />
+                    <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
+                      {t("chart.unit.tourneys")}
+                    </div>
+                    {overlayPd && pdChart && (
+                      <TailDivergenceNote
+                        user={result.longestBreakevenHistogram}
+                        pd={pdChart.longestBreakevenHistogram}
+                        unit={tourneysWord}
+                      />
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="sm:min-h-[68px]">
+                      <ChartHeader
+                        title={t("chart.longestCashless")}
+                        subtitle={t("chart.longestCashless.sub")}
+                        showUnitToggle={false}
+                        tip={t("chart.longestCashless.tip")}
+                      />
+                    </div>
+                    <DistributionChart
+                      binEdges={result.longestCashlessHistogram.binEdges}
+                      counts={result.longestCashlessHistogram.counts}
+                      color="#f87171"
+                      unitLabel="tourneys"
+                      yAsPct
+                      overlay={
+                        overlayPd && pdChart
+                          ? {
+                              binEdges:
+                                pdChart.longestCashlessHistogram.binEdges,
+                              counts:
+                                pdChart.longestCashlessHistogram.counts,
+                              label: "PrimeDope",
+                            }
+                          : undefined
+                      }
+                    />
+                    <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
+                      {t("chart.unit.tourneys")}
+                    </div>
+                    {overlayPd && pdChart && (
+                      <TailDivergenceNote
+                        user={result.longestCashlessHistogram}
+                        pd={pdChart.longestCashlessHistogram}
+                        unit={tourneysWord}
+                      />
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="sm:min-h-[68px]">
+                      <ChartHeader
+                        title={t("chart.recovery")}
+                        subtitle={t("chart.recovery.sub")}
+                        showUnitToggle={false}
+                        tip={t("chart.recovery.tip")}
+                      />
+                    </div>
+                    <DistributionChart
+                      binEdges={result.recoveryHistogram.binEdges}
+                      counts={result.recoveryHistogram.counts}
+                      color="#34d399"
+                      unitLabel="tourneys"
+                      yAsPct
+                      overlay={
+                        overlayPd && pdChart
+                          ? {
+                              binEdges: pdChart.recoveryHistogram.binEdges,
+                              counts: pdChart.recoveryHistogram.counts,
+                              label: "PrimeDope",
+                            }
+                          : undefined
+                      }
+                    />
+                    <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
+                      {fmt(t("chart.recovery.unrecovered"), {
+                        pct: pct(s.recoveryUnrecoveredShare),
+                      })}
+                    </div>
+                    {overlayPd && pdChart && (
+                      <TailDivergenceNote
+                        user={result.recoveryHistogram}
+                        pd={pdChart.recoveryHistogram}
+                        unit={tourneysWord}
+                      />
+                    )}
+                  </div>
+                </div>
+              }
+            />
+          </UnitScope>
+        )}
       </div>
-
-      {advanced && (
-        <CollapsibleSection id="convergence" title={t("chart.convergence")}>
-          <Card className="p-5">
-            <ChartHeader
-              title={t("chart.convergence")}
-              subtitle={t("chart.convergence.sub")}
-            />
-            <ConvergenceChart
-              x={result.convergence.x}
-              mean={result.convergence.mean}
-              seLo={result.convergence.seLo}
-              seHi={result.convergence.seHi}
-            />
-            <ChartHelp text={t("chart.convergence.help")} />
-          </Card>
-        </CollapsibleSection>
-      )}
 
       {advanced && (
         <CollapsibleSection id="sensitivity" title={t("chart.sensitivity")}>
@@ -1436,16 +1812,6 @@ export function ResultsView({
           <DecompositionChart rows={result.decomposition} />
           <ChartHelp text={t("chart.decomp.help")} />
         </Card>
-      )}
-
-      {result.downswings.length > 0 && (
-        <UnitScope id="downswings">
-          <DownswingsCard
-            downswings={result.downswings}
-            upswings={result.upswings}
-            tourneysWord={tourneysWord}
-          />
-        </UnitScope>
       )}
 
       <CollapsibleSection
@@ -1747,6 +2113,7 @@ function TrajectoryCard({
   onUsePdFinishModelChange,
   usePdRakeMath,
   onUsePdRakeMathChange,
+  onPdRefresh,
   pdOverrideStatus,
   pdOverrideProgress,
 }: {
@@ -1778,13 +2145,39 @@ function TrajectoryCard({
   onUsePdFinishModelChange?: (v: boolean) => void;
   usePdRakeMath: boolean;
   onUsePdRakeMathChange?: (v: boolean) => void;
+  onPdRefresh?: () => void;
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
 }) {
   const t = useT();
-  const { locale } = useLocale();
   const { money, compactMoney } = useMoneyFmt();
   const { advanced } = useAdvancedMode();
+  const [showRealExtremes, setShowRealExtremes] = useLocalStorageState<boolean>(
+    "tvs.trajectory.showRealExtremes.v1",
+    () => {
+      if (typeof localStorage === "undefined") return true;
+      const v = localStorage.getItem("tvs.trajectory.showRealExtremes.v1");
+      return v == null ? true : v === "1";
+    },
+    (v) => {
+      if (typeof localStorage !== "undefined")
+        localStorage.setItem("tvs.trajectory.showRealExtremes.v1", v ? "1" : "0");
+    },
+    true,
+  );
+  const [showAggExtremes, setShowAggExtremes] = useLocalStorageState<boolean>(
+    "tvs.trajectory.showAggExtremes.v1",
+    () => {
+      if (typeof localStorage === "undefined") return true;
+      const v = localStorage.getItem("tvs.trajectory.showAggExtremes.v1");
+      return v == null ? true : v === "1";
+    },
+    (v) => {
+      if (typeof localStorage !== "undefined")
+        localStorage.setItem("tvs.trajectory.showAggExtremes.v1", v ? "1" : "0");
+    },
+    true,
+  );
   const oursCapKey: DictKey =
     modelPresetId === "naive"
       ? "chart.trajectory.ours.cap.naive"
@@ -1795,6 +2188,11 @@ function TrajectoryCard({
           : modelPresetId && modelPresetId !== "primedope"
             ? "chart.trajectory.ours.cap.custom"
             : "chart.trajectory.ours.cap";
+  // Build chart assets with the full cap, NOT the current slider value —
+  // the slider is applied imperatively in TrajectoryPlot. Keeping it out
+  // of the memo deps is the whole point of this refactor: dragging the
+  // slider must not tear down and rebuild uPlot.
+  const maxPathCount = Math.min(500, result.samplePaths.paths.length);
   const primary = useMemo(
     () =>
       buildTrajectoryAssets(
@@ -1805,13 +2203,18 @@ function TrajectoryCard({
         overlayPd ? pdChart : null,
         compactMoney,
         linePreset,
-        visibleRuns,
+        maxPathCount,
         refLines,
         lineOverrides,
         runMode,
+        showRealExtremes,
+        showAggExtremes,
       ),
-    [result, bankroll, yRange, overlayPd, pdChart, compactMoney, linePreset, visibleRuns, refLines, lineOverrides, runMode],
+    [result, bankroll, yRange, overlayPd, pdChart, compactMoney, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
   );
+  const secondaryMaxPathCount = pdChart
+    ? Math.min(500, pdChart.samplePaths.paths.length)
+    : 0;
   const secondary = useMemo(
     () =>
       pdChart
@@ -1823,14 +2226,19 @@ function TrajectoryCard({
             undefined,
             compactMoney,
             PRIMEDOPE_PANE_PRESET,
-            visibleRuns,
+            secondaryMaxPathCount,
             refLines,
             lineOverrides,
             runMode,
+            showRealExtremes,
+            showAggExtremes,
           )
         : null,
-    [pdChart, bankroll, yRange, compactMoney, visibleRuns, refLines, lineOverrides, runMode],
+    [pdChart, bankroll, yRange, compactMoney, secondaryMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
   );
+  const compareMaxPathCount = compareResult
+    ? Math.min(500, compareResult.samplePaths.paths.length)
+    : 0;
   const slotOverlay = useMemo(
     () =>
       compareResult
@@ -1842,13 +2250,38 @@ function TrajectoryCard({
             undefined,
             compactMoney,
             PRIMEDOPE_PANE_PRESET,
-            visibleRuns,
+            compareMaxPathCount,
             refLines,
             lineOverrides,
             runMode,
+            showRealExtremes,
+            showAggExtremes,
           )
         : null,
-    [compareResult, bankroll, compactMoney, visibleRuns, refLines, lineOverrides, runMode],
+    [compareResult, bankroll, compactMoney, compareMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+  );
+
+  const extremesToggles = (
+    <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-[color:var(--color-fg-muted)]">
+      <label className="flex cursor-pointer items-center gap-1.5">
+        <input
+          type="checkbox"
+          checked={showRealExtremes}
+          onChange={(e) => setShowRealExtremes(e.target.checked)}
+          className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
+        />
+        <span>real worst/best run</span>
+      </label>
+      <label className="flex cursor-pointer items-center gap-1.5">
+        <input
+          type="checkbox"
+          checked={showAggExtremes}
+          onChange={(e) => setShowAggExtremes(e.target.checked)}
+          className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
+        />
+        <span>aggregated worst/best run</span>
+      </label>
+    </div>
   );
 
   // All-satellite schedules swap the $ trajectory for a seats-per-session
@@ -1878,14 +2311,7 @@ function TrajectoryCard({
               : t("chart.trajectory.sub.vs")
           }
         />
-        {locale === "ru" && (
-          <div className="mt-2 mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
-            ⚠️ Графики — work in progress. Модели финишей и калибровка против PrimeDope ещё калибруются; формы кривых и σ могут заметно меняться от версии к версии.
-          </div>
-        )}
-        {compareMode === "primedope" && pdChart && !pdPkoFallback && !pdPresetFlip && (
-          <GapExplainer ours={result} pd={pdChart} money={money} t={t} />
-        )}
+        {extremesToggles}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <ChartPane
             label={modelLabel}
@@ -1898,7 +2324,7 @@ function TrajectoryCard({
                 : t("twin.runA.cap")
             }
           >
-            <TrajectoryPlot assets={primary} height={540} />
+            <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} />
           </ChartPane>
           <ChartPane
             label={
@@ -1933,6 +2359,7 @@ function TrajectoryCard({
                     onUsePdFinishModelChange={onUsePdFinishModelChange}
                     usePdRakeMath={usePdRakeMath}
                     onUsePdRakeMathChange={onUsePdRakeMathChange}
+                    onPdRefresh={onPdRefresh}
                     pdOverrideStatus={pdOverrideStatus}
                     pdOverrideProgress={pdOverrideProgress}
                   />
@@ -1958,7 +2385,7 @@ function TrajectoryCard({
               ) : null
             }
           >
-            <TrajectoryPlot assets={secondary} height={540} />
+            <TrajectoryPlot assets={secondary} height={540} visibleRuns={visibleRuns} />
           </ChartPane>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -1989,6 +2416,9 @@ function TrajectoryCard({
             {t("chart.trajectory.sharedY")}
           </div>
         </div>
+        {compareMode === "primedope" && pdChart && !pdPkoFallback && !pdPresetFlip && (
+          <GapExplainer ours={result} pd={pdChart} money={money} t={t} />
+        )}
       </Card>
     );
   }
@@ -2003,19 +2433,15 @@ function TrajectoryCard({
             : t("chart.trajectory.sub")
         }
       />
-      {locale === "ru" && (
-        <div className="mt-2 mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
-          ⚠️ Графики — work in progress. Модели финишей и калибровка против PrimeDope ещё калибруются; формы кривых и σ могут заметно меняться от версии к версии.
-        </div>
-      )}
-      <TrajectoryPlot assets={primary} height={440} />
+      {extremesToggles}
+      <TrajectoryPlot assets={primary} height={440} visibleRuns={visibleRuns} />
       {slotOverlay && (
         <div className="mt-4">
           <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             <span className="inline-block h-1.5 w-3 rounded-sm bg-[#f472b6]" />
             {t("slot.saved")}
           </div>
-          <TrajectoryPlot assets={slotOverlay} height={240} />
+          <TrajectoryPlot assets={slotOverlay} height={240} visibleRuns={visibleRuns} />
         </div>
       )}
     </Card>
@@ -2072,10 +2498,12 @@ function DownswingsCard({
   downswings,
   upswings,
   tourneysWord,
+  streaks,
 }: {
   downswings: SimulationResult["downswings"];
   upswings: SimulationResult["upswings"];
   tourneysWord: string;
+  streaks?: React.ReactNode;
 }) {
   const t = useT();
   const { money } = useMoneyFmt();
@@ -2168,6 +2596,7 @@ function DownswingsCard({
           </table>
         </div>
       </div>
+      {streaks && <div className="mt-6">{streaks}</div>}
     </Card>
   );
 }
@@ -2212,18 +2641,20 @@ function LineStylePresetPicker({
   value: LineStylePresetId;
   onChange: (v: LineStylePresetId) => void;
 }) {
+  const t = useT();
   const active = LINE_STYLE_PRESETS[value];
+  const activeMeta = LINE_STYLE_PRESET_META[value];
   return (
     <div className="flex items-center gap-2">
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as LineStylePresetId)}
         className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] outline-none hover:border-[color:var(--color-accent)] focus:border-[color:var(--color-accent)]"
-        title={active.description}
+        title={t(activeMeta.descriptionKey)}
       >
         {LINE_STYLE_PRESET_ORDER.map((id) => (
           <option key={id} value={id}>
-            {LINE_STYLE_PRESETS[id].label}
+            {t(LINE_STYLE_PRESET_META[id].labelKey)}
           </option>
         ))}
       </select>
@@ -3465,6 +3896,7 @@ function PdCompareToggles({
   onUsePdFinishModelChange,
   usePdRakeMath,
   onUsePdRakeMathChange,
+  onPdRefresh,
   pdOverrideStatus,
   pdOverrideProgress,
 }: {
@@ -3474,6 +3906,7 @@ function PdCompareToggles({
   onUsePdFinishModelChange?: (v: boolean) => void;
   usePdRakeMath: boolean;
   onUsePdRakeMathChange?: (v: boolean) => void;
+  onPdRefresh?: () => void;
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
 }) {
@@ -3552,6 +3985,26 @@ function PdCompareToggles({
         onUsePdRakeMathChange,
         "chart.trajectory.pdRakeMath",
         "chart.trajectory.pdRakeMath.hint",
+      )}
+      {onPdRefresh && (
+        <button
+          type="button"
+          onClick={onPdRefresh}
+          disabled={pdOverrideStatus === "running"}
+          title={t("pd.refresh.hint")}
+          className="inline-flex items-center gap-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {t("pd.refresh.label")}
+        </button>
       )}
       {pdOverrideStatus === "running" && (
         <div className="h-1 w-16 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
@@ -3793,6 +4246,9 @@ function BigStat({
   tone,
   tip,
   suit = "club",
+  pdValue,
+  pdDelta,
+  emphasizeTail,
 }: {
   label: string;
   value: string;
@@ -3800,6 +4256,9 @@ function BigStat({
   tone?: "pos" | "neg";
   tip?: string;
   suit?: StatSuit;
+  pdValue?: string;
+  pdDelta?: number | null;
+  emphasizeTail?: boolean;
 }) {
   const toneColor =
     tone === "pos"
@@ -3836,6 +4295,13 @@ function BigStat({
         <div className="text-[11px] text-[color:var(--color-fg-dim)]">
           {sub}
         </div>
+      )}
+      {pdValue != null && (
+        <PdCompareRow
+          pdValue={pdValue}
+          delta={pdDelta ?? null}
+          emphasizeTail={emphasizeTail}
+        />
       )}
     </div>
   );
@@ -4175,18 +4641,67 @@ function PrimedopeDiff({
   );
 }
 
+/**
+ * Compact "p95 tail is X% heavier than PD" note rendered below a streak
+ * histogram when the divergence is meaningful (≥10% relative, ≥1 unit absolute).
+ */
+function TailDivergenceNote({
+  user,
+  pd,
+  unit,
+}: {
+  user: { binEdges: number[]; counts: number[] };
+  pd: { binEdges: number[]; counts: number[] };
+  unit: string;
+}) {
+  const userP95 = histogramQuantile(user.binEdges, user.counts, 0.95);
+  const pdP95 = histogramQuantile(pd.binEdges, pd.counts, 0.95);
+  if (!Number.isFinite(userP95) || !Number.isFinite(pdP95)) return null;
+  if (Math.abs(userP95 - pdP95) < 1) return null;
+  const rel = pctDelta(userP95, pdP95);
+  if (rel == null || Math.abs(rel) < 0.1) return null;
+  const strong = Math.abs(rel) >= 0.25;
+  const sign = rel >= 0 ? "+" : "";
+  const color = strong
+    ? "var(--color-danger)"
+    : "var(--color-accent-strong)";
+  const bg = strong ? "bg-[color:var(--color-danger)]/10" : "";
+  return (
+    <div
+      className={`mt-1.5 rounded-sm px-2 py-1 font-mono text-[10px] tabular-nums ${bg}`}
+      style={{ color }}
+    >
+      p95 tail: {Math.round(userP95)} {unit} vs PD {Math.round(pdP95)}{" "}
+      <span className={strong ? "font-bold" : "font-semibold"}>
+        ({sign}
+        {(rel * 100).toFixed(0)}%)
+      </span>
+    </div>
+  );
+}
+
 function MiniStat({
   label,
   value,
   tone,
   suit = "club",
   tip,
+  pdValue,
+  pdDelta,
+  emphasizeTail,
 }: {
   label: string;
   value: string;
   tone?: "pos" | "neg";
   suit?: StatSuit;
   tip?: string;
+  /** PD-pane value formatted the same way as `value`; renders comparison row. */
+  pdValue?: string;
+  /** Signed relative delta vs PD (cur − pd)/|pd| — drives badge severity. */
+  pdDelta?: number | null;
+  /** When true, the divergence thresholds for coloring are halved so tail
+   *  metrics (worst run, p95/p99, deep DD, longest cashless) pop harder. */
+  emphasizeTail?: boolean;
 }) {
   const toneColor =
     tone === "pos"
@@ -4212,6 +4727,69 @@ function MiniStat({
       >
         {value}
       </div>
+      {pdValue != null && (
+        <PdCompareRow
+          pdValue={pdValue}
+          delta={pdDelta ?? null}
+          emphasizeTail={emphasizeTail}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Thresholds for the PD-delta badge. Tail-emphasized metrics trip earlier
+ * so a 10% gap on p99 looks louder than a 10% gap on the mean.
+ */
+function pdBadgeSeverity(
+  delta: number | null,
+  emphasizeTail: boolean | undefined,
+): "none" | "mild" | "strong" {
+  if (delta == null) return "none";
+  const abs = Math.abs(delta);
+  const midT = emphasizeTail ? 0.05 : 0.1;
+  const hiT = emphasizeTail ? 0.12 : 0.25;
+  if (abs >= hiT) return "strong";
+  if (abs >= midT) return "mild";
+  return "none";
+}
+
+function PdCompareRow({
+  pdValue,
+  delta,
+  emphasizeTail,
+}: {
+  pdValue: string;
+  delta: number | null;
+  emphasizeTail?: boolean;
+}) {
+  const sev = pdBadgeSeverity(delta, emphasizeTail);
+  const arrow =
+    delta == null
+      ? ""
+      : delta > 0.0005
+        ? "▲"
+        : delta < -0.0005
+          ? "▼"
+          : "≈";
+  const pctStr =
+    delta == null ? "" : `${arrow}${Math.round(Math.abs(delta) * 100)}%`;
+  const badgeClass =
+    sev === "strong"
+      ? "px-1 font-semibold text-[color:var(--color-danger)] bg-[color:var(--color-danger)]/15 rounded-sm"
+      : sev === "mild"
+        ? "text-[color:var(--color-accent-strong)]"
+        : "text-[color:var(--color-fg-dim)]";
+  return (
+    <div className="mt-0.5 flex items-center gap-1 font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+      <span className="opacity-70">PD</span>
+      <span className="truncate">{pdValue}</span>
+      {delta != null && (
+        <span className={badgeClass} aria-label={`delta vs PD ${pctStr}`}>
+          {pctStr}
+        </span>
+      )}
     </div>
   );
 }

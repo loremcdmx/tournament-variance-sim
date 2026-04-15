@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyICMToPayoutTable, icmEquities } from "./icm";
+import { applyICMToPayoutTable, icmEquities, ICM_MAX_PLAYERS } from "./icm";
 
 describe("icmEquities", () => {
   it("equal stacks, winner-takes-all → flat split", () => {
@@ -25,6 +25,21 @@ describe("icmEquities", () => {
 
   it("equities sum to total prize pool", () => {
     const eq = icmEquities([3, 2, 5, 1], [500, 300, 150, 50]);
+    const s = eq.reduce((a, b) => a + b, 0);
+    expect(s).toBeCloseTo(1000, 6);
+  });
+
+  it(`throws when given more than ${ICM_MAX_PLAYERS} players`, () => {
+    const stacks = new Array(ICM_MAX_PLAYERS + 1).fill(1);
+    const payouts = [100, 60, 40];
+    expect(() => icmEquities(stacks, payouts)).toThrow(/capped at 9 players/);
+  });
+
+  it(`accepts exactly ${ICM_MAX_PLAYERS} players`, () => {
+    const stacks = new Array(ICM_MAX_PLAYERS).fill(1);
+    const payouts = [500, 300, 150, 50];
+    const eq = icmEquities(stacks, payouts);
+    expect(eq).toHaveLength(ICM_MAX_PLAYERS);
     const s = eq.reduce((a, b) => a + b, 0);
     expect(s).toBeCloseTo(1000, 6);
   });

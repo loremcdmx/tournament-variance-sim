@@ -12,7 +12,6 @@ import { ScheduleEditor } from "@/components/ScheduleEditor";
 import { ControlsPanel, type ControlsState } from "@/components/ControlsPanel";
 import { ModelPresetSelector } from "@/components/ModelPresetSelector";
 import { ResultsView } from "@/components/ResultsView";
-import { BenchConvergenceCard } from "@/components/BenchConvergenceCard";
 import { PayoutStructureCard } from "@/components/PayoutStructureCard";
 import { Section, Card } from "@/components/ui/Section";
 import { CornerToggles } from "@/components/ui/CornerToggles";
@@ -61,7 +60,7 @@ const initialControls: ControlsState = {
   samples: 10_000,
   bankroll: 0,
   seed: 42,
-  finishModelId: "power-law",
+  finishModelId: "powerlaw-realdata-influenced",
   alphaOverride: null,
   compareWithPrimedope: true,
   usePrimedopePayouts: true,
@@ -81,7 +80,7 @@ const initialControls: ControlsState = {
   modelPresetId: "naive",
   empiricalBuckets: undefined,
   itmGlobalEnabled: true,
-  itmGlobalPct: 15,
+  itmGlobalPct: 18.7,
 };
 
 interface CompareSlot {
@@ -130,14 +129,24 @@ export default function Home() {
   useEffect(() => {
     const fromUrl = loadFromUrlHash();
     const fromLocal = fromUrl ?? loadLocal();
+    // Fresh random seed on every mount — users shouldn't see a pinned
+    // "42" or a stale saved seed in the field. Runs are re-seeded again
+    // in onRun, but this keeps the UI honest about reproducibility.
+    const freshSeed =
+      (((Math.random() * 0xffffffff) >>> 0) ^
+        ((Date.now() & 0xffffffff) >>> 0)) >>>
+      0;
     startTransition(() => {
       if (fromLocal) {
         setSchedule(fromLocal.schedule);
         setControls({
           ...initialControls,
           ...fromLocal.controls,
+          seed: freshSeed,
           compareWithPrimedope: true,
         });
+      } else {
+        setControls((c) => ({ ...c, seed: freshSeed }));
       }
       setHydrated(true);
     });
@@ -251,6 +260,21 @@ export default function Home() {
     },
     [runPdOnly],
   );
+  const onPdRefresh = useCallback(() => {
+    const base = lastRunInputRef.current;
+    if (!base) return;
+    runPdOnly({
+      ...base,
+      usePrimedopePayouts: controls.usePrimedopePayouts,
+      usePrimedopeFinishModel: controls.usePrimedopeFinishModel,
+      usePrimedopeRakeMath: controls.usePrimedopeRakeMath,
+    });
+  }, [
+    controls.usePrimedopePayouts,
+    controls.usePrimedopeFinishModel,
+    controls.usePrimedopeRakeMath,
+    runPdOnly,
+  ]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -413,15 +437,15 @@ export default function Home() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-5 sm:px-6 sm:py-6 xl:max-w-[1400px] 2xl:max-w-[1700px] 3xl:max-w-[2000px] 4xl:max-w-[2400px]">
-      <header className="flex flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-3 sm:px-6 sm:py-4 xl:max-w-[1400px] 2xl:max-w-[1700px] 3xl:max-w-[2000px] 4xl:max-w-[2400px]">
+      <header className="flex flex-col gap-3">
         {/* Compact brand strip: ♠ + kicker + title + version + toggles in one row */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[color:var(--color-border)] pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[color:var(--color-border)] pb-2">
           <div className="flex items-baseline gap-3">
             <span className="inline-flex h-6 w-6 translate-y-[2px] items-center justify-center self-center rounded-sm border border-[color:var(--color-accent)] text-[10px] font-bold text-[color:var(--color-accent)]">
               ♠
             </span>
-            <h1 className="text-[22px] font-black uppercase leading-none tracking-[-0.01em] sm:text-[28px]">
+            <h1 className="text-[20px] font-black uppercase leading-none tracking-[-0.01em] sm:text-[24px]">
               <span className="text-[color:var(--color-fg)]">
                 {t("app.title").split(" ")[0]}
               </span>{" "}
@@ -436,82 +460,17 @@ export default function Home() {
           <CornerToggles />
         </div>
 
-        {/* Scenario grid — kicked straight to the top so it's in the first viewport */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="eyebrow">{t("demo.label")}</span>
-            {compareSlot && (
-              <span className="inline-flex items-center gap-1.5 border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)]">
-                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--color-accent)]" />
-                {t("slot.comparing")}
-              </span>
-            )}
+        {compareSlot && (
+          <div className="flex justify-end">
+            <span className="inline-flex items-center gap-1.5 border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)]">
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--color-accent)]" />
+              {t("slot.comparing")}
+            </span>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3">
-            {SCENARIOS.filter((s) => advanced || s.id !== "romeo-pro").map((s, i) => {
-              const total = s.schedule.reduce((n, r) => n + r.count, 0);
-              const buyIns = s.schedule.map((r) => r.buyIn);
-              const lo = Math.min(...buyIns);
-              const hi = Math.max(...buyIns);
-              const range =
-                lo === hi ? `$${lo}` : `$${lo}–${hi}`;
-              const active = activeScenarioId === s.id;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => loadScenario(s.id)}
-                  title={s.description}
-                  className={`group relative flex flex-col items-start gap-1.5 overflow-hidden border px-3 py-2 text-left transition-all ${
-                    active
-                      ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/5"
-                      : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] hover:border-[color:var(--color-accent)]/60 hover:bg-[color:var(--color-bg-elev-2)]"
-                  }`}
-                >
-                  <div className="relative flex w-full items-center justify-between">
-                    {s.icon ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={s.icon}
-                        alt=""
-                        aria-hidden
-                        className={`h-6 w-6 select-none rounded-full object-cover ring-1 ${
-                          active
-                            ? "ring-[color:var(--color-accent)]"
-                            : "ring-[color:var(--color-border-strong)]"
-                        }`}
-                      />
-                    ) : (
-                      <span
-                        className={`font-mono text-[10px] tabular-nums ${
-                          active
-                            ? "text-[color:var(--color-accent)]"
-                            : "text-[color:var(--color-fg-dim)]"
-                        }`}
-                      >
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                    )}
-                    <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
-                      {total} × {range}
-                    </span>
-                  </div>
-                  <div
-                    className={`relative text-[13px] font-semibold leading-tight ${
-                      active
-                        ? "text-[color:var(--color-accent)]"
-                        : "text-[color:var(--color-fg)] group-hover:text-[color:var(--color-accent)]"
-                    }`}
-                  >
-                    {t(s.labelKey)}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+        )}
 
-          {/* User-saved presets — collapsible so they don't push the schedule below the fold */}
-          <details className="group mt-1 border-t border-[color:var(--color-border)] pt-2">
+        {/* User-saved presets — collapsible so they don't push the schedule below the fold */}
+        <details className="group border-t border-[color:var(--color-border)] pt-2">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-accent)]">
               <span className="eyebrow flex items-center gap-2">
                 <span className="inline-block transition-transform group-open:rotate-90">▸</span>
@@ -641,7 +600,6 @@ export default function Home() {
             )}
             </div>
           </details>
-        </div>
       </header>
 
       <Section
@@ -649,7 +607,7 @@ export default function Home() {
         suit="spade"
         title={t("section.schedule.title")}
       >
-        <div className="mb-4 grid grid-cols-1 items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="mb-3 grid grid-cols-1 items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="min-w-0">
             <ModelPresetSelector
               value={controls}
@@ -680,6 +638,31 @@ export default function Home() {
           globalItmPct={
             controls.itmGlobalEnabled ? controls.itmGlobalPct : null
           }
+          toolbarExtras={
+            <>
+              <span className="eyebrow whitespace-nowrap text-[color:var(--color-fg-dim)]">
+                {t("demo.label")}
+              </span>
+              <select
+                value={activeScenarioId ?? ""}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (id) loadScenario(id);
+                }}
+                className="max-w-[200px] truncate rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1 text-xs text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+                aria-label={t("demo.label")}
+              >
+                <option value="">—</option>
+                {SCENARIOS.filter((s) => advanced || s.id !== "romeo-pro").map(
+                  (s) => (
+                    <option key={s.id} value={s.id}>
+                      {t(s.labelKey)}
+                    </option>
+                  ),
+                )}
+              </select>
+            </>
+          }
         />
       </Section>
 
@@ -687,10 +670,9 @@ export default function Home() {
         number="02"
         suit="diamond"
         title={t("section.controls.title")}
-        subtitle={t("section.controls.subtitle")}
       >
-        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1.6fr_1fr]">
-          <div className="flex min-w-0 flex-col gap-5">
+        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[1.6fr_1fr]">
+          <div className="flex min-w-0 flex-col gap-4">
             <ControlsPanel
               value={controls}
               onChange={(c) => {
@@ -869,13 +851,11 @@ export default function Home() {
               onUsePdPayoutsChange={onUsePdPayoutsChange}
               onUsePdFinishModelChange={onUsePdFinishModelChange}
               onUsePdRakeMathChange={onUsePdRakeMathChange}
+              onPdRefresh={onPdRefresh}
               pdOverrideResult={pdResultOverride}
               pdOverrideStatus={pdStatus}
               pdOverrideProgress={pdProgress}
             />
-            <div className="mt-6">
-              <BenchConvergenceCard />
-            </div>
           </Section>
         </>
       )}

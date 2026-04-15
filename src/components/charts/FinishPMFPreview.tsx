@@ -146,43 +146,42 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
       : null;
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Eyebrow + tournament identity */}
-      <div className="flex flex-col gap-1">
-        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--color-fg-dim)]">
-          {t("preview.eyebrow")}
-        </div>
-        <div className="text-sm font-semibold text-[color:var(--color-fg)]">
-          {row.label || t("row.unnamed")}
-        </div>
-        <div className="text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
-          {row.players} {t("preview.playersLabel")} · α {stats.alpha.toFixed(2)}
+    <div className="flex flex-col gap-3.5">
+      {/* Tournament identity */}
+      <div className="text-sm font-semibold text-[color:var(--color-fg)]">
+        {row.label || t("row.unnamed")}
+        <span className="ml-1 font-normal tabular-nums text-[color:var(--color-fg-dim)]">
+          , α {stats.alpha.toFixed(2)}
           {stats.progressivePko
             ? ` · ${t("preview.statBountyPko")}`
             : stats.bountyShare > 0
               ? ` · ${t("preview.statBountyFlat")}`
               : ""}
-        </div>
+        </span>
       </div>
 
       {/* Buy-in → avg profit */}
-      <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">
-        <div className="flex items-end justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
+      <div className="rounded-lg border border-[color:var(--color-border)] bg-gradient-to-br from-[color:var(--color-bg)] to-[color:var(--color-bg-elev)] p-3.5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
             <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               {t("preview.youPay")}
             </div>
-            <div className="text-[22px] font-bold leading-none tabular-nums text-[color:var(--color-fg)]">
+            <div className="text-[24px] font-bold leading-none tabular-nums text-[color:var(--color-fg)]">
               {moneyFmt(stats.cost)}
             </div>
           </div>
-          <div className="pb-1 text-lg text-[color:var(--color-fg-dim)]">→</div>
-          <div className="flex flex-col items-end gap-0.5">
+          <div className="flex flex-1 items-center justify-center px-2">
+            <div className="h-px flex-1 bg-[color:var(--color-border)]" />
+            <div className="mx-1.5 text-base text-[color:var(--color-fg-dim)]">→</div>
+            <div className="h-px flex-1 bg-[color:var(--color-border)]" />
+          </div>
+          <div className="flex flex-col items-end gap-1">
             <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               {t("preview.avgReturn")}
             </div>
             <div
-              className={`text-[22px] font-bold leading-none tabular-nums ${
+              className={`text-[24px] font-bold leading-none tabular-nums ${
                 netProfitPerEntry >= 0
                   ? "text-[color:var(--color-accent)]"
                   : "text-[color:var(--color-danger)]"
@@ -288,14 +287,7 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
                 key="__footer__"
                 label={t("preview.evBreakdownTotal")}
                 netDollars={tierNetSum}
-              />,
-            );
-            rows.push(
-              <EvBreakdownFooter
-                key="__footer_eq__"
-                label={t("preview.evBreakdownEq")}
-                netDollars={tierEqNetSum}
-                muted
+                eqNetDollars={tierEqNetSum}
               />,
             );
             return rows;
@@ -397,30 +389,31 @@ function EvBreakdownRow({
 function EvBreakdownFooter({
   label,
   netDollars,
-  muted,
+  eqNetDollars,
 }: {
   label: string;
   netDollars: number;
-  muted?: boolean;
+  /** If provided, rendered inside the eq% column so the equilibrium
+   *  (−rake) readout sits inline with ROI instead of on its own row. */
+  eqNetDollars?: number;
 }) {
-  const netClass = muted
-    ? "text-[color:var(--color-fg-dim)]"
-    : netDollars > 0
+  const netClass =
+    netDollars > 0
       ? "text-[color:var(--color-accent)]"
       : netDollars < 0
         ? "text-[color:var(--color-danger)]"
         : "text-[color:var(--color-fg-dim)]";
   return (
-    <div
-      className={
-        muted
-          ? "grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-0.5 text-[10px] font-normal"
-          : "mt-0.5 grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 border-t border-[color:var(--color-border)] pt-1.5 text-[11px] font-semibold"
-      }
-    >
+    <div className="mt-0.5 grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 border-t border-[color:var(--color-border)] pt-1.5 text-[11px] font-semibold">
       <span />
-      <span className="col-span-5 text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+      <span className="col-span-4 text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
         {label}
+      </span>
+      <span
+        className="text-right font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]"
+        title="equilibrium (−rake)"
+      >
+        {eqNetDollars != null ? fmtSignedMoney(eqNetDollars) : ""}
       </span>
       <span className={`text-right font-mono tabular-nums ${netClass}`}>
         {fmtSignedMoney(netDollars)}
@@ -1044,52 +1037,52 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const shellBubble = paidCount < N ? (pmf[paidCount] ?? 0) : 0;
   const shellFirstCash = paidCount > 0 ? (pmf[paidCount - 1] ?? 0) : 0;
 
-  // Position-specific rows appended to the evBreakdown table. These are
-  // discrete places (not percentile bands), so field share == equilibrium
-  // probability by definition — we still expose both columns so the row
-  // format matches the tier rows above.
-  const evShareRange = (hi: number) => {
-    if (!(totalEv > 1e-9) || hi <= 0) return 0;
+  // Position rows are rendered immediately after the winner tier, and each
+  // row carries its own *delta* contribution (places not already included
+  // in a previous row) so the user can read "$ from this row, without what
+  // sits above it".
+  const rangeEv$ = (lo: number, hi: number): number => {
     let s = 0;
-    for (let i = 0; i < hi && i < N; i++) s += evByPlace[i];
-    return s / totalEv;
+    for (let i = lo; i < hi && i < N; i++) s += evByPlace[i];
+    return s;
   };
-  // firstCash / bubble are rendered as disjoint tiers (see cuts above).
-  // Positions carries the cumulative summary rows top3 / FT — rendered
-  // immediately after the winner tier so the "top of the cash ladder"
-  // summary sits at the head of the table. top1 (1st place alone) is
-  // dropped because it always duplicates the winner tier. ft is dropped
-  // when it is already a disjoint tier (the hide-top-bands case).
-  const evDollarsRange = (hi: number): number => {
-    if (hi <= 0) return 0;
+  const rangeField = (lo: number, hi: number): number => {
     let s = 0;
-    for (let i = 0; i < hi && i < N; i++) s += evByPlace[i];
+    for (let i = lo; i < hi && i < N; i++) s += pmf[i];
     return s;
   };
   const positions: PositionRow[] = [];
-  if (paidCount >= 2) {
+  let posLo = 1; // winner tier already covers place 1
+  if (paidCount >= 3) {
     const top3Hi = Math.min(3, paidCount);
-    const top3Ev$ = evDollarsRange(top3Hi);
-    positions.push({
-      key: "top3",
-      labelKey: "preview.probTop3",
-      color: "#fb923c",
-      ev: evShareRange(top3Hi),
-      field: shellTop3Sum,
-      eqShare: N > 0 ? top3Hi / N : 0,
-      netDollars: top3Ev$ - shellTop3Sum * entryCost,
-    });
+    if (top3Hi > posLo) {
+      const ev$ = rangeEv$(posLo, top3Hi);
+      const f = rangeField(posLo, top3Hi);
+      const width = top3Hi - posLo;
+      positions.push({
+        key: "top3",
+        labelKey: "preview.probTop3",
+        color: "#fb923c",
+        ev: totalEv > 1e-9 ? ev$ / totalEv : 0,
+        field: f,
+        eqShare: N > 0 ? width / N : 0,
+        netDollars: ev$ - f * entryCost,
+      });
+      posLo = top3Hi;
+    }
   }
-  if (!ftIsTier && ftEnd > 0) {
-    const ftEv$ = evDollarsRange(ftEnd);
+  if (!ftIsTier && ftEnd > posLo) {
+    const ev$ = rangeEv$(posLo, ftEnd);
+    const f = rangeField(posLo, ftEnd);
+    const width = ftEnd - posLo;
     positions.push({
       key: "ft",
       labelKey: "preview.probFt",
       color: "#a855f7",
-      ev: ftEvShare,
-      field: shellFtSum,
-      eqShare: N > 0 ? ftEnd / N : 0,
-      netDollars: ftEv$ - shellFtSum * entryCost,
+      ev: totalEv > 1e-9 ? ev$ / totalEv : 0,
+      field: f,
+      eqShare: N > 0 ? width / N : 0,
+      netDollars: ev$ - f * entryCost,
     });
   }
 

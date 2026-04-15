@@ -110,7 +110,7 @@ export function ModelPresetSelector({ value, onChange }: Props) {
   return (
     <div
       ref={rootRef}
-      className="relative mb-4 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-3"
+      className="relative flex h-full flex-col gap-2 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-3"
     >
       <div className="flex items-center gap-2">
         <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
