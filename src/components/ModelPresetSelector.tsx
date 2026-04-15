@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import {
   STANDARD_PRESETS,
   applyModelPatch,
@@ -23,6 +24,7 @@ interface Props {
 
 export function ModelPresetSelector({ value, onChange }: Props) {
   const t = useT();
+  const { advanced } = useAdvancedMode();
   const [userPresets, setUserPresets] = useState<UserPreset[]>([]);
   const [open, setOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -126,6 +128,7 @@ export function ModelPresetSelector({ value, onChange }: Props) {
           </span>
           <span className="shrink-0 text-[color:var(--color-fg-dim)]">▾</span>
         </button>
+        {advanced && (
         <button
           type="button"
           onClick={handleSaveCurrent}
@@ -139,6 +142,8 @@ export function ModelPresetSelector({ value, onChange }: Props) {
             <polyline points="7 3 7 8 15 8" />
           </svg>
         </button>
+        )}
+        {advanced && (
         <button
           type="button"
           onClick={handleExport}
@@ -152,6 +157,8 @@ export function ModelPresetSelector({ value, onChange }: Props) {
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
         </button>
+        )}
+        {advanced && (<>
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -176,6 +183,7 @@ export function ModelPresetSelector({ value, onChange }: Props) {
             e.target.value = "";
           }}
         />
+        </>)}
       </div>
 
       {open && (
@@ -184,7 +192,7 @@ export function ModelPresetSelector({ value, onChange }: Props) {
             {t("preset.standard")}
           </div>
           <div className="flex flex-col gap-1">
-            {STANDARD_PRESETS.map((p) => (
+            {STANDARD_PRESETS.filter((p) => advanced || p.id !== "loremcdmx").map((p) => (
               <button
                 key={p.id}
                 type="button"

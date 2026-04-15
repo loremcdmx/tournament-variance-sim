@@ -19,6 +19,10 @@ export interface LineStylePreset {
   best: LineStyle;
   /** Unluckiest sample path. */
   worst: LineStyle;
+  /** 5th-percentile trajectory — worst-case run at 95% confidence. */
+  p05: LineStyle;
+  /** 95th-percentile trajectory — best-case run at 95% confidence. */
+  p95: LineStyle;
   /** Individual sample paths drawn behind the envelope. */
   path: LineStyle;
   /** p0.15 / p99.85 extreme envelope edges. */
@@ -44,6 +48,8 @@ const h2n: LineStylePreset = {
   ev: { stroke: "#fbbf24", width: 1.5, dash: [6, 4] },
   best: { stroke: "#86efac", width: 1.25 },
   worst: { stroke: "#fca5a5", width: 1.25 },
+  p05: { stroke: "#f87171", width: 1.5, dash: [5, 3] },
+  p95: { stroke: "#4ade80", width: 1.5, dash: [5, 3] },
   path: { stroke: "rgba(148,163,184,0.25)", width: 1 },
   bandExtreme: { stroke: "rgba(52,211,153,0.14)", width: 1 },
   bandWide: { stroke: "rgba(52,211,153,0.24)", width: 1 },
@@ -60,6 +66,8 @@ const pt4: LineStylePreset = {
   ev: { stroke: "#ec4899", width: 2 },
   best: { stroke: "#bbf7d0", width: 1.25 },
   worst: { stroke: "#fecaca", width: 1.25 },
+  p05: { stroke: "#ef4444", width: 1.5, dash: [5, 3] },
+  p95: { stroke: "#16a34a", width: 1.5, dash: [5, 3] },
   path: { stroke: "rgba(148,163,184,0.22)", width: 1 },
   bandExtreme: { stroke: "rgba(34,197,94,0.12)", width: 1 },
   bandWide: { stroke: "rgba(34,197,94,0.22)", width: 1 },
@@ -76,6 +84,8 @@ const hm3: LineStylePreset = {
   ev: { stroke: "#f97316", width: 1.75, dash: [5, 3] },
   best: { stroke: "#7dd3fc", width: 1.25 },
   worst: { stroke: "#fdba74", width: 1.25 },
+  p05: { stroke: "#fb7185", width: 1.5, dash: [5, 3] },
+  p95: { stroke: "#38bdf8", width: 1.5, dash: [5, 3] },
   path: { stroke: "rgba(148,163,184,0.22)", width: 1 },
   bandExtreme: { stroke: "rgba(14,165,233,0.12)", width: 1 },
   bandWide: { stroke: "rgba(14,165,233,0.22)", width: 1 },
@@ -92,6 +102,8 @@ const pokerdope: LineStylePreset = {
   ev: { stroke: "#f472b6", width: 1.5, dash: [4, 3] },
   best: { stroke: "#e9d5ff", width: 1.25 },
   worst: { stroke: "#fbcfe8", width: 1.25 },
+  p05: { stroke: "#f472b6", width: 1.5, dash: [5, 3] },
+  p95: { stroke: "#c4b5fd", width: 1.5, dash: [5, 3] },
   path: { stroke: "rgba(148,163,184,0.22)", width: 1 },
   bandExtreme: { stroke: "rgba(167,139,250,0.10)", width: 1 },
   bandWide: { stroke: "rgba(167,139,250,0.20)", width: 1 },
@@ -140,17 +152,53 @@ export function saveLineStylePreset(id: LineStylePresetId) {
 // surface small. Overrides are stored globally (not per-preset) and re-applied
 // whenever the active preset changes.
 
-export type OverridableLineKey = "mean" | "ev" | "best" | "worst";
+export type OverridableLineKey =
+  | "mean"
+  | "ev"
+  | "best"
+  | "worst"
+  | "p05"
+  | "p95";
 export const OVERRIDABLE_LINE_KEYS: OverridableLineKey[] = [
   "mean",
   "ev",
   "best",
   "worst",
+  "p05",
+  "p95",
 ];
+
+/**
+ * Lines that are hidden by default and opt-in via the customizer.
+ * p05/p95 envelope lines aren't part of the tracker-style default visuals —
+ * we only draw them when the user explicitly enables them.
+ */
+const OPTIONAL_LINE_KEYS: ReadonlySet<OverridableLineKey> = new Set([
+  "p05",
+  "p95",
+]);
+
+export function isOptionalLine(key: OverridableLineKey): boolean {
+  return OPTIONAL_LINE_KEYS.has(key);
+}
+
+export function isLineEnabled(
+  key: OverridableLineKey,
+  overrides: LineStyleOverrides,
+): boolean {
+  const ov = overrides[key];
+  if (ov?.enabled != null) return ov.enabled;
+  return !OPTIONAL_LINE_KEYS.has(key);
+}
 
 export interface LineStyleOverride {
   stroke?: string;
   width?: number;
+  /**
+   * Optional visibility toggle. Undefined = preset default
+   * (optional lines default off, all others default on).
+   */
+  enabled?: boolean;
 }
 
 export type LineStyleOverrides = Partial<
@@ -177,6 +225,8 @@ export function applyLineStyleOverrides(
     ev: merge("ev"),
     best: merge("best"),
     worst: merge("worst"),
+    p05: merge("p05"),
+    p95: merge("p95"),
   };
 }
 
@@ -215,6 +265,8 @@ export const PRIMEDOPE_PANE_PRESET: LineStylePreset = {
   ev: { stroke: "#fbbf24", width: 1.5, dash: [6, 4] },
   best: { stroke: "#fbcfe8", width: 1.25 },
   worst: { stroke: "#fecdd3", width: 1.25 },
+  p05: { stroke: "#f472b6", width: 1.5, dash: [5, 3] },
+  p95: { stroke: "#fbcfe8", width: 1.5, dash: [5, 3] },
   path: { stroke: "rgba(236,72,153,0.24)", width: 1 },
   bandExtreme: { stroke: "rgba(236,72,153,0.10)", width: 1 },
   bandWide: { stroke: "rgba(236,72,153,0.20)", width: 1 },

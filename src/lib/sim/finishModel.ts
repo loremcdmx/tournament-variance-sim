@@ -182,6 +182,244 @@ export function calibrateAlpha(
 }
 
 /**
+ * Shelled fixed-ITM calibration.
+ *
+ * Holds the in-the-money rate constant at `itmRate` and optionally pins the
+ * cumulative masses of the "top shells" — P(place 1), P(top-3), P(FT = top-9).
+ * Locked shells use uniform mass across their places; free places within the
+ * paid band are shaped by the configured finish model, with α binary-searched
+ * so total E[W] matches `targetWinnings`.
+ *
+ *   - Any unlocked shell inputs are `undefined`; pass empty object for pure α.
+ *   - Cumulative constraint: first ≤ top3 ≤ ft ≤ itmRate. Violations are
+ *     clamped defensively; returned `feasible` is false when the run couldn't
+ *     hit the target (locked constraints left no α room).
+ *   - `currentWinnings` is the actual Σ pmf·prize after solve; UI uses the
+ *     delta vs target to explain "you need $X more on some place".
+ */
+export interface ShelledCalibrationResult {
+  alpha: number;
+  pmf: Float64Array;
+  currentWinnings: number;
+  feasible: boolean;
+  /** Computed cumulative shell probabilities in the final PMF. */
+  shells: { first: number; top3: number; ft: number };
+}
+
+export function calibrateShelledItm(
+  N: number,
+  paidCount: number,
+  payouts: readonly number[],
+  prizePool: number,
+  targetWinnings: number,
+  itmRate: number,
+  shellLocks: { first?: number; top3?: number; ft?: number } | undefined,
+  model: FinishModelConfig,
+): ShelledCalibrationResult {
+  const pmf = new Float64Array(N);
+  const paid = Math.max(0, Math.min(paidCount, N));
+  const clampedItm = Math.max(0, Math.min(1, itmRate));
+
+  const emptyShells = { first: 0, top3: 0, ft: 0 };
+  if (paid === 0 || prizePool <= 0 || clampedItm <= 0) {
+    pmf.fill(1 / Math.max(1, N));
+    return { alpha: 0, pmf, currentWinnings: 0, feasible: true, shells: emptyShells };
+  }
+  if (paid === 1) {
+    pmf[0] = clampedItm;
+    const rest = N - 1;
+    if (rest > 0) {
+      const q = (1 - clampedItm) / rest;
+      for (let i = 1; i < N; i++) pmf[i] = q;
+    }
+    const w = pmf[0] * payouts[0] * prizePool;
+    return {
+      alpha: 0,
+      pmf,
+      currentWinnings: w,
+      feasible: Math.abs(w - targetWinnings) < 1e-6,
+      shells: { first: pmf[0], top3: pmf[0], ft: pmf[0] },
+    };
+  }
+
+  // ---- 1. Determine locked shell layers --------------------------------
+  const ftEnd = Math.min(9, paid);
+  // Cumulative locks (monotone clamp). All are bounded to [0, itmRate].
+  const locks = shellLocks ?? {};
+  let cumFirst =
+    locks.first != null
+      ? Math.max(0, Math.min(clampedItm, locks.first))
+      : undefined;
+  let cumTop3 =
+    locks.top3 != null
+      ? Math.max(cumFirst ?? 0, Math.min(clampedItm, locks.top3))
+      : undefined;
+  let cumFt =
+    locks.ft != null
+      ? Math.max(cumTop3 ?? cumFirst ?? 0, Math.min(clampedItm, locks.ft))
+      : undefined;
+
+  // Layers (disjoint) — [startIdx, endIdxExcl, cumMass?, isLocked]
+  // We only mark a layer as locked if BOTH its inner and outer cumulative
+  // masses are known.
+  interface Layer {
+    start: number;
+    end: number;
+    locked: boolean;
+    mass: number;
+  }
+  const layers: Layer[] = [];
+  let prevEnd = 0;
+  let prevCum: number | undefined = 0;
+  const pushBoundary = (endIdx: number, cum: number | undefined) => {
+    if (endIdx <= prevEnd) return;
+    const locked = prevCum != null && cum != null;
+    const mass = locked ? Math.max(0, (cum as number) - (prevCum as number)) : 0;
+    layers.push({ start: prevEnd, end: endIdx, locked, mass });
+    prevEnd = endIdx;
+    prevCum = cum;
+  };
+  pushBoundary(1, cumFirst);
+  pushBoundary(Math.min(3, paid), cumTop3);
+  pushBoundary(ftEnd, cumFt);
+  pushBoundary(paid, clampedItm); // outermost = itmRate
+
+  // ---- 2. Identify free places and locked contribution -----------------
+  const isLocked = new Uint8Array(paid);
+  const perPlaceLocked = new Float64Array(paid);
+  let totalLockedMass = 0;
+  let lockedEw = 0;
+  for (const layer of layers) {
+    if (!layer.locked) continue;
+    const width = layer.end - layer.start;
+    if (width <= 0) continue;
+    const perPlace = layer.mass / width;
+    for (let i = layer.start; i < layer.end; i++) {
+      isLocked[i] = 1;
+      perPlaceLocked[i] = perPlace;
+      totalLockedMass += perPlace;
+      lockedEw += perPlace * payouts[i] * prizePool;
+    }
+  }
+
+  const freeIndices: number[] = [];
+  for (let i = 0; i < paid; i++) if (!isLocked[i]) freeIndices.push(i);
+  const freeMassTotal = clampedItm - totalLockedMass;
+
+  // ---- 3. Solve for α on the free band ---------------------------------
+  let alpha = 0;
+  let feasible = true;
+
+  if (freeIndices.length === 0 || freeMassTotal <= 1e-12) {
+    // Nothing left to shape; locked layers fully determine the PMF.
+    if (freeMassTotal < -1e-9) feasible = false;
+    for (let i = 0; i < paid; i++) pmf[i] = perPlaceLocked[i];
+  } else {
+    const targetFreeEw = targetWinnings - lockedEw;
+
+    // Shape the free places by sampling from buildFinishPMF(paid, model, α)
+    // restricted to the free indices and renormalised to sum to freeMassTotal.
+    // This preserves the configured model (power-law / linear / etc.) while
+    // honouring the locks.
+    const freeEw = (alphaVal: number): number => {
+      const band = buildFinishPMF(paid, model, alphaVal);
+      let sFree = 0;
+      for (const idx of freeIndices) sFree += band[idx];
+      if (sFree <= 0) return 0;
+      let ew = 0;
+      for (const idx of freeIndices) {
+        const m = (band[idx] / sFree) * freeMassTotal;
+        ew += m * payouts[idx] * prizePool;
+      }
+      return ew;
+    };
+
+    const range =
+      model.id === "stretched-exp" ? { lo: -5, hi: 8 } : { lo: -6, hi: 25 };
+    const ewLo = freeEw(range.lo);
+    const ewHi = freeEw(range.hi);
+
+    if (targetFreeEw <= ewLo) {
+      alpha = range.lo;
+      feasible = Math.abs(ewLo - targetFreeEw) < 1e-6;
+    } else if (targetFreeEw >= ewHi) {
+      alpha = range.hi;
+      feasible = Math.abs(ewHi - targetFreeEw) < 1e-6;
+    } else {
+      let lo = range.lo;
+      let hi = range.hi;
+      for (let iter = 0; iter < 50; iter++) {
+        const mid = (lo + hi) / 2;
+        if (freeEw(mid) < targetFreeEw) lo = mid;
+        else hi = mid;
+      }
+      alpha = (lo + hi) / 2;
+    }
+
+    // Assemble final PMF.
+    const band = buildFinishPMF(paid, model, alpha);
+    let sFree = 0;
+    for (const idx of freeIndices) sFree += band[idx];
+    for (let i = 0; i < paid; i++) pmf[i] = perPlaceLocked[i];
+    if (sFree > 0) {
+      for (const idx of freeIndices) {
+        pmf[idx] += (band[idx] / sFree) * freeMassTotal;
+      }
+    }
+  }
+
+  // ---- 4. OOTM tail -----------------------------------------------------
+  const rest = N - paid;
+  if (rest > 0) {
+    const q = (1 - clampedItm) / rest;
+    for (let i = paid; i < N; i++) pmf[i] = q;
+  }
+
+  // ---- 5. Report -------------------------------------------------------
+  let currentWinnings = 0;
+  for (let i = 0; i < paid; i++) currentWinnings += pmf[i] * payouts[i] * prizePool;
+  if (Math.abs(currentWinnings - targetWinnings) > 1e-3) feasible = false;
+
+  const sumRange = (from: number, toExcl: number): number => {
+    let s = 0;
+    for (let i = from; i < Math.min(toExcl, paid); i++) s += pmf[i];
+    return s;
+  };
+  const shells = {
+    first: pmf[0] ?? 0,
+    top3: sumRange(0, Math.min(3, paid)),
+    ft: sumRange(0, ftEnd),
+  };
+
+  return { alpha, pmf, currentWinnings, feasible, shells };
+}
+
+/**
+ * Backward-compat facade — pure fixed-ITM with no shell locks.
+ */
+export function calibrateFixedItm(
+  N: number,
+  paidCount: number,
+  payouts: readonly number[],
+  prizePool: number,
+  targetWinnings: number,
+  itmRate: number,
+  model: FinishModelConfig,
+): { alpha: number; pmf: Float64Array } {
+  const r = calibrateShelledItm(
+    N,
+    paidCount,
+    payouts,
+    prizePool,
+    targetWinnings,
+    itmRate,
+    undefined,
+    model,
+  );
+  return { alpha: r.alpha, pmf: r.pmf };
+}
+
+/**
  * PrimeDope-compat finish distribution (two-bin uniform).
  *
  * PrimeDope's actual algorithm (verified against their legacy source):

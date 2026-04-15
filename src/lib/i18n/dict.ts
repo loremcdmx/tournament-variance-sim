@@ -91,8 +91,8 @@ export const DICT = {
   },
 
   // Schedule editor
-  "row.label": { en: "Label", ru: "Название" },
-  "row.players": { en: "Field", ru: "Поле" },
+  "row.label": { en: "Label", ru: "Турнир" },
+  "row.players": { en: "AFS", ru: "AFS" },
   "row.buyIn": { en: "Buy-in", ru: "Бай-ин" },
   "row.rake": { en: "Rake %", ru: "Рейк %" },
   "row.import": { en: "Import…", ru: "Импорт…" },
@@ -105,10 +105,20 @@ export const DICT = {
   "row.importReplace": { en: "Replace all", ru: "Заменить всё" },
   "row.importCancel": { en: "cancel", ru: "отмена" },
   "row.roi": { en: "ROI %", ru: "ROI %" },
-  "row.payouts": { en: "Prize ladder", ru: "Призовая сетка" },
+  "row.payouts": { en: "Payout structure", ru: "Структура выплат" },
+  "row.payoutCompat.tooFew": {
+    en: "AFS too small",
+    ru: "AFS мал",
+  },
+  "row.payoutCompat.tooMany": {
+    en: "AFS too large",
+    ru: "AFS велик",
+  },
+  "row.payoutCompat.min": { en: "min", ru: "мин" },
+  "row.payoutCompat.max": { en: "max", ru: "макс" },
   "row.count": {
-    en: "Tourneys per session",
-    ru: "Турниров за сессию",
+    en: "Entries",
+    ru: "Количество входов",
   },
   "help.count": {
     en: "How many bullets you play in one session. This is NOT re-entries — re-entry rate is configured separately in advanced row options.",
@@ -124,6 +134,48 @@ export const DICT = {
   "row.reentry": { en: "Re-entries", ru: "Ре-энтри" },
   "row.reentryRate": { en: "Re-entry rate", ru: "Доля ре-энтри" },
   "row.bounty": { en: "Bounty %", ru: "Баунти %" },
+  "shape.title": { en: "Finish shape", ru: "Форма распределения" },
+  "shape.itmLabel": { en: "ITM rate %", ru: "ITM-ставка %" },
+  "shape.rowFirst": { en: "P(1st)", ru: "P(1-е)" },
+  "shape.rowTop3": { en: "P(top-3)", ru: "P(топ-3)" },
+  "shape.rowFt": { en: "P(FT)", ru: "P(финалка)" },
+  "shape.lock": { en: "lock", ru: "фикс" },
+  "shape.unlock": { en: "auto", ru: "авто" },
+  "shape.autoPlaceholder": { en: "auto", ru: "авто" },
+  "shape.target": { en: "Target EW:", ru: "Цель EW:" },
+  "shape.current": { en: "Current EW:", ru: "Сейчас EW:" },
+  "shape.autoFit": { en: "Auto-fit", ru: "Подогнать" },
+  "shape.infeasible": {
+    en: "Locked constraints can't hit the ROI target. Either unlock a shell or relax the locked %s.",
+    ru: "Зафиксированные корзины не позволяют попасть в целевой ROI. Разблокируй одну из них или ослабь фиксированные %.",
+  },
+  "shape.infeasibleHint": {
+    en: "Gap between target and current expected winnings",
+    ru: "Разрыв между целевым и текущим EW",
+  },
+  "shape.presetAuto": { en: "Auto (no ITM lock)", ru: "Авто (без фикс. ITM)" },
+  "shape.presetNoSkill": { en: "No-skill (paid/N)", ru: "Нулевой скилл (paid/N)" },
+  "shape.presetGrinder": { en: "Grinder (16% ITM)", ru: "Гриндер (16% ITM)" },
+  "shape.presetCrusher": { en: "Crusher (18% ITM)", ru: "Крашер (18% ITM)" },
+  "shape.presetCustom": { en: "Custom", ru: "Кастом" },
+  "shape.blockedTitle": {
+    en: "Can't run — finish shape is infeasible",
+    ru: "Нельзя запустить — форма распределения невозможна",
+  },
+  "shape.blockedHint": {
+    en: "One or more rows have locked shell probabilities that don't leave enough room to hit the ROI target. Fix them below, or auto-fix all at once.",
+    ru: "В одной или нескольких строках зафиксированные вероятности корзин не позволяют попасть в целевой ROI. Поправь ниже или авто-фикс всех сразу.",
+  },
+  "shape.blockedRow": { en: "Row", ru: "Строка" },
+  "shape.blockedGap": { en: "gap", ru: "разрыв" },
+  "shape.fixAuto": { en: "Clear locks", ru: "Снять фиксации" },
+  "shape.fixPreset": { en: "Grinder preset", ru: "Пресет «гриндер»" },
+  "shape.fixAll": { en: "Clear locks on all", ru: "Снять фиксации со всех" },
+  "row.fixedItm": { en: "Fixed ITM %", ru: "Фикс. ITM %" },
+  "row.fixedItmHint": {
+    en: "Pin the in-the-money rate at a constant value regardless of ROI. All skill concentrates WITHIN the cashed band — a grinder doesn't cash more often than a no-skill player, they just run deeper when they do. Empty = auto (classic α-calibration, ITM rate scales with ROI). Typical: 15–18 % for a solid grinder.",
+    ru: "Фиксирует частоту попадания в призовые независимо от ROI. Скилл весь уходит ВНУТРЬ призовой зоны — гриндер попадает в деньги не чаще нулевого игрока, но бежит глубже. Пусто = авто (классическая α-калибровка, ITM растёт с ROI). Типично: 15–18 % для крепкого гриндера.",
+  },
   "row.icmFT": { en: "ICM FT", ru: "ICM ФТ" },
   "row.unnamed": { en: "unnamed", ru: "без названия" },
   "row.noGuarantee": { en: "no guarantee", ru: "без гарантии" },
@@ -212,11 +264,11 @@ export const DICT = {
   "twin.runB": { en: "Run B", ru: "Прогон B" },
   "twin.runA.cap": {
     en: "First random sample of your schedule.",
-    ru: "Первая случайная выборка по твоему расписанию.",
+    ru: "Первая случайная выборка по расписанию.",
   },
   "twin.runB.cap": {
-    en: "Second random sample — same model, different seed. Shows how much two fresh draws diverge.",
-    ru: "Вторая случайная выборка — та же модель, другой сид. Показывает, насколько расходятся два свежих рана.",
+    en: "Second random sample — same model, different seed.",
+    ru: "Вторая случайная выборка — та же модель, другой сид.",
   },
   "controls.finishModel": { en: "Skill model", ru: "Модель скилла" },
   "controls.alphaOverride": {
@@ -323,8 +375,8 @@ export const DICT = {
   },
   "preset.primedope.label": { en: "Like PrimeDope", ru: "Как на PrimeDope" },
   "preset.primedope.tagline": {
-    en: "Matches the PrimeDope online calculator: every paid place is treated as equally likely once you cash, so 1st pays the same on average as a min-cash. Here only so you can see how much PrimeDope understates the real swings.",
-    ru: "Считает ровно как калькулятор на сайте PrimeDope: внутри призовых все места равновероятны, поэтому 1-е место в среднем приносит ровно столько же, сколько минимальный призовой. Нужен только чтобы увидеть, насколько PrimeDope занижает реальные колебания.",
+    en: "Matches the PrimeDope online calculator: every paid place is equally likely once you cash, so skill only shifts how often you cash — not how deep you run. Top-heavy payouts stay intact, but a skilled player never gets rewarded with extra deep finishes. Here only so you can see how much PrimeDope understates the real swings.",
+    ru: "Считает ровно как калькулятор на сайте PrimeDope: внутри призовых все места равновероятны, поэтому скилл влияет только на частоту попаданий в деньги — но не на глубину прохода. Top-heavy выплаты сохраняются, просто скилловому игроку не достаётся больше глубоких финишей. Нужен только чтобы увидеть, насколько PrimeDope занижает реальные колебания.",
   },
   "preset.naive.label": { en: "Honest baseline", ru: "Честный базовый прогон" },
   "preset.naive.tagline": {
@@ -359,6 +411,17 @@ export const DICT = {
   "controls.eta.hint": {
     en: "Projected run time based on how long the previous simulation took with similar settings. Updates after each run.",
     ru: "Прогноз времени прогона по данным предыдущих симуляций при похожих настройках. Обновляется после каждого прогона.",
+  },
+  "controls.remaining": { en: "remaining", ru: "осталось" },
+  "controls.starting": { en: "warming up…", ru: "разгоняемся…" },
+  "controls.done.label": { en: "Done", ru: "Готово" },
+  "controls.done.seeBelow": { en: "See full results", ru: "Смотреть ниже" },
+  "controls.done.profit": { en: "Profit", ru: "Профит" },
+  "controls.done.upChance": { en: "Up chance", ru: "Шанс в плюс" },
+  "controls.done.ruin": { en: "Ruin", ru: "Риск ruin" },
+  "controls.totalTourneys": {
+    en: "tournaments on chart",
+    ru: "турниров на графике",
   },
   "controls.uploadCSV": { en: "Upload CSV…", ru: "Загрузить CSV…" },
   "controls.empHint": {
@@ -400,21 +463,86 @@ export const DICT = {
   "stat.sharpe": { en: "Profit / swing", ru: "Профит к разбросу" },
   "stat.sortino": { en: "Profit / downside", ru: "Профит к минусу" },
   "stat.tFor95": { en: "Turneys to ±5% ROI", ru: "Турниров до точного ROI" },
+  "stat.tFor95.sub": { en: "to reach ±5% ROI", ru: "до точного ROI ±5%" },
+  "stat.kellyBR.tip": {
+    en: "Kelly-optimal bankroll — the size at which your ABI stays within the growth-maximizing fraction of BR. Playing below this risks ruin; playing above wastes capital.",
+    ru: "Оптимальный по Келли банкролл — при нём ABI укладывается в долю БР, максимизирующую долгосрочный лог-рост. Играть на меньшем — риск; на большем — деньги лежат зря.",
+  },
+  "statGroup.range": { en: "Outcome range", ru: "Разброс исходов" },
+  "statGroup.drawdowns": { en: "Downswings", ru: "Даунсвинги" },
+  "statGroup.streaks": { en: "Streaks & comeback", ru: "Серии и отмазка" },
+  "statGroup.bankroll": { en: "Bankroll", ru: "Банкролл" },
   "stat.avgMaxDD": { en: "Average downswing", ru: "Средний даунсвинг" },
+  "stat.avgMaxDD.tip": {
+    en: "Average of the per-sample deepest downswing (peak-to-trough drop). Across all simulated futures — what a typical 'worst patch' looks like.",
+    ru: "Средний по сэмплам самый глубокий даунсвинг (падение от пика к низу). Усреднение по всем смоделированным вариантам — как выглядит типичный «худший отрезок».",
+  },
   "stat.ddMedian": { en: "Typical downswing", ru: "Типичный даунсвинг" },
+  "stat.ddMedian.tip": {
+    en: "Median of the per-sample deepest downswing — half of futures swing less than this, half swing more. Less sensitive to outliers than the mean.",
+    ru: "Медиана самого глубокого даунсвинга по сэмплам — половина вариантов развивается мягче, половина — жёстче. Устойчивее к выбросам, чем среднее.",
+  },
   "stat.ddP95": { en: "1-in-20 bad run", ru: "1 из 20 плохих прогонов" },
+  "stat.ddP95.tip": {
+    en: "95th percentile of the deepest downswing: in 1 future out of 20 you drop at least this much from a peak. Not rare — plan for it.",
+    ru: "95-й перцентиль самого глубокого даунсвинга: в 1 из 20 вариантов ты проваливаешься от пика минимум на столько. Не редкость — закладывай в план.",
+  },
   "stat.ddP99": { en: "1-in-100 nightmare", ru: "1 из 100 кошмарных" },
-  "stat.recoveryMedian": { en: "Typical recovery", ru: "Типичное отыгрывание" },
-  "stat.recoveryP90": { en: "Long recovery (1-in-10)", ru: "Долгое отыгрывание (1 из 10)" },
-  "stat.recoveryUnrecovered": { en: "Never recovered", ru: "Не отыгрались" },
+  "stat.ddP99.tip": {
+    en: "99th percentile of the deepest downswing — the nightmare 1-in-100 case. Rare but real; this is what kills unprepared bankrolls.",
+    ru: "99-й перцентиль самого глубокого даунсвинга — кошмарный вариант «1 из 100». Редко, но случается; именно такие прогоны уносят неподготовленный банкролл.",
+  },
+  "stat.recoveryMedian": { en: "Typical comeback", ru: "Типичная отмазка" },
+  "stat.recoveryMedian.tip": {
+    en: "Median number of tourneys needed to climb back from the bottom of the deepest downswing to the previous peak. Samples that never recover are excluded.",
+    ru: "Медиана турниров, нужных чтобы подняться со дна самого глубокого даунсвинга обратно к прежнему пику. Сэмплы, которые так и не отмазались, не учитываются.",
+  },
+  "stat.recoveryP90": { en: "Long comeback (1-in-10)", ru: "Долгая отмазка (1 из 10)" },
+  "stat.recoveryP90.tip": {
+    en: "90th percentile of comeback length: in 1 future out of 10 the climb back from the bottom takes at least this many tourneys. Samples that never recover are excluded.",
+    ru: "90-й перцентиль длины отмазки: в 1 из 10 вариантов подъём со дна занимает минимум столько турниров. Сэмплы, которые не отмазались, не учитываются.",
+  },
+  "stat.recoveryUnrecovered": { en: "Never recovered", ru: "Не отмазались" },
+  "stat.recoveryUnrecovered.tip": {
+    en: "Share of samples where you never climbed back from the bottom of the deepest downswing to the previous peak before the schedule ended. You finished the distance under water relative to your own high.",
+    ru: "Доля сэмплов, где ты так и не вернулся со дна самого глубокого даунсвинга к прежнему пику до конца расписания. Дистанция закончилась, а ты остался ниже своего же максимума.",
+  },
   "stat.cashlessMean": { en: "No-cash streak (avg)", ru: "Серия без кешей (ср.)" },
-  "stat.cashlessWorst": { en: "No-cash streak (max)", ru: "Серия без кешей (макс.)" },
+  "stat.cashlessWorst": { en: "Max streak w/o ITM", ru: "Макс. серия без ИТМ" },
+  "stat.cashlessWorst.tip": {
+    en: "Longest single stretch of consecutive tourneys with zero ITM finishes — worst case across all samples. The cold streak that tests your nerves.",
+    ru: "Самая длинная непрерывная серия турниров подряд без единого захода в призы — худший случай по всем сэмплам. Тот самый холодный стрик, который проверяет нервы.",
+  },
   "stat.bestRun": { en: "Best run", ru: "Лучший прогон" },
+  "stat.bestRun.tip": {
+    en: "Final profit of the single luckiest sample — the upper extreme across all simulated futures. Not 'expected', just 'possible'.",
+    ru: "Итоговый профит самого везучего сэмпла — верхний край по всем смоделированным вариантам. Не «ожидаемый», а «возможный».",
+  },
   "stat.worstRun": { en: "Worst run", ru: "Худший прогон" },
+  "stat.worstRun.tip": {
+    en: "Final profit of the single unluckiest sample — the lower extreme across all simulated futures. Rare, but the simulation produced it at least once.",
+    ru: "Итоговый профит самого невезучего сэмпла — нижний край по всем смоделированным вариантам. Редко, но симуляция хотя бы раз туда попала.",
+  },
   "stat.p1p5": { en: "Worst 1% / 5%", ru: "Худшие 1% / 5%" },
+  "stat.p1p5.tip": {
+    en: "1st and 5th percentile of final profit: 1 future out of 100 / 20 finishes at least this badly. The realistic 'dark side' of the distribution.",
+    ru: "1-й и 5-й перцентили итогового профита: 1 из 100 / 1 из 20 вариантов заканчивается как минимум настолько плохо. Реалистичная «тёмная сторона» распределения.",
+  },
   "stat.p95p99": { en: "Top 5% / 1%", ru: "Топ 5% / 1%" },
-  "stat.longestBE": { en: "Longest break-even streak", ru: "Долгая серия без прогресса" },
+  "stat.p95p99.tip": {
+    en: "95th and 99th percentile of final profit: the top 1-in-20 / 1-in-100 futures finish at least this well. The realistic 'bright side' of the distribution.",
+    ru: "95-й и 99-й перцентили итогового профита: топ 1 из 20 / 1 из 100 вариантов заканчивается как минимум настолько хорошо. Реалистичная «светлая сторона» распределения.",
+  },
+  "stat.longestBE": { en: "Break-even grind", ru: "Игра в ноль" },
+  "stat.longestBE.tip": {
+    en: "Average length of the longest break-even streak per sample — how many tourneys you typically spend without setting a new bankroll peak. 'Playing for zero', even if individual results are positive.",
+    ru: "Средняя длина самой долгой серии игры в ноль по сэмплам — сколько турниров ты обычно катаешь, не обновляя пик банкролла. «В ноль» — даже если отдельные результаты положительные.",
+  },
   "stat.minBR5": { en: "BR for 5% ruin", ru: "БР для 5% разорения" },
+  "stat.minBR5.tip": {
+    en: "Minimum bankroll at which your risk of ruin over this schedule drops to 5%. Below it — ruin chances grow fast; above it — you sleep calmer.",
+    ru: "Минимальный банкролл, при котором риск разорения на этой дистанции падает до 5%. Меньше — шанс слива быстро растёт; больше — спишь спокойнее.",
+  },
   "stat.bankrollOff": { en: "bankroll off", ru: "банкролл выкл" },
   "stat.ddBI": { en: "Downswing (BI)", ru: "Даунсвинг (бай-ины)" },
   "stat.skew": { en: "Profit tilt", ru: "Перекос профита" },
@@ -434,28 +562,60 @@ export const DICT = {
     ru: "Бок-о-бок: наша модель против калькулятора PrimeDope — одно и то же зерно, то же расписание, одна шкала",
   },
   "chart.trajectory.ours.cap": {
-    en: "Skill lands you in deep finishes — big prizes up top drive realistic swings",
-    ru: "Скилл работает в глубоких финишах — большие выплаты сверху дают настоящие колебания",
+    en: "Skill in deep finishes — honest swings.",
+    ru: "Скилл в глубоких финишах — честные колебания.",
+  },
+  "chart.trajectory.ours.cap.naive": {
+    en: "Deep-finish skill, no tilt, no ROI shock.",
+    ru: "Глубокие финиши — без тильта и ROI-шока.",
+  },
+  "chart.trajectory.ours.cap.realisticSolo": {
+    en: "Deep-finish skill + ROI shock + fast tilt — solo grinder.",
+    ru: "Глубокие финиши + ROI-шок + быстрый тильт — одиночный грайндер.",
+  },
+  "chart.trajectory.ours.cap.loremcdmx": {
+    en: "Deep-finish skill + slow tilt on long downswings.",
+    ru: "Глубокие финиши + медленный тильт на долгих даунсвингах.",
+  },
+  "chart.trajectory.ours.cap.custom": {
+    en: "Your hand-tuned model.",
+    ru: "Твоя ручная настройка модели.",
   },
   "chart.trajectory.theirs.cap": {
-    en: "Every paid place weighted equally — 1st place pays the same average as a min-cash, drastically understating the real swings",
-    ru: "Все призовые места равновероятны — 1-е место в среднем платит столько же, сколько минимальный призовой, и настоящие колебания резко занижены",
+    en: "Min-cash as likely as 1st place — swings understated.",
+    ru: "Мин-кэш равновероятен с 1-м местом — колебания занижены.",
   },
   "chart.trajectory.pdWarning": {
-    en: "Why this is wrong: PrimeDope's site assumes that once you cash, every paid place is equally likely — a min-cash is as probable as winning the whole thing. That erases every bit of the big-prize variance at the top, makes losing streaks look roughly 30% shallower than reality, and guarantees the bankroll it suggests will be way too small.",
-    ru: "Почему это неправильно: PrimeDope считает, что если ты попал в призы, то все места внутри призовых равновероятны — минимальный кэш случается так же часто, как победа в турнире. Это стирает всю дисперсию от больших выплат сверху, занижает длинные минусы примерно на 30% и гарантирует, что банкролл по такой модели будет сильно меньше нужного.",
+    en: "Why this is wrong: PrimeDope preserves the real top-heavy payouts per place, but assumes every paid place is equally likely once you cash — a min-cash is as probable as a WIN. In reality most cashes are min-cashes that barely return the buy-in, while deep runs are rare. PrimeDope's uniform-probability model inflates the *expected* cash payout (it's the flat average across all paid places instead of a mix dominated by min-cashes), so each ITM hit lifts the running P&L more than a real cash would. Drawdowns come out smoother, breakeven streaks shorter, and the bankroll it suggests ends up too small for the real swings.",
+    ru: "Почему это неправильно: PrimeDope сохраняет реальные top-heavy выплаты по местам, но считает, что внутри призовой зоны все места равновероятны — мин-кэш случается так же часто, как ПОБЕДА. В жизни большая часть кэшей — это мин-кэши, еле возвращающие бай-ин, а глубокие заходы редки. Модель равновероятных мест у PrimeDope завышает *ожидаемый* размер кэша (вместо смеси с преобладанием мин-кэшей там плоское среднее по всем призовым местам), и каждый ИТМ-хит тянет кривую P&L вверх сильнее, чем тянул бы реальный кэш. Дродауны сглаживаются, безприбыльные серии получаются короче, а предложенный по такой модели банкролл оказывается слишком маленьким для реальной дисперсии.",
+  },
+  "chart.trajectory.noKoLabel": {
+    en: "Same schedule · bounties off",
+    ru: "То же расписание · без ноков",
+  },
+  "chart.trajectory.noKoCap": {
+    en: "Same schedule, bounties stripped — sanity check, not a comparison.",
+    ru: "То же расписание без ноков — прикидка, не сравнение.",
+  },
+  "chart.trajectory.noKoWarning": {
+    en: "Why not PrimeDope: PrimeDope's calculator has no bounty/KO field at all, so we can't run your PKO schedule through it. Instead we show the same schedule through our own model with bounties stripped — same algo, same seed, PKO component removed. Use it to see how much of the variance comes from the KO side of the prizepool.",
+    ru: "Почему не PrimeDope: в калькуляторе PrimeDope вообще нет поля под ноки, так что твоё PKO-расписание туда не загнать. Вместо этого справа — то же расписание через нашу модель, но со снятыми ноками: тот же алгоритм, тот же сид, только PKO-часть выключена. Удобно прикинуть, сколько дисперсии приходится именно на ноки.",
   },
   "chart.trajectory.oursFix": {
-    en: "How we fix it: our overall cash-in rate matches PrimeDope's — the difference is where inside the paid pool you end up. We distribute prize places according to your ROI: a skilled player's chance of landing 1st, 2nd or 3rd is meaningfully above the paid-pool average, not spread evenly across every cashing spot. The big prizes up top get their proper weight back, and long losing runs get their true depth.",
-    ru: "Как мы это решаем: общий % попаданий в призы у нас такой же, как у PrimeDope, — разница в том, куда именно внутри призовых ты финишируешь. Мы распределяем призовые места в соответствии с твоим ROI: шанс скиллового игрока занять 1-е, 2-е или 3-е место значимо выше среднего по призовым, а не размазан равномерно по всем кэшам. Большие выплаты сверху получают свой настоящий вес, а длинные минусы — свою настоящую глубину.",
+    en: "How we fix it: we distribute finish positions by a real top-heavy pmf calibrated against fund data. A skilled player's chance of landing 1st/2nd/3rd is meaningfully above the paid-pool average, while the bulk of cashes are still min-cashes that barely return the buy-in. Overall ITM rate comes out lower than PrimeDope's (real data says ~17% at 20% ROI, they predict ~21%) — but the cashes that do happen are weighted correctly: most are small, the deep runs carry the real upside. Streak depth, recovery length and drawdown distribution match reality instead of PrimeDope's smoothed version.",
+    ru: "Как мы это решаем: мы распределяем места финиша реальной top-heavy pmf, откалиброванной по данным фонда. Шанс скиллового игрока на 1-е/2-е/3-е место значимо выше среднего по призовой зоне, а основная масса кэшей — это всё равно мин-кэши, которые еле возвращают бай-ин. Общий ITM получается ниже, чем у PrimeDope (по реальным данным ~17% при ROI 20%, они предсказывают ~21%), — зато каждый случившийся кэш взвешен правильно: большая часть мелкие, а реальный апсайд тянут редкие глубокие заходы. Глубина стриков, длина восстановления и распределение дродаунов ложатся в реальность, а не в сглаженную картинку PrimeDope.",
   },
   "chart.trajectory.overlay": {
     en: "Overlay PrimeDope on the left",
     ru: "Наложить PrimeDope слева",
   },
   "chart.trajectory.overlayHint": {
-    en: "Show PrimeDope's narrower envelope (mean / p2.5 / p97.5) over our chart so the gap is unmistakable",
-    ru: "Показать узкие огибающие PrimeDope (среднее / p2.5 / p97.5) поверх нашего графика, чтобы разница была видна сразу",
+    en: "Show PrimeDope's mean + best/worst runs over our chart so the gap is unmistakable",
+    ru: "Показать средний, лучший и худший прогоны PrimeDope поверх нашего графика — разница видна сразу",
+  },
+  "chart.trajectory.overlayDisabledKo": {
+    en: "Unavailable on PKO schedules — the right pane already shows the same schedule with bounties stripped, not PrimeDope",
+    ru: "Недоступно для PKO-расписаний — справа уже то же расписание без ноков, а не PrimeDope",
   },
   "chart.trajectory.sharedY": {
     en: "Both charts share the same Y-axis range so the visual difference in envelope width is directly comparable.",
@@ -466,16 +626,16 @@ export const DICT = {
     ru: "Насколько велик разрыв",
   },
   "chart.trajectory.gapSpread": {
-    en: "95% final-profit spread",
-    ru: "95%-й разброс итогового профита",
+    en: "Biggest run-good vs EV",
+    ru: "Самый большой ран-гуд над EV",
   },
   "chart.trajectory.gapDd": {
-    en: "Worst-case drawdown (p97.5)",
-    ru: "Худший даунсвинг (p97.5)",
+    en: "Deepest downstreak",
+    ru: "Самый глубокий даунстрик",
   },
   "chart.trajectory.gapRatio": {
-    en: "{ratio}× wider than PrimeDope",
-    ru: "в {ratio}× шире, чем PrimeDope",
+    en: "{ratio}× higher than PrimeDope",
+    ru: "в {ratio}× выше, чем у PrimeDope",
   },
   "chart.trajectory.gapRatioDeeper": {
     en: "{ratio}× deeper than PrimeDope",
@@ -488,23 +648,35 @@ export const DICT = {
   "chart.dist": { en: "Distribution of final profit", ru: "Распределение итогового профита" },
   "chart.ddDist": { en: "Max drawdown distribution", ru: "Распределение макс. даунсвинга" },
   "chart.ddDist.sub": {
-    en: "Per-sample worst peak-to-trough dip during the run",
-    ru: "Худший пик-то-дно каждого сэмпла за прогон",
+    en: "Worst downstreak of each sample during the run",
+    ru: "Самый глубокий даунстрик каждого сэмпла за прогон",
   },
-  "chart.longestBE": { en: "Longest breakeven streak", ru: "Самая длинная серия без прогресса" },
+  "chart.longestBE": { en: "Breakeven streaks", ru: "Серии игры в ноль" },
   "chart.longestBE.sub": {
-    en: "How many tournaments in a row you spend going nowhere",
-    ru: "Сколько турниров подряд ты топчешься на месте",
+    en: "How often and how long you grind without setting a new peak",
+    ru: "Как часто и как долго ты катаешь без нового пика",
   },
-  "chart.longestCashless": { en: "Longest streak without a cash", ru: "Самая длинная серия без призовых" },
+  "chart.longestBE.tip": {
+    en: "Критерий: серия начинается на турнире, после которого профит не превышает прежний максимум, и заканчивается как только появляется новый пик.\n\nПо X — длина серии в турнирах, по Y — сколько ТАКИХ серий встретилось во всех сэмплах суммарно (считаются все серии, а не только самая длинная в сэмпле).",
+    ru: "Критерий: серия начинается на турнире, после которого профит не превышает прежний максимум, и заканчивается как только появляется новый пик.\n\nПо X — длина серии в турнирах, по Y — сколько ТАКИХ серий встретилось во всех сэмплах суммарно (считаются все серии, а не только самая длинная в сэмпле).",
+  },
+  "chart.longestCashless": { en: "Cashless streaks", ru: "Серии без ИТМ" },
   "chart.longestCashless.sub": {
-    en: "How many tournaments in a row you play without landing a cash",
-    ru: "Сколько турниров подряд ты играешь без попадания в призы",
+    en: "How often and how long you grind without landing a cash",
+    ru: "Как часто и как долго ты катаешь без захода в призы",
   },
-  "chart.recovery": { en: "Recovery length", ru: "Длина восстановления" },
+  "chart.longestCashless.tip": {
+    en: "Критерий: серия — это непрерывная последовательность турниров без попадания в призовую часть (place ≥ paidCount). Заканчивается на первом же ITM.\n\nПо X — длина серии в турнирах, по Y — сколько ТАКИХ серий встретилось во всех сэмплах суммарно (все серии, а не только максимумы по сэмплу).",
+    ru: "Критерий: серия — это непрерывная последовательность турниров без попадания в призовую часть (place ≥ paidCount). Заканчивается на первом же ITM.\n\nПо X — длина серии в турнирах, по Y — сколько ТАКИХ серий встретилось во всех сэмплах суммарно (все серии, а не только максимумы по сэмплу).",
+  },
+  "chart.recovery": { en: "Recovery length", ru: "Отмазка" },
   "chart.recovery.sub": {
-    en: "Tournaments from the trough of the deepest downswing back to the pre-downswing peak",
-    ru: "Сколько турниров с дна самого глубокого даунсвинга до возврата на прежний пик",
+    en: "How many tournaments it takes to climb from the bottom back to the pre-downswing peak",
+    ru: "Сколько турниров уходит на то, чтобы со дна вернуться к прежнему пику",
+  },
+  "chart.recovery.tip": {
+    en: "Критерий: для каждого сэмпла находим самую глубокую просадку (маx peak-to-trough). Отмазка — количество турниров с момента дна этой просадки до первого турнира, на котором профит снова достигает старого максимума.\n\nЕсли сэмпл не успел отмазаться до конца расписания — он считается не восстановившимся и в график не попадает (такие сэмплы показаны отдельной строкой под графиком).",
+    ru: "Критерий: для каждого сэмпла находим самую глубокую просадку (маx peak-to-trough). Отмазка — количество турниров с момента дна этой просадки до первого турнира, на котором профит снова достигает старого максимума.\n\nЕсли сэмпл не успел отмазаться до конца расписания — он считается не восстановившимся и в график не попадает (такие сэмплы показаны отдельной строкой под графиком).",
   },
   "chart.recovery.unrecovered": {
     en: "{pct} of runs never recovered by end of schedule (not shown above)",
@@ -552,9 +724,20 @@ export const DICT = {
   "lineStyle.resetAll": { en: "Reset all", ru: "Сбросить всё" },
   "lineStyle.width": { en: "Width", ru: "Толщина" },
   "lineStyle.line.mean": { en: "Mean winnings", ru: "Средний выигрыш" },
-  "lineStyle.line.ev": { en: "EV", ru: "EV" },
-  "lineStyle.line.best": { en: "Luckiest run", ru: "Лучший прогон" },
-  "lineStyle.line.worst": { en: "Unluckiest run", ru: "Худший прогон" },
+  "lineStyle.line.ev": {
+    en: "Expected profit",
+    ru: "Ожидаемая прибыль",
+  },
+  "lineStyle.line.best": { en: "Luckiest run", ru: "Самый удачный прогон" },
+  "lineStyle.line.worst": { en: "Unluckiest run", ru: "Самый неудачный прогон" },
+  "lineStyle.line.p05": {
+    en: "Worst 95% run",
+    ru: "Худший 95% прогон",
+  },
+  "lineStyle.line.p95": {
+    en: "Best 95% run",
+    ru: "Лучший 95% прогон",
+  },
   "presets.export": { en: "Export", ru: "Экспорт" },
   "presets.import": { en: "Import", ru: "Импорт" },
   "presets.importError": {
@@ -566,7 +749,36 @@ export const DICT = {
     ru: "Импортировано пресетов: {n}.",
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
-  "changelog.v03.title": { en: "v0.3 — current", ru: "v0.3 — текущая" },
+  "changelog.v04.title": { en: "v0.4 — current", ru: "v0.4 — текущая" },
+  "changelog.v04.streaks": {
+    en: "Reworked the 'break-even grind' / 'no-ITM streak' / 'comeback' widgets — they now show how often AND how long such streaks happen, with '?' tooltips spelling out the exact criteria.",
+    ru: "Переделал виджеты «игра в ноль» / «серии без ИТМ» / «отмазка» — теперь показывают и как часто, и как долго случаются стрики, а в тултипе «?» расписаны точные критерии.",
+  },
+  "changelog.v04.upswings": {
+    en: "Downswings catalog: switched from top-10 to top-3 (the tail was indistinguishable) and added a side-by-side top-3 upswings table.",
+    ru: "Каталог даунсвингов: с топ-10 на топ-3 (хвост неотличим) и рядом добавлен топ-3 апсвингов.",
+  },
+  "changelog.v04.yPct": {
+    en: "Profit, drawdown and streak histograms now read as % of runs on the Y axis instead of raw sample counts.",
+    ru: "Гистограммы профита, даунсвингов и стриков теперь по Y в % от прогонов, а не в сыром количестве сэмплов.",
+  },
+  "changelog.v04.tooltips": {
+    en: "Added plain-language '?' tooltips to every stat tile — what the number means, which samples are included, when to worry.",
+    ru: "На каждую плитку статистики добавлен тултип «?» простым языком — что значит число, какие сэмплы учитываются, когда пора беспокоиться.",
+  },
+  "changelog.v04.rename": {
+    en: "Renames: 'recovery' → 'comeback' (отмазка), 'long break-even streak' → 'break-even grind' (игра в ноль), 'tourneys w/o ITM' → 'max streak w/o ITM'.",
+    ru: "Переименования: «отыгрывание» → «отмазка», «долгая серия без прогресса» → «игра в ноль», «турниров без ИТМ» → «макс. серия без ИТМ».",
+  },
+  "changelog.v04.overlay": {
+    en: "PrimeDope overlay now mirrors only the lines you have enabled on your own chart (best/worst/p5/p95) — mean and the mystery near-zero EV dash are gone.",
+    ru: "Наложение PrimeDope теперь повторяет только включённые у тебя линии (лучший/худший/p5/p95) — среднее и та пунктирная «почти-нулевая» EV убраны.",
+  },
+  "changelog.v04.kelly": {
+    en: "Removed the Kelly BR stat tile — noisy metric, misleading for tournament schedules.",
+    ru: "Убрал плитку «БР по Келли» — шумная метрика, для турнирных расписаний вводит в заблуждение.",
+  },
+  "changelog.v03.title": { en: "v0.3", ru: "v0.3" },
   "changelog.v03.preview": {
     en: "Redesigned right-side tournament preview (narrative layout, top-heaviness callout).",
     ru: "Переделан правый виджет турнира — новый нарратив, акцент на top-heavy структуру.",
@@ -616,8 +828,8 @@ export const DICT = {
     ru: "Мы против PrimeDope",
   },
   "pd.subtitle": {
-    en: "Same seed, same schedule — the only difference is the payout model. PrimeDope collapses every paid place into one average payout, so its losing runs and rare outcomes are structurally softer than reality.",
-    ru: "Одно и то же зерно, то же расписание — отличается только модель выплат. PrimeDope сводит все призовые места к одной средней сумме, из-за чего длинные минусы и редкие исходы у него всегда мягче реальности.",
+    en: "Same seed, same schedule — the only difference is the calibration. PrimeDope treats every paid place as equally likely once you cash, so a skilled player's edge shows up only as a higher cash rate, not as deeper finishes. Losing runs and rare outcomes come out structurally softer than reality.",
+    ru: "Одно и то же зерно, то же расписание — отличается только калибровка. PrimeDope считает все призовые места равновероятными внутри денег, поэтому эдж скилловика реализуется только через частоту попаданий в деньги, а не через более глубокий проход. Длинные минусы и редкие исходы у него поэтому всегда мягче реальности.",
   },
   "pd.ours": { en: "ours", ru: "наши" },
   "pd.theirs": { en: "primedope", ru: "primedope" },
@@ -632,14 +844,14 @@ export const DICT = {
   "pd.row.itm": { en: "Cash-in rate", ru: "Частота призовых" },
   "pd.row.stdDev": { en: "Profit swing", ru: "Разброс профита" },
   "pd.row.dd": { en: "Average downswing", ru: "Средний даунсвинг" },
-  "pd.row.cvar": { en: "Avg loss in worst 5%", ru: "Ср. убыток в худших 5%" },
+  "pd.row.cvar": { en: "Average loss in worst 5%", ru: "Средний убыток в худших 5%" },
   "pd.row.pprofit": { en: "Chance to be up", ru: "Шанс выйти в плюс" },
   "pd.row.ror": { en: "Risk of ruin", ru: "Риск разорения" },
   "pd.row.var95": { en: "Worst 5% runs", ru: "Худшие 5% прогонов" },
-  "pd.row.cvar99": { en: "Avg loss in worst 1%", ru: "Ср. убыток в худших 1%" },
+  "pd.row.cvar99": { en: "Average loss in worst 1%", ru: "Средний убыток в худших 1%" },
   "pd.row.worstRun": { en: "Worst run", ru: "Худший прогон" },
   "pd.row.bestRun": { en: "Best run", ru: "Лучший прогон" },
-  "pd.row.longestBE": { en: "Longest breakeven streak", ru: "Долгая серия без прогресса" },
+  "pd.row.longestBE": { en: "Playing to zero", ru: "Игра в ноль" },
   "pd.row.sharpe": { en: "Profit / swing", ru: "Профит к разбросу" },
   "pd.row.ddWorst": { en: "Worst downswing ever seen", ru: "Худший даунсвинг за прогон" },
 
@@ -665,8 +877,8 @@ export const DICT = {
   "verdict.prob.q.meh": { en: "coin-flippy", ru: "как монетка" },
   "verdict.prob.q.bad": { en: "basically a lottery", ru: "по сути лотерея" },
   "verdict.swing": {
-    en: "Expect a typical peak-to-trough drop of {dd} along the way. In the worst 1 % of outcomes the loss goes to {cvar99}.",
-    ru: "Жди типичного отката от пика до дна около {dd} по ходу прогона. В худших 1 % случаев убыток доходит до {cvar99}.",
+    en: "Expect a typical downstreak of {dd} along the way. In the worst 1 % of outcomes the loss goes to {cvar99}.",
+    ru: "Жди типичного даунстрика около {dd} по ходу прогона. В худших 1 % случаев убыток доходит до {cvar99}.",
   },
   "verdict.streak.upswing": {
     en: "Good streaks: the top 5 % of runs finish at {p95} or better, with the absolute best landing at {best}.",
@@ -906,13 +1118,16 @@ export const DICT = {
   // Downswing catalog
   "dd.title": { en: "Worst downswings", ru: "Худшие даунсвинги" },
   "dd.sub": {
-    en: "Top-10 samples by peak-to-trough loss — depth, duration, and break-even length",
-    ru: "Топ-10 сэмплов по максимальному откату — глубина, длительность и время на восстановление",
+    en: "Top-3 deepest downswings and top-3 biggest upswings across samples",
+    ru: "Топ-3 самых глубоких даунсвинга и топ-3 самых больших апсвинга по сэмплам",
   },
   "dd.rank": { en: "#", ru: "#" },
   "dd.depth": { en: "Depth", ru: "Глубина" },
+  "dd.height": { en: "Height", ru: "Высота" },
   "dd.final": { en: "Final profit", ru: "Итог" },
   "dd.breakeven": { en: "Longest BE", ru: "Макс. бэ" },
+  "dd.worstDown": { en: "Worst downswings", ru: "Худшие даунсвинги" },
+  "dd.bestUp": { en: "Best upswings", ru: "Лучшие апсвинги" },
 
   // Help tooltips — controls panel
   "help.scheduleRepeats": {

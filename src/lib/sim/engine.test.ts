@@ -428,4 +428,95 @@ describe("engine", () => {
     expect(Math.abs(mystRoi - plainRoi)).toBeLessThan(4 * se);
     expect(withMyst.stats.stdDev).toBeGreaterThan(plain.stats.stdDev);
   });
+
+  it("pkoHeat=0 produces bit-exact same output as omitting the field", () => {
+    const base = baseInput({
+      samples: 2000,
+      seed: 777,
+      schedule: [
+        {
+          id: "pko",
+          label: "pko",
+          players: 500,
+          buyIn: 20,
+          rake: 0.1,
+          roi: 0.2,
+          payoutStructure: "mtt-standard",
+          bountyFraction: 0.5,
+          count: 1,
+        },
+      ],
+    });
+    const plain = runSimulation(base);
+    const explicitZero = runSimulation({
+      ...base,
+      schedule: base.schedule.map((r) => ({ ...r, pkoHeat: 0 })),
+    });
+    expect(explicitZero.stats.mean).toBe(plain.stats.mean);
+    expect(explicitZero.stats.stdDev).toBe(plain.stats.stdDev);
+    expect(explicitZero.finalProfits[0]).toBe(plain.finalProfits[0]);
+    expect(explicitZero.finalProfits[plain.finalProfits.length - 1]).toBe(
+      plain.finalProfits[plain.finalProfits.length - 1],
+    );
+  });
+
+  it("pkoHeat>0 preserves realized mean and fattens the right tail", () => {
+    const base = baseInput({
+      samples: 8000,
+      seed: 2026,
+      schedule: [
+        {
+          id: "pko",
+          label: "pko",
+          players: 500,
+          buyIn: 20,
+          rake: 0.1,
+          roi: 0.2,
+          payoutStructure: "mtt-standard",
+          bountyFraction: 0.5,
+          count: 1,
+        },
+      ],
+    });
+    const plain = runSimulation(base);
+    const withHeat = runSimulation({
+      ...base,
+      schedule: base.schedule.map((r) => ({ ...r, pkoHeat: 0.6 })),
+    });
+    // Mean must stay within MC noise — heat is a variance knob, not an
+    // EV knob. O(γ²) drift on prize EV is absorbed here.
+    const se =
+      withHeat.stats.stdDev / Math.sqrt(withHeat.samples) / withHeat.totalBuyIn;
+    const plainRoi = plain.stats.mean / plain.totalBuyIn;
+    const heatRoi = withHeat.stats.mean / withHeat.totalBuyIn;
+    expect(Math.abs(heatRoi - plainRoi)).toBeLessThan(5 * se);
+    // Right-tail uplift: stdDev and p99 both exceed the plain run. The
+    // raw max at 8k samples is too noisy to assert on; per-sample stdDev
+    // is the stable per-tourney variance signal.
+    expect(withHeat.stats.stdDev).toBeGreaterThan(plain.stats.stdDev);
+    expect(withHeat.stats.p99).toBeGreaterThan(plain.stats.p99);
+  });
+
+  it("pkoHeat validation rejects out-of-range values", () => {
+    const mk = (pkoHeat: number) =>
+      baseInput({
+        schedule: [
+          {
+            id: "pko",
+            label: "pko",
+            players: 200,
+            buyIn: 10,
+            rake: 0.1,
+            roi: 0.2,
+            payoutStructure: "mtt-standard",
+            bountyFraction: 0.5,
+            pkoHeat,
+            count: 1,
+          },
+        ],
+      });
+    expect(() => runSimulation(mk(-0.1))).toThrow(/pkoHeat/);
+    expect(() => runSimulation(mk(3.5))).toThrow(/pkoHeat/);
+    expect(() => runSimulation(mk(Number.NaN))).toThrow(/pkoHeat/);
+  });
 });

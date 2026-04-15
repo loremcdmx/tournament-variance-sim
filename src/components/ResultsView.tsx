@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
@@ -21,6 +22,7 @@ import {
   OVERRIDABLE_LINE_KEYS,
   PRIMEDOPE_PANE_PRESET,
   applyLineStyleOverrides,
+  isLineEnabled,
   loadLineStylePreset,
   loadLineStyleOverrides,
   saveLineStylePreset,
@@ -35,7 +37,6 @@ import { UplotChart } from "./charts/UplotChart";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
 import { DecompositionChart } from "./charts/DecompositionChart";
-import { SensitivityChart } from "./charts/SensitivityChart";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 import type { AlignedData, Options } from "uplot";
@@ -116,9 +117,67 @@ interface MoneyFmt {
   compactMoney: (v: number) => string;
 }
 
+type UnitMode = "money" | "abi";
+
+interface UnitCtxValue extends MoneyFmt {
+  unit: UnitMode;
+  setUnit: (v: UnitMode) => void;
+}
+
 const defaultMoneyFmt: MoneyFmt = { money, compactMoney };
-const MoneyFmtContext = createContext<MoneyFmt>(defaultMoneyFmt);
+const MoneyFmtContext = createContext<UnitCtxValue>({
+  ...defaultMoneyFmt,
+  unit: "abi",
+  setUnit: () => {},
+});
 const useMoneyFmt = () => useContext(MoneyFmtContext);
+
+// ABI value for the current result — exposed via context so per-widget
+// UnitScope providers can build their own ABI-denominated formatters
+// without threading the scalar through every sub-component.
+const AbiContext = createContext<number>(1);
+
+/**
+ * Per-widget unit toggle scope. Owns its own `money`/`abi` state, defaulting
+ * to ABI, persisted under `tvs.unit.<id>.v1`. Any InlineUnitToggle rendered
+ * inside will flip only this scope — sibling widgets stay independent.
+ */
+function UnitScope({ id, children }: { id: string; children: ReactNode }) {
+  const abi = useContext(AbiContext);
+  const storageKey = `tvs.unit.${id}.v1`;
+  // Hydrate from localStorage lazily so SSR markup matches the first render
+  // (default "abi") and we don't need a setState-in-effect for persistence.
+  const [unit, setUnit] = useState<UnitMode>(() => {
+    if (typeof localStorage === "undefined") return "abi";
+    try {
+      const v = localStorage.getItem(storageKey);
+      return v === "money" || v === "abi" ? v : "abi";
+    } catch {
+      return "abi";
+    }
+  });
+  // Persist whenever the user flips the toggle. useState setter `setUnit` is
+  // referentially stable, so wrapping it in useCallback would be noise —
+  // instead the context value closes over the stable setter directly.
+  const persist = (v: UnitMode) => {
+    setUnit(v);
+    if (typeof localStorage === "undefined") return;
+    try {
+      localStorage.setItem(storageKey, v);
+    } catch {}
+  };
+  const value = useMemo<UnitCtxValue>(() => {
+    const fmt = unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt;
+    return { ...fmt, unit, setUnit: persist };
+    // persist closes over `storageKey` + stable setter; safe to ignore.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unit, abi, storageKey]);
+  return (
+    <MoneyFmtContext.Provider value={value}>
+      {children}
+    </MoneyFmtContext.Provider>
+  );
+}
 const intFmt = (v: number) =>
   v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -159,10 +218,10 @@ export interface RefLineConfig extends RefLineSpec {
 }
 
 const DEFAULT_REF_LINES: RefLineConfig[] = [
-  { roi: -1.0, label: "ROI −100%", color: "#dc2626", enabled: true },
-  { roi: -0.2, label: "ROI −20%", color: "#fb923c", enabled: true },
-  { roi: 0.2, label: "ROI +20%", color: "#a3e635", enabled: true },
-  { roi: 0.5, label: "ROI +50%", color: "#22d3ee", enabled: true },
+  { roi: -1.0, label: "ROI −100%", color: "#dc2626", enabled: false },
+  { roi: -0.2, label: "ROI −20%", color: "#fb923c", enabled: false },
+  { roi: 0.2, label: "ROI +20%", color: "#a3e635", enabled: false },
+  { roi: 0.5, label: "ROI +50%", color: "#22d3ee", enabled: false },
 ];
 
 const REF_LINES_STORAGE_KEY = "tvs.refLines.v1";
@@ -351,6 +410,7 @@ function buildTrajectoryAssets(
   preset: LineStylePreset = LINE_STYLE_PRESETS[DEFAULT_LINE_STYLE_PRESET],
   visibleRuns: number = 20,
   refLines: RefLineConfig[] = DEFAULT_REF_LINES,
+  lineOverrides: LineStyleOverrides = {},
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
@@ -447,18 +507,54 @@ function buildTrajectoryAssets(
   // Best/worst are also "runs" — when the user drags "runs shown" to 0 they
   // should disappear too, otherwise the chart still has two highlighted sims.
   if (pathCount > 0) {
-    const bestIdx = pushSeries(r.samplePaths.best, {
-      stroke: preset.best.stroke,
-      width: preset.best.width,
-      dash: preset.best.dash,
+    if (isLineEnabled("best", lineOverrides)) {
+      const bestIdx = pushSeries(r.samplePaths.best, {
+        stroke: preset.best.stroke,
+        width: preset.best.width,
+        dash: preset.best.dash,
+      });
+      mainLines.push({ label: "Best run", color: preset.best.stroke, seriesIdx: bestIdx, kind: "best" });
+    }
+    if (isLineEnabled("worst", lineOverrides)) {
+      const worstIdx = pushSeries(r.samplePaths.worst, {
+        stroke: preset.worst.stroke,
+        width: preset.worst.width,
+        dash: preset.worst.dash,
+      });
+      mainLines.push({ label: "Worst run", color: preset.worst.stroke, seriesIdx: worstIdx, kind: "worst" });
+    }
+  }
+
+  // Optional p5/p95 envelope lines — hidden by default, toggled from the
+  // line-style popup. Drawn regardless of `visibleRuns` since they're
+  // percentile envelopes, not sample paths.
+  if (isLineEnabled("p05", lineOverrides) && r.envelopes.p05) {
+    const p05Idx = pushSeries(r.envelopes.p05, {
+      stroke: preset.p05.stroke,
+      width: preset.p05.width,
+      dash: preset.p05.dash,
     });
-    const worstIdx = pushSeries(r.samplePaths.worst, {
-      stroke: preset.worst.stroke,
-      width: preset.worst.width,
-      dash: preset.worst.dash,
+    mainLines.push({
+      label: "p5",
+      color: preset.p05.stroke,
+      seriesIdx: p05Idx,
+      percentile: 0.05,
+      kind: "band",
     });
-    mainLines.push({ label: "Best run", color: preset.best.stroke, seriesIdx: bestIdx, kind: "best" });
-    mainLines.push({ label: "Worst run", color: preset.worst.stroke, seriesIdx: worstIdx, kind: "worst" });
+  }
+  if (isLineEnabled("p95", lineOverrides) && r.envelopes.p95) {
+    const p95Idx = pushSeries(r.envelopes.p95, {
+      stroke: preset.p95.stroke,
+      width: preset.p95.width,
+      dash: preset.p95.dash,
+    });
+    mainLines.push({
+      label: "p95",
+      color: preset.p95.stroke,
+      seriesIdx: p95Idx,
+      percentile: 0.95,
+      kind: "band",
+    });
   }
 
   if (bankroll > 0) {
@@ -562,49 +658,48 @@ function buildTrajectoryAssets(
       }
       return out;
     };
-    const overlayStart = series.length;
-    series.push(resample(overlay.envelopes.mean));
-    series.push(resample(overlay.envelopes.p025));
-    series.push(resample(overlay.envelopes.p975));
+    // Overlay mirrors whichever main lines are currently enabled — best/worst
+    // (if visible runs > 0) and the p05/p95 envelope toggles. Mean and EV are
+    // intentionally excluded: mean overlays add no new info (centers coincide
+    // by construction) and PD's near-zero EV read as a mysterious dashed zero
+    // line that users misread as a bug.
     const overlayColor = "#f472b6";
-    uplotSeries.push({
-      stroke: overlayColor,
-      width: 2.5,
-      label: "PrimeDope mean",
-    });
-    uplotSeries.push({
-      stroke: overlayColor,
-      width: 1.75,
-      dash: [6, 4],
-      label: "PrimeDope p2.5",
-    });
-    uplotSeries.push({
-      stroke: overlayColor,
-      width: 1.75,
-      dash: [6, 4],
-      label: "PrimeDope p97.5",
-    });
-    mainLines.push({
-      label: "PrimeDope mean",
-      color: overlayColor,
-      seriesIdx: overlayStart,
-      percentile: 0.5,
-      kind: "mean",
-    });
-    mainLines.push({
-      label: "PrimeDope p2.5",
-      color: overlayColor,
-      seriesIdx: overlayStart + 1,
-      percentile: 0.025,
-      kind: "band",
-    });
-    mainLines.push({
-      label: "PrimeDope p97.5",
-      color: overlayColor,
-      seriesIdx: overlayStart + 2,
-      percentile: 0.975,
-      kind: "band",
-    });
+    const pushOverlay = (
+      src: Float64Array,
+      label: string,
+      kind: TrajectoryLineMeta["kind"],
+      dash?: number[],
+    ) => {
+      const idx = pushSeries(resample(src), {
+        stroke: overlayColor,
+        width: 1.75,
+        dash,
+        label,
+      });
+      mainLines.push({ label, color: overlayColor, seriesIdx: idx, kind });
+    };
+    if (pathCount > 0 && isLineEnabled("best", lineOverrides)) {
+      pushOverlay(
+        overlay.samplePaths.best as Float64Array,
+        "PrimeDope best",
+        "best",
+        [6, 4],
+      );
+    }
+    if (pathCount > 0 && isLineEnabled("worst", lineOverrides)) {
+      pushOverlay(
+        overlay.samplePaths.worst as Float64Array,
+        "PrimeDope worst",
+        "worst",
+        [6, 4],
+      );
+    }
+    if (isLineEnabled("p05", lineOverrides) && overlay.envelopes.p05) {
+      pushOverlay(overlay.envelopes.p05, "PrimeDope p5", "band", [4, 3]);
+    }
+    if (isLineEnabled("p95", lineOverrides) && overlay.envelopes.p95) {
+      pushOverlay(overlay.envelopes.p95, "PrimeDope p95", "band", [4, 3]);
+    }
   }
 
   return {
@@ -615,8 +710,18 @@ function buildTrajectoryAssets(
     opts: {
       scales: {
         x: { time: false },
+        // Explicit literal range + auto:false, so every pane in a twin view
+        // gets the SAME pixel-to-$ mapping regardless of which envelope curve
+        // happens to be the global min/max. Closure-based `range: () => [...]`
+        // was causing uPlot to re-evaluate against its own autoRange on some
+        // refreshes, leaving the two panes with slightly different y-extents
+        // and making the PrimeDope overlay appear to float relative to the
+        // right pane.
         y: yRange
-          ? { auto: false, range: () => [yRange.min, yRange.max] }
+          ? {
+              auto: false,
+              range: [yRange.min, yRange.max] as [number, number],
+            }
           : { auto: true },
       },
       axes: [
@@ -629,7 +734,7 @@ function buildTrajectoryAssets(
           stroke: "#8a8a95",
           grid: { stroke: "rgba(128,128,128,0.15)" },
           ticks: { stroke: "rgba(128,128,128,0.2)" },
-          size: 56,
+          size: 72,
           values: (_u, splits) => splits.map(axisFmt),
         },
       ],
@@ -682,8 +787,17 @@ export function ResultsView({
   elapsedMs,
 }: Props) {
   const t = useT();
+  const { advanced } = useAdvancedMode();
 
   const pdChart = result.comparison;
+  // When comparing against PrimeDope on a PKO schedule, the right pane
+  // actually shows "same schedule, bounties stripped" because PrimeDope
+  // has no PKO support — useSimulation swaps the pass. Detect from the
+  // schedule so we can relabel the pane and explain the substitution.
+  const hasPko = (schedule ?? []).some(
+    (r) => (r.bountyFraction ?? 0) > 0,
+  );
+  const pdPkoFallback = compareMode === "primedope" && hasPko;
 
   const yRange = useMemo(
     () =>
@@ -710,11 +824,11 @@ export function ResultsView({
     const lastX = xs[xs.length - 1] || 1;
     return result.totalBuyIn / lastX;
   }, [result]);
-  const [unit, setUnit] = useState<"money" | "abi">("money");
-  const moneyFmt = useMemo<MoneyFmt>(
-    () => (unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt),
-    [unit, abi],
-  );
+  const [unit, setUnit] = useState<UnitMode>("abi");
+  const moneyFmt = useMemo<UnitCtxValue>(() => {
+    const fmt = unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt;
+    return { ...fmt, unit, setUnit };
+  }, [unit, abi]);
   // Shadow the module-level formatters inside ResultsView so existing
   // money(...) / compactMoney(...) call sites pick up the unit-aware pair.
   // eslint-disable-next-line @typescript-eslint/no-shadow
@@ -757,57 +871,8 @@ export function ResultsView({
     saveRefLines(v);
   };
 
-  const primary = useMemo(
-    () =>
-      buildTrajectoryAssets(
-        result,
-        bankroll,
-        "felt",
-        yRange,
-        overlayPd ? pdChart : null,
-        compactMoney,
-        linePreset,
-        visibleRuns,
-        refLines,
-      ),
-    [result, bankroll, yRange, overlayPd, pdChart, compactMoney, linePreset, visibleRuns, refLines],
-  );
-  const secondary = useMemo(
-    () =>
-      pdChart
-        ? buildTrajectoryAssets(
-            pdChart,
-            bankroll,
-            "magenta",
-            yRange,
-            undefined,
-            compactMoney,
-            PRIMEDOPE_PANE_PRESET,
-            visibleRuns,
-            refLines,
-          )
-        : null,
-    [pdChart, bankroll, yRange, compactMoney, visibleRuns, refLines],
-  );
-  const slotOverlay = useMemo(
-    () =>
-      compareResult
-        ? buildTrajectoryAssets(
-            compareResult,
-            bankroll,
-            "magenta",
-            undefined,
-            undefined,
-            compactMoney,
-            PRIMEDOPE_PANE_PRESET,
-            visibleRuns,
-            refLines,
-          )
-        : null,
-    [compareResult, bankroll, compactMoney, visibleRuns, refLines],
-  );
-
   return (
+    <AbiContext.Provider value={abi}>
     <MoneyFmtContext.Provider value={moneyFmt}>
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -846,173 +911,89 @@ export function ResultsView({
             {visibleRuns}/{maxRuns}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-            {t("unit.displayLabel")}
-          </div>
-          <UnitToggle value={unit} onChange={setUnit} t={t} />
-        </div>
       </div>
-      {secondary ? (
-        <Card className="p-5">
-          <ChartHeader
-            title={t("chart.trajectory")}
-            subtitle={
-              bankroll > 0
-                ? `${t("chart.trajectory.sub.vs")} · bankroll ${money(bankroll)}`
-                : t("chart.trajectory.sub.vs")
-            }
-          />
-          {compareMode === "primedope" && pdChart && (
-            <GapExplainer
-              ours={result}
-              pd={pdChart}
-              money={money}
-              t={t}
-            />
-          )}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="flex flex-col gap-3">
-              <ChartPane
-                label={modelLabel}
-                sublabel={settingsSummary}
-                hueDot="#34d399"
-                caption={
-                  compareMode === "primedope"
-                    ? t("chart.trajectory.ours.cap")
-                    : t("twin.runA.cap")
-                }
-              >
-                <TrajectoryPlot assets={primary} height={420} />
-              </ChartPane>
-              {compareMode === "primedope" && (
-                <div className="rounded border border-[#34d399]/30 bg-[#34d399]/5 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
-                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#34d399]">
-                    ✓ {modelLabel}
-                  </div>
-                  {t("chart.trajectory.oursFix")}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col gap-3">
-              <ChartPane
-                label="PrimeDope"
-                hueDot="#f472b6"
-                caption={
-                  compareMode === "primedope"
-                    ? t("chart.trajectory.theirs.cap")
-                    : t("twin.runB.cap")
-                }
-                action={
-                  compareMode === "primedope" && schedule && scheduleRepeats ? (
-                    <PrimedopeReproduceButton
-                      schedule={schedule}
-                      scheduleRepeats={scheduleRepeats}
-                    />
-                  ) : null
-                }
-              >
-                <TrajectoryPlot assets={secondary} height={420} />
-              </ChartPane>
-              {compareMode === "primedope" && (
-                <div className="rounded border border-[#f472b6]/30 bg-[#f472b6]/5 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
-                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#f472b6]">
-                    ⚠ PrimeDope
-                  </div>
-                  {t("chart.trajectory.pdWarning")}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-              <input
-                type="checkbox"
-                checked={overlayPd}
-                onChange={(e) => setOverlayPd(e.target.checked)}
-                className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
-              />
-              <span className="font-semibold text-[color:var(--color-fg)]">
-                {t("chart.trajectory.overlay")}
-              </span>
-              <span className="text-[color:var(--color-fg-dim)]">
-                — {t("chart.trajectory.overlayHint")}
-              </span>
-            </label>
-            <div className="text-[11px] text-[color:var(--color-fg-dim)]">
-              {t("chart.trajectory.sharedY")}
-            </div>
-          </div>
-        </Card>
-      ) : (
-        <Card className="p-5">
-          <ChartHeader
-            title={t("chart.trajectory")}
-            subtitle={
-              bankroll > 0
-                ? `${t("chart.trajectory.sub")} · bankroll ${money(bankroll)}`
-                : t("chart.trajectory.sub")
-            }
-          />
-          <TrajectoryPlot assets={primary} height={440} />
-          {slotOverlay && (
-            <div className="mt-4">
-              <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                <span className="inline-block h-1.5 w-3 rounded-sm bg-[#f472b6]" />
-                {t("slot.saved")}
-              </div>
-              <TrajectoryPlot assets={slotOverlay} height={240} />
-            </div>
-          )}
-        </Card>
+      <UnitScope id="trajectory">
+        <TrajectoryCard
+          result={result}
+          compareResult={compareResult ?? null}
+          bankroll={bankroll}
+          yRange={yRange}
+          overlayPd={overlayPd}
+          setOverlayPd={setOverlayPd}
+          pdChart={pdChart ?? null}
+          pdPkoFallback={pdPkoFallback}
+          compareMode={compareMode}
+          schedule={schedule}
+          scheduleRepeats={scheduleRepeats}
+          modelLabel={modelLabel}
+          settingsSummary={settingsSummary}
+          linePreset={linePreset}
+          lineOverrides={lineOverrides}
+          visibleRuns={visibleRuns}
+          refLines={refLines}
+          pdPresetFlip={modelPresetId === "primedope" && compareMode === "primedope"}
+          honestLabel={
+            finishModelId
+              ? t(`model.${finishModelId}` as DictKey)
+              : t("twin.runB")
+          }
+          modelPresetId={modelPresetId}
+        />
+      </UnitScope>
+
+      {advanced && (
+        <CollapsibleSection id="verdict" title={t("section.verdict")}>
+          <VerdictCard result={result} bankroll={bankroll} />
+        </CollapsibleSection>
       )}
 
-      <CollapsibleSection id="verdict" title={t("section.verdict")}>
-        <VerdictCard result={result} bankroll={bankroll} />
-      </CollapsibleSection>
+      {advanced && (
+        <CollapsibleSection
+          id="pdReport"
+          title={t("section.primedopeReport")}
+          showUnitToggle={false}
+        >
+          <PrimedopeReportCard result={result} />
+        </CollapsibleSection>
+      )}
 
-      <CollapsibleSection id="pdReport" title={t("section.primedopeReport")}>
-        <PrimedopeReportCard result={result} />
-      </CollapsibleSection>
-
-      <CollapsibleSection id="pdWeakness" title={t("section.pdWeakness")}>
+      <CollapsibleSection
+        id="pdWeakness"
+        title={t("section.pdWeakness")}
+        showUnitToggle={false}
+      >
         <PokerDopeWeaknessCard />
       </CollapsibleSection>
 
-      <CollapsibleSection id="settingsDump" title={t("section.settingsDump")}>
-        <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
-      </CollapsibleSection>
-
-      {result.comparison && compareMode === "primedope" && (
-        <>
-          <CollapsibleSection id="pdVerdict" title={t("section.pdVerdict")}>
-            <PDVerdict primary={result} other={result.comparison} />
-          </CollapsibleSection>
-          <CollapsibleSection id="pdDiff" title={t("section.pdDiff")}>
-            <PrimedopeDiff primary={result} other={result.comparison} />
-          </CollapsibleSection>
-        </>
+      {advanced && (
+        <CollapsibleSection
+          id="settingsDump"
+          title={t("section.settingsDump")}
+          showUnitToggle={false}
+        >
+          <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
+        </CollapsibleSection>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {result.comparison && compareMode === "primedope" && (
+        <CollapsibleSection id="pdDiff" title={t("section.pdDiff")}>
+          <PrimedopeDiff primary={result} other={result.comparison} />
+        </CollapsibleSection>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <BigStat
           suit="club"
           label={t("stat.expectedProfit")}
           value={money(s.mean)}
-          sub={`ROI ${(roi * 100).toFixed(1)}%`}
+          sub={`ROI ${(roi * 100).toFixed(1)}% · median ${money(s.median)}`}
           tone={s.mean >= 0 ? "pos" : "neg"}
-        />
-        <BigStat
-          suit="diamond"
-          label={t("stat.stdDev")}
-          value={money(s.stdDev)}
-          sub={`SE ${money(s.stdDev / Math.sqrt(result.samples))}`}
         />
         <BigStat
           suit="spade"
           label={t("stat.probProfit")}
           value={pct(s.probProfit)}
-          sub={`median ${money(s.median)}`}
+          sub={`${intFmt(s.tournamentsFor95ROI)} ${tourneysWord} ${t("stat.tFor95.sub")}`}
         />
         <BigStat
           suit="heart"
@@ -1025,146 +1006,86 @@ export function ResultsView({
           }
           tone={s.riskOfRuin > 0.05 ? "neg" : undefined}
         />
-        <BigStat
-          suit="spade"
-          label={t("stat.itmRate")}
-          value={pct(s.itmRate)}
-          sub={t("stat.itmRate.sub")}
-          tip={t("stat.itmRate.tip")}
-        />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+      <StatGroup title={t("statGroup.range")}>
         <MiniStat
           suit="heart"
-          label={t("stat.var")}
-          value={`${money(s.var95)} / ${money(s.var99)}`}
+          label={t("stat.worstRun")}
+          value={money(s.min)}
           tone="neg"
+          tip={t("stat.worstRun.tip")}
         />
         <MiniStat
           suit="heart"
-          label={t("stat.cvar")}
-          value={`${money(s.cvar95)} / ${money(s.cvar99)}`}
-          tone="neg"
+          label={t("stat.p1p5")}
+          value={`${money(s.p01)} / ${money(s.p05)}`}
+          tip={t("stat.p1p5.tip")}
         />
         <MiniStat
-          suit="diamond"
-          label={t("stat.sharpe")}
-          value={s.sharpe.toFixed(3)}
-          tone={s.sharpe >= 0 ? "pos" : "neg"}
+          suit="club"
+          label={t("stat.p95p99")}
+          value={`${money(s.p95)} / ${money(s.p99)}`}
+          tip={t("stat.p95p99.tip")}
         />
         <MiniStat
-          suit="diamond"
-          label={t("stat.sortino")}
-          value={s.sortino.toFixed(3)}
-          tone={s.sortino >= 0 ? "pos" : "neg"}
+          suit="club"
+          label={t("stat.bestRun")}
+          value={money(s.max)}
+          tone="pos"
+          tip={t("stat.bestRun.tip")}
         />
+      </StatGroup>
+
+      <StatGroup title={t("statGroup.drawdowns")}>
         <MiniStat
-          suit="diamond"
-          label={t("stat.tFor95")}
-          value={`${intFmt(s.tournamentsFor95ROI)} ${tourneysWord}`}
+          suit="heart"
+          label={t("stat.ddMedian")}
+          value={money(s.maxDrawdownMedian)}
+          tip={t("stat.ddMedian.tip")}
         />
         <MiniStat
           suit="heart"
           label={t("stat.avgMaxDD")}
           value={money(s.maxDrawdownMean)}
-        />
-        <MiniStat
-          suit="heart"
-          label={t("stat.ddMedian")}
-          value={money(s.maxDrawdownMedian)}
+          tip={t("stat.avgMaxDD.tip")}
         />
         <MiniStat
           suit="heart"
           label={t("stat.ddP95")}
           value={money(s.maxDrawdownP95)}
           tone="neg"
+          tip={t("stat.ddP95.tip")}
         />
         <MiniStat
           suit="heart"
           label={t("stat.ddP99")}
           value={money(s.maxDrawdownP99)}
           tone="neg"
+          tip={t("stat.ddP99.tip")}
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-        <MiniStat
-          suit="club"
-          label={t("stat.bestRun")}
-          value={money(s.max)}
-          tone="pos"
-        />
-        <MiniStat
-          suit="heart"
-          label={t("stat.worstRun")}
-          value={money(s.min)}
-          tone="neg"
-        />
-        <MiniStat
-          suit="heart"
-          label={t("stat.p1p5")}
-          value={`${money(s.p01)} / ${money(s.p05)}`}
-        />
-        <MiniStat
-          suit="club"
-          label={t("stat.p95p99")}
-          value={`${money(s.p95)} / ${money(s.p99)}`}
-        />
-        <MiniStat
-          suit="diamond"
-          label={t("stat.longestBE")}
-          value={`${Math.round(s.longestBreakevenMean)} ${tourneysWord}`}
-        />
-        <MiniStat
-          suit="heart"
-          label={t("stat.minBR5")}
-          value={money(s.minBankrollRoR5pct)}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <MiniStat
           suit="heart"
           label={t("stat.ddBI")}
           value={`${s.maxDrawdownBuyIns.toFixed(1)} BI`}
           tone="neg"
         />
-        <MiniStat
-          suit="spade"
-          label={t("stat.skew")}
-          value={s.skewness.toFixed(2)}
-          tone={s.skewness >= 0 ? "pos" : "neg"}
-        />
-        <MiniStat
-          suit="spade"
-          label={t("stat.kurt")}
-          value={s.kurtosis.toFixed(2)}
-        />
-        <MiniStat
-          suit="diamond"
-          label={t("stat.kelly")}
-          value={s.kellyFraction > 0 ? pct(s.kellyFraction) : "—"}
-          tone={s.kellyFraction > 0 ? "pos" : undefined}
-        />
-        <MiniStat
-          suit="diamond"
-          label={t("stat.kellyBR")}
-          value={
-            Number.isFinite(s.kellyBankroll) ? money(s.kellyBankroll) : "—"
-          }
-        />
-        <MiniStat
-          suit="club"
-          label={t("stat.logG")}
-          value={
-            bankroll > 0 ? (s.logGrowthRate * 100).toFixed(3) + "%" : "—"
-          }
-          tone={s.logGrowthRate > 0 ? "pos" : s.logGrowthRate < 0 ? "neg" : undefined}
-        />
-      </div>
+      </StatGroup>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <StatGroup title={t("statGroup.streaks")}>
+        <MiniStat
+          suit="diamond"
+          label={t("stat.longestBE")}
+          value={`${Math.round(s.longestBreakevenMean)} ${tourneysWord}`}
+          tip={t("stat.longestBE.tip")}
+        />
+        <MiniStat
+          suit="heart"
+          label={t("stat.cashlessWorst")}
+          value={`${s.longestCashlessWorst} ${tourneysWord}`}
+          tone="neg"
+          tip={t("stat.cashlessWorst.tip")}
+        />
         <MiniStat
           suit="diamond"
           label={t("stat.recoveryMedian")}
@@ -1173,6 +1094,7 @@ export function ResultsView({
               ? `${Math.round(s.recoveryMedian)} ${tourneysWord}`
               : "—"
           }
+          tip={t("stat.recoveryMedian.tip")}
         />
         <MiniStat
           suit="heart"
@@ -1183,40 +1105,35 @@ export function ResultsView({
               : "—"
           }
           tone="neg"
+          tip={t("stat.recoveryP90.tip")}
         />
         <MiniStat
           suit="heart"
           label={t("stat.recoveryUnrecovered")}
           value={pct(s.recoveryUnrecoveredShare)}
           tone={s.recoveryUnrecoveredShare > 0.05 ? "neg" : undefined}
+          tip={t("stat.recoveryUnrecovered.tip")}
         />
-        <MiniStat
-          suit="diamond"
-          label={t("stat.cashlessMean")}
-          value={`${s.longestCashlessMean.toFixed(1)} ${tourneysWord}`}
-        />
+      </StatGroup>
+
+      <StatGroup title={t("statGroup.bankroll")}>
         <MiniStat
           suit="heart"
-          label={t("stat.cashlessWorst")}
-          value={`${s.longestCashlessWorst} ${tourneysWord}`}
-          tone="neg"
+          label={t("stat.minBR5")}
+          value={money(s.minBankrollRoR5pct)}
+          tip={t("stat.minBR5.tip")}
         />
-      </div>
+      </StatGroup>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Card className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <ChartHeader
-              title={t("chart.dist")}
-              subtitle={`${result.samples.toLocaleString()} ${t("app.samples")} · 60 bins`}
-            />
-          </div>
-          <DistributionChart
+        <UnitScope id="dist.profit">
+          <MoneyDistributionCard
+            title={t("chart.dist")}
+            subtitle={`${result.samples.toLocaleString()} ${t("app.samples")} · 60 bins`}
             binEdges={result.histogram.binEdges}
             counts={result.histogram.counts}
             color="#34d399"
-            scaleBy={unit === "abi" ? abi : undefined}
-            unitLabel={unit === "abi" ? "ABI" : "$"}
+            yAsPct
             overlay={
               overlayPd && pdChart
                 ? {
@@ -1227,20 +1144,15 @@ export function ResultsView({
                 : null
             }
           />
-        </Card>
-        <Card className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <ChartHeader
-              title={t("chart.ddDist")}
-              subtitle={t("chart.ddDist.sub")}
-            />
-          </div>
-          <DistributionChart
+        </UnitScope>
+        <UnitScope id="dist.drawdown">
+          <MoneyDistributionCard
+            title={t("chart.ddDist")}
+            subtitle={t("chart.ddDist.sub")}
             binEdges={result.drawdownHistogram.binEdges}
             counts={result.drawdownHistogram.counts}
             color="#f87171"
-            scaleBy={unit === "abi" ? abi : undefined}
-            unitLabel={unit === "abi" ? "ABI" : "$"}
+            yAsPct
             overlay={
               overlayPd && pdChart
                 ? {
@@ -1251,7 +1163,7 @@ export function ResultsView({
                 : null
             }
           />
-        </Card>
+        </UnitScope>
       </div>
 
       {/* Streak histograms — the grinder's "how bad/long can it get" row */}
@@ -1260,11 +1172,15 @@ export function ResultsView({
           <ChartHeader
             title={t("chart.longestBE")}
             subtitle={t("chart.longestBE.sub")}
+            showUnitToggle={false}
+            tip={t("chart.longestBE.tip")}
           />
           <DistributionChart
             binEdges={result.longestBreakevenHistogram.binEdges}
             counts={result.longestBreakevenHistogram.counts}
             color="#fbbf24"
+            unitLabel="tourneys"
+            yAsPct
           />
           <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
             {t("chart.unit.tourneys")}
@@ -1274,11 +1190,15 @@ export function ResultsView({
           <ChartHeader
             title={t("chart.longestCashless")}
             subtitle={t("chart.longestCashless.sub")}
+            showUnitToggle={false}
+            tip={t("chart.longestCashless.tip")}
           />
           <DistributionChart
             binEdges={result.longestCashlessHistogram.binEdges}
             counts={result.longestCashlessHistogram.counts}
             color="#f87171"
+            unitLabel="tourneys"
+            yAsPct
           />
           <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
             {t("chart.unit.tourneys")}
@@ -1288,11 +1208,15 @@ export function ResultsView({
           <ChartHeader
             title={t("chart.recovery")}
             subtitle={t("chart.recovery.sub")}
+            showUnitToggle={false}
+            tip={t("chart.recovery.tip")}
           />
           <DistributionChart
             binEdges={result.recoveryHistogram.binEdges}
             counts={result.recoveryHistogram.counts}
             color="#34d399"
+            unitLabel="tourneys"
+            yAsPct
           />
           <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
             {fmt(t("chart.recovery.unrecovered"), {
@@ -1302,92 +1226,449 @@ export function ResultsView({
         </Card>
       </div>
 
-      <Card className="p-5">
-        <ChartHeader
-          title={t("chart.convergence")}
-          subtitle={t("chart.convergence.sub")}
-        />
-        <ConvergenceChart
-          x={result.convergence.x}
-          mean={result.convergence.mean}
-          seLo={result.convergence.seLo}
-          seHi={result.convergence.seHi}
-        />
-        <ChartHelp text={t("chart.convergence.help")} />
-      </Card>
+      {advanced && (
+        <CollapsibleSection id="convergence" title={t("chart.convergence")}>
+          <Card className="p-5">
+            <ChartHeader
+              title={t("chart.convergence")}
+              subtitle={t("chart.convergence.sub")}
+            />
+            <ConvergenceChart
+              x={result.convergence.x}
+              mean={result.convergence.mean}
+              seLo={result.convergence.seLo}
+              seHi={result.convergence.seHi}
+            />
+            <ChartHelp text={t("chart.convergence.help")} />
+          </Card>
+        </CollapsibleSection>
+      )}
 
-      <Card className="p-5">
-        <ChartHeader
-          title={t("chart.sensitivity")}
-          subtitle={t("chart.sensitivity.sub")}
-        />
-        <SensitivityChart
-          deltas={result.sensitivity.deltas}
-          profits={result.sensitivity.expectedProfits}
-        />
-        <div className="mt-2 text-[11px] text-[color:var(--color-fg-dim)]">
-          {t("sens.note")}
-        </div>
-        <ChartHelp text={t("chart.sensitivity.help")} />
-      </Card>
+      {advanced && (
+        <CollapsibleSection id="sensitivity" title={t("chart.sensitivity")}>
+          <Card className="p-5">
+            <ChartHeader
+              title={t("chart.sensitivity")}
+              subtitle={t("chart.sensitivity.sub")}
+            />
+            <SensitivityReadout
+              deltas={result.sensitivity.deltas}
+              profits={result.sensitivity.expectedProfits}
+              baseRoi={roi}
+              totalBuyIn={result.totalBuyIn}
+            />
+            <div className="mt-2 text-[11px] text-[color:var(--color-fg-dim)]">
+              {t("sens.note")}
+            </div>
+            <ChartHelp text={t("chart.sensitivity.help")} />
+          </Card>
+        </CollapsibleSection>
+      )}
 
-      <Card className="p-5">
-        <ChartHeader
-          title={t("chart.decomp")}
-          subtitle={t("chart.decomp.sub")}
-        />
-        <DecompositionChart rows={result.decomposition} />
-        <ChartHelp text={t("chart.decomp.help")} />
-      </Card>
+      {advanced && (
+        <Card className="p-5">
+          <ChartHeader
+            title={t("chart.decomp")}
+            subtitle={t("chart.decomp.sub")}
+            showUnitToggle={false}
+          />
+          <DecompositionChart rows={result.decomposition} />
+          <ChartHelp text={t("chart.decomp.help")} />
+        </Card>
+      )}
 
       {result.downswings.length > 0 && (
-        <Card className="p-5">
-          <ChartHeader title={t("dd.title")} subtitle={t("dd.sub")} />
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[420px] text-sm">
-              <thead>
-                <tr className="border-b border-[color:var(--color-border)] text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                  <th className="py-2 text-left font-medium">{t("dd.rank")}</th>
-                  <th className="py-2 text-right font-medium">
-                    {t("dd.depth")}
-                  </th>
-                  <th className="py-2 text-right font-medium">
-                    {t("dd.final")}
-                  </th>
-                  <th className="py-2 text-right font-medium">
-                    {t("dd.breakeven")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.downswings.map((d) => (
-                  <tr
-                    key={d.rank}
-                    className="border-b border-[color:var(--color-border)]/60 last:border-b-0"
-                  >
-                    <td className="py-2 text-[color:var(--color-fg-muted)]">
-                      #{d.rank}
-                    </td>
-                    <td className="py-2 text-right tabular-nums text-[color:var(--color-danger)]">
-                      {money(-d.depth)}
-                    </td>
-                    <td
-                      className={`py-2 text-right tabular-nums ${d.finalProfit >= 0 ? "text-[color:var(--color-success)]" : "text-[color:var(--color-fg)]"}`}
-                    >
-                      {money(d.finalProfit)}
-                    </td>
-                    <td className="py-2 text-right tabular-nums text-[color:var(--color-fg-muted)]">
-                      {Math.round(d.longestBreakeven)} {tourneysWord}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <UnitScope id="downswings">
+          <DownswingsCard
+            downswings={result.downswings}
+            upswings={result.upswings}
+            tourneysWord={tourneysWord}
+          />
+        </UnitScope>
       )}
     </div>
     </MoneyFmtContext.Provider>
+    </AbiContext.Provider>
+  );
+}
+
+/**
+ * Trajectory Card. Lives inside its own UnitScope so flipping the unit
+ * toggle in the card header only affects this widget's formatters (the
+ * trajectory hover tooltip and bankroll/subtitle text).
+ */
+function TrajectoryCard({
+  result,
+  compareResult,
+  bankroll,
+  yRange,
+  overlayPd,
+  setOverlayPd,
+  pdChart,
+  pdPkoFallback,
+  compareMode,
+  schedule,
+  scheduleRepeats,
+  modelLabel,
+  settingsSummary,
+  linePreset,
+  lineOverrides,
+  visibleRuns,
+  refLines,
+  pdPresetFlip,
+  honestLabel,
+  modelPresetId,
+}: {
+  result: SimulationResult;
+  compareResult: SimulationResult | null;
+  bankroll: number;
+  yRange: { min: number; max: number } | undefined;
+  overlayPd: boolean;
+  setOverlayPd: (v: boolean) => void;
+  pdChart: SimulationResult | null;
+  pdPkoFallback: boolean;
+  compareMode: "random" | "primedope";
+  schedule: TournamentRow[] | undefined;
+  scheduleRepeats: number | undefined;
+  modelLabel: string;
+  settingsSummary: string | null;
+  linePreset: LineStylePreset;
+  lineOverrides: LineStyleOverrides;
+  visibleRuns: number;
+  refLines: RefLineConfig[];
+  pdPresetFlip: boolean;
+  honestLabel: string;
+  modelPresetId?: string;
+}) {
+  const t = useT();
+  const { money, compactMoney } = useMoneyFmt();
+  const oursCapKey: DictKey =
+    modelPresetId === "naive"
+      ? "chart.trajectory.ours.cap.naive"
+      : modelPresetId === "realistic-solo"
+        ? "chart.trajectory.ours.cap.realisticSolo"
+        : modelPresetId === "loremcdmx"
+          ? "chart.trajectory.ours.cap.loremcdmx"
+          : modelPresetId && modelPresetId !== "primedope"
+            ? "chart.trajectory.ours.cap.custom"
+            : "chart.trajectory.ours.cap";
+  const primary = useMemo(
+    () =>
+      buildTrajectoryAssets(
+        result,
+        bankroll,
+        "felt",
+        yRange,
+        overlayPd ? pdChart : null,
+        compactMoney,
+        linePreset,
+        visibleRuns,
+        refLines,
+        lineOverrides,
+      ),
+    [result, bankroll, yRange, overlayPd, pdChart, compactMoney, linePreset, visibleRuns, refLines, lineOverrides],
+  );
+  const secondary = useMemo(
+    () =>
+      pdChart
+        ? buildTrajectoryAssets(
+            pdChart,
+            bankroll,
+            "magenta",
+            yRange,
+            undefined,
+            compactMoney,
+            PRIMEDOPE_PANE_PRESET,
+            visibleRuns,
+            refLines,
+            lineOverrides,
+          )
+        : null,
+    [pdChart, bankroll, yRange, compactMoney, visibleRuns, refLines, lineOverrides],
+  );
+  const slotOverlay = useMemo(
+    () =>
+      compareResult
+        ? buildTrajectoryAssets(
+            compareResult,
+            bankroll,
+            "magenta",
+            undefined,
+            undefined,
+            compactMoney,
+            PRIMEDOPE_PANE_PRESET,
+            visibleRuns,
+            refLines,
+            lineOverrides,
+          )
+        : null,
+    [compareResult, bankroll, compactMoney, visibleRuns, refLines, lineOverrides],
+  );
+
+  if (secondary) {
+    return (
+      <Card className="p-5">
+        <ChartHeader
+          title={t("chart.trajectory")}
+          subtitle={
+            bankroll > 0
+              ? `${t("chart.trajectory.sub.vs")} · bankroll ${money(bankroll)}`
+              : t("chart.trajectory.sub.vs")
+          }
+        />
+        {compareMode === "primedope" && pdChart && !pdPkoFallback && !pdPresetFlip && (
+          <GapExplainer ours={result} pd={pdChart} money={money} t={t} />
+        )}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <ChartPane
+            label={modelLabel}
+            sublabel={settingsSummary}
+            hueDot="#34d399"
+            caption={
+              compareMode === "primedope"
+                ? t(oursCapKey)
+                : t("twin.runA.cap")
+            }
+          >
+            <TrajectoryPlot assets={primary} height={420} />
+          </ChartPane>
+          <ChartPane
+            label={
+              pdPresetFlip
+                ? honestLabel
+                : pdPkoFallback
+                ? t("chart.trajectory.noKoLabel")
+                : "PrimeDope"
+            }
+            hueDot="#f472b6"
+            caption={
+              pdPresetFlip
+                ? t("twin.runB.cap")
+                : pdPkoFallback
+                ? t("chart.trajectory.noKoCap")
+                : compareMode === "primedope"
+                ? t("chart.trajectory.theirs.cap")
+                : t("twin.runB.cap")
+            }
+            action={
+              compareMode === "primedope" &&
+              !pdPkoFallback &&
+              !pdPresetFlip &&
+              schedule &&
+              scheduleRepeats ? (
+                <PrimedopeReproduceButton
+                  schedule={schedule}
+                  scheduleRepeats={scheduleRepeats}
+                />
+              ) : null
+            }
+          >
+            <TrajectoryPlot assets={secondary} height={420} />
+          </ChartPane>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <label
+            className={`flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)] ${
+              pdPkoFallback || pdPresetFlip ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+            }`}
+            title={pdPkoFallback ? t("chart.trajectory.overlayDisabledKo") : undefined}
+          >
+            <input
+              type="checkbox"
+              checked={overlayPd && !pdPkoFallback && !pdPresetFlip}
+              disabled={pdPkoFallback || pdPresetFlip}
+              onChange={(e) => setOverlayPd(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
+            />
+            <span className="font-semibold text-[color:var(--color-fg)]">
+              {t("chart.trajectory.overlay")}
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">
+              —{" "}
+              {pdPkoFallback
+                ? t("chart.trajectory.overlayDisabledKo")
+                : t("chart.trajectory.overlayHint")}
+            </span>
+          </label>
+          <div className="text-[11px] text-[color:var(--color-fg-dim)]">
+            {t("chart.trajectory.sharedY")}
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-5">
+      <ChartHeader
+        title={t("chart.trajectory")}
+        subtitle={
+          bankroll > 0
+            ? `${t("chart.trajectory.sub")} · bankroll ${money(bankroll)}`
+            : t("chart.trajectory.sub")
+        }
+      />
+      <TrajectoryPlot assets={primary} height={440} />
+      {slotOverlay && (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            <span className="inline-block h-1.5 w-3 rounded-sm bg-[#f472b6]" />
+            {t("slot.saved")}
+          </div>
+          <TrajectoryPlot assets={slotOverlay} height={240} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Money-denominated histogram card. Reads the current unit from its
+ * enclosing UnitScope so the header toggle and the scaleBy arg stay
+ * in lockstep for this single widget.
+ */
+function MoneyDistributionCard({
+  title,
+  subtitle,
+  binEdges,
+  counts,
+  color,
+  overlay,
+  yAsPct,
+}: {
+  title: string;
+  subtitle: string;
+  binEdges: number[];
+  counts: number[];
+  color: string;
+  overlay: {
+    binEdges: number[];
+    counts: number[];
+    label: string;
+  } | null;
+  yAsPct?: boolean;
+}) {
+  const abi = useContext(AbiContext);
+  const { unit } = useMoneyFmt();
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <ChartHeader title={title} subtitle={subtitle} />
+      </div>
+      <DistributionChart
+        binEdges={binEdges}
+        counts={counts}
+        color={color}
+        scaleBy={unit === "abi" ? abi : undefined}
+        unitLabel={unit === "abi" ? "ABI" : "$"}
+        overlay={overlay}
+        yAsPct={yAsPct}
+      />
+    </Card>
+  );
+}
+
+function DownswingsCard({
+  downswings,
+  upswings,
+  tourneysWord,
+}: {
+  downswings: SimulationResult["downswings"];
+  upswings: SimulationResult["upswings"];
+  tourneysWord: string;
+}) {
+  const t = useT();
+  const { money } = useMoneyFmt();
+  const renderRow = (
+    rank: number,
+    magnitude: number,
+    magnitudeColor: string,
+    finalProfit: number,
+    longestBreakeven: number,
+  ) => (
+    <tr
+      key={rank}
+      className="border-b border-[color:var(--color-border)]/60 last:border-b-0"
+    >
+      <td className="py-2 text-[color:var(--color-fg-muted)]">#{rank}</td>
+      <td
+        className="py-2 text-right tabular-nums"
+        style={{ color: magnitudeColor }}
+      >
+        {money(magnitude)}
+      </td>
+      <td
+        className={`py-2 text-right tabular-nums ${finalProfit >= 0 ? "text-[color:var(--color-success)]" : "text-[color:var(--color-fg)]"}`}
+      >
+        {money(finalProfit)}
+      </td>
+      <td className="py-2 text-right tabular-nums text-[color:var(--color-fg-muted)]">
+        {Math.round(longestBreakeven)} {tourneysWord}
+      </td>
+    </tr>
+  );
+  return (
+    <Card className="p-5">
+      <ChartHeader title={t("dd.title")} subtitle={t("dd.sub")} />
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div className="overflow-x-auto">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--color-danger)]">
+            {t("dd.worstDown")}
+          </div>
+          <table className="w-full min-w-[320px] text-sm">
+            <thead>
+              <tr className="border-b border-[color:var(--color-border)] text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                <th className="py-2 text-left font-medium">{t("dd.rank")}</th>
+                <th className="py-2 text-right font-medium">{t("dd.depth")}</th>
+                <th className="py-2 text-right font-medium">{t("dd.final")}</th>
+                <th className="py-2 text-right font-medium">
+                  {t("dd.breakeven")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {downswings.map((d) =>
+                renderRow(
+                  d.rank,
+                  -d.depth,
+                  "var(--color-danger)",
+                  d.finalProfit,
+                  d.longestBreakeven,
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="overflow-x-auto">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
+            {t("dd.bestUp")}
+          </div>
+          <table className="w-full min-w-[320px] text-sm">
+            <thead>
+              <tr className="border-b border-[color:var(--color-border)] text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                <th className="py-2 text-left font-medium">{t("dd.rank")}</th>
+                <th className="py-2 text-right font-medium">{t("dd.height")}</th>
+                <th className="py-2 text-right font-medium">{t("dd.final")}</th>
+                <th className="py-2 text-right font-medium">
+                  {t("dd.breakeven")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {upswings.map((u) =>
+                renderRow(
+                  u.rank,
+                  u.height,
+                  "var(--color-success)",
+                  u.finalProfit,
+                  u.longestBreakeven,
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -1465,9 +1746,14 @@ function LineStyleCustomizer({
       ev: "lineStyle.line.ev",
       best: "lineStyle.line.best",
       worst: "lineStyle.line.worst",
+      p05: "lineStyle.line.p05",
+      p95: "lineStyle.line.p95",
     })[k] as DictKey;
 
-  const setKey = (k: OverridableLineKey, patch: { stroke?: string; width?: number }) => {
+  const setKey = (
+    k: OverridableLineKey,
+    patch: { stroke?: string; width?: number; enabled?: boolean },
+  ) => {
     const current = overrides[k] ?? {};
     const next: LineStyleOverrides = {
       ...overrides,
@@ -1491,25 +1777,37 @@ function LineStyleCustomizer({
       <summary className="cursor-pointer select-none rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)]">
         {t("lineStyle.customize")}
       </summary>
-      <div className="absolute left-0 top-full z-10 mt-1 w-72 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg">
+      <div className="absolute left-0 top-full z-10 mt-1 w-[22rem] rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg">
         <div className="flex flex-col gap-2">
           {OVERRIDABLE_LINE_KEYS.map((k) => {
             const base = preset[k];
             const ov = overrides[k] ?? {};
             const stroke = ov.stroke ?? base.stroke;
             const width = ov.width ?? base.width;
+            const enabled = isLineEnabled(k, overrides);
             // color input needs a hex value — fall back to preset color if it's a named/rgba.
             const hex = /^#([0-9a-f]{3}){1,2}$/i.test(stroke) ? stroke : "#34d399";
             return (
               <div key={k} className="flex items-center gap-2 text-[11px]">
-                <span className="w-24 truncate text-[color:var(--color-fg-dim)]">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setKey(k, { enabled: e.target.checked })}
+                  className="h-3 w-3 cursor-pointer accent-[color:var(--color-accent)]"
+                  aria-label={t(labelKey(k))}
+                />
+                <span
+                  className="w-32 truncate text-[color:var(--color-fg-dim)]"
+                  title={t(labelKey(k))}
+                >
                   {t(labelKey(k))}
                 </span>
                 <input
                   type="color"
                   value={hex}
+                  disabled={!enabled}
                   onChange={(e) => setKey(k, { stroke: e.target.value })}
-                  className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0"
+                  className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0 disabled:opacity-40"
                   aria-label={t(labelKey(k))}
                 />
                 <input
@@ -1518,8 +1816,9 @@ function LineStyleCustomizer({
                   max={4}
                   step={0.25}
                   value={width}
+                  disabled={!enabled}
                   onChange={(e) => setKey(k, { width: Number(e.target.value) })}
-                  className="flex-1"
+                  className="flex-1 disabled:opacity-40"
                   aria-label={t("lineStyle.width")}
                 />
                 <span className="w-6 text-right tabular-nums text-[color:var(--color-fg-dim)]">
@@ -1555,10 +1854,12 @@ function CollapsibleSection({
   id,
   title,
   children,
+  showUnitToggle = true,
 }: {
   id: string;
   title: string;
   children: ReactNode;
+  showUnitToggle?: boolean;
 }) {
   const storageKey = `tvs.collapse.${id}.v1`;
   const ref = useRef<HTMLDetailsElement>(null);
@@ -1583,21 +1884,26 @@ function CollapsibleSection({
     } catch {}
   };
   return (
-    <details
-      ref={ref}
-      onToggle={onToggle}
-      className="group rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-1)]"
-    >
-      <summary className="flex cursor-pointer select-none items-center justify-between gap-3 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)]">
-        <span>{title}</span>
-        <span className="text-[10px] transition-transform group-open:rotate-90">
-          ▶
-        </span>
-      </summary>
-      <div className="border-t border-[color:var(--color-border)] p-0">
-        {children}
-      </div>
-    </details>
+    <UnitScope id={`collapse.${id}`}>
+      <details
+        ref={ref}
+        onToggle={onToggle}
+        className="group rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-1)]"
+      >
+        <summary className="flex cursor-pointer select-none items-center gap-3 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)]">
+          <span>{title}</span>
+          <span className="ml-auto">
+            {showUnitToggle && <InlineUnitToggle />}
+          </span>
+          <span className="text-[10px] transition-transform group-open:rotate-90">
+            ▶
+          </span>
+        </summary>
+        <div className="border-t border-[color:var(--color-border)] p-0">
+          {children}
+        </div>
+      </details>
+    </UnitScope>
   );
 }
 
@@ -1743,11 +2049,14 @@ function GapExplainer({
   money: (v: number) => string;
   t: (key: DictKey) => string;
 }) {
-  const spreadOurs = Math.max(0, ours.stats.p95 - ours.stats.p05);
-  const spreadPd = Math.max(0, pd.stats.p95 - pd.stats.p05);
+  // "Biggest run-good vs EV" = how far the luckiest session overshot
+  // the expected session finish. max − mean is the cleanest derivable proxy:
+  // for {S} independent sessions, this is the tail of the upside distribution.
+  const spreadOurs = Math.max(0, ours.stats.max - ours.stats.mean);
+  const spreadPd = Math.max(0, pd.stats.max - pd.stats.mean);
   const spreadRatio = spreadPd > 1e-6 ? spreadOurs / spreadPd : 0;
-  const ddOurs = ours.stats.maxDrawdownP95;
-  const ddPd = pd.stats.maxDrawdownP95;
+  const ddOurs = ours.stats.maxDrawdownWorst;
+  const ddPd = pd.stats.maxDrawdownWorst;
   const ddRatio = ddPd > 1e-6 ? ddOurs / ddPd : 0;
   const fmtRatio = (r: number) =>
     r >= 10 ? r.toFixed(0) : r >= 1.1 ? r.toFixed(1) : r.toFixed(2);
@@ -1803,13 +2112,30 @@ function GapExplainer({
   );
 }
 
+/**
+ * Context-bound unit toggle. Reads the current money/abi mode from
+ * MoneyFmtContext so any widget can drop it in without prop-drilling.
+ * Swallows click events so placing it inside a <summary> won't also
+ * toggle the enclosing <details>.
+ */
+function InlineUnitToggle() {
+  const { unit, setUnit } = useMoneyFmt();
+  const t = useT();
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  return (
+    <span onClick={stop} onMouseDown={stop}>
+      <UnitToggle value={unit} onChange={setUnit} t={t} />
+    </span>
+  );
+}
+
 function UnitToggle({
   value,
   onChange,
   t,
 }: {
-  value: "money" | "abi";
-  onChange: (v: "money" | "abi") => void;
+  value: UnitMode;
+  onChange: (v: UnitMode) => void;
   t: (key: DictKey) => string;
 }) {
   const btn = (mode: "money" | "abi", label: string) => (
@@ -1829,6 +2155,98 @@ function UnitToggle({
     <div className="inline-flex shrink-0 items-stretch overflow-hidden rounded border border-[color:var(--color-border)]">
       {btn("money", t("unit.money"))}
       {btn("abi", t("unit.abi"))}
+    </div>
+  );
+}
+
+function SensitivityReadout({
+  deltas,
+  profits,
+  baseRoi,
+  totalBuyIn,
+}: {
+  deltas: number[];
+  profits: number[];
+  baseRoi: number;
+  totalBuyIn: number;
+}) {
+  const { compactMoney } = useMoneyFmt();
+  // Relationship is exactly linear: profit(Δ) = mean + Δ·totalBuyIn. A
+  // chart of 9 points on a straight line obscured the only two facts that
+  // matter: (1) how much $ one pp of ROI is worth, (2) what your EV looks
+  // like at a few alternative "true ROI" values. Replace with a compact
+  // tornado readout so both are scannable at a glance and the y-axis can't
+  // blow up at 1M-tourney samples.
+  const dollarsPerPp = totalBuyIn / 100;
+  const maxAbs = Math.max(...profits.map((p) => Math.abs(p)), 1);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            ±1 pp ROI
+          </span>
+          <span className="font-mono text-base tabular-nums text-[color:var(--color-fg)]">
+            ±{compactMoney(dollarsPerPp)}
+          </span>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            base ROI
+          </span>
+          <span className="font-mono text-base tabular-nums text-[color:var(--color-fg)]">
+            {(baseRoi * 100).toFixed(1)}%
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {deltas.map((d, i) => {
+          const profit = profits[i];
+          const trueRoi = baseRoi + d;
+          const frac = Math.abs(profit) / maxAbs;
+          const isBase = d === 0;
+          const isPos = profit >= 0;
+          return (
+            <div
+              key={i}
+              className={`flex items-center gap-2 font-mono text-[11px] tabular-nums ${
+                isBase
+                  ? "text-[color:var(--color-fg)]"
+                  : "text-[color:var(--color-fg-muted)]"
+              }`}
+            >
+              <div className="w-24 text-right text-[color:var(--color-fg-dim)]">
+                {(trueRoi * 100).toFixed(1)}%
+                <span className="ml-1 text-[color:var(--color-fg-dim)]/60">
+                  ({d >= 0 ? "+" : ""}
+                  {(d * 100).toFixed(1)}pp)
+                </span>
+              </div>
+              <div className="relative flex h-4 flex-1 items-center">
+                <div className="absolute left-1/2 top-0 h-full w-px bg-[color:var(--color-border)]" />
+                {isPos ? (
+                  <div
+                    className="absolute left-1/2 h-2 rounded-r-sm bg-emerald-400/60"
+                    style={{ width: `${frac * 50}%` }}
+                  />
+                ) : (
+                  <div
+                    className="absolute h-2 rounded-l-sm bg-rose-400/60"
+                    style={{ width: `${frac * 50}%`, right: "50%" }}
+                  />
+                )}
+              </div>
+              <div
+                className={`w-20 text-right ${
+                  isPos ? "text-emerald-300/90" : "text-rose-300/90"
+                } ${isBase ? "font-semibold" : ""}`}
+              >
+                {compactMoney(profit)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1994,101 +2412,194 @@ function PrimedopeReportCard({ result }: { result: SimulationResult }) {
 function PokerDopeWeaknessCard() {
   return (
     <Card className="rounded-none border-0 p-4">
-      <div className="flex flex-col gap-3 text-[11px] leading-relaxed text-[color:var(--color-fg)]">
+      <div className="flex flex-col gap-4 text-[11px] leading-relaxed text-[color:var(--color-fg)]">
         <p className="text-[color:var(--color-fg-dim)]">
-          Реальные проблемы калькулятора Primedope, найденные прогоном их API
-          напрямую (<code>scripts/pd_probe.mjs</code>). Каждый пункт
-          воспроизводим, сырые ответы в <code>scripts/pd_cache/</code>, полный
-          разбор в <code>notes/pokerdope_weaknesses.md</code>.
+          Чем PrimeDope реально врёт, если ты грайндер MTT и решил им
+          пересчитать банкролл. Всё воспроизводится прогоном их API напрямую
+          (<code>scripts/pd_probe.mjs</code>), сырые ответы в{" "}
+          <code>scripts/pd_cache/</code>, полный разбор в{" "}
+          <code>notes/pokerdope_weaknesses.md</code>.
         </p>
 
-        <div className="grid gap-2 lg:grid-cols-2">
-          <WeakBlock
-            tag="CRITICAL"
-            tone="#f87171"
-            title="4 независимых краш-вектора в один запрос"
-          >
-            Бэк PD роняется на: (1) ROI, при котором{" "}
-            <code>(1 + ROI) × paid / players ≥ 1</code>; (2){" "}
-            <code>buyin = $0.01</code>; (3) <code>places_paid == players</code>;
-            (4) <code>rake = 100%</code>. Каждый из них возвращает{" "}
-            <code>500</code>, а после пары таких весь <code>prime.php</code>{" "}
-            отдаёт <code>502 Bad Gateway</code> всем пользователям на 5–15+
-            минут. Подтверждено с независимого IP (Anthropic WebFetch видит тот
-            же 502).
-          </WeakBlock>
+        {/* ------------------- КРИТИЧНЫЕ ------------------- */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#f87171]" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+              Критичные — математика не сходится
+            </span>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-2">
+            <WeakBlock
+              tag="CRITICAL"
+              tone="#f87171"
+              title="ITM жёстко привязан к ROI одной формулой"
+            >
+              У них <code>itm = (1 + ROI) × paid / players</code>. Перевод: PD
+              считает, что весь твой эдж берётся из того, что ты чаще
+              обкешиваешься. Чем выше ROI — тем больше ИТМ, других вариантов
+              модели нет.
+              <br />
+              <br />
+              Реальность другая: грайндер с +30% ROI кешится почти с той же
+              частотой что нулевой игрок, но бежит ГЛУБЖЕ — больше фин-тейблов,
+              больше 1-3 мест, больше крашевых финишей. Эдж сидит в хвосте, а
+              не в частоте min-cash.
+              <br />
+              <br />
+              <b>Последствие:</b> PD двумя концами промахивается. Для топ-рега
+              с высоким ROI он (а) завышает ИТМ-рейт (говорит «ты в деньгах
+              22%» вместо реальных ~17%), и (б) недооценивает дисперсию по
+              глубоким финишам — потому что в модели эдж «размазан» по всему
+              призовому интервалу. На ROI выше порога{" "}
+              <code>(1+ROI)·paid/players ≥ 1</code> формула вообще переполняется
+              и сервер отдаёт 500.
+            </WeakBlock>
 
-          <WeakBlock
-            tag="MODEL"
-            tone="#fbbf24"
-            title="ITM линейно связан с ROI"
-          >
-            Их формула <code>itm = (1 + ROI) × paid / players</code>{" "}
-            предполагает, что вся доходность берётся из повышенного рейта
-            выхода в деньги. Игнорируется концентрация эджа в топ-финишах и
-            overflow-ит при ROI выше порога. У нас edge настраивается через
-            профиль модели финишей (power-law + shape), а ITM клэмпится.
-          </WeakBlock>
+            <WeakBlock
+              tag="CRITICAL"
+              tone="#f87171"
+              title="Все призовые места равновероятны (uniform inside cash)"
+            >
+              Когда PD решил «ты в деньгах», он дальше кидает равномерно
+              между всеми оплачиваемыми местами. 1-е место = min-cash по
+              вероятности.
+              <br />
+              <br />
+              Для +5% ROI игрока на 1000-максе PD возвращает SD ≈{" "}
+              <code>$2.8k</code>. Реалистичная модель с топ-тяжёлой
+              концентрацией (наш power-law или эмпирический профиль) даёт
+              <code> $4–5k</code> на той же сетке — в полтора-два раза больше.
+              Разница — это редкие глубокие забеги, которые PD равняет с
+              мин-кэшами.
+              <br />
+              <br />
+              <b>Последствие:</b> 1%-хвост и RoR у PD систематически занижены.
+              Банкролл, который PD объявил «1% риск разорения», в реальности
+              скорее <b>3–5% риск</b>. Kelly-фракция, которую PD показывает,
+              тоже завышена — игрок тащит больше роллз в игру, чем реально
+              безопасно.
+            </WeakBlock>
 
-          <WeakBlock
-            tag="MODEL"
-            tone="#fbbf24"
-            title="Uniform-внутри-призовой-зоны"
-          >
-            Все призовые места у них равновероятны — 1-е место = min-cash.
-            Для +5% игрока на 1000-max PD даёт SD ≈ $2.8k, а реалистичная
-            модель с топ-тяжёлой концентрацией выносит ближе к $4–5k из-за
-            редких фин-тейблов.
-          </WeakBlock>
+            <WeakBlock
+              tag="CRITICAL"
+              tone="#f87171"
+              title="Рейк тихо меняет SD, хотя в EV его игнорируют"
+            >
+              Один и тот же прогон (100p / $50 / N=1000 / +10% ROI) даёт: SD{" "}
+              <code>$5975</code> при rake=0%, <code>$5607</code> при rake=11%,{" "}
+              <code>$4042</code> при rake=50%. EV во всех трёх случаях
+              <code> $5000</code> константой.
+              <br />
+              <br />
+              Под капотом у них <code>buyin − rake</code> как база призового
+              фонда для подсчёта SD, но <code>buyin</code> как база для EV.
+              Математически несовместимо.
+              <br />
+              <br />
+              <b>Последствие:</b> игрок, перешедший с низкорейковой 5% сетки
+              на высокорейковую 15% (рукн/субботние мажоры), увидит в PD{" "}
+              <i>меньший</i> требуемый банкролл на ровном месте. Реальный
+              ответ — банкролл должен быть <i>больше</i>, потому что на
+              высоком рейке маржа тоньше и дисперсия кусается сильнее.
+            </WeakBlock>
 
-          <WeakBlock
-            tag="NOISE"
-            tone="#60a5fa"
-            title="RoR-порог скачет ±14% между рефрешами"
-          >
-            Три одинаковых запроса baseline со <code>samples=500</code> дали{" "}
-            <code>min01percentile</code> −$8113 / −$9307 / −$8981: спред $1195
-            на среднем $8800 = 13.6% MC-джиттер. Банкролл, рассчитанный на
-            «1% риск ruin», получается разным на каждом клике. У нас 50k
-            сэмплов + детерминированный seed.
-          </WeakBlock>
+            <WeakBlock
+              tag="CRITICAL"
+              tone="#f87171"
+              title="RoR по running-min без банкролл-менеджмента"
+            >
+              На 20 000 турниров с +10% ROI и $1k банкроллом PD выдаёт{" "}
+              <code>RoR = 70.8%</code>. Считается как «любая точка траектории,
+              которая коснулась нуля — значит разорён навсегда». Перезарядов,
+              займов, спуска на нижний лимит в модели нет.
+              <br />
+              <br />
+              <b>Последствие:</b> цифра RoR у PD реально пугает юзера сильнее,
+              чем должна. Реальный рейк-бэк грайндер теряет банкролл раз в
+              несколько лет на ровном месте, потому что он <i>управляет</i>{" "}
+              ним — PD этой степени свободы просто не видит. У нас рядом с
+              running-min показывается аналитический Brownian first-passage,
+              чтобы видеть разрыв между «коснулся нуля один раз» и «реально
+              бэнкрол убит».
+            </WeakBlock>
+          </div>
+        </div>
 
-          <WeakBlock
-            tag="UX"
-            tone="#a78bfa"
-            title="Sample size 1000 по умолчанию"
-          >
-            Для стабильных хвостовых квантилей (1%/5%/15% RoR) нужны десятки
-            тысяч сэмплов. PD считает на 1000 и нигде не показывает CI на эти
-            числа — пользователь не знает, что видит шумовые ±10%.
-          </WeakBlock>
+        {/* ------------------- СРЕДНИЕ ------------------- */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#fb923c]" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+              Средние — не поддерживаемые форматы
+            </span>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-2">
+            <WeakBlock
+              tag="MODEL"
+              tone="#fb923c"
+              title="PKO ноки вообще не поддерживаются"
+            >
+              У PD нет поля для bounty-фракции. Грайнд ромео-сетки, где 60%
+              волюма — $22 GG PKO или PS BB с нок-пулом 50% от бай-ина, ты
+              физически не можешь в PD вбить корректно. Типичный workaround
+              юзера — вбить полный бай-ин как обычный фризаут, — и дальше PD
+              считает такой «фризаут за $22» с топ-тяжёлой выплатой только в
+              ИТМ. В реальности в PKO ты забираешь кэш с каждого нока всю
+              дорогу, задолго до пузыря — средний грайндер на 2500-поле уносит
+              2–4 головы даже когда выбит 800-м. Это режет per-tourney σ
+              процентов на 30–40 против эквивалентного фризаута.
+              <br />
+              <br />
+              <b>Последствие:</b> PD завышает требуемый банкролл на PKO-сетке
+              примерно в 1.3–1.5× относительно честной модели. Игрок, который
+              послушался PD, перегружен банкроллом и играет не тот лимит;
+              игрок, который наоборот мысленно скинул «ну там же ноки» — не
+              знает, сколько скидывать. У нас PKO моделируется отдельным
+              bounty-распределением по местам (harmonic KO-count + Poisson), и
+              ROI делится на prize-часть + bounty-часть.
+            </WeakBlock>
+          </div>
+        </div>
 
-          <WeakBlock
-            tag="INCONSISTENCY"
-            tone="#fb923c"
-            title="Рейк тихо меняет SD, хотя EV его игнорирует"
-          >
-            Один и тот же +10% ROI на 100p/$50/N=1000 даёт SD{" "}
-            <code>$5975</code> при rake=0, <code>$5607</code> при rake=11%,{" "}
-            <code>$4042</code> при rake=50%. EV при этом константен ($5000).
-            Внутри они используют <code>buyin − rake</code> как базу prizepool
-            для SD, но <code>buyin</code> как базу для EV — математически
-            непоследовательно. Игрок, перешедший с 5% на 15% рейк, получит
-            «меньший» требуемый банкролл на ровном месте.
-          </WeakBlock>
-
-          <WeakBlock
-            tag="QUIRK"
-            tone="#2dd4bf"
-            title="Running-min RoR без bankroll-management"
-          >
-            На 20 000 турниров с +10% ROI и $1k банкроллом PD выдаёт{" "}
-            <code>RoR = 70.8%</code>: если траектория хоть раз коснулась нуля,
-            вы «разорены» навсегда, даже если дальше восстановились. Реальные
-            игроки перезаряжают/занимают/понижают стейк — в PD этого нет. У нас
-            рядом с running-min показывается ещё и аналитический Brownian
-            first-passage, чтобы видеть разрыв.
-          </WeakBlock>
+        {/* ------------------- ЗАНИМАТЕЛЬНЫЕ ФАКТЫ ------------------- */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#a78bfa]" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+              Занимательные факты — что ломает их сервер
+            </span>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-2">
+            <WeakBlock
+              tag="FUN FACT"
+              tone="#a78bfa"
+              title="4 краш-вектора кладут весь калькулятор на 15 минут"
+            >
+              Сервер PD роняется на:
+              <br />
+              (1) ROI такой, что <code>(1+ROI)·paid/players ≥ 1</code>
+              <br />
+              (2) <code>buyin = $0.01</code>
+              <br />
+              (3) <code>places_paid == players</code> (легитимный выбор для
+              10-ки SNG)
+              <br />
+              (4) <code>rake = 100%</code>
+              <br />
+              <br />
+              Каждый кидает <code>500</code>, а после пары таких весь{" "}
+              <code>prime.php</code> отдаёт <code>502 Bad Gateway</code> всем
+              юзерам, включая тех, кто просто открыл baseline. Восстановление
+              ~5–15 минут. Подтверждено с независимого IP (Anthropic WebFetch
+              видит тот же 502).
+              <br />
+              <br />
+              <b>Последствие:</b> один неосторожный клик (или один троллящий
+              юзер) флэтлайнит калькулятор для всех остальных. На стороне PD
+              нет input-валидации, клиентский JS форвардит что ввели.
+            </WeakBlock>
+          </div>
         </div>
 
         <div className="text-[10px] text-[color:var(--color-fg-dim)]">
@@ -2341,16 +2852,28 @@ function PrimedopeReproduceButton({
 function ChartHeader({
   title,
   subtitle,
+  showUnitToggle = true,
+  tip,
 }: {
   title: string;
   subtitle: string;
+  /** Hide the money/ABI toggle on charts whose axes aren't in money. */
+  showUnitToggle?: boolean;
+  /** Optional help tooltip surfaced as a "?" button next to the title. */
+  tip?: React.ReactNode;
 }) {
   return (
-    <div className="mb-3">
-      <div className="text-sm font-semibold text-[color:var(--color-fg)]">
-        {title}
+    <div className="mb-3 flex items-start justify-between gap-3">
+      <div>
+        <div className="flex items-center gap-1.5">
+          <div className="text-sm font-semibold text-[color:var(--color-fg)]">
+            {title}
+          </div>
+          {tip && <InfoTooltip content={tip} />}
+        </div>
+        <div className="text-xs text-[color:var(--color-fg-dim)]">{subtitle}</div>
       </div>
-      <div className="text-xs text-[color:var(--color-fg-dim)]">{subtitle}</div>
+      {showUnitToggle && <InlineUnitToggle />}
     </div>
   );
 }
@@ -2570,224 +3093,6 @@ function VerdictCard({
   );
 }
 
-const PDV_SUIT_COLOR: Record<"heart" | "diamond" | "spade", string> = {
-  heart: "var(--color-heart)",
-  diamond: "var(--color-diamond)",
-  spade: "var(--color-spade)",
-};
-
-function PDVerdictRow({
-  label,
-  ours,
-  theirs,
-  delta,
-  worse,
-  suit,
-}: {
-  label: string;
-  ours: string;
-  theirs: string;
-  delta: string;
-  worse: boolean;
-  suit: "heart" | "diamond" | "spade";
-}) {
-  const color = PDV_SUIT_COLOR[suit];
-  return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">
-      <div
-        className="text-[10px] font-semibold uppercase tracking-[0.15em]"
-        style={{ color }}
-      >
-        {label}
-      </div>
-      <div className="flex items-baseline gap-3">
-        <div className="flex flex-col">
-          <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            PrimeDope
-          </span>
-          <span className="font-mono text-sm tabular-nums text-[color:var(--color-fg-muted)] line-through decoration-[color:var(--color-rival)]/60">
-            {theirs}
-          </span>
-        </div>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          className="text-[color:var(--color-fg-dim)]"
-        >
-          <path
-            d="M5 12h14M13 6l6 6-6 6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <div className="flex flex-col">
-          <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            reality
-          </span>
-          <span
-            className="font-mono text-lg font-semibold tabular-nums"
-            style={{ color }}
-          >
-            {ours}
-          </span>
-        </div>
-      </div>
-      <div
-        className="text-[10px] font-medium"
-        style={{
-          color: worse ? "var(--color-heart)" : "var(--color-club)",
-        }}
-      >
-        {delta}
-      </div>
-    </div>
-  );
-}
-
-function PDVerdict({
-  primary,
-  other,
-}: {
-  primary: SimulationResult;
-  other: SimulationResult;
-}) {
-  const t = useT();
-  const { money } = useMoneyFmt();
-  const ours = primary.stats;
-  const theirs = other.stats;
-
-  const sigmaRatio = ours.stdDev / Math.max(1e-9, theirs.stdDev);
-  const ddRatio =
-    ours.maxDrawdownMean / Math.max(1e-9, theirs.maxDrawdownMean);
-  const beDelta = Math.round(
-    ours.longestBreakevenMean - theirs.longestBreakevenMean,
-  );
-  const itmPp = (ours.itmRate - theirs.itmRate) * 100;
-
-  const sigmaWorse = sigmaRatio >= 1;
-  const ddWorse = ddRatio >= 1;
-  const itmWorse = itmPp <= 0;
-
-  const fmtMult = (r: number) => {
-    const v = r >= 1 ? r : 1 / r;
-    return v.toFixed(v >= 10 ? 0 : v >= 2 ? 1 : 2);
-  };
-  const fmtDelta = (v: number) => (v >= 0 ? `+${v}` : `${v}`);
-  const fmtPp = (v: number) => Math.abs(v).toFixed(1);
-
-  const headlineRatio = Math.max(
-    sigmaWorse ? sigmaRatio : 1 / Math.max(1e-9, sigmaRatio),
-    ddWorse ? ddRatio : 1 / Math.max(1e-9, ddRatio),
-  );
-
-  return (
-    <Card className="bracketed-heart overflow-hidden border-[color:var(--color-heart)]/40 p-6">
-      <div className="mb-1 flex items-center gap-2">
-        <span className="text-[color:var(--color-heart)]">♥</span>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--color-heart)]">
-          {t("pdv.eyebrow")}
-        </span>
-      </div>
-      <h3 className="mb-1 text-[18px] font-black uppercase leading-tight text-[color:var(--color-fg)]">
-        {t("pdv.title")}
-      </h3>
-      <p className="mb-4 text-[13px] leading-relaxed text-[color:var(--color-fg-muted)]">
-        {t("pdv.titleReality")}
-      </p>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <PDVerdictRow
-          label={t("pdv.sigma")}
-          ours={money(ours.stdDev)}
-          theirs={money(theirs.stdDev)}
-          delta={fmt(
-            sigmaWorse ? t("pdv.sigmaDelta") : t("pdv.sigmaDeltaNeg"),
-            { mult: fmtMult(sigmaRatio) },
-          )}
-          worse={sigmaWorse}
-          suit="diamond"
-        />
-        <PDVerdictRow
-          label={t("pdv.worst")}
-          ours={money(ours.maxDrawdownMean)}
-          theirs={money(theirs.maxDrawdownMean)}
-          delta={fmt(
-            ddWorse ? t("pdv.worstDelta") : t("pdv.worstDeltaNeg"),
-            { mult: fmtMult(ddRatio) },
-          )}
-          worse={ddWorse}
-          suit="heart"
-        />
-        <PDVerdictRow
-          label={t("pdv.breakeven")}
-          ours={`${Math.round(ours.longestBreakevenMean)}t`}
-          theirs={`${Math.round(theirs.longestBreakevenMean)}t`}
-          delta={fmt(
-            beDelta >= 0 ? t("pdv.breakevenDelta") : t("pdv.breakevenDeltaNeg"),
-            { delta: fmtDelta(beDelta) },
-          )}
-          worse={beDelta > 0}
-          suit="heart"
-        />
-        <PDVerdictRow
-          label={t("pdv.itm")}
-          ours={pct(ours.itmRate)}
-          theirs={pct(theirs.itmRate)}
-          delta={fmt(
-            itmWorse ? t("pdv.itmDelta") : t("pdv.itmDeltaNeg"),
-            { delta: fmtPp(itmPp) },
-          )}
-          worse={itmWorse}
-          suit="spade"
-        />
-      </div>
-
-      <div className="mt-5 rounded-lg border border-[color:var(--color-heart)]/30 bg-[color:var(--color-heart)]/5 p-4">
-        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-[color:var(--color-heart)]">
-          {t("pdv.whyTitle")}
-        </div>
-        <ul className="flex flex-col gap-2 text-[12.5px] leading-relaxed text-[color:var(--color-fg-muted)]">
-          <li className="flex gap-2">
-            <span className="mt-1 inline-block h-1 w-1 shrink-0 rounded-full bg-[color:var(--color-heart)]" />
-            <span>{t("pdv.why1")}</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="mt-1 inline-block h-1 w-1 shrink-0 rounded-full bg-[color:var(--color-heart)]" />
-            <span>{t("pdv.why2")}</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="mt-1 inline-block h-1 w-1 shrink-0 rounded-full bg-[color:var(--color-club)]" />
-            <span>{t("pdv.why3")}</span>
-          </li>
-        </ul>
-        <div className="mt-3 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 p-3 text-[11.5px] leading-relaxed text-[color:var(--color-fg-muted)]">
-          <span className="mr-1 font-semibold text-[color:var(--color-fg)]">
-            {t("pdv.externalTitle")}
-          </span>
-          {t("pdv.externalBody")}{" "}
-          <a
-            href="https://muchomota.substack.com/p/flaws-in-monte-carlo-simulations"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline decoration-dotted underline-offset-2 hover:text-[color:var(--color-fg)]"
-          >
-            muchomota, Substack 2024
-          </a>
-        </div>
-        <div className="mt-3 border-t border-[color:var(--color-heart)]/20 pt-3 text-[12px] font-medium text-[color:var(--color-fg)]">
-          {fmt(
-            sigmaWorse || ddWorse ? t("pdv.takeaway") : t("pdv.takeawayNeg"),
-            { mult: fmtMult(headlineRatio) },
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
 
 function PrimedopeDiff({
   primary,
@@ -2801,7 +3106,7 @@ function PrimedopeDiff({
   const ours = primary.stats;
   const theirs = other.stats;
   const pctPp = (a: number, b: number) =>
-    `${((a - b) * 100).toFixed(2)} pp`;
+    `${((a - b) * 100).toFixed(2)} процентных пунктов`;
   const ratioPct = (a: number, b: number) =>
     `${((a / Math.max(1e-9, b) - 1) * 100).toFixed(1)} %`;
   const diffMoney = (a: number, b: number) =>
@@ -2820,18 +3125,6 @@ function PrimedopeDiff({
       delta: pctPp(ours.probProfit, theirs.probProfit),
     },
     {
-      label: t("pd.row.stdDev"),
-      ours: money(ours.stdDev),
-      theirs: money(theirs.stdDev),
-      delta: ratioPct(ours.stdDev, theirs.stdDev),
-    },
-    {
-      label: t("pd.row.sharpe"),
-      ours: ours.sharpe.toFixed(3),
-      theirs: theirs.sharpe.toFixed(3),
-      delta: (ours.sharpe - theirs.sharpe).toFixed(3),
-    },
-    {
       label: t("pd.row.dd"),
       ours: money(ours.maxDrawdownMean),
       theirs: money(theirs.maxDrawdownMean),
@@ -2845,9 +3138,9 @@ function PrimedopeDiff({
     },
     {
       label: t("pd.row.longestBE"),
-      ours: `${Math.round(ours.longestBreakevenMean)}t`,
-      theirs: `${Math.round(theirs.longestBreakevenMean)}t`,
-      delta: `${Math.round(ours.longestBreakevenMean - theirs.longestBreakevenMean)}t`,
+      ours: `${Math.round(ours.longestBreakevenMean)} турниров`,
+      theirs: `${Math.round(theirs.longestBreakevenMean)} турниров`,
+      delta: `${Math.round(ours.longestBreakevenMean - theirs.longestBreakevenMean)} турниров`,
     },
     {
       label: t("pd.row.var95"),
@@ -2950,11 +3243,13 @@ function MiniStat({
   value,
   tone,
   suit = "club",
+  tip,
 }: {
   label: string;
   value: string;
   tone?: "pos" | "neg";
   suit?: StatSuit;
+  tip?: string;
 }) {
   const toneColor =
     tone === "pos"
@@ -2967,14 +3262,41 @@ function MiniStat({
       className="flex flex-col gap-0.5 border-l-2 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/50 px-3 py-2.5"
       style={{ borderLeftColor: SUIT_COLOR[suit] }}
     >
-      <div className="eyebrow" style={{ color: SUIT_COLOR[suit] }}>
+      <div
+        className="eyebrow flex items-center gap-1"
+        style={{ color: SUIT_COLOR[suit] }}
+      >
         {label}
+        {tip && <InfoTooltip content={tip} />}
       </div>
       <div
         className="font-mono text-[13px] font-semibold tabular-nums"
         style={{ color: toneColor }}
       >
         {value}
+      </div>
+    </div>
+  );
+}
+
+function StatGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <div className="h-px flex-1 bg-[color:var(--color-border)]" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--color-fg-dim)]">
+          {title}
+        </span>
+        <div className="h-px flex-1 bg-[color:var(--color-border)]" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {children}
       </div>
     </div>
   );

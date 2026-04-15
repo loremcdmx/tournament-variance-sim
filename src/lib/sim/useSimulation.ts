@@ -164,7 +164,13 @@ export function useSimulation() {
         );
         const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
         const S = plan.input.samples;
-        const shardCount = Math.max(1, Math.min(W, S));
+        // Over-subscribe shards relative to the worker pool so stragglers
+        // (one slow worker or a tail of expensive samples) don't hold the
+        // progress bar at ~88% for seconds while the last shard drains. With
+        // W shards, one slow worker = 1/W of total progress; with 4*W shards
+        // it's only 1/(4W), and the UI advances smoothly instead of stalling.
+        const oversub = plan.input.samples * plan.input.scheduleRepeats >= 50_000 ? 4 : 1;
+        const shardCount = Math.max(1, Math.min(W * oversub, S));
         const bounds: Array<[number, number]> = [];
         for (let i = 0; i < shardCount; i++) {
           const lo = Math.floor((i * S) / shardCount);
@@ -385,32 +391,71 @@ export function useSimulation() {
 
       const twin = !!input.compareWithPrimedope && !input.calibrationMode;
       const mode2 = input.compareMode ?? "random";
+      // The "primedope" model preset means "I want to see PD's ITM-distribution
+      // model as the primary result, with our honest α algo on the right for
+      // comparison". Flip primary ↔ comparison calibrations so the left pane
+      // renders primedope-binary-itm and the right pane renders α.
+      const pdPresetFlip =
+        twin && mode2 === "primedope" && input.modelPresetId === "primedope";
+      // PrimeDope can't model progressive-KO payouts: their calculator has
+      // no bounty field. When the user's schedule contains any PKO row, swap
+      // the PrimeDope comparison pass for "same schedule, bounties stripped"
+      // under PD's own binary-ITM calibration — alpha-on-stripped-schedule
+      // was visually indistinguishable from primary (bounty EV just folds
+      // back into the regular pool, same ROI target, ~5% sd delta), so the
+      // comparison pane looked identical. Binary-ITM has a structurally
+      // different PMF (two uniform bins) and produces a meaningfully
+      // different envelope — the actual variance gap PD users would see.
+      const hasPko = input.schedule.some(
+        (r) => (r.bountyFraction ?? 0) > 0,
+      );
+      const pdPkoFallback = mode2 === "primedope" && hasPko;
 
+      // Under pdPresetFlip+PKO, the LEFT pane is the binary-ITM run, so strip
+      // bounties from the primary input instead of the comparison.
+      const stripBounties = (si: SimulationInput): SimulationInput => ({
+        ...si,
+        schedule: si.schedule.map((r) => ({ ...r, bountyFraction: 0 })),
+      });
+      let primaryInput: SimulationInput = { ...input, compareWithPrimedope: false };
+      if (pdPresetFlip && hasPko) primaryInput = stripBounties(primaryInput);
       const passes: PassPlan[] = [
         {
           key: "primary",
-          input: { ...input, compareWithPrimedope: false },
-          calibrationMode: "alpha",
+          input: primaryInput,
+          calibrationMode: pdPresetFlip ? "primedope-binary-itm" : "alpha",
           weight: twin ? 0.5 : 1,
         },
       ];
       if (twin) {
-        const secondInput =
-          mode2 === "primedope"
-            ? { ...input, compareWithPrimedope: false }
-            : {
-                ...input,
-                compareWithPrimedope: false,
-                seed:
-                  (((input.seed ^ 0xa5a5a5a5) >>> 0) ^
-                    ((Math.random() * 0xffffffff) >>> 0)) >>>
-                  0,
-              };
+        let secondInput: SimulationInput;
+        if (pdPkoFallback && !pdPresetFlip) {
+          // Strip bounties from every row so the secondary pass runs the
+          // *same* schedule minus the KO component. Same seed keeps the
+          // comparison aligned tournament-to-tournament.
+          secondInput = stripBounties({
+            ...input,
+            compareWithPrimedope: false,
+          });
+        } else if (mode2 === "primedope") {
+          secondInput = { ...input, compareWithPrimedope: false };
+        } else {
+          secondInput = {
+            ...input,
+            compareWithPrimedope: false,
+            seed:
+              (((input.seed ^ 0xa5a5a5a5) >>> 0) ^
+                ((Math.random() * 0xffffffff) >>> 0)) >>>
+              0,
+          };
+        }
         passes.push({
           key: "comparison",
           input: secondInput,
           calibrationMode:
-            mode2 === "primedope" ? "primedope-binary-itm" : "alpha",
+            pdPresetFlip || mode2 !== "primedope"
+              ? "alpha"
+              : "primedope-binary-itm",
           weight: 0.5,
         });
       }

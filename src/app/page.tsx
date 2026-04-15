@@ -14,7 +14,9 @@ import { Section, Card } from "@/components/ui/Section";
 import { CornerToggles } from "@/components/ui/CornerToggles";
 import { FinishPMFPreview } from "@/components/charts/FinishPMFPreview";
 import { useSimulation } from "@/lib/sim/useSimulation";
+import { validateSchedule } from "@/lib/sim/validation";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { SCENARIOS } from "@/lib/scenarios";
 import type {
   SimulationInput,
@@ -79,6 +81,7 @@ interface CompareSlot {
 
 export default function Home() {
   const t = useT();
+  const { advanced } = useAdvancedMode();
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
   const [compareSlot, setCompareSlot] = useState<CompareSlot | null>(null);
@@ -129,6 +132,7 @@ export default function Home() {
       },
       compareWithPrimedope: c.compareWithPrimedope,
       compareMode: c.compareMode,
+      modelPresetId: c.modelPresetId,
       primedopeStyleEV: c.primedopeStyleEV,
       roiStdErr: c.roiStdErr,
       roiShockPerTourney: c.roiShockPerTourney,
@@ -144,14 +148,32 @@ export default function Home() {
     [],
   );
 
+  const previewModel = useMemo(
+    () => ({
+      id: controls.finishModelId,
+      alpha: controls.alphaOverride ?? undefined,
+      empiricalBuckets:
+        controls.finishModelId === "empirical"
+          ? controls.empiricalBuckets
+          : undefined,
+    }),
+    [controls.finishModelId, controls.alphaOverride, controls.empiricalBuckets],
+  );
+
+  const feasibility = useMemo(
+    () => validateSchedule(schedule, previewModel),
+    [schedule, previewModel],
+  );
+
   const onRun = useCallback(() => {
+    if (!feasibility.ok) return;
     const input = buildInput(schedule, controls);
     input.seed =
       (((Math.random() * 0xffffffff) >>> 0) ^
         ((Date.now() & 0xffffffff) >>> 0)) >>>
       0;
     run(input);
-  }, [schedule, controls, run, buildInput]);
+  }, [schedule, controls, run, buildInput, feasibility.ok]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -173,17 +195,38 @@ export default function Home() {
       : undefined;
     return found ?? schedule[0];
   }, [schedule, previewRowId]);
-  const previewModel = useMemo(
-    () => ({
-      id: controls.finishModelId,
-      alpha: controls.alphaOverride ?? undefined,
-      empiricalBuckets:
-        controls.finishModelId === "empirical"
-          ? controls.empiricalBuckets
-          : undefined,
-    }),
-    [controls.finishModelId, controls.alphaOverride, controls.empiricalBuckets],
+
+  const fixRowAuto = useCallback(
+    (rowId: string) => {
+      setSchedule((prev) =>
+        prev.map((r) =>
+          r.id === rowId ? { ...r, finishBuckets: undefined } : r,
+        ),
+      );
+    },
+    [],
   );
+  const fixRowPreset = useCallback(
+    (rowId: string) => {
+      setSchedule((prev) =>
+        prev.map((r) =>
+          r.id === rowId
+            ? { ...r, itmRate: 0.16, finishBuckets: undefined }
+            : r,
+        ),
+      );
+    },
+    [],
+  );
+  const fixAllAuto = useCallback(() => {
+    setSchedule((prev) =>
+      prev.map((r) =>
+        feasibility.issues.some((i) => i.rowId === r.id)
+          ? { ...r, finishBuckets: undefined }
+          : r,
+      ),
+    );
+  }, [feasibility.issues]);
 
   const onSaveSlot = () => {
     if (!result) return;
@@ -305,8 +348,7 @@ export default function Home() {
         </div>
 
         {/* Editorial hero — FF-style, full width, no side stats */}
-        <div className="relative py-10 sm:py-16">
-          <div className="eyebrow mb-6">/ variance.lab — v0.3</div>
+        <div className="relative pt-4 pb-3 sm:pt-6 sm:pb-4">
           <h1 className="text-[56px] font-black uppercase leading-[0.88] tracking-[-0.02em] sm:text-[96px] lg:text-[128px]">
             <span className="text-[color:var(--color-fg)]">
               {t("app.title").split(" ")[0]}
@@ -316,9 +358,7 @@ export default function Home() {
               {t("app.title").split(" ").slice(1).join(" ") || t("app.title")}
             </span>
           </h1>
-          <p className="mt-6 max-w-2xl text-[15px] leading-relaxed text-[color:var(--color-fg-muted)]">
-            {t("app.subtitle")}
-          </p>
+          <div className="eyebrow mt-2 text-right text-[color:var(--color-fg-dim)]">v0.3</div>
         </div>
 
         {/* Scenario grid */}
@@ -333,7 +373,7 @@ export default function Home() {
             )}
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3">
-            {SCENARIOS.map((s, i) => {
+            {SCENARIOS.filter((s) => advanced || s.id !== "romeo-pro").map((s, i) => {
               const total = s.schedule.reduce((n, r) => n + r.count, 0);
               const buyIns = s.schedule.map((r) => r.buyIn);
               const lo = Math.min(...buyIns);
@@ -520,7 +560,6 @@ export default function Home() {
         number="01"
         suit="spade"
         title={t("section.schedule.title")}
-        subtitle={t("section.schedule.subtitle")}
       >
         <ScheduleEditor
           schedule={schedule}
@@ -554,6 +593,23 @@ export default function Home() {
               controls.scheduleRepeats,
               schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
             )}
+            tournamentsPerSession={
+              schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0) *
+              Math.max(1, controls.scheduleRepeats)
+            }
+            doneSummary={
+              status === "done" && result
+                ? {
+                    mean: result.stats.mean,
+                    median: result.stats.median,
+                    roi: result.stats.mean / result.totalBuyIn,
+                    probProfit: result.stats.probProfit,
+                    riskOfRuin: result.stats.riskOfRuin,
+                    elapsedMs,
+                    resultsAnchorId: "results-top",
+                  }
+                : null
+            }
           />
           {previewRow && (
             <Card className="p-5">
@@ -581,11 +637,71 @@ export default function Home() {
                   </select>
                 )}
               </div>
-              <FinishPMFPreview row={previewRow} model={previewModel} />
+              <FinishPMFPreview
+                row={previewRow}
+                model={previewModel}
+                onRowChange={(updates) =>
+                  setSchedule((prev) =>
+                    prev.map((r) =>
+                      r.id === previewRow.id ? { ...r, ...updates } : r,
+                    ),
+                  )
+                }
+              />
             </Card>
           )}
         </div>
       </Section>
+
+      {!feasibility.ok && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <div className="mb-1 font-semibold uppercase tracking-wider text-amber-100">
+            {t("shape.blockedTitle")}
+          </div>
+          <div className="mb-3 text-[12px] text-amber-200/90">
+            {t("shape.blockedHint")}
+          </div>
+          <ul className="mb-3 space-y-1.5">
+            {feasibility.issues.map((iss) => (
+              <li
+                key={iss.rowId}
+                className="flex flex-wrap items-center gap-2 font-mono text-[11px]"
+              >
+                <span className="text-amber-100">
+                  {t("shape.blockedRow")} #{iss.rowIdx + 1} — {iss.label}
+                </span>
+                <span className="text-amber-300/80">
+                  EW ${iss.currentEv.toFixed(2)} / ${iss.targetEv.toFixed(2)} ({t("shape.blockedGap")} {iss.gap >= 0 ? "+" : ""}
+                  {iss.gap.toFixed(2)})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => fixRowAuto(iss.rowId)}
+                  className="border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-100 transition-colors hover:border-amber-300 hover:bg-amber-500/20"
+                >
+                  {t("shape.fixAuto")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fixRowPreset(iss.rowId)}
+                  className="border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-100 transition-colors hover:border-amber-300 hover:bg-amber-500/20"
+                >
+                  {t("shape.fixPreset")}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {feasibility.issues.length > 1 && (
+            <button
+              type="button"
+              onClick={fixAllAuto}
+              className="border border-amber-400/60 bg-amber-500/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-50 transition-colors hover:border-amber-300 hover:bg-amber-500/30"
+            >
+              {t("shape.fixAll")}
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -620,6 +736,7 @@ export default function Home() {
             suit="club"
             title={t("section.results.title")}
             subtitle={`${result.samples.toLocaleString()} ${t("section.results.subtitle")}`}
+            anchorId="results-top"
           >
             <ResultsView
               result={result}
@@ -667,7 +784,17 @@ export default function Home() {
           <summary className="cursor-pointer select-none text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]">
             {t("changelog.title")}
           </summary>
-          <div className="mt-3 space-y-2 pl-2">
+          <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v04.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v04.streaks")}</li>
+              <li>{t("changelog.v04.upswings")}</li>
+              <li>{t("changelog.v04.yPct")}</li>
+              <li>{t("changelog.v04.tooltips")}</li>
+              <li>{t("changelog.v04.rename")}</li>
+              <li>{t("changelog.v04.overlay")}</li>
+              <li>{t("changelog.v04.kelly")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v03.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v03.preview")}</li>

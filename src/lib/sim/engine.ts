@@ -4,6 +4,7 @@ import {
   buildBinaryItmAssets,
   buildFinishPMF,
   calibrateAlpha,
+  calibrateShelledItm,
   itmProbability,
 } from "./finishModel";
 import { applyICMToPayoutTable } from "./icm";
@@ -15,6 +16,22 @@ import type {
   SimulationResult,
   TournamentRow,
 } from "./types";
+
+// ---- Variant D: PKO latent heat ----------------------------------------
+// When `row.pkoHeat > 0`, compileSingleEntry precomputes HEAT_BIN_COUNT
+// alternative `bountyByPlace` banks: each bin raises the raw PKO weight
+// curve to an exponent `1 + pkoHeat · z_b` (z_b evenly spaced in
+// [-HEAT_Z_RANGE, +HEAT_Z_RANGE]) and re-normalizes against the base pmf
+// back to the same mean bounty. The hot loop draws one Gaussian per
+// tournament, snaps it to the nearest bin, and uses that bin's bbp. Mean
+// bounty is preserved exactly per bin (normalization); hot bins
+// concentrate bounty mass on the deepest finishes so the right tail
+// fattens while σ only drifts marginally. Finish-place pmf is unchanged
+// across bins, so prize EV stays on the α-calibrated target.
+const HEAT_BIN_COUNT = 13;
+const HEAT_Z_RANGE = 3;
+// Precomputed scalar for z → bin index: (HEAT_BIN_COUNT - 1) / (2 · RANGE).
+const HEAT_BIN_SCALE = (HEAT_BIN_COUNT - 1) / (2 * HEAT_Z_RANGE);
 
 interface CompiledEntry {
   rowIdx: number;
@@ -95,6 +112,14 @@ interface CompiledEntry {
    * used to cross-check MC σ in diagnostics.
    */
   sigmaSingleAnalytic: number;
+  /**
+   * PKO latent-heat bounty bank. When non-null, length is HEAT_BIN_COUNT
+   * and each entry is an alternative `bountyByPlace` curve built by
+   * raising the raw PKO weights to `1 + pkoHeat · z_b`, then re-normalized
+   * against the (unchanged) calibrated pmf so each bin's mean bounty
+   * equals the original `bountyMean`. Null → legacy PKO path.
+   */
+  heatBountyByPlace: Float64Array[] | null;
 }
 
 interface CompiledSchedule {
@@ -229,6 +254,11 @@ function compileSingleEntry(
       `engine: row "${label}" mysteryBountyVariance must be ≥ 0 (got ${row.mysteryBountyVariance})`,
     );
   }
+  if (row.pkoHeat != null && !(row.pkoHeat >= 0 && row.pkoHeat <= 3)) {
+    throw new Error(
+      `engine: row "${label}" pkoHeat must be in [0,3] (got ${row.pkoHeat})`,
+    );
+  }
 
   // Late-registration: the real field at reg-close is the nominal field
   // scaled by `lateRegMultiplier`. Scales prize pool and paid seats, and
@@ -351,6 +381,23 @@ function compileSingleEntry(
     );
     pmf = assets.pmf;
     binaryItmPrizeOverride = assets.prizeByPlace;
+  } else if (row.itmRate != null && row.itmRate > 0) {
+    // Fixed-ITM (shelled) calibration: user pins the ITM rate and optionally
+    // pins top-shell masses (P(1st), P(top-3), P(FT)). Skill concentrates
+    // only within the cashed band; locked shells stay fixed, free band
+    // α-calibrates so total E[W] still hits target.
+    const fi = calibrateShelledItm(
+      N,
+      paidCount,
+      payouts,
+      prizePool,
+      targetRegular,
+      row.itmRate,
+      row.finishBuckets,
+      model,
+    );
+    alpha = fi.alpha;
+    pmf = fi.pmf;
   } else {
     alpha = calibrateAlpha(
       N,
@@ -459,6 +506,10 @@ function compileSingleEntry(
   // stochastic noise around the mean.
   let bountyByPlace: Float64Array | null = null;
   let bountyKmean: Float64Array | null = null;
+  // Raw (unnormalized) bounty weights from the cumulative-cash recurrence.
+  // Captured here so the latent-heat bank below can re-normalize the same
+  // shape against its per-bin shifted pmf without redoing the PKO math.
+  let bountyRaw: Float64Array | null = null;
   if (bountyMean > 0 && N >= 2) {
     // Prefix harmonic numbers: Hprefix[k] = 1 + 1/2 + ... + 1/k, Hprefix[0] = 0.
     const Hprefix = new Float64Array(N);
@@ -536,6 +587,46 @@ function compileSingleEntry(
     } else {
       for (let i = 0; i < N; i++) bountyByPlace[i] = bountyMean;
     }
+    bountyRaw = raw;
+  }
+
+  // ---- PKO latent-heat bank (variant D) ---------------------------------
+  // Precompute HEAT_BIN_COUNT alternative `bountyByPlace` curves, each
+  // reshaping the raw cumulative-cash weights by raising to exponent
+  // `1 + pkoHeat · z_b`, then re-normalized against the (unchanged)
+  // calibrated pmf so every bin has the same mean bounty. Hot bins
+  // (exp > 1) push bounty mass onto the very deepest finishes; cold bins
+  // (exp < 1) flatten it. The player's finish pmf and prize curve are
+  // untouched, so ROI stays exactly on target while the right tail of
+  // the bounty haul distribution fattens.
+  const pkoHeat = Math.max(0, row.pkoHeat ?? 0);
+  let heatBountyByPlace: Float64Array[] | null = null;
+  if (pkoHeat > 0 && bountyMean > 0 && bountyRaw !== null) {
+    heatBountyByPlace = new Array(HEAT_BIN_COUNT);
+    const rawRef = bountyRaw;
+    for (let b = 0; b < HEAT_BIN_COUNT; b++) {
+      const z =
+        -HEAT_Z_RANGE + (2 * HEAT_Z_RANGE * b) / (HEAT_BIN_COUNT - 1);
+      // Clamp exponent below at 0.05 so a strongly-cold bin doesn't
+      // collapse tiny raw values to ~constant (which would flatten bbp
+      // to near-uniform and erase the "deep runs pay more" signal).
+      const exp = Math.max(0.05, 1 + pkoHeat * z);
+      const reshaped = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        const v = rawRef[i];
+        reshaped[i] = v > 0 ? Math.pow(v, exp) : 0;
+      }
+      let Zb = 0;
+      for (let i = 0; i < N; i++) Zb += pmf[i] * reshaped[i];
+      const bbpBin = new Float64Array(N);
+      if (Zb > 1e-12) {
+        const scale = bountyMean / Zb;
+        for (let i = 0; i < N; i++) bbpBin[i] = reshaped[i] * scale;
+      } else {
+        bbpBin.fill(bountyMean);
+      }
+      heatBountyByPlace[b] = bbpBin;
+    }
   }
 
   // ---- pmf integrity check ------------------------------------------------
@@ -596,6 +687,7 @@ function compileSingleEntry(
         ? Math.exp(row.mysteryBountyVariance) - 1
         : 0,
     sigmaSingleAnalytic,
+    heatBountyByPlace,
   };
 }
 
@@ -961,26 +1053,37 @@ export function buildResult(
 
   // Histograms --------------------------------------------------------------
   const histogram = histogramOf(finalProfits, 60);
-  const drawdownHistogram = histogramOf(maxDrawdowns, 50, true);
+  // Drawdowns are non-negative by construction, so lo auto-ranges from the
+  // real observed minimum instead of being pinned to 0 (which wasted leading
+  // bins when every sample had dd ≥ some floor like 50 BI).
+  const drawdownHistogram = histogramOf(maxDrawdowns, 50);
   // Streak histograms — distribution of max drawdown / longest cashless /
   // longest breakeven / recovery length across samples. Int32Array → Float64
   // copy is cheap. Recovery uses recovered-only (unrecovered share is
   // reported separately in stats).
-  const longestBreakevenF = new Float64Array(S);
-  const longestCashlessF = new Float64Array(S);
-  for (let s = 0; s < S; s++) {
-    longestBreakevenF[s] = longestBreakevens[s];
-    longestCashlessF[s] = longestCashless[s];
-  }
-  const longestBreakevenHistogram = histogramOf(longestBreakevenF, 40, true);
-  const longestCashlessHistogram = histogramOf(longestCashlessF, 40, true);
+  // Streak histograms now count EVERY breakeven / cashless streak across
+  // every sample (not just the longest per sample). The chart answers "how
+  // often do streaks of a given length occur" rather than "how often does a
+  // sample's longest streak fall in this bucket" — a much stronger signal
+  // for grinders asking "how common is a 50-tourney brick".
+  const longestBreakevenHistogram = histogramFromCounts(
+    shard.breakevenStreakCounts,
+    40,
+  );
+  const longestCashlessHistogram = histogramFromCounts(
+    shard.cashlessStreakCounts,
+    40,
+  );
 
   // Envelopes ---------------------------------------------------------------
+  // Percentile sorts run on the low-res K=80 grid (cheap). The final
+  // envelopes are upsampled to the hi-res grid below so they line up with
+  // the sample paths on a single uPlot x-axis.
   const K1 = K + 1;
-  const x: number[] = new Array(K1);
-  for (let j = 0; j < K1; j++) x[j] = checkpointIdx[j];
 
   const mean_ = new Float64Array(K1);
+  const envP05 = new Float64Array(K1);
+  const envP95 = new Float64Array(K1);
   const p15 = new Float64Array(K1);
   const p85 = new Float64Array(K1);
   const p025 = new Float64Array(K1);
@@ -1010,6 +1113,8 @@ export function buildResult(
       col[s] = pathMatrix[src * K1 + j];
     }
     col.sort();
+    envP05[j] = col[Math.floor(0.05 * (envS - 1))];
+    envP95[j] = col[Math.floor(0.95 * (envS - 1))];
     p15[j] = col[Math.floor(0.15 * (envS - 1))];
     p85[j] = col[Math.floor(0.85 * (envS - 1))];
     p025[j] = col[Math.floor(0.025 * (envS - 1))];
@@ -1019,34 +1124,20 @@ export function buildResult(
   }
 
   // Sample paths ------------------------------------------------------------
-  const wantPaths = Math.min(20, S);
-  const chosen: number[] = [];
-  const rngPick = mulberry32(mixSeed(input.seed, 0xabcdef));
-  const picked = new Set<number>();
-  while (chosen.length < wantPaths) {
-    const idx = Math.floor(rngPick() * S);
-    if (!picked.has(idx)) {
-      picked.add(idx);
-      chosen.push(idx);
-    }
-  }
-  const paths = chosen.map((idx) =>
-    pathMatrix.slice(idx * K1, idx * K1 + K1),
-  );
-
-  // "Best" = sample with the highest final profit (the upswing fairy tale).
-  // "Worst" = sample with the deepest peak-to-trough drawdown — NOT lowest
-  // final profit. This way the visual peak-to-trough span on the worst line
-  // matches the reported max-downswing stat exactly, instead of being some
-  // unrelated path that just happened to end at the bottom.
-  let bestIdx = 0;
-  let worstIdx = 0;
-  for (let s = 1; s < S; s++) {
-    if (finalProfits[s] > finalProfits[bestIdx]) bestIdx = s;
-    if (maxDrawdowns[s] > maxDrawdowns[worstIdx]) worstIdx = s;
-  }
-  const best = pathMatrix.slice(bestIdx * K1, bestIdx * K1 + K1);
-  const worst = pathMatrix.slice(worstIdx * K1, worstIdx * K1 + K1);
+  // Hi-res capture was populated during simulateShard: shard 0's first N
+  // samples are stored in hiResPaths, and the globally-extreme sample's path
+  // sits in hiResBestPath/hiResWorstPath. This replaces the old low-res
+  // pathMatrix slicing which produced smooth diagonals at K=80 checkpoints.
+  const hiCheckpointIdx = shard.hiResCheckpointIdx;
+  const xHi: number[] = new Array(hiCheckpointIdx.length);
+  for (let j = 0; j < hiCheckpointIdx.length; j++) xHi[j] = hiCheckpointIdx[j];
+  const paths = shard.hiResPaths;
+  const best = shard.hiResBestPath;
+  const worst = shard.hiResWorstPath;
+  // sampleIndices are informational only — the leading-shard hi-res paths
+  // correspond to samples [0 .. paths.length-1].
+  const chosen: number[] = new Array(paths.length);
+  for (let i = 0; i < paths.length; i++) chosen[i] = i;
 
   // Drawdown + breakeven
   let ddMean = 0;
@@ -1172,15 +1263,32 @@ export function buildResult(
     (d) => mean + d * compiled.totalBuyIn,
   );
 
-  // Downswing catalog -------------------------------------------------------
-  // Top-10 samples by max drawdown depth.
+  // Downswing / upswing catalog --------------------------------------------
+  // Top-3 samples by max drawdown depth (downswings) and by max run-up height
+  // (upswings). Previously we showed the top-10 downswings, but the tail
+  // samples clustered very tightly — rank 8-10 differ by a few bucks and add
+  // noise without new information. Top-3 keeps the spread meaningful and
+  // leaves room for a symmetric upswings table next to it.
+  const maxRunUps = shard.maxRunUps;
   const ddIdx: number[] = new Array(S);
-  for (let i = 0; i < S; i++) ddIdx[i] = i;
+  const upIdx: number[] = new Array(S);
+  for (let i = 0; i < S; i++) {
+    ddIdx[i] = i;
+    upIdx[i] = i;
+  }
   ddIdx.sort((a, b) => maxDrawdowns[b] - maxDrawdowns[a]);
-  const downswings = ddIdx.slice(0, Math.min(10, S)).map((sampleIndex, i) => ({
+  upIdx.sort((a, b) => maxRunUps[b] - maxRunUps[a]);
+  const downswings = ddIdx.slice(0, Math.min(3, S)).map((sampleIndex, i) => ({
     rank: i + 1,
     sampleIndex,
     depth: maxDrawdowns[sampleIndex],
+    finalProfit: finalProfits[sampleIndex],
+    longestBreakeven: longestBreakevens[sampleIndex],
+  }));
+  const upswings = upIdx.slice(0, Math.min(3, S)).map((sampleIndex, i) => ({
+    rank: i + 1,
+    sampleIndex,
+    height: maxRunUps[sampleIndex],
     finalProfit: finalProfits[sampleIndex],
     longestBreakeven: longestBreakevens[sampleIndex],
   }));
@@ -1233,11 +1341,23 @@ export function buildResult(
     longestBreakevenHistogram,
     longestCashlessHistogram,
     recoveryHistogram,
-    samplePaths: { x, paths, best, worst, sampleIndices: chosen },
-    envelopes: { x, mean: mean_, p15, p85, p025, p975, p0015, p9985 },
+    samplePaths: { x: xHi, paths, best, worst, sampleIndices: chosen },
+    envelopes: {
+      x: xHi,
+      mean: upsampleToGrid(mean_, checkpointIdx, hiCheckpointIdx),
+      p05: upsampleToGrid(envP05, checkpointIdx, hiCheckpointIdx),
+      p95: upsampleToGrid(envP95, checkpointIdx, hiCheckpointIdx),
+      p15: upsampleToGrid(p15, checkpointIdx, hiCheckpointIdx),
+      p85: upsampleToGrid(p85, checkpointIdx, hiCheckpointIdx),
+      p025: upsampleToGrid(p025, checkpointIdx, hiCheckpointIdx),
+      p975: upsampleToGrid(p975, checkpointIdx, hiCheckpointIdx),
+      p0015: upsampleToGrid(p0015, checkpointIdx, hiCheckpointIdx),
+      p9985: upsampleToGrid(p9985, checkpointIdx, hiCheckpointIdx),
+    },
     decomposition,
     sensitivity: { deltas: sensDeltas, expectedProfits: sensProfits },
     downswings,
+    upswings,
     convergence: { x: convX, mean: convMean, seLo: convSeLo, seHi: convSeHi },
     stats: {
       mean,
@@ -1335,6 +1455,42 @@ function countProfits(arr: Float64Array): number {
   return n;
 }
 
+/**
+ * Build a linear histogram from a "counts per integer length" array.
+ * The input is effectively a sparse distribution keyed by streak length;
+ * we re-bin it into [0, maxLen] linearly with `bins` buckets so the chart
+ * renders "how often do streaks of this length occur" with a shape that
+ * matches histogramOf (same {binEdges, counts} contract).
+ */
+function histogramFromCounts(
+  countsByLen: Int32Array,
+  bins: number,
+): { binEdges: number[]; counts: number[] } {
+  let maxLen = 0;
+  for (let i = countsByLen.length - 1; i > 0; i--) {
+    if (countsByLen[i] > 0) {
+      maxLen = i;
+      break;
+    }
+  }
+  if (maxLen === 0) {
+    return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
+  }
+  const hi = maxLen;
+  const binEdges: number[] = new Array(bins + 1);
+  for (let i = 0; i <= bins; i++) binEdges[i] = (hi * i) / bins;
+  const counts: number[] = new Array(bins).fill(0);
+  for (let len = 1; len <= maxLen; len++) {
+    const c = countsByLen[len];
+    if (c === 0) continue;
+    let b = Math.floor((len / hi) * bins);
+    if (b < 0) b = 0;
+    else if (b >= bins) b = bins - 1;
+    counts[b] += c;
+  }
+  return { binEdges, counts };
+}
+
 function histogramOf(
   arr: Float64Array,
   bins: number,
@@ -1388,12 +1544,33 @@ export interface RawShard {
   finalProfits: Float64Array;
   pathMatrix: Float64Array;
   maxDrawdowns: Float64Array;
+  /** Per-sample max upswing: max(profit − runningMin). Mirror of maxDrawdowns
+   *  used to surface top-N upswings alongside top-N downswings. */
+  maxRunUps: Float64Array;
   runningMins: Float64Array;
   longestBreakevens: Int32Array;
   longestCashless: Int32Array;
   recoveryLengths: Int32Array;
+  /** Per-length histograms of ALL breakeven / cashless streaks within the
+   *  shard (not just the longest per sample). Index = streak length in
+   *  tournaments. Length = N + 1. Merged additively across shards. */
+  breakevenStreakCounts: Int32Array;
+  cashlessStreakCounts: Int32Array;
   rowProfits: Float64Array;
   ruinedCount: number;
+  /** Hi-res capture grid (K'+1 points). Shared across all hi-res buffers
+   *  in this shard. */
+  hiResCheckpointIdx: Int32Array;
+  /** Per-sample hi-res paths for the first `wantHiResPaths` samples of
+   *  shard 0 only. Empty for non-leading shards. */
+  hiResPaths: Float64Array[];
+  /** Snapshot of the shard-local best-final-profit sample path. */
+  hiResBestPath: Float64Array;
+  hiResWorstPath: Float64Array;
+  /** Final profit of the shard's best/worst sample (used to pick globally
+   *  across multi-shard merges). ±Infinity for empty shards. */
+  hiResBestFinal: number;
+  hiResWorstFinal: number;
 }
 
 export interface CheckpointGrid {
@@ -1408,6 +1585,48 @@ export function makeCheckpointGrid(N: number): CheckpointGrid {
   const checkpointIdx = new Int32Array(K + 1);
   for (let j = 0; j <= K; j++) checkpointIdx[j] = Math.round((j * N) / K);
   return { K, checkpointIdx };
+}
+
+// Hi-res grid for the visible sample paths + best/worst curves. At K=80 each
+// checkpoint averages N/80 tournaments, so a single big cash spreads over ~13
+// finishes and the line reads as a gentle slope instead of a staircase. We
+// capture a second set of checkpoints at up to 4000 points for the handful of
+// sample curves actually rendered — envelope sorts still run on the K=80 grid,
+// so compute/memory stay bounded while the chart regains real vertical candles.
+const MAX_HIRES_POINTS = 4000;
+export function makeHiResGrid(N: number): CheckpointGrid {
+  const K = Math.min(MAX_HIRES_POINTS, N);
+  const checkpointIdx = new Int32Array(K + 1);
+  for (let j = 0; j <= K; j++) checkpointIdx[j] = Math.round((j * N) / K);
+  return { K, checkpointIdx };
+}
+
+/** Linear interpolation of an arbitrary series from one checkpoint grid to
+ * another. Both grids must cover the same [0, N] interval; the destination
+ * grid is usually a refinement (upsample), but equal-length passthrough and
+ * coarsening also work. */
+function upsampleToGrid(
+  src: Float64Array,
+  srcIdx: Int32Array,
+  dstIdx: Int32Array,
+): Float64Array {
+  const out = new Float64Array(dstIdx.length);
+  let lo = 0;
+  const last = srcIdx.length - 1;
+  for (let d = 0; d < dstIdx.length; d++) {
+    const xd = dstIdx[d];
+    while (lo < last && srcIdx[lo + 1] <= xd) lo++;
+    if (lo >= last) {
+      out[d] = src[last];
+      continue;
+    }
+    const x0 = srcIdx[lo];
+    const x1 = srcIdx[lo + 1];
+    const span = x1 - x0;
+    const t = span > 0 ? (xd - x0) / span : 0;
+    out[d] = src[lo] * (1 - t) + src[lo + 1] * t;
+  }
+  return out;
 }
 
 export function simulateShard(
@@ -1428,12 +1647,36 @@ export function simulateShard(
   const finalProfits = new Float64Array(shardSize);
   const pathMatrix = new Float64Array(shardSize * K1);
   const maxDrawdowns = new Float64Array(shardSize);
+  const maxRunUps = new Float64Array(shardSize);
   const runningMins = new Float64Array(shardSize);
   const longestBreakevens = new Int32Array(shardSize);
   const longestCashless = new Int32Array(shardSize);
   const recoveryLengths = new Int32Array(shardSize);
   const rowProfits = new Float64Array(shardSize * numRows);
+  // Per-length streak counters. Allocated at N+1 so the maximum possible
+  // streak (an entire sample with no cash / no new peak) fits exactly.
+  const breakevenStreakCounts = new Int32Array(N + 1);
+  const cashlessStreakCounts = new Int32Array(N + 1);
   let ruinedCount = 0;
+
+  // Hi-res capture. Allocated per-shard regardless of shard size so the
+  // RawShard contract stays uniform (mergeShards can safely read fields
+  // even on single-sample shards).
+  const hiGrid = makeHiResGrid(N);
+  const hiK = hiGrid.K;
+  const hiK1 = hiK + 1;
+  const hiCheckpointIdx = hiGrid.checkpointIdx;
+  // Only the leading shard (sStart===0) captures the visible sample paths.
+  // Follow-up shards would produce paths well past the first ~20 rendered
+  // ones, so we skip their allocation entirely.
+  const wantHiResPaths = sStart === 0 ? Math.min(20, shardSize) : 0;
+  const hiResPaths: Float64Array[] = new Array(wantHiResPaths);
+  for (let i = 0; i < wantHiResPaths; i++) hiResPaths[i] = new Float64Array(hiK1);
+  const hiResBestPath = new Float64Array(hiK1);
+  const hiResWorstPath = new Float64Array(hiK1);
+  const hiResScratch = new Float64Array(hiK1);
+  let hiResBestFinal = Number.NEGATIVE_INFINITY;
+  let hiResWorstFinal = Number.POSITIVE_INFINITY;
 
   const roiStdErr = Math.max(0, input.roiStdErr ?? 0);
   const sigTourney = Math.max(0, input.roiShockPerTourney ?? 0);
@@ -1497,6 +1740,7 @@ export function simulateShard(
     let runningMax = 0;
     let runningMin = 0;
     let maxDD = 0;
+    let maxUp = 0;
     let breakevenLen = 0;
     let longestBreakeven = 0;
     let cashlessRun = 0;
@@ -1509,6 +1753,13 @@ export function simulateShard(
     let nextCpIdx = checkpointIdx[1];
     const pathBase = localS * K1;
     const rowBase = localS * numRows;
+
+    // Hi-res scratch starts at 0 (pre-tournament profit). We always capture
+    // into scratch so the shardBest/Worst swap at end-of-sample sees the full
+    // trajectory regardless of which sample turns out extreme.
+    hiResScratch[0] = 0;
+    let nextHiCp = 1;
+    let nextHiCpIdx = hiCheckpointIdx[1];
 
     for (let i = 0; i < N; i++) {
       if ((sigSession > 0 || sigDrift > 0) && i % perPass === 0) {
@@ -1572,11 +1823,24 @@ export function simulateShard(
       const t = variants
         ? variants[(rng() * variants.length) | 0]
         : parent;
-      const bp = t.bountyByPlace;
+      let bp = t.bountyByPlace;
       const bkm = t.bountyKmean;
       const prizes = t.prizeByPlace;
       const aliasProb = t.aliasProb;
       const aliasIdx = t.aliasIdx;
+      // PKO latent heat: one gauss draw per tourney selects a reshaped
+      // bbp bin from the precomputed bank. Disabled → this branch is
+      // never entered, so no extra RNG is consumed and the legacy PKO
+      // path is bit-exact preserved.
+      const heatBountyByPlace = t.heatBountyByPlace;
+      if (heatBountyByPlace !== null) {
+        const zh = gaussB();
+        let zc = zh;
+        if (zc < -HEAT_Z_RANGE) zc = -HEAT_Z_RANGE;
+        else if (zc > HEAT_Z_RANGE) zc = HEAT_Z_RANGE;
+        const bi = ((zc + HEAT_Z_RANGE) * HEAT_BIN_SCALE + 0.5) | 0;
+        bp = heatBountyByPlace[bi];
+      }
       const aliasN = aliasProb.length;
       const single = t.singleCost;
       const bulletCost = single - effectiveDelta * single;
@@ -1694,6 +1958,7 @@ export function simulateShard(
       rowProfits[rowBase + t.rowIdx] += delta;
 
       if (cashedThisSlot) {
+        if (cashlessRun > 0) cashlessStreakCounts[cashlessRun]++;
         cashlessRun = 0;
       } else {
         cashlessRun++;
@@ -1701,6 +1966,7 @@ export function simulateShard(
       }
 
       if (profit > runningMax) {
+        if (breakevenLen > 0) breakevenStreakCounts[breakevenLen]++;
         runningMax = profit;
         breakevenLen = 0;
         if (ddTroughIdx >= 0 && sampleRecoveryLen < 0) {
@@ -1717,6 +1983,8 @@ export function simulateShard(
         ddTroughIdx = i;
         sampleRecoveryLen = -1;
       }
+      const up = profit - runningMin;
+      if (up > maxUp) maxUp = up;
 
       if (bankroll > 0 && !ruined && profit <= -bankroll) ruined = true;
 
@@ -1725,10 +1993,38 @@ export function simulateShard(
         nextCp++;
         if (nextCp <= K) nextCpIdx = checkpointIdx[nextCp];
       }
+      while (nextHiCp <= hiK && i + 1 === nextHiCpIdx) {
+        hiResScratch[nextHiCp] = profit;
+        nextHiCp++;
+        if (nextHiCp <= hiK) nextHiCpIdx = hiCheckpointIdx[nextHiCp];
+      }
     }
+
+    // Persist the first `wantHiResPaths` samples' hi-res trajectories, and
+    // swap in a new shard-best/worst if this sample breaks the record. New
+    // records are rare (≈ O(log S)) so the per-sample cost is ~O(N/stride).
+    if (localS < wantHiResPaths) {
+      hiResPaths[localS].set(hiResScratch);
+    }
+    if (profit > hiResBestFinal) {
+      hiResBestFinal = profit;
+      hiResBestPath.set(hiResScratch);
+    }
+    if (profit < hiResWorstFinal) {
+      hiResWorstFinal = profit;
+      hiResWorstPath.set(hiResScratch);
+    }
+
+    // End-of-sample: any streak still open at the last tournament was never
+    // terminated — count it once so the histogram reflects it. Without this
+    // flush, samples where the grinder never recovers / never hits a peak
+    // would be missing from the "how often" totals.
+    if (breakevenLen > 0) breakevenStreakCounts[breakevenLen]++;
+    if (cashlessRun > 0) cashlessStreakCounts[cashlessRun]++;
 
     finalProfits[localS] = profit;
     maxDrawdowns[localS] = maxDD;
+    maxRunUps[localS] = maxUp;
     runningMins[localS] = runningMin;
     longestBreakevens[localS] = longestBreakeven;
     longestCashless[localS] = longestCashlessRun;
@@ -1748,12 +2044,21 @@ export function simulateShard(
     finalProfits,
     pathMatrix,
     maxDrawdowns,
+    maxRunUps,
     runningMins,
     longestBreakevens,
     longestCashless,
     recoveryLengths,
+    breakevenStreakCounts,
+    cashlessStreakCounts,
     rowProfits,
     ruinedCount,
+    hiResCheckpointIdx: hiCheckpointIdx,
+    hiResPaths,
+    hiResBestPath,
+    hiResWorstPath,
+    hiResBestFinal,
+    hiResWorstFinal,
   };
 }
 
@@ -1779,22 +2084,43 @@ export function mergeShards(
   const finalProfits = new Float64Array(S);
   const pathMatrix = new Float64Array(S * K1);
   const maxDrawdowns = new Float64Array(S);
+  const maxRunUps = new Float64Array(S);
   const runningMins = new Float64Array(S);
   const longestBreakevens = new Int32Array(S);
   const longestCashless = new Int32Array(S);
   const recoveryLengths = new Int32Array(S);
   const rowProfits = new Float64Array(S * numRows);
+  const firstLen = sorted[0].breakevenStreakCounts.length;
+  const breakevenStreakCounts = new Int32Array(firstLen);
+  const cashlessStreakCounts = new Int32Array(firstLen);
   let ruinedCount = 0;
   for (const sh of sorted) {
     finalProfits.set(sh.finalProfits, sh.sStart);
     maxDrawdowns.set(sh.maxDrawdowns, sh.sStart);
+    maxRunUps.set(sh.maxRunUps, sh.sStart);
     runningMins.set(sh.runningMins, sh.sStart);
     longestBreakevens.set(sh.longestBreakevens, sh.sStart);
     longestCashless.set(sh.longestCashless, sh.sStart);
     recoveryLengths.set(sh.recoveryLengths, sh.sStart);
     pathMatrix.set(sh.pathMatrix, sh.sStart * K1);
     rowProfits.set(sh.rowProfits, sh.sStart * numRows);
+    for (let i = 0; i < firstLen; i++) {
+      breakevenStreakCounts[i] += sh.breakevenStreakCounts[i];
+      cashlessStreakCounts[i] += sh.cashlessStreakCounts[i];
+    }
     ruinedCount += sh.ruinedCount;
+  }
+  // Hi-res aggregation: leading shard owns the visible sample paths, global
+  // best/worst taken by scanning per-shard extrema (each shard already swapped
+  // its own locally-extreme scratch into shardBest/WorstPath during simulation).
+  const leading = sorted[0];
+  const hiResCheckpointIdx = leading.hiResCheckpointIdx;
+  const hiResPaths = leading.hiResPaths;
+  let bestShard = leading;
+  let worstShard = leading;
+  for (const sh of sorted) {
+    if (sh.hiResBestFinal > bestShard.hiResBestFinal) bestShard = sh;
+    if (sh.hiResWorstFinal < worstShard.hiResWorstFinal) worstShard = sh;
   }
   return {
     sStart: 0,
@@ -1802,11 +2128,20 @@ export function mergeShards(
     finalProfits,
     pathMatrix,
     maxDrawdowns,
+    maxRunUps,
     runningMins,
     longestBreakevens,
     longestCashless,
     recoveryLengths,
+    breakevenStreakCounts,
+    cashlessStreakCounts,
     rowProfits,
     ruinedCount,
+    hiResCheckpointIdx,
+    hiResPaths,
+    hiResBestPath: bestShard.hiResBestPath,
+    hiResWorstPath: worstShard.hiResWorstPath,
+    hiResBestFinal: bestShard.hiResBestFinal,
+    hiResWorstFinal: worstShard.hiResWorstFinal,
   };
 }

@@ -90,6 +90,8 @@ function collectResultTransfers(r: SimulationResult): Transferable[] {
   out.push(r.samplePaths.worst.buffer);
   for (const p of r.samplePaths.paths) out.push(p.buffer);
   out.push(r.envelopes.mean.buffer);
+  out.push(r.envelopes.p05.buffer);
+  out.push(r.envelopes.p95.buffer);
   out.push(r.envelopes.p15.buffer);
   out.push(r.envelopes.p85.buffer);
   out.push(r.envelopes.p025.buffer);
@@ -103,16 +105,24 @@ function collectResultTransfers(r: SimulationResult): Transferable[] {
 }
 
 function collectShardTransfers(shard: RawShard): Transferable[] {
-  return [
+  const out: Transferable[] = [
     shard.finalProfits.buffer,
     shard.pathMatrix.buffer,
     shard.maxDrawdowns.buffer,
+    shard.maxRunUps.buffer,
     shard.runningMins.buffer,
     shard.longestBreakevens.buffer,
     shard.longestCashless.buffer,
     shard.recoveryLengths.buffer,
+    shard.breakevenStreakCounts.buffer,
+    shard.cashlessStreakCounts.buffer,
     shard.rowProfits.buffer,
+    shard.hiResCheckpointIdx.buffer,
+    shard.hiResBestPath.buffer,
+    shard.hiResWorstPath.buffer,
   ];
+  for (const p of shard.hiResPaths) out.push(p.buffer);
+  return out;
 }
 
 self.onmessage = (e: MessageEvent<ShardRequest | BuildRequest>) => {

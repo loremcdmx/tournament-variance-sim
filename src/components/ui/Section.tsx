@@ -19,6 +19,8 @@ interface Props {
   number?: string;
   /** Suit accent — drives the color of the number, eyebrow, and underline. */
   suit?: Suit;
+  /** Optional DOM id on the section wrapper for scroll-into-view anchors. */
+  anchorId?: string;
 }
 
 export function Section({
@@ -28,43 +30,50 @@ export function Section({
   actions,
   number,
   suit = "club",
+  anchorId,
 }: Props) {
   const meta = SUIT_META[suit];
   return (
-    <section className="flex flex-col gap-5">
-      <div
-        className="flex flex-wrap items-end justify-between gap-3 border-b pb-3"
-        style={{ borderColor: meta.colorVar + "66" }}
-      >
-        <div className="flex items-baseline gap-4">
-          {number && (
-            <span
-              className="section-num text-3xl leading-none sm:text-5xl"
-              style={{ color: meta.colorVar }}
-            >
-              {number}
-            </span>
-          )}
-          <div>
-            <div
-              className="eyebrow mb-1 flex items-center gap-1.5"
-              style={{ color: meta.colorVar }}
-            >
-              <span className="text-[11px]">{meta.glyph}</span>
-              <span>/ {title.toLowerCase()}</span>
-            </div>
-            <h2 className="text-xl font-bold uppercase tracking-tight text-[color:var(--color-fg)] sm:text-2xl">
-              {title}
-            </h2>
-            {subtitle && (
-              <p className="mt-1 max-w-xl text-xs leading-relaxed text-[color:var(--color-fg-muted)]">
-                {subtitle}
-              </p>
+    <section id={anchorId} className="flex flex-col gap-6 scroll-mt-24">
+      {/* Editorial masthead: numeral / eyebrow / title sit on one baseline,
+          with a heavy double-rule divider beneath. */}
+      <header className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex items-end gap-5">
+            {number && (
+              <span
+                className="section-num text-[64px] sm:text-[92px]"
+                style={{ color: meta.colorVar }}
+                aria-hidden
+              >
+                {number}
+              </span>
             )}
+            <div className="flex flex-col gap-1 pb-1">
+              <div
+                className="eyebrow flex items-center gap-2"
+                style={{ color: meta.colorVar }}
+              >
+                <span className="text-[12px] leading-none">{meta.glyph}</span>
+                <span>/ {title}</span>
+              </div>
+              <h2 className="text-[22px] font-bold uppercase leading-[1.05] tracking-[-0.01em] text-[color:var(--color-fg)] sm:text-[28px]">
+                {title}
+              </h2>
+              {subtitle && (
+                <p className="mt-0.5 max-w-xl text-[12px] leading-relaxed text-[color:var(--color-fg-muted)]">
+                  {subtitle}
+                </p>
+              )}
+            </div>
           </div>
+          {actions && <div className="pb-1">{actions}</div>}
         </div>
-        {actions}
-      </div>
+        <div
+          className="masthead-rule"
+          style={{ color: meta.colorVar }}
+        />
+      </header>
       {children}
     </section>
   );
@@ -80,7 +89,7 @@ export function Card({
   return (
     <div
       className={
-        "rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/90 shadow-[0_0_0_1px_rgba(96,165,250,0.03)_inset,0_20px_40px_-24px_rgba(0,0,0,0.55)] " +
+        "relative border-t-[2px] border-x border-b border-t-[color:var(--color-fg)]/70 border-x-[color:var(--color-border)] border-b-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/60 " +
         className
       }
     >

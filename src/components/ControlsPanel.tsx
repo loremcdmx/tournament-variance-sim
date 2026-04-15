@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 import { ModelPresetSelector } from "./ModelPresetSelector";
@@ -45,6 +46,16 @@ export interface ControlsState {
   empiricalBuckets?: number[];
 }
 
+interface DoneSummary {
+  mean: number;
+  median: number;
+  roi: number;
+  probProfit: number;
+  riskOfRuin: number;
+  elapsedMs: number | null;
+  resultsAnchorId: string;
+}
+
 interface Props {
   value: ControlsState;
   onChange: (next: ControlsState) => void;
@@ -54,6 +65,19 @@ interface Props {
   progress: number;
   /** Projected run duration in ms, or null when no prior run exists. */
   estimatedMs?: number | null;
+  /** Total tournaments per sample (sum of row.count * scheduleRepeats). */
+  tournamentsPerSession: number;
+  /** When a run has just finished, a compact snapshot to display under the
+   * run button so the user sees *something* happened without scrolling to
+   * the full results section below. Null while running or before first run. */
+  doneSummary?: DoneSummary | null;
+}
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return n.toLocaleString("ru-RU");
 }
 
 function formatDuration(ms: number): string {
@@ -73,11 +97,42 @@ export function ControlsPanel({
   running,
   progress,
   estimatedMs,
+  tournamentsPerSession,
+  doneSummary,
 }: Props) {
   const t = useT();
+  const { advanced } = useAdvancedMode();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empError, setEmpError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const runStartRef = useRef<number | null>(null);
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    if (running) {
+      if (runStartRef.current == null) runStartRef.current = performance.now();
+      const id = window.setInterval(() => setNowMs(performance.now()), 250);
+      return () => window.clearInterval(id);
+    }
+    runStartRef.current = null;
+    return undefined;
+  }, [running]);
+  const remainingMs = (() => {
+    if (!running || runStartRef.current == null) return null;
+    const elapsed = nowMs - runStartRef.current;
+    // Blend elapsed-rate projection with the prior estimate: early in the run
+    // progress is noisy (shard startup, finish PMF calibration), so fall back
+    // to estimatedMs until ≥10 % done. After that, use elapsed/progress so a
+    // slower-than-expected run updates the ETA in real time.
+    if (progress < 0.1) {
+      if (estimatedMs != null && estimatedMs > 0) {
+        return Math.max(0, estimatedMs - elapsed);
+      }
+      return null;
+    }
+    const projected = elapsed / progress;
+    return Math.max(0, projected - elapsed);
+  })();
+  const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
 
@@ -149,6 +204,7 @@ export function ControlsPanel({
         </Field>
       </div>
 
+      {advanced && (
       <button
         type="button"
         onClick={() => setShowAdvanced((s) => !s)}
@@ -156,8 +212,9 @@ export function ControlsPanel({
       >
         {showAdvanced ? t("controls.collapseAdvanced") : t("controls.expandAdvanced")}
       </button>
+      )}
 
-      {showAdvanced && (
+      {advanced && showAdvanced && (
       <>
       {/* Advanced run knobs: seed + PD compare */}
       <SectionTitle>{t("controls.section.advanced")}</SectionTitle>
@@ -331,7 +388,7 @@ export function ControlsPanel({
       </>
       )}
 
-      {showAdvanced && value.finishModelId === "empirical" && (
+      {advanced && showAdvanced && value.finishModelId === "empirical" && (
         <div className="mt-4 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">
           <div className="mb-2 flex items-center justify-between">
             <div className="text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-fg-muted)]">
@@ -391,49 +448,56 @@ export function ControlsPanel({
       )}
 
       </fieldset>
-      <div className="mt-5 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-4 sm:flex-row sm:items-center">
-        {running ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-rose-500 to-rose-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(244,63,94,0.45)] transition-all hover:from-rose-400 hover:to-rose-500 active:translate-y-px"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="1" />
-            </svg>
-            {t("controls.stop")} {Math.min(100, Math.floor(progress * 100))}%
-          </button>
-        ) : (
-          <>
+      <div className="mt-5 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-4">
+        <div className="flex items-center gap-3">
+          {running ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-rose-500 to-rose-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(244,63,94,0.45)] transition-all hover:from-rose-400 hover:to-rose-500 active:translate-y-px"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="1" />
+              </svg>
+              {t("controls.stop")} {Math.min(100, Math.floor(progress * 100))}%
+            </button>
+          ) : (
             <button
               type="button"
               onClick={onRun}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path d="M6 4l14 8-14 8V4z" fill="currentColor" />
               </svg>
               {t("controls.run")}
             </button>
-            {estimatedMs != null && estimatedMs > 0 && (
-              <span
-                className="text-[11px] text-[color:var(--color-fg-dim)]"
-                title={t("controls.eta.hint")}
-              >
-                {t("controls.eta")} ≈ {formatDuration(estimatedMs)}
-              </span>
-            )}
-          </>
-        )}
-        {running && (
-          <div className="flex-1">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
-              <div
-                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300"
-                style={{ width: `${Math.min(100, progress * 100).toFixed(1)}%` }}
-              />
-            </div>
+          )}
+          <div className="ml-auto flex flex-col items-end gap-0.5 text-right font-mono text-[10.5px] tabular-nums text-[color:var(--color-fg-dim)]">
+            <span>
+              {running
+                ? remainingMs != null
+                  ? `${t("controls.remaining")} ≈ ${formatDuration(remainingMs)}`
+                  : t("controls.starting")
+                : estimatedMs != null && estimatedMs > 0
+                ? `${t("controls.eta")} ≈ ${formatDuration(estimatedMs)}`
+                : "\u00A0"}
+            </span>
+            <span>
+              {formatCount(totalTournaments)} {t("controls.totalTourneys")}
+            </span>
           </div>
+        </div>
+        {running && (
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300"
+              style={{ width: `${Math.min(100, progress * 100).toFixed(1)}%` }}
+            />
+          </div>
+        )}
+        {!running && doneSummary && (
+          <DoneSummaryBlock summary={doneSummary} />
         )}
       </div>
     </Card>
@@ -518,5 +582,96 @@ function Spinner() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function fmtMoneyCompact(v: number): string {
+  const sign = v < 0 ? "−" : "";
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+  if (abs === 0) return "$0";
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
+  const t = useT();
+  const meanPositive = summary.mean >= 0;
+  const scrollToResults = () => {
+    const el = document.getElementById(summary.resultsAnchorId);
+    if (el)
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-300">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          {t("controls.done.label")}
+          {summary.elapsedMs != null && (
+            <span className="font-mono text-[color:var(--color-fg-dim)]">
+              · {formatDuration(summary.elapsedMs)}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={scrollToResults}
+          className="flex items-center gap-1 text-[10.5px] font-semibold text-emerald-300 transition-colors hover:text-emerald-200"
+        >
+          {t("controls.done.seeBelow")} ↓
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums sm:grid-cols-4">
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("controls.done.profit")}
+          </span>
+          <span
+            className={`font-semibold ${
+              meanPositive ? "text-emerald-300" : "text-rose-300"
+            }`}
+          >
+            {fmtMoneyCompact(summary.mean)}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            ROI
+          </span>
+          <span
+            className={`font-semibold ${
+              summary.roi >= 0 ? "text-emerald-300" : "text-rose-300"
+            }`}
+          >
+            {(summary.roi * 100).toFixed(1)}%
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("controls.done.upChance")}
+          </span>
+          <span className="font-semibold text-[color:var(--color-fg)]">
+            {(summary.probProfit * 100).toFixed(0)}%
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("controls.done.ruin")}
+          </span>
+          <span
+            className={`font-semibold ${
+              summary.riskOfRuin > 0.05
+                ? "text-rose-300"
+                : "text-[color:var(--color-fg)]"
+            }`}
+          >
+            {(summary.riskOfRuin * 100).toFixed(1)}%
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

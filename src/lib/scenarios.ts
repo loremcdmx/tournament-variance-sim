@@ -39,17 +39,17 @@ export const SCENARIOS: DemoScenario[] = [
     id: "primedope-reference",
     labelKey: "demo.primedopeReference",
     description:
-      "Сверка с PrimeDope: 100 игроков, 15 мест, $50+$5.50, ROI 10%, 1000 турниров. Минимальный набор — удобно положить рядом наш результат и PrimeDope'овский.",
+      "Сверка с PrimeDope: 5000 игроков, $50+$5.50, ROI 10%, 10 000 турниров. Минимальный набор — удобно положить рядом наш результат и PrimeDope'овский.",
     schedule: [
       {
         id: "pd-1",
         label: "$50 MTT (PrimeDope reference)",
-        players: 100,
+        players: 5000,
         buyIn: 50,
         rake: 0.11,
         roi: 0.1,
         payoutStructure: "mtt-standard",
-        count: 1000,
+        count: 10_000,
       },
     ],
     controls: {

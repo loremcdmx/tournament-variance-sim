@@ -1,14 +1,22 @@
 "use client";
 
 import { useMemo } from "react";
-import { buildFinishPMF, calibrateAlpha } from "@/lib/sim/finishModel";
+import {
+  buildFinishPMF,
+  calibrateAlpha,
+  calibrateShelledItm,
+} from "@/lib/sim/finishModel";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 
 interface Props {
   row: TournamentRow;
   model: FinishModelConfig;
+  /** If provided, the fixed-ITM shape controls panel is shown below the
+   *  tier breakdown and can edit row.itmRate / row.finishBuckets. */
+  onRowChange?: (updates: Partial<TournamentRow>) => void;
 }
 
 interface TierSpec {
@@ -30,8 +38,9 @@ const TIERS: TierSpec[] = [
   { key: "ootm", labelKey: "preview.tierOotm", color: "#1f2937" },
 ];
 
-export function FinishPMFPreview({ row, model }: Props) {
+export function FinishPMFPreview({ row, model, onRowChange }: Props) {
   const t = useT();
+  const { advanced } = useAdvancedMode();
 
   const stats = useMemo(() => computeRowStats(row, model), [row, model]);
 
@@ -212,6 +221,228 @@ export function FinishPMFPreview({ row, model }: Props) {
           })}
         </div>
       </div>
+
+      {advanced && onRowChange && (
+        <ShapeControls row={row} stats={stats} onRowChange={onRowChange} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shape controls — fixed-ITM panel with locks, presets, and target/current EW
+// gap display. Activates when onRowChange is wired in.
+// ---------------------------------------------------------------------------
+
+interface ShapeControlsProps {
+  row: TournamentRow;
+  stats: RowStats;
+  onRowChange: (updates: Partial<TournamentRow>) => void;
+}
+
+function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
+  const t = useT();
+  const active = stats.shellMode;
+
+  const patchBuckets = (patch: Partial<NonNullable<TournamentRow["finishBuckets"]>>) => {
+    const merged = { ...(row.finishBuckets ?? {}), ...patch };
+    // Drop undefined keys so empty buckets disappear cleanly.
+    const cleaned: NonNullable<TournamentRow["finishBuckets"]> = {};
+    if (merged.first != null) cleaned.first = merged.first;
+    if (merged.top3 != null) cleaned.top3 = merged.top3;
+    if (merged.ft != null) cleaned.ft = merged.ft;
+    onRowChange({
+      finishBuckets: Object.keys(cleaned).length > 0 ? cleaned : undefined,
+    });
+  };
+
+  const applyPreset = (preset: "auto" | "noskill" | "grinder" | "crusher") => {
+    if (preset === "auto") {
+      onRowChange({ itmRate: undefined, finishBuckets: undefined });
+      return;
+    }
+    const paidFrac = stats.paidCount / Math.max(1, row.players);
+    const next: Partial<TournamentRow> = { finishBuckets: undefined };
+    if (preset === "noskill") next.itmRate = paidFrac;
+    else if (preset === "grinder") next.itmRate = 0.16;
+    else if (preset === "crusher") next.itmRate = 0.18;
+    onRowChange(next);
+  };
+
+  const moneyFmt = (v: number) => {
+    const sign = v < 0 ? "-" : "";
+    const abs = Math.abs(v);
+    if (abs < 1000) {
+      const hasFraction = Math.abs(abs - Math.round(abs)) > 0.005;
+      return `${sign}$${hasFraction ? abs.toFixed(2) : Math.round(abs).toString()}`;
+    }
+    return `${sign}$${Math.round(abs).toLocaleString()}`;
+  };
+  const pctFmt = (v: number) =>
+    `${(v * 100).toFixed(v < 0.001 ? 3 : v < 0.01 ? 2 : v < 0.1 ? 2 : 1)}%`;
+
+  const gap = stats.shellCurrentEv - stats.shellTargetEv;
+  const gapPct = stats.shellTargetEv > 0 ? Math.abs(gap) / stats.shellTargetEv : 0;
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          {t("shape.title")}
+        </div>
+        <select
+          value={
+            row.itmRate == null
+              ? "auto"
+              : row.finishBuckets &&
+                  (row.finishBuckets.first != null ||
+                    row.finishBuckets.top3 != null ||
+                    row.finishBuckets.ft != null)
+                ? "custom"
+                : row.itmRate === 0.16
+                  ? "grinder"
+                  : row.itmRate === 0.18
+                    ? "crusher"
+                    : "custom"
+          }
+          onChange={(e) => applyPreset(e.target.value as "auto" | "noskill" | "grinder" | "crusher")}
+          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-[10px] text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
+        >
+          <option value="auto">{t("shape.presetAuto")}</option>
+          <option value="noskill">{t("shape.presetNoSkill")}</option>
+          <option value="grinder">{t("shape.presetGrinder")}</option>
+          <option value="crusher">{t("shape.presetCrusher")}</option>
+          <option value="custom">{t("shape.presetCustom")}</option>
+        </select>
+      </div>
+
+      {/* ITM rate input */}
+      <label className="flex items-center justify-between gap-2 text-[11px] text-[color:var(--color-fg)]">
+        <span>{t("shape.itmLabel")}</span>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step={0.5}
+          placeholder={t("shape.autoPlaceholder")}
+          value={row.itmRate != null ? +(row.itmRate * 100).toFixed(2) : ""}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === "") {
+              onRowChange({ itmRate: undefined, finishBuckets: undefined });
+              return;
+            }
+            const v = parseFloat(raw);
+            onRowChange({
+              itmRate: Number.isFinite(v) ? Math.max(0, Math.min(1, v / 100)) : undefined,
+            });
+          }}
+          className="w-20 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
+        />
+      </label>
+
+      {active && (
+        <>
+          {/* Shell locks */}
+          <div className="flex flex-col divide-y divide-[color:var(--color-border)]/60">
+            {(
+              [
+                { key: "first", label: t("shape.rowFirst"), current: stats.shellP1, value: row.finishBuckets?.first },
+                { key: "top3", label: t("shape.rowTop3"), current: stats.shellTop3, value: row.finishBuckets?.top3 },
+                { key: "ft", label: t("shape.rowFt"), current: stats.shellFt, value: row.finishBuckets?.ft },
+              ] as const
+            ).map((bucket) => {
+              const locked = bucket.value != null;
+              return (
+                <div
+                  key={bucket.key}
+                  className="flex items-center justify-between gap-2 py-1 text-[11px]"
+                >
+                  <span className="min-w-[56px] text-[color:var(--color-fg)]">
+                    {bucket.label}
+                  </span>
+                  <span className="flex-1 text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+                    {pctFmt(bucket.current)}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    placeholder={t("shape.autoPlaceholder")}
+                    value={locked ? +((bucket.value as number) * 100).toFixed(3) : ""}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") {
+                        patchBuckets({ [bucket.key]: undefined } as Record<string, undefined>);
+                        return;
+                      }
+                      const v = parseFloat(raw);
+                      if (!Number.isFinite(v)) return;
+                      patchBuckets({
+                        [bucket.key]: Math.max(0, Math.min(1, v / 100)),
+                      } as Record<string, number>);
+                    }}
+                    className="w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (locked) {
+                        patchBuckets({ [bucket.key]: undefined } as Record<string, undefined>);
+                      } else {
+                        patchBuckets({ [bucket.key]: bucket.current } as Record<string, number>);
+                      }
+                    }}
+                    className="w-12 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)]"
+                  >
+                    {locked ? t("shape.unlock") : t("shape.lock")}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Target vs current + Auto-fit */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--color-border)] pt-2 text-[10px]">
+            <div className="flex flex-col gap-0.5">
+              <div className="text-[color:var(--color-fg-dim)]">
+                {t("shape.target")}{" "}
+                <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+                  {moneyFmt(stats.shellTargetEv)}
+                </span>
+              </div>
+              <div className="text-[color:var(--color-fg-dim)]">
+                {t("shape.current")}{" "}
+                <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+                  {moneyFmt(stats.shellCurrentEv)}
+                </span>
+                {!stats.shellFeasible && (
+                  <span
+                    className="ml-1 font-mono tabular-nums text-[color:var(--color-danger)]"
+                    title={t("shape.infeasibleHint")}
+                  >
+                    ({gap >= 0 ? "+" : ""}
+                    {moneyFmt(gap)}, {(gapPct * 100).toFixed(1)}%)
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onRowChange({ finishBuckets: undefined })}
+              className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
+            >
+              {t("shape.autoFit")}
+            </button>
+          </div>
+          {!stats.shellFeasible && (
+            <div className="rounded-md border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/5 px-2 py-1 text-[10px] leading-snug text-[color:var(--color-danger)]">
+              {t("shape.infeasible")}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -236,6 +467,16 @@ interface RowStats {
   fieldTop10: number;
   fieldRestItm: number;
   fieldOotm: number;
+  /** Fixed-ITM solver feedback — null when that mode is not active. */
+  shellMode: boolean;
+  shellFeasible: boolean;
+  shellTargetEv: number;
+  shellCurrentEv: number;
+  shellP1: number;
+  shellTop3: number;
+  shellFt: number;
+  /** Number of paid places (= payouts that are > 0). */
+  paidCount: number;
 }
 
 /**
@@ -257,15 +498,37 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
 
   const targetRegular = Math.max(0.01, entryCost * (1 + row.roi) - bountyMean);
   const effectiveROI = targetRegular / entryCost - 1;
-  const alpha = calibrateAlpha(
-    N,
-    payouts,
-    prizePool,
-    entryCost,
-    effectiveROI,
-    model,
-  );
-  const pmf = buildFinishPMF(N, model, alpha);
+  const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
+  let alpha: number;
+  let pmf: Float64Array;
+  let feasible = true;
+  let currentWinningsFromSolver: number | null = null;
+  if (row.itmRate != null && row.itmRate > 0) {
+    const fi = calibrateShelledItm(
+      N,
+      paidCount,
+      payouts,
+      prizePool,
+      targetRegular,
+      row.itmRate,
+      row.finishBuckets,
+      model,
+    );
+    alpha = fi.alpha;
+    pmf = fi.pmf;
+    feasible = fi.feasible;
+    currentWinningsFromSolver = fi.currentWinnings;
+  } else {
+    alpha = calibrateAlpha(
+      N,
+      payouts,
+      prizePool,
+      entryCost,
+      effectiveROI,
+      model,
+    );
+    pmf = buildFinishPMF(N, model, alpha);
+  }
 
   const prizeByPlace = new Float64Array(N);
   for (let i = 0; i < Math.min(payouts.length, N); i++) {
@@ -329,12 +592,11 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const cv = totalEv > 1e-9 ? payoutStd / totalEv : 0;
 
   let itm = 0;
-  const paidMtt = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
-  for (let i = 0; i < paidMtt; i++) itm += pmf[i];
+  for (let i = 0; i < paidCount; i++) itm += pmf[i];
 
   const cutTop1 = Math.max(1, Math.ceil(N * 0.01));
   const cutTop10 = Math.max(cutTop1, Math.ceil(N * 0.1));
-  const cutItm = Math.max(cutTop10, paidMtt);
+  const cutItm = Math.max(cutTop10, paidCount);
 
   let evWinner = 0;
   let evTop1 = 0;
@@ -377,6 +639,14 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
         })()
       : 0;
 
+  // Shell panel stats — probabilities from the final PMF, directly readable.
+  const ftEndShell = Math.min(9, paidCount);
+  let shellP1 = pmf[0] ?? 0;
+  let shellTop3Sum = 0;
+  for (let i = 0; i < Math.min(3, paidCount); i++) shellTop3Sum += pmf[i];
+  let shellFtSum = 0;
+  for (let i = 0; i < ftEndShell; i++) shellFtSum += pmf[i];
+
   return {
     alpha,
     cost: entryCost,
@@ -397,5 +667,14 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     fieldTop10: fTop10,
     fieldRestItm: fRestItm,
     fieldOotm: fOotm,
+    shellMode: row.itmRate != null && row.itmRate > 0,
+    shellFeasible: feasible,
+    shellTargetEv: targetRegular,
+    shellCurrentEv:
+      currentWinningsFromSolver != null ? currentWinningsFromSolver : totalEv - bountyShareOfPayout * totalEv,
+    shellP1,
+    shellTop3: shellTop3Sum,
+    shellFt: shellFtSum,
+    paidCount,
   };
 }

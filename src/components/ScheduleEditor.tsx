@@ -72,6 +72,43 @@ Bread & butter, 500, 50+5, 20, 1, mtt-standard
 Sunday major, 1500, 200+15, 10, 1, mtt-pokerstars
 Hyper turbo, 200, 20+2, 15, 3, sng-50-30-20`;
 
+// Per-structure viable field-size ranges. A PayoutStructureId is "allowed" at
+// a given AFS only inside this window. The values reflect what those structures
+// actually describe on real sites, not what won't crash the math:
+//   - SNG 50/30/20 is a 3-payout single-table affair; meaningless past ~18 seats
+//   - SNG 65/35 is heads-up only
+//   - Winner-takes-all is HU / small-turbo territory
+//   - Sunday Million / GG Bounty Builder describe fields thousands deep
+//   - Standard MTT curves need ≥30 runners for the 15 / 20 % paid slice to
+//     have more than a handful of places.
+type CompatRange = { min: number; max: number };
+const PAYOUT_COMPAT: Record<PayoutStructureId, CompatRange> = {
+  "mtt-standard": { min: 30, max: Infinity },
+  "mtt-primedope": { min: 30, max: Infinity },
+  "mtt-flat": { min: 30, max: Infinity },
+  "mtt-top-heavy": { min: 30, max: Infinity },
+  "mtt-pokerstars": { min: 50, max: Infinity },
+  "mtt-gg": { min: 50, max: Infinity },
+  "mtt-sunday-million": { min: 2000, max: Infinity },
+  "mtt-gg-bounty": { min: 500, max: Infinity },
+  "satellite-ticket": { min: 10, max: Infinity },
+  "sng-50-30-20": { min: 3, max: 18 },
+  "sng-65-35": { min: 2, max: 2 },
+  "winner-takes-all": { min: 2, max: 20 },
+  custom: { min: 2, max: Infinity },
+};
+
+function payoutCompat(
+  id: PayoutStructureId,
+  players: number,
+): { ok: true } | { ok: false; reason: "tooFew" | "tooMany"; range: CompatRange } {
+  const range = PAYOUT_COMPAT[id];
+  if (!range) return { ok: true };
+  if (players < range.min) return { ok: false, reason: "tooFew", range };
+  if (players > range.max) return { ok: false, reason: "tooMany", range };
+  return { ok: true };
+}
+
 const PAYOUT_IDS: PayoutStructureId[] = [
   "mtt-standard",
   "mtt-flat",
@@ -207,7 +244,7 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
   };
 
   return (
-    <Card className="overflow-hidden">
+    <Card>
       <fieldset
         disabled={disabled}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
@@ -327,13 +364,27 @@ export function ScheduleEditor({ schedule, onChange, disabled }: Props) {
                             setExpanded(ex);
                           }
                         }}
-                        className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+                        className="h-8 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]"
                       >
-                        {STRUCTURES.map((s) => (
-                          <option key={s.id} value={s.id} title={s.full}>
-                            {s.short}
-                          </option>
-                        ))}
+                        {STRUCTURES.map((s) => {
+                          const compat = payoutCompat(s.id, r.players);
+                          const disabled = !compat.ok;
+                          const reasonText = !compat.ok
+                            ? compat.reason === "tooFew"
+                              ? `${t("row.payoutCompat.tooFew")} (${t("row.payoutCompat.min")} ${compat.range.min})`
+                              : `${t("row.payoutCompat.tooMany")} (${t("row.payoutCompat.max")} ${compat.range.max === Infinity ? "∞" : compat.range.max})`
+                            : "";
+                          return (
+                            <option
+                              key={s.id}
+                              value={s.id}
+                              disabled={disabled}
+                              title={disabled ? `${s.full} — ${reasonText}` : s.full}
+                            >
+                              {disabled ? `· ${s.short} — ${reasonText}` : s.short}
+                            </option>
+                          );
+                        })}
                       </select>
                     </Td>
                     <Td align="right">
@@ -692,6 +743,39 @@ function AdvancedRowPanel({
         </div>
       </div>
 
+      {/* Fixed ITM rate */}
+      <div className="flex flex-col gap-1.5">
+        <SectionLabel hint={t("row.fixedItmHint")}>
+          {t("row.fixedItm")}
+        </SectionLabel>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step={0.5}
+          placeholder="auto"
+          value={
+            row.itmRate != null
+              ? +(row.itmRate * 100).toFixed(2)
+              : ""
+          }
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === "") {
+              onChange({ itmRate: undefined });
+              return;
+            }
+            const v = parseFloat(raw);
+            onChange({
+              itmRate: Number.isFinite(v)
+                ? Math.max(0, Math.min(1, v / 100))
+                : undefined,
+            });
+          }}
+          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+        />
+      </div>
+
       {/* Bounty / PKO */}
       <div className="flex flex-col gap-1.5">
         <SectionLabel hint={t("row.bountyHint")}>
@@ -862,7 +946,7 @@ function Th({
   return (
     <th
       className={
-        "px-2 py-2.5 font-medium first:pl-4 last:pr-4 " + (align === "right" ? "text-right" : "")
+        "whitespace-nowrap px-2 py-2.5 font-medium first:pl-4 last:pr-4 " + (align === "right" ? "text-right" : "")
       }
     >
       <span
@@ -899,6 +983,11 @@ function Td({
   );
 }
 
+// Shared input chrome for the schedule table — always-visible border + fill
+// so fields read as "editable" at a glance, accent focus ring for the hit.
+const INPUT_BASE =
+  "h-8 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2.5 text-sm text-[color:var(--color-fg)] outline-none transition-colors placeholder:text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]";
+
 function TextInput({
   value,
   onChange,
@@ -916,10 +1005,7 @@ function TextInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={
-        "rounded-md border border-transparent bg-transparent px-2 py-1 text-sm text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-dim)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)] " +
-        className
-      }
+      className={INPUT_BASE + " " + className}
     />
   );
 }
@@ -963,8 +1049,9 @@ function BuyInInput({
       placeholder="50+5"
       title="50+5 = $50 buy-in + $5 rake (or just a number)"
       className={
-        "w-20 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)] " +
-        (invalid ? "border-[color:var(--color-danger)]/60" : "")
+        INPUT_BASE +
+        " w-24 text-right tabular-nums " +
+        (invalid ? "!border-[color:var(--color-danger)]/70" : "")
       }
     />
   );
@@ -991,7 +1078,7 @@ function NumInput({
         const v = parseFloat(e.target.value);
         if (!Number.isNaN(v)) onChange(v);
       }}
-      className="w-16 rounded-md border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]"
+      className={INPUT_BASE + " w-20 text-right tabular-nums"}
     />
   );
 }

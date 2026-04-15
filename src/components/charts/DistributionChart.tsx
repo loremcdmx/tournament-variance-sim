@@ -12,7 +12,14 @@ interface Props {
   height?: number;
   /** When set, divides x by this to display in average buy-ins. */
   scaleBy?: number;
-  unitLabel?: "$" | "ABI";
+  unitLabel?: "$" | "ABI" | "tourneys";
+  /**
+   * Show the Y axis as a percentage of total mass instead of raw sample
+   * counts. Each bar and the overlay (if any) are normalised by the sum of
+   * their own counts, so the chart reads "what fraction of runs land here"
+   * regardless of how many samples were actually simulated.
+   */
+  yAsPct?: boolean;
   /** Optional second histogram (different binning) — drawn as a line on
    *  top of the bars. Resampled onto the primary bins via CDF interp so
    *  the curves are mass-comparable regardless of bin widths. */
@@ -71,6 +78,7 @@ export function DistributionChart({
   height = 260,
   scaleBy,
   unitLabel = "$",
+  yAsPct = false,
   overlay,
 }: Props) {
   const divisor = scaleBy && scaleBy > 0 ? scaleBy : 1;
@@ -79,12 +87,33 @@ export function DistributionChart({
     const centers = new Array<number>(counts.length);
     for (let i = 0; i < counts.length; i++)
       centers[i] = ((binEdges[i] + binEdges[i + 1]) / 2) / divisor;
+    const sumOf = (arr: number[]): number => {
+      let t = 0;
+      for (let i = 0; i < arr.length; i++) t += arr[i];
+      return t;
+    };
+    const normalize = (arr: number[], denom: number): number[] => {
+      if (!yAsPct) return arr;
+      if (denom <= 0) return arr;
+      const out = new Array<number>(arr.length);
+      for (let i = 0; i < arr.length; i++) out[i] = (arr[i] / denom) * 100;
+      return out;
+    };
+    const primary = normalize(counts, sumOf(counts));
     if (overlay) {
-      const resampled = resampleOntoBins(overlay.binEdges, overlay.counts, binEdges);
-      return [centers, counts, resampled];
+      const resampled = resampleOntoBins(
+        overlay.binEdges,
+        overlay.counts,
+        binEdges,
+      );
+      // Normalize overlay against the FULL source mass, not the resampled
+      // slice — otherwise any PD mass that falls outside our x-range gets
+      // redistributed into the visible bins and inflates the curve.
+      const overlayDenom = sumOf(overlay.counts);
+      return [centers, primary, normalize(resampled, overlayDenom)];
     }
-    return [centers, counts];
-  }, [binEdges, counts, divisor, overlay]);
+    return [centers, primary];
+  }, [binEdges, counts, divisor, overlay, yAsPct]);
 
   const opts = useMemo<Omit<Options, "width" | "height">>(
     () => {
@@ -113,20 +142,30 @@ export function DistributionChart({
             ticks: { stroke: "rgba(128,128,128,0.2)" },
             values: (_u, splits) =>
               splits.map((v) =>
-                unitLabel === "$" ? compactNum(v, "$") : `${compactNum(v)} BI`,
+                unitLabel === "$"
+                  ? compactNum(v, "$")
+                  : unitLabel === "ABI"
+                    ? `${compactNum(v)} BI`
+                    : compactNum(v),
               ),
           },
           {
             stroke: "#8a8a95",
             grid: { stroke: "rgba(128,128,128,0.15)" },
             ticks: { stroke: "rgba(128,128,128,0.2)" },
+            values: yAsPct
+              ? (_u, splits) =>
+                  splits.map((v) =>
+                    v >= 10 ? `${v.toFixed(0)}%` : `${v.toFixed(1)}%`,
+                  )
+              : undefined,
           },
         ],
         series,
         legend: { show: false },
       };
     },
-    [color, unitLabel, overlay, overlayColor],
+    [color, unitLabel, overlay, overlayColor, yAsPct],
   );
 
   return <UplotChart data={data} options={opts} height={height} />;

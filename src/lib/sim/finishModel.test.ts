@@ -3,6 +3,7 @@ import {
   buildFinishPMF,
   expectedWinnings,
   calibrateAlpha,
+  calibrateShelledItm,
   buildCDF,
   sampleFromCDF,
   buildBinaryItmAssets,
@@ -175,6 +176,66 @@ describe("itmProbability", () => {
     let expected = 0;
     for (let i = 0; i < 60; i++) expected += pmf[i];
     expect(itm60).toBeCloseTo(expected, 10);
+  });
+});
+
+describe("calibrateShelledItm", () => {
+  const paid = 15;
+  const N = 100;
+  const curve = getPayoutTable("mtt-standard", N).slice(0, paid);
+  const pool = 900;
+  const itm = 0.16;
+
+  it("with no locks hits target EW exactly and preserves ITM", () => {
+    const target = 16.5; // +50% ROI on $11 cost
+    const r = calibrateShelledItm(
+      N, paid, curve, pool, target, itm, undefined, { id: "power-law" },
+    );
+    let s = 0;
+    for (let i = 0; i < paid; i++) s += r.pmf[i];
+    expect(s).toBeCloseTo(itm, 6);
+    expect(r.currentWinnings).toBeCloseTo(target, 4);
+    expect(r.feasible).toBe(true);
+  });
+
+  it("with P(1st) lock honors the lock and still hits target", () => {
+    const target = 16.5;
+    const r = calibrateShelledItm(
+      N, paid, curve, pool, target, itm, { first: 0.0125 }, { id: "power-law" },
+    );
+    expect(r.pmf[0]).toBeCloseTo(0.0125, 8);
+    expect(r.currentWinnings).toBeCloseTo(target, 4);
+    expect(r.feasible).toBe(true);
+  });
+
+  it("flags infeasible when locks are too small to hit target", () => {
+    // Lock top-9 at 0.5% total — paid band mass below any α can reach target.
+    const target = 16.5;
+    const r = calibrateShelledItm(
+      N, paid, curve, pool, target, itm,
+      { first: 0.001, top3: 0.002, ft: 0.005 },
+      { id: "power-law" },
+    );
+    expect(r.feasible).toBe(false);
+    expect(r.currentWinnings).toBeLessThan(target);
+  });
+
+  it("PMF sums to 1 under all shell configurations", () => {
+    const cases = [
+      undefined,
+      { first: 0.01 },
+      { first: 0.01, top3: 0.03 },
+      { first: 0.01, top3: 0.03, ft: 0.08 },
+      { ft: 0.10 },
+    ];
+    for (const shells of cases) {
+      const r = calibrateShelledItm(
+        N, paid, curve, pool, 12, itm, shells, { id: "power-law" },
+      );
+      let s = 0;
+      for (let i = 0; i < N; i++) s += r.pmf[i];
+      expect(s).toBeCloseTo(1, 6);
+    }
   });
 });
 

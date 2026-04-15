@@ -65,6 +65,38 @@ export interface TournamentRow {
   /** Target player ROI as a fraction (e.g. 0.2 = +20 %). */
   roi: number;
 
+  /**
+   * Fixed in-the-money rate override, as an absolute fraction (e.g. 0.16 = 16 %).
+   * When set, calibration switches to the "fixed-ITM" model: ITM rate is held
+   * constant regardless of ROI, and all skill concentrates WITHIN the cashed
+   * band only (power-law / linear-skill / etc. applied to paid places only,
+   * non-paid places get uniform mass). Matches the empirical fact that
+   * grinders don't actually cash much more often than no-skill players —
+   * their edge shows up in running deeper when they do cash. Undefined = old
+   * α-calibration behaviour where ITM rate is a free parameter that scales
+   * with ROI. Ignored in primedope-binary-itm mode.
+   */
+  itmRate?: number;
+
+  /**
+   * Manual "shell" locks on the finish-place distribution, used by the
+   * fixed-ITM shape panel. Each value is an ABSOLUTE cumulative probability
+   * from the top of the band:
+   *   - first: P(place 1)
+   *   - top3:  P(places 1..3), must be ≥ first
+   *   - ft:    P(places 1..min(9, paid)), must be ≥ top3
+   *
+   * Any locked shells stay pinned; the remaining free paid places are
+   * α-calibrated via the configured finish model so the total expected
+   * winnings still hit the ROI target. When none are set, fixed-ITM falls
+   * back to pure α calibration. Only consulted when `itmRate` is set.
+   */
+  finishBuckets?: {
+    first?: number;
+    top3?: number;
+    ft?: number;
+  };
+
   payoutStructure: PayoutStructureId;
   /** Used when payoutStructure = "custom". Array of place fractions. */
   customPayouts?: number[];
@@ -138,6 +170,21 @@ export interface TournamentRow {
    * typical 0.5–1.5 range for GG-style mystery bounties. Defaults to 0.
    */
   mysteryBountyVariance?: number;
+
+  /**
+   * PKO "session heat" σ — latent per-tournament reshape of the bounty
+   * payout curve. Each tournament draws one z ~ N(0,1); the raw PKO
+   * cumulative-cash weights are raised to exponent `1 + pkoHeat · z` and
+   * re-normalized against the (unchanged) calibrated finish pmf so the
+   * bin-local mean bounty equals the base mean bounty. Hot sessions
+   * (z > 0) sharpen bounty mass onto the very deepest finishes — monster
+   * runs collect an oversized KO haul — while cold sessions flatten it.
+   * Finish distribution, prize curve and ROI are untouched, so expected
+   * value stays exactly on target; only the right tail of the bounty
+   * component fattens. Typical 0.4–0.7. Defaults to 0 (disabled →
+   * bit-exact legacy PKO path). Requires `bountyFraction > 0`.
+   */
+  pkoHeat?: number;
 }
 
 /**
@@ -146,12 +193,19 @@ export interface TournamentRow {
  * - "alpha" (default): the skilled-aware parametric calibration — binary-search
  *   α so the configured skill model (power-law / linear-skill / stretched-exp)
  *   hits the target ROI. Concentrates skill in deep finishes.
- * - "primedope-binary-itm": reproduces PrimeDope's actual variance model. All
- *   paid places are collapsed into a single Bernoulli "you cashed / you didn't"
- *   outcome, with one fixed average-cash payoff equal to targetWinnings / ITM.
- *   This eliminates payout-shape variance entirely (1st place pays the same as
- *   min-cash) and matches PrimeDope's site nearly exactly. The finish-model id
- *   is ignored in this mode.
+ * - "primedope-binary-itm": reproduces PrimeDope's actual variance model.
+ *   The probability of cashing is a single Bernoulli "you cashed / you
+ *   didn't" — every paid place has the same probability `l / paid`, where
+ *   `l` is solved from the ROI target. Crucially, the per-place payouts
+ *   are NOT collapsed: each paid place keeps its real top-heavy dollar
+ *   amount from the payout schedule (1st still pays way more than min-
+ *   cash), so the within-ITM payout variance is preserved. What PD's model
+ *   loses is *skill*-driven deeper-running: since every paid place is
+ *   equally likely, a +ROI player cashes more often but doesn't run deeper
+ *   more often. That's the actual weakness vs our α-calibrated run, not
+ *   a flattening of the payout curve. The finish-model id is ignored in
+ *   this mode. See `finishModel.ts` → `buildBinaryItmAssets` for the exact
+ *   construction; mirrors `tmp_legacy.js` Distribution ctor lines ~1288.
  */
 export type CalibrationMode = "alpha" | "primedope-binary-itm";
 
@@ -186,6 +240,14 @@ export interface SimulationInput {
    * how the algorithm choice changes the answer on identical randomness.
    */
   compareMode?: "random" | "primedope";
+  /**
+   * Active model preset ID from ControlsState. The engine itself only cares
+   * about one value: "primedope". In that preset the user's intent is "show
+   * me PrimeDope's ITM distribution as the primary result", so useSimulation
+   * swaps the twin-run calibrations — left pane runs primedope-binary-itm,
+   * right pane runs our honest α algo.
+   */
+  modelPresetId?: string;
   /** Internal dispatch; callers should set compareWithPrimedope instead. */
   calibrationMode?: CalibrationMode;
   /**
@@ -315,6 +377,8 @@ export interface SimulationResult {
   envelopes: {
     x: number[];
     mean: Float64Array;
+    p05: Float64Array;
+    p95: Float64Array;
     p15: Float64Array;
     p85: Float64Array;
     p025: Float64Array;
@@ -358,14 +422,26 @@ export interface SimulationResult {
   };
 
   /**
-   * Worst-N drawdown catalog — up to 10 samples sorted by depth, with
-   * the final profit and longest breakeven for each so players can read
-   * "here's what your worst month looks like".
+   * Worst-N drawdown catalog — top-3 samples sorted by peak-to-trough
+   * depth, with the final profit and longest breakeven for each so
+   * players can read "here's what your worst month looks like".
    */
   downswings: {
     rank: number;
     sampleIndex: number;
     depth: number;
+    finalProfit: number;
+    longestBreakeven: number;
+  }[];
+  /**
+   * Best-N upswing catalog — mirror of `downswings` sorted by maximum
+   * trough-to-peak rise. Surfaces the "heaterest heater" tail so the
+   * upside shape sits next to the downside shape in the UI.
+   */
+  upswings: {
+    rank: number;
+    sampleIndex: number;
+    height: number;
     finalProfit: number;
     longestBreakeven: number;
   }[];
