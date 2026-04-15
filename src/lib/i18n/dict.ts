@@ -713,6 +713,14 @@ export const DICT = {
     ru: "{pct} прогонов не восстановились до конца расписания (не показано на графике)",
   },
   "chart.unit.tourneys": { en: "units: tournaments", ru: "единицы: турниры" },
+  "hist.tooltip.range": { en: "range", ru: "диапазон" },
+  "hist.tooltip.share": { en: "share of runs", ru: "доля прогонов" },
+  "hist.tooltip.count": { en: "samples", ru: "сэмплов" },
+  "hist.tooltip.cumulative": { en: "at or below", ru: "до этого уровня" },
+  "hist.tooltip.overflow": {
+    en: "incl. overflow (heavy-tail clip)",
+    ru: "с учётом хвоста (обрезан)",
+  },
   "chart.convergence": { en: "Mean convergence", ru: "Сходимость среднего" },
   "chart.convergence.sub": {
     en: "Running estimate of E[profit] as samples accumulate · 95 % CI band",
@@ -1091,10 +1099,22 @@ export const DICT = {
   "preview.barEvLabel": { en: "share of EV", ru: "доля EV" },
   "preview.barFieldLabel": { en: "share of finishes", ru: "доля финишей" },
   "preview.tierWinner": { en: "1st place", ru: "1-е место" },
+  "preview.tierTop01": { en: "Top 0.1%", ru: "Топ 0.1%" },
+  "preview.tierTop05": { en: "Top 0.5%", ru: "Топ 0.5%" },
   "preview.tierTop1": { en: "Top 1%", ru: "Топ 1%" },
+  "preview.tierTop5": { en: "Top 5%", ru: "Топ 5%" },
   "preview.tierTop10": { en: "Top 10%", ru: "Топ 10%" },
+  "preview.tierFt": { en: "Final table", ru: "Финалка" },
   "preview.tierRestItm": { en: "Rest of cashes", ru: "Остальные кеши" },
   "preview.tierOotm": { en: "OOTM bust", ru: "Без денег" },
+  "preview.halfMass": {
+    en: "Half your edge lives in the top {k} finishes of {n} — that's 1 in {odds}.",
+    ru: "Половина твоего эджа живёт всего в топ-{k} местах из {n} — 1 раз из {odds}.",
+  },
+  "preview.heroBodyFt": {
+    en: "{share} of your expected return lives at the final table — which you reach 1 in {odds} entries.",
+    ru: "{share} всего ожидания живёт на финалке, а до неё ты доходишь 1 раз из {odds}.",
+  },
   "preview.footnote": {
     en: "If the top (EV) bar is much wider than the bottom (finishes) bar in the same colour, that slice of finishes carries way more money than its share of the field — and that's exactly where your variance lives.",
     ru: "Если верхний (EV) бар в каком-то цвете сильно шире нижнего (финиши) — этот кусок финишей приносит сильно больше денег, чем его доля в поле. Именно там и живёт твоя дисперсия.",

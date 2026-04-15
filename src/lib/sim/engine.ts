@@ -1056,7 +1056,7 @@ export function buildResult(
   // Drawdowns are non-negative by construction, so lo auto-ranges from the
   // real observed minimum instead of being pinned to 0 (which wasted leading
   // bins when every sample had dd ≥ some floor like 50 BI).
-  const drawdownHistogram = histogramOf(maxDrawdowns, 50);
+  const drawdownHistogram = histogramOf(maxDrawdowns, 50, false, true);
   // Streak histograms — distribution of max drawdown / longest cashless /
   // longest breakeven / recovery length across samples. Int32Array → Float64
   // copy is cheap. Recovery uses recovered-only (unrecovered share is
@@ -1200,7 +1200,7 @@ export function buildResult(
   for (let i = 0; i < recoveredOnly.length; i++) recoveredF[i] = recoveredOnly[i];
   const recoveryHistogram =
     recoveredF.length > 0
-      ? histogramOf(recoveredF, 40, true)
+      ? histogramOf(recoveredF, 40, true, true)
       : { binEdges: [0, 1], counts: [0] };
 
   // Decomposition -----------------------------------------------------------
@@ -1479,24 +1479,28 @@ function histogramFromCounts(
   if (maxLen === 0 || total === 0) {
     return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
   }
-  // Long-tail guard: a single run with a monster streak used to stretch the
-  // x-axis to the absolute max, crushing 99% of the mass into the first
-  // bin. Clip the visible range to the p99 of the weighted distribution
-  // and fold overflow into the last bin. `max` stays available via
-  // stats.longestBreakevenMean / -Worst for users who want the extreme.
-  const cutoff = total * 0.99;
-  let cum = 0;
-  let pLen = maxLen;
-  for (let i = 1; i <= maxLen; i++) {
-    cum += countsByLen[i];
-    if (cum >= cutoff) {
-      pLen = i;
-      break;
+  // Long-tail guard. Streak-count distributions are near-geometric: most
+  // mass sits on short streaks, but the tail goes to thousands. A naive
+  // max-length or even p99 range still crushes the bulk into the first
+  // bin (one heavy-tailed outlier dominates). Anchor the visible range to
+  // the *median* instead: hi = median × 10, capped by p99 to stay honest
+  // and by maxLen as a hard ceiling. This puts the median around bin 4/40
+  // and makes the knee of the distribution clearly visible. Overflow
+  // folds into the last bin; extremes remain available via
+  // stats.longestBreakevenMean / -Worst.
+  const pctLen = (p: number): number => {
+    const target = total * p;
+    let cum = 0;
+    for (let i = 1; i <= maxLen; i++) {
+      cum += countsByLen[i];
+      if (cum >= target) return i;
     }
-  }
-  // Keep at least a handful of bins of dynamic range, and never exceed the
-  // true max length.
-  const hi = Math.max(1, Math.min(maxLen, pLen));
+    return maxLen;
+  };
+  const medianLen = pctLen(0.5);
+  const p99Len = pctLen(0.99);
+  let hi = Math.min(maxLen, p99Len, Math.max(medianLen * 10, 20));
+  if (hi < 1) hi = 1;
   const binEdges: number[] = new Array(bins + 1);
   for (let i = 0; i <= bins; i++) binEdges[i] = (hi * i) / bins;
   const counts: number[] = new Array(bins).fill(0);
@@ -1515,6 +1519,7 @@ function histogramOf(
   arr: Float64Array,
   bins: number,
   nonNegative = false,
+  longTailClip = false,
 ): { binEdges: number[]; counts: number[] } {
   const n = arr.length;
   let lo = Infinity;
@@ -1528,12 +1533,27 @@ function histogramOf(
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi === lo) {
     hi = lo + 1;
   }
+  // Long-tail guard (opt-in): when the distribution is heavy on the right
+  // (drawdowns, recovery lengths), a single outlier stretches the x-axis
+  // and crushes the visible bulk into the first bin. Clip the upper edge
+  // to p99 of the sample distribution; overflow folds into the last bin.
+  // Raw extremes still available via stats.*. Lower bound is left alone
+  // to avoid distorting two-sided distributions (finalProfits doesn't use
+  // this branch at all).
+  if (longTailClip && n > 1) {
+    const sorted = new Float64Array(arr);
+    sorted.sort();
+    const idx = Math.min(n - 1, Math.floor(0.99 * (n - 1)));
+    const p99 = sorted[idx];
+    if (p99 > lo + 1e-9 && p99 < hi) hi = p99;
+  }
   const span = hi - lo;
   const binEdges: number[] = new Array(bins + 1);
   for (let i = 0; i <= bins; i++) binEdges[i] = lo + (span * i) / bins;
   const counts: number[] = new Array(bins).fill(0);
   for (let i = 0; i < n; i++) {
-    let b = Math.floor(((arr[i] - lo) / span) * bins);
+    const v = arr[i];
+    let b = v >= hi ? bins - 1 : Math.floor(((v - lo) / span) * bins);
     if (b < 0) b = 0;
     else if (b >= bins) b = bins - 1;
     counts[b]++;

@@ -966,14 +966,6 @@ export function ResultsView({
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection
-        id="pdWeakness"
-        title={t("section.pdWeakness")}
-        showUnitToggle={false}
-      >
-        <PokerDopeWeaknessCard />
-      </CollapsibleSection>
-
       {advanced && (
         <CollapsibleSection
           id="settingsDump"
@@ -1289,6 +1281,14 @@ export function ResultsView({
           />
         </UnitScope>
       )}
+
+      <CollapsibleSection
+        id="pdWeakness"
+        title={t("section.pdWeakness")}
+        showUnitToggle={false}
+      >
+        <PokerDopeWeaknessCard />
+      </CollapsibleSection>
     </div>
     </MoneyFmtContext.Provider>
     </AbiContext.Provider>

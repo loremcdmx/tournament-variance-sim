@@ -19,24 +19,35 @@ interface Props {
   onRowChange?: (updates: Partial<TournamentRow>) => void;
 }
 
-interface TierSpec {
-  key: string;
-  labelKey:
-    | "preview.tierWinner"
-    | "preview.tierTop1"
-    | "preview.tierTop10"
-    | "preview.tierRestItm"
-    | "preview.tierOotm";
-  color: string;
-}
+type TierKey =
+  | "winner"
+  | "top01"
+  | "top05"
+  | "top1"
+  | "top5"
+  | "top10"
+  | "ft"
+  | "restItm"
+  | "ootm";
 
-const TIERS: TierSpec[] = [
-  { key: "winner", labelKey: "preview.tierWinner", color: "#ffde51" },
-  { key: "top1", labelKey: "preview.tierTop1", color: "#f97316" },
-  { key: "top10", labelKey: "preview.tierTop10", color: "#a855f7" },
-  { key: "restItm", labelKey: "preview.tierRestItm", color: "#64748b" },
-  { key: "ootm", labelKey: "preview.tierOotm", color: "#1f2937" },
-];
+type TierLabelKey =
+  | "preview.tierWinner"
+  | "preview.tierTop01"
+  | "preview.tierTop05"
+  | "preview.tierTop1"
+  | "preview.tierTop5"
+  | "preview.tierTop10"
+  | "preview.tierFt"
+  | "preview.tierRestItm"
+  | "preview.tierOotm";
+
+interface TierRow {
+  key: TierKey;
+  labelKey: TierLabelKey;
+  color: string;
+  ev: number;
+  field: number;
+}
 
 export function FinishPMFPreview({ row, model, onRowChange }: Props) {
   const t = useT();
@@ -44,23 +55,8 @@ export function FinishPMFPreview({ row, model, onRowChange }: Props) {
 
   const stats = useMemo(() => computeRowStats(row, model), [row, model]);
 
-  const evTiers = [
-    stats.evWinner,
-    stats.evTop1,
-    stats.evTop10,
-    stats.evRestItm,
-    stats.evOotm,
-  ];
-  const evTotal = evTiers.reduce((a, b) => a + b, 0) || 1;
-
-  const evShares = evTiers.map((v) => v / evTotal);
-  const fieldShares = [
-    stats.fieldWinner,
-    stats.fieldTop1,
-    stats.fieldTop10,
-    stats.fieldRestItm,
-    stats.fieldOotm,
-  ];
+  const evTotal =
+    stats.tiers.reduce((a, tier) => a + tier.ev, 0) || 1;
 
   const moneyFmt = (v: number) => {
     if (v === 0) return "$0";
@@ -79,18 +75,51 @@ export function FinishPMFPreview({ row, model, onRowChange }: Props) {
   const itmOne = stats.itm > 0 ? Math.max(1, Math.round(1 / stats.itm)) : 0;
   const netProfitPerEntry = stats.evPerEntry - stats.cost;
 
-  // Top-heaviness hero: share of EV that lives in places 1..cutTop1
-  // (i.e. winner + top-1% tier) and how often such a finish lands.
-  const topShare = stats.evWinner + stats.evTop1;
-  const topField = stats.fieldWinner + stats.fieldTop1;
-  const topEvShareFrac = evTotal > 0 ? topShare / evTotal : 0;
-  const topOdds = topField > 0 ? Math.max(1, Math.round(1 / topField)) : 0;
-  const heroBodyKey =
-    stats.topPlaces <= 1 ? "preview.heroBodyTop1" : "preview.heroBodyTopN";
-  const heroBody = t(heroBodyKey)
-    .replace("{share}", pct(topEvShareFrac))
-    .replace("{n}", String(stats.topPlaces))
-    .replace("{odds}", topOdds > 0 ? String(topOdds) : "∞");
+  // Top-heaviness hero. For small/medium fields we describe the top-1%
+  // tier (winner + anything between places 2..ceil(N*1%)). For high-field
+  // MTTs we switch to a final-table framing — "share that lives at the
+  // FT, which you reach 1 in K" — because it's the slice a high-field
+  // grinder actually tracks in their head.
+  const highField = row.players >= 300;
+  const useFtFraming = highField && stats.ftEvShare > 0.3;
+  let heroBody: string;
+  if (useFtFraming) {
+    const ftOdds =
+      stats.ftField > 0 ? Math.max(1, Math.round(1 / stats.ftField)) : 0;
+    heroBody = t("preview.heroBodyFt")
+      .replace("{share}", pct(stats.ftEvShare))
+      .replace("{odds}", ftOdds > 0 ? String(ftOdds) : "∞");
+  } else {
+    const topTier = stats.tiers.find((x) => x.key === "top1");
+    const winnerTier = stats.tiers.find((x) => x.key === "winner");
+    const topShare =
+      (winnerTier?.ev ?? 0) + (topTier?.ev ?? 0);
+    const topField =
+      (winnerTier?.field ?? 0) + (topTier?.field ?? 0);
+    const topEvShareFrac = evTotal > 0 ? topShare / evTotal : 0;
+    const topOdds = topField > 0 ? Math.max(1, Math.round(1 / topField)) : 0;
+    const heroBodyKey =
+      stats.topPlaces <= 1 ? "preview.heroBodyTop1" : "preview.heroBodyTopN";
+    heroBody = t(heroBodyKey)
+      .replace("{share}", pct(topEvShareFrac))
+      .replace("{n}", String(stats.topPlaces))
+      .replace("{odds}", topOdds > 0 ? String(topOdds) : "∞");
+  }
+
+  // Entertaining fact: the smallest k such that top-k places carry ≥50%
+  // of expected payout, and how rare that finish is. Only shown on
+  // high-field MTTs, where the answer is actually surprising (e.g. 3 of
+  // 500). For 18-man sit-and-gos it collapses to 1-of-3 and adds no info.
+  const halfMassLine =
+    highField && stats.halfMassK > 0 && stats.halfMassField > 0
+      ? t("preview.halfMass")
+          .replace("{k}", String(stats.halfMassK))
+          .replace("{n}", String(row.players))
+          .replace(
+            "{odds}",
+            String(Math.max(1, Math.round(1 / stats.halfMassField))),
+          )
+      : null;
 
   const itmLine = t("preview.itmLine")
     .replace("{n}", itmOne > 0 ? String(itmOne) : "∞")
@@ -160,6 +189,11 @@ export function FinishPMFPreview({ row, model, onRowChange }: Props) {
         <div className="text-[12px] leading-snug text-[color:var(--color-fg)]">
           {heroBody}
         </div>
+        {halfMassLine && (
+          <div className="mt-1.5 rounded-sm border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 px-2 py-1 text-[11px] leading-snug text-[color:var(--color-fg)]">
+            {halfMassLine}
+          </div>
+        )}
         <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
           {t("preview.heroTagline")}
         </div>
@@ -175,9 +209,9 @@ export function FinishPMFPreview({ row, model, onRowChange }: Props) {
           <span className="text-right tabular-nums">{t("preview.colField")}</span>
         </div>
         <div className="flex flex-col divide-y divide-[color:var(--color-border)]/60">
-          {TIERS.map((tier, i) => {
-            const evShare = evShares[i];
-            const fieldShare = fieldShares[i];
+          {stats.tiers.map((tier) => {
+            const evShare = tier.ev / evTotal;
+            const fieldShare = tier.field;
             if (evShare <= 0.0005 && fieldShare <= 0.0005) return null;
             return (
               <div
@@ -456,16 +490,21 @@ interface RowStats {
   bountyShare: number;
   progressivePko: boolean;
   topPlaces: number;
-  evWinner: number;
-  evTop1: number;
-  evTop10: number;
-  evRestItm: number;
-  evOotm: number;
-  fieldWinner: number;
-  fieldTop1: number;
-  fieldTop10: number;
-  fieldRestItm: number;
-  fieldOotm: number;
+  /**
+   * Adaptive EV/field breakdown. For small fields (N < 300) stays on the
+   * original 5-tier layout; for high-field MTTs fans out to include
+   * Top 0.1% / Top 0.5% / Top 5% / Final table so the concentration of EV
+   * in the very top finishes is actually visible.
+   */
+  tiers: TierRow[];
+  /** Smallest k such that top-k places cover ≥50% of expected payout. */
+  halfMassK: number;
+  /** Combined field share of those top-k places (= 1/odds). */
+  halfMassField: number;
+  /** Field share of the final table (top min(9, paidCount) places). */
+  ftField: number;
+  /** EV share of the final table. */
+  ftEvShare: number;
   /** Fixed-ITM solver feedback — null when that mode is not active. */
   shellMode: boolean;
   shellFeasible: boolean;
@@ -593,40 +632,126 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   let itm = 0;
   for (let i = 0; i < paidCount; i++) itm += pmf[i];
 
-  const cutTop1 = Math.max(1, Math.ceil(N * 0.01));
-  const cutTop10 = Math.max(cutTop1, Math.ceil(N * 0.1));
-  const cutItm = Math.max(cutTop10, paidCount);
+  // Per-place arrays used for both tier binning and the half-mass fact.
+  const evByPlace = new Float64Array(N);
+  for (let i = 0; i < N; i++) evByPlace[i] = pmf[i] * totalByPlace[i];
 
-  let evWinner = 0;
-  let evTop1 = 0;
-  let evTop10 = 0;
-  let evRestItm = 0;
-  let evOotm = 0;
-  let fWinner = 0;
-  let fTop1 = 0;
-  let fTop10 = 0;
-  let fRestItm = 0;
-  let fOotm = 0;
-  for (let i = 0; i < N; i++) {
-    const place = i + 1;
-    const ev = pmf[i] * totalByPlace[i];
-    const f = pmf[i];
-    if (place === 1) {
-      evWinner += ev;
-      fWinner += f;
-    } else if (place <= cutTop1) {
-      evTop1 += ev;
-      fTop1 += f;
-    } else if (place <= cutTop10) {
-      evTop10 += ev;
-      fTop10 += f;
-    } else if (place <= cutItm) {
-      evRestItm += ev;
-      fRestItm += f;
-    } else {
-      evOotm += ev;
-      fOotm += f;
+  // Half-mass: smallest k such that top-k places cover ≥50% of total EV.
+  // Computed over *paid* places (OOTM adds no EV) and bounded by paidCount.
+  let cumEv = 0;
+  let halfMassK = 0;
+  const halfTarget = totalEv * 0.5;
+  for (let i = 0; i < paidCount && halfMassK === 0; i++) {
+    cumEv += evByPlace[i];
+    if (cumEv >= halfTarget) halfMassK = i + 1;
+  }
+  if (halfMassK === 0) halfMassK = paidCount;
+  let halfMassField = 0;
+  for (let i = 0; i < halfMassK; i++) halfMassField += pmf[i];
+
+  // Final-table stats (top 9 by tournament convention, or fewer if paidCount < 9).
+  const ftEnd = Math.min(9, paidCount);
+  let ftField = 0;
+  let ftEvSum = 0;
+  for (let i = 0; i < ftEnd; i++) {
+    ftField += pmf[i];
+    ftEvSum += evByPlace[i];
+  }
+  const ftEvShare = totalEv > 1e-9 ? ftEvSum / totalEv : 0;
+
+  // Adaptive tier layout. Each tier is a half-open place range [lo, hi]
+  // (1-indexed). We build the cut list first, then slice per tier — this
+  // avoids the N≥300 branch having a different accumulator shape from the
+  // small-field case. Cuts that collapse (e.g., ceil(500*0.001)==1) get
+  // filtered out to avoid zero-width tiers.
+  interface TierCut {
+    key: TierKey;
+    labelKey: TierLabelKey;
+    color: string;
+    hi: number;
+  }
+  const cuts: TierCut[] = [];
+  cuts.push({ key: "winner", labelKey: "preview.tierWinner", color: "#ffde51", hi: 1 });
+  // High-field granularity: show top 0.1% / 0.5% / 1% / 5% / 10%; low-field
+  // collapses to just top 1% / top 10% (original layout).
+  const highField = N >= 300;
+  const veryHighField = N >= 1000;
+  if (veryHighField) {
+    cuts.push({
+      key: "top01",
+      labelKey: "preview.tierTop01",
+      color: "#fb923c",
+      hi: Math.ceil(N * 0.001),
+    });
+  }
+  if (highField) {
+    cuts.push({
+      key: "top05",
+      labelKey: "preview.tierTop05",
+      color: "#f97316",
+      hi: Math.ceil(N * 0.005),
+    });
+  }
+  cuts.push({
+    key: "top1",
+    labelKey: "preview.tierTop1",
+    color: "#ea580c",
+    hi: Math.ceil(N * 0.01),
+  });
+  if (highField) {
+    cuts.push({
+      key: "top5",
+      labelKey: "preview.tierTop5",
+      color: "#c026d3",
+      hi: Math.ceil(N * 0.05),
+    });
+  }
+  cuts.push({
+    key: "top10",
+    labelKey: "preview.tierTop10",
+    color: "#a855f7",
+    hi: Math.ceil(N * 0.1),
+  });
+  if (highField && ftEnd > 0 && ftEnd < Math.ceil(N * 0.1)) {
+    // Rare edge case: FT sits inside top10. Skip adding as a separate row
+    // to keep tiers strictly non-overlapping; final-table stats stay
+    // available via ftField/ftEvShare for the hero line.
+  }
+  cuts.push({
+    key: "restItm",
+    labelKey: "preview.tierRestItm",
+    color: "#64748b",
+    hi: paidCount,
+  });
+  cuts.push({
+    key: "ootm",
+    labelKey: "preview.tierOotm",
+    color: "#1f2937",
+    hi: N,
+  });
+
+  // Enforce monotonic, non-overlapping cuts — each tier starts where the
+  // previous one ended, so ceil() rounding collapsing a tier into 0 width
+  // just drops it cleanly.
+  const tiers: TierRow[] = [];
+  let prevHi = 0;
+  for (const c of cuts) {
+    const hi = Math.min(N, Math.max(prevHi, c.hi));
+    if (hi <= prevHi) continue;
+    let evTier = 0;
+    let fTier = 0;
+    for (let i = prevHi; i < hi; i++) {
+      evTier += evByPlace[i];
+      fTier += pmf[i];
     }
+    tiers.push({
+      key: c.key,
+      labelKey: c.labelKey,
+      color: c.color,
+      ev: evTier,
+      field: fTier,
+    });
+    prevHi = hi;
   }
 
   const bountyShareOfPayout =
@@ -655,17 +780,12 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     cv,
     bountyShare: bountyShareOfPayout,
     progressivePko: bountyFraction > 0,
-    topPlaces: cutTop1,
-    evWinner,
-    evTop1,
-    evTop10,
-    evRestItm,
-    evOotm,
-    fieldWinner: fWinner,
-    fieldTop1: fTop1,
-    fieldTop10: fTop10,
-    fieldRestItm: fRestItm,
-    fieldOotm: fOotm,
+    topPlaces: Math.max(1, Math.ceil(N * 0.01)),
+    tiers,
+    halfMassK,
+    halfMassField,
+    ftField,
+    ftEvShare,
     shellMode: row.itmRate != null && row.itmRate > 0,
     shellFeasible: feasible,
     shellTargetEv: targetRegular,

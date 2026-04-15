@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { AlignedData, Options } from "uplot";
-import { UplotChart } from "./UplotChart";
+import { UplotChart, type CursorInfo } from "./UplotChart";
 import { barsPath } from "./barsPath";
+import { useT } from "@/lib/i18n/LocaleProvider";
 
 interface Props {
   binEdges: number[];
@@ -71,6 +72,30 @@ const compactNum = (v: number, prefix = ""): string => {
   return `${sign}${prefix}${abs.toFixed(abs < 10 ? 1 : 0)}`;
 };
 
+const formatEdge = (v: number, unitLabel: Props["unitLabel"]): string => {
+  const sign = v < 0 ? "−" : "";
+  const abs = Math.abs(v);
+  const nice = (n: number): string => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 10_000) return `${(n / 1_000).toFixed(0)}k`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+    if (n >= 100) return n.toFixed(0);
+    if (n >= 10) return n.toFixed(0);
+    return n.toFixed(n < 1 ? 2 : 1);
+  };
+  switch (unitLabel) {
+    case "$":
+      return `${sign}$${nice(abs)}`;
+    case "ABI":
+      return `${sign}${nice(abs)} BI`;
+    case "seats":
+      return `${sign}${nice(abs)}`;
+    case "tourneys":
+    default:
+      return `${sign}${nice(abs)}`;
+  }
+};
+
 export function DistributionChart({
   binEdges,
   counts,
@@ -81,8 +106,10 @@ export function DistributionChart({
   yAsPct = false,
   overlay,
 }: Props) {
+  const t = useT();
   const divisor = scaleBy && scaleBy > 0 ? scaleBy : 1;
   const overlayColor = overlay?.color ?? "#f472b6";
+  const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const data = useMemo<AlignedData>(() => {
     const centers = new Array<number>(counts.length);
     for (let i = 0; i < counts.length; i++)
@@ -170,5 +197,128 @@ export function DistributionChart({
     [color, unitLabel, overlay, overlayColor, yAsPct],
   );
 
-  return <UplotChart data={data} options={opts} height={height} />;
+  // Precompute totals + cumulative counts for the hover tooltip. Runs once
+  // per (counts, overlay) change, so the hover handler itself stays O(1).
+  const hoverStats = useMemo(() => {
+    let primaryTotal = 0;
+    for (let i = 0; i < counts.length; i++) primaryTotal += counts[i];
+    const primaryCum = new Array<number>(counts.length);
+    let acc = 0;
+    for (let i = 0; i < counts.length; i++) {
+      acc += counts[i];
+      primaryCum[i] = acc;
+    }
+    let overlayResampled: number[] | null = null;
+    let overlayTotal = 0;
+    if (overlay) {
+      overlayResampled = resampleOntoBins(
+        overlay.binEdges,
+        overlay.counts,
+        binEdges,
+      );
+      for (let i = 0; i < overlay.counts.length; i++)
+        overlayTotal += overlay.counts[i];
+    }
+    return { primaryTotal, primaryCum, overlayResampled, overlayTotal };
+  }, [binEdges, counts, overlay]);
+
+  const binIdx =
+    cursor && cursor.idx != null && cursor.idx >= 0 && cursor.idx < counts.length
+      ? cursor.idx
+      : null;
+
+  const tip = useMemo(() => {
+    if (binIdx == null) return null;
+    const lo = binEdges[binIdx] / divisor;
+    const hi = binEdges[binIdx + 1] / divisor;
+    const rangeLabel = `${formatEdge(lo, unitLabel)} – ${formatEdge(hi, unitLabel)}`;
+    const count = counts[binIdx] ?? 0;
+    const share =
+      hoverStats.primaryTotal > 0 ? count / hoverStats.primaryTotal : 0;
+    const cumShare =
+      hoverStats.primaryTotal > 0
+        ? hoverStats.primaryCum[binIdx] / hoverStats.primaryTotal
+        : 0;
+    const isLastBin = binIdx === counts.length - 1;
+    let overlayShare: number | null = null;
+    if (hoverStats.overlayResampled && hoverStats.overlayTotal > 0) {
+      overlayShare =
+        hoverStats.overlayResampled[binIdx] / hoverStats.overlayTotal;
+    }
+    return { rangeLabel, count, share, cumShare, isLastBin, overlayShare };
+  }, [binIdx, binEdges, counts, divisor, unitLabel, hoverStats]);
+
+  return (
+    <div className="relative w-full">
+      <UplotChart
+        data={data}
+        options={opts}
+        height={height}
+        onCursor={setCursor}
+      />
+      {cursor && tip && (
+        <div
+          className="pointer-events-none absolute z-10 min-w-[180px] rounded border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 px-3 py-2 text-[11px] shadow-xl backdrop-blur"
+          style={{
+            left: Math.min(Math.max(cursor.left + 12, 0), 9999),
+            top: 6,
+          }}
+        >
+          <div className="mb-1.5 flex items-center gap-2 border-b border-[color:var(--color-border)]/50 pb-1">
+            <span
+              className="inline-block h-2 w-3 rounded-sm"
+              style={{ background: color }}
+            />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
+              {t("hist.tooltip.range")}
+            </span>
+            <span className="ml-auto font-mono text-[10px] text-[color:var(--color-fg)]">
+              {tip.rangeLabel}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">
+            <span className="text-[color:var(--color-fg-dim)]">
+              {t("hist.tooltip.share")}
+            </span>
+            <span className="text-right font-semibold text-[color:var(--color-fg)]">
+              {(tip.share * 100).toFixed(tip.share < 0.01 ? 2 : 1)}%
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">
+              {t("hist.tooltip.count")}
+            </span>
+            <span className="text-right text-[color:var(--color-fg)]">
+              {tip.count.toLocaleString()}
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">
+              {t("hist.tooltip.cumulative")}
+            </span>
+            <span className="text-right text-[color:var(--color-fg)]">
+              {(tip.cumShare * 100).toFixed(tip.cumShare >= 0.995 ? 2 : 1)}%
+            </span>
+            {tip.overlayShare != null && (
+              <>
+                <span
+                  className="text-[color:var(--color-fg-dim)]"
+                  style={{ color: overlayColor }}
+                >
+                  {overlay?.label ?? "overlay"}
+                </span>
+                <span className="text-right" style={{ color: overlayColor }}>
+                  {(tip.overlayShare * 100).toFixed(
+                    tip.overlayShare < 0.01 ? 2 : 1,
+                  )}
+                  %
+                </span>
+              </>
+            )}
+          </div>
+          {tip.isLastBin && (
+            <div className="mt-1 border-t border-[color:var(--color-border)]/50 pt-1 text-[9px] italic text-[color:var(--color-fg-dim)]">
+              {t("hist.tooltip.overflow")}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
