@@ -80,7 +80,7 @@ const initialControls: ControlsState = {
   tiltSlowRecoveryFrac: 0.5,
   modelPresetId: "naive",
   empiricalBuckets: undefined,
-  itmGlobalEnabled: false,
+  itmGlobalEnabled: true,
   itmGlobalPct: 15,
 };
 

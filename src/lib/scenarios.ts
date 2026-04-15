@@ -40,7 +40,7 @@ const BASE_CONTROLS: ControlsState = {
   tiltSlowMinDuration: 500,
   tiltSlowRecoveryFrac: 0.5,
   modelPresetId: "naive",
-  itmGlobalEnabled: false,
+  itmGlobalEnabled: true,
   itmGlobalPct: 15,
 };
 
