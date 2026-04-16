@@ -108,12 +108,39 @@ export function DistributionChart({
 }: Props) {
   const t = useT();
   const divisor = scaleBy && scaleBy > 0 ? scaleBy : 1;
-  const overlayColor = overlay?.color ?? "#f472b6";
+  const overlayColor = overlay?.color ?? "#60a5fa";
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
+  // When overlaying, extend primary x-range to cover the overlay's tail so
+  // we don't clip a long PD tail off the right edge and under-report its
+  // mass. Append zero-count primary bins at the same bin width, capped at
+  // 3× primary range so a wild outlier can't flatten the chart.
+  const merged = useMemo(() => {
+    if (!overlay) return { edges: binEdges, counts };
+    const primaryLast = binEdges[binEdges.length - 1];
+    const overlayLast = overlay.binEdges[overlay.binEdges.length - 1];
+    if (!(overlayLast > primaryLast) || binEdges.length < 2) {
+      return { edges: binEdges, counts };
+    }
+    const step = binEdges[binEdges.length - 1] - binEdges[binEdges.length - 2];
+    const maxExtended = Math.min(overlayLast, primaryLast * 3);
+    const extraEdges: number[] = [];
+    const extraCounts: number[] = [];
+    let cur = primaryLast;
+    while (cur < maxExtended && extraEdges.length < 120) {
+      const next = Math.min(maxExtended, cur + step);
+      if (next <= cur) break;
+      extraEdges.push(next);
+      extraCounts.push(0);
+      cur = next;
+    }
+    if (extraEdges.length === 0) return { edges: binEdges, counts };
+    return {
+      edges: [...binEdges, ...extraEdges],
+      counts: [...counts, ...extraCounts],
+    };
+  }, [binEdges, counts, overlay]);
+
   const data = useMemo<AlignedData>(() => {
-    const centers = new Array<number>(counts.length);
-    for (let i = 0; i < counts.length; i++)
-      centers[i] = ((binEdges[i] + binEdges[i + 1]) / 2) / divisor;
     const sumOf = (arr: number[]): number => {
       let t = 0;
       for (let i = 0; i < arr.length; i++) t += arr[i];
@@ -126,21 +153,21 @@ export function DistributionChart({
       for (let i = 0; i < arr.length; i++) out[i] = (arr[i] / denom) * 100;
       return out;
     };
-    const primary = normalize(counts, sumOf(counts));
+    const centers = new Array<number>(merged.counts.length);
+    for (let i = 0; i < merged.counts.length; i++)
+      centers[i] = ((merged.edges[i] + merged.edges[i + 1]) / 2) / divisor;
+    const primary = normalize(merged.counts, sumOf(counts));
     if (overlay) {
       const resampled = resampleOntoBins(
         overlay.binEdges,
         overlay.counts,
-        binEdges,
+        merged.edges,
       );
-      // Normalize overlay against the FULL source mass, not the resampled
-      // slice — otherwise any PD mass that falls outside our x-range gets
-      // redistributed into the visible bins and inflates the curve.
       const overlayDenom = sumOf(overlay.counts);
       return [centers, primary, normalize(resampled, overlayDenom)];
     }
     return [centers, primary];
-  }, [binEdges, counts, divisor, overlay, yAsPct]);
+  }, [merged, counts, divisor, overlay, yAsPct]);
 
   const opts = useMemo<Omit<Options, "width" | "height">>(
     () => {
@@ -157,6 +184,7 @@ export function DistributionChart({
         series.push({
           stroke: overlayColor,
           width: 2.25,
+          dash: [10, 6],
           label: overlay.label ?? "PrimeDope",
         });
       }
@@ -201,11 +229,12 @@ export function DistributionChart({
   // per (counts, overlay) change, so the hover handler itself stays O(1).
   const hoverStats = useMemo(() => {
     let primaryTotal = 0;
-    for (let i = 0; i < counts.length; i++) primaryTotal += counts[i];
-    const primaryCum = new Array<number>(counts.length);
+    for (let i = 0; i < merged.counts.length; i++)
+      primaryTotal += merged.counts[i];
+    const primaryCum = new Array<number>(merged.counts.length);
     let acc = 0;
-    for (let i = 0; i < counts.length; i++) {
-      acc += counts[i];
+    for (let i = 0; i < merged.counts.length; i++) {
+      acc += merged.counts[i];
       primaryCum[i] = acc;
     }
     let overlayResampled: number[] | null = null;
@@ -214,39 +243,42 @@ export function DistributionChart({
       overlayResampled = resampleOntoBins(
         overlay.binEdges,
         overlay.counts,
-        binEdges,
+        merged.edges,
       );
       for (let i = 0; i < overlay.counts.length; i++)
         overlayTotal += overlay.counts[i];
     }
     return { primaryTotal, primaryCum, overlayResampled, overlayTotal };
-  }, [binEdges, counts, overlay]);
+  }, [merged, overlay]);
 
   const binIdx =
-    cursor && cursor.idx != null && cursor.idx >= 0 && cursor.idx < counts.length
+    cursor &&
+    cursor.idx != null &&
+    cursor.idx >= 0 &&
+    cursor.idx < merged.counts.length
       ? cursor.idx
       : null;
 
   const tip = useMemo(() => {
     if (binIdx == null) return null;
-    const lo = binEdges[binIdx] / divisor;
-    const hi = binEdges[binIdx + 1] / divisor;
+    const lo = merged.edges[binIdx] / divisor;
+    const hi = merged.edges[binIdx + 1] / divisor;
     const rangeLabel = `${formatEdge(lo, unitLabel)} – ${formatEdge(hi, unitLabel)}`;
-    const count = counts[binIdx] ?? 0;
+    const count = merged.counts[binIdx] ?? 0;
     const share =
       hoverStats.primaryTotal > 0 ? count / hoverStats.primaryTotal : 0;
     const cumShare =
       hoverStats.primaryTotal > 0
         ? hoverStats.primaryCum[binIdx] / hoverStats.primaryTotal
         : 0;
-    const isLastBin = binIdx === counts.length - 1;
+    const isLastBin = binIdx === merged.counts.length - 1;
     let overlayShare: number | null = null;
     if (hoverStats.overlayResampled && hoverStats.overlayTotal > 0) {
       overlayShare =
         hoverStats.overlayResampled[binIdx] / hoverStats.overlayTotal;
     }
     return { rangeLabel, count, share, cumShare, isLastBin, overlayShare };
-  }, [binIdx, binEdges, counts, divisor, unitLabel, hoverStats]);
+  }, [binIdx, merged, divisor, unitLabel, hoverStats]);
 
   return (
     <div className="relative w-full">

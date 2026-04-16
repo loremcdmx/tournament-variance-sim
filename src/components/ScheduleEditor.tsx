@@ -418,7 +418,7 @@ export function ScheduleEditor({
                           if (!Number.isFinite(v) || v < 0 || v > 100) return;
                           update(r.id, { itmRate: v / 100 });
                         }}
-                        className="h-8 w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-right text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
+                        className="h-8 w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
                       />
                     </Td>
                     <Td>
@@ -1004,7 +1004,7 @@ function NumInputBox({
         onChange(v);
       }}
       onBlur={() => commitDraft(draft, value, min, max, onChange, setDraft)}
-      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
+      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
         invalid
           ? "border-rose-500/70 ring-1 ring-rose-500/30"
           : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"
@@ -1164,7 +1164,7 @@ function BuyInInput({
       title="50+5 = $50 buy-in + $5 rake (or just a number)"
       className={
         INPUT_BASE +
-        " w-24 text-right tabular-nums " +
+        " w-24 text-center tabular-nums " +
         (invalid ? "!border-[color:var(--color-danger)]/70" : "")
       }
     />
@@ -1208,7 +1208,7 @@ function NumInput({
       onBlur={() => commitDraft(draft, value, min, max, onChange, setDraft)}
       className={
         INPUT_BASE +
-        " w-20 text-right tabular-nums " +
+        " w-20 text-center tabular-nums " +
         (invalid ? "!border-rose-500/70 ring-1 ring-rose-500/30" : "")
       }
     />

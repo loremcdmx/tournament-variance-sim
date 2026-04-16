@@ -50,14 +50,8 @@ export function Section({
               </span>
             )}
             <div className="flex flex-col gap-1 pb-1">
-              <div
-                className="eyebrow flex items-center gap-2"
-                style={{ color: meta.colorVar }}
-              >
-                <span className="text-[12px] leading-none">{meta.glyph}</span>
-                <span>/ {title}</span>
-              </div>
-              <h2 className="text-[20px] font-bold uppercase leading-[1.05] tracking-[-0.01em] text-[color:var(--color-fg)] sm:text-[24px]">
+              <h2 className="flex items-center gap-2 text-[20px] font-bold uppercase leading-[1.05] tracking-[-0.01em] text-[color:var(--color-fg)] sm:text-[24px]">
+                <span className="text-[14px] leading-none" style={{ color: meta.colorVar }}>{meta.glyph}</span>
                 {title}
               </h2>
               {subtitle && (

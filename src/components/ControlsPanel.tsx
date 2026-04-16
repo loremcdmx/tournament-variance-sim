@@ -63,6 +63,8 @@ interface DoneSummary {
   roi: number;
   probProfit: number;
   riskOfRuin: number;
+  worstDrawdown: number;
+  longestCashlessWorst: number;
   elapsedMs: number | null;
   resultsAnchorId: string;
 }
@@ -199,9 +201,8 @@ export function ControlsPanel({
         disabled={running}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      {/* Section A — Run controls (streak-grinder primary: sessions, samples, bankroll) */}
-      <SectionTitle>{t("controls.section.run")}</SectionTitle>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Run controls: sessions, samples */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
           <NumInput
             value={value.scheduleRepeats}
@@ -218,15 +219,6 @@ export function ControlsPanel({
             max={1_000_000}
             step={1000}
             onChange={(v) => set("samples", Math.floor(v))}
-          />
-        </Field>
-        <Field label={t("controls.bankroll")} hint={t("help.bankroll")}>
-          <NumInput
-            value={value.bankroll}
-            min={0}
-            max={1_000_000_000}
-            step={100}
-            onChange={(v) => set("bankroll", v)}
           />
         </Field>
       </div>
@@ -246,25 +238,7 @@ export function ControlsPanel({
       {/* Advanced run knobs: seed + PD compare */}
       <SectionTitle>{t("controls.section.advanced")}</SectionTitle>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Field label={t("controls.seed")} hint={t("help.seed")}>
-          <div className="flex gap-1">
-            <NumInput
-              value={value.seed}
-              min={0}
-              max={2 ** 31 - 1}
-              step={1}
-              onChange={(v) => set("seed", Math.floor(v))}
-            />
-            <button
-              type="button"
-              onClick={() => set("seed", Math.floor(Math.random() * 2 ** 30))}
-              className="shrink-0 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
-              title={t("controls.seedReroll")}
-            >
-              ⟳
-            </button>
-          </div>
-        </Field>
+        {/* Seed is auto-randomized per run — field removed from UI */}
         <Field label={t("controls.compareMode")} hint={t("help.compareMode")}>
           <select
             value={value.compareMode}
@@ -486,12 +460,12 @@ export function ControlsPanel({
 
       </fieldset>
       <div className="mt-5 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-4">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-center gap-3">
           {running ? (
             <button
               type="button"
               onClick={onCancel}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-rose-500 to-rose-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(244,63,94,0.45)] transition-all hover:from-rose-400 hover:to-rose-500 active:translate-y-px"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-rose-500 to-rose-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(244,63,94,0.45)] transition-all hover:from-rose-400 hover:to-rose-500 active:translate-y-px"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="6" width="12" height="12" rx="1" />
@@ -502,7 +476,7 @@ export function ControlsPanel({
             <button
               type="button"
               onClick={onRun}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path d="M6 4l14 8-14 8V4z" fill="currentColor" />
@@ -510,7 +484,7 @@ export function ControlsPanel({
               {t("controls.run")}
             </button>
           )}
-          <div className="ml-auto flex flex-col items-end gap-0.5 text-right font-mono text-[10.5px] tabular-nums text-[color:var(--color-fg-dim)]">
+          <div className="flex w-full items-center justify-center gap-4 font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg-muted)]">
             <span>
               {running
                 ? remainingMs != null
@@ -520,6 +494,7 @@ export function ControlsPanel({
                 ? `${t("controls.eta")} ≈ ${formatDuration(estimatedMs)}`
                 : "\u00A0"}
             </span>
+            <span className="text-[color:var(--color-fg-dim)]">·</span>
             <span>
               {formatCount(totalTournaments)} {t("controls.totalTourneys")}
             </span>
@@ -567,7 +542,7 @@ function Field({
   // input down and break horizontal alignment with neighbouring fields.
   return (
     <label className="flex h-full flex-col gap-1.5">
-      <span className="flex items-start gap-1.5 text-[10px] font-medium uppercase leading-tight tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+      <span className="flex items-start justify-center gap-1.5 text-center text-[10px] font-medium uppercase leading-tight tracking-[0.15em] text-[color:var(--color-fg-dim)]">
         {label}
         {hint && <InfoTooltip content={hint} />}
       </span>
@@ -640,7 +615,7 @@ function NumInput({
         if (clamped !== value) onChange(clamped);
         setDraft(null);
       }}
-      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
+      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
         invalid
           ? "border-rose-500/70 ring-1 ring-rose-500/30"
           : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"
@@ -688,7 +663,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           {t("controls.done.seeBelow")} ↓
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums sm:grid-cols-4">
+      <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 font-mono text-[11px] tabular-nums sm:grid-cols-6">
         <div className="flex flex-col">
           <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             {t("controls.done.profit")}
@@ -733,6 +708,22 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
             }`}
           >
             {(summary.riskOfRuin * 100).toFixed(1)}%
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("controls.done.worstDD")}
+          </span>
+          <span className="font-semibold text-rose-300">
+            {fmtMoneyCompact(summary.worstDrawdown)}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("controls.done.dryStreak")}
+          </span>
+          <span className="font-semibold text-amber-300">
+            {summary.longestCashlessWorst}
           </span>
         </div>
       </div>

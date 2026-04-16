@@ -45,10 +45,49 @@ import type {
 // concentrate bounty mass on the deepest finishes so the right tail
 // fattens while σ only drifts marginally. Finish-place pmf is unchanged
 // across bins, so prize EV stays on the α-calibrated target.
-const HEAT_BIN_COUNT = 13;
+const HEAT_BIN_COUNT = 33;
 const HEAT_Z_RANGE = 3;
 // Precomputed scalar for z → bin index: (HEAT_BIN_COUNT - 1) / (2 · RANGE).
 const HEAT_BIN_SCALE = (HEAT_BIN_COUNT - 1) / (2 * HEAT_Z_RANGE);
+
+// ---- PTRS Poisson sampler (Hörmann 1993) ----------------------------------
+// Unbiased, ~1.13 expected iterations, valid for λ ≥ 10. Replaces the Gaussian
+// approximation which introduces skewness bias at moderate λ.
+const LOG_FACT_SMALL: Float64Array = (() => {
+  const lut = new Float64Array(16);
+  let acc = 0;
+  for (let i = 1; i < 16; i++) {
+    acc += Math.log(i);
+    lut[i] = acc;
+  }
+  return lut;
+})();
+function logFactorial(k: number): number {
+  if (k < 16) return LOG_FACT_SMALL[k];
+  return (k + 0.5) * Math.log(k) - k + 0.9189385332046727 + 1 / (12 * k);
+}
+function poissonPTRS(lam: number, rng: () => number): number {
+  const smu = Math.sqrt(lam);
+  const b = 0.931 + 2.53 * smu;
+  const a = -0.059 + 0.02483 * b;
+  const invAlpha = 1.1239 + 1.1328 / (b - 3.4);
+  const vR = 0.9277 - 3.6224 / (b - 2);
+  for (;;) {
+    const U = rng() - 0.5;
+    const V = rng();
+    const us = 0.5 - Math.abs(U);
+    const k = Math.floor((2 * a / us + b) * U + lam + 0.43);
+    if (k < 0) continue;
+    if (us >= 0.07 && V <= vR) return k;
+    if (us < 0.013 && V > us) continue;
+    if (
+      Math.log(V) + Math.log(invAlpha) - Math.log(a / (us * us) + b) <=
+      -lam + k * Math.log(lam) - logFactorial(k)
+    ) {
+      return k;
+    }
+  }
+}
 
 interface CompiledEntry {
   rowIdx: number;
@@ -108,6 +147,7 @@ interface CompiledEntry {
    * value. Mean preserved, only variance added. 0 means flat bounties.
    */
   mysteryBountyLogVar: number;
+  mysteryBountyLogSigma: number;
   /** Precomputed `exp(mysteryBountyLogVar) − 1`. Used by the Fenton–Wilkinson
    *  scaling inside the hot loop — hoisted here to save one `Math.exp` call
    *  per KO draw. Zero when `mysteryBountyLogVar` is zero (mystery bounty off).
@@ -123,6 +163,15 @@ interface CompiledEntry {
    * place is now modelled. Shares null with bountyByPlace.
    */
   bountyKmean: Float64Array | null;
+  /** Precomputed exp(−bountyKmean[i]) for the Knuth Poisson path. Saves one
+   *  `Math.exp` per tourney in bounty rows. Zero where bountyKmean is zero. */
+  bountyKmeanExp: Float64Array | null;
+  /** Precomputed sqrt(bountyKmean[i]) for the Gaussian-Poisson path. Saves one
+   *  `Math.sqrt` per tourney in bounty rows. Zero where bountyKmean is zero. */
+  bountyKmeanSqrt: Float64Array | null;
+  /** Precomputed 1/bountyKmean[i] for the bounty normalization. Replaces the
+   *  per-tourney divide with a multiply. Zero where bountyKmean is zero. */
+  bountyKmeanInv: Float64Array | null;
   /**
    * Analytical per-tourney σ from the calibrated pmf — √(E[X²]−E[X]²) on
    * prize + bounty. Cheap, compile-time, and independent of the MC run;
@@ -633,6 +682,25 @@ function compileSingleEntry(
     bountyRaw = raw;
   }
 
+  // Derived bountyKmean transforms. Hoisting these out of the hot loop saves
+  // one exp, one sqrt, and one divide per tournament in bounty rows.
+  let bountyKmeanExp: Float64Array | null = null;
+  let bountyKmeanSqrt: Float64Array | null = null;
+  let bountyKmeanInv: Float64Array | null = null;
+  if (bountyKmean !== null) {
+    bountyKmeanExp = new Float64Array(N);
+    bountyKmeanSqrt = new Float64Array(N);
+    bountyKmeanInv = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      const lam = bountyKmean[i];
+      if (lam > 0) {
+        bountyKmeanExp[i] = Math.exp(-lam);
+        bountyKmeanSqrt[i] = Math.sqrt(lam);
+        bountyKmeanInv[i] = 1 / lam;
+      }
+    }
+  }
+
   // ---- PKO latent-heat bank (variant D) ---------------------------------
   // Precompute HEAT_BIN_COUNT alternative `bountyByPlace` curves, each
   // reshaping the raw cumulative-cash weights by raising to exponent
@@ -724,7 +792,14 @@ function compileSingleEntry(
     reentryExpected,
     bountyByPlace,
     bountyKmean,
+    bountyKmeanExp,
+    bountyKmeanSqrt,
+    bountyKmeanInv,
     mysteryBountyLogVar: Math.max(0, row.mysteryBountyVariance ?? 0),
+    mysteryBountyLogSigma:
+      row.mysteryBountyVariance && row.mysteryBountyVariance > 0
+        ? Math.sqrt(row.mysteryBountyVariance)
+        : 0,
     mysteryBountyExpMinus1:
       row.mysteryBountyVariance && row.mysteryBountyVariance > 0
         ? Math.exp(row.mysteryBountyVariance) - 1
@@ -1130,7 +1205,7 @@ export function buildResult(
   // Accuracy at the reported percentiles: p0015 / p9985 need ≥ 1 / (1-p)
   // samples minimum, so we cap at ≥ 20k; 50k keeps all six percentiles
   // within ~0.3 σ of the exact answer and runs in ~200 ms total.
-  const ENV_CAP = 50_000;
+  const ENV_CAP = 200_000;
   const envS = Math.min(S, ENV_CAP);
   const envStride = S / envS;
   const col = new Float64Array(envS);
@@ -1659,9 +1734,7 @@ export interface CheckpointGrid {
 }
 
 export function makeCheckpointGrid(N: number): CheckpointGrid {
-  // K=80 gives smooth trajectory charts while cutting envelope column sorts
-  // from 201 → 81 (~60% less main-thread work at 100k samples).
-  const K = Math.min(80, N);
+  const K = Math.min(240, N);
   const checkpointIdx = new Int32Array(K + 1);
   for (let j = 0; j <= K; j++) checkpointIdx[j] = Math.round((j * N) / K);
   return { K, checkpointIdx };
@@ -1933,6 +2006,9 @@ export function simulateShard(
         : parent;
       let bp = t.bountyByPlace;
       const bkm = t.bountyKmean;
+      const bkmExp = t.bountyKmeanExp;
+      const bkmSqrt = t.bountyKmeanSqrt;
+      const bkmInv = t.bountyKmeanInv;
       const prizes = t.prizeByPlace;
       const aliasProb = t.aliasProb;
       const aliasIdx = t.aliasIdx;
@@ -1955,7 +2031,7 @@ export function simulateShard(
       const maxB = t.maxEntries;
       const pc = t.paidCount;
       const mystVar = t.mysteryBountyLogVar;
-      const mystExpM1 = t.mysteryBountyExpMinus1;
+      const mystSig = t.mysteryBountyLogSigma;
       let delta = 0;
       let cashedThisSlot = false;
       if (maxB === 1) {
@@ -1970,11 +2046,8 @@ export function simulateShard(
             const lam = bkm[place];
             if (lam > 0) {
               let k: number;
-              // Knuth threshold at 30: at λ=20 Knuth averages ~20 uniforms
-              // and Gaussian still has ~0.5% tail bias; λ=30 is where the
-              // speed/accuracy tradeoff flips.
               if (lam < 30) {
-                const L = Math.exp(-lam);
+                const L = bkmExp![place];
                 let p = 1;
                 k = 0;
                 do {
@@ -1983,22 +2056,15 @@ export function simulateShard(
                 } while (p > L);
                 k--;
               } else {
-                const g = lam + gaussB() * Math.sqrt(lam);
-                k = g < 0 ? 0 : g;
+                k = poissonPTRS(lam, bRng);
               }
-              bountyDraw = (mean * k) / lam;
-              // Mystery-bounty multiplier: Fenton–Wilkinson lognormal
-              // approximation of a sum of k i.i.d. lognormal(0, σ²) draws.
-              // Per-KO variance is σ². Aggregate log-variance scales as
-              // σ_sum² = ln(1 + (e^σ²−1)/k). Mean preserved at k·1 = k,
-              // so bountyDraw×scale has the same expectation as bountyDraw.
+              bountyDraw = mean * k * bkmInv![place];
               if (mystVar > 0 && k > 0 && bountyDraw > 0) {
-                const sigSum2 = Math.log1p(mystExpM1 / k);
-                const sigSum = Math.sqrt(sigSum2);
-                const scale = Math.exp(
-                  sigSum * gaussB() - 0.5 * sigSum2,
-                );
-                bountyDraw *= scale;
+                const perKO = mean * bkmInv![place];
+                bountyDraw = 0;
+                for (let j = 0; j < k; j++) {
+                  bountyDraw += perKO * Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                }
               }
             } else {
               bountyDraw = mean;
@@ -2021,12 +2087,9 @@ export function simulateShard(
             if (mean > 0 && bkm !== null) {
               const lam = bkm[place];
               if (lam > 0) {
-                // Knuth Poisson for small λ (unbiased); Gaussian approximation
-                // for large λ where Poisson is too slow and the normal is tight.
-                // Threshold 30: see rationale above in the single-bullet path.
                 let k: number;
                 if (lam < 30) {
-                  const L = Math.exp(-lam);
+                  const L = bkmExp![place];
                   let p = 1;
                   k = 0;
                   do {
@@ -2035,17 +2098,15 @@ export function simulateShard(
                   } while (p > L);
                   k--;
                 } else {
-                  const g = lam + gaussB() * Math.sqrt(lam);
-                  k = g < 0 ? 0 : g;
+                  k = poissonPTRS(lam, bRng);
                 }
-                bountyDraw = (mean * k) / lam;
+                bountyDraw = mean * k * bkmInv![place];
                 if (mystVar > 0 && k > 0 && bountyDraw > 0) {
-                  const sigSum2 = Math.log1p(mystExpM1 / k);
-                  const sigSum = Math.sqrt(sigSum2);
-                  const scale = Math.exp(
-                    sigSum * gaussB() - 0.5 * sigSum2,
-                  );
-                  bountyDraw *= scale;
+                  const perKO = mean * bkmInv![place];
+                  bountyDraw = 0;
+                  for (let j = 0; j < k; j++) {
+                    bountyDraw += perKO * Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                  }
                 }
               } else {
                 bountyDraw = mean;

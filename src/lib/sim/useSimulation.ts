@@ -277,13 +277,17 @@ export function useSimulation() {
       let doneAll = 0;
       for (const s of allSlots) totalAll += s.total;
 
-      // Throttle UI updates: at most ~30 fps.
+      // Throttle UI updates: at most ~30 fps. Reserve the top 5 % of the
+      // progress bar for the build phase (envelope sort / histograms) —
+      // on 1 M-sample runs that phase is multi-second, and if we let shards
+      // drive progress to 1.0 the ETA pins at "≈ 0 с" for the entire build.
+      const SHARD_FRACTION = 0.95;
       let lastEmit = 0;
       const emitProgress = () => {
         const now = performance.now();
         if (now - lastEmit < 33 && doneAll < totalAll) return;
         lastEmit = now;
-        onProgress(totalAll > 0 ? doneAll / totalAll : 0);
+        onProgress(totalAll > 0 ? (doneAll / totalAll) * SHARD_FRACTION : 0);
       };
 
       return new Promise((resolve, reject) => {
@@ -378,6 +382,7 @@ export function useSimulation() {
             if (buildsRemaining === 0) {
               settled = true;
               detach();
+              onProgress(1);
               const out: Record<PassPlan["key"], SimulationResult> =
                 {} as never;
               for (const k of Object.keys(ctxs) as PassPlan["key"][]) {
@@ -414,7 +419,7 @@ export function useSimulation() {
               // used to cause a 2–5 s freeze at 99% on 100k-sample runs.
               // Hand off to one worker per pass so a twin run parallelizes.
               lastEmit = 0;
-              onProgress(1);
+              onProgress(SHARD_FRACTION);
               const keys = Object.keys(ctxs) as PassPlan["key"][];
               try {
                 keys.forEach((k, i) => {

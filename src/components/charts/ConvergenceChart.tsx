@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/LocaleProvider";
-import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
+import type { TournamentRow } from "@/lib/sim/types";
 
 interface Props {
-  result: SimulationResult;
   schedule?: TournamentRow[];
 }
 
@@ -33,13 +32,6 @@ const ROI_MAX = 1.00;
 // with K = C1/C0. Only K survives in the widget, so that's the one constant.
 const SIGMA_ROI_C0 = 0.6219;
 const SIGMA_ROI_C1 = 0.2328;
-const SIGMA_ROI_K = SIGMA_ROI_C1 / SIGMA_ROI_C0; // ≈ 0.374
-function sigmaRoiMultiplierForRoi(roi: number, baselineRoi: number): number {
-  const num = 1 + SIGMA_ROI_K * roi;
-  const den = 1 + SIGMA_ROI_K * baselineRoi;
-  if (!(num > 0) || !(den > 0)) return 1;
-  return num / den;
-}
 
 function posToAfs(pos: number): number {
   return Math.exp(AFS_LOG_MIN + (AFS_LOG_MAX - AFS_LOG_MIN) * pos);
@@ -73,35 +65,34 @@ function ciToZ(ciFrac: number): number {
   return Math.SQRT2 * inverseErf(clamped);
 }
 
-export function ConvergenceChart({ result, schedule }: Props) {
+export function ConvergenceChart({ schedule }: Props) {
   const t = useT();
 
+  // Baseline avgField / roi are taken from the current schedule when present;
+  // if the user hasn't loaded a schedule yet, fall back to neutral defaults
+  // (1000-player field, +10 % ROI) so the widget is fully usable before any
+  // simulation has been run. σ_ROI itself is the closed-form analytic fit
+  // C(roi) · afs^β, so no measurement input is required.
   const baseline = useMemo(() => {
-    const N = result.tournamentsPerSample;
-    const totalBuyIn = result.totalBuyIn;
-    if (N <= 0 || totalBuyIn <= 0) return null;
-    const abi = totalBuyIn / N;
-    const sigmaTotal = result.stats.stdDev;
-    if (!(sigmaTotal > 0)) return null;
-    const sigmaRoi = sigmaTotal / Math.sqrt(N) / abi;
-    const roi = result.expectedProfit / totalBuyIn;
-
     let countTotal = 0;
     let fieldWeighted = 0;
+    let roiWeighted = 0;
     if (schedule && schedule.length > 0) {
       for (const row of schedule) {
         const c = Math.max(0, row.count);
         const p = Math.max(1, row.players);
         countTotal += c;
         fieldWeighted += c * p;
+        roiWeighted += c * row.roi;
       }
     }
-    const avgField = countTotal > 0 ? fieldWeighted / countTotal : 1;
-    return { sigmaRoi, avgField, roi };
-  }, [result, schedule]);
+    const avgField = countTotal > 0 ? fieldWeighted / countTotal : 1000;
+    const roi = countTotal > 0 ? roiWeighted / countTotal : 0.1;
+    return { avgField, roi };
+  }, [schedule]);
 
   const [afsPosOverride, setAfsPosOverride] = useState<number | null>(null);
-  const baselinePos = baseline ? afsToPos(baseline.avgField) : 0.5;
+  const baselinePos = afsToPos(baseline.avgField);
   const afsPos = afsPosOverride ?? baselinePos;
   const effectiveAfs = posToAfs(afsPos);
   // Confidence level for the CI bands — user-configurable in (90, 99.9).
@@ -110,7 +101,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
 
   // ROI override — decimal fraction. null means "use baseline roi".
   const [roiOverride, setRoiOverride] = useState<number | null>(null);
-  const baselineRoi = baseline ? baseline.roi : 0;
+  const baselineRoi = baseline.roi;
   const effectiveRoi = roiOverride ?? baselineRoi;
 
   // Text buffers so the user can freely type intermediate values without
@@ -146,23 +137,19 @@ export function ConvergenceChart({ result, schedule }: Props) {
     }
   };
 
-  const rows = useMemo<Row[] | null>(() => {
-    if (!baseline) return null;
+  const rows = useMemo<Row[]>(() => {
     const afs = posToAfs(afsPos);
-    // σ_ROI scales with field size as field^β with β ≈ 0.372 — sublinear,
-    // because MTT top-heaviness saturates on huge fields. β = 0.5 (√field)
-    // would cancel in `k/afs` and freeze the fields column. The 0.372 and
-    // the ROI multiplier (1+K·roi) both come from scripts/fit_beta.ts
-    // (18 fields × 7 ROIs, 60k × 500 samples each, R²≈0.995).
+    // Closed-form σ_ROI from the 18-field × 7-ROI fit (scripts/fit_beta.ts,
+    // R² ≈ 0.995). Entirely analytic — doesn't depend on any simulation run,
+    // so this widget is usable before the user clicks "go".
     //
-    //   σ_ROI(afs, roi) = σ_baseline · (afs/baseField)^β · (1+K·roi)/(1+K·roi0)
+    //   σ_ROI(afs, roi) = (C0 + C1·roi) · afs^β
     //   k               = ⌈(z · σ_ROI / target)²⌉
     //   fields          = k / afs
     const SIGMA_FIELD_EXPONENT = 0.372;
-    const baseField = Math.max(1, baseline.avgField);
-    const sigmaScale = Math.pow(afs / baseField, SIGMA_FIELD_EXPONENT);
-    const roiScale = sigmaRoiMultiplierForRoi(effectiveRoi, baseline.roi);
-    const sigmaRoi = baseline.sigmaRoi * sigmaScale * roiScale;
+    const sigmaRoi =
+      Math.max(0, SIGMA_ROI_C0 + SIGMA_ROI_C1 * effectiveRoi) *
+      Math.pow(Math.max(1, afs), SIGMA_FIELD_EXPONENT);
     return TARGETS.map((target) => {
       const k = Math.ceil(Math.pow((z * sigmaRoi) / target, 2));
       return {
@@ -171,15 +158,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
         fields: k / Math.max(1, afs),
       };
     });
-  }, [baseline, afsPos, z, effectiveRoi]);
-
-  if (!baseline || !rows) {
-    return (
-      <div className="text-[11px] text-[color:var(--color-fg-dim)]">
-        —
-      </div>
-    );
-  }
+  }, [afsPos, z, effectiveRoi]);
 
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
@@ -198,7 +177,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
   return (
     <div className="overflow-x-auto">
       <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
-        <span className="whitespace-nowrap uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-emerald-400/80">
           AFS
         </span>
         <input
@@ -208,7 +187,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
           step={0.001}
           value={afsPos}
           onChange={(e) => setAfsPosOverride(Number(e.target.value))}
-          className="flex-1 accent-[color:var(--color-accent)]"
+          className="flex-1 accent-emerald-400"
           aria-label="AFS"
         />
         <input
@@ -224,7 +203,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right font-mono tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none"
           aria-label="AFS value"
         />
         <button
@@ -237,7 +216,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
         </button>
       </div>
       <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
-        <span className="whitespace-nowrap uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-amber-400/80">
           ROI
         </span>
         <input
@@ -247,7 +226,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
           step={0.5}
           value={effectiveRoi * 100}
           onChange={(e) => setRoiOverride(Number(e.target.value) / 100)}
-          className="flex-1 accent-[color:var(--color-accent)]"
+          className="flex-1 accent-amber-400"
           aria-label="ROI"
         />
         <input
@@ -264,7 +243,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right font-mono tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-amber-400 focus:outline-none"
           aria-label="ROI percent"
         />
         <button
@@ -277,7 +256,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
         </button>
       </div>
       <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
-        <span className="whitespace-nowrap uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
           CI
         </span>
         <input
@@ -287,7 +266,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
           step={0.1}
           value={ciPct}
           onChange={(e) => setCiPct(Number(e.target.value))}
-          className="flex-1 accent-[color:var(--color-accent)]"
+          className="flex-1 accent-sky-400"
           aria-label="Confidence interval"
         />
         <input
@@ -302,7 +281,7 @@ export function ConvergenceChart({ result, schedule }: Props) {
               setCiPct(Math.max(90, Math.min(99.9, n)));
             }
           }}
-          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right font-mono tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
           aria-label="CI percent"
         />
         <button
@@ -317,7 +296,12 @@ export function ConvergenceChart({ result, schedule }: Props) {
       <div className="mb-2 text-[10px] text-[color:var(--color-fg-dim)]">
         z = {z.toFixed(3)}
       </div>
-      <table className="w-full border-collapse text-[12px] tabular-nums">
+      <table className="w-full table-fixed border-collapse text-[12px] tabular-nums">
+        <colgroup>
+          <col className="w-[72px]" />
+          <col />
+          <col />
+        </colgroup>
         <thead>
           <tr className="text-left text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             <th className="py-1.5 pr-3 font-semibold">

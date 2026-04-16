@@ -556,7 +556,7 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
             if (!Number.isFinite(v) || v < 0 || v > 100) return;
             onRowChange({ itmRate: v / 100 });
           }}
-          className="w-20 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
+          className="w-20 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
         />
       </label>
 
@@ -602,7 +602,7 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
                         [bucket.key]: v / 100,
                       } as Record<string, number>);
                     }}
-                    className="w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
+                    className="w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
                   />
                   <button
                     type="button"
@@ -901,9 +901,12 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     ftIsTier = true;
   } else {
     // High-field granularity: show top 0.1% / 0.5% / 1% / 5% / 10%; low-field
-    // collapses to just top 1% / top 10% (original layout).
+    // collapses to just top 5% / top 10%. Below 5 k the 0.5 % and 1 % bands
+    // are only a handful of seats, which makes them noisy and visually
+    // redundant with the explicit FT / winner tiers we already show.
     const highField = N >= 300;
     const veryHighField = N >= 1000;
+    const ultraHighField = N >= 5000;
     if (veryHighField) {
       cuts.push({
         key: "top01",
@@ -912,20 +915,20 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
         hi: Math.ceil(N * 0.001),
       });
     }
-    if (highField) {
+    if (ultraHighField) {
       cuts.push({
         key: "top05",
         labelKey: "preview.tierTop05",
         color: "#f97316",
         hi: Math.ceil(N * 0.005),
       });
+      cuts.push({
+        key: "top1",
+        labelKey: "preview.tierTop1",
+        color: "#ea580c",
+        hi: Math.ceil(N * 0.01),
+      });
     }
-    cuts.push({
-      key: "top1",
-      labelKey: "preview.tierTop1",
-      color: "#ea580c",
-      hi: Math.ceil(N * 0.01),
-    });
     if (highField) {
       cuts.push({
         key: "top5",
@@ -996,14 +999,6 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     const width = hi - prevHi;
     const eqShareTier = N > 0 ? width / N : 0;
     const evEqTier = N > 0 ? totalTierSum / N : 0;
-    const isCumulativeLabel =
-      c.key === "winner" ||
-      c.key === "top01" ||
-      c.key === "top05" ||
-      c.key === "top1" ||
-      c.key === "top5" ||
-      c.key === "top10" ||
-      c.key === "ft";
     tiers.push({
       key: c.key,
       labelKey: c.labelKey,
@@ -1013,7 +1008,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
       eqShare: eqShareTier,
       netDollars: evTier - fTier * entryCost,
       eqNetDollars: evEqTier - eqShareTier * entryCost,
-      displaySeats: isCumulativeLabel ? hi : width,
+      displaySeats: width,
     });
     prevHi = hi;
   }

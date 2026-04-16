@@ -16,6 +16,7 @@ import { PayoutStructureCard } from "@/components/PayoutStructureCard";
 import { Section, Card } from "@/components/ui/Section";
 import { CornerToggles } from "@/components/ui/CornerToggles";
 import { FinishPMFPreview } from "@/components/charts/FinishPMFPreview";
+import { ConvergenceChart } from "@/components/charts/ConvergenceChart";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
@@ -146,7 +147,15 @@ export default function Home() {
           compareWithPrimedope: true,
         });
       } else {
-        setControls((c) => ({ ...c, seed: freshSeed }));
+        // No saved state — load the PrimeDope comparison scenario by default.
+        const defaultScenario = SCENARIOS.find((s) => s.id === "primedope-reference");
+        if (defaultScenario) {
+          setSchedule(defaultScenario.schedule);
+          setControls({ ...initialControls, ...defaultScenario.controls, seed: freshSeed });
+          setActiveScenarioId("primedope-reference");
+        } else {
+          setControls((c) => ({ ...c, seed: freshSeed }));
+        }
       }
       setHydrated(true);
     });
@@ -163,7 +172,7 @@ export default function Home() {
       scheduleRepeats: c.scheduleRepeats,
       samples: c.samples,
       bankroll: c.bankroll,
-      seed: c.seed,
+      seed: Math.floor(Math.random() * 2 ** 30),
       finishModel: {
         id: c.finishModelId,
         alpha: c.alphaOverride ?? undefined,
@@ -439,22 +448,30 @@ export default function Home() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-3 sm:px-6 sm:py-4 xl:max-w-[1400px] 2xl:max-w-[1700px] 3xl:max-w-[2000px] 4xl:max-w-[2400px]">
       <header className="flex flex-col gap-3">
-        {/* Compact brand strip: ♠ + kicker + title + version + toggles in one row */}
+        {/* Brand strip */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[color:var(--color-border)] pb-2">
-          <div className="flex items-baseline gap-3">
-            <span className="inline-flex h-6 w-6 translate-y-[2px] items-center justify-center self-center rounded-sm border border-[color:var(--color-accent)] text-[10px] font-bold text-[color:var(--color-accent)]">
-              ♠
-            </span>
-            <h1 className="text-[20px] font-black uppercase leading-none tracking-[-0.01em] sm:text-[24px]">
-              <span className="text-[color:var(--color-fg)]">
-                {t("app.title").split(" ")[0]}
-              </span>{" "}
-              <span className="text-[color:var(--color-accent)]">
-                {t("app.title").split(" ").slice(1).join(" ") || t("app.title")}
+          <div className="flex items-end gap-3">
+            {/* Trajectory icon */}
+            <svg width="28" height="28" viewBox="0 0 28 28" className="shrink-0 translate-y-[1px]" aria-hidden>
+              <polyline points="2,22 7,18 11,20 15,10 19,14 23,4 26,8" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
+              <polyline points="2,24 7,22 11,23 15,16 19,19 23,12 26,15" fill="none" stroke="var(--color-fg-dim)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.4" />
+              <polyline points="2,20 7,14 11,17 15,6 19,10 23,2 26,5" fill="none" stroke="var(--color-accent)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.35" />
+            </svg>
+            <h1 className="flex flex-col leading-none">
+              <div className="flex items-baseline gap-0">
+                <span className="text-[22px] font-black tracking-[-0.02em] text-[color:var(--color-fg)] sm:text-[28px]" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+                  Poker
+                </span>
+                <span className="text-[22px] font-black tracking-[-0.02em] text-[color:var(--color-accent)] sm:text-[28px]" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+                  Dope
+                </span>
+              </div>
+              <span className="text-[11px] font-bold tracking-[0.04em] text-[color:var(--color-fg-muted)] sm:text-[13px]">
+                but better
               </span>
             </h1>
-            <span className="eyebrow hidden text-[color:var(--color-fg-dim)] sm:inline">
-              v0.3
+            <span className="hidden rounded-sm border border-[color:var(--color-accent)]/40 px-1.5 py-0.5 font-mono text-[9px] font-bold tabular-nums text-[color:var(--color-accent)]/70 sm:inline">
+              v0.6
             </span>
           </div>
           <CornerToggles />
@@ -516,12 +533,65 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            {userPresets.length === 0 ? (
-              <div className="text-[11px] text-[color:var(--color-fg-dim)]">
-                {t("userPreset.empty")}
-              </div>
-            ) : (
+
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3">
+                {SCENARIOS.map((s) => {
+                  const total = s.schedule.reduce((n, r) => n + r.count, 0);
+                  const buyIns = s.schedule.map((r) => r.buyIn);
+                  const lo = Math.min(...buyIns);
+                  const hi = Math.max(...buyIns);
+                  const range = lo === hi ? `$${lo}` : `$${lo}–${hi}`;
+                  const active = activeScenarioId === s.id;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`group relative flex flex-col items-start gap-2 border px-4 py-3 text-left transition-all ${
+                        active
+                          ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/5"
+                          : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] hover:border-[color:var(--color-accent)]/60 hover:bg-[color:var(--color-bg-elev-2)]"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => loadScenario(s.id)}
+                        className="flex w-full flex-col items-start gap-2 text-left"
+                      >
+                        <div className="flex w-full items-center justify-between">
+                          <span
+                            className={`font-mono text-[10px] uppercase tracking-wider ${
+                              active
+                                ? "text-[color:var(--color-accent)]"
+                                : "text-[color:var(--color-fg-dim)]"
+                            }`}
+                          >
+                            {t("userPreset.builtin")}
+                          </span>
+                          <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+                            {total} × {range}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {s.icon && (
+                            <img
+                              src={s.icon}
+                              alt=""
+                              className="h-6 w-6 rounded-full object-cover"
+                            />
+                          )}
+                          <span
+                            className={`text-[13px] font-semibold leading-tight ${
+                              active
+                                ? "text-[color:var(--color-accent)]"
+                                : "text-[color:var(--color-fg)] group-hover:text-[color:var(--color-accent)]"
+                            }`}
+                          >
+                            {t(s.labelKey)}
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+                  );
+                })}
                 {userPresets.map((p) => {
                   const total = p.state.schedule.reduce(
                     (n, r) => n + r.count,
@@ -597,7 +667,6 @@ export default function Home() {
                   );
                 })}
               </div>
-            )}
             </div>
           </details>
       </header>
@@ -607,17 +676,19 @@ export default function Home() {
         suit="spade"
         title={t("section.schedule.title")}
       >
-        <div className="mb-3 grid grid-cols-1 items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="min-w-0">
-            <ModelPresetSelector
-              value={controls}
-              onChange={(c) => {
-                setControls(c);
-                setActiveScenarioId(null);
-              }}
-            />
+        <div className="mb-3 grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
+          <div className="flex min-w-0 items-center justify-center">
+            <div className="w-full max-w-sm">
+              <ModelPresetSelector
+                value={controls}
+                onChange={(c) => {
+                  setControls(c);
+                  setActiveScenarioId(null);
+                }}
+              />
+            </div>
           </div>
-          <div className="min-w-0">
+          <div className="grid min-w-0 grid-cols-2 gap-2">
             <GlobalItmControl
               value={controls}
               onChange={(c) => {
@@ -625,6 +696,19 @@ export default function Home() {
                 setActiveScenarioId(null);
               }}
               disabled={running}
+            />
+            <BankrollControl
+              value={controls}
+              onChange={(c) => {
+                setControls(c);
+                setActiveScenarioId(null);
+              }}
+              disabled={running}
+              abi={(() => {
+                const totalCount = schedule.reduce((a, r) => a + Math.max(0, r.count), 0);
+                if (totalCount <= 0) return 0;
+                return schedule.reduce((a, r) => a + Math.max(0, r.count) * (r.buyIn + r.buyIn * r.rake), 0) / totalCount;
+              })()}
             />
           </div>
         </div>
@@ -653,7 +737,7 @@ export default function Home() {
                 aria-label={t("demo.label")}
               >
                 <option value="">—</option>
-                {SCENARIOS.filter((s) => advanced || s.id !== "romeo-pro").map(
+                {SCENARIOS.map(
                   (s) => (
                     <option key={s.id} value={s.id}>
                       {t(s.labelKey)}
@@ -664,6 +748,16 @@ export default function Home() {
             </>
           }
         />
+        {schedule.some(
+          (r) =>
+            (r.bountyFraction != null && r.bountyFraction > 0) ||
+            r.payoutStructure.includes("bounty"),
+        ) && (
+          <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-300/90">
+            <span className="mr-1.5 font-bold">⚠</span>
+            {t("schedule.betaFormats")}
+          </div>
+        )}
       </Section>
 
       <Section
@@ -700,6 +794,8 @@ export default function Home() {
                       roi: result.stats.mean / result.totalBuyIn,
                       probProfit: result.stats.probProfit,
                       riskOfRuin: result.stats.riskOfRuin,
+                      worstDrawdown: result.stats.maxDrawdownP99,
+                      longestCashlessWorst: result.stats.longestCashlessWorst,
                       elapsedMs,
                       resultsAnchorId: "results-top",
                     }
@@ -710,12 +806,11 @@ export default function Home() {
           </div>
           {previewRow && (
             <Card className="p-5">
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-0.5">
-                  <div className="text-sm font-semibold text-[color:var(--color-fg)]">
-                    {t("preview.title")}
-                  </div>
-                </div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-base font-bold uppercase tracking-wide text-[color:var(--color-fg)]">
+                  <span className="mr-2 text-sm" style={{ color: "var(--color-diamond)" }}>🔬</span>
+                  {t("preview.title")}
+                </h3>
                 {schedule.length > 1 && (
                   <select
                     value={previewRow.id}
@@ -802,6 +897,18 @@ export default function Home() {
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
+      )}
+
+      {!result && (
+        <Card className="p-5">
+          <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+            {t("chart.convergence")}
+          </div>
+          <div className="mb-1 text-[11px] text-[color:var(--color-fg-muted)]">
+            {t("chart.convergence.sub")}
+          </div>
+          <ConvergenceChart schedule={schedule} />
+        </Card>
       )}
 
       {result && (
@@ -891,6 +998,22 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v06.pko")}</li>
+              <li>{t("changelog.v06.weakCards")}</li>
+              <li>{t("changelog.v06.layout")}</li>
+              <li>{t("changelog.v06.labels")}</li>
+              <li>{t("changelog.v06.legend")}</li>
+            </ul>
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v05.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v05.engine")}</li>
+              <li>{t("changelog.v05.sweep")}</li>
+              <li>{t("changelog.v05.pdWidget")}</li>
+              <li>{t("changelog.v05.oneTourney")}</li>
+              <li>{t("changelog.v05.polish")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v04.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v04.summary")}</li>
@@ -943,41 +1066,84 @@ function GlobalItmControl({
 }) {
   const t = useT();
   return (
-    <div className="flex h-full flex-col gap-2 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-          <input
-            type="checkbox"
-            checked={value.itmGlobalEnabled}
-            disabled={disabled}
-            onChange={(e) =>
-              onChange({ ...value, itmGlobalEnabled: e.target.checked })
-            }
-            className="h-3.5 w-3.5 cursor-pointer accent-[color:var(--color-accent)]"
-          />
-          {t("controls.itmTarget.label")}
-        </label>
-        <div className="flex items-center gap-1">
-          <input
-            type="number"
-            min={0.5}
-            max={99}
-            step={0.5}
-            value={value.itmGlobalPct}
-            disabled={disabled || !value.itmGlobalEnabled}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (!Number.isFinite(v)) return;
-              onChange({ ...value, itmGlobalPct: v });
-            }}
-            className="w-20 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-right text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
-          />
-          <span className="text-[11px] text-[color:var(--color-fg-dim)]">%</span>
-        </div>
+    <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
+      <label className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+        <input
+          type="checkbox"
+          checked={value.itmGlobalEnabled}
+          disabled={disabled}
+          onChange={(e) =>
+            onChange({ ...value, itmGlobalEnabled: e.target.checked })
+          }
+          className="h-3.5 w-3.5 cursor-pointer accent-[color:var(--color-accent)]"
+        />
+        {t("controls.itmTarget.label")}
+      </label>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0.5}
+          max={99}
+          step={0.5}
+          value={value.itmGlobalPct}
+          disabled={disabled || !value.itmGlobalEnabled}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (!Number.isFinite(v)) return;
+            onChange({ ...value, itmGlobalPct: v });
+          }}
+          className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+        />
+        <span className="text-[11px] text-[color:var(--color-fg-dim)]">%</span>
       </div>
-      <p className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-        {t("controls.itmTarget.body")}
-      </p>
+    </div>
+  );
+}
+
+function BankrollControl({
+  value,
+  onChange,
+  disabled,
+  abi,
+}: {
+  value: ControlsState;
+  onChange: (next: ControlsState) => void;
+  disabled?: boolean;
+  abi: number;
+}) {
+  const t = useT();
+  const [brMode, setBrMode] = useState<"$" | "abi">("$");
+  const displayVal = brMode === "$" ? value.bankroll : (abi > 0 ? Math.round(value.bankroll / abi) : 0);
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
+      <span className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+        {t("controls.bankroll")}
+      </span>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          max={brMode === "$" ? 1_000_000_000 : 100_000}
+          step={brMode === "$" ? 100 : 10}
+          value={displayVal}
+          disabled={disabled}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (!Number.isFinite(v) || v < 0) return;
+            onChange({ ...value, bankroll: brMode === "$" ? v : Math.round(v * abi) });
+          }}
+          className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+        />
+        <button
+          type="button"
+          onClick={() => setBrMode((m) => (m === "$" ? "abi" : "$"))}
+          disabled={disabled}
+          className="shrink-0 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-40"
+          title={brMode === "$" ? "Switch to ABI multiples" : "Switch to dollars"}
+        >
+          {brMode === "$" ? "$" : "ABI"}
+        </button>
+      </div>
     </div>
   );
 }

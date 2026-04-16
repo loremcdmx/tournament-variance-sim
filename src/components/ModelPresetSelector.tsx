@@ -113,18 +113,18 @@ export function ModelPresetSelector({ value, onChange }: Props) {
       className="relative flex h-full flex-col gap-2 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-3"
     >
       <div className="flex items-center gap-2">
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+        <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-muted)]">
           {t("preset.label")}
         </span>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex min-w-0 flex-1 items-center justify-between gap-2 truncate rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-left hover:border-[color:var(--color-accent)]"
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 truncate rounded-md border border-[color:var(--color-accent)]/40 bg-[color:var(--color-bg)] px-3 py-2 text-left hover:border-[color:var(--color-accent)]"
         >
-          <span className="truncate text-sm font-semibold text-[color:var(--color-fg)]">
+          <span className="truncate text-[13px] font-bold text-[color:var(--color-fg)]">
             {activeLabel}
           </span>
-          <span className="shrink-0 text-[color:var(--color-fg-dim)]">▾</span>
+          <span className="shrink-0 text-[color:var(--color-accent)]/60">▾</span>
         </button>
         {advanced && (
         <button
@@ -190,7 +190,7 @@ export function ModelPresetSelector({ value, onChange }: Props) {
             {t("preset.standard")}
           </div>
           <div className="flex flex-col gap-1">
-            {STANDARD_PRESETS.filter((p) => advanced || p.id !== "loremcdmx").map((p) => (
+            {STANDARD_PRESETS.filter((p) => advanced || p.id === "naive").map((p) => (
               <button
                 key={p.id}
                 type="button"

@@ -4,6 +4,41 @@ All notable changes to tournament-variance-sim live here. One entry per
 day (YYYY-MM-DD). User-facing changes first, engine/calibration second,
 tooling/infra last.
 
+## 0.5.0 — 2026-04-15
+
+### Convergence widget
+
+- Empirically-fitted σ_ROI ≈ (0.622 + 0.233·roi) · field^0.372 replaces the
+  placeholder √field scaling. β = 0.372 and ROI multiplier K ≈ 0.374 come
+  from `scripts/fit_beta.ts` (18 fields × 7 ROIs × 60k samples, R² ≈ 0.993).
+- Added a **ROI slider** alongside AFS and CI, so convergence targets
+  respond to both field size and edge.
+- Full variance database at `data/variance-fits/sweep-v1.json` from
+  `scripts/variance_sweep.ts` — 7 experiments across field×ROI, N (CLT),
+  buy-in invariance, rake, payout structures, finish models, seed noise.
+
+### Run controls & progress
+
+- Progress bar now reserves the top 5 % for the build phase so the ETA
+  keeps ticking on 1 M-sample runs instead of pinning at "≈ 0 с" during
+  the envelope sort / histogram build.
+
+### PrimeDope minuses card
+
+- Rewritten with quantified sweep-backed claims. Top-heavy σ_ROI ≈ 9.98
+  vs flat ≈ 5.14 at 1000-player fields (**1.94× gap**), rake-math
+  discrepancy tied to measured dσ/drake = −2.509, β-error bounds
+  (−26 % at 100p, +38 % at 10 k, +86 % at 50 k when calibrated at 1 k),
+  and the WTA β = 0.5009 R² = 1.0 exception.
+
+### Tooling
+
+- `scripts/continuous_fit.ts` — infinite, resumable sweep harness that
+  samples broad (field, roi, rake, buyIn, N, payout, finishModel,
+  roiStdErr, mixed-schedule) scenarios, measures σ_ROI under BOTH
+  `alpha` and `primedope-binary-itm` calibrations on the same seed, and
+  appends JSONL to `data/variance-fits/continuous.jsonl`. Restart-safe.
+
 ## 2026-04-15
 
 ### Background sibling-run precompute
