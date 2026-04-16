@@ -1379,66 +1379,6 @@ export function ResultsView({
           ) : null}
         </div>
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-            {t("lineStyle.label")}
-          </div>
-          <LineStylePresetPicker
-            value={lineStylePresetId}
-            onChange={setLineStylePresetId}
-          />
-          <LineStyleCustomizer
-            preset={LINE_STYLE_PRESETS[lineStylePresetId]}
-            overrides={lineOverrides}
-            onChange={setLineOverrides}
-            t={t}
-          />
-          <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-            {t("runs.label")}
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={maxRuns}
-            step={1}
-            value={visibleRuns}
-            onChange={(e) => setVisibleRuns(Number(e.target.value))}
-            className="h-1 w-28 cursor-pointer accent-[color:var(--color-accent)]"
-            aria-label={t("runs.label")}
-          />
-          {advanced ? (
-            <>
-              <input
-                type="number"
-                min={0}
-                max={maxRuns}
-                step={1}
-                value={visibleRuns}
-                onChange={(e) => {
-                  const raw = Number(e.target.value);
-                  if (!Number.isFinite(raw)) return;
-                  setVisibleRuns(Math.max(0, Math.min(maxRuns, Math.round(raw))));
-                }}
-                className="w-14 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
-                aria-label={t("runs.label")}
-                title={`max ${maxRuns} (captured paths)`}
-              />
-              <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
-                /{maxRuns}
-              </span>
-            </>
-          ) : (
-            <span className="w-10 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
-              {visibleRuns}/{maxRuns}
-            </span>
-          )}
-          <RunModeSlider value={runMode} onChange={setRunMode} t={t} />
-        </div>
-      </div>
       <UnitScope id="trajectory">
         <TrajectoryCard
           settings={settings}
@@ -1460,6 +1400,68 @@ export function ResultsView({
           visibleRuns={deferredVisibleRuns}
           runMode={deferredRunMode}
           refLines={refLines}
+          toolbar={
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+                  {t("lineStyle.label")}
+                </div>
+                <LineStylePresetPicker
+                  value={lineStylePresetId}
+                  onChange={setLineStylePresetId}
+                />
+                <LineStyleCustomizer
+                  preset={LINE_STYLE_PRESETS[lineStylePresetId]}
+                  overrides={lineOverrides}
+                  onChange={setLineOverrides}
+                  t={t}
+                />
+                <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+                  {t("runs.label")}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxRuns}
+                  step={1}
+                  value={visibleRuns}
+                  onChange={(e) => setVisibleRuns(Number(e.target.value))}
+                  className="h-1 w-28 cursor-pointer accent-[color:var(--color-accent)]"
+                  aria-label={t("runs.label")}
+                />
+                {advanced ? (
+                  <>
+                    <input
+                      type="number"
+                      min={0}
+                      max={maxRuns}
+                      step={1}
+                      value={visibleRuns}
+                      onChange={(e) => {
+                        const raw = Number(e.target.value);
+                        if (!Number.isFinite(raw)) return;
+                        setVisibleRuns(Math.max(0, Math.min(maxRuns, Math.round(raw))));
+                      }}
+                      className="w-14 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+                      aria-label={t("runs.label")}
+                      title={`max ${maxRuns} (captured paths)`}
+                    />
+                    <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+                      /{maxRuns}
+                    </span>
+                  </>
+                ) : (
+                  <span className="w-10 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
+                    {visibleRuns}/{maxRuns}
+                  </span>
+                )}
+                <RunModeSlider value={runMode} onChange={setRunMode} t={t} />
+              </div>
+            </div>
+          }
           pdPresetFlip={modelPresetId === "primedope" && compareMode === "primedope"}
           honestLabel={
             finishModelId
@@ -2249,6 +2251,7 @@ function TrajectoryCard({
   onPdRefresh,
   pdOverrideStatus,
   pdOverrideProgress,
+  toolbar,
 }: {
   settings?: ControlsState;
   result: SimulationResult;
@@ -2281,6 +2284,7 @@ function TrajectoryCard({
   onPdRefresh?: () => void;
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
+  toolbar?: React.ReactNode;
 }) {
   const t = useT();
   const { money, compactMoney } = useMoneyFmt();
@@ -2446,6 +2450,7 @@ function TrajectoryCard({
           title={t("chart.trajectory")}
           subtitle=""
         />
+        {toolbar}
         {extremesToggles}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <ChartPane
@@ -2563,6 +2568,7 @@ function TrajectoryCard({
         title={t("chart.trajectory")}
         subtitle=""
       />
+      {toolbar}
       {extremesToggles}
       <TrajectoryPlot assets={primary} height={440} visibleRuns={visibleRuns} />
       {slotOverlay && (
