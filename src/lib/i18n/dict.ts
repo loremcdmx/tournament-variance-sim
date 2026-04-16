@@ -885,6 +885,16 @@ export const DICT = {
     en: "Saturated purple + yellow. Loud but harmonic editorial accent.",
     ru: "Насыщенная пурпурная и жёлтая палитра. Громкая, но гармоничная.",
   },
+  "lineStyle.preset.highContrast.label": { en: "High Contrast", ru: "Контрастный" },
+  "lineStyle.preset.highContrast.desc": {
+    en: "Colorblind-friendly: Wong palette + thicker lines + distinct dashes.",
+    ru: "Для дальтоников: палитра Вонга, утолщённые линии, различимый пунктир.",
+  },
+  "lineStyle.preset.neon.label": { en: "Neon", ru: "Неон" },
+  "lineStyle.preset.neon.desc": {
+    en: "Bright fluorescent colours on dark background — maximum visibility.",
+    ru: "Яркие флуоресцентные цвета на тёмном фоне — максимальная видимость.",
+  },
   "runs.label": { en: "Runs shown", ru: "Показано ранов" },
   "seedBatch.label": { en: "Seed variant", ru: "Вариант сида" },
   "seedBatch.prev": { en: "Previous cached run", ru: "Предыдущий кэшированный ран" },

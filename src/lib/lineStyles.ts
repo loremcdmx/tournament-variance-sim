@@ -7,7 +7,7 @@
  */
 import type { DictKey } from "./i18n/dict";
 
-export type LineStylePresetId = "classic" | "duotone" | "mono" | "vivid";
+export type LineStylePresetId = "classic" | "duotone" | "mono" | "vivid" | "highContrast" | "neon";
 
 export interface LineStyle {
   stroke: string;
@@ -116,11 +116,49 @@ const vivid: LineStylePreset = {
   bankrollLine: { stroke: "#ef4444", width: 1.5 },
 };
 
+// "highContrast" — designed for color-vision deficiency (CVD) users.
+// Uses Wong palette (blue/orange/vermilion) with increased widths and
+// distinct dash patterns so every line is identifiable without hue alone.
+const highContrast: LineStylePreset = {
+  id: "highContrast",
+  mean: { stroke: "#e69f00", width: 3 },
+  ev: { stroke: "#0072b2", width: 2, dash: [8, 4] },
+  best: { stroke: "#f0e442", width: 1.5 },
+  worst: { stroke: "#56b4e9", width: 1.5 },
+  p05: { stroke: "#d55e00", width: 2, dash: [4, 4] },
+  p95: { stroke: "#009e73", width: 2, dash: [4, 4] },
+  path: { stroke: "rgba(230,159,0,0.16)", width: 1 },
+  bandExtreme: { stroke: "rgba(230,159,0,0.06)", width: 1 },
+  bandWide: { stroke: "rgba(230,159,0,0.14)", width: 1 },
+  bandNarrow: { stroke: "rgba(230,159,0,0.28)", width: 1 },
+  refLine: { stroke: "#999999", width: 1.5, dash: [3, 4] },
+  bankrollLine: { stroke: "#cc79a7", width: 2 },
+};
+
+// "neon" — bright fluorescent lines on dark, maximally vibrant.
+const neon: LineStylePreset = {
+  id: "neon",
+  mean: { stroke: "#00ff88", width: 2.75 },
+  ev: { stroke: "#ff00ff", width: 1.5, dash: [6, 4] },
+  best: { stroke: "#88ffcc", width: 1.25 },
+  worst: { stroke: "#ff88ff", width: 1.25 },
+  p05: { stroke: "#ff4444", width: 1.5, dash: [5, 3] },
+  p95: { stroke: "#44ff44", width: 1.5, dash: [5, 3] },
+  path: { stroke: "rgba(0,255,136,0.14)", width: 0.85 },
+  bandExtreme: { stroke: "rgba(0,255,136,0.06)", width: 1 },
+  bandWide: { stroke: "rgba(0,255,136,0.14)", width: 1 },
+  bandNarrow: { stroke: "rgba(0,255,136,0.28)", width: 1 },
+  refLine: { stroke: "#666666", width: 1, dash: [3, 4] },
+  bankrollLine: { stroke: "#ff2222", width: 1.5 },
+};
+
 export const LINE_STYLE_PRESETS: Record<LineStylePresetId, LineStylePreset> = {
   classic,
   duotone,
   mono,
   vivid,
+  highContrast,
+  neon,
 };
 
 export const LINE_STYLE_PRESET_ORDER: LineStylePresetId[] = [
@@ -128,6 +166,8 @@ export const LINE_STYLE_PRESET_ORDER: LineStylePresetId[] = [
   "duotone",
   "mono",
   "vivid",
+  "highContrast",
+  "neon",
 ];
 
 export const DEFAULT_LINE_STYLE_PRESET: LineStylePresetId = "classic";
@@ -151,6 +191,14 @@ export const LINE_STYLE_PRESET_META: Record<
   vivid: {
     labelKey: "lineStyle.preset.vivid.label",
     descriptionKey: "lineStyle.preset.vivid.desc",
+  },
+  highContrast: {
+    labelKey: "lineStyle.preset.highContrast.label",
+    descriptionKey: "lineStyle.preset.highContrast.desc",
+  },
+  neon: {
+    labelKey: "lineStyle.preset.neon.label",
+    descriptionKey: "lineStyle.preset.neon.desc",
   },
 };
 
