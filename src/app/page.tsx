@@ -25,6 +25,20 @@ import { plural, WORDS } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { SCENARIOS } from "@/lib/scenarios";
+
+const scenarioDerived = new Map(
+  SCENARIOS.map((s) => {
+    const total = s.schedule.reduce((n, r) => n + r.count, 0);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const r of s.schedule) {
+      if (r.buyIn < lo) lo = r.buyIn;
+      if (r.buyIn > hi) hi = r.buyIn;
+    }
+    const range = lo === hi ? `$${lo}` : `$${lo}–${hi}`;
+    return [s.id, { total, range }] as const;
+  }),
+);
 import type {
   SimulationInput,
   SimulationResult,
@@ -106,6 +120,11 @@ export default function Home() {
     [],
   );
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
+  const abi = useMemo(() => {
+    const totalCount = schedule.reduce((a, r) => a + Math.max(0, r.count), 0);
+    if (totalCount <= 0) return 0;
+    return schedule.reduce((a, r) => a + Math.max(0, r.count) * (r.buyIn + r.buyIn * r.rake), 0) / totalCount;
+  }, [schedule]);
 
   const {
     status,
@@ -536,11 +555,7 @@ export default function Home() {
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3">
                 {SCENARIOS.map((s) => {
-                  const total = s.schedule.reduce((n, r) => n + r.count, 0);
-                  const buyIns = s.schedule.map((r) => r.buyIn);
-                  const lo = Math.min(...buyIns);
-                  const hi = Math.max(...buyIns);
-                  const range = lo === hi ? `$${lo}` : `$${lo}–${hi}`;
+                  const d = scenarioDerived.get(s.id)!;
                   const active = activeScenarioId === s.id;
                   return (
                     <div
@@ -567,7 +582,7 @@ export default function Home() {
                             {t("userPreset.builtin")}
                           </span>
                           <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
-                            {total} × {range}
+                            {d.total} × {d.range}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -704,11 +719,7 @@ export default function Home() {
                 setActiveScenarioId(null);
               }}
               disabled={running}
-              abi={(() => {
-                const totalCount = schedule.reduce((a, r) => a + Math.max(0, r.count), 0);
-                if (totalCount <= 0) return 0;
-                return schedule.reduce((a, r) => a + Math.max(0, r.count) * (r.buyIn + r.buyIn * r.rake), 0) / totalCount;
-              })()}
+              abi={abi}
             />
           </div>
         </div>

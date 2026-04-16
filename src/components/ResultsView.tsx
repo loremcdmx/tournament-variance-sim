@@ -361,6 +361,7 @@ function TrajectoryPlot({
   height: number;
   visibleRuns: number;
 }) {
+  const t = useT();
   const { compactMoney } = useMoneyFmt();
   const [cursor, setCursor] = useState<{
     idx: number;
@@ -503,49 +504,76 @@ function TrajectoryPlot({
   const cumBuyIn = tournaments * assets.buyInPerTourney;
   const roi = cumBuyIn > 0 ? nearestVal / cumBuyIn : 0;
 
+  // Defer the series index used for O(N) path stats so it doesn't
+  // recompute synchronously on every mousemove over the chart.
+  const deferredFocusedIdx = useDeferredValue(focusedSeriesIdx);
   // Compute on-the-fly run stats from the focused path for the detail strip.
+  // Uses samplePaths.x to convert checkpoint indices to tournament counts.
   const focusedPathStats = useMemo(() => {
-    if (focusedSeriesIdx == null) return null;
-    const dataArr = assets.data[focusedSeriesIdx] as ArrayLike<number> | undefined;
+    if (deferredFocusedIdx == null) return null;
+    const dataArr = assets.data[deferredFocusedIdx] as ArrayLike<number> | undefined;
     if (!dataArr || dataArr.length === 0) return null;
+    const xArr = assets.data[0] as ArrayLike<number> | undefined;
     const len = dataArr.length;
     const finalProfit = dataArr[len - 1] ?? 0;
+    const tourneyAt = (i: number) => (xArr ? (xArr[i] ?? i) : i);
 
     // Max drawdown: deepest drop from a running peak.
     let peak = -Infinity;
     let maxDD = 0;
+    let ddStart = 0;
+    let ddEnd = 0;
+    let curPeakIdx = 0;
     for (let i = 0; i < len; i++) {
       const v = dataArr[i];
       if (v == null || !Number.isFinite(v)) continue;
-      if (v > peak) peak = v;
+      if (v > peak) { peak = v; curPeakIdx = i; }
       const dd = peak - v;
-      if (dd > maxDD) maxDD = dd;
+      if (dd > maxDD) { maxDD = dd; ddStart = curPeakIdx; ddEnd = i; }
     }
+    const ddTourneys = Math.round(tourneyAt(ddEnd) - tourneyAt(ddStart));
 
-    // Longest losing streak: consecutive checkpoints where profit is declining.
+    // Longest losing streak: consecutive declining checkpoints → in tournament units.
     let longestLosing = 0;
+    let losingStartIdx = 0;
+    let curLosingStart = 0;
     let curLosing = 0;
     for (let i = 1; i < len; i++) {
       const prev = dataArr[i - 1];
       const cur = dataArr[i];
       if (prev == null || cur == null) continue;
-      if (cur < prev) { curLosing++; if (curLosing > longestLosing) longestLosing = curLosing; }
-      else curLosing = 0;
+      if (cur < prev) {
+        if (curLosing === 0) curLosingStart = i - 1;
+        curLosing++;
+        if (curLosing > longestLosing) { longestLosing = curLosing; losingStartIdx = curLosingStart; }
+      } else curLosing = 0;
     }
+    const losingTourneys = longestLosing > 0
+      ? Math.round(tourneyAt(losingStartIdx + longestLosing) - tourneyAt(losingStartIdx))
+      : 0;
 
-    // Longest breakeven-or-worse: consecutive checkpoints at or below a running peak.
+    // Longest breakeven-or-worse: consecutive checkpoints at or below running peak.
     let longestBE = 0;
+    let beStartIdx = 0;
     let curBE = 0;
+    let curBEStart = 0;
     peak = -Infinity;
     for (let i = 0; i < len; i++) {
       const v = dataArr[i];
       if (v == null || !Number.isFinite(v)) continue;
-      if (v > peak) { peak = v; curBE = 0; }
-      else { curBE++; if (curBE > longestBE) longestBE = curBE; }
+      if (v > peak) { peak = v; curBE = 0; curBEStart = i; }
+      else {
+        if (curBE === 0) curBEStart = i;
+        curBE++;
+        if (curBE > longestBE) { longestBE = curBE; beStartIdx = curBEStart; }
+      }
     }
+    const beTourneys = longestBE > 0
+      ? Math.round(tourneyAt(beStartIdx + longestBE) - tourneyAt(beStartIdx))
+      : 0;
 
-    return { finalProfit, maxDD, longestLosing, longestBE };
-  }, [focusedSeriesIdx, assets.data]);
+    return { finalProfit, maxDD, ddTourneys, losingTourneys, beTourneys };
+  }, [deferredFocusedIdx, assets.data]);
 
   const kindLabel = (line: TrajectoryLineMeta): string => {
     switch (line.kind) {
@@ -623,24 +651,29 @@ function TrajectoryPlot({
           {focusedPathStats && (
             <div className="mt-1.5 border-t border-[color:var(--color-border)]/50 pt-1.5">
               <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                run stats
+                {t("chart.traj.runStats")}
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">
-                <span className="text-[color:var(--color-fg-dim)]">final profit</span>
+                <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.finalProfit")}</span>
                 <span className="text-right font-semibold text-[color:var(--color-fg)]">
                   {compactMoney(focusedPathStats.finalProfit)}
                 </span>
-                <span className="text-[color:var(--color-fg-dim)]">max drawdown</span>
-                <span className="text-right font-semibold text-[color:var(--color-fg)]">
+                <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.maxDD")}</span>
+                <span className="text-right font-semibold text-[color:var(--color-danger)]">
                   {compactMoney(focusedPathStats.maxDD)}
+                  {focusedPathStats.ddTourneys > 0 && (
+                    <span className="ml-1 text-[9px] text-[color:var(--color-fg-dim)]">
+                      ({focusedPathStats.ddTourneys.toLocaleString()} t)
+                    </span>
+                  )}
                 </span>
-                <span className="text-[color:var(--color-fg-dim)]">longest losing</span>
+                <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.longestLosing")}</span>
                 <span className="text-right text-[color:var(--color-fg)]">
-                  {focusedPathStats.longestLosing} pts
+                  {focusedPathStats.losingTourneys.toLocaleString()} {t("chart.traj.tourneys")}
                 </span>
-                <span className="text-[color:var(--color-fg-dim)]">longest below peak</span>
+                <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.longestBE")}</span>
                 <span className="text-right text-[color:var(--color-fg)]">
-                  {focusedPathStats.longestBE} pts
+                  {focusedPathStats.beTourneys.toLocaleString()} {t("chart.traj.tourneys")}
                 </span>
               </div>
             </div>
@@ -1769,35 +1802,39 @@ export function ResultsView({
                       showUnitToggle={false}
                       tip={t("chart.longestBE.tip")}
                     />
-                    <DistributionChart
-                      binEdges={result.longestBreakevenHistogram.binEdges}
-                      counts={result.longestBreakevenHistogram.counts}
-                      color="#fbbf24"
-                      unitLabel="tourneys"
-                      yAsPct
-                      overlay={
-                        overlayPd && pdChart
-                          ? {
-                              binEdges:
-                                pdChart.longestBreakevenHistogram.binEdges,
-                              counts:
-                                pdChart.longestBreakevenHistogram.counts,
-                              color: "#f472b6",
-                              label: "PrimeDope",
-                            }
-                          : undefined
-                      }
-                    />
-                    <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-                      {t("chart.longestBE.sub")}
-                    </div>
-                    {overlayPd && pdChart && (
-                      <TailDivergenceNote
-                        user={result.longestBreakevenHistogram}
-                        pd={pdChart.longestBreakevenHistogram}
-                        unit={tourneysWord}
+                    <div className="flex-1">
+                      <DistributionChart
+                        binEdges={result.longestBreakevenHistogram.binEdges}
+                        counts={result.longestBreakevenHistogram.counts}
+                        color="#fbbf24"
+                        unitLabel="tourneys"
+                        yAsPct
+                        overlay={
+                          overlayPd && pdChart
+                            ? {
+                                binEdges:
+                                  pdChart.longestBreakevenHistogram.binEdges,
+                                counts:
+                                  pdChart.longestBreakevenHistogram.counts,
+                                color: "#f472b6",
+                                label: "PrimeDope",
+                              }
+                            : undefined
+                        }
                       />
-                    )}
+                    </div>
+                    <div className="mt-auto pt-1.5">
+                      <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                        {t("chart.longestBE.sub")}
+                      </div>
+                      {overlayPd && pdChart && (
+                        <TailDivergenceNote
+                          user={result.longestBreakevenHistogram}
+                          pd={pdChart.longestBreakevenHistogram}
+                          unit={tourneysWord}
+                        />
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-col">
                     <ChartHeader
@@ -1805,35 +1842,39 @@ export function ResultsView({
                       showUnitToggle={false}
                       tip={t("chart.longestCashless.tip")}
                     />
-                    <DistributionChart
-                      binEdges={result.longestCashlessHistogram.binEdges}
-                      counts={result.longestCashlessHistogram.counts}
-                      color="#f87171"
-                      unitLabel="tourneys"
-                      yAsPct
-                      overlay={
-                        overlayPd && pdChart
-                          ? {
-                              binEdges:
-                                pdChart.longestCashlessHistogram.binEdges,
-                              counts:
-                                pdChart.longestCashlessHistogram.counts,
-                              color: "#38bdf8",
-                              label: "PrimeDope",
-                            }
-                          : undefined
-                      }
-                    />
-                    <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-                      {t("chart.longestCashless.sub")}
-                    </div>
-                    {overlayPd && pdChart && (
-                      <TailDivergenceNote
-                        user={result.longestCashlessHistogram}
-                        pd={pdChart.longestCashlessHistogram}
-                        unit={tourneysWord}
+                    <div className="flex-1">
+                      <DistributionChart
+                        binEdges={result.longestCashlessHistogram.binEdges}
+                        counts={result.longestCashlessHistogram.counts}
+                        color="#f87171"
+                        unitLabel="tourneys"
+                        yAsPct
+                        overlay={
+                          overlayPd && pdChart
+                            ? {
+                                binEdges:
+                                  pdChart.longestCashlessHistogram.binEdges,
+                                counts:
+                                  pdChart.longestCashlessHistogram.counts,
+                                color: "#38bdf8",
+                                label: "PrimeDope",
+                              }
+                            : undefined
+                        }
                       />
-                    )}
+                    </div>
+                    <div className="mt-auto pt-1.5">
+                      <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                        {t("chart.longestCashless.sub")}
+                      </div>
+                      {overlayPd && pdChart && (
+                        <TailDivergenceNote
+                          user={result.longestCashlessHistogram}
+                          pd={pdChart.longestCashlessHistogram}
+                          unit={tourneysWord}
+                        />
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-col">
                     <ChartHeader
@@ -1841,37 +1882,41 @@ export function ResultsView({
                       showUnitToggle={false}
                       tip={t("chart.recovery.tip")}
                     />
-                    <DistributionChart
-                      binEdges={result.recoveryHistogram.binEdges}
-                      counts={result.recoveryHistogram.counts}
-                      color="#34d399"
-                      unitLabel="tourneys"
-                      yAsPct
-                      overlay={
-                        overlayPd && pdChart
-                          ? {
-                              binEdges: pdChart.recoveryHistogram.binEdges,
-                              counts: pdChart.recoveryHistogram.counts,
-                              color: "#e879f9",
-                              label: "PrimeDope",
-                            }
-                          : undefined
-                      }
-                    />
-                    <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-                      {t("chart.recovery.sub")}
-                      {" · "}
-                      {fmt(t("chart.recovery.unrecovered"), {
-                        pct: pct(s.recoveryUnrecoveredShare),
-                      })}
-                    </div>
-                    {overlayPd && pdChart && (
-                      <TailDivergenceNote
-                        user={result.recoveryHistogram}
-                        pd={pdChart.recoveryHistogram}
-                        unit={tourneysWord}
+                    <div className="flex-1">
+                      <DistributionChart
+                        binEdges={result.recoveryHistogram.binEdges}
+                        counts={result.recoveryHistogram.counts}
+                        color="#34d399"
+                        unitLabel="tourneys"
+                        yAsPct
+                        overlay={
+                          overlayPd && pdChart
+                            ? {
+                                binEdges: pdChart.recoveryHistogram.binEdges,
+                                counts: pdChart.recoveryHistogram.counts,
+                                color: "#e879f9",
+                                label: "PrimeDope",
+                              }
+                            : undefined
+                        }
                       />
-                    )}
+                    </div>
+                    <div className="mt-auto pt-1.5">
+                      <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                        {t("chart.recovery.sub")}
+                        {" · "}
+                        {fmt(t("chart.recovery.unrecovered"), {
+                          pct: pct(s.recoveryUnrecoveredShare),
+                        })}
+                      </div>
+                      {overlayPd && pdChart && (
+                        <TailDivergenceNote
+                          user={result.recoveryHistogram}
+                          pd={pdChart.recoveryHistogram}
+                          unit={tourneysWord}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
                 {overlayPd && pdChart && (
@@ -2280,6 +2325,12 @@ function TrajectoryCard({
   // the slider is applied imperatively in TrajectoryPlot. Keeping it out
   // of the memo deps is the whole point of this refactor: dragging the
   // slider must not tear down and rebuild uPlot.
+  // Stable axis formatter ref — avoids rebuilding the entire chart when
+  // unit mode toggles (compactMoney identity changes). The formatter is
+  // only called by uPlot during paint, so a ref indirection is safe.
+  const axisFmtRef = useRef(compactMoney);
+  axisFmtRef.current = compactMoney;
+  const stableAxisFmt = useMemo(() => (v: number) => axisFmtRef.current(v), []);
   const maxPathCount = Math.min(500, result.samplePaths.paths.length);
   const primary = useMemo(
     () =>
@@ -2289,7 +2340,7 @@ function TrajectoryCard({
         "felt",
         yRange,
         overlayPd ? pdChart : null,
-        compactMoney,
+        stableAxisFmt,
         linePreset,
         maxPathCount,
         refLines,
@@ -2298,7 +2349,7 @@ function TrajectoryCard({
         showRealExtremes,
         showAggExtremes,
       ),
-    [result, bankroll, yRange, overlayPd, pdChart, compactMoney, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
   );
   const secondaryMaxPathCount = pdChart
     ? Math.min(500, pdChart.samplePaths.paths.length)
@@ -2312,7 +2363,7 @@ function TrajectoryCard({
             "magenta",
             yRange,
             undefined,
-            compactMoney,
+            stableAxisFmt,
             PRIMEDOPE_PANE_PRESET,
             secondaryMaxPathCount,
             refLines,
@@ -2322,7 +2373,7 @@ function TrajectoryCard({
             showAggExtremes,
           )
         : null,
-    [pdChart, bankroll, yRange, compactMoney, secondaryMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [pdChart, bankroll, yRange, stableAxisFmt, secondaryMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
   );
   const compareMaxPathCount = compareResult
     ? Math.min(500, compareResult.samplePaths.paths.length)
@@ -2336,7 +2387,7 @@ function TrajectoryCard({
             "magenta",
             undefined,
             undefined,
-            compactMoney,
+            stableAxisFmt,
             PRIMEDOPE_PANE_PRESET,
             compareMaxPathCount,
             refLines,
@@ -2346,7 +2397,7 @@ function TrajectoryCard({
             showAggExtremes,
           )
         : null,
-    [compareResult, bankroll, compactMoney, compareMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [compareResult, bankroll, stableAxisFmt, compareMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
   );
 
   const extremesToggles = (
@@ -2844,17 +2895,15 @@ function LineStyleCustomizer({
                   aria-label={t(labelKey(k))}
                 />
                 <span
-                  className="w-32 truncate text-[color:var(--color-fg-dim)]"
+                  className="min-w-[8rem] flex-1 truncate text-[color:var(--color-fg-dim)]"
                   title={t(labelKey(k))}
                 >
                   {t(labelKey(k))}
                 </span>
-                <input
-                  type="color"
+                <DebouncedColorInput
                   value={hex}
                   disabled={!enabled}
-                  onChange={(e) => setKey(k, { stroke: e.target.value })}
-                  className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0 disabled:opacity-40"
+                  onChange={(v) => setKey(k, { stroke: v })}
                   aria-label={t(labelKey(k))}
                 />
                 <input
@@ -4848,5 +4897,34 @@ function StatGroup({
         {children}
       </div>
     </div>
+  );
+}
+
+function DebouncedColorInput({
+  value,
+  disabled,
+  onChange,
+  ...rest
+}: {
+  value: string;
+  disabled?: boolean;
+  onChange: (v: string) => void;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "type">) {
+  const [local, setLocal] = useState(value);
+  const prev = useRef(value);
+  if (prev.current !== value) {
+    prev.current = value;
+    setLocal(value);
+  }
+  return (
+    <input
+      type="color"
+      value={local}
+      disabled={disabled}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => { if (local !== value) onChange(local); }}
+      className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0 disabled:opacity-40"
+      {...rest}
+    />
   );
 }
