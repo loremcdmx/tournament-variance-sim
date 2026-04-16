@@ -103,6 +103,14 @@ export const DICT = {
     ru: "Сверка с PrimeDope",
   },
   "demo.romeoPro": { en: "RomeoPro mode", ru: "Режим Ромеопро" },
+  "demo.smallFieldCrusher": {
+    en: "Small field crusher",
+    ru: "Краш малых полей",
+  },
+  "demo.pkoDivergence": {
+    en: "PKO vs PrimeDope",
+    ru: "PKO vs PrimeDope",
+  },
 
   "userPreset.label": { en: "My presets", ru: "Мои пресеты" },
   "userPreset.saveCurrent": { en: "Save current", ru: "Сохранить текущий" },

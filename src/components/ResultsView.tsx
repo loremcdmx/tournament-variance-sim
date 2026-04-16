@@ -3629,68 +3629,69 @@ function PokerDopeWeaknessCard() {
     <Card className="rounded-none border-0 p-4">
       <div className="flex flex-col gap-4 text-[11px] leading-relaxed text-[color:var(--color-fg)]">
         <p className="text-[color:var(--color-fg-dim)]">
-          Все цифры ниже — из эмпирического свипа движка: 18 полей × 7 ROI
-          × 60k samples × 500 турниров. PD-выходы реплицированы их API.
+          Каждый фактор ниже изолирован эмпирически: 30k samples, три сценария
+          (100/1000/5000 игроков), одна переменная за раз. Ошибки PD частично
+          компенсируют друг друга — суммарный разрыв σ с нашим движком
+          составляет <b>1–12%</b> в зависимости от поля и ROI.
         </p>
 
-        {/* ------------------- КРИТИЧНЫЕ ------------------- */}
+        {/* ---- КРУПНЫЕ: >5% влияния на графики ---- */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[#f87171]" />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-              Критичные — математика не сходится
+              Крупные — видно на графиках (&gt;5% σ)
             </span>
           </div>
           <div className="grid gap-2 lg:grid-cols-2">
             <WeakBlock
-              tag="CRITICAL"
+              tag="σ +9–13%"
               tone="#f87171"
-              title="Одна формула ITM на всех — эдж не там"
+              title="Пейаут-кривые PD шире реальных"
             >
-              PD считает <code>itm = (1 + ROI) × paid / field</code>.
-              Весь скилл живёт в «чаще обкешиваться». В реальности рег
-              обкешивается примерно как нулевик, но заходит глубже.
+              PD использует собственные кривые выплат, которые более
+              top-heavy, чем стандартные структуры румов. Это <b>завышает</b> σ
+              на 9–13% на средних и больших полях.
               <WeakTable
-                headers={["ROI", "σ по движку", "σ по PD"]}
+                headers={["Поле", "σ (наши кривые)", "σ (PD кривые)", "Δ"]}
                 rows={[
-                  ["-20%", "6.62", "7.76"],
-                  ["0%", "7.76", "7.76"],
-                  ["+10%", "8.28", "7.76"],
-                  ["+40%", "9.71", "7.76"],
-                  ["+80%", "11.36", "7.76"],
+                  ["1 000", "16 512", "18 703", "+13.3%"],
+                  ["5 000", "18 289", "20 002", "+9.4%"],
+                  ["100", "12 707", "12 373", "−2.6%"],
                 ]}
-                caption="σ_ROI, поле 1000p, mtt-standard. PD: σ = const"
+                caption="30k samples, $50+10% rake, +10% ROI. Остальные параметры фиксированы."
               />
-              У +40%-рега волатильность на <b>~25%</b> выше, чем у
-              нулевика. PD этого не видит — банкролл для эджиста занижен.
+              Парадокс: единственный фактор PD, который <em>увеличивает</em> σ.
+              Именно он компенсирует остальные занижающие ошибки — поэтому
+              итоговый разрыв небольшой.
             </WeakBlock>
 
             <WeakBlock
-              tag="CRITICAL"
+              tag="σ −7–10%"
               tone="#f87171"
-              title="Равномерный финиш — хвост подрезан вдвое"
+              title="Рейк в формуле дважды — EV и σ занижены"
             >
-              PD кидает монетку между всеми призовыми местами равновесно:
-              1-е так же вероятно, как минкеш.
+              PD считает EV от <code>buyin</code> (без рейка), а σ — от{" "}
+              <code>buyin − rake</code> (ещё раз без рейка). Две ошибки
+              складываются: EV занижен на весь рейк, σ сжат.
               <WeakTable
-                headers={["Структура", "σ", "Разница"]}
+                headers={["Эффект", "Поле 100", "Поле 1000", "Поле 5000"]}
                 rows={[
-                  ["mtt-top-heavy", "9.98", "—"],
-                  ["mtt-standard", "8.28", "−17%"],
-                  ["mtt-gg", "7.78", "−22%"],
-                  ["mtt-flat (≈PD)", "5.14", "−48%"],
-                  ["winner-takes-all", "31.58", "+216%"],
+                  ["EV без рейка", "−4.3%", "−6.0%", "−5.8%"],
+                  ["σ от пула без рейка", "−3.5%", "−3.5%", "−2.9%"],
+                  ["Суммарно", "−7.6%", "−9.3%", "−8.6%"],
                 ]}
-                caption="σ_ROI при field=1000, ROI=10%. Разница от top-heavy"
+                caption="Изолированный вклад каждого фактора в σ. $50+10% rake, +10% ROI."
               />
-              PD-логика (flat) занижает σ в <b>1.94×</b> относительно
-              top-heavy. Это главный канал занижения свингов.
+              На 10% рейке EV занижен на $550 с каждых 1000 турниров
+              ($50+$5.50). PD считает вход $50, реально $55.50.
+              Sharpe-ratio не должен расти от рейка.
             </WeakBlock>
 
             <WeakBlock
-              tag="CRITICAL"
+              tag="σ ±44%"
               tone="#f87171"
-              title="√field масштабирование — врёт на больших полях"
+              title="√field масштабирование — ошибка до 44%"
             >
               PD предполагает σ ∝ √field. Реальный показатель — <b>0.372</b>,
               не 0.5.
@@ -3708,83 +3709,54 @@ function PokerDopeWeaknessCard() {
               На маленьких полях (100p) PD занижает σ на 31% — банкролл
               нужен больше, чем он рисует. На 10k+ полях — завышает.
             </WeakBlock>
-
-            <WeakBlock
-              tag="CRITICAL"
-              tone="#f87171"
-              title="Рейк сжирает σ, но не EV — перекос формулы"
-            >
-              PD: σ считает от <code>buyin − rake</code>, EV от{" "}
-              <code>buyin × ROI</code>. Две разные базы.
-              <WeakTable
-                headers={["Rake", "σ PD", "σ движок", "EV PD"]}
-                rows={[
-                  ["0%", "$5 975", "$5 975", "$5 000"],
-                  ["11%", "$5 607", "$5 930", "$5 000"],
-                  ["50%", "$4 042", "$5 840", "$5 000"],
-                ]}
-                caption="100p, $50, 1000 туриков, +10% ROI. PD vs движок"
-              />
-              PD: чем выше рейк, тем «мягче» игра (σ падает на 28%,
-              EV стоит). В реальности σ почти не двигается (−3.6%).
-              Sharpe-ratio не должен расти от рейка.
-            </WeakBlock>
-
-            <WeakBlock
-              tag="CRITICAL"
-              tone="#f87171"
-              title="EV занижен на весь рейк — $500 потерялось"
-            >
-              $50+$5.50 турик, +10% ROI, 1000 штук.
-              <WeakTable
-                headers={["", "PD", "Реально"]}
-                rows={[
-                  ["Кост входа", "$50", "$55.50"],
-                  ["EV", "$5 000", "$5 550"],
-                  ["Разница", "", "+$550"],
-                ]}
-                caption="PD молча съедает рейк из EV. Ты зарабатываешь больше, чем он рисует."
-              />
-              PD считает профит от <code>buyin</code>, а не от реального
-              <code> buyin + fee</code>. На 10% рейке это −10% от всего
-              эджа.
-            </WeakBlock>
-
-            <WeakBlock
-              tag="CRITICAL"
-              tone="#f87171"
-              title="RoR через Гаусс — хвосты MTT тяжелее"
-            >
-              PD считает RoR аналитически через гауссовский хвост
-              (Brownian first-passage). Реальная PMF скошена — жирные
-              спайки наверху, масса в нуле.
-              <WeakTable
-                headers={["Метрика", "PD", "Движок"]}
-                rows={[
-                  ["RoR (20k тур.)", "70.8%", "~75%"],
-                  ["P99 даунсвинг", "аналит.", "эмпирич."],
-                  ["BRM", "нет", "running-min"],
-                ]}
-                caption="100p, $50+$5.50, +10% ROI, BR=$1000"
-              />
-              Гауссов хвост системно недооценивает глубокие серии минусов.
-              У нас RoR считается эмпирически через running-min по всем
-              сэмплам — не формулой.
-            </WeakBlock>
           </div>
         </div>
 
-        {/* ------------------- СРЕДНИЕ ------------------- */}
+        {/* ---- МЕЛКИЕ: <5% на графиках ---- */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#fb923c]" />
+            <span className="h-2 w-2 rounded-full bg-[#94a3b8]" />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-              Средние — не поддерживаемые форматы
+              Мелочи — влияние &lt;5%, на графике не заметны
             </span>
           </div>
           <div className="grid gap-2 lg:grid-cols-2">
             <WeakBlock
-              tag="MODEL"
+              tag="σ ±2%"
+              tone="#94a3b8"
+              title="Бинарный ITM-финиш и постоянная σ"
+            >
+              PD кидает монетку: в призы или нет, дальше равномерно по местам.
+              Скилл весь в ITM-частоте (<code>itm = (1+ROI) × paid / field</code>),
+              σ не зависит от ROI. Изолированный эффект на σ: <b>всего 1–2%</b>.
+              Старая оценка «25% разрыв для +40% ROI» верна для σ<sub>ROI</sub>,
+              но на итоговые графики при типичном ROI 5–15% влияние незначительно.
+            </WeakBlock>
+
+            <WeakBlock
+              tag="~4%"
+              tone="#94a3b8"
+              title="Гауссов RoR — хвосты MTT тяжелее"
+            >
+              PD считает Risk of Ruin аналитически через Brownian first-passage.
+              Реальная PMF скошена — жирные спайки наверху, масса в нуле.
+              Разница ~4 п.п. на типичных сценариях (70.8% vs ~75% RoR).
+              У нас RoR эмпирический через running-min по всем сэмплам.
+            </WeakBlock>
+          </div>
+        </div>
+
+        {/* ---- FORMAT GAP ---- */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#fb923c]" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+              Не поддерживаемые форматы
+            </span>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-2">
+            <WeakBlock
+              tag="FORMAT"
               tone="#fb923c"
               title="PKO / баунти вообще не поддерживаются"
             >
@@ -3807,9 +3779,10 @@ function PokerDopeWeaknessCard() {
         </div>
 
         <div className="text-[10px] text-[color:var(--color-fg-dim)]">
-          Собрано 2026-04-14, данные из свипа{" "}
-          <code>data/variance-fits/sweep-v1.json</code> и PD API{" "}
-          <code>scripts/pd_probe.mjs</code>.
+          Данные: 30k samples × 3 сценария, изоляция по флагам{" "}
+          <code>usePrimedopeFinishModel / usePrimedopeRakeMath / usePrimedopePayouts</code>.
+          Свип 2026-04-14 (<code>data/variance-fits/sweep-v1.json</code>),
+          обновлено 2026-04-16 (изоляция).
         </div>
       </div>
     </Card>
