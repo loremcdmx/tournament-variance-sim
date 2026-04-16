@@ -202,11 +202,8 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
         <div className="text-[12px] leading-snug text-[color:var(--color-fg)]">
           {heroBody}
         </div>
-        {halfMassLine && (
-          <div className="mt-1.5 rounded-sm border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 px-2 py-1 text-[11px] leading-snug text-[color:var(--color-fg)]">
-            {halfMassLine}
-          </div>
-        )}
+        {/* halfMassLine removed — heroBody already conveys top-heaviness;
+             keeping the computation for potential future use */}
         <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
           {t("preview.heroTagline")}
         </div>
@@ -227,6 +224,13 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
         <div className="flex flex-col divide-y divide-[color:var(--color-border)]/60">
           {(() => {
             const rows: React.ReactNode[] = [];
+            // Max evShare across disjoint tiers — used as the 100% baseline
+            // for bar widths so the largest tier fills the full bar.
+            let maxEv = 0;
+            for (const tier of stats.tiers) {
+              const s = tier.ev / evTotal;
+              if (s > maxEv) maxEv = s;
+            }
             // Disjoint tiers + interleaved cumulative summary rows (top3
             // and FT) injected right after the winner tier, so "топ3" and
             // "финалка" sit next to "1st place" instead of at the end.
@@ -246,6 +250,7 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
                   netDollars={tier.netDollars}
                   seats={tierSeats}
                   seatsWord={plural(locale, tierSeats, WORDS.person)}
+                  maxEvShare={maxEv}
                 />,
               );
               if (tier.key === "winner") {
@@ -266,6 +271,7 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
                       seats={posSeats}
                       seatsWord={plural(locale, posSeats, WORDS.person)}
                       cumulative
+                      maxEvShare={maxEv}
                     />,
                   );
                 }
@@ -317,6 +323,7 @@ function EvBreakdownRow({
   seats,
   seatsWord,
   cumulative,
+  maxEvShare,
 }: {
   label: string;
   color: string;
@@ -327,6 +334,7 @@ function EvBreakdownRow({
   seats: number;
   seatsWord: string;
   cumulative?: boolean;
+  maxEvShare?: number;
 }) {
   const labelClass = cumulative
     ? "italic text-[color:var(--color-fg-dim)]"
@@ -355,7 +363,7 @@ function EvBreakdownRow({
         <div
           className="absolute inset-y-0 left-0 rounded-sm"
           style={{
-            width: `${Math.min(100, Math.max(0, eqShare * 100))}%`,
+            width: `${Math.min(100, Math.max(0, (maxEvShare ? eqShare / maxEvShare : eqShare) * 100))}%`,
             background: color,
             opacity: 0.3,
           }}
@@ -363,7 +371,7 @@ function EvBreakdownRow({
         <div
           className="absolute inset-y-0 left-0 rounded-sm"
           style={{
-            width: `${Math.min(100, Math.max(0, evShare * 100))}%`,
+            width: `${Math.min(100, Math.max(0, (maxEvShare ? evShare / maxEvShare : evShare) * 100))}%`,
             background: color,
           }}
         />

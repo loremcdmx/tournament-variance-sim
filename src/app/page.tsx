@@ -998,6 +998,14 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06b.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v06b.tone")}</li>
+              <li>{t("changelog.v06b.streaks")}</li>
+              <li>{t("changelog.v06b.ev")}</li>
+              <li>{t("changelog.v06b.convergence")}</li>
+              <li>{t("changelog.v06b.pkoVar")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v06.pko")}</li>

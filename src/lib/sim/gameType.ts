@@ -76,6 +76,7 @@ export function applyGameType(
     case "pko":
       patch.bountyFraction = bounty > 0 ? bounty : 0.5;
       patch.mysteryBountyVariance = undefined;
+      patch.pkoHeadVar = row.pkoHeadVar ?? 0.4;
       break;
     case "mystery":
       patch.bountyFraction = bounty > 0 ? bounty : 0.5;

@@ -122,7 +122,7 @@ export function DistributionChart({
       return { edges: binEdges, counts };
     }
     const step = binEdges[binEdges.length - 1] - binEdges[binEdges.length - 2];
-    const maxExtended = Math.min(overlayLast, primaryLast * 3);
+    const maxExtended = Math.min(overlayLast, primaryLast * 5);
     const extraEdges: number[] = [];
     const extraCounts: number[] = [];
     let cur = primaryLast;

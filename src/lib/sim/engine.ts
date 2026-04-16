@@ -338,6 +338,11 @@ function compileSingleEntry(
       `engine: row "${label}" mysteryBountyVariance must be ≥ 0 (got ${row.mysteryBountyVariance})`,
     );
   }
+  if (row.pkoHeadVar != null && !(row.pkoHeadVar >= 0)) {
+    throw new Error(
+      `engine: row "${label}" pkoHeadVar must be ≥ 0 (got ${row.pkoHeadVar})`,
+    );
+  }
   if (row.pkoHeat != null && !(row.pkoHeat >= 0 && row.pkoHeat <= 3)) {
     throw new Error(
       `engine: row "${label}" pkoHeat must be in [0,3] (got ${row.pkoHeat})`,
@@ -777,6 +782,16 @@ function compileSingleEntry(
   const varSingle = Math.max(0, eX2 - eX * eX);
   const sigmaSingleAnalytic = Math.sqrt(varSingle);
 
+  // Combined per-KO log-variance: mystery bounty noise + PKO head-size noise.
+  // Both are independent log-normal sources, so variances add in log-space.
+  // Default pkoHeadVar to 0.4 when bountyFraction > 0 and not explicitly set,
+  // so all PKO rows get head-size variance even without applyGameType.
+  const effectivePkoHeadVar =
+    row.pkoHeadVar ?? (bountyMean > 0 ? 0.4 : 0);
+  const perKoLogVar =
+    Math.max(0, row.mysteryBountyVariance ?? 0) +
+    Math.max(0, effectivePkoHeadVar);
+
   return {
     rowIdx: idx,
     costPerEntry,
@@ -795,15 +810,9 @@ function compileSingleEntry(
     bountyKmeanExp,
     bountyKmeanSqrt,
     bountyKmeanInv,
-    mysteryBountyLogVar: Math.max(0, row.mysteryBountyVariance ?? 0),
-    mysteryBountyLogSigma:
-      row.mysteryBountyVariance && row.mysteryBountyVariance > 0
-        ? Math.sqrt(row.mysteryBountyVariance)
-        : 0,
-    mysteryBountyExpMinus1:
-      row.mysteryBountyVariance && row.mysteryBountyVariance > 0
-        ? Math.exp(row.mysteryBountyVariance) - 1
-        : 0,
+    mysteryBountyLogVar: perKoLogVar,
+    mysteryBountyLogSigma: perKoLogVar > 0 ? Math.sqrt(perKoLogVar) : 0,
+    mysteryBountyExpMinus1: perKoLogVar > 0 ? Math.exp(perKoLogVar) - 1 : 0,
     sigmaSingleAnalytic,
     heatBountyByPlace,
   };
@@ -1175,11 +1184,11 @@ export function buildResult(
   // samples ("how many runs have a longest-chord of this length").
   const longestBreakevenHistogram = histogramFromCounts(
     shard.breakevenStreakCounts,
-    40,
+    60,
   );
   const longestCashlessHistogram = histogramFromCounts(
     shard.cashlessStreakCounts,
-    40,
+    60,
   );
 
   // Envelopes ---------------------------------------------------------------
@@ -1607,9 +1616,12 @@ function histogramFromCounts(
     return maxLen;
   };
   const medianLen = pctLen(0.5);
-  const p99Len = pctLen(0.99);
-  let hi = Math.min(maxLen, p99Len, Math.max(medianLen * 10, 20));
+  const p999Len = pctLen(0.999);
+  let hi = Math.min(maxLen, p999Len, Math.max(medianLen * 10, 20));
   if (hi < 1) hi = 1;
+  // Streak lengths are integers — bin width must be ≥ 1 to avoid
+  // empty gaps between integer values (causes jagged overlay lines).
+  if (hi < bins) bins = Math.max(1, Math.floor(hi));
   const binEdges: number[] = new Array(bins + 1);
   for (let i = 0; i <= bins; i++) binEdges[i] = (hi * i) / bins;
   const counts: number[] = new Array(bins).fill(0);
@@ -1652,9 +1664,9 @@ function histogramOf(
   if (longTailClip && n > 1) {
     const sorted = new Float64Array(arr);
     sorted.sort();
-    const idx = Math.min(n - 1, Math.floor(0.99 * (n - 1)));
-    const p99 = sorted[idx];
-    if (p99 > lo + 1e-9 && p99 < hi) hi = p99;
+    const idx = Math.min(n - 1, Math.floor(0.999 * (n - 1)));
+    const p999 = sorted[idx];
+    if (p999 > lo + 1e-9 && p999 < hi) hi = p999;
   }
   const span = hi - lo;
   const binEdges: number[] = new Array(bins + 1);

@@ -33,6 +33,9 @@ export type FinishModelId =
   | "freeze-realdata-step"
   | "freeze-realdata-linear"
   | "freeze-realdata-tilt"
+  | "pko-realdata-step"
+  | "pko-realdata-linear"
+  | "pko-realdata-tilt"
   | "powerlaw-realdata-influenced";
 
 export interface FinishModelConfig {
@@ -228,6 +231,18 @@ export interface TournamentRow {
    * bit-exact legacy PKO path). Requires `bountyFraction > 0`.
    */
   pkoHeat?: number;
+
+  /**
+   * PKO head-size log-variance σ² — within-place bounty noise from the
+   * natural dispersion of opponent head values. In progressive PKO, the
+   * cash you receive per KO depends on the opponent's accumulated head,
+   * which ranges from ~starting_bounty/2 to many multiples of it. This
+   * parameter models that per-KO payout variance as log-normal noise
+   * (same mechanism as mystery bounty). Adds to `mysteryBountyVariance`
+   * when both are present. Typical range 0.2–0.6. Defaults to 0.4 for
+   * PKO game types (CV ≈ 0.68), 0 for non-bounty formats.
+   */
+  pkoHeadVar?: number;
 }
 
 /**

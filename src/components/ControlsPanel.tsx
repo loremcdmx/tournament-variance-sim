@@ -130,21 +130,31 @@ export function ControlsPanel({
     }, 250);
     return () => window.clearInterval(id);
   }, [running]);
+  // ETA with exponential smoothing to avoid jitter. The ref holds the
+  // smoothed value across re-renders; alpha 0.3 means ~70 % of the old
+  // estimate is kept on each tick, producing visually stable countdown.
+  const smoothedEta = useRef<number | null>(null);
+  if (!running) smoothedEta.current = null;
   const remainingMs = (() => {
     if (!running || runElapsedMs == null) return null;
     const elapsed = runElapsedMs;
-    // Blend elapsed-rate projection with the prior estimate: early in the run
-    // progress is noisy (shard startup, finish PMF calibration), so fall back
-    // to estimatedMs until ≥10 % done. After that, use elapsed/progress so a
-    // slower-than-expected run updates the ETA in real time.
     if (progress < 0.1) {
       if (estimatedMs != null && estimatedMs > 0) {
-        return Math.max(0, estimatedMs - elapsed);
+        const raw = Math.max(0, estimatedMs - elapsed);
+        smoothedEta.current = raw;
+        return raw;
       }
       return null;
     }
     const projected = elapsed / progress;
-    return Math.max(0, projected - elapsed);
+    const raw = Math.max(0, projected - elapsed);
+    const alpha = 0.3;
+    if (smoothedEta.current == null) {
+      smoothedEta.current = raw;
+    } else {
+      smoothedEta.current = alpha * raw + (1 - alpha) * smoothedEta.current;
+    }
+    return smoothedEta.current;
   })();
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
@@ -272,15 +282,18 @@ export function ControlsPanel({
             <option value="freeze-realdata-step">Freeze / real-data — step</option>
             <option value="freeze-realdata-linear">Freeze / real-data — linear</option>
             <option value="freeze-realdata-tilt">Freeze / real-data — tilt (α)</option>
+            <option value="pko-realdata-step">PKO / real-data — step</option>
+            <option value="pko-realdata-linear">PKO / real-data — linear</option>
+            <option value="pko-realdata-tilt">PKO / real-data — tilt (α)</option>
             <option value="powerlaw-realdata-influenced">Power-law — real-data α</option>
           </select>
         </Field>
         <Field label={t("controls.alphaOverride")} hint={t("help.alphaOverride")}>
           <input
             type="number"
-            step={value.finishModelId === "freeze-realdata-tilt" ? 0.05 : 0.1}
-            min={value.finishModelId === "freeze-realdata-tilt" ? -0.5 : 0.1}
-            max={value.finishModelId === "freeze-realdata-tilt" ? 0.5 : 10}
+            step={value.finishModelId === "freeze-realdata-tilt" || value.finishModelId === "pko-realdata-tilt" ? 0.05 : 0.1}
+            min={value.finishModelId === "freeze-realdata-tilt" || value.finishModelId === "pko-realdata-tilt" ? -0.5 : 0.1}
+            max={value.finishModelId === "freeze-realdata-tilt" || value.finishModelId === "pko-realdata-tilt" ? 0.5 : 10}
             value={value.alphaOverride ?? ""}
             placeholder={t("controls.alphaPlaceholder")}
             onChange={(e) => {
@@ -291,7 +304,7 @@ export function ControlsPanel({
               }
               const v = Number(raw);
               if (!Number.isFinite(v)) return;
-              const isTilt = value.finishModelId === "freeze-realdata-tilt";
+              const isTilt = value.finishModelId === "freeze-realdata-tilt" || value.finishModelId === "pko-realdata-tilt";
               const lo = isTilt ? -0.5 : 0.1;
               const hi = isTilt ? 0.5 : 10;
               if (v < lo || v > hi) return;
@@ -311,91 +324,8 @@ export function ControlsPanel({
         </Field>
       </div>
 
-      {/* Section C — Variance shocks (3 levels) */}
-      <SectionTitle>{t("controls.section.shocks")}</SectionTitle>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Field label={t("controls.roiShockPerTourney")} hint={t("help.roiShockPerTourney")}>
-          <NumInput
-            value={value.roiShockPerTourney}
-            min={0}
-            max={5}
-            step={0.01}
-            onChange={(v) => setModel("roiShockPerTourney", v)}
-          />
-        </Field>
-        <Field label={t("controls.roiShockPerSession")} hint={t("help.roiShockPerSession")}>
-          <NumInput
-            value={value.roiShockPerSession}
-            min={0}
-            max={5}
-            step={0.01}
-            onChange={(v) => setModel("roiShockPerSession", v)}
-          />
-        </Field>
-        <Field label={t("controls.roiDriftSigma")} hint={t("help.roiDriftSigma")}>
-          <NumInput
-            value={value.roiDriftSigma}
-            min={0}
-            max={5}
-            step={0.005}
-            onChange={(v) => setModel("roiDriftSigma", v)}
-          />
-        </Field>
-      </div>
-
-      {/* Section D — Tilt mechanics */}
-      <SectionTitle>{t("controls.section.tilt")}</SectionTitle>
-      <div className="text-[11px] text-[color:var(--color-fg-dim)] -mt-2 mb-3">
-        {t("controls.tiltHint")}
-      </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <Field label={t("controls.tiltFastGain")} hint={t("help.tiltFastGain")}>
-          <NumInput
-            value={value.tiltFastGain}
-            min={-5}
-            max={5}
-            step={0.05}
-            onChange={(v) => setModel("tiltFastGain", v)}
-          />
-        </Field>
-        <Field label={t("controls.tiltFastScale")} hint={t("help.tiltFastScale")}>
-          <NumInput
-            value={value.tiltFastScale}
-            min={0}
-            max={1_000_000}
-            step={100}
-            onChange={(v) => setModel("tiltFastScale", v)}
-          />
-        </Field>
-        <div /> {/* spacer */}
-        <Field label={t("controls.tiltSlowGain")} hint={t("help.tiltSlowGain")}>
-          <NumInput
-            value={value.tiltSlowGain}
-            min={-5}
-            max={5}
-            step={0.05}
-            onChange={(v) => setModel("tiltSlowGain", v)}
-          />
-        </Field>
-        <Field label={t("controls.tiltSlowThreshold")} hint={t("help.tiltSlowThreshold")}>
-          <NumInput
-            value={value.tiltSlowThreshold}
-            min={0}
-            max={1_000_000}
-            step={100}
-            onChange={(v) => setModel("tiltSlowThreshold", v)}
-          />
-        </Field>
-        <Field label={t("controls.tiltSlowMinDuration")} hint={t("help.tiltSlowMinDuration")}>
-          <NumInput
-            value={value.tiltSlowMinDuration}
-            min={0}
-            max={100_000}
-            step={50}
-            onChange={(v) => setModel("tiltSlowMinDuration", Math.floor(v))}
-          />
-        </Field>
-      </div>
+      {/* Sections C (shocks) and D (tilt) hidden — engine code intact,
+         values stay at 0 from defaults. Re-enable after testing. */}
       </>
       )}
 
@@ -503,7 +433,7 @@ export function ControlsPanel({
         {running && (
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
             <div
-              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300"
+              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width] duration-300 ease-linear"
               style={{ width: `${Math.min(100, progress * 100).toFixed(1)}%` }}
             />
           </div>

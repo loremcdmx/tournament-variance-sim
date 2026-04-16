@@ -65,6 +65,9 @@ const FINISH_MODEL_LABEL_KEY: Record<FinishModelId, DictKey> = {
   "freeze-realdata-step": "model.freeze-realdata-step",
   "freeze-realdata-linear": "model.freeze-realdata-linear",
   "freeze-realdata-tilt": "model.freeze-realdata-tilt",
+  "pko-realdata-step": "model.pko-realdata-step",
+  "pko-realdata-linear": "model.pko-realdata-linear",
+  "pko-realdata-tilt": "model.pko-realdata-tilt",
   "powerlaw-realdata-influenced": "model.powerlaw-realdata-influenced",
 };
 
@@ -97,11 +100,7 @@ function buildSettingsSummary(c: ControlsState | undefined): string | null {
   const parts: string[] = [];
   parts.push(c.alphaOverride == null ? "α=auto" : `α=${c.alphaOverride.toFixed(2)}`);
   if (c.roiStdErr > 0) parts.push(`σROI=${(c.roiStdErr * 100).toFixed(1)}%`);
-  if (c.roiShockPerTourney > 0) parts.push(`shock/t=${(c.roiShockPerTourney * 100).toFixed(1)}%`);
-  if (c.roiShockPerSession > 0) parts.push(`shock/s=${(c.roiShockPerSession * 100).toFixed(1)}%`);
-  if (c.roiDriftSigma > 0) parts.push(`drift=${(c.roiDriftSigma * 100).toFixed(1)}%`);
-  if (c.tiltFastGain !== 0) parts.push(`tilt-fast=${(c.tiltFastGain * 100).toFixed(0)}%`);
-  if (c.tiltSlowGain !== 0) parts.push(`tilt-slow=${(c.tiltSlowGain * 100).toFixed(0)}%`);
+  // Shock/tilt UI disabled — omit from summary
   return parts.join(" · ");
 }
 
@@ -431,7 +430,11 @@ function TrajectoryPlot({
         nearest = line;
         nearestVal = v;
       }
-      if (line.kind === "path" && d < bestPathDist) {
+      const isHighlightable =
+        line.kind === "path" ||
+        (line.kind === "best" && line.variant === "real") ||
+        (line.kind === "worst" && line.variant === "real");
+      if (isHighlightable && d < bestPathDist) {
         bestPathDist = d;
         nearestPath = line;
       }
@@ -499,6 +502,50 @@ function TrajectoryPlot({
 
   const cumBuyIn = tournaments * assets.buyInPerTourney;
   const roi = cumBuyIn > 0 ? nearestVal / cumBuyIn : 0;
+
+  // Compute on-the-fly run stats from the focused path for the detail strip.
+  const focusedPathStats = useMemo(() => {
+    if (focusedSeriesIdx == null) return null;
+    const dataArr = assets.data[focusedSeriesIdx] as ArrayLike<number> | undefined;
+    if (!dataArr || dataArr.length === 0) return null;
+    const len = dataArr.length;
+    const finalProfit = dataArr[len - 1] ?? 0;
+
+    // Max drawdown: deepest drop from a running peak.
+    let peak = -Infinity;
+    let maxDD = 0;
+    for (let i = 0; i < len; i++) {
+      const v = dataArr[i];
+      if (v == null || !Number.isFinite(v)) continue;
+      if (v > peak) peak = v;
+      const dd = peak - v;
+      if (dd > maxDD) maxDD = dd;
+    }
+
+    // Longest losing streak: consecutive checkpoints where profit is declining.
+    let longestLosing = 0;
+    let curLosing = 0;
+    for (let i = 1; i < len; i++) {
+      const prev = dataArr[i - 1];
+      const cur = dataArr[i];
+      if (prev == null || cur == null) continue;
+      if (cur < prev) { curLosing++; if (curLosing > longestLosing) longestLosing = curLosing; }
+      else curLosing = 0;
+    }
+
+    // Longest breakeven-or-worse: consecutive checkpoints at or below a running peak.
+    let longestBE = 0;
+    let curBE = 0;
+    peak = -Infinity;
+    for (let i = 0; i < len; i++) {
+      const v = dataArr[i];
+      if (v == null || !Number.isFinite(v)) continue;
+      if (v > peak) { peak = v; curBE = 0; }
+      else { curBE++; if (curBE > longestBE) longestBE = curBE; }
+    }
+
+    return { finalProfit, maxDD, longestLosing, longestBE };
+  }, [focusedSeriesIdx, assets.data]);
 
   const kindLabel = (line: TrajectoryLineMeta): string => {
     switch (line.kind) {
@@ -571,6 +618,31 @@ function TrajectoryPlot({
           {likelihood(nearest) && (
             <div className="mt-1.5 border-t border-[color:var(--color-border)]/50 pt-1 text-[10px] text-[color:var(--color-fg-dim)]">
               {likelihood(nearest)}
+            </div>
+          )}
+          {focusedPathStats && (
+            <div className="mt-1.5 border-t border-[color:var(--color-border)]/50 pt-1.5">
+              <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                run stats
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">
+                <span className="text-[color:var(--color-fg-dim)]">final profit</span>
+                <span className="text-right font-semibold text-[color:var(--color-fg)]">
+                  {compactMoney(focusedPathStats.finalProfit)}
+                </span>
+                <span className="text-[color:var(--color-fg-dim)]">max drawdown</span>
+                <span className="text-right font-semibold text-[color:var(--color-fg)]">
+                  {compactMoney(focusedPathStats.maxDD)}
+                </span>
+                <span className="text-[color:var(--color-fg-dim)]">longest losing</span>
+                <span className="text-right text-[color:var(--color-fg)]">
+                  {focusedPathStats.longestLosing} pts
+                </span>
+                <span className="text-[color:var(--color-fg-dim)]">longest below peak</span>
+                <span className="text-right text-[color:var(--color-fg)]">
+                  {focusedPathStats.longestBE} pts
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -1418,7 +1490,7 @@ export function ResultsView({
           suit="club"
           label={t("stat.expectedProfit")}
           value={money(s.mean)}
-          sub={`ROI ${(roi * 100).toFixed(1)}% · median ${money(s.median)}`}
+          sub={`EV ${money(result.expectedProfit)} · ROI ${(roi * 100).toFixed(1)}% · median ${money(s.median)}`}
           tone={s.mean >= 0 ? "pos" : "neg"}
           pdValue={pdStats ? money(pdStats.mean) : undefined}
           pdDelta={pdStats ? pctDelta(s.mean, pdStats.mean) : null}
@@ -1438,7 +1510,7 @@ export function ResultsView({
           sub={
             s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
               ? t("stat.bankrollOff")
-              : `min BR 1% = ${money(s.minBankrollRoR1pct)}`
+              : `BR 1% = ${money(s.minBankrollRoR1pct)} · 5% = ${money(s.minBankrollRoR5pct)}`
           }
           tone={s.riskOfRuin > 0.05 ? "neg" : undefined}
           pdValue={pdStats ? pct(pdStats.riskOfRuin) : undefined}
@@ -1451,7 +1523,7 @@ export function ResultsView({
         <MiniStat
           suit="heart"
           label={t("stat.worstRun")}
-          value={money(s.min)}
+          value={`${money(s.min)} (${money(s.min - result.expectedProfit)} vs EV)`}
           tone="neg"
           tip={t("stat.worstRun.tip")}
           pdValue={pdStats ? money(pdStats.min) : undefined}
@@ -1497,7 +1569,7 @@ export function ResultsView({
         <MiniStat
           suit="club"
           label={t("stat.bestRun")}
-          value={money(s.max)}
+          value={`${money(s.max)} (+${money(s.max - result.expectedProfit)} vs EV)`}
           tone="pos"
           tip={t("stat.bestRun.tip")}
           pdValue={pdStats ? money(pdStats.max) : undefined}
@@ -1633,21 +1705,6 @@ export function ResultsView({
         />
       </StatGroup>
 
-      <StatGroup title={t("statGroup.bankroll")}>
-        <MiniStat
-          suit="heart"
-          label={t("stat.minBR5")}
-          value={money(s.minBankrollRoR5pct)}
-          tip={t("stat.minBR5.tip")}
-          pdValue={pdStats ? money(pdStats.minBankrollRoR5pct) : undefined}
-          pdDelta={
-            pdStats
-              ? pctDelta(s.minBankrollRoR5pct, pdStats.minBankrollRoR5pct)
-              : null
-          }
-        />
-      </StatGroup>
-
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <UnitScope id="dist.profit">
           <MoneyDistributionCard
@@ -1697,7 +1754,6 @@ export function ResultsView({
             showUnitToggle={false}
           />
           <ConvergenceChart schedule={schedule} />
-          <ChartHelp text={t("chart.convergence.help")} />
         </Card>
         {result.downswings.length > 0 && (
           <UnitScope id="downswings">
@@ -1708,14 +1764,11 @@ export function ResultsView({
               streaks={
                 <><div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div className="flex flex-col">
-                    <div className="sm:min-h-[68px]">
-                      <ChartHeader
-                        title={t("chart.longestBE")}
-                        subtitle={t("chart.longestBE.sub")}
-                        showUnitToggle={false}
-                        tip={t("chart.longestBE.tip")}
-                      />
-                    </div>
+                    <ChartHeader
+                      title={t("chart.longestBE")}
+                      showUnitToggle={false}
+                      tip={t("chart.longestBE.tip")}
+                    />
                     <DistributionChart
                       binEdges={result.longestBreakevenHistogram.binEdges}
                       counts={result.longestBreakevenHistogram.counts}
@@ -1735,8 +1788,8 @@ export function ResultsView({
                           : undefined
                       }
                     />
-                    <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
-                      {t("chart.unit.tourneys")}
+                    <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                      {t("chart.longestBE.sub")}
                     </div>
                     {overlayPd && pdChart && (
                       <TailDivergenceNote
@@ -1747,14 +1800,11 @@ export function ResultsView({
                     )}
                   </div>
                   <div className="flex flex-col">
-                    <div className="sm:min-h-[68px]">
-                      <ChartHeader
-                        title={t("chart.longestCashless")}
-                        subtitle={t("chart.longestCashless.sub")}
-                        showUnitToggle={false}
-                        tip={t("chart.longestCashless.tip")}
-                      />
-                    </div>
+                    <ChartHeader
+                      title={t("chart.longestCashless")}
+                      showUnitToggle={false}
+                      tip={t("chart.longestCashless.tip")}
+                    />
                     <DistributionChart
                       binEdges={result.longestCashlessHistogram.binEdges}
                       counts={result.longestCashlessHistogram.counts}
@@ -1774,8 +1824,8 @@ export function ResultsView({
                           : undefined
                       }
                     />
-                    <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
-                      {t("chart.unit.tourneys")}
+                    <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                      {t("chart.longestCashless.sub")}
                     </div>
                     {overlayPd && pdChart && (
                       <TailDivergenceNote
@@ -1786,14 +1836,11 @@ export function ResultsView({
                     )}
                   </div>
                   <div className="flex flex-col">
-                    <div className="sm:min-h-[68px]">
-                      <ChartHeader
-                        title={t("chart.recovery")}
-                        subtitle={t("chart.recovery.sub")}
-                        showUnitToggle={false}
-                        tip={t("chart.recovery.tip")}
-                      />
-                    </div>
+                    <ChartHeader
+                      title={t("chart.recovery")}
+                      showUnitToggle={false}
+                      tip={t("chart.recovery.tip")}
+                    />
                     <DistributionChart
                       binEdges={result.recoveryHistogram.binEdges}
                       counts={result.recoveryHistogram.counts}
@@ -1811,7 +1858,9 @@ export function ResultsView({
                           : undefined
                       }
                     />
-                    <div className="mt-1 text-[11px] text-[color:var(--color-fg-dim)]">
+                    <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                      {t("chart.recovery.sub")}
+                      {" · "}
                       {fmt(t("chart.recovery.unrecovered"), {
                         pct: pct(s.recoveryUnrecoveredShare),
                       })}
@@ -2581,11 +2630,11 @@ function DownswingsCard({
           </div>
           <table className="w-full min-w-[320px] text-sm">
             <thead>
-              <tr className="border-b border-[color:var(--color-border)] text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                <th className="py-2 text-left font-medium">{t("dd.rank")}</th>
-                <th className="py-2 text-right font-medium">{t("dd.depth")}</th>
-                <th className="py-2 text-right font-medium">{t("dd.final")}</th>
-                <th className="py-2 text-right font-medium">
+              <tr className="border-b-2 border-[color:var(--color-border)] text-[11px] uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+                <th className="py-2 text-left font-semibold">{t("dd.rank")}</th>
+                <th className="py-2 text-right font-semibold">{t("dd.depth")}</th>
+                <th className="py-2 text-right font-semibold">{t("dd.final")}</th>
+                <th className="py-2 text-right font-semibold">
                   {t("dd.breakeven")}
                 </th>
               </tr>
@@ -2609,11 +2658,11 @@ function DownswingsCard({
           </div>
           <table className="w-full min-w-[320px] text-sm">
             <thead>
-              <tr className="border-b border-[color:var(--color-border)] text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                <th className="py-2 text-left font-medium">{t("dd.rank")}</th>
-                <th className="py-2 text-right font-medium">{t("dd.height")}</th>
-                <th className="py-2 text-right font-medium">{t("dd.final")}</th>
-                <th className="py-2 text-right font-medium">
+              <tr className="border-b-2 border-[color:var(--color-border)] text-[11px] uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+                <th className="py-2 text-left font-semibold">{t("dd.rank")}</th>
+                <th className="py-2 text-right font-semibold">{t("dd.height")}</th>
+                <th className="py-2 text-right font-semibold">{t("dd.final")}</th>
+                <th className="py-2 text-right font-semibold">
                   {t("dd.breakeven")}
                 </th>
               </tr>
@@ -3797,13 +3846,6 @@ function SettingsDumpCard({
     ["compareMode", settings.compareMode],
     ["—", "—"],
     ["roiStdErr", `${(settings.roiStdErr * 100).toFixed(2)}%`],
-    ["roiShockPerTourney", `${(settings.roiShockPerTourney * 100).toFixed(2)}%`],
-    ["roiShockPerSession", `${(settings.roiShockPerSession * 100).toFixed(2)}%`],
-    ["roiDriftSigma", `${(settings.roiDriftSigma * 100).toFixed(2)}%`],
-    ["tiltFastGain", `${(settings.tiltFastGain * 100).toFixed(0)}%`],
-    ["tiltFastScale", `${settings.tiltFastScale}`],
-    ["tiltSlowGain", `${(settings.tiltSlowGain * 100).toFixed(0)}%`],
-    ["tiltSlowThreshold", `${settings.tiltSlowThreshold}`],
   ];
   return (
     <Card className="p-4">
@@ -4194,7 +4236,7 @@ function ChartHeader({
   tip,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   /** Hide the money/ABI toggle on charts whose axes aren't in money. */
   showUnitToggle?: boolean;
   /** Optional help tooltip surfaced as a "?" button next to the title. */
@@ -4209,7 +4251,7 @@ function ChartHeader({
           </div>
           {tip && <InfoTooltip content={tip} />}
         </div>
-        <div className="text-xs text-[color:var(--color-fg-dim)]">{subtitle}</div>
+        {subtitle && <div className="text-xs text-[color:var(--color-fg-dim)]">{subtitle}</div>}
       </div>
       {showUnitToggle && <InlineUnitToggle />}
     </div>

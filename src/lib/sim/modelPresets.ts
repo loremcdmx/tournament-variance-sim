@@ -92,12 +92,11 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     patch: {
       ...ZERO_SHOCKS,
       roiStdErr: 0.03,
-      roiShockPerTourney: 0.30,
-      roiShockPerSession: 0.05,
-      roiDriftSigma: 0.01,
-      // mild fast tilt — most grinders feel it
-      tiltFastGain: -0.15,
-      tiltFastScale: 50, // ~50 buy-ins of dd
+      roiShockPerTourney: 0,
+      roiShockPerSession: 0,
+      roiDriftSigma: 0,
+      tiltFastGain: 0,
+      tiltFastScale: 0
     },
   },
   {
@@ -106,17 +105,14 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     taglineKey: "preset.loremcdmx.tagline",
     patch: {
       ...ZERO_SHOCKS,
-      // LoremCDMX: calibrated for "stable reg in a structured grind"
       roiStdErr: 0.02,
-      roiShockPerTourney: 0.25,
-      roiShockPerSession: 0.04,
-      roiDriftSigma: 0.015,
-      // Stable reg: no fast tilt, but a slow hysteresis kicks in only
-      // on long, deep streaks (500+ tourneys past threshold).
+      roiShockPerTourney: 0,
+      roiShockPerSession: 0,
+      roiDriftSigma: 0,
       tiltFastGain: 0,
       tiltFastScale: 0,
-      tiltSlowGain: 0.05,
-      tiltSlowThreshold: 5000,
+      tiltSlowGain: 0,
+      tiltSlowThreshold: 0,
       tiltSlowMinDuration: 500,
       tiltSlowRecoveryFrac: 0.5,
     },
