@@ -302,7 +302,6 @@ export interface RefLineConfig extends RefLineSpec {
 }
 
 const DEFAULT_REF_LINES: RefLineConfig[] = [
-  { roi: -1.0, label: "ROI −100%", color: "#dc2626", enabled: false },
   { roi: -0.2, label: "ROI −20%", color: "#fb923c", enabled: false },
   { roi: 0.2, label: "ROI +20%", color: "#a3e635", enabled: false },
   { roi: 0.5, label: "ROI +50%", color: "#22d3ee", enabled: false },
@@ -323,6 +322,7 @@ function loadRefLines(): RefLineConfig[] {
           r &&
           typeof r.roi === "number" &&
           Number.isFinite(r.roi) &&
+          r.roi > -1.0 &&
           typeof r.label === "string" &&
           typeof r.color === "string" &&
           typeof r.enabled === "boolean",
@@ -866,13 +866,9 @@ function buildTrajectoryAssets(
     });
   }
 
-  if (bankroll > 0) {
-    pushSeries(new Array<number>(x.length).fill(-bankroll), {
-      stroke: preset.bankrollLine.stroke,
-      width: preset.bankrollLine.width,
-      dash: preset.bankrollLine.dash,
-    });
-  }
+  // Bankroll ruin line removed — it stretched the y-axis far below the
+  // data envelope, wasting vertical space on both panes. The bankroll
+  // value is still shown in the stats widgets.
 
   // Reference ROI slope lines: profit(i) = roi * cumulative buy-in at i.
   // x[N-1] is the total tournament count per sample; total buy-in is r.totalBuyIn.
@@ -1113,7 +1109,8 @@ function unionYRange(
       if (v > hi) hi = v;
     }
   }
-  if (bankroll > 0 && -bankroll < lo) lo = -bankroll;
+  // Bankroll line no longer forces y-range — if -bankroll is far from the
+  // data envelope it just wastes vertical space on both panes.
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
     return { min: -1, max: 1 };
   }

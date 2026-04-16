@@ -65,7 +65,7 @@ export const SCENARIOS: DemoScenario[] = [
     controls: {
       ...BASE_CONTROLS,
       scheduleRepeats: 1,
-      samples: 1000,
+      samples: 10_000,
       bankroll: 1000,
       compareWithPrimedope: true,
       compareMode: "primedope",
