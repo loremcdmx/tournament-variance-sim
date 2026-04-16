@@ -37,6 +37,10 @@ import {
   loadLineStyleOverrides,
   saveLineStylePreset,
   saveLineStyleOverrides,
+  DEFAULT_PD_OVERLAY_STYLE,
+  loadPdOverlayStyle,
+  savePdOverlayStyle,
+  type PdOverlayStyle,
   type LineStyle,
   type LineStylePreset,
   type LineStylePresetId,
@@ -783,6 +787,8 @@ function buildTrajectoryAssets(
   runMode: RunMode = "random",
   showRealExtremes: boolean = false,
   showAggExtremes: boolean = true,
+  pdOverlayColor: string = "#60a5fa",
+  pdOverlayWidth: number = 1.75,
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
@@ -1072,7 +1078,7 @@ function buildTrajectoryAssets(
     // intentionally excluded: mean overlays add no new info (centers coincide
     // by construction) and PD's near-zero EV read as a mysterious dashed zero
     // line that users misread as a bug.
-    const overlayColor = "#60a5fa";
+    const overlayColor = pdOverlayColor;
     const pushOverlay = (
       src: Float64Array,
       label: string,
@@ -1081,7 +1087,7 @@ function buildTrajectoryAssets(
     ): number => {
       const idx = pushSeries(resample(src), {
         stroke: overlayColor,
-        width: 1.75,
+        width: pdOverlayWidth,
         dash,
         label,
       });
@@ -1316,6 +1322,13 @@ export function ResultsView({
     () => applyLineStyleOverrides(LINE_STYLE_PRESETS[lineStylePresetId], lineOverrides),
     [lineStylePresetId, lineOverrides],
   );
+  const [pdOverlayStyle, setPdOverlayStyle] =
+    useLocalStorageState<PdOverlayStyle>(
+      "tvs.pdOverlayStyle.v1",
+      loadPdOverlayStyle,
+      savePdOverlayStyle,
+      DEFAULT_PD_OVERLAY_STYLE,
+    );
 
   const maxRunsAvailable = result.samplePaths.paths.length;
   const runsCap = Math.min(500, maxRunsAvailable);
@@ -1417,6 +1430,24 @@ export function ResultsView({
                   t={t}
                 />
                 <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-[color:var(--color-fg-dim)]">PD</span>
+                  <DebouncedColorInput
+                    value={pdOverlayStyle.color}
+                    onChange={(v) => setPdOverlayStyle({ ...pdOverlayStyle, color: v })}
+                    aria-label="PD overlay color"
+                  />
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={4}
+                    step={0.25}
+                    value={pdOverlayStyle.width}
+                    onChange={(e) => setPdOverlayStyle({ ...pdOverlayStyle, width: Number(e.target.value) })}
+                    className="w-12"
+                    aria-label="PD overlay width"
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
@@ -1478,6 +1509,7 @@ export function ResultsView({
           onPdRefresh={onPdRefresh}
           pdOverrideStatus={pdOverrideStatus}
           pdOverrideProgress={pdOverrideProgress}
+          pdOverlayStyle={pdOverlayStyle}
         />
       </UnitScope>
 
@@ -2252,6 +2284,7 @@ function TrajectoryCard({
   pdOverrideStatus,
   pdOverrideProgress,
   toolbar,
+  pdOverlayStyle = DEFAULT_PD_OVERLAY_STYLE,
 }: {
   settings?: ControlsState;
   result: SimulationResult;
@@ -2285,6 +2318,7 @@ function TrajectoryCard({
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
   toolbar?: React.ReactNode;
+  pdOverlayStyle?: PdOverlayStyle;
 }) {
   const t = useT();
   const { money, compactMoney } = useMoneyFmt();
@@ -2352,8 +2386,10 @@ function TrajectoryCard({
         runMode,
         showRealExtremes,
         showAggExtremes,
+        pdOverlayStyle.color,
+        pdOverlayStyle.width,
       ),
-    [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes, pdOverlayStyle],
   );
   const secondaryMaxPathCount = pdChart
     ? Math.min(500, pdChart.samplePaths.paths.length)

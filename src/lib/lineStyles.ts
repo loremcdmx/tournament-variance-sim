@@ -317,6 +317,43 @@ export function saveLineStyleOverrides(overrides: LineStyleOverrides) {
   } catch {}
 }
 
+export interface PdOverlayStyle {
+  color: string;
+  width: number;
+}
+
+export const DEFAULT_PD_OVERLAY_STYLE: PdOverlayStyle = {
+  color: "#60a5fa",
+  width: 1.75,
+};
+
+const PD_OVERLAY_STORAGE_KEY = "tvs.pdOverlayStyle.v1";
+
+export function loadPdOverlayStyle(): PdOverlayStyle {
+  if (typeof localStorage === "undefined") return DEFAULT_PD_OVERLAY_STYLE;
+  try {
+    const raw = localStorage.getItem(PD_OVERLAY_STORAGE_KEY);
+    if (!raw) return DEFAULT_PD_OVERLAY_STYLE;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return {
+        color: typeof parsed.color === "string" ? parsed.color : DEFAULT_PD_OVERLAY_STYLE.color,
+        width: typeof parsed.width === "number" ? parsed.width : DEFAULT_PD_OVERLAY_STYLE.width,
+      };
+    }
+    return DEFAULT_PD_OVERLAY_STYLE;
+  } catch {
+    return DEFAULT_PD_OVERLAY_STYLE;
+  }
+}
+
+export function savePdOverlayStyle(style: PdOverlayStyle) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(PD_OVERLAY_STORAGE_KEY, JSON.stringify(style));
+  } catch {}
+}
+
 /**
  * Preset used for the secondary (PrimeDope-comparison) pane in twin mode —
  * always a distinct magenta so the two panes stay visually separable
