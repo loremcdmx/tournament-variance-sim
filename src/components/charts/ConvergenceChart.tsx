@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import type { DictKey } from "@/lib/i18n/dict";
 import type { TournamentRow } from "@/lib/sim/types";
 
 interface Props {
@@ -25,13 +26,27 @@ const ROI_MIN = -0.30;
 const ROI_MAX = 1.00;
 
 // σ_ROI(field, roi) = (C0 + C1·roi) · field^β — pooled log-log fit across
-// an 18-point field sweep (50..50 000) × 7 ROIs (−20 %..+80 %) on the
-// mtt-standard payout at rake 10 % (scripts/fit_beta.ts). C(roi) is linear,
-// R²≈0.993. Ratio vs baseline cancels the constant:
-//   σ(roi) / σ(roi0) = (C0 + C1·roi) / (C0 + C1·roi0) = (1 + K·roi)/(1 + K·roi0)
-// with K = C1/C0. Only K survives in the widget, so that's the one constant.
-const SIGMA_ROI_C0 = 0.6219;
-const SIGMA_ROI_C1 = 0.2328;
+// an 18-point field sweep (50..50 000), rake 10 %, 500 tourneys × 120 k samples.
+//
+// Freeze: mtt-standard payout + freeze-realdata-linear finish, 7 ROIs (−20 %..+80 %).
+// σ_ROI is flat across ROI here (C1 ≈ 0) because the realdata-linear finish CDF
+// is fixed empirically — ROI only shifts the mean, not the shape.
+// PKO: mtt-gg-bounty payout + pko-realdata-linear finish, bountyFraction=0.5,
+// pkoHeadVar=0.4, 11 ROIs (−20 %..+80 %, densified at 5/15/25/30 %). The bounty
+// channel amplifies deep runs so C grows meaningfully with ROI.
+// Both fits produced by scripts/fit_sigma_parallel.ts.
+const SIGMA_ROI_FREEZE = {
+  C0: 0.6564,
+  C1: 0,
+  beta: 0.3694,
+};
+const SIGMA_ROI_PKO = {
+  C0: 0.6265,
+  C1: 0.4961,
+  beta: 0.2763,
+};
+
+type ConvergenceFormat = "freeze" | "pko" | "mix";
 
 function posToAfs(pos: number): number {
   return Math.exp(AFS_LOG_MIN + (AFS_LOG_MAX - AFS_LOG_MIN) * pos);
@@ -77,6 +92,7 @@ export function ConvergenceChart({ schedule }: Props) {
     let countTotal = 0;
     let fieldWeighted = 0;
     let roiWeighted = 0;
+    let pkoCount = 0;
     if (schedule && schedule.length > 0) {
       for (const row of schedule) {
         const c = Math.max(0, row.count);
@@ -84,11 +100,13 @@ export function ConvergenceChart({ schedule }: Props) {
         countTotal += c;
         fieldWeighted += c * p;
         roiWeighted += c * row.roi;
+        if ((row.bountyFraction ?? 0) > 0) pkoCount += c;
       }
     }
     const avgField = countTotal > 0 ? fieldWeighted / countTotal : 1000;
     const roi = countTotal > 0 ? roiWeighted / countTotal : 0.1;
-    return { avgField, roi };
+    const pkoShare = countTotal > 0 ? pkoCount / countTotal : 0;
+    return { avgField, roi, pkoShare };
   }, [schedule]);
 
   const [afsPosOverride, setAfsPosOverride] = useState<number | null>(null);
@@ -98,11 +116,43 @@ export function ConvergenceChart({ schedule }: Props) {
   // Confidence level for the CI bands — user-configurable in (90, 99.9).
   const [ciPct, setCiPct] = useState<number>(95);
   const z = ciToZ(ciPct / 100);
+  const [ciInput, setCiInput] = useState<string>(String(ciPct));
+  useEffect(() => {
+    setCiInput(String(ciPct));
+  }, [ciPct]);
+  const commitCiInput = (raw: string) => {
+    const n = Number(raw);
+    if (Number.isFinite(n)) {
+      setCiPct(Math.max(90, Math.min(99.9, n)));
+    } else {
+      setCiInput(String(ciPct));
+    }
+  };
 
   // ROI override — decimal fraction. null means "use baseline roi".
   const [roiOverride, setRoiOverride] = useState<number | null>(null);
   const baselineRoi = baseline.roi;
   const effectiveRoi = roiOverride ?? baselineRoi;
+
+  // Format override. null → auto-pick from schedule composition.
+  const [formatOverride, setFormatOverride] =
+    useState<ConvergenceFormat | null>(null);
+  const baselineFormat: ConvergenceFormat =
+    baseline.pkoShare >= 0.99
+      ? "pko"
+      : baseline.pkoShare <= 0.01
+        ? "freeze"
+        : "mix";
+  const format = formatOverride ?? baselineFormat;
+  // Mix fraction of PKO (0..1). null → schedule-derived default.
+  const [pkoMixOverride, setPkoMixOverride] = useState<number | null>(null);
+  const baselinePkoMix = baseline.pkoShare;
+  const pkoMix =
+    format === "pko"
+      ? 1
+      : format === "freeze"
+        ? 0
+        : (pkoMixOverride ?? baselinePkoMix);
 
   // Text buffers so the user can freely type intermediate values without
   // each keystroke being log-clamped or range-clamped mid-edit.
@@ -139,17 +189,23 @@ export function ConvergenceChart({ schedule }: Props) {
 
   const rows = useMemo<Row[]>(() => {
     const afs = posToAfs(afsPos);
-    // Closed-form σ_ROI from the 18-field × 7-ROI fit (scripts/fit_beta.ts,
-    // R² ≈ 0.995). Entirely analytic — doesn't depend on any simulation run,
-    // so this widget is usable before the user clicks "go".
+    // Closed-form σ_ROI from the 18-field × 7-ROI fits (freeze: fit_beta.ts,
+    // PKO: fit_beta_pko.ts). Entirely analytic — doesn't depend on any
+    // simulation run, so this widget is usable before the user clicks "go".
     //
-    //   σ_ROI(afs, roi) = (C0 + C1·roi) · afs^β
-    //   k               = ⌈(z · σ_ROI / target)²⌉
+    //   σ_ROI(afs, roi) = (C0 + C1·roi) · afs^β           (per format)
+    //   σ²_eff          = p·σ²_pko + (1−p)·σ²_freeze      (mix)
+    //   k               = ⌈(z · σ_eff / target)²⌉
     //   fields          = k / afs
-    const SIGMA_FIELD_EXPONENT = 0.372;
-    const sigmaRoi =
-      Math.max(0, SIGMA_ROI_C0 + SIGMA_ROI_C1 * effectiveRoi) *
-      Math.pow(Math.max(1, afs), SIGMA_FIELD_EXPONENT);
+    const sigmaFor = (coef: typeof SIGMA_ROI_FREEZE): number =>
+      Math.max(0, coef.C0 + coef.C1 * effectiveRoi) *
+      Math.pow(Math.max(1, afs), coef.beta);
+    const sigmaFreeze = sigmaFor(SIGMA_ROI_FREEZE);
+    const sigmaPko = sigmaFor(SIGMA_ROI_PKO);
+    const p = Math.max(0, Math.min(1, pkoMix));
+    const sigmaRoi = Math.sqrt(
+      p * sigmaPko * sigmaPko + (1 - p) * sigmaFreeze * sigmaFreeze,
+    );
     return TARGETS.map((target) => {
       const k = Math.ceil(Math.pow((z * sigmaRoi) / target, 2));
       return {
@@ -158,7 +214,7 @@ export function ConvergenceChart({ schedule }: Props) {
         fields: k / Math.max(1, afs),
       };
     });
-  }, [afsPos, z, effectiveRoi]);
+  }, [afsPos, z, effectiveRoi, pkoMix]);
 
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
@@ -174,8 +230,74 @@ export function ConvergenceChart({ schedule }: Props) {
     return `${n.toFixed(2)}×`;
   };
 
+  const FORMATS: { id: ConvergenceFormat; labelKey: DictKey }[] = [
+    { id: "freeze", labelKey: "chart.convergence.format.freeze" },
+    { id: "pko", labelKey: "chart.convergence.format.pko" },
+    { id: "mix", labelKey: "chart.convergence.format.mix" },
+  ];
+
   return (
     <div className="overflow-x-auto">
+      <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
+        <div className="flex flex-1 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-0.5">
+          {FORMATS.map((f) => {
+            const active = format === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => {
+                  // Pin current AFS / ROI / CI so switching format never
+                  // visually shifts them — lets the user A/B the three σ
+                  // tables at the same slider positions.
+                  if (afsPosOverride == null) setAfsPosOverride(afsPos);
+                  if (roiOverride == null) setRoiOverride(effectiveRoi);
+                  setFormatOverride(f.id);
+                }}
+                className={`flex-1 rounded px-2 py-1 text-[11px] uppercase tracking-wider transition ${
+                  active
+                    ? "bg-fuchsia-500/20 text-fuchsia-200"
+                    : "text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+                }`}
+              >
+                {t(f.labelKey)}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setFormatOverride(null);
+            setPkoMixOverride(null);
+          }}
+          className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
+          title={`reset to ${baselineFormat}${baselineFormat === "mix" ? ` (${Math.round(baselinePkoMix * 100)}% PKO)` : ""}`}
+        >
+          ↺
+        </button>
+      </div>
+      {format === "mix" && (
+        <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
+          <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-fuchsia-400/80">
+            PKO
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round(pkoMix * 100)}
+            onChange={(e) => setPkoMixOverride(Number(e.target.value) / 100)}
+            className="flex-1 accent-fuchsia-400"
+            aria-label="PKO share"
+          />
+          <span className="w-20 text-center font-mono tabular-nums text-[color:var(--color-fg)]">
+            {Math.round(pkoMix * 100)}% / {100 - Math.round(pkoMix * 100)}%
+          </span>
+          <span className="w-[22px]" />
+        </div>
+      )}
       <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-emerald-400/80">
           AFS
@@ -274,11 +396,13 @@ export function ConvergenceChart({ schedule }: Props) {
           min={90}
           max={99.9}
           step={0.1}
-          value={ciPct}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            if (Number.isFinite(n)) {
-              setCiPct(Math.max(90, Math.min(99.9, n)));
+          value={ciInput}
+          onChange={(e) => setCiInput(e.target.value)}
+          onBlur={(e) => commitCiInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              commitCiInput((e.target as HTMLInputElement).value);
+              (e.target as HTMLInputElement).blur();
             }
           }}
           className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
