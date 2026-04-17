@@ -112,10 +112,14 @@ export function DistributionChart({
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerW, setContainerW] = useState(0);
+  const [containerH, setContainerH] = useState(0);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setContainerW(el.clientWidth);
+    const update = () => {
+      setContainerW(el.clientWidth);
+      setContainerH(el.clientHeight);
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -176,11 +180,19 @@ export function DistributionChart({
       );
       const overlayDenom = sumOf(overlay.counts);
       const overlayY = normalize(resampled, overlayDenom);
-      // Trim leading/trailing zero bins: uPlot would otherwise draw the PD
-      // line flat at y=0 from the left edge up to the first populated bin,
-      // producing the "rises from (0,0)" artefact. Null-gating those bins
-      // makes the overlay start exactly where it has mass.
-      const withGaps: (number | null)[] = overlayY.slice();
+      // Tail-smooth the overlay line only. The raw counts carry Poisson noise
+      // (√100 ≈ 10% relative at 5k samples / 50 bins → 4-5 visible hedgehog
+      // peaks on the PD line). A centred 3-point [1,2,1] filter flattens that
+      // without distorting the distribution shape. Primary bars keep their
+      // raw counts — bars are expected to be discrete, lines are expected
+      // to be smooth.
+      const smoothed = new Array<number>(overlayY.length);
+      for (let i = 0; i < overlayY.length; i++) {
+        const prev = i > 0 ? overlayY[i - 1] : overlayY[i];
+        const next = i < overlayY.length - 1 ? overlayY[i + 1] : overlayY[i];
+        smoothed[i] = (prev + 2 * overlayY[i] + next) / 4;
+      }
+      const withGaps: (number | null)[] = smoothed.slice();
       let i = 0;
       while (i < withGaps.length && (withGaps[i] ?? 0) <= 0) withGaps[i++] = null;
       let j = withGaps.length - 1;
@@ -328,7 +340,9 @@ export function DistributionChart({
             ...(containerW > 0 && cursor.left < containerW / 2
               ? { right: 6 }
               : { left: 6 }),
-            top: 6,
+            ...(containerH > 0 && cursor.top < containerH / 2
+              ? { bottom: 6 }
+              : { top: 6 }),
           }}
         >
           <div className="mb-1.5 flex items-center gap-2 border-b border-[color:var(--color-border)]/50 pb-1">

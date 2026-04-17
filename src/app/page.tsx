@@ -1011,28 +1011,19 @@ export default function Home() {
           <div className="mt-3 space-y-3 pl-2">
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06c.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v06c.pdControls")}</li>
               <li>{t("changelog.v06c.hoverHighlights")}</li>
-              <li>{t("changelog.v06c.presets")}</li>
-              <li>{t("changelog.v06c.histTooltip")}</li>
-              <li>{t("changelog.v06c.polish")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06b.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v06b.ev")}</li>
-              <li>{t("changelog.v06b.pkoVar")}</li>
-              <li>{t("changelog.v06b.polish")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v06.pko")}</li>
-              <li>{t("changelog.v06.weakCards")}</li>
-              <li>{t("changelog.v06.polish")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v05.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v05.pdWidget")}</li>
-              <li>{t("changelog.v05.polish")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v04.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
@@ -1041,7 +1032,6 @@ export default function Home() {
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v03.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v03.presets")}</li>
-              <li>{t("changelog.v03.polish")}</li>
             </ul>
           </div>
         </details>

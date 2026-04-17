@@ -393,7 +393,13 @@ function compileSingleEntry(
     calibrationMode === "primedope-binary-itm" &&
     primedopeStyleEV &&
     pdFlags.usePdRakeMath
-      ? row.buyIn * (1 - row.rake)
+      ? // PD's rake-math quirk shrinks the pool by the full rake fraction.
+        // At very high rake (e.g. $50+$50 satellite-style, rake=100%) that
+        // would literally zero the pool, collapsing PD's sim to a single
+        // deterministic loss per tournament with no variance — blank charts.
+        // Floor at 20 % of the buy-in so PD still produces a signal while
+        // preserving the rake→σ shrinkage the quirk is meant to model.
+        Math.max(row.buyIn * 0.2, row.buyIn * (1 - row.rake))
       : row.buyIn;
   const basePool = effectiveSeats * poolBuyInBasis;
   const overlay = Math.max(0, (row.guarantee ?? 0) - basePool);
@@ -1178,13 +1184,18 @@ export function buildResult(
   // reported separately in stats).
   // Cashless histogram counts EVERY cashless streak across every sample —
   // answers "how often do streaks of a given length occur". The breakeven
-  // histogram is a different shape: the "playing for nothing" metric is
-  // the longest horizontal chord of the profit trajectory, which is a
-  // single number per sample, so its histogram is a distribution over
-  // samples ("how many runs have a longest-chord of this length").
+  // histogram answers the same question for "playing for nothing" chords:
+  // for every time point in every run we measure the longest horizontal
+  // chord starting there and bucket it by length. That gives a
+  // decay-right shape (short chords outnumber long ones) rather than the
+  // extreme-value distribution of per-sample max chords. Breakeven counts
+  // are indexed by chord-grid position (0..K), not by tournament count —
+  // integer bin widths kill alias peaks. We scale binEdges back to
+  // tournament units on the way out.
   const longestBreakevenHistogram = histogramFromCounts(
     shard.breakevenStreakCounts,
     60,
+    N / K,
   );
   const longestCashlessHistogram = histogramFromCounts(
     shard.cashlessStreakCounts,
@@ -1584,6 +1595,7 @@ function countProfits(arr: Float64Array): number {
 function histogramFromCounts(
   countsByLen: Int32Array,
   bins: number,
+  scale = 1,
 ): { binEdges: number[]; counts: number[] } {
   let maxLen = 0;
   let total = 0;
@@ -1619,16 +1631,19 @@ function histogramFromCounts(
   const p999Len = pctLen(0.999);
   let hi = Math.min(maxLen, p999Len, Math.max(medianLen * 10, 20));
   if (hi < 1) hi = 1;
-  // Streak lengths are integers — bin width must be ≥ 1 to avoid
-  // empty gaps between integer values (causes jagged overlay lines).
-  if (hi < bins) bins = Math.max(1, Math.floor(hi));
+  // Streak lengths are integers — bin WIDTH must itself be an integer,
+  // otherwise some bins cover 2 integer values and others cover 1, and
+  // the overlay line alternates high/low between bins (hedgehog).
+  const w = hi <= bins ? 1 : Math.ceil(hi / bins);
+  bins = Math.max(1, Math.ceil(hi / w));
+  hi = bins * w;
   const binEdges: number[] = new Array(bins + 1);
-  for (let i = 0; i <= bins; i++) binEdges[i] = (hi * i) / bins;
+  for (let i = 0; i <= bins; i++) binEdges[i] = i * w * scale;
   const counts: number[] = new Array(bins).fill(0);
   for (let len = 1; len <= maxLen; len++) {
     const c = countsByLen[len];
     if (c === 0) continue;
-    let b = len >= hi ? bins - 1 : Math.floor((len / hi) * bins);
+    let b = len >= hi ? bins - 1 : Math.floor(len / w);
     if (b < 0) b = 0;
     else if (b >= bins) b = bins - 1;
     counts[b] += c;
@@ -1709,14 +1724,17 @@ export interface RawShard {
    *  used to surface top-N upswings alongside top-N downswings. */
   maxRunUps: Float64Array;
   runningMins: Float64Array;
-  longestBreakevens: Int32Array;
+  longestBreakevens: Float64Array;
   longestCashless: Int32Array;
   recoveryLengths: Int32Array;
-  /** Per-length histograms. `breakevenStreakCounts` counts one entry per
-   *  sample at the length of its longest horizontal chord (the new
-   *  "playing for nothing" metric). `cashlessStreakCounts` still counts
-   *  EVERY cashless streak across every sample. Index = length in
-   *  tournaments. Length = N + 1. Merged additively across shards. */
+  /** Per-length histograms. `breakevenStreakCounts` counts one entry
+   *  per starting point per sample at the grid-unit length of that
+   *  point's longest horizontal chord (index in [0, K], scale by N/K
+   *  for tournament units). Chord-grid units avoid alias peaks from
+   *  uneven round(gridPos * N/K) quantization. `cashlessStreakCounts`
+   *  counts EVERY cashless streak across every sample, indexed by
+   *  length in tournaments; length N + 1. Merged additively across
+   *  shards. */
   breakevenStreakCounts: Int32Array;
   cashlessStreakCounts: Int32Array;
   rowProfits: Float64Array;
@@ -1814,13 +1832,15 @@ export function simulateShard(
   const maxDrawdowns = new Float64Array(shardSize);
   const maxRunUps = new Float64Array(shardSize);
   const runningMins = new Float64Array(shardSize);
-  const longestBreakevens = new Int32Array(shardSize);
+  const longestBreakevens = new Float64Array(shardSize);
   const longestCashless = new Int32Array(shardSize);
   const recoveryLengths = new Int32Array(shardSize);
   const rowProfits = new Float64Array(shardSize * numRows);
-  // Per-length streak counters. Allocated at N+1 so the maximum possible
-  // streak (an entire sample with no cash / no new peak) fits exactly.
-  const breakevenStreakCounts = new Int32Array(N + 1);
+  // Per-length streak counters. Cashless is indexed by integer tournament
+  // count so it's allocated at N+1. Breakeven is indexed by chord-grid
+  // position (0..K) to keep the downstream histogram aligned to the
+  // chord quantum — see histogramFromCounts call at buildResult.
+  const breakevenStreakCounts = new Int32Array(K + 1);
   const cashlessStreakCounts = new Int32Array(N + 1);
   let ruinedCount = 0;
 
@@ -2198,16 +2218,20 @@ export function simulateShard(
     if (cashlessRun > 0) cashlessStreakCounts[cashlessRun]++;
 
     // "Playing for nothing" = longest horizontal chord of the profit
-    // trajectory: max(j − i) such that the path, interpolated between
-    // checkpoint samples, revisits level profit[i] at time j. Computed
-    // here on the K=80 checkpoint grid for cheap O(K²) scanning with
-    // early-termination; result is scaled from grid steps to tournaments.
+    // trajectory starting at time i: max(j − i) such that the path,
+    // interpolated between checkpoint samples, revisits level profit[i]
+    // at time j. Computed on the K=240 checkpoint grid; the inner loop
+    // breaks on the first (furthest) match, so per-i cost is the gap
+    // from i to the first enclosing segment. Each starting point's
+    // longest chord contributes to the histogram — that turns the shape
+    // into a decay-right distribution ("how common is each streak
+    // length across all time points in all runs") instead of the
+    // extreme-value distribution of per-sample max chords.
     let longestChordGrid = 0;
     for (let ii = 0; ii < K1 - 1; ii++) {
-      if (K1 - 1 - ii <= longestChordGrid) break;
       const Pi = pathMatrix[pathBase + ii];
+      let chordLen = 0;
       for (let jj = K1 - 1; jj > ii; jj--) {
-        if (jj - ii <= longestChordGrid) break;
         const a = pathMatrix[pathBase + jj - 1];
         const b = pathMatrix[pathBase + jj];
         const lo = a < b ? a : b;
@@ -2217,16 +2241,16 @@ export function simulateShard(
           // its left endpoint (which is time ii itself): that isn't a
           // distinct second point.
           if (jj === ii + 1 && a === Pi && b !== Pi) break;
-          longestChordGrid = jj - ii;
+          chordLen = jj - ii;
           break;
         }
       }
+      if (chordLen > 0 && chordLen <= K) {
+        breakevenStreakCounts[chordLen]++;
+      }
+      if (chordLen > longestChordGrid) longestChordGrid = chordLen;
     }
-    const longestBreakeven =
-      K > 0 ? Math.round((longestChordGrid / K) * N) : 0;
-    if (longestBreakeven > 0 && longestBreakeven <= N) {
-      breakevenStreakCounts[longestBreakeven]++;
-    }
+    const longestBreakeven = K > 0 ? (longestChordGrid / K) * N : 0;
 
     finalProfits[localS] = profit;
     maxDrawdowns[localS] = maxDD;
@@ -2294,13 +2318,14 @@ export function mergeShards(
   const maxDrawdowns = new Float64Array(S);
   const maxRunUps = new Float64Array(S);
   const runningMins = new Float64Array(S);
-  const longestBreakevens = new Int32Array(S);
+  const longestBreakevens = new Float64Array(S);
   const longestCashless = new Int32Array(S);
   const recoveryLengths = new Int32Array(S);
   const rowProfits = new Float64Array(S * numRows);
-  const firstLen = sorted[0].breakevenStreakCounts.length;
-  const breakevenStreakCounts = new Int32Array(firstLen);
-  const cashlessStreakCounts = new Int32Array(firstLen);
+  const beCountsLen = sorted[0].breakevenStreakCounts.length;
+  const clCountsLen = sorted[0].cashlessStreakCounts.length;
+  const breakevenStreakCounts = new Int32Array(beCountsLen);
+  const cashlessStreakCounts = new Int32Array(clCountsLen);
   let ruinedCount = 0;
   for (const sh of sorted) {
     finalProfits.set(sh.finalProfits, sh.sStart);
@@ -2312,8 +2337,10 @@ export function mergeShards(
     recoveryLengths.set(sh.recoveryLengths, sh.sStart);
     pathMatrix.set(sh.pathMatrix, sh.sStart * K1);
     rowProfits.set(sh.rowProfits, sh.sStart * numRows);
-    for (let i = 0; i < firstLen; i++) {
+    for (let i = 0; i < beCountsLen; i++) {
       breakevenStreakCounts[i] += sh.breakevenStreakCounts[i];
+    }
+    for (let i = 0; i < clCountsLen; i++) {
       cashlessStreakCounts[i] += sh.cashlessStreakCounts[i];
     }
     ruinedCount += sh.ruinedCount;

@@ -49,14 +49,14 @@ export const SCENARIOS: DemoScenario[] = [
     id: "primedope-reference",
     labelKey: "demo.primedopeReference",
     description:
-      "Обычный $50 турнир: 5000 игроков, рейк 11%, ROI 10%, 10 000 турниров. Базовый сценарий для оценки дисперсии.",
+      "Обычный $50 турнир: 5000 игроков, рейк 10%, ROI 10%, 10 000 турниров. Базовый сценарий для оценки дисперсии.",
     schedule: [
       {
         id: "pd-1",
         label: "$50 обычный MTT",
         players: 5000,
         buyIn: 50,
-        rake: 0.11,
+        rake: 0.1,
         roi: 0.1,
         payoutStructure: "mtt-standard",
         count: 10_000,

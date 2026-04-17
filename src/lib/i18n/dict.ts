@@ -499,11 +499,11 @@ export const DICT = {
   "controls.starting": { en: "warming up…", ru: "разгоняемся…" },
   "controls.done.label": { en: "Done", ru: "Готово" },
   "controls.done.seeBelow": { en: "See full results", ru: "Смотреть ниже" },
-  "controls.done.profit": { en: "Profit", ru: "Профит" },
+  "controls.done.profit": { en: "Avg profit", ru: "Средний профит" },
   "controls.done.upChance": { en: "Up chance", ru: "Шанс в плюс" },
-  "controls.done.ruin": { en: "Ruin", ru: "Риск ruin" },
-  "controls.done.worstDD": { en: "Worst DD", ru: "Худший DD" },
-  "controls.done.dryStreak": { en: "Dry streak", ru: "Сухая серия" },
+  "controls.done.ruin": { en: "Ruin risk", ru: "Риск разорения" },
+  "controls.done.worstDD": { en: "Max drawdown", ru: "Макс. просадка" },
+  "controls.done.dryStreak": { en: "Longest cashless", ru: "Без ИТМ, макс" },
   "controls.totalTourneys": {
     en: "tournaments on chart",
     ru: "турниров на графике",
@@ -867,11 +867,78 @@ export const DICT = {
     ru: "Пунктир — то же расписание без ноков",
   },
   "chart.traj.runStats": { en: "run stats", ru: "статы рана" },
+  "chart.traj.abi": { en: "ABI", ru: "ABI" },
   "chart.traj.finalProfit": { en: "final profit", ru: "итоговый профит" },
   "chart.traj.maxDD": { en: "max drawdown", ru: "макс. просадка" },
   "chart.traj.longestLosing": { en: "longest downswing", ru: "макс. серия спада" },
   "chart.traj.longestBE": { en: "longest below-peak run", ru: "ниже пика (макс.)" },
   "chart.traj.tourneys": { en: "t", ru: "т" },
+  "chart.traj.ddDuration": {
+    en: "lasted {n} tournaments",
+    ru: "длилась {n} турниров",
+  },
+  // Kind labels — shown in the tooltip header to explain what kind of line the user is hovering.
+  "chart.traj.kind.mean": {
+    en: "average across all simulated runs",
+    ru: "среднее по всем симулированным ранам",
+  },
+  "chart.traj.kind.band": {
+    en: "percentile band around the average",
+    ru: "полоса процентилей вокруг среднего",
+  },
+  "chart.traj.kind.bestReal": {
+    en: "the luckiest single simulated run",
+    ru: "самый удачливый симулированный ран",
+  },
+  "chart.traj.kind.bestAgg": {
+    en: "highest point any run reached at each moment",
+    ru: "максимум среди всех ранов в каждой точке",
+  },
+  "chart.traj.kind.worstReal": {
+    en: "the unluckiest single simulated run",
+    ru: "самый неудачливый симулированный ран",
+  },
+  "chart.traj.kind.worstAgg": {
+    en: "lowest point any run reached at each moment",
+    ru: "минимум среди всех ранов в каждой точке",
+  },
+  "chart.traj.kind.path": {
+    en: "one individual simulated run",
+    ru: "один симулированный ран",
+  },
+  "chart.traj.kind.ref": {
+    en: "reference line for the expected ROI",
+    ru: "опорная линия ожидаемого ROI",
+  },
+  // Likelihood strings — explain the probability context of the hovered line.
+  "chart.traj.likelihood.median": {
+    en: "half of runs are above this line, half are below",
+    ru: "половина ранов выше этой линии, половина ниже",
+  },
+  "chart.traj.likelihood.below": {
+    en: "about {pct}% of runs end up below this line",
+    ru: "примерно {pct}% ранов оказываются ниже этой линии",
+  },
+  "chart.traj.likelihood.above": {
+    en: "about {pct}% of runs end up above this line",
+    ru: "примерно {pct}% ранов оказываются выше этой линии",
+  },
+  "chart.traj.likelihood.bestAgg": {
+    en: "highest point any run reached at this moment",
+    ru: "максимум среди всех ранов в этой точке",
+  },
+  "chart.traj.likelihood.worstAgg": {
+    en: "lowest point any run reached at this moment",
+    ru: "минимум среди всех ранов в этой точке",
+  },
+  "chart.traj.likelihood.bestReal": {
+    en: "roughly the luckiest one in every N runs",
+    ru: "примерно самый удачный из каждых N ранов",
+  },
+  "chart.traj.likelihood.worstReal": {
+    en: "roughly the unluckiest one in every N runs",
+    ru: "примерно самый неудачный из каждых N ранов",
+  },
   "chart.unit.tourneys": { en: "units: tournaments", ru: "единицы: турниры" },
   "hist.tooltip.range": { en: "range", ru: "диапазон" },
   "hist.tooltip.share": { en: "share of runs", ru: "доля ранов" },
@@ -1005,24 +1072,24 @@ export const DICT = {
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
   "changelog.v06c.title": { en: "v0.6c — current", ru: "v0.6c — текущая" },
   "changelog.v06c.pdControls": {
-    en: "PD controls always visible: payout/finish/rake toggles and the overlay color/width slider moved into the chart toolbar. The slider now actually affects the PrimeDope pane in side-by-side mode.",
-    ru: "Контролы PD всегда на виду: галки payout/finish/rake и слайдер цвета/толщины подняты в тулбар над графиком. Слайдер теперь реально перекрашивает PrimeDope-панель в twin-режиме.",
+    en: "PD toolbar moved into the chart header — all PrimeDope toggles visible in every mode.",
+    ru: "Тулбар PD перенесён в шапку графика — все галки PrimeDope видны в любом режиме.",
   },
   "changelog.v06c.hoverHighlights": {
-    en: "Run hover highlights: peak dot + coloured streak segments (red = longest downswing, blue = below-peak run) drawn over the focused path. Tooltip labels match the chart colours.",
-    ru: "Подсветки на ране под мышью: точка пика + цветные сегменты (красный = макс. серия спада, синий = макс. серия ниже пика) поверх подсвеченного рана. Лейблы тултипа совпадают с цветами на графике.",
+    en: "Hovered run: deepest peak-to-trough drawdown highlighted in red with its anchor peak marked.",
+    ru: "Ран под курсором: самый глубокий даунсвинг от пика до дна подсвечен красным с точкой-якорем на пике.",
   },
   "changelog.v06c.presets": {
-    en: "Four new demo presets: mid-stakes reg ($55/1000p), micro-stakes grind ($5/3000p), HighRoller Sunday ($530/500p), and a mixed freeze+PKO schedule.",
-    ru: "Четыре новых пресета: мидстейкс-рег ($55/1000p), микростейкс-гринд ($5/3000p), HighRoller Sunday ($530/500p) и микс фриз+PKO.",
+    en: "Four new demo presets: mid-stakes reg, micro-stakes grind, HighRoller Sunday, mixed freeze+PKO.",
+    ru: "Четыре новых пресета: мидстейкс-рег, микростейкс-гринд, HighRoller Sunday, микс фриз+PKO.",
   },
   "changelog.v06c.histTooltip": {
-    en: "Histogram tooltips pin to the side opposite the cursor, so hovering over a bar no longer hides it.",
-    ru: "Тултипы гистограмм теперь пинятся к углу напротив курсора — наведение больше не закрывает подсвечиваемый бар.",
+    en: "Histogram tooltips pin to the opposite corner from the cursor.",
+    ru: "Тултипы гистограмм пинятся в угол напротив курсора.",
   },
   "changelog.v06c.polish": {
-    en: "EV breakdown labels cleaned up (Top 3 / Final table with per-tier ranges, «Not ITM» instead of «OOTM bust»), hover run stats trimmed, extra info tooltips on PD toggles.",
-    ru: "Лейблы EV-брейкдауна приведены в порядок («Топ3» / «Финалка» с per-tier диапазонами, «Не ITM» вместо «Без денег»), компактнее статы рана при наведении, нормальные тултипы на галках PD.",
+    en: "EV breakdown labels, hover run stats, PD toggle tooltips — polish pass.",
+    ru: "Лейблы EV-брейкдауна, статы рана при наведении, тултипы галок PD — работа над деталями.",
   },
   "changelog.v06b.title": { en: "v0.6b", ru: "v0.6b" },
   "changelog.v06b.ev": {
@@ -1099,6 +1166,7 @@ export const DICT = {
   },
   "pd.ours": { en: "ours", ru: "наши" },
   "pd.theirs": { en: "primedope", ru: "primedope" },
+  "pd.match": { en: "matches PD", ru: "совпадает с PD" },
   "pd.reproduce.label": { en: "Open PrimeDope", ru: "Открыть PrimeDope" },
   "pd.reproduce.copied": { en: "Copied ✓ opening…", ru: "Скопировано ✓ открываем…" },
   "pd.reproduce.hint": {
@@ -1333,12 +1401,12 @@ export const DICT = {
   "preview.sigmaLabel": { en: "variance", ru: "диспа" },
   "preview.heroTitle": { en: "Where the average hides", ru: "Где прячется среднее" },
   "preview.heroBodyTop1": {
-    en: "{share} of your expected return comes from 1st place — which you take 1 in {odds} entries.",
-    ru: "{share} ожидаемого дохода приходится на 1-е место, которое случается 1 раз из {odds} входов.",
+    en: "{share} of your expected return comes from 1st place — which you take 1\u00A0in\u00A0{odds} entries.",
+    ru: "{share} ожидаемого дохода приходится на 1-е место, которое случается 1\u00A0раз\u00A0из\u00A0{odds} входов.",
   },
   "preview.heroBodyTopN": {
-    en: "{share} of your expected return comes from top-{n} finishes — which happen 1 in {odds} entries.",
-    ru: "{share} всего ожидания приходит с топ-{n} финишей, а они случаются 1 раз из {odds}.",
+    en: "{share} of your expected return comes from top-{n} finishes — which happen 1\u00A0in\u00A0{odds} entries.",
+    ru: "{share} всего ожидания приходит с топ-{n} финишей, а они случаются 1\u00A0раз\u00A0из\u00A0{odds}.",
   },
   "preview.heroTagline": {
     en: "That's why tournament swings are brutal: most of the money is locked inside rare finishes.",
@@ -1402,12 +1470,12 @@ export const DICT = {
   "preview.tierRestItm": { en: "Rest of cashes", ru: "Остальные кеши" },
   "preview.tierOotm": { en: "Not ITM", ru: "Не ITM" },
   "preview.halfMass": {
-    en: "Half your edge lives in the top {k} finishes of {n} — that's 1 in {odds}.",
-    ru: "Половина эджа сконцентрирована в топ-{k} местах из {n} — вероятность 1 к {odds}.",
+    en: "Half your edge lives in the top {k} finishes of {n} — that's 1\u00A0in\u00A0{odds}.",
+    ru: "Половина эджа сконцентрирована в топ-{k} местах из {n} — вероятность 1\u00A0к\u00A0{odds}.",
   },
   "preview.heroBodyFt": {
-    en: "{share} of your expected return lives at the final table — which you reach 1 in {odds} entries.",
-    ru: "{share} ожидаемого дохода приходится на финальный стол, вероятность попадания — 1 из {odds} входов.",
+    en: "{share} of your expected return lives at the final table — which you reach 1\u00A0in\u00A0{odds} entries.",
+    ru: "{share} ожидаемого дохода приходится на финальный стол, вероятность попадания — 1\u00A0из\u00A0{odds} входов.",
   },
   "preview.itmLocked": {
     en: "This row inherits the global ITM%. To override just this tournament, set its ITM% inside the schedule row.",

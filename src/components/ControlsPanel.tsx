@@ -130,30 +130,62 @@ export function ControlsPanel({
     }, 250);
     return () => window.clearInterval(id);
   }, [running]);
-  // ETA with exponential smoothing to avoid jitter. The ref holds the
-  // smoothed value across re-renders; alpha 0.3 means ~70 % of the old
-  // estimate is kept on each tick, producing visually stable countdown.
+  // ETA computation. Three sources blend into one countdown:
+  //   1. Bootstrap — estimatedMs from the saved rate × work units. Accurate
+  //      before any progress is reported, wrong if schedule/compare-mode
+  //      differs from the last run.
+  //   2. Projection — elapsed / progress. Accurate once real work has been
+  //      done, noisy at very small progress.
+  //   3. Build-phase decay — at progress ≥ 0.95 shards are done and the bar
+  //      is driven by a ticker (see useSimulation). Projection would keep
+  //      inflating ETA as elapsed grows, so we freeze the ETA at entry and
+  //      linearly drain it against the 0.95 → 0.995 arc.
+  // Bootstrap and projection cross-fade over progress 0 → 0.3 to avoid the
+  // visible step the old < 0.1 cliff caused. Smoothing uses a time-constant
+  // formula so irregular render cadence stays stable.
   const smoothedEta = useRef<number | null>(null);
-  if (!running) smoothedEta.current = null;
+  const lastSmoothAt = useRef<number | null>(null);
+  const buildPhaseAnchor = useRef<{ eta: number } | null>(null);
+  if (!running) {
+    smoothedEta.current = null;
+    lastSmoothAt.current = null;
+    buildPhaseAnchor.current = null;
+  }
   const remainingMs = (() => {
     if (!running || runElapsedMs == null) return null;
     const elapsed = runElapsedMs;
-    if (progress < 0.1) {
-      if (estimatedMs != null && estimatedMs > 0) {
-        const raw = Math.max(0, estimatedMs - elapsed);
-        smoothedEta.current = raw;
-        return raw;
+
+    if (progress >= 0.95) {
+      if (buildPhaseAnchor.current == null) {
+        const seed = smoothedEta.current ?? Math.max(300, elapsed * 0.05);
+        buildPhaseAnchor.current = { eta: seed };
       }
-      return null;
+      const frac = Math.min(1, Math.max(0, (progress - 0.95) / 0.045));
+      return Math.max(0, buildPhaseAnchor.current.eta * (1 - frac));
     }
-    const projected = elapsed / progress;
-    const raw = Math.max(0, projected - elapsed);
-    const alpha = 0.3;
-    if (smoothedEta.current == null) {
-      smoothedEta.current = raw;
+
+    const projectedEta =
+      progress > 0.01 ? Math.max(0, elapsed / progress - elapsed) : null;
+    const bootstrapEta =
+      estimatedMs != null && estimatedMs > 0
+        ? Math.max(0, estimatedMs - elapsed)
+        : null;
+
+    let raw: number | null;
+    if (projectedEta != null && bootstrapEta != null) {
+      const w = Math.min(1, Math.max(0, progress / 0.3));
+      raw = (1 - w) * bootstrapEta + w * projectedEta;
     } else {
-      smoothedEta.current = alpha * raw + (1 - alpha) * smoothedEta.current;
+      raw = projectedEta ?? bootstrapEta;
     }
+    if (raw == null) return null;
+
+    const now = performance.now();
+    const dt = lastSmoothAt.current == null ? 250 : now - lastSmoothAt.current;
+    lastSmoothAt.current = now;
+    const alpha = 1 - Math.exp(-dt / 1200);
+    if (smoothedEta.current == null) smoothedEta.current = raw;
+    else smoothedEta.current = alpha * raw + (1 - alpha) * smoothedEta.current;
     return smoothedEta.current;
   })();
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));

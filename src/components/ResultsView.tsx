@@ -37,10 +37,6 @@ import {
   loadLineStyleOverrides,
   saveLineStylePreset,
   saveLineStyleOverrides,
-  DEFAULT_PD_OVERLAY_STYLE,
-  loadPdOverlayStyle,
-  savePdOverlayStyle,
-  type PdOverlayStyle,
   type LineStyle,
   type LineStylePreset,
   type LineStylePresetId,
@@ -231,31 +227,6 @@ function pctDelta(cur: number, pd: number): number | null {
   const anchor = Math.abs(pd);
   if (anchor < 1e-9) return null;
   return (cur - pd) / anchor;
-}
-
-/**
- * Histogram quantile by linear interpolation inside the containing bin.
- * Used to surface tail divergence (p95) on streak/drawdown histograms.
- */
-function histogramQuantile(
-  binEdges: number[],
-  counts: number[],
-  q: number,
-): number {
-  let total = 0;
-  for (let i = 0; i < counts.length; i++) total += counts[i];
-  if (total <= 0) return binEdges[0] ?? 0;
-  const target = q * total;
-  let acc = 0;
-  for (let i = 0; i < counts.length; i++) {
-    const next = acc + counts[i];
-    if (next >= target) {
-      const frac = counts[i] > 0 ? (target - acc) / counts[i] : 0;
-      return binEdges[i] + frac * (binEdges[i + 1] - binEdges[i]);
-    }
-    acc = next;
-  }
-  return binEdges[binEdges.length - 1];
 }
 
 type AccentHue = "felt" | "magenta";
@@ -531,23 +502,21 @@ function TrajectoryPlot({
       finalProfit,
       maxDD,
       ddTourneys,
+      ddStartIdx: maxDD > 0 ? ddStart : -1,
+      ddEndIdx: maxDD > 0 ? ddEnd : -1,
+      ddPeakValue: maxDD > 0 ? (dataArr[ddStart] ?? null) : null,
       losingTourneys,
-      losingStartIdx: longestLosing > 0 ? losingStartIdx : -1,
-      losingEndIdx: longestLosing > 0 ? losingEndIdx : -1,
       beTourneys,
-      beStartIdx: longestBE > 0 ? beAnchorPeakIdx : -1,
-      beEndIdx: longestBE > 0 ? beEndIdx : -1,
       peakValue,
     };
   }, [deferredFocusedIdx, assets.data]);
 
-  // Canvas overlay: base highlight of the focused path + streak markers.
+  // Canvas overlay: base highlight of the focused path + deepest drawdown.
   // Draws on uPlot's .over element so everything stays in plot coordinates.
   // Layering (back → front):
-  //   1. Amber stroke of the full focused path (existing behaviour)
-  //   2. Red stroke of the longest downswing segment
-  //   3. Blue stroke of the longest below-peak segment
-  //   4. Peak-point marker (blue dot with white ring)
+  //   1. Amber stroke of the full focused path
+  //   2. Red stroke of the deepest peak-to-trough drawdown segment
+  //   3. Red dot at the drawdown's anchor peak
   useEffect(() => {
     const plot = plotRef.current;
     if (!plot) return;
@@ -613,27 +582,18 @@ function TrajectoryPlot({
       focusedPathStats &&
       deferredFocusedIdx === focusedSeriesIdx
     ) {
-      const {
-        losingStartIdx,
-        losingEndIdx,
-        beStartIdx,
-        beEndIdx,
-        peakValue,
-      } = focusedPathStats;
+      const { ddStartIdx, ddEndIdx, ddPeakValue } = focusedPathStats;
 
-      if (losingStartIdx >= 0 && losingEndIdx > losingStartIdx) {
-        strokeSegment(losingStartIdx, losingEndIdx, "rgba(248,113,113,0.95)", 3);
+      if (ddStartIdx >= 0 && ddEndIdx > ddStartIdx) {
+        strokeSegment(ddStartIdx, ddEndIdx, "rgba(248,113,113,0.95)", 3);
       }
-      if (beStartIdx >= 0 && beEndIdx > beStartIdx) {
-        strokeSegment(beStartIdx, beEndIdx, "rgba(96,165,250,0.95)", 3);
-      }
-      if (beStartIdx >= 0 && peakValue != null) {
-        const xVal = xArr[beStartIdx];
+      if (ddStartIdx >= 0 && ddPeakValue != null) {
+        const xVal = xArr[ddStartIdx];
         if (xVal != null) {
           const px = plot.valToPos(xVal, "x", false);
-          const py = plot.valToPos(peakValue, "y", false);
+          const py = plot.valToPos(ddPeakValue, "y", false);
           ctx.save();
-          ctx.fillStyle = "rgba(96,165,250,1)";
+          ctx.fillStyle = "rgba(248,113,113,1)";
           ctx.strokeStyle = "rgba(255,255,255,0.95)";
           ctx.lineWidth = 1.5;
           ctx.beginPath();
@@ -648,25 +608,32 @@ function TrajectoryPlot({
 
   const kindLabel = (line: TrajectoryLineMeta): string => {
     switch (line.kind) {
-      case "mean": return "expected (mean)";
-      case "band": return "percentile band";
-      case "best": return line.variant === "agg" ? "pointwise max envelope" : "luckiest sim";
-      case "worst": return line.variant === "agg" ? "pointwise min envelope" : "unluckiest sim";
-      case "path": return "individual sim";
-      case "ref": return "ROI reference";
+      case "mean": return t("chart.traj.kind.mean");
+      case "band": return t("chart.traj.kind.band");
+      case "best": return t(line.variant === "agg" ? "chart.traj.kind.bestAgg" : "chart.traj.kind.bestReal");
+      case "worst": return t(line.variant === "agg" ? "chart.traj.kind.worstAgg" : "chart.traj.kind.worstReal");
+      case "path": return t("chart.traj.kind.path");
+      case "ref": return t("chart.traj.kind.ref");
     }
   };
   const likelihood = (line: TrajectoryLineMeta): string | null => {
     if (line.kind === "ref") return null;
-    if (line.kind === "path") return "1 of N sample paths";
-    if (line.kind === "best") return line.variant === "agg" ? "max across all runs at this X" : "≈ top 1/N sims";
-    if (line.kind === "worst") return line.variant === "agg" ? "min across all runs at this X" : "≈ bottom 1/N sims";
+    // Path lines don't get a likelihood line — each is just one of many runs.
+    if (line.kind === "path") return null;
+    if (line.kind === "best") {
+      return t(line.variant === "agg" ? "chart.traj.likelihood.bestAgg" : "chart.traj.likelihood.bestReal");
+    }
+    if (line.kind === "worst") {
+      return t(line.variant === "agg" ? "chart.traj.likelihood.worstAgg" : "chart.traj.likelihood.worstReal");
+    }
     if (line.percentile != null) {
       const pct = line.percentile;
-      if (pct === 0.5) return "50% above / 50% below";
+      if (pct === 0.5) return t("chart.traj.likelihood.median");
       const tail = pct < 0.5 ? pct : 1 - pct;
-      const side = pct < 0.5 ? "below" : "above";
-      return `~${(tail * 100).toFixed(2)}% of runs ${side} this`;
+      const key = pct < 0.5
+        ? "chart.traj.likelihood.below"
+        : "chart.traj.likelihood.above";
+      return fmt(t(key), { pct: (tail * 100).toFixed(1) });
     }
     return null;
   };
@@ -682,11 +649,17 @@ function TrajectoryPlot({
       />
       {cursor && idx != null && nearest && (
         <div
-          className="pointer-events-none z-10 mt-2 min-w-[200px] rounded border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 px-3 py-2 text-[11px] shadow-xl backdrop-blur"
+          className="pointer-events-none z-10 mt-2 min-w-[220px] overflow-hidden rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 text-[11px] shadow-xl backdrop-blur"
         >
-          <div className="mb-1.5 flex items-center gap-2 border-b border-[color:var(--color-border)]/50 pb-1">
+          <div
+            className="flex items-center gap-2 px-3 py-1.5"
+            style={{
+              background: `linear-gradient(90deg, ${nearest.color}22 0%, transparent 70%)`,
+              borderBottom: "1px solid var(--color-border)",
+            }}
+          >
             <span
-              className="inline-block h-2 w-3 rounded-sm"
+              className="inline-block h-2.5 w-3 rounded-sm"
               style={{ background: nearest.color }}
             />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
@@ -696,57 +669,105 @@ function TrajectoryPlot({
               {kindLabel(nearest)}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 tabular-nums">
             <span className="text-[color:var(--color-fg-dim)]">tournaments</span>
             <span className="text-right font-semibold text-[color:var(--color-fg)]">
               {tournaments.toLocaleString()}
             </span>
             <span className="text-[color:var(--color-fg-dim)]">profit</span>
-            <span className="text-right font-semibold text-[color:var(--color-fg)]">
+            <span
+              className="text-right font-semibold"
+              style={{
+                color:
+                  nearestVal >= 0
+                    ? "var(--color-success)"
+                    : "var(--color-danger)",
+              }}
+            >
               {compactMoney(nearestVal)}
             </span>
             <span className="text-[color:var(--color-fg-dim)]">ROI</span>
-            <span className="text-right font-semibold text-[color:var(--color-fg)]">
+            <span
+              className="text-right font-semibold"
+              style={{
+                color:
+                  cumBuyIn > 0 && roi >= 0
+                    ? "var(--color-success)"
+                    : cumBuyIn > 0
+                      ? "var(--color-danger)"
+                      : "var(--color-fg)",
+              }}
+            >
               {cumBuyIn > 0 ? `${(roi * 100).toFixed(1)}%` : "—"}
             </span>
           </div>
           {likelihood(nearest) && (
-            <div className="mt-1.5 border-t border-[color:var(--color-border)]/50 pt-1 text-[10px] text-[color:var(--color-fg-dim)]">
+            <div className="border-t border-[color:var(--color-border)]/50 px-3 py-1 text-[10px] text-[color:var(--color-fg-dim)]">
               {likelihood(nearest)}
             </div>
           )}
           {focusedPathStats && (
-            <div className="mt-1.5 border-t border-[color:var(--color-border)]/50 pt-1.5">
-              <div className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            <div className="border-t border-[color:var(--color-border)]/50 px-3 py-2">
+              <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
                 {t("chart.traj.runStats")}
               </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums">
-                <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.finalProfit")}</span>
-                <span className="text-right font-semibold text-[color:var(--color-fg)]">
-                  {compactMoney(focusedPathStats.finalProfit)}
-                </span>
-                <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.maxDD")}</span>
-                <span className="text-right font-semibold text-[color:var(--color-danger)]">
-                  {compactMoney(focusedPathStats.maxDD)}
-                  {focusedPathStats.ddTourneys > 0 && (
-                    <span className="ml-1 text-[9px] text-[color:var(--color-fg-dim)]">
-                      ({focusedPathStats.ddTourneys.toLocaleString()} t)
+              {/* Hero row: max DD — one number shown in $ with an ABI pill. */}
+              <div className="mb-1.5 rounded-sm bg-[color:var(--color-danger)]/8 px-2 py-1.5">
+                <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-danger)]">
+                  <span
+                    className="inline-block h-0.5 w-3 rounded-full"
+                    style={{ background: "rgba(248,113,113,0.95)" }}
+                    aria-hidden
+                  />
+                  {t("chart.traj.maxDD")}
+                </div>
+                <div className="mt-0.5 flex items-baseline gap-1.5 tabular-nums">
+                  <span className="text-[13px] font-bold text-[color:var(--color-danger)]">
+                    {compactMoney(focusedPathStats.maxDD)}
+                  </span>
+                  {assets.buyInPerTourney > 0 && (
+                    <span className="rounded-sm bg-[color:var(--color-danger)]/12 px-1 py-0.5 text-[9px] font-semibold text-[color:var(--color-danger)]">
+                      {(focusedPathStats.maxDD / assets.buyInPerTourney).toFixed(1)}{" "}
+                      {t("chart.traj.abi")}
                     </span>
                   )}
+                </div>
+                {focusedPathStats.ddTourneys > 0 && (
+                  <div className="mt-0.5 text-[9px] text-[color:var(--color-fg-dim)]">
+                    {fmt(t("chart.traj.ddDuration"), {
+                      n: focusedPathStats.ddTourneys.toLocaleString(),
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
+                <span className="text-[color:var(--color-fg-dim)]">
+                  {t("chart.traj.finalProfit")}
                 </span>
-                <span className="flex items-center gap-1 text-[color:var(--color-fg-dim)]">
-                  <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: "rgba(248,113,113,0.95)" }} />
+                <span
+                  className="text-right font-semibold"
+                  style={{
+                    color:
+                      focusedPathStats.finalProfit >= 0
+                        ? "var(--color-success)"
+                        : "var(--color-danger)",
+                  }}
+                >
+                  {compactMoney(focusedPathStats.finalProfit)}
+                </span>
+                <span className="text-[color:var(--color-fg-dim)]">
                   {t("chart.traj.longestLosing")}
                 </span>
                 <span className="text-right text-[color:var(--color-fg)]">
-                  {focusedPathStats.losingTourneys.toLocaleString()} {t("chart.traj.tourneys")}
+                  {focusedPathStats.losingTourneys.toLocaleString()}{" "}
+                  {t("chart.traj.tourneys")}
                 </span>
-                <span className="flex items-center gap-1 text-[color:var(--color-fg-dim)]">
-                  <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: "rgba(96,165,250,0.95)" }} />
+                <span className="text-[color:var(--color-fg-dim)]">
                   {t("chart.traj.longestBE")}
                 </span>
                 <span className="text-right text-[color:var(--color-fg)]">
-                  {focusedPathStats.beTourneys.toLocaleString()} {t("chart.traj.tourneys")}
+                  {focusedPathStats.beTourneys.toLocaleString()}{" "}
+                  {t("chart.traj.tourneys")}
                 </span>
               </div>
             </div>
@@ -856,8 +877,6 @@ function buildTrajectoryAssets(
   runMode: RunMode = "random",
   showRealExtremes: boolean = false,
   showAggExtremes: boolean = true,
-  pdOverlayColor: string = "#60a5fa",
-  pdOverlayWidth: number = 1.75,
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
@@ -1167,7 +1186,8 @@ function buildTrajectoryAssets(
     // intentionally excluded: mean overlays add no new info (centers coincide
     // by construction) and PD's near-zero EV read as a mysterious dashed zero
     // line that users misread as a bug.
-    const overlayColor = pdOverlayColor;
+    const overlayColor = "#60a5fa";
+    const overlayWidth = 1.75;
     const pushOverlay = (
       src: Float64Array,
       label: string,
@@ -1176,7 +1196,7 @@ function buildTrajectoryAssets(
     ): number => {
       const idx = pushSeries(resample(src), {
         stroke: overlayColor,
-        width: pdOverlayWidth,
+        width: overlayWidth,
         dash,
         label,
       });
@@ -1411,14 +1431,6 @@ export function ResultsView({
     () => applyLineStyleOverrides(LINE_STYLE_PRESETS[lineStylePresetId], lineOverrides),
     [lineStylePresetId, lineOverrides],
   );
-  const [pdOverlayStyle, setPdOverlayStyle] =
-    useLocalStorageState<PdOverlayStyle>(
-      "tvs.pdOverlayStyle.v1",
-      loadPdOverlayStyle,
-      savePdOverlayStyle,
-      DEFAULT_PD_OVERLAY_STYLE,
-    );
-
   const maxRunsAvailable = result.samplePaths.paths.length;
   const runsCap = Math.min(1000, maxRunsAvailable);
   const maxRuns = runsCap;
@@ -1519,24 +1531,6 @@ export function ResultsView({
                   t={t}
                 />
                 <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-[color:var(--color-fg-dim)]">PD</span>
-                  <DebouncedColorInput
-                    value={pdOverlayStyle.color}
-                    onChange={(v) => setPdOverlayStyle({ ...pdOverlayStyle, color: v })}
-                    aria-label="PD overlay color"
-                  />
-                  <input
-                    type="range"
-                    min={0.5}
-                    max={4}
-                    step={0.25}
-                    value={pdOverlayStyle.width}
-                    onChange={(e) => setPdOverlayStyle({ ...pdOverlayStyle, width: Number(e.target.value) })}
-                    className="w-12"
-                    aria-label="PD overlay width"
-                  />
-                </div>
               </div>
               <div className="flex items-center gap-2">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
@@ -1598,7 +1592,6 @@ export function ResultsView({
           onPdRefresh={onPdRefresh}
           pdOverrideStatus={pdOverrideStatus}
           pdOverrideProgress={pdOverrideProgress}
-          pdOverlayStyle={pdOverlayStyle}
         />
       </UnitScope>
 
@@ -1921,15 +1914,7 @@ export function ResultsView({
                     <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
                       {t("chart.longestBE.sub")}
                     </div>
-                    <div>
-                      {overlayPd && pdChart && (
-                        <TailDivergenceNote
-                          user={result.longestBreakevenHistogram}
-                          pd={pdChart.longestBreakevenHistogram}
-                          unit={tourneysWord}
-                        />
-                      )}
-                    </div>
+                    <div />
                   </div>
                   <div className="flex flex-col gap-1.5 sm:grid sm:grid-rows-subgrid sm:row-span-4">
                     <ChartHeader
@@ -1959,15 +1944,7 @@ export function ResultsView({
                     <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
                       {t("chart.longestCashless.sub")}
                     </div>
-                    <div>
-                      {overlayPd && pdChart && (
-                        <TailDivergenceNote
-                          user={result.longestCashlessHistogram}
-                          pd={pdChart.longestCashlessHistogram}
-                          unit={tourneysWord}
-                        />
-                      )}
-                    </div>
+                    <div />
                   </div>
                   <div className="flex flex-col gap-1.5 sm:grid sm:grid-rows-subgrid sm:row-span-4">
                     <ChartHeader
@@ -1999,15 +1976,7 @@ export function ResultsView({
                         pct: pct(s.recoveryUnrecoveredShare),
                       })}
                     </div>
-                    <div>
-                      {overlayPd && pdChart && (
-                        <TailDivergenceNote
-                          user={result.recoveryHistogram}
-                          pd={pdChart.recoveryHistogram}
-                          unit={tourneysWord}
-                        />
-                      )}
-                    </div>
+                    <div />
                   </div>
                 </div>
               }
@@ -2334,7 +2303,6 @@ function TrajectoryCard({
   pdOverrideStatus,
   pdOverrideProgress,
   toolbar,
-  pdOverlayStyle = DEFAULT_PD_OVERLAY_STYLE,
 }: {
   settings?: ControlsState;
   result: SimulationResult;
@@ -2368,7 +2336,6 @@ function TrajectoryCard({
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
   toolbar?: React.ReactNode;
-  pdOverlayStyle?: PdOverlayStyle;
 }) {
   const t = useT();
   const { money, compactMoney } = useMoneyFmt();
@@ -2436,34 +2403,12 @@ function TrajectoryCard({
         runMode,
         showRealExtremes,
         showAggExtremes,
-        pdOverlayStyle.color,
-        pdOverlayStyle.width,
       ),
-    [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes, pdOverlayStyle],
+    [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
   );
-  // Apply the user's PD color/width slider to the dedicated PD pane preset
-  // so the toolbar control affects the twin-pane view, not just the overlay
-  // in single-pane mode. Width scales proportionally; color replaces the
-  // main curves but preserves the soft band/path tints.
-  const pdPanePreset = useMemo<LineStylePreset>(() => {
-    const widthMult = pdOverlayStyle.width / 1.75;
-    const c = pdOverlayStyle.color;
-    const [r, g, b] = parseRgb(c);
-    const rgba = (a: number) => `rgba(${r},${g},${b},${a})`;
-    return {
-      ...PRIMEDOPE_PANE_PRESET,
-      mean: { stroke: c, width: PRIMEDOPE_PANE_PRESET.mean.width * widthMult },
-      ev: { ...PRIMEDOPE_PANE_PRESET.ev, stroke: c, width: PRIMEDOPE_PANE_PRESET.ev.width * widthMult },
-      p05: { ...PRIMEDOPE_PANE_PRESET.p05, stroke: c, width: PRIMEDOPE_PANE_PRESET.p05.width * widthMult },
-      p95: { ...PRIMEDOPE_PANE_PRESET.p95, stroke: c, width: PRIMEDOPE_PANE_PRESET.p95.width * widthMult },
-      path: { stroke: rgba(0.24), width: PRIMEDOPE_PANE_PRESET.path.width },
-      bandExtreme: { stroke: rgba(0.10), width: PRIMEDOPE_PANE_PRESET.bandExtreme.width },
-      bandWide: { stroke: rgba(0.20), width: PRIMEDOPE_PANE_PRESET.bandWide.width },
-      bandNarrow: { stroke: rgba(0.38), width: PRIMEDOPE_PANE_PRESET.bandNarrow.width },
-    };
-  }, [pdOverlayStyle]);
+  const pdPanePreset = PRIMEDOPE_PANE_PRESET;
   const secondaryMaxPathCount = pdChart
-    ? Math.min(500, pdChart.samplePaths.paths.length)
+    ? Math.min(1000, pdChart.samplePaths.paths.length)
     : 0;
   const secondary = useMemo(
     () =>
@@ -4819,45 +4764,6 @@ function PrimedopeDiff({
   );
 }
 
-/**
- * Compact "p95 tail is X% heavier than PD" note rendered below a streak
- * histogram when the divergence is meaningful (≥10% relative, ≥1 unit absolute).
- */
-function TailDivergenceNote({
-  user,
-  pd,
-  unit,
-}: {
-  user: { binEdges: number[]; counts: number[] };
-  pd: { binEdges: number[]; counts: number[] };
-  unit: string;
-}) {
-  const userP95 = histogramQuantile(user.binEdges, user.counts, 0.95);
-  const pdP95 = histogramQuantile(pd.binEdges, pd.counts, 0.95);
-  if (!Number.isFinite(userP95) || !Number.isFinite(pdP95)) return null;
-  if (Math.abs(userP95 - pdP95) < 1) return null;
-  const rel = pctDelta(userP95, pdP95);
-  if (rel == null || Math.abs(rel) < 0.1) return null;
-  const strong = Math.abs(rel) >= 0.25;
-  const sign = rel >= 0 ? "+" : "";
-  const color = strong
-    ? "var(--color-danger)"
-    : "var(--color-accent-strong)";
-  const bg = strong ? "bg-[color:var(--color-danger)]/10" : "";
-  return (
-    <div
-      className={`mt-1.5 rounded-sm px-2 py-1 font-mono text-[10px] tabular-nums ${bg}`}
-      style={{ color }}
-    >
-      p95 tail: {Math.round(userP95)} {unit} vs PD {Math.round(pdP95)}{" "}
-      <span className={strong ? "font-bold" : "font-semibold"}>
-        ({sign}
-        {(rel * 100).toFixed(0)}%)
-      </span>
-    </div>
-  );
-}
-
 function MiniStat({
   label,
   value,
@@ -4893,14 +4799,14 @@ function MiniStat({
       style={{ borderLeftColor: SUIT_COLOR[suit] }}
     >
       <div
-        className="eyebrow flex items-center gap-1"
+        className="eyebrow flex items-center gap-1 whitespace-nowrap"
         style={{ color: SUIT_COLOR[suit] }}
       >
         {label}
         {tip && <InfoTooltip content={tip} />}
       </div>
       <div
-        className="font-mono text-[13px] font-semibold tabular-nums"
+        className="whitespace-nowrap font-mono text-[13px] font-semibold tabular-nums"
         style={{ color: toneColor }}
       >
         {value}
@@ -4942,7 +4848,36 @@ function PdCompareRow({
   delta: number | null;
   emphasizeTail?: boolean;
 }) {
+  const t = useT();
   const sev = pdBadgeSeverity(delta, emphasizeTail);
+  // Tight precision gate: when the difference is within MC noise we collapse
+  // the PD row to "matches PD · ±X%" instead of showing the full PD value +
+  // colored delta. Tail-emphasized metrics use a stricter threshold.
+  const matchThreshold = emphasizeTail ? 0.02 : 0.03;
+  const matches =
+    delta != null && Number.isFinite(delta) && Math.abs(delta) <= matchThreshold;
+  if (matches) {
+    const precisionPct = Math.max(1, Math.round(Math.abs(delta) * 100));
+    return (
+      <div
+        className="mt-1 flex items-center gap-1.5 rounded-sm border-l-2 px-2 py-1 font-mono text-[10px] tabular-nums"
+        style={{
+          borderLeftColor: "rgba(232,121,249,0.5)",
+          backgroundColor: "rgba(232,121,249,0.04)",
+          color: "var(--color-fg-dim)",
+        }}
+      >
+        <span
+          className="text-[9px] font-bold uppercase tracking-[0.15em]"
+          style={{ color: "#e879f9" }}
+        >
+          PD
+        </span>
+        <span className="truncate">{t("pd.match")}</span>
+        <span className="shrink-0 opacity-70">· ±{precisionPct}%</span>
+      </div>
+    );
+  }
   const arrow =
     delta == null
       ? ""
@@ -4953,18 +4888,43 @@ function PdCompareRow({
           : "≈";
   const pctStr =
     delta == null ? "" : `${arrow}${Math.round(Math.abs(delta) * 100)}%`;
-  const badgeClass =
+  const deltaColor =
     sev === "strong"
-      ? "px-1 font-semibold text-[color:var(--color-danger)] bg-[color:var(--color-danger)]/15 rounded-sm"
+      ? "var(--color-danger)"
       : sev === "mild"
-        ? "text-[color:var(--color-accent-strong)]"
-        : "text-[color:var(--color-fg-dim)]";
+        ? "var(--color-accent-strong)"
+        : "rgba(232,121,249,0.75)";
+  const deltaWeight =
+    sev === "strong"
+      ? "font-bold"
+      : sev === "mild"
+        ? "font-semibold"
+        : "";
   return (
-    <div className="mt-0.5 flex items-center gap-1 font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
-      <span className="opacity-70">PD</span>
-      <span className="truncate">{pdValue}</span>
+    <div
+      className="mt-1 flex items-center justify-between gap-2 rounded-sm border-l-2 px-2 py-1 font-mono text-[10px] tabular-nums"
+      style={{
+        borderLeftColor: "#e879f9",
+        backgroundColor: "rgba(232,121,249,0.06)",
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span
+          className="text-[9px] font-bold uppercase tracking-[0.15em]"
+          style={{ color: "#e879f9" }}
+        >
+          PD
+        </span>
+        <span className="truncate text-[color:var(--color-fg)]">
+          {pdValue}
+        </span>
+      </div>
       {delta != null && (
-        <span className={badgeClass} aria-label={`delta vs PD ${pctStr}`}>
+        <span
+          className={`shrink-0 ${deltaWeight}`}
+          style={{ color: deltaColor }}
+          aria-label={`delta vs PD ${pctStr}`}
+        >
           {pctStr}
         </span>
       )}
@@ -4988,7 +4948,7 @@ function StatGroup({
         </span>
         <div className="h-px flex-1 bg-[color:var(--color-border)]" />
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-[repeat(2,minmax(min-content,1fr))] gap-3 sm:grid-cols-[repeat(3,minmax(min-content,1fr))] lg:grid-cols-[repeat(5,minmax(min-content,1fr))]">
         {children}
       </div>
     </div>
