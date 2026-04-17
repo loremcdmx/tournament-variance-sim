@@ -835,18 +835,38 @@ function buildTrajectoryAssets(
   const overlayBestSeriesIdxs: number[] = [];
   const overlayWorstSeriesIdxs: number[] = [];
 
-  const meanIdx = pushSeries(r.envelopes.mean, {
-    stroke: preset.mean.stroke,
-    width: preset.mean.width,
-    dash: preset.mean.dash,
-  });
-  mainLines.push({
-    label: "Mean",
-    color: preset.mean.stroke,
-    seriesIdx: meanIdx,
-    percentile: 0.5,
-    kind: "mean",
-  });
+  if (isLineEnabled("mean", lineOverrides)) {
+    const meanIdx = pushSeries(r.envelopes.mean, {
+      stroke: preset.mean.stroke,
+      width: preset.mean.width,
+      dash: preset.mean.dash,
+    });
+    mainLines.push({
+      label: "Mean",
+      color: preset.mean.stroke,
+      seriesIdx: meanIdx,
+      percentile: 0.5,
+      kind: "mean",
+    });
+  }
+
+  // EV reference line — straight slope from 0 to expected profit.
+  // Uses the preset's ev style (dashed by default). Toggled independently
+  // from mean via the line-style popup.
+  if (isLineEnabled("ev", lineOverrides)) {
+    const evSlope = r.expectedProfit / (x[x.length - 1] || 1);
+    const evIdx = pushSeries(buildRefLine(x, evSlope), {
+      stroke: preset.ev.stroke,
+      width: preset.ev.width,
+      dash: preset.ev.dash,
+    });
+    mainLines.push({
+      label: "EV",
+      color: preset.ev.stroke,
+      seriesIdx: evIdx,
+      kind: "ref",
+    });
+  }
 
   {
     const p0015Idx = pushSeries(r.envelopes.p0015, {

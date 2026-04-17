@@ -243,6 +243,7 @@ export const OVERRIDABLE_LINE_KEYS: OverridableLineKey[] = [
 ];
 
 const OPTIONAL_LINE_KEYS: ReadonlySet<OverridableLineKey> = new Set([
+  "ev",
   "p05",
   "p95",
 ]);

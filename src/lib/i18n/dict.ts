@@ -937,8 +937,8 @@ export const DICT = {
   "lineStyle.width": { en: "Width", ru: "Толщина" },
   "lineStyle.line.mean": { en: "Mean winnings", ru: "Средний выигрыш" },
   "lineStyle.line.ev": {
-    en: "Expected profit",
-    ru: "Ожидаемая прибыль",
+    en: "EV line",
+    ru: "Линия EV",
   },
   "lineStyle.line.best": { en: "Luckiest run", ru: "Самый удачный ран" },
   "lineStyle.line.worst": { en: "Unluckiest run", ru: "Самый неудачный ран" },
