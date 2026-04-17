@@ -13,6 +13,7 @@
     "bench:convergence": "tsx scripts/bench_convergence.ts"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "lz-string": "^1.5.0",
     "next": "16.2.3",
     "react": "19.2.4",
