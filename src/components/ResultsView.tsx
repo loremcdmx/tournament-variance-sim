@@ -25,18 +25,23 @@ import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
 import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
+  DEFAULT_EXTREME_STYLES,
   DEFAULT_LINE_STYLE_PRESET,
+  EXTREME_KEYS,
   LINE_STYLE_PRESETS,
   LINE_STYLE_PRESET_META,
   LINE_STYLE_PRESET_ORDER,
-  OVERRIDABLE_LINE_KEYS,
   PRIMEDOPE_PANE_PRESET,
   applyLineStyleOverrides,
   isLineEnabled,
+  loadExtremeStyles,
   loadLineStylePreset,
   loadLineStyleOverrides,
+  saveExtremeStyles,
   saveLineStylePreset,
   saveLineStyleOverrides,
+  type ExtremeKey,
+  type ExtremeStyles,
   type LineStyle,
   type LineStylePreset,
   type LineStylePresetId,
@@ -878,8 +883,7 @@ function buildTrajectoryAssets(
   refLines: RefLineConfig[] = DEFAULT_REF_LINES,
   lineOverrides: LineStyleOverrides = {},
   runMode: RunMode = "random",
-  showRealExtremes: boolean = false,
-  showAggExtremes: boolean = true,
+  extremeStyles: ExtremeStyles = DEFAULT_EXTREME_STYLES,
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
@@ -926,24 +930,8 @@ function buildTrajectoryAssets(
   const overlayBestSeriesIdxs: number[] = [];
   const overlayWorstSeriesIdxs: number[] = [];
 
-  if (isLineEnabled("mean", lineOverrides)) {
-    const meanIdx = pushSeries(r.envelopes.mean, {
-      stroke: preset.mean.stroke,
-      width: preset.mean.width,
-      dash: preset.mean.dash,
-    });
-    mainLines.push({
-      label: "Mean",
-      color: preset.mean.stroke,
-      seriesIdx: meanIdx,
-      percentile: 0.5,
-      kind: "mean",
-    });
-  }
-
   // EV reference line — straight slope from 0 to expected profit.
-  // Uses the preset's ev style (dashed by default). Toggled independently
-  // from mean via the line-style popup.
+  // Uses the preset's ev style (dashed by default). Toggled via Customize.
   if (isLineEnabled("ev", lineOverrides)) {
     const evSlope = r.expectedProfit / (x[x.length - 1] || 1);
     const evIdx = pushSeries(buildRefLine(x, evSlope), {
@@ -1011,49 +999,41 @@ function buildTrajectoryAssets(
     });
   }
 
-  // Preset best/worst colors are intentionally pale (background sample
-  // highlights). For the explicit "real vs aggregated" lines the user asked
-  // for, override with saturated hues so the four curves stand out from the
-  // band fill and from each other: real = bold solid, agg = lighter dashed
-  // in the same hue family. On the PrimeDope pane (`hue === "magenta"`) we
-  // use the same pink palette as the overlay on the main pane, so the PD
-  // lines read as "same entity" in both views.
+  // Real = solid bold; aggregated = lighter dashed. On the PrimeDope pane
+  // (`hue === "magenta"`) we override to blue so the overlay reads as "same
+  // entity" across both views; the main pane takes user-picked colors from
+  // the inline toolbar toggles.
   const isPdPane = hue === "magenta";
-  const BEST_REAL = isPdPane
-    ? { stroke: "#60a5fa", width: 2.25 }
-    : { stroke: "#22c55e", width: 2.25 };
-  const BEST_AGG = isPdPane
-    ? { stroke: "#93c5fd", width: 2, dash: [10, 5] as number[] }
-    : { stroke: "#86efac", width: 2, dash: [10, 5] as number[] };
-  const WORST_REAL = isPdPane
-    ? { stroke: "#60a5fa", width: 2.25 }
-    : { stroke: "#ef4444", width: 2.25 };
-  const WORST_AGG = isPdPane
-    ? { stroke: "#93c5fd", width: 2, dash: [10, 5] as number[] }
-    : { stroke: "#fca5a5", width: 2, dash: [10, 5] as number[] };
-  if (isLineEnabled("best", lineOverrides)) {
-    if (showRealExtremes) {
-      const idx = pushSeries(r.samplePaths.best, BEST_REAL);
-      bestSeriesIdxs.push(idx);
-      mainLines.push({ label: "Real best run", color: BEST_REAL.stroke, seriesIdx: idx, kind: "best", variant: "real" });
-    }
-    if (showAggExtremes) {
-      const idx = pushSeries(r.envelopes.max, BEST_AGG);
-      bestSeriesIdxs.push(idx);
-      mainLines.push({ label: "Aggregated best", color: BEST_AGG.stroke, seriesIdx: idx, kind: "best", variant: "agg" });
-    }
+  const realStroke = (key: "realBest" | "realWorst") =>
+    isPdPane ? "#60a5fa" : extremeStyles[key].color;
+  const aggStroke = (key: "aggBest" | "aggWorst") =>
+    isPdPane ? "#93c5fd" : extremeStyles[key].color;
+  const realWidth = 2.25;
+  const aggWidth = 2;
+  const aggDash: number[] = [10, 5];
+  if (extremeStyles.realBest.enabled) {
+    const stroke = realStroke("realBest");
+    const idx = pushSeries(r.samplePaths.best, { stroke, width: realWidth });
+    bestSeriesIdxs.push(idx);
+    mainLines.push({ label: "Real best run", color: stroke, seriesIdx: idx, kind: "best", variant: "real" });
   }
-  if (isLineEnabled("worst", lineOverrides)) {
-    if (showRealExtremes) {
-      const idx = pushSeries(r.samplePaths.worst, WORST_REAL);
-      worstSeriesIdxs.push(idx);
-      mainLines.push({ label: "Real worst run", color: WORST_REAL.stroke, seriesIdx: idx, kind: "worst", variant: "real" });
-    }
-    if (showAggExtremes) {
-      const idx = pushSeries(r.envelopes.min, WORST_AGG);
-      worstSeriesIdxs.push(idx);
-      mainLines.push({ label: "Aggregated worst", color: WORST_AGG.stroke, seriesIdx: idx, kind: "worst", variant: "agg" });
-    }
+  if (extremeStyles.aggBest.enabled) {
+    const stroke = aggStroke("aggBest");
+    const idx = pushSeries(r.envelopes.max, { stroke, width: aggWidth, dash: aggDash });
+    bestSeriesIdxs.push(idx);
+    mainLines.push({ label: "Aggregated best", color: stroke, seriesIdx: idx, kind: "best", variant: "agg" });
+  }
+  if (extremeStyles.realWorst.enabled) {
+    const stroke = realStroke("realWorst");
+    const idx = pushSeries(r.samplePaths.worst, { stroke, width: realWidth });
+    worstSeriesIdxs.push(idx);
+    mainLines.push({ label: "Real worst run", color: stroke, seriesIdx: idx, kind: "worst", variant: "real" });
+  }
+  if (extremeStyles.aggWorst.enabled) {
+    const stroke = aggStroke("aggWorst");
+    const idx = pushSeries(r.envelopes.min, { stroke, width: aggWidth, dash: aggDash });
+    worstSeriesIdxs.push(idx);
+    mainLines.push({ label: "Aggregated worst", color: stroke, seriesIdx: idx, kind: "worst", variant: "agg" });
   }
 
   // Optional p5/p95 envelope lines — hidden by default, toggled from the
@@ -1224,29 +1204,25 @@ function buildTrajectoryAssets(
       mainLines.push({ label, color: stroke, seriesIdx: idx, kind, variant });
       return idx;
     };
-    if (isLineEnabled("best", lineOverrides)) {
-      if (showRealExtremes) {
-        overlayBestSeriesIdxs.push(
-          pushOverlayExtreme(overlay.samplePaths.best as Float64Array, "PrimeDope real best", "best", "real"),
-        );
-      }
-      if (showAggExtremes) {
-        overlayBestSeriesIdxs.push(
-          pushOverlayExtreme(overlay.envelopes.max as Float64Array, "PrimeDope agg best", "best", "agg"),
-        );
-      }
+    if (extremeStyles.realBest.enabled) {
+      overlayBestSeriesIdxs.push(
+        pushOverlayExtreme(overlay.samplePaths.best as Float64Array, "PrimeDope real best", "best", "real"),
+      );
     }
-    if (isLineEnabled("worst", lineOverrides)) {
-      if (showRealExtremes) {
-        overlayWorstSeriesIdxs.push(
-          pushOverlayExtreme(overlay.samplePaths.worst as Float64Array, "PrimeDope real worst", "worst", "real"),
-        );
-      }
-      if (showAggExtremes) {
-        overlayWorstSeriesIdxs.push(
-          pushOverlayExtreme(overlay.envelopes.min as Float64Array, "PrimeDope agg worst", "worst", "agg"),
-        );
-      }
+    if (extremeStyles.aggBest.enabled) {
+      overlayBestSeriesIdxs.push(
+        pushOverlayExtreme(overlay.envelopes.max as Float64Array, "PrimeDope agg best", "best", "agg"),
+      );
+    }
+    if (extremeStyles.realWorst.enabled) {
+      overlayWorstSeriesIdxs.push(
+        pushOverlayExtreme(overlay.samplePaths.worst as Float64Array, "PrimeDope real worst", "worst", "real"),
+      );
+    }
+    if (extremeStyles.aggWorst.enabled) {
+      overlayWorstSeriesIdxs.push(
+        pushOverlayExtreme(overlay.envelopes.min as Float64Array, "PrimeDope agg worst", "worst", "agg"),
+      );
     }
     if (isLineEnabled("p05", lineOverrides) && overlay.envelopes.p05) {
       pushOverlay(overlay.envelopes.p05, "PrimeDope p5", "band", [10, 6]);
@@ -2343,32 +2319,14 @@ function TrajectoryCard({
   const t = useT();
   const { money, compactMoney } = useMoneyFmt();
   const { advanced } = useAdvancedMode();
-  const [showRealExtremes, setShowRealExtremes] = useLocalStorageState<boolean>(
-    "tvs.trajectory.showRealExtremes.v1",
-    () => {
-      if (typeof localStorage === "undefined") return true;
-      const v = localStorage.getItem("tvs.trajectory.showRealExtremes.v1");
-      return v == null ? true : v === "1";
-    },
-    (v) => {
-      if (typeof localStorage !== "undefined")
-        localStorage.setItem("tvs.trajectory.showRealExtremes.v1", v ? "1" : "0");
-    },
-    true,
+  const [extremeStyles, setExtremeStyles] = useLocalStorageState<ExtremeStyles>(
+    "tvs.extremeStyles.v1",
+    loadExtremeStyles,
+    saveExtremeStyles,
+    DEFAULT_EXTREME_STYLES,
   );
-  const [showAggExtremes, setShowAggExtremes] = useLocalStorageState<boolean>(
-    "tvs.trajectory.showAggExtremes.v1",
-    () => {
-      if (typeof localStorage === "undefined") return true;
-      const v = localStorage.getItem("tvs.trajectory.showAggExtremes.v1");
-      return v == null ? true : v === "1";
-    },
-    (v) => {
-      if (typeof localStorage !== "undefined")
-        localStorage.setItem("tvs.trajectory.showAggExtremes.v1", v ? "1" : "0");
-    },
-    true,
-  );
+  const setExtremeKey = (k: ExtremeKey, patch: Partial<ExtremeStyles[ExtremeKey]>) =>
+    setExtremeStyles({ ...extremeStyles, [k]: { ...extremeStyles[k], ...patch } });
   const oursCapKey: DictKey =
     modelPresetId === "naive"
       ? "chart.trajectory.ours.cap.naive"
@@ -2404,10 +2362,9 @@ function TrajectoryCard({
         refLines,
         lineOverrides,
         runMode,
-        showRealExtremes,
-        showAggExtremes,
+        extremeStyles,
       ),
-    [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, extremeStyles],
   );
   const pdPanePreset = PRIMEDOPE_PANE_PRESET;
   const secondaryMaxPathCount = pdChart
@@ -2428,11 +2385,10 @@ function TrajectoryCard({
             refLines,
             lineOverrides,
             runMode,
-            showRealExtremes,
-            showAggExtremes,
+            extremeStyles,
           )
         : null,
-    [pdChart, bankroll, yRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [pdChart, bankroll, yRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
   );
   const compareMaxPathCount = compareResult
     ? Math.min(500, compareResult.samplePaths.paths.length)
@@ -2452,33 +2408,41 @@ function TrajectoryCard({
             refLines,
             lineOverrides,
             runMode,
-            showRealExtremes,
-            showAggExtremes,
+            extremeStyles,
           )
         : null,
-    [compareResult, bankroll, stableAxisFmt, pdPanePreset, compareMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [compareResult, bankroll, stableAxisFmt, pdPanePreset, compareMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
   );
 
+  const extremeRows: Array<{ key: ExtremeKey; labelKey: DictKey }> = [
+    { key: "realBest", labelKey: "chart.traj.extreme.realBest" },
+    { key: "realWorst", labelKey: "chart.traj.extreme.realWorst" },
+    { key: "aggBest", labelKey: "chart.traj.extreme.aggBest" },
+    { key: "aggWorst", labelKey: "chart.traj.extreme.aggWorst" },
+  ];
   const extremesToggles = (
-    <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-[color:var(--color-fg-muted)]">
-      <label className="flex cursor-pointer items-center gap-1.5">
-        <input
-          type="checkbox"
-          checked={showRealExtremes}
-          onChange={(e) => setShowRealExtremes(e.target.checked)}
-          className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
-        />
-        <span>real worst/best run</span>
-      </label>
-      <label className="flex cursor-pointer items-center gap-1.5">
-        <input
-          type="checkbox"
-          checked={showAggExtremes}
-          onChange={(e) => setShowAggExtremes(e.target.checked)}
-          className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
-        />
-        <span>aggregated worst/best run</span>
-      </label>
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[color:var(--color-fg-muted)]">
+      {extremeRows.map(({ key, labelKey }) => {
+        const s = extremeStyles[key];
+        const hex = /^#([0-9a-f]{3}){1,2}$/i.test(s.color) ? s.color : "#22c55e";
+        return (
+          <label key={key} className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={s.enabled}
+              onChange={(e) => setExtremeKey(key, { enabled: e.target.checked })}
+              className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
+            />
+            <DebouncedColorInput
+              value={hex}
+              disabled={!s.enabled}
+              onChange={(v) => setExtremeKey(key, { color: v })}
+              aria-label={t(labelKey)}
+            />
+            <span>{t(labelKey)}</span>
+          </label>
+        );
+      })}
     </div>
   );
 
@@ -2913,6 +2877,10 @@ function LineStyleCustomizer({
   onChange: (ov: LineStyleOverrides) => void;
   t: (key: DictKey) => string;
 }) {
+  // Real/agg best/worst live inline next to the toolbar, so the Customize
+  // dropdown only covers the three residual lines: EV reference and the
+  // p5/p95 percentile envelopes.
+  const CUSTOMIZER_KEYS: OverridableLineKey[] = ["ev", "p05", "p95"];
   const labelKey = (k: OverridableLineKey): DictKey =>
     ({
       mean: "lineStyle.line.mean",
@@ -2941,7 +2909,7 @@ function LineStyleCustomizer({
     onChange(next);
   };
 
-  const hasAny = OVERRIDABLE_LINE_KEYS.some((k) => overrides[k]);
+  const hasAny = CUSTOMIZER_KEYS.some((k) => overrides[k]);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   useCloseDetailsOnOutsideClick(detailsRef);
 
@@ -2952,7 +2920,7 @@ function LineStyleCustomizer({
       </summary>
       <div className="absolute left-0 top-full z-10 mt-1 w-[22rem] rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg">
         <div className="flex flex-col gap-2">
-          {OVERRIDABLE_LINE_KEYS.map((k) => {
+          {CUSTOMIZER_KEYS.map((k) => {
             const base = preset[k];
             const ov = overrides[k] ?? {};
             const stroke = ov.stroke ?? base.stroke;

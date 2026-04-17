@@ -318,6 +318,66 @@ export function saveLineStyleOverrides(overrides: LineStyleOverrides) {
   } catch {}
 }
 
+// ---- Extreme-run styles (real vs aggregated best/worst) -----------------
+// These four lines live inline next to the toolbar toggles (not inside the
+// Customize dropdown). Each has its own enable flag + color so the user can
+// pick any pair to show at once. Only applies to the main pane — the PD
+// comparison pane keeps its hardcoded blue overlay palette.
+
+export type ExtremeKey = "realBest" | "realWorst" | "aggBest" | "aggWorst";
+
+export interface ExtremeLineStyle {
+  enabled: boolean;
+  color: string;
+}
+
+export type ExtremeStyles = Record<ExtremeKey, ExtremeLineStyle>;
+
+export const EXTREME_KEYS: ExtremeKey[] = [
+  "realBest",
+  "realWorst",
+  "aggBest",
+  "aggWorst",
+];
+
+export const DEFAULT_EXTREME_STYLES: ExtremeStyles = {
+  realBest: { enabled: false, color: "#22c55e" },
+  realWorst: { enabled: false, color: "#ef4444" },
+  aggBest: { enabled: true, color: "#86efac" },
+  aggWorst: { enabled: true, color: "#fca5a5" },
+};
+
+const EXTREME_STORAGE_KEY = "tvs.extremeStyles.v1";
+
+export function loadExtremeStyles(): ExtremeStyles {
+  if (typeof localStorage === "undefined") return { ...DEFAULT_EXTREME_STYLES };
+  try {
+    const raw = localStorage.getItem(EXTREME_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_EXTREME_STYLES };
+    const parsed = JSON.parse(raw) as Partial<ExtremeStyles>;
+    const out: ExtremeStyles = { ...DEFAULT_EXTREME_STYLES };
+    for (const k of EXTREME_KEYS) {
+      const v = parsed?.[k];
+      if (v && typeof v === "object") {
+        out[k] = {
+          enabled: typeof v.enabled === "boolean" ? v.enabled : out[k].enabled,
+          color: typeof v.color === "string" ? v.color : out[k].color,
+        };
+      }
+    }
+    return out;
+  } catch {
+    return { ...DEFAULT_EXTREME_STYLES };
+  }
+}
+
+export function saveExtremeStyles(styles: ExtremeStyles) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(EXTREME_STORAGE_KEY, JSON.stringify(styles));
+  } catch {}
+}
+
 export interface PdOverlayStyle {
   color: string;
   width: number;
