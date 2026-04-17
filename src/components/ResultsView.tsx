@@ -68,6 +68,9 @@ const FINISH_MODEL_LABEL_KEY: Record<FinishModelId, DictKey> = {
   "pko-realdata-step": "model.pko-realdata-step",
   "pko-realdata-linear": "model.pko-realdata-linear",
   "pko-realdata-tilt": "model.pko-realdata-tilt",
+  "mystery-realdata-step": "model.mystery-realdata-step",
+  "mystery-realdata-linear": "model.mystery-realdata-linear",
+  "mystery-realdata-tilt": "model.mystery-realdata-tilt",
   "powerlaw-realdata-influenced": "model.powerlaw-realdata-influenced",
 };
 

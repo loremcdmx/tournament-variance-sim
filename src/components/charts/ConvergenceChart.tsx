@@ -21,9 +21,15 @@ const TARGETS = [0.3, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005];
 const AFS_LOG_MIN = Math.log(50);
 const AFS_LOG_MAX = Math.log(50_000);
 
-// Linear ROI slider range in ROI units (not percent). −30 % .. +100 %.
-const ROI_MIN = -0.30;
-const ROI_MAX = 1.00;
+// Linear ROI slider range in ROI units (not percent). Default is wide
+// (−30 %..+100 %) for exploration. Battle Royale narrows to ±5 %
+// because that's the real winrate band for regs — the sweep is calibrated
+// across the full range, but UX-wise there's no honest reason to ask
+// "how many tourneys for a +80 % edge in MBR".
+const ROI_MIN_DEFAULT = -0.30;
+const ROI_MAX_DEFAULT = 1.00;
+const ROI_MIN_MBR = -0.05;
+const ROI_MAX_MBR = 0.05;
 
 // σ_ROI(field, roi) = (C0 + C1·roi) · field^β — pooled log-log fit across
 // an 18-point field sweep (50..50 000), rake 10 %, 500 tourneys × 120 k samples.
@@ -34,7 +40,15 @@ const ROI_MAX = 1.00;
 // PKO: mtt-gg-bounty payout + pko-realdata-linear finish, bountyFraction=0.5,
 // pkoHeadVar=0.4, 11 ROIs (−20 %..+80 %, densified at 5/15/25/30 %). The bounty
 // channel amplifies deep runs so C grows meaningfully with ROI.
-// Both fits produced by scripts/fit_sigma_parallel.ts.
+// Mystery: mtt-gg-bounty payout + mystery-realdata-linear finish (freeze non-cash
+// + PKO cash), bountyFraction=0.5, mysteryBountyVariance=0.8 (log-normal jackpot
+// noise), pkoHeadVar=0.4. Bounty $ concentrates on ITM-only finishes — the pre-
+// ITM phase is freeze-like, phase 2 (post-ITM) activates envelope KOs. 11 ROIs.
+// C1 ≈ 2× PKO because the ITM-concentrated bounty amplifies ROI shifts harder.
+// Battle Royale: same finish model, mysteryBountyVariance=1.8 (jackpot tail).
+// Higher log-variance both lifts C0 (~27 %) and amplifies C1 further — deep runs
+// carry even more skew, so ROI-sensitivity is ~3× PKO's, ~1.5× Mystery's.
+// All fits produced by scripts/fit_sigma_parallel.ts.
 const SIGMA_ROI_FREEZE = {
   C0: 0.6564,
   C1: 0,
@@ -45,8 +59,23 @@ const SIGMA_ROI_PKO = {
   C1: 0.4961,
   beta: 0.2763,
 };
+const SIGMA_ROI_MYSTERY = {
+  C0: 1.0063,
+  C1: 1.0994,
+  beta: 0.2348,
+};
+const SIGMA_ROI_MYSTERY_ROYALE = {
+  C0: 1.2826,
+  C1: 1.6462,
+  beta: 0.2104,
+};
 
-type ConvergenceFormat = "freeze" | "pko" | "mix";
+type ConvergenceFormat =
+  | "freeze"
+  | "pko"
+  | "mystery"
+  | "mystery-royale"
+  | "mix";
 
 function posToAfs(pos: number): number {
   return Math.exp(AFS_LOG_MIN + (AFS_LOG_MAX - AFS_LOG_MIN) * pos);
@@ -132,7 +161,6 @@ export function ConvergenceChart({ schedule }: Props) {
   // ROI override — decimal fraction. null means "use baseline roi".
   const [roiOverride, setRoiOverride] = useState<number | null>(null);
   const baselineRoi = baseline.roi;
-  const effectiveRoi = roiOverride ?? baselineRoi;
 
   // Format override. null → auto-pick from schedule composition.
   const [formatOverride, setFormatOverride] =
@@ -144,6 +172,19 @@ export function ConvergenceChart({ schedule }: Props) {
         ? "freeze"
         : "mix";
   const format = formatOverride ?? baselineFormat;
+
+  // Format-dependent ROI bounds. MBR clips to ±5 % (reg band); others keep
+  // the default wide range. effectiveRoi is clamped on read so user's
+  // preferred ROI is preserved across format switches — swapping back to
+  // a wider format restores the original value.
+  const roiMin =
+    format === "mystery-royale" ? ROI_MIN_MBR : ROI_MIN_DEFAULT;
+  const roiMax =
+    format === "mystery-royale" ? ROI_MAX_MBR : ROI_MAX_DEFAULT;
+  const effectiveRoi = Math.max(
+    roiMin,
+    Math.min(roiMax, roiOverride ?? baselineRoi),
+  );
   // Mix fraction of PKO (0..1). null → schedule-derived default.
   const [pkoMixOverride, setPkoMixOverride] = useState<number | null>(null);
   const baselinePkoMix = baseline.pkoShare;
@@ -180,12 +221,36 @@ export function ConvergenceChart({ schedule }: Props) {
   const commitRoiInput = (raw: string) => {
     const n = Number(raw);
     if (Number.isFinite(n)) {
-      const clamped = Math.max(ROI_MIN, Math.min(ROI_MAX, n / 100));
+      const clamped = Math.max(roiMin, Math.min(roiMax, n / 100));
       setRoiOverride(clamped);
     } else {
       setRoiInput((effectiveRoi * 100).toFixed(1));
     }
   };
+
+  // Rakeback — deterministic % of buy-in received after every tournament.
+  // The ROI slider above is the user's TOTAL expected ROI (what they see on
+  // their tracker). Rakeback is the portion of that coming from the fixed
+  // program, so game-edge ROI = total − rakeback — and σ is calibrated
+  // against game-edge ROI (which controls bounty-collection variance),
+  // not total. Bumping rakeback up thus lowers the game-ROI fed to σ, so
+  // bounty-format σ drops and fewer tournaments confirm the same total ROI.
+  // Freeze C1 ≈ 0, so rakeback is a no-op for freezeouts (correct: flat
+  // rake earnings don't change freeze variance regardless of split).
+  const [rakebackPct, setRakebackPct] = useState<number>(0);
+  const [rakebackInput, setRakebackInput] = useState<string>("0.0");
+  useEffect(() => {
+    setRakebackInput(rakebackPct.toFixed(1));
+  }, [rakebackPct]);
+  const commitRakebackInput = (raw: string) => {
+    const n = Number(raw);
+    if (Number.isFinite(n)) {
+      setRakebackPct(Math.max(0, Math.min(3, n)));
+    } else {
+      setRakebackInput(rakebackPct.toFixed(1));
+    }
+  };
+  const gameRoi = effectiveRoi - rakebackPct / 100;
 
   const rows = useMemo<Row[]>(() => {
     const afs = posToAfs(afsPos);
@@ -198,14 +263,21 @@ export function ConvergenceChart({ schedule }: Props) {
     //   k               = ⌈(z · σ_eff / target)²⌉
     //   fields          = k / afs
     const sigmaFor = (coef: typeof SIGMA_ROI_FREEZE): number =>
-      Math.max(0, coef.C0 + coef.C1 * effectiveRoi) *
+      Math.max(0, coef.C0 + coef.C1 * gameRoi) *
       Math.pow(Math.max(1, afs), coef.beta);
     const sigmaFreeze = sigmaFor(SIGMA_ROI_FREEZE);
     const sigmaPko = sigmaFor(SIGMA_ROI_PKO);
+    const sigmaMystery = sigmaFor(SIGMA_ROI_MYSTERY);
+    const sigmaMysteryRoyale = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE);
     const p = Math.max(0, Math.min(1, pkoMix));
-    const sigmaRoi = Math.sqrt(
-      p * sigmaPko * sigmaPko + (1 - p) * sigmaFreeze * sigmaFreeze,
-    );
+    const sigmaRoi =
+      format === "mystery"
+        ? sigmaMystery
+        : format === "mystery-royale"
+          ? sigmaMysteryRoyale
+          : Math.sqrt(
+              p * sigmaPko * sigmaPko + (1 - p) * sigmaFreeze * sigmaFreeze,
+            );
     return TARGETS.map((target) => {
       const k = Math.ceil(Math.pow((z * sigmaRoi) / target, 2));
       return {
@@ -214,7 +286,7 @@ export function ConvergenceChart({ schedule }: Props) {
         fields: k / Math.max(1, afs),
       };
     });
-  }, [afsPos, z, effectiveRoi, pkoMix]);
+  }, [afsPos, z, gameRoi, pkoMix, format]);
 
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
@@ -233,6 +305,11 @@ export function ConvergenceChart({ schedule }: Props) {
   const FORMATS: { id: ConvergenceFormat; labelKey: DictKey }[] = [
     { id: "freeze", labelKey: "chart.convergence.format.freeze" },
     { id: "pko", labelKey: "chart.convergence.format.pko" },
+    { id: "mystery", labelKey: "chart.convergence.format.mystery" },
+    {
+      id: "mystery-royale",
+      labelKey: "chart.convergence.format.mystery-royale",
+    },
     { id: "mix", labelKey: "chart.convergence.format.mix" },
   ];
 
@@ -343,8 +420,8 @@ export function ConvergenceChart({ schedule }: Props) {
         </span>
         <input
           type="range"
-          min={ROI_MIN * 100}
-          max={ROI_MAX * 100}
+          min={roiMin * 100}
+          max={roiMax * 100}
           step={0.5}
           value={effectiveRoi * 100}
           onChange={(e) => setRoiOverride(Number(e.target.value) / 100)}
@@ -353,8 +430,8 @@ export function ConvergenceChart({ schedule }: Props) {
         />
         <input
           type="number"
-          min={ROI_MIN * 100}
-          max={ROI_MAX * 100}
+          min={roiMin * 100}
+          max={roiMax * 100}
           step={0.5}
           value={roiInput}
           onChange={(e) => setRoiInput(e.target.value)}
@@ -376,6 +453,62 @@ export function ConvergenceChart({ schedule }: Props) {
         >
           ↺
         </button>
+      </div>
+      <div
+        className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
+        title={t("chart.convergence.rakeback.title")}
+      >
+        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-lime-400/80">
+          {t("chart.convergence.rakeback")}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={3}
+          step={0.1}
+          value={rakebackPct}
+          onChange={(e) => setRakebackPct(Number(e.target.value))}
+          className="flex-1 accent-lime-400"
+          aria-label="Rakeback"
+        />
+        <input
+          type="number"
+          min={0}
+          max={3}
+          step={0.1}
+          value={rakebackInput}
+          onChange={(e) => setRakebackInput(e.target.value)}
+          onBlur={(e) => commitRakebackInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              commitRakebackInput((e.target as HTMLInputElement).value);
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-lime-400 focus:outline-none"
+          aria-label="Rakeback percent"
+        />
+        <button
+          type="button"
+          onClick={() => setRakebackPct(0)}
+          className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
+          title="reset to 0.0%"
+        >
+          ↺
+        </button>
+      </div>
+      <div className="mb-3 -mt-2 flex items-center gap-1.5 pl-11 text-[10px] text-[color:var(--color-fg-muted)]">
+        <span className="uppercase tracking-wider">
+          {t("chart.convergence.gameRoi")}
+        </span>
+        <span className="font-mono tabular-nums text-amber-400">
+          {gameRoi * 100 >= 0 ? "+" : ""}
+          {(gameRoi * 100).toFixed(1)}%
+        </span>
+        <span className="text-[color:var(--color-fg-muted)]/70">
+          ({(effectiveRoi * 100 >= 0 ? "+" : "") +
+            (effectiveRoi * 100).toFixed(1)}% − {rakebackPct.toFixed(1)}%)
+        </span>
       </div>
       <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">

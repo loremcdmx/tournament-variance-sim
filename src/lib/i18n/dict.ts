@@ -70,6 +70,18 @@ export const DICT = {
     en: "PKO real-data (hybrid tilt)",
     ru: "ПКО по реал-дате (гибрид tilt)",
   },
+  "model.mystery-realdata-step": {
+    en: "Mystery real-data (step)",
+    ru: "Мистери по реал-дате (шаги)",
+  },
+  "model.mystery-realdata-linear": {
+    en: "Mystery real-data (linear)",
+    ru: "Мистери по реал-дате (линейная)",
+  },
+  "model.mystery-realdata-tilt": {
+    en: "Mystery real-data (hybrid tilt)",
+    ru: "Мистери по реал-дате (гибрид tilt)",
+  },
   "model.powerlaw-realdata-influenced": {
     en: "Power-law (real-data influenced α)",
     ru: "Power-law (α под реал-дату)",
@@ -209,7 +221,10 @@ export const DICT = {
   "row.gameType.freezeoutReentry": { en: "Freezeout + re-entry", ru: "Фриз + ре-энтри" },
   "row.gameType.pko": { en: "PKO", ru: "PKO" },
   "row.gameType.mystery": { en: "Mystery", ru: "Мистери" },
-  "row.gameType.mysteryRoyale": { en: "Mystery Royale", ru: "Мистери Рояль" },
+  "row.gameType.mysteryRoyale": {
+    en: "Battle Royale",
+    ru: "Батл Рояль",
+  },
   "row.gameTypeHint": {
     en: "Top-level format switch. Toggles which fields apply: re-entry for freezeout+re-entry; bounty% for PKO/mystery; lognormal σ² for mystery variants (mystery ≈ 0.8, royale ≈ 1.8). Existing bounty% is preserved when switching between bounty types.",
     ru: "Основной переключатель формата. Включает нужные поля: ре-энтри для фриза с реентри; баунти% для PKO/мистери; лог-нормальную σ² для мистери (мистери ≈ 0.8, рояль ≈ 1.8). При переключении между баунти-форматами баунти% сохраняется.",
@@ -910,6 +925,22 @@ export const DICT = {
     en: "reference line for the expected ROI",
     ru: "опорная линия ожидаемого ROI",
   },
+  "chart.traj.extreme.realBest": {
+    en: "real best run",
+    ru: "реал лучший ран",
+  },
+  "chart.traj.extreme.realWorst": {
+    en: "real worst run",
+    ru: "реал худший ран",
+  },
+  "chart.traj.extreme.aggBest": {
+    en: "aggregated best",
+    ru: "агрег. лучший",
+  },
+  "chart.traj.extreme.aggWorst": {
+    en: "aggregated worst",
+    ru: "агрег. худший",
+  },
   // Likelihood strings — explain the probability context of the hovered line.
   "chart.traj.likelihood.median": {
     en: "half of runs are above this line, half are below",
@@ -957,12 +988,23 @@ export const DICT = {
   "chart.convergence.col.target": { en: "ROI range", ru: "Диапазон ROI" },
   "chart.convergence.col.tourneys": { en: "Tournaments", ru: "Турниров" },
   "chart.convergence.col.fields": { en: "AFS played", ru: "Сыграно AFS" },
+  "chart.convergence.rakeback": { en: "RB", ru: "РБ" },
+  "chart.convergence.rakeback.title": {
+    en: "Rakeback — deterministic % of buy-in after every tournament. Subtracted from total ROI to get the game-edge component that feeds σ. Freeze σ doesn't depend on ROI, so rakeback is a no-op there; for PKO/Mystery/Battle Royale, more rakeback → lower game-edge → lower σ.",
+    ru: "Рейкбек — фиксированный % от бай-ина за каждый турнир. Вычитается из общего ROI, остаётся игровая составляющая — именно она попадает в σ. Для фриза σ не зависит от ROI, так что рейкбек ничего не меняет; для ПКО/Мистери/Батл Рояля больше рейкбека → меньше игровой эдж → меньше σ.",
+  },
+  "chart.convergence.gameRoi": { en: "game", ru: "игра" },
   "chart.convergence.format.freeze": { en: "Freeze", ru: "Фриз" },
   "chart.convergence.format.pko": { en: "PKO", ru: "ПКО" },
+  "chart.convergence.format.mystery": { en: "Mystery", ru: "Мистери" },
+  "chart.convergence.format.mystery-royale": {
+    en: "Battle Royale",
+    ru: "Батл Рояль",
+  },
   "chart.convergence.format.mix": { en: "Mix", ru: "Микс" },
   "chart.convergence.assumptions": {
-    en: "Read a row as: «play this many tournaments and, with the chosen CI confidence, your observed ROI will land inside the target band around the true one». The Freeze / PKO / Mix toggle picks the format — PKO σ is actually LOWER than freeze (bounties spread 50 % of the pool per-knockout, flattening the top-heavy payout distribution, so tails are less extreme). AFS pretends you're playing a different average field size, ROI a different true edge — for freeze with the realdata finish σ is ~ROI-invariant, for PKO σ grows with edge because deeper runs collect more bounties. In Mix, the slider sets the PKO share (rest = freeze), and σ²_mix = p·σ²_pko + (1−p)·σ²_freeze. Assumes independent tournaments; freeze σ_ROI ≈ 0.656·field^0.369, PKO σ_ROI ≈ (0.627 + 0.496·ROI)·field^0.276 — fitted across an 18-field × 7-ROI (freeze) / 11-ROI (PKO) engine sweep.",
-    ru: "Строка читается так: «при заданном числе турниров с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного». Переключатель Фриз / ПКО / Микс задаёт формат — у ПКО σ ниже, чем у фриза (баунти распределяют 50 % пула за каждый нокаут, выравнивая top-heavy-структуру выплат — хвосты короче). AFS задаёт средний размер филда, ROI — истинный эдж: для фриза с realdata-финишем σ почти не зависит от ROI, для ПКО σ растёт с эджем (глубже проход → больше баунти). В Миксе ползунок задаёт долю ПКО (остальное — фризы), σ²_микс = p·σ²_пко + (1−p)·σ²_фриз. Предполагается независимость турниров; фриз σ_ROI ≈ 0,656·field^0.369, ПКО σ_ROI ≈ (0,627 + 0,496·ROI)·field^0.276 — эмпирический фит по свипу движка 18 филдов × 7 ROI (фриз) / 11 ROI (ПКО).",
+    en: "Read a row as: «play this many tournaments and, with the chosen CI confidence, your observed ROI will land inside the target band around the true one». The Freeze / PKO / Mystery / Battle Royale / Mix toggle picks the format. PKO σ is the LOWEST — bounties spread 50 % of the pool per-knockout, flattening the top-heavy payout distribution. Mystery σ sits above PKO: bounty $ concentrates on ITM-only KOs (phase-split — pre-ITM plays as freeze, envelopes open at the bubble) with log-normal jackpot noise (σ²=0.8), so ROI-sensitivity is ~2× PKO's. Battle Royale cranks the envelope variance to σ²=1.8 (jackpot-tier right tail), lifting baseline σ ~27 % over Mystery and roughly tripling PKO's ROI-sensitivity. AFS pretends you're playing a different average field size, ROI a different true edge — freeze with the realdata finish is ~ROI-invariant, bounty formats grow σ with edge because deeper runs collect more bounty $. In Mix the slider sets PKO share vs freeze (Mystery formats aren't part of Mix), σ²_mix = p·σ²_pko + (1−p)·σ²_freeze. Independent-tournament assumption. Fits: freeze ≈ 0.656·field^0.369; PKO ≈ (0.627 + 0.496·ROI)·field^0.276; Mystery ≈ (1.006 + 1.099·ROI)·field^0.235; Battle Royale ≈ (1.283 + 1.646·ROI)·field^0.210 — 18-field × 7-ROI (freeze) / 11-ROI (PKO, Mystery, Battle Royale) engine sweep.",
+    ru: "Строка читается так: «при заданном числе турниров с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного». Переключатель Фриз / ПКО / Мистери / Батл Рояль / Микс задаёт формат. У ПКО σ самая низкая — баунти распределяют 50 % пула за каждый нокаут, выравнивая top-heavy-структуру выплат. У Мистери σ выше ПКО: баунти-деньги концентрируются только на ITM-нокаутах (фазовое разделение — до ITM игра как фриз, конверты открываются на баббле) плюс log-normal jackpot-шум (σ²=0.8), ROI-чувствительность ~ вдвое выше ПКО. У Батл Рояль дисперсия конвертов поднята до σ²=1.8 (jackpot-хвост), базовая σ растёт ещё ~27 % над Мистери, а ROI-чувствительность примерно втрое выше ПКО. AFS задаёт средний размер филда, ROI — истинный эдж: для фриза с realdata-финишем σ почти не зависит от ROI, у баунти-форматов σ растёт с эджем (глубже проход → больше баунти). В Миксе ползунок задаёт долю ПКО против фриза (Мистери-форматы в Микс не входят), σ²_микс = p·σ²_пко + (1−p)·σ²_фриз. Предполагается независимость турниров. Фиты: фриз ≈ 0,656·field^0.369; ПКО ≈ (0,627 + 0,496·ROI)·field^0.276; Мистери ≈ (1,006 + 1,099·ROI)·field^0.235; Батл Рояль ≈ (1,283 + 1,646·ROI)·field^0.210 — свип движка 18 филдов × 7 ROI (фриз) / 11 ROI (ПКО, Мистери, Батл Рояль).",
   },
   "chart.decomp": { en: "Per-row EV decomposition", ru: "Декомпозиция EV по строкам" },
   "chart.decomp.sub": {

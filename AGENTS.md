@@ -15,6 +15,7 @@ Next.js 16 + React 19 + TypeScript Monte Carlo simulator for poker MTT variance.
 ## Canonical docs (read these instead of guessing)
 
 - **`docs/ARCHITECTURE.md`** — data flow, worker pool, determinism contract, hot-loop shape, storage, perf knobs, "where to start if you want to…" table. Authoritative architecture map.
+- **`docs/FITTING.md`** — how to run parameter sweeps (`scripts/fit_sigma_parallel.ts` et al.), interpret σ_ROI fit coefficients `{C0, C1, β}`, and calibrate against custom data. Read before touching `scripts/fit_*.ts` or `ConvergenceChart` coefficients.
 - **`CONTRIBUTING.md`** — dev setup, branching, commit style, testing rules, code style, sharp edges.
 - **`README.md`** — user-facing overview + short architecture section (RU primary, EN mirror).
 

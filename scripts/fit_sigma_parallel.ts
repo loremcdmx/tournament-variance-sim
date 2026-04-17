@@ -1,15 +1,19 @@
 /**
  * Parallel σ_ROI sweep runner — spawns N tsx child processes, each handling
- * a slice of the job list, then aggregates results. Three sweeps in one run:
+ * a slice of the job list, then aggregates results. Four sweeps in one run:
  *
- *   - pko:          (7 ROIs × 18 fields) + (4 dense ROIs × 18 fields) → merged
- *   - freeze_rd:    7 ROIs × 18 fields
+ *   - pko:            (7 ROIs × 18 fields) + (4 dense ROIs × 18 fields) → merged
+ *   - freeze_rd:      7 ROIs × 18 fields
+ *   - mystery:        (7 ROIs × 18 fields) + (4 dense ROIs × 18 fields) → merged
+ *   - mystery_royale: (7 ROIs × 18 fields) + (4 dense ROIs × 18 fields) → merged
  *
  *   npx tsx scripts/fit_sigma_parallel.ts
  *
  * Env:
- *   N_WORKERS=12            number of parallel child processes (default 12)
- *   WORKER_IDX=i  N_SLICES=n  internal; worker slice of (i mod n)
+ *   N_WORKERS=12                number of parallel child processes (default 12)
+ *   WORKER_IDX=i  N_SLICES=n    internal; worker slice of (i mod n)
+ *   SWEEP=mystery_only          skip pko/freeze/royale, run mystery only
+ *   SWEEP=mystery_royale_only   skip pko/freeze/mystery, run royale only
  */
 
 import { spawn } from "node:child_process";
@@ -18,7 +22,14 @@ import { promises as fs } from "node:fs";
 import { runSimulation } from "../src/lib/sim/engine";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
-type SweepId = "pko" | "pko_dense" | "freeze_rd";
+type SweepId =
+  | "pko"
+  | "pko_dense"
+  | "freeze_rd"
+  | "mystery"
+  | "mystery_dense"
+  | "mystery_royale"
+  | "mystery_royale_dense";
 
 interface Job {
   sweep: SweepId;
@@ -38,6 +49,8 @@ const COMMON = {
   SEED: 20260417,
   BOUNTY_FRACTION: 0.5,
   PKO_HEAD_VAR: 0.4,
+  MYSTERY_LOG_VAR: 0.8,
+  MYSTERY_ROYALE_LOG_VAR: 1.8,
 };
 
 const FIELDS = [
@@ -48,14 +61,33 @@ const ROIS_MAIN = [-0.20, -0.10, 0, 0.10, 0.20, 0.40, 0.80];
 const ROIS_DENSE = [0.05, 0.15, 0.25, 0.30];
 
 function allJobs(): Job[] {
+  const mysteryOnly = process.env.SWEEP === "mystery_only";
+  const royaleOnly = process.env.SWEEP === "mystery_royale_only";
   const jobs: Job[] = [];
-  for (const roi of ROIS_MAIN)
-    for (const field of FIELDS) jobs.push({ sweep: "pko", field, roi });
-  for (const roi of ROIS_DENSE)
-    for (const field of FIELDS) jobs.push({ sweep: "pko_dense", field, roi });
-  for (const roi of ROIS_MAIN)
-    for (const field of FIELDS)
-      jobs.push({ sweep: "freeze_rd", field, roi });
+  if (!mysteryOnly && !royaleOnly) {
+    for (const roi of ROIS_MAIN)
+      for (const field of FIELDS) jobs.push({ sweep: "pko", field, roi });
+    for (const roi of ROIS_DENSE)
+      for (const field of FIELDS) jobs.push({ sweep: "pko_dense", field, roi });
+    for (const roi of ROIS_MAIN)
+      for (const field of FIELDS)
+        jobs.push({ sweep: "freeze_rd", field, roi });
+  }
+  if (!royaleOnly) {
+    for (const roi of ROIS_MAIN)
+      for (const field of FIELDS) jobs.push({ sweep: "mystery", field, roi });
+    for (const roi of ROIS_DENSE)
+      for (const field of FIELDS)
+        jobs.push({ sweep: "mystery_dense", field, roi });
+  }
+  if (!mysteryOnly) {
+    for (const roi of ROIS_MAIN)
+      for (const field of FIELDS)
+        jobs.push({ sweep: "mystery_royale", field, roi });
+    for (const roi of ROIS_DENSE)
+      for (const field of FIELDS)
+        jobs.push({ sweep: "mystery_royale_dense", field, roi });
+  }
   // Deterministic "shuffle" — interleave by index hash so each slice has a
   // mix of sweep types and field sizes, not a contiguous block.
   jobs.sort((a, b) => {
@@ -76,34 +108,60 @@ function hash(s: string): number {
 }
 
 function buildInput(j: Job): SimulationInput {
-  const row: TournamentRow =
-    j.sweep === "freeze_rd"
-      ? {
-          id: "sweep",
-          label: `f${j.field}`,
-          players: j.field,
-          buyIn: COMMON.BUY_IN,
-          rake: COMMON.RAKE,
-          roi: j.roi,
-          payoutStructure: "mtt-standard",
-          gameType: "freezeout",
-          count: COMMON.N_TOURNEYS,
-        }
-      : {
-          id: "sweep",
-          label: `f${j.field}`,
-          players: j.field,
-          buyIn: COMMON.BUY_IN,
-          rake: COMMON.RAKE,
-          roi: j.roi,
-          payoutStructure: "mtt-gg-bounty",
-          gameType: "pko",
-          bountyFraction: COMMON.BOUNTY_FRACTION,
-          pkoHeadVar: COMMON.PKO_HEAD_VAR,
-          count: COMMON.N_TOURNEYS,
-        };
-  const finishId =
-    j.sweep === "freeze_rd" ? "freeze-realdata-linear" : "pko-realdata-linear";
+  const isFreeze = j.sweep === "freeze_rd";
+  const isMystery = j.sweep === "mystery" || j.sweep === "mystery_dense";
+  const isRoyale =
+    j.sweep === "mystery_royale" || j.sweep === "mystery_royale_dense";
+  let row: TournamentRow;
+  if (isFreeze) {
+    row = {
+      id: "sweep",
+      label: `f${j.field}`,
+      players: j.field,
+      buyIn: COMMON.BUY_IN,
+      rake: COMMON.RAKE,
+      roi: j.roi,
+      payoutStructure: "mtt-standard",
+      gameType: "freezeout",
+      count: COMMON.N_TOURNEYS,
+    };
+  } else if (isMystery || isRoyale) {
+    row = {
+      id: "sweep",
+      label: `f${j.field}`,
+      players: j.field,
+      buyIn: COMMON.BUY_IN,
+      rake: COMMON.RAKE,
+      roi: j.roi,
+      payoutStructure: "mtt-gg-bounty",
+      gameType: isRoyale ? "mystery-royale" : "mystery",
+      bountyFraction: COMMON.BOUNTY_FRACTION,
+      mysteryBountyVariance: isRoyale
+        ? COMMON.MYSTERY_ROYALE_LOG_VAR
+        : COMMON.MYSTERY_LOG_VAR,
+      pkoHeadVar: COMMON.PKO_HEAD_VAR,
+      count: COMMON.N_TOURNEYS,
+    };
+  } else {
+    row = {
+      id: "sweep",
+      label: `f${j.field}`,
+      players: j.field,
+      buyIn: COMMON.BUY_IN,
+      rake: COMMON.RAKE,
+      roi: j.roi,
+      payoutStructure: "mtt-gg-bounty",
+      gameType: "pko",
+      bountyFraction: COMMON.BOUNTY_FRACTION,
+      pkoHeadVar: COMMON.PKO_HEAD_VAR,
+      count: COMMON.N_TOURNEYS,
+    };
+  }
+  const finishId = isFreeze
+    ? "freeze-realdata-linear"
+    : isMystery || isRoyale
+      ? "mystery-realdata-linear"
+      : "pko-realdata-linear";
   return {
     schedule: [row],
     scheduleRepeats: 1,
@@ -245,19 +303,39 @@ function summarize(
 
 async function mainOrchestrate() {
   const N_WORKERS = Number(process.env.N_WORKERS ?? 12);
+  const mysteryOnly = process.env.SWEEP === "mystery_only";
+  const royaleOnly = process.env.SWEEP === "mystery_royale_only";
   const jobs = allJobs();
   console.log(
     `fit_sigma_parallel: ${jobs.length} jobs across ${N_WORKERS} workers`,
   );
-  console.log(
-    `  pko(main):  ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
-  );
-  console.log(
-    `  pko(dense): ${ROIS_DENSE.length} ROIs × ${FIELDS.length} fields`,
-  );
-  console.log(
-    `  freeze_rd:  ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
-  );
+  if (!mysteryOnly && !royaleOnly) {
+    console.log(
+      `  pko(main):         ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
+    );
+    console.log(
+      `  pko(dense):        ${ROIS_DENSE.length} ROIs × ${FIELDS.length} fields`,
+    );
+    console.log(
+      `  freeze_rd:         ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
+    );
+  }
+  if (!royaleOnly) {
+    console.log(
+      `  mystery:           ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
+    );
+    console.log(
+      `  mystery(dense):    ${ROIS_DENSE.length} ROIs × ${FIELDS.length} fields`,
+    );
+  }
+  if (!mysteryOnly) {
+    console.log(
+      `  royale:            ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
+    );
+    console.log(
+      `  royale(dense):     ${ROIS_DENSE.length} ROIs × ${FIELDS.length} fields`,
+    );
+  }
   console.log(
     `  samples=${COMMON.SAMPLES} N=${COMMON.N_TOURNEYS} buyIn=${COMMON.BUY_IN} rake=${COMMON.RAKE}`,
   );
@@ -309,12 +387,116 @@ async function mainOrchestrate() {
     return table;
   };
 
+  const mergedRois = [...ROIS_MAIN, ...ROIS_DENSE].sort((a, b) => a - b);
+
+  const cleanupTmp = async () => {
+    for (let i = 0; i < N_WORKERS; i++) {
+      await fs.unlink(`${tmpDir}/worker_${i}.json`).catch(() => {});
+    }
+    await fs.rmdir(tmpDir).catch(() => {});
+  };
+
+  const writeMysteryFile = async (
+    path: string,
+    logVar: number,
+    summary: ReturnType<typeof summarize>,
+    mergedTable: Record<number, Array<{ field: number; sigmaRoi: number }>>,
+  ) => {
+    await fs.writeFile(
+      path,
+      JSON.stringify(
+        {
+          meta: {
+            N: COMMON.N_TOURNEYS,
+            samples: COMMON.SAMPLES,
+            buyIn: COMMON.BUY_IN,
+            rake: COMMON.RAKE,
+            bountyFraction: COMMON.BOUNTY_FRACTION,
+            mysteryBountyVariance: logVar,
+            pkoHeadVar: COMMON.PKO_HEAD_VAR,
+            payout: "mtt-gg-bounty",
+            finishModel: "mystery-realdata-linear",
+            mergedWithDense: true,
+          },
+          fields: FIELDS,
+          rois: mergedRois,
+          table: Object.fromEntries(
+            Object.entries(mergedTable).map(([k, v]) => [
+              k,
+              v.map((p) => p.sigmaRoi),
+            ]),
+          ),
+          perRoiFits: summary.fits,
+          globalBeta: summary.betaGlobal,
+          globalR2: summary.r2Global,
+          cRoiLinear: {
+            C0: summary.linC.intercept,
+            C1: summary.linC.slope,
+            r2: summary.linC.r2,
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  };
+
+  if (royaleOnly) {
+    const royaleTable = byRoi("mystery_royale", ROIS_MAIN);
+    const royaleDenseTable = byRoi("mystery_royale_dense", ROIS_DENSE);
+    const royaleMergedTable = { ...royaleTable, ...royaleDenseTable };
+    const royaleSummary = summarize(
+      "mystery-royale MERGED (11 ROIs)",
+      mergedRois,
+      royaleMergedTable,
+    );
+    await writeMysteryFile(
+      "scripts/fit_beta_mystery_royale.json",
+      COMMON.MYSTERY_ROYALE_LOG_VAR,
+      royaleSummary,
+      royaleMergedTable,
+    );
+    console.log("");
+    console.log("wrote scripts/fit_beta_mystery_royale.json (11 ROIs merged)");
+    await cleanupTmp();
+    console.log("");
+    console.log(`total wall time: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    return;
+  }
+
+  const mysteryTable = byRoi("mystery", ROIS_MAIN);
+  const mysteryDenseTable = byRoi("mystery_dense", ROIS_DENSE);
+  const mysteryMergedTable: Record<
+    number,
+    Array<{ field: number; sigmaRoi: number }>
+  > = { ...mysteryTable, ...mysteryDenseTable };
+  const mysterySummary = summarize(
+    "mystery MERGED (11 ROIs)",
+    mergedRois,
+    mysteryMergedTable,
+  );
+
+  if (mysteryOnly) {
+    await writeMysteryFile(
+      "scripts/fit_beta_mystery.json",
+      COMMON.MYSTERY_LOG_VAR,
+      mysterySummary,
+      mysteryMergedTable,
+    );
+    console.log("");
+    console.log("wrote scripts/fit_beta_mystery.json (11 ROIs merged)");
+    await cleanupTmp();
+    console.log("");
+    console.log(`total wall time: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    return;
+  }
+
   const pkoTable = byRoi("pko", ROIS_MAIN);
   const pkoDenseTable = byRoi("pko_dense", ROIS_DENSE);
   const freezeTable = byRoi("freeze_rd", ROIS_MAIN);
 
   const pkoCoreSummary = summarize("pko core (7 ROIs)", ROIS_MAIN, pkoTable);
-  const pkoMergedRois = [...ROIS_MAIN, ...ROIS_DENSE].sort((a, b) => a - b);
+  const pkoMergedRois = mergedRois;
   const pkoMergedTable: Record<
     number,
     Array<{ field: number; sigmaRoi: number }>
@@ -420,11 +602,34 @@ async function mainOrchestrate() {
   );
   console.log("wrote scripts/fit_beta_pko_core.json (7-ROI subset for compare)");
 
-  // Clean up temp files.
-  for (let i = 0; i < N_WORKERS; i++) {
-    await fs.unlink(`${tmpDir}/worker_${i}.json`).catch(() => {});
-  }
-  await fs.rmdir(tmpDir).catch(() => {});
+  await writeMysteryFile(
+    "scripts/fit_beta_mystery.json",
+    COMMON.MYSTERY_LOG_VAR,
+    mysterySummary,
+    mysteryMergedTable,
+  );
+  console.log("wrote scripts/fit_beta_mystery.json (11 ROIs merged)");
+
+  const royaleTable = byRoi("mystery_royale", ROIS_MAIN);
+  const royaleDenseTable = byRoi("mystery_royale_dense", ROIS_DENSE);
+  const royaleMergedTable: Record<
+    number,
+    Array<{ field: number; sigmaRoi: number }>
+  > = { ...royaleTable, ...royaleDenseTable };
+  const royaleSummary = summarize(
+    "mystery-royale MERGED (11 ROIs)",
+    mergedRois,
+    royaleMergedTable,
+  );
+  await writeMysteryFile(
+    "scripts/fit_beta_mystery_royale.json",
+    COMMON.MYSTERY_ROYALE_LOG_VAR,
+    royaleSummary,
+    royaleMergedTable,
+  );
+  console.log("wrote scripts/fit_beta_mystery_royale.json (11 ROIs merged)");
+
+  await cleanupTmp();
 
   console.log("");
   console.log(`total wall time: ${((Date.now() - t0) / 1000).toFixed(1)}s`);

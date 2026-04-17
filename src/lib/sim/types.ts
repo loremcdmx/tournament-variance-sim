@@ -36,6 +36,9 @@ export type FinishModelId =
   | "pko-realdata-step"
   | "pko-realdata-linear"
   | "pko-realdata-tilt"
+  | "mystery-realdata-step"
+  | "mystery-realdata-linear"
+  | "mystery-realdata-tilt"
   | "powerlaw-realdata-influenced";
 
 export interface FinishModelConfig {

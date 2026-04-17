@@ -680,6 +680,16 @@ function compileSingleEntry(
       for (let i = 0; i < N; i++) raw[i] = cumulativeCash[i];
     }
 
+    // Mystery-format bounty phase-split: envelopes only drop on KOs made
+    // post-ITM, so pre-ITM busters never collect. Zero the raw weights for
+    // finishes below the cash line; all bounty mass redistributes onto cash
+    // finishes via the Σ-normalisation below (ROI still exact). The Poisson
+    // KO-count draw is skipped at those places because bountyByPlace[i] = 0
+    // short-circuits the hot-loop bounty branch.
+    if (row.gameType === "mystery" || row.gameType === "mystery-royale") {
+      for (let i = paidCount; i < N; i++) raw[i] = 0;
+    }
+
     // Normalize so Σ pmf[i]·bountyByPlace[i] = bountyMean (ROI intact).
     let Z = 0;
     for (let i = 0; i < N; i++) Z += pmf[i] * raw[i];

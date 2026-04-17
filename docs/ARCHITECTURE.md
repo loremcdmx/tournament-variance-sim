@@ -183,3 +183,5 @@ Add new tests next to the file they cover. Keep them fast — the whole suite sh
 | Change the worker pool sizing     | `useSimulation.ts` → `poolSize()`                      |
 | Change how α is calibrated        | `src/lib/sim/finishModel.ts` → `calibrateAlpha()`      |
 | Change what gets stored per-run   | `src/lib/sim/engine.ts` → `buildResult()`              |
+| Fit σ_ROI to new data / re-fit presets | `docs/FITTING.md`                                 |
+| Run parameter sweeps              | `docs/FITTING.md` → `scripts/fit_sigma_parallel.ts`    |

@@ -1,4 +1,5 @@
 import { buildFreezeCashPMF } from "./freezeShape";
+import { buildMysteryCashPMF } from "./mysteryShape";
 import { buildPkoCashPMF } from "./pkoShape";
 import type { FinishModelConfig } from "./types";
 
@@ -29,6 +30,12 @@ export function buildFinishPMF(
       return buildPkoCashPMF(N, "linear", 0);
     case "pko-realdata-tilt":
       return buildPkoCashPMF(N, "tilt", alpha);
+    case "mystery-realdata-step":
+      return buildMysteryCashPMF(N, "step", 0);
+    case "mystery-realdata-linear":
+      return buildMysteryCashPMF(N, "linear", 0);
+    case "mystery-realdata-tilt":
+      return buildMysteryCashPMF(N, "tilt", alpha);
     case "powerlaw-realdata-influenced": {
       // Same power-law shape as the plain "power-law" model. The
       // "real-data-influenced" label means the surrounding defaults (global
@@ -184,7 +191,10 @@ export function calibrateAlpha(
     model.id === "freeze-realdata-tilt" ||
     model.id === "pko-realdata-step" ||
     model.id === "pko-realdata-linear" ||
-    model.id === "pko-realdata-tilt"
+    model.id === "pko-realdata-tilt" ||
+    model.id === "mystery-realdata-step" ||
+    model.id === "mystery-realdata-linear" ||
+    model.id === "mystery-realdata-tilt"
   )
     return 0;
   const targetWinnings = costPerEntry * (1 + targetROI);
@@ -269,7 +279,10 @@ export function calibrateShelledItm(
     model.id === "freeze-realdata-tilt" ||
     model.id === "pko-realdata-step" ||
     model.id === "pko-realdata-linear" ||
-    model.id === "pko-realdata-tilt"
+    model.id === "pko-realdata-tilt" ||
+    model.id === "mystery-realdata-step" ||
+    model.id === "mystery-realdata-linear" ||
+    model.id === "mystery-realdata-tilt"
   ) {
     const alpha = model.alpha ?? 0;
     const full = buildFinishPMF(N, model, alpha);
