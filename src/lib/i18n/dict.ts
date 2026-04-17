@@ -103,13 +103,9 @@ export const DICT = {
     ru: "Сверка с PrimeDope",
   },
   "demo.romeoPro": { en: "RomeoPro mode", ru: "Режим Ромеопро" },
-  "demo.smallFieldCrusher": {
-    en: "Small field crusher",
-    ru: "Краш малых полей",
-  },
-  "demo.pkoDivergence": {
-    en: "PKO vs PrimeDope",
-    ru: "PKO vs PrimeDope",
+  "demo.smallFieldTopReg": {
+    en: "Top reg — small fields (100p, ITM 18.7%, AFS ~6.5)",
+    ru: "Топ-рег малых полей (100p, ITM 18.7%, AFS ~6.5)",
   },
 
   "userPreset.label": { en: "My presets", ru: "Мои пресеты" },

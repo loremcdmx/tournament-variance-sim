@@ -291,16 +291,16 @@ export const SCENARIOS: DemoScenario[] = [
     },
   },
   // ---- Max-divergence presets ----
-  // Scenarios where our model diverges most from PrimeDope. Useful for
-  // showing *why* the tooling matters, not just *that* it differs.
+  // Max-divergence preset: small fields where PD's √field and ROI-σ
+  // coupling errors are largest. ITM 18.7%, AFS ~6.5.
   {
-    id: "small-field-crusher",
-    labelKey: "demo.smallFieldCrusher",
+    id: "small-field-topreg",
+    labelKey: "demo.smallFieldTopReg",
     description:
-      "100 игроков, high-stakes, ROI 15%. PD занижает σ на 12%+: √field ошибка (−31%), ITM-ROI coupling, плюс top-heavy пейаут.",
+      "Топ-рег малых полей: 100p, $109, ROI +15%, ITM 18.7%, AFS ~6.5. PD занижает σ на 12%+: √field (−31%), ROI-σ coupling, top-heavy.",
     schedule: [
       {
-        id: "sfc-109",
+        id: "sftr-109",
         label: "$109 MTT (100p, top-heavy)",
         players: 100,
         buyIn: 100,
@@ -315,59 +315,6 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 1,
       samples: 10_000,
       bankroll: 5_000,
-      compareWithPrimedope: true,
-      compareMode: "primedope",
-      usePrimedopePayouts: true,
-    },
-  },
-  {
-    id: "pko-divergence",
-    labelKey: "demo.pkoDivergence",
-    description:
-      "Типичное PKO-расписание GG/PS. PD не поддерживает баунти — считает всё как фриз. Показывает разницу σ-канала призов vs ноков.",
-    schedule: [
-      {
-        id: "pkod-gg25",
-        label: "GG PKO $25",
-        players: 2500,
-        buyIn: 22,
-        rake: 3 / 22,
-        roi: 0.10,
-        payoutStructure: "mtt-gg-bounty",
-        bountyFraction: 0.5,
-        guarantee: 50_000,
-        count: 3_000,
-      },
-      {
-        id: "pkod-gg55",
-        label: "GG PKO $55",
-        players: 2000,
-        buyIn: 50,
-        rake: 0.1,
-        roi: 0.08,
-        payoutStructure: "mtt-gg-bounty",
-        bountyFraction: 0.5,
-        guarantee: 100_000,
-        count: 2_000,
-      },
-      {
-        id: "pkod-ps22",
-        label: "PS BB $22",
-        players: 1800,
-        buyIn: 20,
-        rake: 0.09,
-        roi: 0.09,
-        payoutStructure: "mtt-gg-bounty",
-        bountyFraction: 0.5,
-        guarantee: 40_000,
-        count: 2_000,
-      },
-    ],
-    controls: {
-      ...BASE_CONTROLS,
-      scheduleRepeats: 1,
-      samples: 10_000,
-      bankroll: 10_000,
       compareWithPrimedope: true,
       compareMode: "primedope",
       usePrimedopePayouts: true,
