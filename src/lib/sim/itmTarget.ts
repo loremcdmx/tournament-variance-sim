@@ -30,21 +30,25 @@ export function isItmTargetActive(cfg: ItmTargetConfig): boolean {
 }
 
 /**
- * Resolve the effective ITM fraction for a single row. If the row already
- * has an explicit `itmRate`, the row wins; otherwise the global applies.
- * Returns null when neither is set.
+ * Resolve the effective ITM fraction for a single row. When the global
+ * toggle is on, it always wins; per-row values only apply when global is
+ * off. Returns null when neither is set.
  */
 export function rowItmTarget(
   row: TournamentRow,
   cfg: ItmTargetConfig,
 ): number | null {
+  const global = resolveItmTarget(cfg);
+  if (global != null) return global;
   if (row.itmRate != null) return row.itmRate;
-  return resolveItmTarget(cfg);
+  return null;
 }
 
 /**
- * Fill `itmRate` on every row that doesn't already carry one. Per-row
- * values survive unchanged — the global is strictly a default.
+ * Stamp `itmRate` on every row when the global toggle is on. The global
+ * value overrides any per-row ITM the user may have typed — if the toggle
+ * is on, the number it shows is the number every row gets. When the toggle
+ * is off, per-row values survive and rows without one use alpha-calibration.
  */
 export function applyItmTarget(
   schedule: TournamentRow[],
@@ -52,8 +56,9 @@ export function applyItmTarget(
 ): TournamentRow[] {
   const base = resolveItmTarget(cfg);
   if (base == null) return schedule;
-  return schedule.map((r) => {
-    if (r.itmRate != null) return r;
-    return { ...r, itmRate: base, finishBuckets: undefined };
-  });
+  return schedule.map((r) => ({
+    ...r,
+    itmRate: base,
+    finishBuckets: undefined,
+  }));
 }

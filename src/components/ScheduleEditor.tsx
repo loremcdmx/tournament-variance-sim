@@ -400,15 +400,19 @@ export function ScheduleEditor({
                         min={0}
                         max={100}
                         step={0.5}
+                        disabled={globalItmPct != null}
                         placeholder={
                           globalItmPct != null ? `${globalItmPct}` : "auto"
                         }
                         value={
-                          r.itmRate != null
-                            ? +(r.itmRate * 100).toFixed(2)
-                            : ""
+                          globalItmPct != null
+                            ? ""
+                            : r.itmRate != null
+                              ? +(r.itmRate * 100).toFixed(2)
+                              : ""
                         }
                         onChange={(e) => {
+                          if (globalItmPct != null) return;
                           const raw = e.target.value;
                           if (raw === "") {
                             update(r.id, { itmRate: undefined });
@@ -418,7 +422,7 @@ export function ScheduleEditor({
                           if (!Number.isFinite(v) || v < 0 || v > 100) return;
                           update(r.id, { itmRate: v / 100 });
                         }}
-                        className="h-8 w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
+                        className="h-8 w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                     </Td>
                     <Td>
