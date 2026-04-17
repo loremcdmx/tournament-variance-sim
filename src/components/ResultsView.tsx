@@ -1892,38 +1892,36 @@ export function ResultsView({
               upswings={result.upswings}
               tourneysWord={tourneysWord}
               streaks={
-                <><div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div className="flex flex-col">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:grid-rows-[auto_1fr_auto_auto]">
+                  <div className="flex flex-col gap-1.5 sm:grid sm:grid-rows-subgrid sm:row-span-4">
                     <ChartHeader
                       title={t("chart.longestBE")}
                       showUnitToggle={false}
                       tip={t("chart.longestBE.tip")}
                     />
-                    <div className="flex-1">
-                      <DistributionChart
-                        binEdges={result.longestBreakevenHistogram.binEdges}
-                        counts={result.longestBreakevenHistogram.counts}
-                        color="#fbbf24"
-                        unitLabel="tourneys"
-                        yAsPct
-                        overlay={
-                          overlayPd && pdChart
-                            ? {
-                                binEdges:
-                                  pdChart.longestBreakevenHistogram.binEdges,
-                                counts:
-                                  pdChart.longestBreakevenHistogram.counts,
-                                color: "#f472b6",
-                                label: "PrimeDope",
-                              }
-                            : undefined
-                        }
-                      />
+                    <DistributionChart
+                      binEdges={result.longestBreakevenHistogram.binEdges}
+                      counts={result.longestBreakevenHistogram.counts}
+                      color="#fbbf24"
+                      unitLabel="tourneys"
+                      yAsPct
+                      overlay={
+                        overlayPd && pdChart
+                          ? {
+                              binEdges:
+                                pdChart.longestBreakevenHistogram.binEdges,
+                              counts:
+                                pdChart.longestBreakevenHistogram.counts,
+                              color: "#f472b6",
+                              label: "PrimeDope",
+                            }
+                          : undefined
+                      }
+                    />
+                    <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                      {t("chart.longestBE.sub")}
                     </div>
-                    <div className="mt-auto pt-1.5">
-                      <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-                        {t("chart.longestBE.sub")}
-                      </div>
+                    <div>
                       {overlayPd && pdChart && (
                         <TailDivergenceNote
                           user={result.longestBreakevenHistogram}
@@ -1933,37 +1931,35 @@ export function ResultsView({
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1.5 sm:grid sm:grid-rows-subgrid sm:row-span-4">
                     <ChartHeader
                       title={t("chart.longestCashless")}
                       showUnitToggle={false}
                       tip={t("chart.longestCashless.tip")}
                     />
-                    <div className="flex-1">
-                      <DistributionChart
-                        binEdges={result.longestCashlessHistogram.binEdges}
-                        counts={result.longestCashlessHistogram.counts}
-                        color="#f87171"
-                        unitLabel="tourneys"
-                        yAsPct
-                        overlay={
-                          overlayPd && pdChart
-                            ? {
-                                binEdges:
-                                  pdChart.longestCashlessHistogram.binEdges,
-                                counts:
-                                  pdChart.longestCashlessHistogram.counts,
-                                color: "#38bdf8",
-                                label: "PrimeDope",
-                              }
-                            : undefined
-                        }
-                      />
+                    <DistributionChart
+                      binEdges={result.longestCashlessHistogram.binEdges}
+                      counts={result.longestCashlessHistogram.counts}
+                      color="#f87171"
+                      unitLabel="tourneys"
+                      yAsPct
+                      overlay={
+                        overlayPd && pdChart
+                          ? {
+                              binEdges:
+                                pdChart.longestCashlessHistogram.binEdges,
+                              counts:
+                                pdChart.longestCashlessHistogram.counts,
+                              color: "#38bdf8",
+                              label: "PrimeDope",
+                            }
+                          : undefined
+                      }
+                    />
+                    <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                      {t("chart.longestCashless.sub")}
                     </div>
-                    <div className="mt-auto pt-1.5">
-                      <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-                        {t("chart.longestCashless.sub")}
-                      </div>
+                    <div>
                       {overlayPd && pdChart && (
                         <TailDivergenceNote
                           user={result.longestCashlessHistogram}
@@ -1973,39 +1969,37 @@ export function ResultsView({
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1.5 sm:grid sm:grid-rows-subgrid sm:row-span-4">
                     <ChartHeader
                       title={t("chart.recovery")}
                       showUnitToggle={false}
                       tip={t("chart.recovery.tip")}
                     />
-                    <div className="flex-1">
-                      <DistributionChart
-                        binEdges={result.recoveryHistogram.binEdges}
-                        counts={result.recoveryHistogram.counts}
-                        color="#34d399"
-                        unitLabel="tourneys"
-                        yAsPct
-                        overlay={
-                          overlayPd && pdChart
-                            ? {
-                                binEdges: pdChart.recoveryHistogram.binEdges,
-                                counts: pdChart.recoveryHistogram.counts,
-                                color: "#e879f9",
-                                label: "PrimeDope",
-                              }
-                            : undefined
-                        }
-                      />
+                    <DistributionChart
+                      binEdges={result.recoveryHistogram.binEdges}
+                      counts={result.recoveryHistogram.counts}
+                      color="#34d399"
+                      unitLabel="tourneys"
+                      yAsPct
+                      overlay={
+                        overlayPd && pdChart
+                          ? {
+                              binEdges: pdChart.recoveryHistogram.binEdges,
+                              counts: pdChart.recoveryHistogram.counts,
+                              color: "#e879f9",
+                              label: "PrimeDope",
+                            }
+                          : undefined
+                      }
+                    />
+                    <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+                      {t("chart.recovery.sub")}
+                      {" · "}
+                      {fmt(t("chart.recovery.unrecovered"), {
+                        pct: pct(s.recoveryUnrecoveredShare),
+                      })}
                     </div>
-                    <div className="mt-auto pt-1.5">
-                      <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-                        {t("chart.recovery.sub")}
-                        {" · "}
-                        {fmt(t("chart.recovery.unrecovered"), {
-                          pct: pct(s.recoveryUnrecoveredShare),
-                        })}
-                      </div>
+                    <div>
                       {overlayPd && pdChart && (
                         <TailDivergenceNote
                           user={result.recoveryHistogram}
@@ -2016,7 +2010,6 @@ export function ResultsView({
                     </div>
                   </div>
                 </div>
-                </>
               }
             />
           </UnitScope>

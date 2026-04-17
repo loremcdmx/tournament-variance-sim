@@ -292,9 +292,17 @@ export function useSimulation() {
 
       return new Promise((resolve, reject) => {
         let settled = false;
+        let buildTicker: ReturnType<typeof setInterval> | null = null;
+        const stopBuildTicker = () => {
+          if (buildTicker != null) {
+            clearInterval(buildTicker);
+            buildTicker = null;
+          }
+        };
         const onAbort = () => {
           if (settled) return;
           settled = true;
+          stopBuildTicker();
           detach();
           if (signal) signal.removeEventListener("abort", onAbort);
           reject(new Error("aborted"));
@@ -381,6 +389,7 @@ export function useSimulation() {
             buildsRemaining--;
             if (buildsRemaining === 0) {
               settled = true;
+              stopBuildTicker();
               detach();
               onProgress(1);
               const out: Record<PassPlan["key"], SimulationResult> =
@@ -394,6 +403,7 @@ export function useSimulation() {
           }
           if (msg.type === "build-error") {
             settled = true;
+            stopBuildTicker();
             detach();
             reject(new Error(msg.message));
             return;
@@ -429,12 +439,26 @@ export function useSimulation() {
                 settled = true;
                 detach();
                 reject(err);
+                return;
               }
+              // Reserved 5 % of the bar for the build phase would otherwise
+              // hang at 95 % until build-result fires. Ease the bar from 0.95
+              // toward 0.995 on a timer so the user sees progress instead of
+              // a freeze + jump. Scaled by sample count (rough 20 µs/sample).
+              const expectedBuildMs = Math.max(500, Math.min(8000, totalAll * 0.02));
+              const tickStart = performance.now();
+              buildTicker = setInterval(() => {
+                if (settled) return;
+                const t = (performance.now() - tickStart) / expectedBuildMs;
+                const eased = 1 - Math.exp(-t * 2.5);
+                onProgress(SHARD_FRACTION + 0.045 * eased);
+              }, 120);
             } else {
               emitProgress();
             }
           } else if (msg.type === "shard-error") {
             settled = true;
+            stopBuildTicker();
             detach();
             reject(new Error(msg.message));
           }
