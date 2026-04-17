@@ -47,3 +47,7 @@ next-env.d.ts
 
 # scratch files
 tmp_legacy*
+
+# exploratory sweep outputs (regenerable from scripts/)
+/data/variance-fits/
+/scripts/layout-audit-out/
