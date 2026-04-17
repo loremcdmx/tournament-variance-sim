@@ -113,7 +113,7 @@ export function ConvergenceChart({ schedule }: Props) {
   const baselinePos = afsToPos(baseline.avgField);
   const afsPos = afsPosOverride ?? baselinePos;
   const effectiveAfs = posToAfs(afsPos);
-  // Confidence level for the CI bands — user-configurable in (90, 99.9).
+  // Confidence level for the CI bands — user-configurable in (75, 99.9).
   const [ciPct, setCiPct] = useState<number>(95);
   const z = ciToZ(ciPct / 100);
   const [ciInput, setCiInput] = useState<string>(String(ciPct));
@@ -123,7 +123,7 @@ export function ConvergenceChart({ schedule }: Props) {
   const commitCiInput = (raw: string) => {
     const n = Number(raw);
     if (Number.isFinite(n)) {
-      setCiPct(Math.max(90, Math.min(99.9, n)));
+      setCiPct(Math.max(75, Math.min(99.9, n)));
     } else {
       setCiInput(String(ciPct));
     }
@@ -383,7 +383,7 @@ export function ConvergenceChart({ schedule }: Props) {
         </span>
         <input
           type="range"
-          min={90}
+          min={75}
           max={99.9}
           step={0.1}
           value={ciPct}
@@ -393,7 +393,7 @@ export function ConvergenceChart({ schedule }: Props) {
         />
         <input
           type="number"
-          min={90}
+          min={75}
           max={99.9}
           step={0.1}
           value={ciInput}
