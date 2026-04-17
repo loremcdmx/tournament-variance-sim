@@ -2788,19 +2788,19 @@ function DownswingsCard({
       key={rank}
       className="border-b border-[color:var(--color-border)]/60 last:border-b-0"
     >
-      <td className="py-2 text-[color:var(--color-fg-muted)]">#{rank}</td>
+      <td className="py-2 pr-3 text-[color:var(--color-fg-muted)]">#{rank}</td>
       <td
-        className="py-2 text-right tabular-nums"
+        className="py-2 px-3 text-right tabular-nums whitespace-nowrap"
         style={{ color: magnitudeColor }}
       >
         {money(magnitude)}
       </td>
       <td
-        className={`py-2 text-right tabular-nums ${finalProfit >= 0 ? "text-[color:var(--color-success)]" : "text-[color:var(--color-fg)]"}`}
+        className={`py-2 px-3 text-right tabular-nums whitespace-nowrap ${finalProfit >= 0 ? "text-[color:var(--color-success)]" : "text-[color:var(--color-fg)]"}`}
       >
         {money(finalProfit)}
       </td>
-      <td className="py-2 text-right tabular-nums text-[color:var(--color-fg-muted)]">
+      <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap text-[color:var(--color-fg-muted)]">
         {Math.round(longestBreakeven)} {tourneysWord}
       </td>
     </tr>
@@ -2816,10 +2816,10 @@ function DownswingsCard({
           <table className="w-full min-w-[320px] text-sm">
             <thead>
               <tr className="border-b-2 border-[color:var(--color-border)] text-[11px] uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-                <th className="py-2 text-left font-semibold">{t("dd.rank")}</th>
-                <th className="py-2 text-right font-semibold">{t("dd.depth")}</th>
-                <th className="py-2 text-right font-semibold">{t("dd.final")}</th>
-                <th className="py-2 text-right font-semibold">
+                <th className="py-2 pr-3 text-left font-semibold">{t("dd.rank")}</th>
+                <th className="py-2 px-3 text-right font-semibold">{t("dd.depth")}</th>
+                <th className="py-2 px-3 text-right font-semibold">{t("dd.final")}</th>
+                <th className="py-2 pl-3 text-right font-semibold">
                   {t("dd.breakeven")}
                 </th>
               </tr>
@@ -2844,10 +2844,10 @@ function DownswingsCard({
           <table className="w-full min-w-[320px] text-sm">
             <thead>
               <tr className="border-b-2 border-[color:var(--color-border)] text-[11px] uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-                <th className="py-2 text-left font-semibold">{t("dd.rank")}</th>
-                <th className="py-2 text-right font-semibold">{t("dd.height")}</th>
-                <th className="py-2 text-right font-semibold">{t("dd.final")}</th>
-                <th className="py-2 text-right font-semibold">
+                <th className="py-2 pr-3 text-left font-semibold">{t("dd.rank")}</th>
+                <th className="py-2 px-3 text-right font-semibold">{t("dd.height")}</th>
+                <th className="py-2 px-3 text-right font-semibold">{t("dd.final")}</th>
+                <th className="py-2 pl-3 text-right font-semibold">
                   {t("dd.breakeven")}
                 </th>
               </tr>
