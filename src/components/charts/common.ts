@@ -1,17 +1,22 @@
 import type { Options } from "uplot";
 
-// Neutral grey works on both dark and light themes without needing
-// JS-side theme detection. uPlot takes raw strings, so we can't use
-// CSS variables directly — pick tones that sit legibly on both palettes.
+// Journal-figure axis chrome — warm graphite that sits legibly on both
+// cream paper and oscilloscope dark. uPlot takes literal strings so we
+// can't pipe CSS vars; these tones are tuned to the midpoint of both
+// palettes' fg-muted values.
+const AXIS_STROKE = "#7a7466";
+const GRID_STROKE = "rgba(120, 112, 96, 0.22)";
+const TICK_STROKE = "rgba(120, 112, 96, 0.35)";
+
 export const darkAxes: Options["axes"] = [
   {
-    stroke: "#8a8a95",
-    grid: { stroke: "rgba(128,128,128,0.15)" },
-    ticks: { stroke: "rgba(128,128,128,0.2)" },
+    stroke: AXIS_STROKE,
+    grid: { stroke: GRID_STROKE, width: 0.5 },
+    ticks: { stroke: TICK_STROKE, width: 0.5 },
   },
   {
-    stroke: "#8a8a95",
-    grid: { stroke: "rgba(128,128,128,0.15)" },
-    ticks: { stroke: "rgba(128,128,128,0.2)" },
+    stroke: AXIS_STROKE,
+    grid: { stroke: GRID_STROKE, width: 0.5 },
+    ticks: { stroke: TICK_STROKE, width: 0.5 },
   },
 ];

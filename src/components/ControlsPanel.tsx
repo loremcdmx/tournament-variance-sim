@@ -427,21 +427,21 @@ export function ControlsPanel({
             <button
               type="button"
               onClick={onCancel}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-rose-500 to-rose-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(244,63,94,0.45)] transition-all hover:from-rose-400 hover:to-rose-500 active:translate-y-px"
+              className="inline-flex h-11 w-full items-center justify-center gap-3 border border-[color:var(--color-accent)] bg-[color:var(--color-accent)] px-5 font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--color-bg)] transition-colors hover:bg-[color:var(--color-accent-strong)] active:translate-y-px"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="1" />
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <rect x="6" y="6" width="12" height="12" />
               </svg>
-              {t("controls.stop")} {Math.min(100, Math.floor(progress * 100))}%
+              {t("controls.stop")} · {Math.min(100, Math.floor(progress * 100))}%
             </button>
           ) : (
             <button
               type="button"
               onClick={onRun}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
+              className="inline-flex h-11 w-full items-center justify-center gap-3 border border-[color:var(--color-fg)] bg-[color:var(--color-fg)] px-5 font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--color-bg)] transition-colors hover:bg-[color:var(--color-accent)] hover:border-[color:var(--color-accent)] active:translate-y-px"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M6 4l14 8-14 8V4z" fill="currentColor" />
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M6 4l14 8-14 8V4z" />
               </svg>
               {t("controls.run")}
             </button>
@@ -463,9 +463,9 @@ export function ControlsPanel({
           </div>
         </div>
         {running && (
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
+          <div className="relative h-[3px] w-full overflow-hidden bg-[color:var(--color-bg)] border-y border-[color:var(--color-border)]">
             <div
-              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width] duration-300 ease-linear"
+              className="h-full bg-[color:var(--color-accent)] transition-[width] duration-300 ease-linear"
               style={{ width: `${Math.min(100, progress * 100).toFixed(1)}%` }}
             />
           </div>
@@ -577,9 +577,9 @@ function NumInput({
         if (clamped !== value) onChange(clamped);
         setDraft(null);
       }}
-      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
+      className={`mono w-full border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
         invalid
-          ? "border-rose-500/70 ring-1 ring-rose-500/30"
+          ? "border-[color:var(--color-accent)] bg-[color:var(--c-accent-2-soft)]"
           : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"
       }`}
     />
@@ -604,15 +604,15 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
+    <div className="flex flex-col gap-2 border-t-2 border-[color:var(--color-success)] border-x border-b border-x-[color:var(--color-border)] border-b-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-300">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <div className="eyebrow flex items-center gap-1.5 text-[color:var(--color-success)]">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <polyline points="20 6 9 17 4 12" />
           </svg>
           {t("controls.done.label")}
           {summary.elapsedMs != null && (
-            <span className="font-mono text-[color:var(--color-fg-dim)]">
+            <span className="mono normal-case tracking-normal text-[color:var(--color-fg-dim)]">
               · {formatDuration(summary.elapsedMs)}
             </span>
           )}
@@ -620,7 +620,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
         <button
           type="button"
           onClick={scrollToResults}
-          className="flex items-center gap-1 text-[10.5px] font-semibold text-emerald-300 transition-colors hover:text-emerald-200"
+          className="eyebrow flex items-center gap-1 text-[color:var(--color-accent)] transition-colors hover:text-[color:var(--color-accent-strong)]"
         >
           {t("controls.done.seeBelow")} ↓
         </button>
@@ -632,7 +632,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           </span>
           <span
             className={`font-semibold ${
-              meanPositive ? "text-emerald-300" : "text-rose-300"
+              meanPositive ? "text-[color:var(--color-success)]" : "text-[color:var(--color-danger)]"
             }`}
           >
             {fmtMoneyCompact(summary.mean)}
@@ -644,7 +644,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           </span>
           <span
             className={`font-semibold ${
-              summary.roi >= 0 ? "text-emerald-300" : "text-rose-300"
+              summary.roi >= 0 ? "text-[color:var(--color-success)]" : "text-[color:var(--color-danger)]"
             }`}
           >
             {(summary.roi * 100).toFixed(1)}%
@@ -665,7 +665,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           <span
             className={`font-semibold ${
               summary.riskOfRuin > 0.05
-                ? "text-rose-300"
+                ? "text-[color:var(--color-danger)]"
                 : "text-[color:var(--color-fg)]"
             }`}
           >
@@ -676,7 +676,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             {t("controls.done.worstDD")}
           </span>
-          <span className="font-semibold text-rose-300">
+          <span className="font-semibold text-[color:var(--color-danger)]">
             {fmtMoneyCompact(summary.worstDrawdown)}
           </span>
         </div>
@@ -684,7 +684,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             {t("controls.done.dryStreak")}
           </span>
-          <span className="font-semibold text-amber-300">
+          <span className="font-semibold text-[color:var(--c-accent-2)]">
             {summary.longestCashlessWorst}
           </span>
         </div>

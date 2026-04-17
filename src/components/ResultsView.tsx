@@ -3230,8 +3230,8 @@ function GapExplainer({
     if (!(ratio > 0)) return "text-[color:var(--color-fg-dim)]";
     const abs = Math.abs(ratio - 1);
     if (abs < 0.05) return "text-[color:var(--color-fg-dim)]";
-    if (abs < 0.20) return "text-amber-400";
-    return "text-rose-400";
+    if (abs < 0.20) return "text-[color:var(--c-accent-2)]";
+    return "text-[color:var(--color-danger)]";
   };
   const fillRatio = (key: DictKey, r: number) =>
     t(key).replace("{pct}", fmtPctDelta(r));
@@ -3442,19 +3442,19 @@ function SensitivityReadout({
                 <div className="absolute left-1/2 top-0 h-full w-px bg-[color:var(--color-border)]" />
                 {isPos ? (
                   <div
-                    className="absolute left-1/2 h-2 rounded-r-sm bg-emerald-400/60"
+                    className="absolute left-1/2 h-2 bg-[color:var(--color-success)]"
                     style={{ width: `${frac * 50}%` }}
                   />
                 ) : (
                   <div
-                    className="absolute h-2 rounded-l-sm bg-rose-400/60"
+                    className="absolute h-2 bg-[color:var(--color-danger)]"
                     style={{ width: `${frac * 50}%`, right: "50%" }}
                   />
                 )}
               </div>
               <div
                 className={`w-20 text-right ${
-                  isPos ? "text-emerald-300/90" : "text-rose-300/90"
+                  isPos ? "text-[color:var(--color-success)]" : "text-[color:var(--color-danger)]"
                 } ${isBase ? "font-semibold" : ""}`}
               >
                 {compactMoney(profit)}

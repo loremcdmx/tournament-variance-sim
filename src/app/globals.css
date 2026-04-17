@@ -1,12 +1,22 @@
 @import "tailwindcss";
 
-@theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* =========================================================================
+   tournament-variance-sim — design-v2
+   Scientific-instrument / academic-journal hybrid. Fraunces variable serif
+   drives every headline and the gutter numeral; Source Serif 4 carries
+   the body; IBM Plex Mono handles every digit, label, and axis tick.
+   Palette: JSTOR-paper light (default), oscilloscope-phosphor dark.
+   Oxblood #8b2e1f accent — library-binding red, not SaaS gradient.
+   ========================================================================= */
 
-  /* Custom breakpoints for FullHD (1920) and 4K (2560+) displays. Default
-     Tailwind caps at 2xl=1536px; without these, 4K users see a narrow
-     strip centered in a sea of empty margin. */
+@theme inline {
+  --font-display: var(--font-display);
+  --font-serif: var(--font-serif);
+  /* Legacy --font-sans points at the body serif so any lingering
+     `font-sans` classname silently resolves to our journal body face. */
+  --font-sans: var(--font-serif);
+  --font-mono: var(--font-mono);
+
   --breakpoint-3xl: 1920px;
   --breakpoint-4xl: 2560px;
 
@@ -24,69 +34,67 @@
   --color-danger: var(--c-danger);
 }
 
+/* ---- Light (default): cream journal paper, oxblood ink accent -------- */
 :root,
-:root[data-theme="dark"] {
-  /* FirstFund palette — darkened one notch for more ink contrast. */
-  --c-bg: #050509;
-  --c-bg-elev: #0d0c13;
-  --c-bg-elev-2: #14131c;
-  --c-border: #23212e;
-  --c-border-strong: #3a3752;
-  --c-fg: #f6f4ef;
-  --c-fg-muted: #a5a2b0;
-  --c-fg-dim: #605d70;
-
-  /* Suit palette — desaturated for structural use; only accent pops. */
-  --c-spade: #8b8d92;
-  --c-heart: #d9684a;
-  --c-diamond: #c8a04a;
-  --c-club: #6a8a6c;
-
-  /* FF yellow as primary accent, purple as secondary. */
-  --c-accent: #ffde51;
-  --c-accent-strong: #e8c53d;
-  --c-accent-2: #491b8a;
-  --c-accent-2-soft: #dad5ed;
-  --c-success: #7dc98a;
-  --c-danger: #ff6b6b;
-
-  /* PrimeDope's color — cool steel blue, contrasts against orange. */
-  --c-rival: #4a8bd9;
-  --c-rival-strong: #2c6dbd;
-
-  --c-grid: rgba(255, 255, 255, 0.025);
-  --c-grid-strong: rgba(255, 255, 255, 0.05);
-  color-scheme: dark;
-}
-
 :root[data-theme="light"] {
-  /* FF light mode — f5f2f8 cream, purple ink. */
-  --c-bg: #f5f2f8;
-  --c-bg-elev: #ffffff;
-  --c-bg-elev-2: #ece7f3;
-  --c-border: #d9d4e4;
-  --c-border-strong: #aea7c0;
-  --c-fg: #0c0b12;
-  --c-fg-muted: #3e3a4c;
-  --c-fg-dim: #6e687d;
+  --c-bg: #f3ede0;
+  --c-bg-elev: #faf5e9;
+  --c-bg-elev-2: #ece4d0;
+  --c-border: #c9bfa6;
+  --c-border-strong: #7c7560;
+  --c-fg: #161410;
+  --c-fg-muted: #4a4438;
+  --c-fg-dim: #857d68;
 
-  --c-spade: #5a5b60;
-  --c-heart: #b54321;
+  --c-spade: #3a3a3a;
+  --c-heart: #8b2e1f;
   --c-diamond: #8a6a1c;
   --c-club: #3f5f41;
 
-  --c-accent: #491b8a;
-  --c-accent-strong: #2e0f5a;
-  --c-accent-2: #ffde51;
-  --c-accent-2-soft: #fff4b8;
+  --c-accent: #8b2e1f;
+  --c-accent-strong: #5e1e13;
+  --c-accent-2: #a47a1f;
+  --c-accent-2-soft: #f0e6c8;
   --c-success: #3f5f41;
-  --c-danger: #b54321;
-  --c-rival: #2c6dbd;
-  --c-rival-strong: #1d4f8c;
+  --c-danger: #8b2e1f;
 
-  --c-grid: rgba(0, 0, 0, 0.03);
-  --c-grid-strong: rgba(0, 0, 0, 0.05);
+  --c-rival: #1d4a8c;
+  --c-rival-strong: #112e5a;
+
+  --c-grid: rgba(22, 20, 16, 0.05);
+  --c-grid-strong: rgba(22, 20, 16, 0.10);
   color-scheme: light;
+}
+
+/* ---- Dark: oscilloscope / CRT phosphor -------------------------------- */
+:root[data-theme="dark"] {
+  --c-bg: #0c0e10;
+  --c-bg-elev: #12161a;
+  --c-bg-elev-2: #181d22;
+  --c-border: #2a3037;
+  --c-border-strong: #4a5560;
+  --c-fg: #ece6d4;
+  --c-fg-muted: #a59e89;
+  --c-fg-dim: #5f5a4c;
+
+  --c-spade: #8a8d92;
+  --c-heart: #c85a41;
+  --c-diamond: #d9a24a;
+  --c-club: #7ea680;
+
+  --c-accent: #d9a24a;
+  --c-accent-strong: #b07e30;
+  --c-accent-2: #c85a41;
+  --c-accent-2-soft: #2a1a14;
+  --c-success: #7ea680;
+  --c-danger: #c85a41;
+
+  --c-rival: #4a8bd9;
+  --c-rival-strong: #2c6dbd;
+
+  --c-grid: rgba(236, 230, 212, 0.04);
+  --c-grid-strong: rgba(236, 230, 212, 0.08);
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -98,41 +106,79 @@
   --color-club: var(--c-club);
 }
 
+/* ---- Body: serif all the way down ------------------------------------ */
 html,
 body {
   background: var(--color-bg);
   color: var(--color-fg);
-  font-family: var(--font-sans), system-ui, sans-serif;
-  font-feature-settings: "zero" off;
+  font-family: var(--font-serif), "Source Serif 4", Georgia, "Times New Roman", serif;
+  font-feature-settings: "kern" 1, "liga" 1, "onum" 1;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Flat ink background with a fine grain overlay — no radial bloom, no gradient,
-   just paper-black with a trace of 0.8% noise to kill the "AI dashboard" flat. */
+/* Fine grain — warm pulp on cream, cool graphite dust on dark.
+   Just enough noise to kill the 'template' flatness. */
 body {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.98 0 0 0 0 0.96 0 0 0 0 0.93 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.07 0 0 0 0 0.06 0 0 0 0.055 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-attachment: fixed;
-  background-size: 180px 180px;
+  background-size: 200px 200px;
+}
+:root[data-theme="dark"] body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.83 0 0 0 0.03 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-:root[data-theme="light"] body {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.04 0 0 0 0 0.08 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-/* Display — reuses the sans stack at a tighter letter-spacing. */
+/* ---- Display: Fraunces with opsz cranked for journal headline drama -- */
 .display {
-  font-family: var(--font-sans), system-ui, sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-family: var(--font-display), var(--font-serif), Georgia, serif;
+  font-weight: 600;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  letter-spacing: -0.015em;
 }
 .display-italic {
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-display), var(--font-serif), Georgia, serif;
   font-style: italic;
-  font-weight: 600;
+  font-weight: 500;
+  font-variation-settings: "opsz" 144, "SOFT" 60;
 }
 
-/* Corner brackets — CAD / terminal decoration for hero cards and stats. */
+/* Running figure caption — italic serif, Tufte-style. */
+.figure-caption {
+  font-family: var(--font-serif), Georgia, serif;
+  font-style: italic;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--c-fg-muted);
+}
+
+/* Marginalia — smaller still, for sidenote-style annotations. */
+.marginalia {
+  font-family: var(--font-serif), Georgia, serif;
+  font-style: italic;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--c-fg-dim);
+}
+
+/* ---- Data/measurements: mono everywhere a digit appears -------------- */
+.mono,
+.tabular {
+  font-family: var(--font-mono), ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "zero" 1;
+}
+
+/* ---- Eyebrow: small caps tracked, used for § labels ------------------ */
+.eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--c-fg-dim);
+}
+
+/* ---- Corner brackets — instrument / CAD crop marks ------------------- */
 .bracketed {
   position: relative;
 }
@@ -174,51 +220,76 @@ body {
   border-color: var(--c-diamond);
 }
 
-/* Section number — oversized numeral in the gutter, sans stack. */
+/* ---- Section gutter numeral — big Fraunces display, tabular ---------- */
 .section-num {
-  font-family: var(--font-sans), system-ui, sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 0.8;
-  color: var(--c-fg-dim);
-}
-
-/* Tiny "tag" pill — mono, uppercase, used for eyebrow labels */
-.eyebrow {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 10px;
+  font-family: var(--font-display), var(--font-serif), Georgia, serif;
   font-weight: 500;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
+  font-variation-settings: "opsz" 144, "SOFT" 0;
+  letter-spacing: -0.04em;
+  line-height: 0.85;
   color: var(--c-fg-dim);
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
-/* Masthead rule — the double horizontal rule that sits under section heads.
-   Thick line over hairline. Uses currentColor so suit tinting works. */
+/* ---- Masthead rule — newspaper thin / thick / thin triple ------------ */
 .masthead-rule {
-  border-top: 2px solid currentColor;
-  border-bottom: 1px solid currentColor;
-  height: 5px;
-  opacity: 0.9;
+  position: relative;
+  height: 7px;
+  border-top: 0.5px solid currentColor;
+  border-bottom: 2.5px solid currentColor;
+  opacity: 0.85;
+}
+.masthead-rule::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -5px;
+  height: 0;
+  border-bottom: 0.5px solid currentColor;
+  opacity: 0.7;
 }
 
-/* Scrollbar polish */
+/* ---- Drop cap for opening paragraph of a section --------------------- */
+.drop-cap::first-letter {
+  font-family: var(--font-display), var(--font-serif), Georgia, serif;
+  font-weight: 600;
+  font-variation-settings: "opsz" 144, "SOFT" 0;
+  font-size: 3.4em;
+  line-height: 0.88;
+  float: left;
+  padding: 0.06em 0.08em 0 0;
+  color: var(--c-accent);
+}
+
+/* ---- Hairline rules for section dividers ----------------------------- */
+.hairline {
+  border: 0;
+  border-top: 0.5px solid var(--c-border);
+  margin: 0;
+}
+.hairline-strong {
+  border: 0;
+  border-top: 1px solid var(--c-border-strong);
+  margin: 0;
+}
+
+/* ---- Scrollbar — thinner, paper-tinted ------------------------------- */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--color-border);
-  border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-border-strong);
 }
 
-/* Number inputs — kill the ugly spin buttons */
+/* ---- Number inputs — no spinners ------------------------------------- */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -228,36 +299,51 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* uPlot dark-theme overrides */
+/* ---- uPlot — match journal-figure chrome ----------------------------- */
 .uplot,
 .uplot *,
 .uplot *::before,
 .uplot *::after {
   box-sizing: border-box;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
 }
 .uplot .u-title {
   color: var(--color-fg);
+  font-family: var(--font-display), var(--font-serif), Georgia, serif;
   font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 8px;
+  font-variation-settings: "opsz" 36, "SOFT" 30;
+  font-size: 15px;
+  letter-spacing: -0.005em;
+  margin-bottom: 10px;
 }
 .uplot .u-legend {
   color: var(--color-fg-muted);
-  font-size: 12px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 .uplot .u-axis {
   color: var(--color-fg-dim);
+  font-size: 10px;
 }
 
-/* Tabular numerals for stat cards */
-.tabular {
-  font-variant-numeric: tabular-nums;
+/* ---- Form controls inherit body serif -------------------------------- */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
-/* Kill Geist Mono's dotted zero everywhere — the default has a dot inside
-   the 0 glyph; we want a clean ring. */
+/* ---- Slash-zero for all data ----------------------------------------- */
 *,
 *::before,
 *::after {
-  font-feature-settings: "zero" off;
+  font-feature-settings: "zero" 1;
+}
+
+/* ---- Selection: oxblood on paper ------------------------------------- */
+::selection {
+  background: var(--c-accent);
+  color: var(--c-bg);
 }

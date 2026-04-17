@@ -467,33 +467,36 @@ export default function Home() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-3 sm:px-6 sm:py-4 xl:max-w-[1400px] 2xl:max-w-[1700px] 3xl:max-w-[2000px] 4xl:max-w-[2400px]">
       <header className="flex flex-col gap-3">
-        {/* Brand strip */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[color:var(--color-border)] pb-2">
-          <div className="flex items-end gap-3">
-            {/* Trajectory icon */}
-            <svg width="28" height="28" viewBox="0 0 28 28" className="shrink-0 translate-y-[1px]" aria-hidden>
-              <polyline points="2,22 7,18 11,20 15,10 19,14 23,4 26,8" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
-              <polyline points="2,24 7,22 11,23 15,16 19,19 23,12 26,15" fill="none" stroke="var(--color-fg-dim)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.4" />
-              <polyline points="2,20 7,14 11,17 15,6 19,10 23,2 26,5" fill="none" stroke="var(--color-accent)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.35" />
-            </svg>
-            <h1 className="flex flex-col leading-none">
-              <div className="flex items-baseline gap-0">
-                <span className="text-[22px] font-black tracking-[-0.02em] text-[color:var(--color-fg)] sm:text-[28px]" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
-                  Poker
+        {/* Masthead — journal-style: title, italic subtitle, volume/issue plate. */}
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+            <div className="flex items-start gap-3">
+              <svg width="34" height="34" viewBox="0 0 28 28" className="mt-[6px] shrink-0" aria-hidden>
+                <polyline points="2,22 7,18 11,20 15,10 19,14 23,4 26,8" fill="none" stroke="var(--color-accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                <polyline points="2,24 7,22 11,23 15,16 19,19 23,12 26,15" fill="none" stroke="var(--color-fg-dim)" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
+                <polyline points="2,20 7,14 11,17 15,6 19,10 23,2 26,5" fill="none" stroke="var(--color-accent)" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" opacity="0.45" />
+              </svg>
+              <h1 className="flex flex-col leading-[0.92]">
+                <span className="display text-[30px] text-[color:var(--color-fg)] sm:text-[42px]">
+                  Tournament Variance
                 </span>
-                <span className="text-[22px] font-black tracking-[-0.02em] text-[color:var(--color-accent)] sm:text-[28px]" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
-                  Dope
+                <span className="display-italic mt-0.5 text-[18px] text-[color:var(--color-accent)] sm:text-[24px]">
+                  &nbsp;&nbsp;&nbsp;a Monte Carlo simulator
                 </span>
+              </h1>
+            </div>
+            <div className="flex flex-col items-end gap-1 pt-1">
+              <CornerToggles />
+              <div className="eyebrow flex items-center gap-2 text-[color:var(--color-fg-dim)]">
+                <span>Vol.&nbsp;0</span>
+                <span className="text-[color:var(--color-border-strong)]">·</span>
+                <span>No.&nbsp;6</span>
+                <span className="text-[color:var(--color-border-strong)]">·</span>
+                <span className="text-[color:var(--color-accent)]/80">pokerdope, but better</span>
               </div>
-              <span className="text-[11px] font-bold tracking-[0.04em] text-[color:var(--color-fg-muted)] sm:text-[13px]">
-                but better
-              </span>
-            </h1>
-            <span className="hidden rounded-sm border border-[color:var(--color-accent)]/40 px-1.5 py-0.5 font-mono text-[9px] font-bold tabular-nums text-[color:var(--color-accent)]/70 sm:inline">
-              v0.6
-            </span>
+            </div>
           </div>
-          <CornerToggles />
+          <div className="masthead-rule mt-2 text-[color:var(--color-fg)]/70" />
         </div>
 
         {compareSlot && (
@@ -764,8 +767,8 @@ export default function Home() {
             (r.bountyFraction != null && r.bountyFraction > 0) ||
             r.payoutStructure.includes("bounty"),
         ) && (
-          <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-300/90">
-            <span className="mr-1.5 font-bold">⚠</span>
+          <div className="mt-2 border-l-2 border-[color:var(--color-accent)] bg-[color:var(--color-bg-elev)] px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+            <span className="eyebrow mr-2 text-[color:var(--color-accent)]">Errata</span>
             {t("schedule.betaFormats")}
           </div>
         )}
@@ -855,11 +858,11 @@ export default function Home() {
       </Section>
 
       {!feasibility.ok && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <div className="mb-1 font-semibold uppercase tracking-wider text-amber-100">
-            {t("shape.blockedTitle")}
+        <div className="border-l-[3px] border-[color:var(--color-accent)] bg-[color:var(--color-bg-elev)] px-4 py-3 text-sm text-[color:var(--color-fg-muted)]">
+          <div className="eyebrow mb-1 text-[color:var(--color-accent)]">
+            § {t("shape.blockedTitle")}
           </div>
-          <div className="mb-3 text-[12px] text-amber-200/90">
+          <div className="mb-3 text-[12px] italic text-[color:var(--color-fg-muted)]">
             {t("shape.blockedHint")}
           </div>
           <ul className="mb-3 space-y-1.5">
@@ -868,24 +871,24 @@ export default function Home() {
                 key={iss.rowId}
                 className="flex flex-wrap items-center gap-2 font-mono text-[11px]"
               >
-                <span className="text-amber-100">
+                <span className="text-[color:var(--color-fg)]">
                   {t("shape.blockedRow")} #{iss.rowIdx + 1} — {iss.label}
                 </span>
-                <span className="text-amber-300/80">
+                <span className="text-[color:var(--color-fg-dim)]">
                   EW ${iss.currentEv.toFixed(2)} / ${iss.targetEv.toFixed(2)} ({t("shape.blockedGap")} {iss.gap >= 0 ? "+" : ""}
                   {iss.gap.toFixed(2)})
                 </span>
                 <button
                   type="button"
                   onClick={() => fixRowAuto(iss.rowId)}
-                  className="border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-100 transition-colors hover:border-amber-300 hover:bg-amber-500/20"
+                  className="border border-[color:var(--color-accent)]/60 bg-transparent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] transition-colors hover:bg-[color:var(--color-accent)] hover:text-[color:var(--color-bg)]"
                 >
                   {t("shape.fixAuto")}
                 </button>
                 <button
                   type="button"
                   onClick={() => fixRowPreset(iss.rowId)}
-                  className="border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-100 transition-colors hover:border-amber-300 hover:bg-amber-500/20"
+                  className="border border-[color:var(--color-accent)]/60 bg-transparent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] transition-colors hover:bg-[color:var(--color-accent)] hover:text-[color:var(--color-bg)]"
                 >
                   {t("shape.fixPreset")}
                 </button>
@@ -896,7 +899,7 @@ export default function Home() {
             <button
               type="button"
               onClick={fixAllAuto}
-              className="border border-amber-400/60 bg-amber-500/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-50 transition-colors hover:border-amber-300 hover:bg-amber-500/30"
+              className="border border-[color:var(--color-accent)] bg-[color:var(--color-accent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-bg)] transition-colors hover:bg-[color:var(--color-accent-strong)]"
             >
               {t("shape.fixAll")}
             </button>

@@ -77,8 +77,8 @@ export function DecompositionChart({ rows }: Props) {
               />
               {/* Mean bar */}
               <div
-                className={`absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full ${
-                  isPos ? "bg-emerald-400/80" : "bg-red-400/80"
+                className={`absolute top-1/2 h-2.5 -translate-y-1/2 ${
+                  isPos ? "bg-[color:var(--color-success)]" : "bg-[color:var(--color-danger)]"
                 }`}
                 style={{
                   left: isPos ? "50%" : `${50 + meanPct}%`,

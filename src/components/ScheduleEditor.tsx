@@ -459,7 +459,7 @@ export function ScheduleEditor({
                             className={
                               "h-8 w-full rounded-md border px-2.5 text-xs outline-none transition-colors focus:border-[color:var(--color-accent)] " +
                               (currentDisabled
-                                ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
+                                ? "border-[color:var(--color-accent)] bg-[color:var(--c-accent-2-soft)] text-[color:var(--color-accent-strong)]"
                                 : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
                             }
                           >
@@ -1008,9 +1008,9 @@ function NumInputBox({
         onChange(v);
       }}
       onBlur={() => commitDraft(draft, value, min, max, onChange, setDraft)}
-      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
+      className={`w-full border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
         invalid
-          ? "border-rose-500/70 ring-1 ring-rose-500/30"
+          ? "border-[color:var(--color-accent)] bg-[color:var(--c-accent-2-soft)]"
           : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"
       }`}
     />
@@ -1213,7 +1213,7 @@ function NumInput({
       className={
         INPUT_BASE +
         " w-20 text-center tabular-nums " +
-        (invalid ? "!border-rose-500/70 ring-1 ring-rose-500/30" : "")
+        (invalid ? "!border-[color:var(--color-accent)] bg-[color:var(--c-accent-2-soft)]" : "")
       }
     />
   );
