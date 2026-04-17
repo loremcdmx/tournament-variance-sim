@@ -233,16 +233,6 @@ function pctDelta(cur: number, pd: number): number | null {
   return (cur - pd) / anchor;
 }
 
-/** Picks the larger-magnitude delta of two pairs, preserving sign. */
-function pickWorstDelta(
-  a: number | null,
-  b: number | null,
-): number | null {
-  if (a == null) return b;
-  if (b == null) return a;
-  return Math.abs(a) >= Math.abs(b) ? a : b;
-}
-
 /**
  * Histogram quantile by linear interpolation inside the containing bin.
  * Used to surface tail divergence (p95) on streak/drawdown histograms.
@@ -451,60 +441,6 @@ function TrajectoryPlot({
   const focusedSeriesIdx = nearestPath?.seriesIdx ?? null;
   const hlCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  useEffect(() => {
-    const plot = plotRef.current;
-    if (!plot) return;
-    // Lazily create/retrieve the highlight canvas inside uPlot's .over div.
-    let canvas = hlCanvasRef.current;
-    if (!canvas || !plot.over.contains(canvas)) {
-      canvas = document.createElement("canvas");
-      canvas.style.position = "absolute";
-      canvas.style.left = "0";
-      canvas.style.top = "0";
-      canvas.style.pointerEvents = "none";
-      canvas.style.zIndex = "5";
-      plot.over.appendChild(canvas);
-      hlCanvasRef.current = canvas;
-    }
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const w = plot.over.clientWidth;
-    const h = plot.over.clientHeight;
-    const dpr = devicePixelRatio;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    if (focusedSeriesIdx == null) return;
-    const dataArr = assets.data[focusedSeriesIdx] as ArrayLike<number> | undefined;
-    const xArr = assets.data[0] as ArrayLike<number>;
-    if (!dataArr || !xArr) return;
-
-    ctx.strokeStyle = "rgba(253,230,138,0.9)";
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < xArr.length; i++) {
-      const xVal = xArr[i];
-      const yVal = dataArr[i];
-      if (xVal == null || yVal == null || !Number.isFinite(yVal)) continue;
-      const px = plot.valToPos(xVal, "x", false);
-      const py = plot.valToPos(yVal, "y", false);
-      if (!started) {
-        ctx.moveTo(px, py);
-        started = true;
-      } else {
-        ctx.lineTo(px, py);
-      }
-    }
-    ctx.stroke();
-  }, [focusedSeriesIdx, assets.data]);
-
   const cumBuyIn = tournaments * assets.buyInPerTourney;
   const roi = cumBuyIn > 0 ? nearestVal / cumBuyIn : 0;
 
@@ -540,6 +476,7 @@ function TrajectoryPlot({
     // Longest losing streak: consecutive declining checkpoints → in tournament units.
     let longestLosing = 0;
     let losingStartIdx = 0;
+    let losingEndIdx = 0;
     let curLosingStart = 0;
     let curLosing = 0;
     for (let i = 1; i < len; i++) {
@@ -549,35 +486,165 @@ function TrajectoryPlot({
       if (cur < prev) {
         if (curLosing === 0) curLosingStart = i - 1;
         curLosing++;
-        if (curLosing > longestLosing) { longestLosing = curLosing; losingStartIdx = curLosingStart; }
+        if (curLosing > longestLosing) {
+          longestLosing = curLosing;
+          losingStartIdx = curLosingStart;
+          losingEndIdx = i;
+        }
       } else curLosing = 0;
     }
     const losingTourneys = longestLosing > 0
-      ? Math.round(tourneyAt(losingStartIdx + longestLosing) - tourneyAt(losingStartIdx))
+      ? Math.round(tourneyAt(losingEndIdx) - tourneyAt(losingStartIdx))
       : 0;
 
     // Longest breakeven-or-worse: consecutive checkpoints at or below running peak.
+    // Track the peak index that anchors the longest stretch — used by the
+    // canvas overlay to mark the peak point and the below-peak x-range.
     let longestBE = 0;
-    let beStartIdx = 0;
+    let beAnchorPeakIdx = 0;
+    let beEndIdx = 0;
     let curBE = 0;
-    let curBEStart = 0;
+    let curBEAnchorPeakIdx = 0;
     peak = -Infinity;
     for (let i = 0; i < len; i++) {
       const v = dataArr[i];
       if (v == null || !Number.isFinite(v)) continue;
-      if (v > peak) { peak = v; curBE = 0; curBEStart = i; }
-      else {
-        if (curBE === 0) curBEStart = i;
+      if (v > peak) {
+        peak = v;
+        curBE = 0;
+        curBEAnchorPeakIdx = i;
+      } else {
         curBE++;
-        if (curBE > longestBE) { longestBE = curBE; beStartIdx = curBEStart; }
+        if (curBE > longestBE) {
+          longestBE = curBE;
+          beAnchorPeakIdx = curBEAnchorPeakIdx;
+          beEndIdx = i;
+        }
       }
     }
     const beTourneys = longestBE > 0
-      ? Math.round(tourneyAt(beStartIdx + longestBE) - tourneyAt(beStartIdx))
+      ? Math.round(tourneyAt(beEndIdx) - tourneyAt(beAnchorPeakIdx))
       : 0;
+    const peakValue = longestBE > 0 ? dataArr[beAnchorPeakIdx] ?? null : null;
 
-    return { finalProfit, maxDD, ddTourneys, losingTourneys, beTourneys };
+    return {
+      finalProfit,
+      maxDD,
+      ddTourneys,
+      losingTourneys,
+      losingStartIdx: longestLosing > 0 ? losingStartIdx : -1,
+      losingEndIdx: longestLosing > 0 ? losingEndIdx : -1,
+      beTourneys,
+      beStartIdx: longestBE > 0 ? beAnchorPeakIdx : -1,
+      beEndIdx: longestBE > 0 ? beEndIdx : -1,
+      peakValue,
+    };
   }, [deferredFocusedIdx, assets.data]);
+
+  // Canvas overlay: base highlight of the focused path + streak markers.
+  // Draws on uPlot's .over element so everything stays in plot coordinates.
+  // Layering (back → front):
+  //   1. Amber stroke of the full focused path (existing behaviour)
+  //   2. Red stroke of the longest downswing segment
+  //   3. Blue stroke of the longest below-peak segment
+  //   4. Peak-point marker (blue dot with white ring)
+  useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    let canvas = hlCanvasRef.current;
+    if (!canvas || !plot.over.contains(canvas)) {
+      canvas = document.createElement("canvas");
+      canvas.style.position = "absolute";
+      canvas.style.left = "0";
+      canvas.style.top = "0";
+      canvas.style.pointerEvents = "none";
+      canvas.style.zIndex = "5";
+      plot.over.appendChild(canvas);
+      hlCanvasRef.current = canvas;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const w = plot.over.clientWidth;
+    const h = plot.over.clientHeight;
+    const dpr = devicePixelRatio;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    if (focusedSeriesIdx == null) return;
+    const dataArr = assets.data[focusedSeriesIdx] as ArrayLike<number> | undefined;
+    const xArr = assets.data[0] as ArrayLike<number>;
+    if (!dataArr || !xArr) return;
+
+    const strokeSegment = (
+      startIdx: number,
+      endIdx: number,
+      stroke: string,
+      width: number,
+    ) => {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      let started = false;
+      for (let i = startIdx; i <= endIdx; i++) {
+        const xVal = xArr[i];
+        const yVal = dataArr[i];
+        if (xVal == null || yVal == null || !Number.isFinite(yVal)) continue;
+        const px = plot.valToPos(xVal, "x", false);
+        const py = plot.valToPos(yVal, "y", false);
+        if (!started) { ctx.moveTo(px, py); started = true; }
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    };
+
+    // Base: full path in amber.
+    strokeSegment(0, xArr.length - 1, "rgba(253,230,138,0.9)", 2.5);
+
+    // Stats-driven highlights. Only when mouse is actually focusing a path
+    // (deferredFocusedIdx matches focusedSeriesIdx) to avoid flicker during
+    // fast scrubs across different paths.
+    if (
+      focusedPathStats &&
+      deferredFocusedIdx === focusedSeriesIdx
+    ) {
+      const {
+        losingStartIdx,
+        losingEndIdx,
+        beStartIdx,
+        beEndIdx,
+        peakValue,
+      } = focusedPathStats;
+
+      if (losingStartIdx >= 0 && losingEndIdx > losingStartIdx) {
+        strokeSegment(losingStartIdx, losingEndIdx, "rgba(248,113,113,0.95)", 3);
+      }
+      if (beStartIdx >= 0 && beEndIdx > beStartIdx) {
+        strokeSegment(beStartIdx, beEndIdx, "rgba(96,165,250,0.95)", 3);
+      }
+      if (beStartIdx >= 0 && peakValue != null) {
+        const xVal = xArr[beStartIdx];
+        if (xVal != null) {
+          const px = plot.valToPos(xVal, "x", false);
+          const py = plot.valToPos(peakValue, "y", false);
+          ctx.save();
+          ctx.fillStyle = "rgba(96,165,250,1)";
+          ctx.strokeStyle = "rgba(255,255,255,0.95)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+  }, [focusedSeriesIdx, assets.data, focusedPathStats, deferredFocusedIdx]);
 
   const kindLabel = (line: TrajectoryLineMeta): string => {
     switch (line.kind) {
@@ -642,10 +709,6 @@ function TrajectoryPlot({
             <span className="text-right font-semibold text-[color:var(--color-fg)]">
               {cumBuyIn > 0 ? `${(roi * 100).toFixed(1)}%` : "—"}
             </span>
-            <span className="text-[color:var(--color-fg-dim)]">buy-in spent</span>
-            <span className="text-right text-[color:var(--color-fg-muted)]">
-              {compactMoney(cumBuyIn)}
-            </span>
           </div>
           {likelihood(nearest) && (
             <div className="mt-1.5 border-t border-[color:var(--color-border)]/50 pt-1 text-[10px] text-[color:var(--color-fg-dim)]">
@@ -671,11 +734,17 @@ function TrajectoryPlot({
                     </span>
                   )}
                 </span>
-                <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.longestLosing")}</span>
+                <span className="flex items-center gap-1 text-[color:var(--color-fg-dim)]">
+                  <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: "rgba(248,113,113,0.95)" }} />
+                  {t("chart.traj.longestLosing")}
+                </span>
                 <span className="text-right text-[color:var(--color-fg)]">
                   {focusedPathStats.losingTourneys.toLocaleString()} {t("chart.traj.tourneys")}
                 </span>
-                <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.longestBE")}</span>
+                <span className="flex items-center gap-1 text-[color:var(--color-fg-dim)]">
+                  <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: "rgba(96,165,250,0.95)" }} />
+                  {t("chart.traj.longestBE")}
+                </span>
                 <span className="text-right text-[color:var(--color-fg)]">
                   {focusedPathStats.beTourneys.toLocaleString()} {t("chart.traj.tourneys")}
                 </span>
@@ -781,7 +850,7 @@ function buildTrajectoryAssets(
   overlay?: SimulationResult | null,
   axisFmt: (v: number) => string = compactMoney,
   preset: LineStylePreset = LINE_STYLE_PRESETS[DEFAULT_LINE_STYLE_PRESET],
-  maxPathCount: number = 500,
+  maxPathCount: number = 1000,
   refLines: RefLineConfig[] = DEFAULT_REF_LINES,
   lineOverrides: LineStyleOverrides = {},
   runMode: RunMode = "random",
@@ -1351,7 +1420,7 @@ export function ResultsView({
     );
 
   const maxRunsAvailable = result.samplePaths.paths.length;
-  const runsCap = Math.min(500, maxRunsAvailable);
+  const runsCap = Math.min(1000, maxRunsAvailable);
   const maxRuns = runsCap;
   // Desired slider value is preserved even when a new sim lowers maxRuns
   // temporarily — we re-clamp on each render instead of mutating state in
@@ -1576,9 +1645,15 @@ export function ResultsView({
         <BigStat
           suit="club"
           label={t("stat.expectedProfit")}
-          value={money(s.mean)}
-          sub={`EV ${money(result.expectedProfit)} · ROI ${(roi * 100).toFixed(1)}% · median ${money(s.median)}`}
-          tone={s.mean >= 0 ? "pos" : "neg"}
+          value={money(result.expectedProfit)}
+          sub={t("stat.expectedProfit.sub")
+            .replace("{min}", money(s.min))
+            .replace("{max}", money(s.max))}
+          tip={t("stat.expectedProfit.tip")
+            .replace("{mean}", money(s.mean))
+            .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
+            .replace("{median}", money(s.median))}
+          tone={result.expectedProfit >= 0 ? "pos" : "neg"}
           pdValue={pdStats ? money(pdStats.mean) : undefined}
           pdDelta={pdStats ? pctDelta(s.mean, pdStats.mean) : null}
         />
@@ -1586,7 +1661,11 @@ export function ResultsView({
           suit="spade"
           label={t("stat.probProfit")}
           value={pct(s.probProfit)}
-          sub={`${intFmt(s.tournamentsFor95ROI)} ${tourneysWord} ${t("stat.tFor95.sub")}`}
+          sub={t("stat.probProfit.sub").replace(
+            "{n}",
+            intFmt(s.tournamentsFor95ROI),
+          )}
+          tip={t("stat.tFor95.sub")}
           pdValue={pdStats ? pct(pdStats.probProfit) : undefined}
           pdDelta={pdStats ? pctDelta(s.probProfit, pdStats.probProfit) : null}
         />
@@ -1597,7 +1676,14 @@ export function ResultsView({
           sub={
             s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
               ? t("stat.bankrollOff")
-              : `BR 1% = ${money(s.minBankrollRoR1pct)} · 5% = ${money(s.minBankrollRoR5pct)}`
+              : t("stat.riskOfRuin.sub")
+          }
+          tip={
+            s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
+              ? undefined
+              : t("stat.riskOfRuin.tip")
+                  .replace("{br1}", money(s.minBankrollRoR1pct))
+                  .replace("{br5}", money(s.minBankrollRoR5pct))
           }
           tone={s.riskOfRuin > 0.05 ? "neg" : undefined}
           pdValue={pdStats ? pct(pdStats.riskOfRuin) : undefined}
@@ -1606,66 +1692,23 @@ export function ResultsView({
         />
       </div>
 
-      <StatGroup title={t("statGroup.range")}>
-        <MiniStat
-          suit="heart"
-          label={t("stat.worstRun")}
-          value={`${money(s.min)} (${money(s.min - result.expectedProfit)} vs EV)`}
-          tone="neg"
-          tip={t("stat.worstRun.tip")}
-          pdValue={pdStats ? money(pdStats.min) : undefined}
-          pdDelta={pdStats ? pctDelta(s.min, pdStats.min) : null}
-          emphasizeTail
-        />
-        <MiniStat
-          suit="heart"
-          label={t("stat.p1p5")}
-          value={`${money(s.p01)} / ${money(s.p05)}`}
-          tip={t("stat.p1p5.tip")}
-          pdValue={
-            pdStats ? `${money(pdStats.p01)} / ${money(pdStats.p05)}` : undefined
-          }
-          pdDelta={
-            pdStats
-              ? pickWorstDelta(
-                  pctDelta(s.p01, pdStats.p01),
-                  pctDelta(s.p05, pdStats.p05),
-                )
-              : null
-          }
-          emphasizeTail
-        />
-        <MiniStat
-          suit="club"
-          label={t("stat.p95p99")}
-          value={`${money(s.p95)} / ${money(s.p99)}`}
-          tip={t("stat.p95p99.tip")}
-          pdValue={
-            pdStats ? `${money(pdStats.p95)} / ${money(pdStats.p99)}` : undefined
-          }
-          pdDelta={
-            pdStats
-              ? pickWorstDelta(
-                  pctDelta(s.p95, pdStats.p95),
-                  pctDelta(s.p99, pdStats.p99),
-                )
-              : null
-          }
-          emphasizeTail
-        />
-        <MiniStat
-          suit="club"
-          label={t("stat.bestRun")}
-          value={`${money(s.max)} (+${money(s.max - result.expectedProfit)} vs EV)`}
-          tone="pos"
-          tip={t("stat.bestRun.tip")}
-          pdValue={pdStats ? money(pdStats.max) : undefined}
-          pdDelta={pdStats ? pctDelta(s.max, pdStats.max) : null}
-          emphasizeTail
-        />
-      </StatGroup>
-
       <StatGroup title={t("statGroup.drawdowns")}>
+        <MiniStat
+          suit="heart"
+          label={t("stat.ddWorst")}
+          value={`${money(s.maxDrawdownWorst)} · ${(s.maxDrawdownWorst / abi).toFixed(1)} ABI · ${Math.round(s.longestBreakevenMean)} ${tourneysWord}`}
+          tone="neg"
+          tip={t("stat.ddWorst.tip")}
+          pdValue={
+            pdStats
+              ? `${money(pdStats.maxDrawdownWorst)} · ${(pdStats.maxDrawdownWorst / abi).toFixed(1)} ABI`
+              : undefined
+          }
+          pdDelta={
+            pdStats ? pctDelta(s.maxDrawdownWorst, pdStats.maxDrawdownWorst) : null
+          }
+          emphasizeTail
+        />
         <MiniStat
           suit="heart"
           label={t("stat.ddMedian")}
@@ -1973,12 +2016,6 @@ export function ResultsView({
                     </div>
                   </div>
                 </div>
-                {overlayPd && pdChart && (
-                  <div className="mt-2 flex items-center gap-2 text-[10px] text-[color:var(--color-fg-dim)]">
-                    <span className="inline-block h-[1px] w-5 border-t border-dashed border-[#f472b6]" />
-                    <span>{pdPkoFallback ? t("chart.legend.noKoOverlay") : t("chart.legend.pdOverlay")}</span>
-                  </div>
-                )}
                 </>
               }
             />
@@ -2389,7 +2426,7 @@ function TrajectoryCard({
   const axisFmtRef = useRef(compactMoney);
   axisFmtRef.current = compactMoney;
   const stableAxisFmt = useMemo(() => (v: number) => axisFmtRef.current(v), []);
-  const maxPathCount = Math.min(500, result.samplePaths.paths.length);
+  const maxPathCount = Math.min(1000, result.samplePaths.paths.length);
   const primary = useMemo(
     () =>
       buildTrajectoryAssets(
@@ -2411,6 +2448,27 @@ function TrajectoryCard({
       ),
     [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes, pdOverlayStyle],
   );
+  // Apply the user's PD color/width slider to the dedicated PD pane preset
+  // so the toolbar control affects the twin-pane view, not just the overlay
+  // in single-pane mode. Width scales proportionally; color replaces the
+  // main curves but preserves the soft band/path tints.
+  const pdPanePreset = useMemo<LineStylePreset>(() => {
+    const widthMult = pdOverlayStyle.width / 1.75;
+    const c = pdOverlayStyle.color;
+    const [r, g, b] = parseRgb(c);
+    const rgba = (a: number) => `rgba(${r},${g},${b},${a})`;
+    return {
+      ...PRIMEDOPE_PANE_PRESET,
+      mean: { stroke: c, width: PRIMEDOPE_PANE_PRESET.mean.width * widthMult },
+      ev: { ...PRIMEDOPE_PANE_PRESET.ev, stroke: c, width: PRIMEDOPE_PANE_PRESET.ev.width * widthMult },
+      p05: { ...PRIMEDOPE_PANE_PRESET.p05, stroke: c, width: PRIMEDOPE_PANE_PRESET.p05.width * widthMult },
+      p95: { ...PRIMEDOPE_PANE_PRESET.p95, stroke: c, width: PRIMEDOPE_PANE_PRESET.p95.width * widthMult },
+      path: { stroke: rgba(0.24), width: PRIMEDOPE_PANE_PRESET.path.width },
+      bandExtreme: { stroke: rgba(0.10), width: PRIMEDOPE_PANE_PRESET.bandExtreme.width },
+      bandWide: { stroke: rgba(0.20), width: PRIMEDOPE_PANE_PRESET.bandWide.width },
+      bandNarrow: { stroke: rgba(0.38), width: PRIMEDOPE_PANE_PRESET.bandNarrow.width },
+    };
+  }, [pdOverlayStyle]);
   const secondaryMaxPathCount = pdChart
     ? Math.min(500, pdChart.samplePaths.paths.length)
     : 0;
@@ -2424,7 +2482,7 @@ function TrajectoryCard({
             yRange,
             undefined,
             stableAxisFmt,
-            PRIMEDOPE_PANE_PRESET,
+            pdPanePreset,
             secondaryMaxPathCount,
             refLines,
             lineOverrides,
@@ -2433,7 +2491,7 @@ function TrajectoryCard({
             showAggExtremes,
           )
         : null,
-    [pdChart, bankroll, yRange, stableAxisFmt, secondaryMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [pdChart, bankroll, yRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
   );
   const compareMaxPathCount = compareResult
     ? Math.min(500, compareResult.samplePaths.paths.length)
@@ -2448,7 +2506,7 @@ function TrajectoryCard({
             undefined,
             undefined,
             stableAxisFmt,
-            PRIMEDOPE_PANE_PRESET,
+            pdPanePreset,
             compareMaxPathCount,
             refLines,
             lineOverrides,
@@ -2457,7 +2515,7 @@ function TrajectoryCard({
             showAggExtremes,
           )
         : null,
-    [compareResult, bankroll, stableAxisFmt, compareMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
+    [compareResult, bankroll, stableAxisFmt, pdPanePreset, compareMaxPathCount, refLines, lineOverrides, runMode, showRealExtremes, showAggExtremes],
   );
 
   const extremesToggles = (
@@ -2626,6 +2684,20 @@ function TrajectoryCard({
       />
       {toolbar}
       {extremesToggles}
+      {compareMode === "primedope" && !pdPkoFallback && schedule && scheduleRepeats ? (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <PdCompareToggles
+            usePdPayouts={usePdPayouts}
+            onUsePdPayoutsChange={onUsePdPayoutsChange}
+            usePdFinishModel={usePdFinishModel}
+            onUsePdFinishModelChange={onUsePdFinishModelChange}
+            usePdRakeMath={usePdRakeMath}
+            onUsePdRakeMathChange={onUsePdRakeMathChange}
+            pdOverrideStatus={pdOverrideStatus}
+            pdOverrideProgress={pdOverrideProgress}
+          />
+        </div>
+      ) : null}
       <TrajectoryPlot assets={primary} height={440} visibleRuns={visibleRuns} />
       {slotOverlay && (
         <div className="mt-4">
@@ -4096,12 +4168,7 @@ function PdCompareToggles({
           />
           <span>{t(labelKey)}</span>
         </label>
-        <span
-          className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-[color:var(--color-border)] text-[9px] font-bold text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
-          title={t(hintKey)}
-        >
-          ?
-        </span>
+        <InfoTooltip content={t(hintKey)} />
       </div>
     ) : null;
   return (
@@ -4956,8 +5023,11 @@ function DebouncedColorInput({
       type="color"
       value={local}
       disabled={disabled}
-      onChange={(e) => setLocal(e.target.value)}
-      onBlur={() => { if (local !== value) onChange(local); }}
+      onChange={(e) => {
+        const v = e.target.value;
+        setLocal(v);
+        if (v !== value) onChange(v);
+      }}
       className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0 disabled:opacity-40"
       {...rest}
     />

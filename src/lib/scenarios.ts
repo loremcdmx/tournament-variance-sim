@@ -49,11 +49,11 @@ export const SCENARIOS: DemoScenario[] = [
     id: "primedope-reference",
     labelKey: "demo.primedopeReference",
     description:
-      "Сверка с PrimeDope: 5000 игроков, $50+$5.50, ROI 10%, 10 000 турниров. Минимальный набор — удобно положить рядом наш результат и PrimeDope'овский.",
+      "Обычный $50 турнир: 5000 игроков, рейк 11%, ROI 10%, 10 000 турниров. Базовый сценарий для оценки дисперсии.",
     schedule: [
       {
         id: "pd-1",
-        label: "$50 MTT (PrimeDope reference)",
+        label: "$50 обычный MTT",
         players: 5000,
         buyIn: 50,
         rake: 0.11,
@@ -287,6 +287,155 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 50,
       samples: 8_000,
       bankroll: 15_000,
+      finishModelId: "power-law",
+    },
+  },
+  // ---- Typical reg profiles ----
+  // Mid-stakes regular grinder: 1000p fields, $55 buy-in, moderate ROI.
+  // Representative of a solid reg's weekly grind.
+  {
+    id: "mid-stakes-reg",
+    labelKey: "demo.midStakesReg",
+    description:
+      "Мид-стейкс рег: $55 турниры, 1000 игроков, ROI +8%, 5000 турниров. Типичный профиль солидного рега.",
+    schedule: [
+      {
+        id: "mid-55",
+        label: "$55 MTT (1000p)",
+        players: 1000,
+        buyIn: 50,
+        rake: 0.1,
+        roi: 0.08,
+        payoutStructure: "mtt-standard",
+        count: 5_000,
+      },
+    ],
+    controls: {
+      ...BASE_CONTROLS,
+      scheduleRepeats: 1,
+      samples: 10_000,
+      bankroll: 3_000,
+      compareWithPrimedope: true,
+      compareMode: "primedope",
+    },
+  },
+  // Microstakes high-volume: $5 buy-in, 3000-player fields, 10k tourneys/mo.
+  // Shows how massive volume smooths variance at small stakes.
+  {
+    id: "micro-high-volume",
+    labelKey: "demo.microHighVolume",
+    description:
+      "Микростейкс гринд: $5 турниры, 3000 игроков, ROI +12%, 10 000 турниров в месяц. Большой объём сглаживает дисперсию, но σ всё равно видна.",
+    schedule: [
+      {
+        id: "micro-5",
+        label: "$5 MTT (3000p)",
+        players: 3000,
+        buyIn: 4.5,
+        rake: 0.5 / 4.5,
+        roi: 0.12,
+        payoutStructure: "mtt-standard",
+        count: 10_000,
+      },
+    ],
+    controls: {
+      ...BASE_CONTROLS,
+      scheduleRepeats: 1,
+      samples: 10_000,
+      bankroll: 500,
+      compareWithPrimedope: true,
+      compareMode: "primedope",
+    },
+  },
+  // HighRoller Sunday Major: $530 buy-in, 500-player fields. Top-heavy payouts
+  // + small-ish field = high variance per tourney. Sunday-Sunday grind over
+  // a year — ~200 tourneys.
+  {
+    id: "highroller-sunday",
+    labelKey: "demo.highRollerSunday",
+    description:
+      "HighRoller Sunday: $530 с 500 игроков, top-heavy пейауты, ROI +5%, ~200 турниров в год. Дисперсия высокая — малые поля + топ-хеви.",
+    schedule: [
+      {
+        id: "hr-530",
+        label: "$530 Sunday Major",
+        players: 500,
+        buyIn: 500,
+        rake: 0.06,
+        roi: 0.05,
+        payoutStructure: "mtt-top-heavy",
+        count: 200,
+      },
+    ],
+    controls: {
+      ...BASE_CONTROLS,
+      scheduleRepeats: 1,
+      samples: 10_000,
+      bankroll: 25_000,
+      compareWithPrimedope: true,
+      compareMode: "primedope",
+    },
+  },
+  // Mixed freeze + PKO grind: typical sunday, mixing both formats.
+  // Shows how PKO and freeze variance interact on a blended bankroll.
+  {
+    id: "mixed-freeze-pko",
+    labelKey: "demo.mixedFreezePko",
+    description:
+      "Микс-режим: 60/40 PKO и фризы, $22-$55 лимиты. Два разных источника дисперсии в одном графике.",
+    schedule: [
+      {
+        id: "mix-pko22",
+        label: "GG PKO $22",
+        players: 1500,
+        buyIn: 20,
+        rake: 0.09,
+        roi: 0.1,
+        payoutStructure: "mtt-gg-bounty",
+        bountyFraction: 0.5,
+        guarantee: 25_000,
+        count: 60,
+      },
+      {
+        id: "mix-pko55",
+        label: "GG PKO $55",
+        players: 1200,
+        buyIn: 50,
+        rake: 0.1,
+        roi: 0.08,
+        payoutStructure: "mtt-gg-bounty",
+        bountyFraction: 0.5,
+        guarantee: 60_000,
+        count: 40,
+      },
+      {
+        id: "mix-fr22",
+        label: "PS $22 freeze",
+        players: 1500,
+        buyIn: 20,
+        rake: 0.09,
+        roi: 0.1,
+        payoutStructure: "mtt-pokerstars",
+        guarantee: 25_000,
+        count: 40,
+      },
+      {
+        id: "mix-fr55",
+        label: "PS Big $55",
+        players: 1800,
+        buyIn: 50,
+        rake: 0.09,
+        roi: 0.08,
+        payoutStructure: "mtt-pokerstars",
+        guarantee: 75_000,
+        count: 25,
+      },
+    ],
+    controls: {
+      ...BASE_CONTROLS,
+      scheduleRepeats: 40,
+      samples: 8_000,
+      bankroll: 5_000,
       finishModelId: "power-law",
     },
   },

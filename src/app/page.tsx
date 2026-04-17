@@ -60,11 +60,11 @@ import {
 const initialSchedule: TournamentRow[] = [
   {
     id: "r1",
-    label: "Bread & butter",
-    players: 500,
-    buyIn: 10,
+    label: "$50 обычный турнир",
+    players: 5000,
+    buyIn: 50,
     rake: 0.1,
-    roi: 0.2,
+    roi: 0.1,
     payoutStructure: "mtt-standard",
     count: 1,
   },
@@ -1009,28 +1009,29 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06c.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v06c.pdControls")}</li>
+              <li>{t("changelog.v06c.hoverHighlights")}</li>
+              <li>{t("changelog.v06c.presets")}</li>
+              <li>{t("changelog.v06c.histTooltip")}</li>
+              <li>{t("changelog.v06c.polish")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06b.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v06b.tone")}</li>
-              <li>{t("changelog.v06b.streaks")}</li>
               <li>{t("changelog.v06b.ev")}</li>
-              <li>{t("changelog.v06b.convergence")}</li>
               <li>{t("changelog.v06b.pkoVar")}</li>
+              <li>{t("changelog.v06b.polish")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v06.pko")}</li>
               <li>{t("changelog.v06.weakCards")}</li>
-              <li>{t("changelog.v06.layout")}</li>
-              <li>{t("changelog.v06.labels")}</li>
-              <li>{t("changelog.v06.legend")}</li>
+              <li>{t("changelog.v06.polish")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v05.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v05.engine")}</li>
-              <li>{t("changelog.v05.sweep")}</li>
               <li>{t("changelog.v05.pdWidget")}</li>
-              <li>{t("changelog.v05.oneTourney")}</li>
               <li>{t("changelog.v05.polish")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v04.title")}</div>
@@ -1039,12 +1040,8 @@ export default function Home() {
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v03.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v03.preview")}</li>
-              <li>{t("changelog.v03.unit")}</li>
               <li>{t("changelog.v03.presets")}</li>
-              <li>{t("changelog.v03.exportImport")}</li>
-              <li>{t("changelog.v03.ru")}</li>
-              <li>{t("changelog.v03.layout")}</li>
+              <li>{t("changelog.v03.polish")}</li>
             </ul>
           </div>
         </details>

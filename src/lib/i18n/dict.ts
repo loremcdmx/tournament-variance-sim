@@ -99,13 +99,29 @@ export const DICT = {
   // Demo scenarios
   "demo.label": { en: "Demo scenarios", ru: "Пресеты" },
   "demo.primedopeReference": {
-    en: "PrimeDope sanity check",
-    ru: "Сверка с PrimeDope",
+    en: "$50 standard MTT",
+    ru: "$50 обычный турнир",
   },
   "demo.romeoPro": { en: "RomeoPro mode", ru: "Режим Ромеопро" },
   "demo.smallFieldTopReg": {
     en: "Top reg — small fields (100p, ITM 18.7%, AFS ~6.5)",
     ru: "Топ-рег малых полей (100p, ITM 18.7%, AFS ~6.5)",
+  },
+  "demo.midStakesReg": {
+    en: "Mid-stakes reg ($55, 1000p, +8% ROI)",
+    ru: "Мидстейкс-рег ($55, 1000p, +8% ROI)",
+  },
+  "demo.microHighVolume": {
+    en: "Microstakes grind ($5, 3000p, 10k/mo)",
+    ru: "Микростейкс-гринд ($5, 3000p, 10k/мес)",
+  },
+  "demo.highRollerSunday": {
+    en: "High Roller Sunday ($530, 500p)",
+    ru: "HighRoller Sunday ($530, 500p)",
+  },
+  "demo.mixedFreezePko": {
+    en: "Mixed mode (freeze + PKO, $22-$55)",
+    ru: "Микс фриз+PKO ($22-$55)",
   },
 
   "userPreset.label": { en: "My presets", ru: "Мои пресеты" },
@@ -517,7 +533,32 @@ export const DICT = {
   "slot.comparing": { en: "Comparing with saved slot", ru: "Сравнение со слотом" },
 
   // Results — stat labels
-  "stat.expectedProfit": { en: "Average profit", ru: "Средний профит" },
+  "stat.expectedProfit": { en: "Profit by EV", ru: "Профит по EV" },
+  "stat.expectedProfit.sub": {
+    en: "range: {min} → {max}",
+    ru: "разброс: {min} → {max}",
+  },
+  "stat.expectedProfit.tip": {
+    en: "Analytical EV (expected payout − buy-in × entries). Actual MC mean: {mean} · ROI {roi} · median {median}.",
+    ru: "Аналитическое EV (ожидаемая выплата − бай-ин × входы). Фактическое MC-среднее: {mean} · ROI {roi} · медиана {median}.",
+  },
+  "stat.probProfit.sub": {
+    en: "{n} tourneys to reach ±5% ROI",
+    ru: "{n} турниров до точного ROI ±5%",
+  },
+  "stat.riskOfRuin.sub": {
+    en: "chance your bankroll streaks to zero",
+    ru: "шанс стрикануть весь банкролл",
+  },
+  "stat.riskOfRuin.tip": {
+    en: "For 1% RoR → need bankroll ≥ {br1}. For 5% RoR → need bankroll ≥ {br5}.",
+    ru: "Для 1% риска разорения нужен БР ≥ {br1}. Для 5% — БР ≥ {br5}.",
+  },
+  "stat.ddWorst": { en: "Worst downswing", ru: "Худший даунсвинг" },
+  "stat.ddWorst.tip": {
+    en: "Deepest peak-to-trough across all samples. Shown in $, ABIs, and tournaments between equal profit points.",
+    ru: "Самый глубокий пик-к-дну по всем сэмплам. Показан в $, ABI и турнирах между равными точками профита.",
+  },
   "stat.stdDev": { en: "Profit swing", ru: "Разброс профита" },
   "stat.probProfit": { en: "Chance to be up", ru: "Шанс выйти в плюс" },
   "stat.riskOfRuin": { en: "Risk of ruin", ru: "Риск разорения" },
@@ -828,13 +869,14 @@ export const DICT = {
   "chart.traj.runStats": { en: "run stats", ru: "статы рана" },
   "chart.traj.finalProfit": { en: "final profit", ru: "итоговый профит" },
   "chart.traj.maxDD": { en: "max drawdown", ru: "макс. просадка" },
-  "chart.traj.longestLosing": { en: "losing streak", ru: "серия потерь" },
-  "chart.traj.longestBE": { en: "below peak", ru: "ниже пика" },
+  "chart.traj.longestLosing": { en: "longest downswing", ru: "макс. серия спада" },
+  "chart.traj.longestBE": { en: "longest below-peak run", ru: "ниже пика (макс.)" },
   "chart.traj.tourneys": { en: "t", ru: "т" },
   "chart.unit.tourneys": { en: "units: tournaments", ru: "единицы: турниры" },
   "hist.tooltip.range": { en: "range", ru: "диапазон" },
   "hist.tooltip.share": { en: "share of runs", ru: "доля ранов" },
   "hist.tooltip.count": { en: "samples", ru: "сэмплов" },
+  "hist.legend.ours": { en: "our model", ru: "наша модель" },
   "hist.tooltip.cumulative": { en: "at or below", ru: "до этого уровня" },
   "hist.tooltip.overflow": {
     en: "incl. overflow (heavy-tail clip)",
@@ -961,102 +1003,75 @@ export const DICT = {
     ru: "Импортировано {n} {_preset}.",
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
-  "changelog.v06b.title": { en: "v0.6b — current", ru: "v0.6b — текущая" },
-  "changelog.v06b.tone": {
-    en: "Neutral tone across all Russian text — removed casual language, rewritten for clarity.",
-    ru: "Нейтральный тон: переписан весь русский текст, убрана фамильярность.",
+  "changelog.v06c.title": { en: "v0.6c — current", ru: "v0.6c — текущая" },
+  "changelog.v06c.pdControls": {
+    en: "PD controls always visible: payout/finish/rake toggles and the overlay color/width slider moved into the chart toolbar. The slider now actually affects the PrimeDope pane in side-by-side mode.",
+    ru: "Контролы PD всегда на виду: галки payout/finish/rake и слайдер цвета/толщины подняты в тулбар над графиком. Слайдер теперь реально перекрашивает PrimeDope-панель в twin-режиме.",
   },
-  "changelog.v06b.streaks": {
-    en: "Streak histograms are sharper: wider tail coverage (p99.9), finer bins, integer-safe binning for discrete data, PD overlay no longer clips or jags.",
-    ru: "Гистограммы стриков стали точнее: шире хвост (p99.9), больше бинов, корректное разбиение для целочисленных данных, оверлей PD больше не обрезается и не ломается.",
+  "changelog.v06c.hoverHighlights": {
+    en: "Run hover highlights: peak dot + coloured streak segments (red = longest downswing, blue = below-peak run) drawn over the focused path. Tooltip labels match the chart colours.",
+    ru: "Подсветки на ране под мышью: точка пика + цветные сегменты (красный = макс. серия спада, синий = макс. серия ниже пика) поверх подсвеченного рана. Лейблы тултипа совпадают с цветами на графике.",
   },
+  "changelog.v06c.presets": {
+    en: "Four new demo presets: mid-stakes reg ($55/1000p), micro-stakes grind ($5/3000p), HighRoller Sunday ($530/500p), and a mixed freeze+PKO schedule.",
+    ru: "Четыре новых пресета: мидстейкс-рег ($55/1000p), микростейкс-гринд ($5/3000p), HighRoller Sunday ($530/500p) и микс фриз+PKO.",
+  },
+  "changelog.v06c.histTooltip": {
+    en: "Histogram tooltips pin to the side opposite the cursor, so hovering over a bar no longer hides it.",
+    ru: "Тултипы гистограмм теперь пинятся к углу напротив курсора — наведение больше не закрывает подсвечиваемый бар.",
+  },
+  "changelog.v06c.polish": {
+    en: "EV breakdown labels cleaned up (Top 3 / Final table with per-tier ranges, «Not ITM» instead of «OOTM bust»), hover run stats trimmed, extra info tooltips on PD toggles.",
+    ru: "Лейблы EV-брейкдауна приведены в порядок («Топ3» / «Финалка» с per-tier диапазонами, «Не ITM» вместо «Без денег»), компактнее статы рана при наведении, нормальные тултипы на галках PD.",
+  },
+  "changelog.v06b.title": { en: "v0.6b", ru: "v0.6b" },
   "changelog.v06b.ev": {
-    en: "EV context everywhere: profit widget shows EV + ROI + median, worst/best runs show delta vs EV.",
-    ru: "EV-контекст повсюду: виджет профита показывает EV + ROI + медиану, худший/лучший раны — отклонение от EV.",
-  },
-  "changelog.v06b.convergence": {
-    en: "Convergence widget rewritten: clear formula explanation, structured assumptions, no duplicate help block.",
-    ru: "Виджет сходимости ROI переписан: понятные формулы, структурированные допущения, убран дубль подсказки.",
+    en: "EV context: profit widget shows EV + ROI + median, worst/best runs show delta vs EV.",
+    ru: "EV-контекст: виджет профита показывает EV + ROI + медиану, худший/лучший раны — отклонение от EV.",
   },
   "changelog.v06b.pkoVar": {
-    en: "PKO bounty head-size variance: per-knockout log-normal noise models realistic bounty swings.",
-    ru: "Дисперсия PKO баунти: log-normal шум на каждый нокаут моделирует реалистичные колебания размера баунти.",
+    en: "PKO bounty variance: per-knockout log-normal noise for realistic bounty swings.",
+    ru: "Дисперсия PKO баунти: log-normal шум на каждый нокаут для реалистичных колебаний баунти.",
+  },
+  "changelog.v06b.polish": {
+    en: "Text and design polish across the site.",
+    ru: "Работа над текстовым наполнением и дизайном.",
   },
   "changelog.v06.title": { en: "v0.6a", ru: "v0.6a" },
   "changelog.v06.pko": {
-    en: "PKO compare mode: when schedule has bounty formats, the right pane now shows the same schedule with bounties stripped (instead of an unusable PrimeDope pane). Overlay checkbox relabeled accordingly.",
-    ru: "PKO режим сравнения: когда в расписании есть баунти-форматы, правая панель показывает то же расписание без ноков (вместо неработающего PrimeDope). Галка оверлея переименована.",
+    en: "PKO compare mode: side-by-side view for bounty vs non-bounty variance.",
+    ru: "PKO сравнение: параллельный вид дисперсии с баунти и без.",
   },
   "changelog.v06.weakCards": {
-    en: "PrimeDope weakness cards rewritten with hardcoded comparison tables — concrete numbers from our variance sweep vs PD's API for every claim.",
-    ru: "Карточки «минусов PrimeDope» переписаны с таблицами сравнения — конкретные цифры из нашего свипа vs API ПД по каждому пункту.",
+    en: "PrimeDope comparison cards with concrete numbers from variance sweep.",
+    ru: "Карточки сравнения с PrimeDope с конкретными числами из свипа дисперсии.",
   },
-  "changelog.v06.layout": {
-    en: "Controls restructured: model preset centered, bankroll + global ITM in a compact 2-col block. All input fields center-aligned app-wide.",
-    ru: "Перестроены контролы: пресет модели по центру, банкролл + глобальный ИТМ в компактном блоке 2 колонки. Все поля ввода выравнены по центру.",
-  },
-  "changelog.v06.labels": {
-    en: "Stat renames: drawdowns → streaks, clearer Russian labels for worst-case percentiles, break-even runs, bankroll survival. Removed avg downswing widget, verdict card, ROI sensitivity readout.",
-    ru: "Переименованы стат-лейблы: даунсвинги → стрики, понятнее русские названия для перцентилей, серий и БР. Убраны виджет среднего даунсвинга, вердикт и чувствительность к ROI.",
-  },
-  "changelog.v06.legend": {
-    en: "Overlay legend on streak/drawdown widgets — now shows what the dashed line represents.",
-    ru: "Легенда оверлея на виджетах стриков и даунсвингов — теперь понятно, что означает пунктир.",
+  "changelog.v06.polish": {
+    en: "UI and design improvements.",
+    ru: "Работа над дизайном и косметическими улучшениями.",
   },
   "changelog.v05.title": { en: "v0.5б", ru: "v0.5б" },
-  "changelog.v05.engine": {
-    en: "Engine accuracy audit: went through every 'accuracy-for-speed' shortcut in the hot loop, documented the trade-offs, and fixed the ones that were free wins — finer PKO heat discretisation, precomputed bounty constants, extra determinism tests.",
-    ru: "Аудит точности движка: прошёлся по всем упрощениям ради скорости в hot loop, задокументировал компромиссы и починил те, что были бесплатными — более тонкая дискретизация PKO heat, предвычисленные константы баунти, дополнительные тесты детерминизма.",
-  },
-  "changelog.v05.sweep": {
-    en: "Continuous variance-sweep research harness: a resumable background job that runs thousands of random (field, ROI, rake, payout, finish-model) cells and cross-checks our σ against the PrimeDope calibration mode, giving us an automated way to catch divergences as the engine evolves.",
-    ru: "Непрерывный ресёрч-харнесс variance-свипа: фоновый job, который крутит тысячи случайных ячеек (поле, ROI, рейк, пэйаут, finish-модель) и сравнивает нашу σ с режимом калибровки PrimeDope — теперь расхождения между моделями ловятся автоматически по мере развития движка.",
-  },
   "changelog.v05.pdWidget": {
-    en: "PrimeDope compare widget rework: EV line now yellow (like Hand2Note), PD overlay switched to blue dashed curves for readability, payout structure card adds an explicit non-ITM row showing the share of the field that cashes nothing, and every PD toggle now has a plain-language tooltip explaining exactly what the PD model does differently.",
-    ru: "Переделан виджет сравнения с PrimeDope: линия EV теперь жёлтая (как в Hand2Note), PD-оверлей перекрасили в синие пунктирные кривые для читаемости, в карточке структуры выплат появилась отдельная строка для не-ИТМ мест с долей от поля, а у каждого переключателя PD — подсказка простым языком, что именно PD делает иначе.",
-  },
-  "changelog.v05.oneTourney": {
-    en: "One-tournament preview: fixed the player-count math for top-0.1% / top-1% / top-5% rows (previously mixed cumulative and delta ranges), and auto-hides the rarest tiers when the field is too small for them to be meaningful.",
-    ru: "Превью одного турнира: починили подсчёт игроков для строк топ-0.1% / 1% / 5% (раньше смешивались кумулятивные и дельтовые диапазоны), и самые редкие тиры автоматически скрываются, когда поле для них слишком маленькое.",
+    en: "Redesigned PrimeDope comparison panel with clearer overlay and toggles.",
+    ru: "Переделана панель сравнения с PrimeDope: понятнее оверлей и переключатели.",
   },
   "changelog.v05.polish": {
-    en: "Hover highlight on the trajectory chart is now much stronger when you point at a random run, the 'worst run' line is picked by deepest drawdown instead of lowest final profit, and the payout structure gets a proper 'medals' colour palette as the default.",
-    ru: "Подсветка траектории при наведении на случайный ран теперь намного ярче, «худший ран» выбирается по самому глубокому дродауну вместо наименьшего финального профита, а структура выплат по умолчанию красится палитрой «медали».",
+    en: "Hover highlights, worst-run selection by deepest drawdown, design fixes.",
+    ru: "Подсветка при наведении, выбор «худшего рана» по глубине дродауна, работа над дизайном.",
   },
   "changelog.v04.title": { en: "v0.4", ru: "v0.4" },
   "changelog.v04.summary": {
-    en: "New 'streaks & comeback' block — dedicated widgets for break-even grind, cashless runs and recovery, plus a top-3 upswings table next to downswings. Every stat tile now has a plain-language '?' tooltip explaining what the number means and when it should worry you.",
-    ru: "Новый блок «стрики и отмазка» — отдельные виджеты под «игру в ноль», серии без ИТМ и отыгрывание, а рядом с топ-3 даунсвингов теперь топ-3 апсвингов. На каждой плитке статы — «?»-тултип простым языком: что за цифра и когда из-за неё стоит беспокоиться.",
+    en: "Streaks & comeback block: break-even grind, cashless runs, recovery, upswings table.",
+    ru: "Блок «стрики и отмазка»: игра в ноль, серии без ИТМ, отыгрывание, таблица апсвингов.",
   },
   "changelog.v03.title": { en: "v0.3", ru: "v0.3" },
-  "changelog.v03.preview": {
-    en: "Redesigned right-side tournament preview (narrative layout, top-heaviness callout).",
-    ru: "Переделан правый виджет турнира — новый нарратив, акцент на top-heavy структуру.",
-  },
-  "changelog.v03.unit": {
-    en: "$/ABI unit toggle on trajectory, distribution and drawdown charts.",
-    ru: "Переключатель $/АБИ на графиках траектории, распределения и даунсвингов.",
-  },
   "changelog.v03.presets": {
-    en: "Line style presets (Hand2Note, PT4, HM3, PokerDope) with live preview and per-line color/width overrides.",
-    ru: "Пресеты стилей линий (Hand2Note, PT4, HM3, PokerDope) с живым превью и индивидуальной настройкой цвета/толщины.",
+    en: "Line style presets, $/ABI unit toggle, preset export/import.",
+    ru: "Пресеты стилей линий, переключатель $/АБИ, экспорт/импорт пресетов.",
   },
-  "changelog.v03.exportImport": {
-    en: "Export/import your presets as a JSON file, or copy a share link from any saved preset — move them between devices without an account.",
-    ru: "Экспорт/импорт пользовательских пресетов в JSON или копирование share-ссылки прямо с карточки — переносите между устройствами без регистрации.",
-  },
-  "changelog.v03.ru": {
-    en: "Plain-Russian pass across stats and tooltips.",
-    ru: "Прошёлся по русской локализации — убрал корявости в статах и подсказках.",
-  },
-  "changelog.v03.layout": {
-    en: "Controls panel alignment + fixed empty space under the Run button.",
-    ru: "Выровнял панель настроек и убрал пустоту под кнопкой запуска.",
-  },
-  "changelog.next": {
-    en: "Coming next: per-line color/width overrides on top of presets.",
-    ru: "Дальше: индивидуальная настройка цвета и толщины линий поверх пресетов.",
+  "changelog.v03.polish": {
+    en: "Tournament preview redesign, design improvements.",
+    ru: "Новый виджет превью турнира, работа над дизайном.",
   },
   "footer.madeBy": { en: "made by", ru: "сделал" },
 
@@ -1371,8 +1386,8 @@ export const DICT = {
     ru: "В равновесии (−рейк)",
   },
   "preview.probTop1": { en: "1st place", ru: "1-е место" },
-  "preview.probTop3": { en: "Places 2–3", ru: "Места 2–3" },
-  "preview.probFt": { en: "Places 4–9", ru: "Места 4–9" },
+  "preview.probTop3": { en: "Top 3", ru: "Топ3" },
+  "preview.probFt": { en: "Final table", ru: "Финалка" },
   "preview.probFirstCash": {
     en: "First min-cash (after bubble)",
     ru: "Первый мин-кеш (после бабла)",
@@ -1381,14 +1396,11 @@ export const DICT = {
   "preview.barEvLabel": { en: "share of EV", ru: "доля EV" },
   "preview.barFieldLabel": { en: "share of finishes", ru: "доля финишей" },
   "preview.tierWinner": { en: "1st place", ru: "1-е место" },
-  "preview.tierTop01": { en: "Top 0.1%", ru: "Топ 0.1%" },
-  "preview.tierTop05": { en: "Top 0.5%", ru: "Топ 0.5%" },
-  "preview.tierTop1": { en: "Top 1%", ru: "Топ 1%" },
-  "preview.tierTop5": { en: "Top 5%", ru: "Топ 5%" },
-  "preview.tierTop10": { en: "Top 10%", ru: "Топ 10%" },
+  "preview.tierTop3": { en: "Top 3", ru: "Топ 3" },
   "preview.tierFt": { en: "Final table", ru: "Финалка" },
+  "preview.tierTop27": { en: "Top 27", ru: "Топ 27" },
   "preview.tierRestItm": { en: "Rest of cashes", ru: "Остальные кеши" },
-  "preview.tierOotm": { en: "OOTM bust", ru: "Без денег" },
+  "preview.tierOotm": { en: "Not ITM", ru: "Не ITM" },
   "preview.halfMass": {
     en: "Half your edge lives in the top {k} finishes of {n} — that's 1 in {odds}.",
     ru: "Половина эджа сконцентрирована в топ-{k} местах из {n} — вероятность 1 к {odds}.",

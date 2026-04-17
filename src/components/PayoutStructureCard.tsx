@@ -230,7 +230,10 @@ function PayoutBar({
           style={{ width: `${pct * 100}%`, background: color }}
         />
         {label && (
-          <div className="absolute inset-0 flex items-center px-1.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          <div
+            className="pointer-events-none absolute inset-y-0 flex items-center whitespace-nowrap px-1.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]"
+            style={{ left: `${Math.min(85, pct * 100)}%` }}
+          >
             {label}
           </div>
         )}

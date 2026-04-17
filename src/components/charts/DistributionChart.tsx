@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AlignedData, Options } from "uplot";
 import { UplotChart, type CursorInfo } from "./UplotChart";
 import { barsPath } from "./barsPath";
@@ -110,6 +110,17 @@ export function DistributionChart({
   const divisor = scaleBy && scaleBy > 0 ? scaleBy : 1;
   const overlayColor = overlay?.color ?? "#60a5fa";
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerW, setContainerW] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerW(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // When overlaying, extend primary x-range to cover the overlay's tail so
   // we don't clip a long PD tail off the right edge and under-report its
   // mass. Append zero-count primary bins at the same bin width, capped at
@@ -164,7 +175,17 @@ export function DistributionChart({
         merged.edges,
       );
       const overlayDenom = sumOf(overlay.counts);
-      return [centers, primary, normalize(resampled, overlayDenom)];
+      const overlayY = normalize(resampled, overlayDenom);
+      // Trim leading/trailing zero bins: uPlot would otherwise draw the PD
+      // line flat at y=0 from the left edge up to the first populated bin,
+      // producing the "rises from (0,0)" artefact. Null-gating those bins
+      // makes the overlay start exactly where it has mass.
+      const withGaps: (number | null)[] = overlayY.slice();
+      let i = 0;
+      while (i < withGaps.length && (withGaps[i] ?? 0) <= 0) withGaps[i++] = null;
+      let j = withGaps.length - 1;
+      while (j >= 0 && (withGaps[j] ?? 0) <= 0) withGaps[j--] = null;
+      return [centers, primary, withGaps as unknown as number[]];
     }
     return [centers, primary];
   }, [merged, counts, divisor, overlay, yAsPct]);
@@ -281,18 +302,32 @@ export function DistributionChart({
   }, [binIdx, merged, divisor, unitLabel, hoverStats]);
 
   return (
-    <div className="relative w-full">
+    <div ref={containerRef} className="relative w-full">
       <UplotChart
         data={data}
         options={opts}
         height={height}
         onCursor={setCursor}
       />
+      {overlay && (
+        <div className="mt-1 flex items-center gap-3 text-[10px] text-[color:var(--color-fg-dim)]">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-1.5 w-3 rounded-sm" style={{ background: color }} />
+            <span>{t("hist.legend.ours")}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-[1px] w-4 border-t-[1.5px] border-dashed" style={{ borderColor: overlayColor }} />
+            <span style={{ color: overlayColor }}>{overlay.label ?? "PrimeDope"}</span>
+          </span>
+        </div>
+      )}
       {cursor && tip && (
         <div
-          className="pointer-events-none absolute z-10 min-w-[180px] rounded border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 px-3 py-2 text-[11px] shadow-xl backdrop-blur"
+          className="pointer-events-none absolute z-10 min-w-[160px] max-w-[200px] rounded border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 px-2.5 py-1.5 text-[11px] shadow-xl backdrop-blur"
           style={{
-            left: Math.min(Math.max(cursor.left + 12, 0), 9999),
+            ...(containerW > 0 && cursor.left < containerW / 2
+              ? { right: 6 }
+              : { left: 6 }),
             top: 6,
           }}
         >
