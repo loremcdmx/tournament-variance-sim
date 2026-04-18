@@ -1667,7 +1667,18 @@ export function ResultsView({
   const displayPdChartStats = pickPd(rbStats);
   const displayResultDist = pickResult(rbDist);
   const displayPdChartDist = pickPd(rbDist);
-  const displayResultStreaks = pickResult(rbStreaks);
+  // Streak-widget RB toggle: engine histograms (K=240 strided chord algo
+  // over ALL samples) render visibly differently from pathStreaks output
+  // (stride-2 on ~1000 hi-res paths) *even when rbShift=0*, so toggling
+  // mixed the RB effect with an algorithm/sample-size mismatch → read as
+  // "no change". Force both branches through pathStreaks so the only
+  // difference is the rbShift.
+  const resultStreaksWithRb = useMemo(() => {
+    if (!rakebackCurve) return result;
+    const zeroCurve = new Float64Array(rakebackCurve.length);
+    return shiftResultByRakeback(result, zeroCurve, 1);
+  }, [result, rakebackCurve]);
+  const displayResultStreaks = rbStreaks ? resultStreaksWithRb : resultNoRb;
 
   // Freeze the profit-dist x domain across both RB states so toggling
   // rbDist translates the bars inside a stable axis instead of auto-rescaling.
@@ -1959,6 +1970,7 @@ export function ResultsView({
             theirsLabel={pdPkoFallback ? t("chart.overlay.freezeouts") : undefined}
             title={pdPkoFallback ? t("pd.title.freezeouts") : undefined}
             subtitle={pdPkoFallback ? t("pd.subtitle.freezeouts") : undefined}
+            hasBounty={hasPko}
           />
         </CollapsibleSection>
       )}
@@ -2747,6 +2759,9 @@ function TrajectoryCard({
   const { compactMoney } = useMoneyFmt();
   const { advanced } = useAdvancedMode();
   const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
+  const hasBounty = (schedule ?? []).some(
+    (r) => (r.bountyFraction ?? 0) > 0,
+  );
   const [extremeStyles, setExtremeStyles] = useLocalStorageState<ExtremeStyles>(
     "tvs.extremeStyles.v1",
     loadExtremeStyles,
@@ -2938,6 +2953,7 @@ function TrajectoryCard({
             sublabel={null}
             hueDot="#34d399"
             itmRate={result.stats.itmRate}
+            itmCashOnly={hasBounty}
             caption={
               compareMode === "primedope"
                 ? t(oursCapKey)
@@ -2956,6 +2972,7 @@ function TrajectoryCard({
             }
             hueDot="#60a5fa"
             itmRate={pdChart?.stats.itmRate}
+            itmCashOnly={hasBounty && !pdPkoFallback}
             caption={
               pdPresetFlip
                 ? t("twin.runB.cap")
@@ -4163,6 +4180,7 @@ function ChartPane({
   children,
   action,
   itmRate,
+  itmCashOnly,
 }: {
   label: string;
   sublabel?: string | null;
@@ -4171,7 +4189,13 @@ function ChartPane({
   children: React.ReactNode;
   action?: React.ReactNode;
   itmRate?: number;
+  itmCashOnly?: boolean;
 }) {
+  const t = useT();
+  const itmLabel = itmCashOnly ? t("chart.itmBadge.cash") : "ITM";
+  const itmTitle = itmCashOnly
+    ? t("chart.itmBadge.cash.tip")
+    : `In-the-money rate: ${itmRate != null ? (itmRate * 100).toFixed(2) : "—"}%`;
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30 p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -4190,9 +4214,9 @@ function ChartPane({
         {itmRate != null && (
           <span
             className="flex items-center gap-1.5 text-[10px] tabular-nums text-[color:var(--color-fg-dim)]"
-            title={`In-the-money rate: ${(itmRate * 100).toFixed(2)}%`}
+            title={itmTitle}
           >
-            <span>ITM {(itmRate * 100).toFixed(1)}%</span>
+            <span>{itmLabel} {(itmRate * 100).toFixed(1)}%</span>
             <span className="relative inline-block h-1.5 w-14 overflow-hidden rounded bg-[color:var(--color-border)]">
               <span
                 className="absolute inset-y-0 left-0"
@@ -4643,12 +4667,18 @@ function PrimedopeDiff({
   theirsLabel,
   title,
   subtitle,
+  hasBounty,
 }: {
   primary: SimulationResult;
   other: SimulationResult;
   theirsLabel?: string;
   title?: string;
   subtitle?: string;
+  /** When true, the primary schedule has bounty tournaments (PKO / Mystery /
+   * BR). The "Cash-in rate" row gets relabeled to "Cash-ITM (excl. bounties)"
+   * with a footnote — raw ITM comparison against a no-bounty schedule is
+   * apples-to-oranges because bounties are a separate EV channel. */
+  hasBounty?: boolean;
 }) {
   const t = useT();
   const { money } = useMoneyFmt();
@@ -4675,7 +4705,7 @@ function PrimedopeDiff({
       highlight: true,
     },
     {
-      label: t("pd.row.itm"),
+      label: hasBounty ? t("pd.row.itm.cash") : t("pd.row.itm"),
       ours: pct(ours.itmRate),
       theirs: pct(theirs.itmRate),
       delta: pctPp(ours.itmRate, theirs.itmRate),
@@ -4820,6 +4850,11 @@ function PrimedopeDiff({
           </tbody>
         </table>
       </div>
+      {hasBounty && (
+        <div className="mt-3 rounded border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev)]/40 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+          {t("pd.row.itm.cashNote")}
+        </div>
+      )}
     </Card>
   );
 }

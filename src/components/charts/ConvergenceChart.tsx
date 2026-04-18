@@ -93,6 +93,54 @@ type ConvergenceFormat =
   | "mystery-royale"
   | "mix";
 
+type RowFormat = "freeze" | "pko" | "mystery" | "mystery-royale";
+
+function inferRowFormat(row: TournamentRow): RowFormat {
+  const b = row.bountyFraction ?? 0;
+  const m = row.mysteryBountyVariance ?? 0;
+  if (b > 0 && m >= 1.4) return "mystery-royale";
+  if (b > 0 && m > 0) return "mystery";
+  if (b > 0) return "pko";
+  return "freeze";
+}
+
+const SIGMA_COEF_BY_FORMAT: Record<
+  RowFormat,
+  typeof SIGMA_ROI_FREEZE
+> = {
+  freeze: SIGMA_ROI_FREEZE,
+  pko: SIGMA_ROI_PKO,
+  mystery: SIGMA_ROI_MYSTERY,
+  "mystery-royale": SIGMA_ROI_MYSTERY_ROYALE,
+};
+
+const FIT_RAKE_BY_FORMAT: Record<RowFormat, number> = {
+  freeze: 0.10,
+  pko: 0.10,
+  mystery: 0.10,
+  "mystery-royale": 0.08,
+};
+
+function sigmaRoiForRow(
+  row: TournamentRow,
+  rakeScaleOverride?: number,
+): { sigma: number; format: RowFormat } {
+  const fmt = inferRowFormat(row);
+  const coef = SIGMA_COEF_BY_FORMAT[fmt];
+  const afs = Math.max(1, row.players);
+  const roi = row.roi;
+  // Per-row rake rescale: row's own rake vs the fit baseline for its format.
+  // Callers can override (e.g. UI rake slider takes over the per-row rake).
+  const rakeScale =
+    rakeScaleOverride ??
+    (1 + FIT_RAKE_BY_FORMAT[fmt]) / (1 + (row.rake ?? 0));
+  const sigma =
+    Math.max(0, coef.C0 + coef.C1 * roi) *
+    Math.pow(afs, coef.beta) *
+    rakeScale;
+  return { sigma, format: fmt };
+}
+
 function posToAfs(pos: number): number {
   return Math.exp(AFS_LOG_MIN + (AFS_LOG_MAX - AFS_LOG_MIN) * pos);
 }
@@ -202,6 +250,15 @@ export function ConvergenceChart({ schedule }: Props) {
   // ROI override — decimal fraction. null means "use baseline roi".
   const [roiOverride, setRoiOverride] = useState<number | null>(null);
   const baselineRoi = baseline.roi;
+
+  // Mode: "avg" (original behaviour — one σ at weighted mean AFS/ROI) vs
+  // "exact" (per-row σ, combined as Σ w_r·σ²_r over the exact schedule).
+  // Exact mode is only meaningful when a schedule is loaded; falls back to
+  // "avg" otherwise.
+  const hasSchedule = !!schedule && schedule.length > 0;
+  const [mode, setMode] = useState<"avg" | "exact">("avg");
+  const effectiveMode: "avg" | "exact" =
+    mode === "exact" && hasSchedule ? "exact" : "avg";
 
   // Format override. null → auto-pick from schedule composition.
   const [formatOverride, setFormatOverride] =
@@ -343,6 +400,48 @@ export function ConvergenceChart({ schedule }: Props) {
 
   const gameRoi = effectiveRoi;
 
+  // Per-row σ breakdown — only populated in "exact" mode. Each entry is
+  // {row index, AFS, ROI, format, count share, σ² share}.
+  const exactBreakdown = useMemo(() => {
+    if (effectiveMode !== "exact" || !schedule) return null;
+    // Per-row rake scale uses the widget's rake slider uniformly — the user
+    // typically sets one rake and compares formats, and per-row rake slider
+    // would muddle the averaged/exact comparison. Fit-baseline rake still
+    // differs by format (Mystery Royale = 8 % vs 10 % for others).
+    const totalCount = schedule.reduce(
+      (acc, r) => acc + Math.max(0, r.count),
+      0,
+    );
+    if (totalCount <= 0) return null;
+    const rakeFrac = rakePct / 100;
+    const perRow = schedule.map((row, i) => {
+      const fmt = inferRowFormat(row);
+      const rakeScale = (1 + FIT_RAKE_BY_FORMAT[fmt]) / (1 + rakeFrac);
+      const { sigma } = sigmaRoiForRow(row, rakeScale);
+      const w = Math.max(0, row.count) / totalCount;
+      return {
+        index: i,
+        label: row.label || `#${i + 1}`,
+        afs: row.players,
+        roi: row.roi,
+        format: fmt,
+        weight: w,
+        sigma,
+        variance: sigma * sigma,
+        varContribution: w * sigma * sigma,
+      };
+    });
+    const totalVar = perRow.reduce((a, r) => a + r.varContribution, 0);
+    const sigmaEff = Math.sqrt(Math.max(0, totalVar));
+    return {
+      perRow: perRow.map((r) => ({
+        ...r,
+        varShare: totalVar > 0 ? r.varContribution / totalVar : 0,
+      })),
+      sigmaEff,
+    };
+  }, [effectiveMode, schedule, rakePct]);
+
   const rows = useMemo<Row[]>(() => {
     const afs = effectiveAfs;
     // Closed-form σ_ROI from the 18-field × 7-ROI fits (freeze: fit_beta.ts,
@@ -370,7 +469,7 @@ export function ConvergenceChart({ schedule }: Props) {
     // Exact identity when each tournament is drawn independently from the pool
     // and all types share the same gameRoi (ROI is a single widget slider).
     const [fFreeze, fPko, fMystery] = mix;
-    const sigmaRoi =
+    const sigmaRoiAvg =
       format === "mystery-royale"
         ? sigmaMysteryRoyale
         : format === "mystery"
@@ -384,6 +483,10 @@ export function ConvergenceChart({ schedule }: Props) {
                     fPko * sigmaPko * sigmaPko +
                     fMystery * sigmaMystery * sigmaMystery,
                 );
+    const sigmaRoi =
+      effectiveMode === "exact" && exactBreakdown
+        ? exactBreakdown.sigmaEff
+        : sigmaRoiAvg;
     return TARGETS.map((target) => {
       const k = Math.ceil(Math.pow((z * sigmaRoi) / target, 2));
       return {
@@ -392,7 +495,17 @@ export function ConvergenceChart({ schedule }: Props) {
         fields: k / Math.max(1, afs),
       };
     });
-  }, [effectiveAfs, z, gameRoi, mix, format, rakePct]);
+  }, [
+    effectiveAfs,
+    z,
+    gameRoi,
+    mix,
+    format,
+    rakePct,
+    effectiveMode,
+    exactBreakdown,
+    FIT_RAKE,
+  ]);
 
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
@@ -422,7 +535,46 @@ export function ConvergenceChart({ schedule }: Props) {
 
   return (
     <div className="overflow-x-auto">
-      <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
+      <div
+        className="mb-3 flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]"
+        title={t("chart.convergence.mode.hint")}
+      >
+        <div className="flex flex-1 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-0.5">
+          {(["avg", "exact"] as const).map((m) => {
+            const active = effectiveMode === m;
+            const disabled = m === "exact" && !hasSchedule;
+            return (
+              <button
+                key={m}
+                type="button"
+                disabled={disabled}
+                onClick={() => setMode(m)}
+                className={`flex-1 rounded px-2 py-1 text-[11px] uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  active
+                    ? "bg-emerald-500/20 text-emerald-200"
+                    : "text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+                }`}
+              >
+                {t(
+                  m === "avg"
+                    ? "chart.convergence.mode.averaged"
+                    : "chart.convergence.mode.exact",
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div
+        className={`mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)] ${
+          effectiveMode === "exact" ? "opacity-50" : ""
+        }`}
+        title={
+          effectiveMode === "exact"
+            ? t("chart.convergence.mode.hint")
+            : undefined
+        }
+      >
         <div className="flex flex-1 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-0.5">
           {FORMATS.map((f) => {
             const active = format === f.id;
@@ -695,6 +847,60 @@ export function ConvergenceChart({ schedule }: Props) {
           ))}
         </tbody>
       </table>
+      {effectiveMode === "exact" && exactBreakdown && (
+        <div className="mt-3 overflow-x-auto">
+          <div className="mb-1 text-[11px] uppercase tracking-wider text-emerald-400/80">
+            {t("chart.convergence.exact.breakdown")}
+          </div>
+          <table className="w-full border-collapse text-[11px] tabular-nums">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                <th className="py-1 pr-2 font-semibold">
+                  {t("chart.convergence.exact.rowCol.row")}
+                </th>
+                <th className="py-1 px-2 text-right font-semibold">
+                  {t("chart.convergence.exact.rowCol.afs")}
+                </th>
+                <th className="py-1 px-2 text-right font-semibold">
+                  {t("chart.convergence.exact.rowCol.roi")}
+                </th>
+                <th className="py-1 px-2 text-right font-semibold">
+                  {t("chart.convergence.exact.rowCol.fmt")}
+                </th>
+                <th className="py-1 px-2 text-right font-semibold">
+                  {t("chart.convergence.exact.rowCol.share")}
+                </th>
+                <th className="py-1 pl-2 text-right font-semibold">
+                  {t("chart.convergence.exact.rowCol.varShare")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {exactBreakdown.perRow.map((r) => (
+                <tr
+                  key={r.index}
+                  className="border-t border-[color:var(--color-border)]/50 text-[color:var(--color-fg-muted)]"
+                >
+                  <td className="py-1 pr-2 truncate max-w-[160px]">{r.label}</td>
+                  <td className="py-1 px-2 text-right">{fmtAfs(r.afs)}</td>
+                  <td className="py-1 px-2 text-right">
+                    {(r.roi * 100).toFixed(1)}%
+                  </td>
+                  <td className="py-1 px-2 text-right">
+                    {t(`chart.convergence.format.${r.format}` as DictKey)}
+                  </td>
+                  <td className="py-1 px-2 text-right">
+                    {(r.weight * 100).toFixed(1)}%
+                  </td>
+                  <td className="py-1 pl-2 text-right text-emerald-300">
+                    {(r.varShare * 100).toFixed(1)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="mt-2 text-[10px] text-[color:var(--color-fg-dim)]">
         {t("chart.convergence.assumptions")}
       </div>

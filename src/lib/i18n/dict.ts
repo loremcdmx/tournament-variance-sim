@@ -1034,6 +1034,26 @@ export const DICT = {
     ru: "Батл Рояль",
   },
   "chart.convergence.format.mix": { en: "Mix", ru: "Микс" },
+  "chart.convergence.mode.averaged": { en: "Averaged", ru: "Усреднённо" },
+  "chart.convergence.mode.exact": { en: "Exact schedule", ru: "Точное расписание" },
+  "chart.convergence.mode.hint": {
+    en: "Averaged: combines rows into one weighted σ_ROI at the mean AFS/ROI. Exact: computes σ per row at its own AFS/ROI/format and combines via σ²_eff = Σ w_r·σ²_r (w_r = row count share). Exact is honest for heterogeneous schedules; averaged smooths tail rows into the mean.",
+    ru: "Усреднённо: сводит ряды в одну σ_ROI на среднем AFS/ROI. Точно: считает σ per-ряд на собственных AFS/ROI/формате и комбинирует σ²_эфф = Σ w_r·σ²_r (w_r = доля по числу турниров). Точный режим честнее для гетерогенных расписаний; averaged размазывает хвостовые ряды в средние.",
+  },
+  "chart.convergence.exact.breakdown": {
+    en: "Variance contribution per row",
+    ru: "Вклад рядов в дисперсию",
+  },
+  "chart.convergence.exact.rowCol.row": { en: "Row", ru: "Ряд" },
+  "chart.convergence.exact.rowCol.afs": { en: "AFS", ru: "AFS" },
+  "chart.convergence.exact.rowCol.roi": { en: "ROI", ru: "ROI" },
+  "chart.convergence.exact.rowCol.fmt": { en: "Fmt", ru: "Фмт" },
+  "chart.convergence.exact.rowCol.share": { en: "Count %", ru: "Доля шт." },
+  "chart.convergence.exact.rowCol.varShare": { en: "σ² share", ru: "Доля σ²" },
+  "chart.convergence.exact.empty": {
+    en: "Load a schedule to see per-row σ breakdown.",
+    ru: "Загрузите расписание, чтобы увидеть разбивку σ по рядам.",
+  },
   "chart.convergence.rbHint": {
     en: "RB shifts total ROI upward but doesn't add variance — the k / fields above are driven by game σ only, independent of RB%.",
     ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",
@@ -1269,6 +1289,19 @@ export const DICT = {
   "pd.metric": { en: "Metric", ru: "Метрика" },
   "pd.delta": { en: "Δ", ru: "Δ" },
   "pd.row.itm": { en: "Cash-in rate", ru: "Частота призовых" },
+  "pd.row.itm.cash": {
+    en: "Cash-in rate (excl. bounties)",
+    ru: "Частота кэш-призовых (без баунти)",
+  },
+  "pd.row.itm.cashNote": {
+    en: "Bounty formats: only cash-payout finishes count as ITM here. Bounties are paid separately on every knockout and don't move this number, so comparing against a no-bounty run understates how often you actually get paid.",
+    ru: "Для баунти-форматов ITM считает только попадания в кэш-призовые; головы платятся отдельно за каждый нокаут и в эту цифру не входят — поэтому сравнение с фризом занижает реальную частоту выплат.",
+  },
+  "chart.itmBadge.cash": { en: "Cash-ITM", ru: "Кэш-ITM" },
+  "chart.itmBadge.cash.tip": {
+    en: "Cash-ITM rate: share of tournaments where you hit a cash payout. Bounty winnings (knockouts) are earned on a separate EV channel and aren't counted here.",
+    ru: "Доля турниров, где вы попали в кэш-призовые. Заработок с голов — отдельный EV-канал и в эту цифру не входит.",
+  },
   "pd.row.stdDev": { en: "Profit swing", ru: "Разброс профита" },
   "pd.row.dd": { en: "Average streak", ru: "Средний стрик" },
   "pd.row.cvar": { en: "Average loss in worst 5%", ru: "Средний убыток в худших 5%" },

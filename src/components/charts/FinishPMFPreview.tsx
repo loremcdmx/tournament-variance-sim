@@ -454,10 +454,20 @@ function TierHoverPopup({
           Math.round(1 / tier.field),
         )}`
       : "—";
+  const [side, setSide] = useState<"right" | "left">("right");
+  const measureRef = (el: HTMLDivElement | null) => {
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 8) setSide("left");
+    else if (rect.left < 8) setSide("right");
+  };
   return (
     <div
+      ref={measureRef}
       role="tooltip"
-      className="pointer-events-none absolute left-full top-0 z-50 ml-2 w-72 max-w-[85vw] rounded-md border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3 py-2.5 text-left text-[11px] leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)]"
+      className={`pointer-events-none absolute top-0 z-50 w-72 max-w-[85vw] rounded-md border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3 py-2.5 text-left text-[11px] leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] ${
+        side === "right" ? "left-full ml-2" : "right-full mr-2"
+      }`}
     >
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <div className="flex items-baseline gap-1.5">
