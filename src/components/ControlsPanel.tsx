@@ -606,56 +606,37 @@ function useRemainingMs(opts: {
   const [smoothed, setSmoothed] = useState<number | null>(null);
   const smoothedRef = useRef<number | null>(null);
   const lastSmoothAt = useRef<number | null>(null);
-  const buildEnteredAt = useRef<number | null>(null);
 
   useEffect(() => {
     if (running) return;
     smoothedRef.current = null;
     lastSmoothAt.current = null;
-    buildEnteredAt.current = null;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets ETA display when run ends; sync with external run lifecycle.
     setSmoothed(null);
   }, [running]);
 
-  // Phase-aware countdown. The bar has two phases with different work
-  // rates: shards fill [0, SHARD_FRACTION] ≈ linearly, then build fills
-  // [SHARD_FRACTION, 1] at a much slower rate (envelope sorts dominate).
-  // A single elapsed/progress formula applied across the transition
-  // under-reports remaining time once build begins, which is why the
-  // countdown used to pin at tiny values while the tail ran for
-  // seconds. Project each phase with its own rate and sum for T_est.
   useEffect(() => {
     if (!running || runElapsedMs == null) return;
     const elapsed = runElapsedMs;
 
-    if (buildEnteredAt.current == null && progress >= SHARD_FRACTION) {
-      buildEnteredAt.current = elapsed;
-    }
-
+    // Progress is non-uniform in time: shards fill [0, SHARD_FRACTION]
+    // but only consume (1 - BUILD_TIME_FRAC) of wall-clock; build fills
+    // the remainder on the slower end. Map progress → expected wall-
+    // clock work-share so `elapsed / share` is smooth across the seam.
     let tProjection: number | null = null;
-    if (progress < SHARD_FRACTION) {
-      if (progress > 0.03) {
-        const tShard = (elapsed / progress) * SHARD_FRACTION;
-        tProjection = tShard / (1 - BUILD_TIME_FRAC);
-      }
-    } else {
-      const buildStart = buildEnteredAt.current ?? elapsed;
-      const buildElapsed = elapsed - buildStart;
-      const buildProgress =
-        (progress - SHARD_FRACTION) / (1 - SHARD_FRACTION);
-      if (buildProgress > 0.05) {
-        tProjection = buildStart + buildElapsed / buildProgress;
-      }
+    if (progress > 0.03) {
+      const share =
+        progress < SHARD_FRACTION
+          ? (progress / SHARD_FRACTION) * (1 - BUILD_TIME_FRAC)
+          : 1 - BUILD_TIME_FRAC +
+            ((progress - SHARD_FRACTION) / (1 - SHARD_FRACTION)) *
+              BUILD_TIME_FRAC;
+      tProjection = elapsed / share;
     }
 
     const tBootstrap =
       estimatedMs != null && estimatedMs > 0 ? estimatedMs : null;
 
-    // Cross-fade bootstrap ↔ projection by progress. Projection is noisy
-    // early and credible late; bootstrap is the reverse. Weight by
-    // progress/0.50 so bootstrap stays ≥ 50 % up to the halfway point —
-    // prevents the "18 s bootstrap crashes to 2 s" cliff when the saved
-    // estimate is stale.
     let tEst: number | null;
     if (tProjection != null && tBootstrap != null) {
       const w = Math.min(1, Math.max(0, progress / 0.5));
@@ -671,15 +652,15 @@ function useRemainingMs(opts: {
     const dt = lastSmoothAt.current == null ? 0 : now - lastSmoothAt.current;
     lastSmoothAt.current = now;
 
-    // Monotonic countdown: the displayed value never rises. On a
-    // downward target, ease toward it; on an upward target, tick at
-    // wall-clock rate. A countdown that briefly pins at 0 is less
-    // jarring than one that climbs mid-run.
+    // Monotonic countdown with phase-adaptive smoothing: τ=400 mid-run
+    // absorbs projection jitter, τ=150 near the tail lets the display
+    // track raw closely so it doesn't pin ~1 s while work wraps up.
     let next: number;
     if (smoothedRef.current == null) {
       next = raw;
     } else if (raw < smoothedRef.current) {
-      const alpha = 1 - Math.exp(-dt / 400);
+      const tau = smoothedRef.current < 1500 ? 150 : 400;
+      const alpha = 1 - Math.exp(-dt / tau);
       next = alpha * raw + (1 - alpha) * smoothedRef.current;
     } else {
       next = Math.max(0, smoothedRef.current - dt);
