@@ -449,9 +449,11 @@ function compileSingleEntry(
   let bountyMean = 0;
   if (bountyFraction > 0) {
     const bountyPerSeat = row.buyIn * bountyFraction;
-    // Skill lift on bounty collection — proportional to row.roi. A +20 %
-    // ROI player grabs +20 % bounties too. Capped at 3× for sanity.
-    const bountyLift = Math.max(0.1, Math.min(3, 1 + row.roi));
+    // Skill lift on bounty collection — equilibrium haul is bountyPerSeat
+    // (no rake on bounty pool). Total edge = entryCost · roi distributes
+    // proportionally over cash + bounty, so lift = (1+rake)(1+roi). Capped
+    // at 3× for sanity.
+    const bountyLift = Math.max(0.1, Math.min(3, (1 + row.rake) * (1 + row.roi)));
     bountyMean = bountyPerSeat * bountyLift;
     // Shrink the regular pool by the bounty share.
     prizePool = prizePool * (1 - bountyFraction);

@@ -991,7 +991,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
 
   const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
   const bountyPerSeat = row.buyIn * bountyFraction;
-  const bountyLift = Math.max(0.1, Math.min(3, 1 + row.roi));
+  const bountyLift = Math.max(0.1, Math.min(3, (1 + row.rake) * (1 + row.roi)));
   const bountyMean = bountyPerSeat * bountyLift;
   const prizePool = basePool * (1 - bountyFraction);
 
