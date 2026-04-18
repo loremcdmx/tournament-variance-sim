@@ -132,6 +132,7 @@ function collectShardTransfers(shard: RawShard): Transferable[] {
     shard.maxRunUps.buffer,
     shard.runningMins.buffer,
     shard.longestBreakevens.buffer,
+    shard.breakevenStreakAvgs.buffer,
     shard.longestCashless.buffer,
     shard.recoveryLengths.buffer,
     shard.breakevenStreakCounts.buffer,

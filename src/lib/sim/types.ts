@@ -610,6 +610,15 @@ export interface SimulationResult {
     longestCashlessMean: number;
     longestCashlessWorst: number;
     longestBreakevenMean: number;
+    /**
+     * Mean "any streak" length: average of per-sample means of
+     * first-forward-return chord lengths. For each checkpoint, the distance
+     * to the first later point where the path revisits the same Y level;
+     * averaged across all such starting points, then across samples.
+     * Shorter and more stable than longestBreakevenMean (which is the mean
+     * of per-sample MAX chords).
+     */
+    breakevenStreakMean: number;
 
     /** Value at Risk (loss) at 95 % and 99 % — positive numbers */
     var95: number;

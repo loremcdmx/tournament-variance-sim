@@ -1115,6 +1115,7 @@ function shiftResultByRakeback(
       maxDrawdownP99: streakAgg.stats.maxDrawdownP99,
       maxDrawdownWorst: streakAgg.stats.maxDrawdownWorst,
       longestBreakevenMean: streakAgg.stats.longestBreakevenMean,
+      breakevenStreakMean: streakAgg.stats.breakevenStreakMean,
       // longestCashless* — engine defines this as "tournaments since last
       // ITM cash", which is independent of rakeback (a game-event metric,
       // not a profit-curve metric). Preserve engine output instead of
@@ -2484,6 +2485,12 @@ export function ResultsView({
               : null
           }
           pdLabel={pdBadgeLabel}
+        />
+        <MiniStat
+          suit="diamond"
+          label={t("stat.avgBEStreak")}
+          value={`${Math.round(s.breakevenStreakMean)} ${tourneysWord}`}
+          tip={t("stat.avgBEStreak.tip")}
         />
         <MiniStat
           suit="heart"

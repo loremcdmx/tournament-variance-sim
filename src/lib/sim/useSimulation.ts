@@ -361,6 +361,7 @@ export function useSimulation() {
             out.push(sh.maxRunUps.buffer);
             out.push(sh.runningMins.buffer);
             out.push(sh.longestBreakevens.buffer);
+            out.push(sh.breakevenStreakAvgs.buffer);
             out.push(sh.longestCashless.buffer);
             out.push(sh.recoveryLengths.buffer);
             out.push(sh.breakevenStreakCounts.buffer);

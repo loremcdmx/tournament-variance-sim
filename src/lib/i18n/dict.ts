@@ -667,10 +667,15 @@ export const DICT = {
     en: "95th and 99th percentiles of final profit: top 1 in 20 / 1 in 100 runs end at least this well.",
     ru: "95-й и 99-й перцентили итога: топ 1 из 20 / 1 из 100 ранов заканчивается минимум настолько хорошо.",
   },
-  "stat.longestBE": { en: "Avg break-even streak", ru: "Средний стрик в ноль" },
+  "stat.longestBE": { en: "Avg worst streak", ru: "Средний худший стрик" },
   "stat.longestBE.tip": {
-    en: "Avg length of the longest horizontal chord on the profit curve — how long the typical run bounced without net progress.",
-    ru: "Средняя длина самого длинного горизонтального отрезка профита — сколько типичный ран провёл без чистого прогресса.",
+    en: "Average across runs of the worst break-even streak in each run — the single longest horizontal chord on the profit curve where the path left a level and later returned.",
+    ru: "Среднее по ранам от самого длинного стрика в ноль внутри каждого рана — то есть от максимального горизонтального отрезка, где кривая ушла с уровня и потом на него вернулась.",
+  },
+  "stat.avgBEStreak": { en: "Avg streak", ru: "Средний стрик" },
+  "stat.avgBEStreak.tip": {
+    en: "Average break-even streak length across every point on the profit curve: from each point, how far ahead does the path first return to the same Y? Averaged across all starting points and runs.",
+    ru: "Средняя длина стрика в ноль по всем точкам кривой профита: от каждой точки — через сколько турниров кривая впервые вернётся на тот же уровень по Y? Среднее по всем стартовым точкам и ранам.",
   },
   "stat.minBR5": { en: "BR with 95% survival", ru: "БР с шансом не закататься 95%" },
   "stat.minBR5.tip": {
@@ -1357,7 +1362,7 @@ export const DICT = {
   "pd.row.cvar99": { en: "Average loss in worst 1%", ru: "Средний убыток в худших 1%" },
   "pd.row.worstRun": { en: "Worst run", ru: "Худший ран" },
   "pd.row.bestRun": { en: "Best run", ru: "Лучший ран" },
-  "pd.row.longestBE": { en: "Avg break-even streak", ru: "Средний стрик в ноль" },
+  "pd.row.longestBE": { en: "Avg worst streak", ru: "Средний худший стрик" },
   "pd.row.sharpe": { en: "Profit / swing", ru: "Профит к разбросу" },
   "pd.row.ddWorst": { en: "Worst streak ever seen", ru: "Худший стрик за ран" },
   "pd.row.ev": { en: "Expected profit (EV)", ru: "Ожидаемый профит (EV)" },

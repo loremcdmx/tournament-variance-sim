@@ -635,3 +635,21 @@ describe("jackpotMask", () => {
     expect(hits).toBe(0);
   });
 });
+
+describe("breakevenStreakMean", () => {
+  it("is deterministic for the same seed", () => {
+    const a = runSimulation(baseInput());
+    const b = runSimulation(baseInput());
+    expect(a.stats.breakevenStreakMean).toBe(b.stats.breakevenStreakMean);
+  });
+
+  it("is positive and <= longestBreakevenMean for a non-trivial schedule", () => {
+    const r = runSimulation(baseInput());
+    expect(r.stats.breakevenStreakMean).toBeGreaterThan(0);
+    // Mean of first-returns per point cannot exceed the mean of per-sample
+    // MAX chords — every first-return length is <= its sample's max chord.
+    expect(r.stats.breakevenStreakMean).toBeLessThanOrEqual(
+      r.stats.longestBreakevenMean + 1e-9,
+    );
+  });
+});

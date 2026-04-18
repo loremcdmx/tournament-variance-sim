@@ -12,6 +12,10 @@ export interface PathStreakStats {
   maxDrawdown: number;
   maxRunUp: number;
   longestBreakeven: number;
+  /** Mean first-forward-return chord length for this sample, in tournament
+   *  units. Sister metric to longestBreakeven: longest is the max chord
+   *  per sample, this is the mean over all starting points. */
+  breakevenStreak: number;
   longestCashless: number;
   recovery: number;
   recovered: boolean;
@@ -31,6 +35,7 @@ export interface StreakAggregate {
     maxDrawdownWorst: number;
     longestBreakevenMean: number;
     longestBreakevenWorst: number;
+    breakevenStreakMean: number;
     longestCashlessMean: number;
     longestCashlessWorst: number;
     recoveryMedian: number;
@@ -53,6 +58,7 @@ export function computePathStreakStats(
       maxDrawdown: 0,
       maxRunUp: 0,
       longestBreakeven: 0,
+      breakevenStreak: 0,
       longestCashless: 0,
       recovery: 0,
       recovered: true,
@@ -109,6 +115,8 @@ export function computePathStreakStats(
   // track the per-sample max for ranking. STRIDE downsamples both loops
   // to keep the n² scan manageable on the hi-res grid.
   let longestChordGrid = 0;
+  let firstReturnSum = 0;
+  let firstReturnCount = 0;
   for (let ii = 0; ii < n - 1; ii += stride) {
     const Pi = get(ii);
     let chordLen = 0;
@@ -127,9 +135,34 @@ export function computePathStreakStats(
       chordCountsAccum[chordLen]++;
     }
     if (chordLen > longestChordGrid) longestChordGrid = chordLen;
+
+    // Forward scan: first jj > ii where the stride-segment crosses Pi.
+    // Mirrors engine.ts so the RB-toggle view renders a coherent "any
+    // streak" average. Both loops share the same stride so the resolution
+    // matches the chord-count histogram's granularity.
+    let firstLen = 0;
+    for (let jj = ii + stride; jj < n; jj += stride) {
+      const a = get(Math.max(0, jj - stride));
+      const b = get(jj);
+      const lo = a < b ? a : b;
+      const hi = a < b ? b : a;
+      if (lo <= Pi && Pi <= hi) {
+        if (jj === ii + stride && a === Pi && b !== Pi) continue;
+        firstLen = jj - ii;
+        break;
+      }
+    }
+    if (firstLen > 0) {
+      firstReturnSum += firstLen;
+      firstReturnCount++;
+    }
   }
   const span = n > 1 ? xHi[n - 1] - xHi[0] : 0;
   const longestBreakeven = n > 1 ? (longestChordGrid / (n - 1)) * span : 0;
+  const breakevenStreak =
+    firstReturnCount > 0 && n > 1
+      ? (firstReturnSum / firstReturnCount / (n - 1)) * span
+      : 0;
 
   let recovery = 0;
   let recovered = true;
@@ -155,6 +188,7 @@ export function computePathStreakStats(
     maxDrawdown,
     maxRunUp,
     longestBreakeven,
+    breakevenStreak,
     longestCashless,
     recovery,
     recovered,
@@ -267,6 +301,7 @@ export function aggregateStreaks(
 
   const maxDDs: number[] = perSample.map((s) => s.maxDrawdown);
   const longestBEs: number[] = perSample.map((s) => s.longestBreakeven);
+  const beStreaks: number[] = perSample.map((s) => s.breakevenStreak);
   const longestCashlesses: number[] = perSample.map((s) => s.longestCashless);
   const recoveriesRecovered: number[] = perSample
     .filter((s) => s.recovered && s.maxDrawdown > 0)
@@ -302,6 +337,7 @@ export function aggregateStreaks(
       maxDrawdownWorst: worst(maxDDs),
       longestBreakevenMean: mean(longestBEs),
       longestBreakevenWorst: worst(longestBEs),
+      breakevenStreakMean: mean(beStreaks),
       longestCashlessMean: mean(longestCashlesses),
       longestCashlessWorst: worst(longestCashlesses),
       recoveryMedian: percentile(recSorted, 0.5),

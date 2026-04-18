@@ -1062,6 +1062,7 @@ export function buildResult(
     maxDrawdowns,
     runningMins,
     longestBreakevens,
+    breakevenStreakAvgs,
     longestCashless,
     recoveryLengths,
     rowProfits,
@@ -1399,6 +1400,14 @@ export function buildResult(
   for (let s = 0; s < S; s++) beMean += longestBreakevens[s];
   beMean /= S;
 
+  // Mean "any streak" length per sample: average of breakevenStreakAvgs
+  // over samples that had at least one forward return. Samples with no
+  // returns (monotone paths) contribute 0; we still divide by S so the
+  // aggregate has the same semantics as beMean.
+  let beStreakMean = 0;
+  for (let s = 0; s < S; s++) beStreakMean += breakevenStreakAvgs[s];
+  beStreakMean /= S;
+
   // Cashless streak stats
   let cashlessAcc = 0;
   let cashlessWorst = 0;
@@ -1629,6 +1638,7 @@ export function buildResult(
       longestCashlessMean,
       longestCashlessWorst: cashlessWorst,
       longestBreakevenMean: beMean,
+      breakevenStreakMean: beStreakMean,
       var95,
       var99,
       cvar95,
@@ -1842,6 +1852,13 @@ export interface RawShard {
   maxRunUps: Float64Array;
   runningMins: Float64Array;
   longestBreakevens: Float64Array;
+  /** Per-sample mean first-forward-return chord length, in tournament units.
+   *  For each checkpoint ii, scan forward for the first jj>ii where the
+   *  segment [jj-1, jj] crosses Y[ii]; record (jj-ii); average across all
+   *  starting points that had a return. Zero for samples with no returns
+   *  (monotone paths). This is the "any streak between two equal-Y points"
+   *  metric — the dual of longestBreakevens (max chord per sample). */
+  breakevenStreakAvgs: Float64Array;
   longestCashless: Int32Array;
   recoveryLengths: Int32Array;
   /** Per-length histograms. `breakevenStreakCounts` counts one entry
@@ -1961,6 +1978,7 @@ export function simulateShard(
   const maxRunUps = new Float64Array(shardSize);
   const runningMins = new Float64Array(shardSize);
   const longestBreakevens = new Float64Array(shardSize);
+  const breakevenStreakAvgs = new Float64Array(shardSize);
   const longestCashless = new Int32Array(shardSize);
   const recoveryLengths = new Int32Array(shardSize);
   const rowProfits = new Float64Array(shardSize * numRows);
@@ -2393,6 +2411,14 @@ export function simulateShard(
     // length across all time points in all runs") instead of the
     // extreme-value distribution of per-sample max chords.
     let longestChordGrid = 0;
+    // Parallel forward-scan for the "any streak" metric: for each starting
+    // point ii, find the FIRST jj>ii where the path returns to Y[ii]. That
+    // first-return distance is the streak length the user would perceive
+    // when they say "I went up to X, dropped, climbed back to X — that
+    // span counts." Sum them per sample; divide by count to get the
+    // per-sample mean first-return chord.
+    let firstReturnSum = 0;
+    let firstReturnCount = 0;
     for (let ii = 0; ii < K1 - 1; ii++) {
       const Pi = pathMatrix[pathBase + ii];
       let chordLen = 0;
@@ -2414,14 +2440,36 @@ export function simulateShard(
         breakevenStreakCounts[chordLen]++;
       }
       if (chordLen > longestChordGrid) longestChordGrid = chordLen;
+
+      let firstLen = 0;
+      for (let jj = ii + 1; jj < K1; jj++) {
+        const a = pathMatrix[pathBase + jj - 1];
+        const b = pathMatrix[pathBase + jj];
+        const lo = a < b ? a : b;
+        const hi = a < b ? b : a;
+        if (lo <= Pi && Pi <= hi) {
+          if (jj === ii + 1 && a === Pi && b !== Pi) continue;
+          firstLen = jj - ii;
+          break;
+        }
+      }
+      if (firstLen > 0) {
+        firstReturnSum += firstLen;
+        firstReturnCount++;
+      }
     }
     const longestBreakeven = K > 0 ? (longestChordGrid / K) * N : 0;
+    const breakevenStreakAvg =
+      firstReturnCount > 0 && K > 0
+        ? (firstReturnSum / firstReturnCount / K) * N
+        : 0;
 
     finalProfits[localS] = profit;
     maxDrawdowns[localS] = maxDD;
     maxRunUps[localS] = maxUp;
     runningMins[localS] = runningMin;
     longestBreakevens[localS] = longestBreakeven;
+    breakevenStreakAvgs[localS] = breakevenStreakAvg;
     longestCashless[localS] = longestCashlessRun;
     recoveryLengths[localS] = sampleRecoveryLen;
     if (ruined) ruinedCount++;
@@ -2442,6 +2490,7 @@ export function simulateShard(
     maxRunUps,
     runningMins,
     longestBreakevens,
+    breakevenStreakAvgs,
     longestCashless,
     recoveryLengths,
     breakevenStreakCounts,
@@ -2486,6 +2535,7 @@ export function mergeShards(
   const maxRunUps = new Float64Array(S);
   const runningMins = new Float64Array(S);
   const longestBreakevens = new Float64Array(S);
+  const breakevenStreakAvgs = new Float64Array(S);
   const longestCashless = new Int32Array(S);
   const recoveryLengths = new Int32Array(S);
   const rowProfits = new Float64Array(S * numRows);
@@ -2502,6 +2552,7 @@ export function mergeShards(
     maxRunUps.set(sh.maxRunUps, sh.sStart);
     runningMins.set(sh.runningMins, sh.sStart);
     longestBreakevens.set(sh.longestBreakevens, sh.sStart);
+    breakevenStreakAvgs.set(sh.breakevenStreakAvgs, sh.sStart);
     longestCashless.set(sh.longestCashless, sh.sStart);
     recoveryLengths.set(sh.recoveryLengths, sh.sStart);
     pathMatrix.set(sh.pathMatrix, sh.sStart * K1);
@@ -2553,6 +2604,7 @@ export function mergeShards(
     maxRunUps,
     runningMins,
     longestBreakevens,
+    breakevenStreakAvgs,
     longestCashless,
     recoveryLengths,
     breakevenStreakCounts,
