@@ -353,26 +353,45 @@ function TrajectoryPlot({
     const showBands = visibleRuns > 0;
     const loQ = trimBotPct / 100;
     const hiQ = 1 - trimTopPct / 100;
+    // Percentile gates mirror `computeYRange` — when trim cuts a band
+    // out of the Y-range, hide the series too. Otherwise the line keeps
+    // drawing past the axis frame and looks like a clipped smear.
+    const includeP9985 = trimTopPct < 0.15;
+    const includeP975 = trimTopPct < 2.5;
+    const includeP85 = trimTopPct < 15;
+    const includeP0015 = trimBotPct < 0.15;
+    const includeP025 = trimBotPct < 2.5;
+    const includeP15 = trimBotPct < 15;
+    const includeBest = showBands && trimTopPct <= 0;
+    const includeWorst = showBands && trimBotPct <= 0;
+    const bandIncluded = (pct: number): boolean => {
+      if (pct >= 0.99) return includeP9985;
+      if (pct >= 0.9) return includeP975;
+      if (pct >= 0.5) return includeP85;
+      if (pct <= 0.01) return includeP0015;
+      if (pct <= 0.1) return includeP025;
+      return includeP15;
+    };
     plot.batch(() => {
       for (let r = 0; r < vis.pathSeriesIdx.length; r++) {
         const q = vis.pathProfitQuantile[r] ?? 0;
         const withinTrim = q >= loQ && q <= hiQ;
         plot.setSeries(vis.pathSeriesIdx[r], { show: r < visibleRuns && withinTrim }, false);
       }
-      for (const sIdx of vis.bandSeriesIdx) {
-        plot.setSeries(sIdx, { show: showBands }, false);
+      for (const { idx, percentile } of vis.bands) {
+        plot.setSeries(idx, { show: showBands && bandIncluded(percentile) }, false);
       }
       for (const sIdx of vis.bestSeriesIdxs) {
-        plot.setSeries(sIdx, { show: showBands }, false);
+        plot.setSeries(sIdx, { show: includeBest }, false);
       }
       for (const sIdx of vis.worstSeriesIdxs) {
-        plot.setSeries(sIdx, { show: showBands }, false);
+        plot.setSeries(sIdx, { show: includeWorst }, false);
       }
       for (const sIdx of vis.overlayBestSeriesIdxs) {
-        plot.setSeries(sIdx, { show: showBands }, false);
+        plot.setSeries(sIdx, { show: includeBest }, false);
       }
       for (const sIdx of vis.overlayWorstSeriesIdxs) {
-        plot.setSeries(sIdx, { show: showBands }, false);
+        plot.setSeries(sIdx, { show: includeWorst }, false);
       }
     });
   }, [assets, visibleRuns, trimTopPct, trimBotPct]);
@@ -388,11 +407,45 @@ function TrajectoryPlot({
   if (cursor && idx != null) {
     let bestDist = Infinity;
     let bestPathDist = Infinity;
+    // Mirror the exact gates the visibility effect applies so the hover
+    // loop never lights up a line that's currently hidden — this used to
+    // read plotRef.current.series[i].show, but that trips the
+    // react-hooks/refs rule since we're in render. The upside of mirroring
+    // is that the logic is self-contained and obvious; the downside is
+    // that this duplicates the effect — keep the two blocks in sync.
+    const loQ = trimBotPct / 100;
+    const hiQ = 1 - trimTopPct / 100;
+    const includeP9985 = trimTopPct < 0.15;
+    const includeP975 = trimTopPct < 2.5;
+    const includeP85 = trimTopPct < 15;
+    const includeP0015 = trimBotPct < 0.15;
+    const includeP025 = trimBotPct < 2.5;
+    const includeP15 = trimBotPct < 15;
+    const includeBest = showBands && trimTopPct <= 0;
+    const includeWorst = showBands && trimBotPct <= 0;
+    const bandVisible = (pct: number): boolean => {
+      if (pct >= 0.99) return includeP9985;
+      if (pct >= 0.9) return includeP975;
+      if (pct >= 0.5) return includeP85;
+      if (pct <= 0.01) return includeP0015;
+      if (pct <= 0.1) return includeP025;
+      return includeP15;
+    };
+    const qByRank = assets.visibility.pathProfitQuantile;
     for (const line of assets.mainLines) {
-      // Skip lines whose series is currently hidden so the tooltip never
-      // labels an invisible path as the nearest one.
-      if (line.kind === "path" && (line.rank ?? 0) >= visibleRuns) continue;
-      if (!showBands && (line.kind === "band" || line.kind === "best" || line.kind === "worst")) continue;
+      if (line.kind === "path") {
+        const rank = line.rank ?? 0;
+        if (rank >= visibleRuns) continue;
+        const q = qByRank[rank] ?? 0;
+        if (q < loQ || q > hiQ) continue;
+      } else if (line.kind === "band") {
+        if (!showBands) continue;
+        if (line.percentile != null && !bandVisible(line.percentile)) continue;
+      } else if (line.kind === "best") {
+        if (!includeBest) continue;
+      } else if (line.kind === "worst") {
+        if (!includeWorst) continue;
+      }
       const arr = assets.data[line.seriesIdx] as ArrayLike<number> | undefined;
       if (!arr) continue;
       const v = arr[idx];
@@ -886,7 +939,11 @@ function rankedRunIndices(
 interface TrajectoryVisibilityMap {
   pathSeriesIdx: number[];
   pathProfitQuantile: number[];
-  bandSeriesIdx: number[];
+  /** Each band tagged by its percentile so the visibility layer can gate
+   *  it by the same trim thresholds that `computeYRange` uses. Without
+   *  this, the Y-range drops clipped tails but the series keep drawing —
+   *  you see lines leaving the axis frame. */
+  bands: { idx: number; percentile: number }[];
   bestSeriesIdxs: number[];
   worstSeriesIdxs: number[];
   overlayBestSeriesIdxs: number[];
@@ -1172,7 +1229,7 @@ function buildTrajectoryAssets(
   }
   const pathSeriesIdx: number[] = [];
   const pathProfitQuantile: number[] = [];
-  const bandSeriesIdx: number[] = [];
+  const bands: { idx: number; percentile: number }[] = [];
   const bestSeriesIdxs: number[] = [];
   const worstSeriesIdxs: number[] = [];
   const overlayBestSeriesIdxs: number[] = [];
@@ -1220,7 +1277,14 @@ function buildTrajectoryAssets(
       stroke: preset.bandNarrow.stroke,
       width: preset.bandNarrow.width,
     });
-    bandSeriesIdx.push(p0015Idx, p9985Idx, p025Idx, p975Idx, p15Idx, p85Idx);
+    bands.push(
+      { idx: p0015Idx, percentile: 0.0015 },
+      { idx: p9985Idx, percentile: 0.9985 },
+      { idx: p025Idx, percentile: 0.025 },
+      { idx: p975Idx, percentile: 0.975 },
+      { idx: p15Idx, percentile: 0.15 },
+      { idx: p85Idx, percentile: 0.85 },
+    );
     mainLines.push(
       { label: "p0.15", color: preset.bandExtreme.stroke, seriesIdx: p0015Idx, percentile: 0.0015, kind: "band" },
       { label: "p99.85", color: preset.bandExtreme.stroke, seriesIdx: p9985Idx, percentile: 0.9985, kind: "band" },
@@ -1492,7 +1556,7 @@ function buildTrajectoryAssets(
     visibility: {
       pathSeriesIdx,
       pathProfitQuantile,
-      bandSeriesIdx,
+      bands,
       bestSeriesIdxs,
       worstSeriesIdxs,
       overlayBestSeriesIdxs,
@@ -1750,6 +1814,17 @@ export function ResultsView({
     return shiftResultByRakeback(result, zeroCurve, 1);
   }, [result, rakebackCurve]);
   const displayResultStreaks = rbStreaks ? resultStreaksWithRb : resultNoRb;
+  // Parallel pdChart streak variant so the compare overlay in the streaks
+  // section follows the rbStreaks toggle like the main histograms do.
+  // Cashless is RB-independent by design (see `longestCashless*` note above)
+  // and keeps using raw `pdChart` at the render site.
+  const pdChartStreaksWithRb = useMemo(() => {
+    if (!pdChart) return null;
+    if (!pdRakebackCurve) return pdChart;
+    const zeroCurve = new Float64Array(pdRakebackCurve.length);
+    return shiftResultByRakeback(pdChart, zeroCurve, 1);
+  }, [pdChart, pdRakebackCurve]);
+  const displayPdChartStreaks = rbStreaks ? pdChartStreaksWithRb : pdChartNoRb;
 
   // Freeze the profit-dist x domain across both RB states so toggling
   // rbDist translates the bars inside a stable axis instead of auto-rescaling.
@@ -2348,10 +2423,10 @@ export function ResultsView({
             color="#f87171"
             yAsPct
             overlay={
-              overlayPd && pdChart
+              overlayPd && displayPdChartStreaks
                 ? {
-                    binEdges: pdChart.drawdownHistogram.binEdges,
-                    counts: pdChart.drawdownHistogram.counts,
+                    binEdges: displayPdChartStreaks.drawdownHistogram.binEdges,
+                    counts: displayPdChartStreaks.drawdownHistogram.counts,
                     label: overlayLabel,
                   }
                 : null
@@ -2409,12 +2484,12 @@ export function ResultsView({
                       unitLabel="tourneys"
                       yAsPct
                       overlay={
-                        overlayPd && pdChart
+                        overlayPd && displayPdChartStreaks
                           ? {
                               binEdges:
-                                pdChart.longestBreakevenHistogram.binEdges,
+                                displayPdChartStreaks.longestBreakevenHistogram.binEdges,
                               counts:
-                                pdChart.longestBreakevenHistogram.counts,
+                                displayPdChartStreaks.longestBreakevenHistogram.counts,
                               color: "#f472b6",
                               label: overlayLabel,
                             }
@@ -2453,6 +2528,14 @@ export function ResultsView({
                     />
                     <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
                       {t("chart.longestCashless.sub")}
+                      {rakebackCurve && (
+                        <>
+                          {" · "}
+                          <span className="text-[color:var(--color-fg-muted)]">
+                            {t("chart.longestCashless.rbNote")}
+                          </span>
+                        </>
+                      )}
                     </div>
                     <div />
                   </div>
@@ -2469,10 +2552,10 @@ export function ResultsView({
                       unitLabel="tourneys"
                       yAsPct
                       overlay={
-                        overlayPd && pdChart
+                        overlayPd && displayPdChartStreaks
                           ? {
-                              binEdges: pdChart.recoveryHistogram.binEdges,
-                              counts: pdChart.recoveryHistogram.counts,
+                              binEdges: displayPdChartStreaks.recoveryHistogram.binEdges,
+                              counts: displayPdChartStreaks.recoveryHistogram.counts,
                               color: "#e879f9",
                               label: overlayLabel,
                             }

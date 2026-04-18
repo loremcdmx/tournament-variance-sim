@@ -238,12 +238,13 @@ export function useSimulation() {
         const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
         const S = plan.input.samples;
         // Over-subscribe shards relative to the worker pool so stragglers
-        // (one slow worker or a tail of expensive samples) don't hold the
-        // progress bar at ~88% for seconds while the last shard drains. With
-        // W shards, one slow worker = 1/W of total progress; with 4*W shards
-        // it's only 1/(4W), and the UI advances smoothly instead of stalling.
-        const oversub = plan.input.samples * plan.input.scheduleRepeats >= 50_000 ? 4 : 1;
-        const shardCount = Math.max(1, Math.min(W * oversub, S));
+        // don't park the progress bar at a coarse fraction (on W=2, oversub=1
+        // means a single heavy tail freezes the bar at 46%). Oversub=4 gives
+        // at most 1/(4W) granularity. Floor on samples-per-shard keeps tiny
+        // runs from paying too much dispatch overhead.
+        const MIN_SAMPLES_PER_SHARD = 64;
+        const maxShards = Math.max(1, Math.floor(S / MIN_SAMPLES_PER_SHARD));
+        const shardCount = Math.max(1, Math.min(W * 4, maxShards, S));
         const bounds: Array<[number, number]> = [];
         for (let i = 0; i < shardCount; i++) {
           const lo = Math.floor((i * S) / shardCount);
@@ -337,16 +338,27 @@ export function useSimulation() {
         }
 
         const collectShardBuffers = (shards: RawShard[]): Transferable[] => {
+          // Must match worker.ts `collectShardTransfers` — any buffer the
+          // worker transferred back on shard-result needs to be transferred
+          // forward on build, otherwise structured-clone fallback copies
+          // multi-MB typed arrays and stalls the late stage of the run.
           const out: Transferable[] = [];
           for (const sh of shards) {
             out.push(sh.finalProfits.buffer);
             out.push(sh.pathMatrix.buffer);
             out.push(sh.maxDrawdowns.buffer);
+            out.push(sh.maxRunUps.buffer);
             out.push(sh.runningMins.buffer);
             out.push(sh.longestBreakevens.buffer);
             out.push(sh.longestCashless.buffer);
             out.push(sh.recoveryLengths.buffer);
+            out.push(sh.breakevenStreakCounts.buffer);
+            out.push(sh.cashlessStreakCounts.buffer);
             out.push(sh.rowProfits.buffer);
+            out.push(sh.hiResCheckpointIdx.buffer);
+            out.push(sh.hiResBestPath.buffer);
+            out.push(sh.hiResWorstPath.buffer);
+            for (const p of sh.hiResPaths) out.push(p.buffer);
           }
           return out;
         };
