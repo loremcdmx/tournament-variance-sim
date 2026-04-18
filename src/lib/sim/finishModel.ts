@@ -514,31 +514,6 @@ export function calibrateShelledItm(
 }
 
 /**
- * Backward-compat facade — pure fixed-ITM with no shell locks.
- */
-export function calibrateFixedItm(
-  N: number,
-  paidCount: number,
-  payouts: readonly number[],
-  prizePool: number,
-  targetWinnings: number,
-  itmRate: number,
-  model: FinishModelConfig,
-): { alpha: number; pmf: Float64Array } {
-  const r = calibrateShelledItm(
-    N,
-    paidCount,
-    payouts,
-    prizePool,
-    targetWinnings,
-    itmRate,
-    undefined,
-    model,
-  );
-  return { alpha: r.alpha, pmf: r.pmf };
-}
-
-/**
  * PrimeDope-compat finish distribution (two-bin uniform).
  *
  * PrimeDope's actual algorithm (verified against their legacy source):

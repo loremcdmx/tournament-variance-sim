@@ -233,24 +233,12 @@ export type OverridableLineKey =
   | "worst"
   | "p05"
   | "p95";
-export const OVERRIDABLE_LINE_KEYS: OverridableLineKey[] = [
-  "mean",
-  "ev",
-  "best",
-  "worst",
-  "p05",
-  "p95",
-];
 
 const OPTIONAL_LINE_KEYS: ReadonlySet<OverridableLineKey> = new Set([
   "ev",
   "p05",
   "p95",
 ]);
-
-export function isOptionalLine(key: OverridableLineKey): boolean {
-  return OPTIONAL_LINE_KEYS.has(key);
-}
 
 export function isLineEnabled(
   key: OverridableLineKey,
@@ -375,43 +363,6 @@ export function saveExtremeStyles(styles: ExtremeStyles) {
   if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(EXTREME_STORAGE_KEY, JSON.stringify(styles));
-  } catch {}
-}
-
-export interface PdOverlayStyle {
-  color: string;
-  width: number;
-}
-
-export const DEFAULT_PD_OVERLAY_STYLE: PdOverlayStyle = {
-  color: "#60a5fa",
-  width: 1.75,
-};
-
-const PD_OVERLAY_STORAGE_KEY = "tvs.pdOverlayStyle.v1";
-
-export function loadPdOverlayStyle(): PdOverlayStyle {
-  if (typeof localStorage === "undefined") return DEFAULT_PD_OVERLAY_STYLE;
-  try {
-    const raw = localStorage.getItem(PD_OVERLAY_STORAGE_KEY);
-    if (!raw) return DEFAULT_PD_OVERLAY_STYLE;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      return {
-        color: typeof parsed.color === "string" ? parsed.color : DEFAULT_PD_OVERLAY_STYLE.color,
-        width: typeof parsed.width === "number" ? parsed.width : DEFAULT_PD_OVERLAY_STYLE.width,
-      };
-    }
-    return DEFAULT_PD_OVERLAY_STYLE;
-  } catch {
-    return DEFAULT_PD_OVERLAY_STYLE;
-  }
-}
-
-export function savePdOverlayStyle(style: PdOverlayStyle) {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(PD_OVERLAY_STORAGE_KEY, JSON.stringify(style));
   } catch {}
 }
 

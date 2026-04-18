@@ -85,10 +85,8 @@ src/
 │   │   ├── DistributionChart.tsx   # гистограмма финального P&L
 │   │   ├── ConvergenceChart.tsx    # сходимость mean/stdDev
 │   │   ├── DecompositionChart.tsx  # row variance contributions
-│   │   ├── SensitivityChart.tsx    # ΔROI scan
 │   │   ├── FinishPMFPreview.tsx    # per-row предпросмотр pmf + "откуда приходит профит"
-│   │   ├── barsPath.ts             # кастомные uPlot paths для баров
-│   │   └── common.ts               # разделённые axis/grid стили
+│   │   └── barsPath.ts             # кастомные uPlot paths для баров
 │   └── ui/
 │       ├── Section.tsx       # numbered section wrapper (01, 02, 03…)
 │       ├── CornerToggles.tsx # локаль / тема / advanced toggle

@@ -1840,7 +1840,3 @@ export const DICT = {
 } as const satisfies Record<string, Entry>;
 
 export type DictKey = keyof typeof DICT;
-
-export function translate(locale: Locale, key: DictKey): string {
-  return DICT[key][locale];
-}

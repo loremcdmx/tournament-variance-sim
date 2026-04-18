@@ -65,11 +65,3 @@ export const WORDS = {
     ru: { one: "финиш", few: "финиша", many: "финишей" },
   },
 } as const satisfies Record<string, PluralForms>;
-
-/** Locations ("in N places"): prepositional plural of "место". */
-export const LOCATIVE = {
-  place: {
-    en: { one: "place", other: "places" },
-    ru: { one: "месте", few: "местах", many: "местах" },
-  },
-} as const satisfies Record<string, PluralForms>;
