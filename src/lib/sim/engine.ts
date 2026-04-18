@@ -638,57 +638,95 @@ function compileSingleEntry(
 
   // ---- bounty distribution across finish places -------------------------
   // Elimination-order model: the player finishing at 1-indexed place p was
-  // alive for the first N−p busts. Expected eliminations over those busts
-  // equals H_{N−1} − H_{p−1} (standard KO). For PKO we instead weight each
-  // of those KOs by the expected head-size at the moment it happened, using
-  // the accumulating-head recurrence below.
+  // alive for the first N−p busts and killed 1/(N−m) of each bust m in
+  // that window (one of (N−m) alive non-victims).
+  //
+  // Shape depends on gameType:
+  //
+  // - PKO ("pko"): each bust pays half the current head; heads accumulate
+  //   (cash_m = h_m/2, T(m) = T(m−1) − cash_m). Deep finishers win more and
+  //   the winner gets T(N−1) on top. Per-KO value grows across the run.
+  //
+  // - Mystery / Mystery-Royale: each bust inside the bounty window is an
+  //   iid draw from the mystery pool. Per-KO mean is constant; per-KO
+  //   variance comes from the envelope distribution (log-normal for
+  //   plain mystery, 10-tier GG table for BR). raw[i] is therefore just
+  //   the expected count of envelope-dropping busts — harmonic, restricted
+  //   to the window (victims finishing inside the bounty-paying tier).
   //
   // The final raw weights are normalized against the calibrated pmf so that
   // Σ pmf[i] · bountyByPlace[i] === bountyMean. This preserves ROI
   // calibration while shifting all the bounty variance onto the shape of
-  // the finish distribution. bountyKmean[i] holds the expected KO count at
-  // place i and is used by the hot loop to add within-place Poisson-style
-  // stochastic noise around the mean.
+  // the finish distribution. bountyKmean[i] holds the expected window KO
+  // count at place i and is used by the hot loop to add within-place
+  // Poisson-style stochastic noise around the mean.
   let bountyByPlace: Float64Array | null = null;
   let bountyKmean: Float64Array | null = null;
-  // Raw (unnormalized) bounty weights from the cumulative-cash recurrence.
-  // Captured here so the latent-heat bank below can re-normalize the same
-  // shape against its per-bin shifted pmf without redoing the PKO math.
+  // Raw (unnormalized) bounty weights. Captured so the latent-heat bank
+  // below can re-normalize the same shape against its per-bin shifted pmf
+  // without redoing the per-gametype math.
   let bountyRaw: Float64Array | null = null;
   if (bountyMean > 0 && N >= 2) {
-    // Prefix harmonic numbers: Hprefix[k] = 1 + 1/2 + ... + 1/k, Hprefix[0] = 0.
-    const Hprefix = new Float64Array(N);
-    let hAcc = 0;
-    for (let k = 1; k < N; k++) {
-      hAcc += 1 / k;
-      Hprefix[k] = hAcc;
-    }
-    const totalH = Hprefix[N - 1]; // H_{N−1}
-
     const raw = new Float64Array(N);
     bountyKmean = new Float64Array(N);
-    // Expected KO count by 0-indexed place i = H_{N−1} − H_{p−1} with p=i+1.
-    for (let i = 0; i < N; i++) {
-      bountyKmean[i] = totalH - Hprefix[i];
-    }
 
-    {
-      // Progressive PKO: head pool accumulates. At bust m (1..N−1) we have
-      // (N−m+1) alive players sharing total head mass T(m−1), starting at
-      // T(0)=N×B where B=per-seat bounty. Each KO pays avgHead/2 cash, and
-      // the same amount is consumed from the pool:
+    const isMystery =
+      row.gameType === "mystery" || row.gameType === "mystery-royale";
+
+    if (isMystery) {
+      // Envelope-dropping window: for `mystery-royale` it's the final
+      // table (top-9, GG 18-max BR); for plain `mystery` it's the ITM
+      // bubble. Only busts whose victim finishes inside this window drop
+      // an envelope. For N=18, BR top-9 ⇒ 8 envelope-dropping busts
+      // (places 9..2 get eliminated; winner keeps their own envelope
+      // unopened), so mean envelope = bountyPool / 8.
+      const ft =
+        row.gameType === "mystery-royale" ? Math.min(9, N) : paidCount;
+      // Window busts are m = N−ft+1 .. N−1 (victim finishes at place
+      // N−m+1, which lies in [2..ft]). Expected envelope-drops by
+      // finisher at 1-indexed place p is
+      //   Σ_{m=max(1, N−ft+1)..N−p} 1 / (N−m)
+      // since they're one of (N−m) non-victim candidates per bust.
+      const mLo = Math.max(1, N - ft + 1);
+      for (let i = 0; i < N; i++) {
+        const p = i + 1;
+        const mHi = N - p;
+        if (mHi < mLo) {
+          raw[i] = 0;
+          bountyKmean[i] = 0;
+        } else {
+          let acc = 0;
+          for (let m = mLo; m <= mHi; m++) acc += 1 / (N - m);
+          raw[i] = acc;
+          bountyKmean[i] = acc;
+        }
+      }
+    } else {
+      // PKO / freezeout-with-bounty path. Keep the accumulating-head
+      // progression and the full-range harmonic bustsAtPos.
+      const Hprefix = new Float64Array(N);
+      let hAcc = 0;
+      for (let k = 1; k < N; k++) {
+        hAcc += 1 / k;
+        Hprefix[k] = hAcc;
+      }
+      const totalH = Hprefix[N - 1];
+      for (let i = 0; i < N; i++) {
+        bountyKmean[i] = totalH - Hprefix[i];
+      }
+
+      // Progressive PKO: at bust m (1..N−1) we have (N−m+1) alive players
+      // sharing total head mass T(m−1), starting at T(0)=N×B. Each KO
+      // pays avgHead/2 cash, the same amount is consumed from the pool:
       //   h(m)   = T(m−1) / (N−m+1)
       //   cash_m = h(m) / 2
       //   T(m)   = T(m−1) − cash_m
       // Expected cash for finisher at 1-indexed place p is
       //   Σ_{m=1..N−p} cash_m / (N−m)
-      // (they're 1 of (N−m) potential killers among alive non-victims), and
-      // the winner additionally collects T(N−1) as their final head at the
-      // end of the tournament.
-      //
-      // Per-seat B factors out — we're going to normalize away — so we
-      // initialise T(0)=N and read cash_m in the same arbitrary unit.
-      const cashAtBust = new Float64Array(N - 1); // cash_m for m=1..N−1 at index m−1
+      // plus T(N−1) for the winner as their final own-head.
+      // Per-seat B factors out — normalized away — so we initialise
+      // T(0)=N and read cash_m in the same arbitrary unit.
+      const cashAtBust = new Float64Array(N - 1);
       let T = N;
       for (let m = 1; m <= N - 1; m++) {
         const h = T / (N - m + 1);
@@ -696,15 +734,9 @@ function compileSingleEntry(
         cashAtBust[m - 1] = cash;
         T -= cash;
       }
-      const Tfinal = T; // head mass left with the winner
+      const Tfinal = T;
 
-      // cumulativeCash[j] = Σ_{m=1..j} cash_m / (N−m). Then for 1-indexed
-      // place p, bounty weight = cumulativeCash[N−p]. This is monotonically
-      // increasing in (N−p), so deep finishers win more — as expected, with
-      // the winner also getting the Tfinal top-up.
-      const cumulativeCash = new Float64Array(N); // index p-1 → player at place p
-      // Build forward sum of cash_m/(N−m) for m=1..N−1
-      const prefix = new Float64Array(N); // prefix[k] = sum over m=1..k of term
+      const prefix = new Float64Array(N);
       let acc = 0;
       for (let m = 1; m <= N - 1; m++) {
         acc += cashAtBust[m - 1] / (N - m);
@@ -712,29 +744,10 @@ function compileSingleEntry(
       }
       for (let i = 0; i < N; i++) {
         const p = i + 1;
-        // Sum up to m = N−p:
         const upto = N - p;
-        cumulativeCash[i] = upto > 0 ? prefix[upto] : 0;
+        raw[i] = upto > 0 ? prefix[upto] : 0;
       }
-      // Winner (i=0) gets Tfinal on top of their in-game KO cash.
-      cumulativeCash[0] += Tfinal;
-
-      for (let i = 0; i < N; i++) raw[i] = cumulativeCash[i];
-    }
-
-    // Mystery-format bounty phase-split: envelopes only drop inside a
-    // phase window. For plain `mystery` that window starts at the ITM
-    // bubble; for `mystery-royale` (GG 18-max BR) it starts at the final
-    // table — victims at places 10+ carry no envelope, so only top-9
-    // finishers collect. Zero the raw weights for places below the
-    // threshold; bounty mass redistributes onto the remaining finishes
-    // via the Σ-normalisation below (ROI still exact). The Poisson
-    // KO-count draw is skipped at those places because bountyByPlace[i] = 0
-    // short-circuits the hot-loop bounty branch.
-    if (row.gameType === "mystery" || row.gameType === "mystery-royale") {
-      const bountyCollectTop =
-        row.gameType === "mystery-royale" ? Math.min(9, N) : paidCount;
-      for (let i = bountyCollectTop; i < N; i++) raw[i] = 0;
+      raw[0] += Tfinal; // winner's own final head
     }
 
     // Normalize so Σ pmf[i]·bountyByPlace[i] = bountyMean (ROI intact).

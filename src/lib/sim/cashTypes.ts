@@ -82,10 +82,13 @@ export interface CashInput {
   baseSeed: number;
 
   /**
-   * Optional mix of stakes / rooms. When length ≥ 1, the engine runs
-   * sequentially through rows — row r owns `round(share_r × hands)` hands of
-   * each path. Rates are rescaled to the reference bb (`bbSize`). When absent
-   * or empty, behavior is byte-identical to the legacy single-stake path.
+ * Optional mix of stakes / rooms. When length ≥ 1, the engine runs
+   * a deterministic interleaved schedule of fixed-size blocks. Each row owns
+   * `round(share_r × hands)` hands of every path, but path-dependent metrics
+   * (drawdown / recovery) no longer see a fake “all NL100 first, all NL200
+   * later” regime split. Rates are rescaled to the reference bb (`bbSize`).
+   * When absent or empty, behavior is byte-identical to the legacy
+   * single-stake path.
    */
   stakes?: CashStakeRow[];
 }
@@ -164,7 +167,7 @@ export interface CashResult {
     sdFinalBb: number;
     /** P(final < 0). */
     probLoss: number;
-    /** Share of paths that hit a negative extreme of at least `-100 BB`. */
+    /** Share of paths whose running minimum touched `<= -100 BB`. */
     probSub100Bb: number;
     /** Fraction of samples that never recovered after their deepest drawdown. */
     recoveryUnrecoveredShare: number;

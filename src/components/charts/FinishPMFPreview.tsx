@@ -1058,17 +1058,47 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   }
 
   const bountyByPlace = new Float64Array(N);
+  // bountyBustsAtPos[i] = expected # of bounty-paying busts by finisher at
+  // place i+1. For PKO every bust pays cash, so this equals the full
+  // harmonic H(N−1)−H(p−1). For mystery / mystery-royale only busts whose
+  // victim finishes inside the bounty window (ITM bubble, or top-9 FT for
+  // BR) drop an envelope, so the harmonic is restricted to that window.
+  // Tier metrics use this as the denominator of "avg bounty per head".
+  const bountyBustsAtPos = new Float64Array(N);
   if (bountyMean > 0 && N >= 2) {
-    const Hprefix = new Float64Array(N);
-    let hAcc = 0;
-    for (let k = 1; k < N; k++) {
-      hAcc += 1 / k;
-      Hprefix[k] = hAcc;
-    }
-    const totalH = Hprefix[N - 1];
     const raw = new Float64Array(N);
+    const isMystery =
+      row.gameType === "mystery" || row.gameType === "mystery-royale";
 
-    {
+    if (isMystery) {
+      const ft =
+        row.gameType === "mystery-royale" ? Math.min(9, N) : paidCount;
+      const mLo = Math.max(1, N - ft + 1);
+      for (let i = 0; i < N; i++) {
+        const p = i + 1;
+        const mHi = N - p;
+        if (mHi < mLo) {
+          raw[i] = 0;
+          bountyBustsAtPos[i] = 0;
+        } else {
+          let acc = 0;
+          for (let m = mLo; m <= mHi; m++) acc += 1 / (N - m);
+          raw[i] = acc;
+          bountyBustsAtPos[i] = acc;
+        }
+      }
+    } else {
+      const Hprefix = new Float64Array(N);
+      let hAcc = 0;
+      for (let k = 1; k < N; k++) {
+        hAcc += 1 / k;
+        Hprefix[k] = hAcc;
+      }
+      const totalH = Hprefix[N - 1];
+      for (let i = 0; i < N; i++) {
+        bountyBustsAtPos[i] = totalH - Hprefix[i];
+      }
+
       const cashAtBust = new Float64Array(N - 1);
       let T = N;
       for (let m = 1; m <= N - 1; m++) {
@@ -1090,7 +1120,6 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
         raw[i] = upto > 0 ? prefix[upto] : 0;
       }
       raw[0] += Tfinal;
-      void totalH;
     }
 
     let Z = 0;
@@ -1239,23 +1268,6 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   // Enforce monotonic, non-overlapping cuts — each tier starts where the
   // previous one ended, so ceil() rounding collapsing a tier into 0 width
   // just drops it cleanly.
-  // Harmonic expected-busts table: bustsAtPos[p-1] = H(N-1) − H(p-1).
-  // Uniform-skill approximation of how many opponents a finisher at
-  // position p busts on average — winner busts ~ln(N), last busts 0.
-  // Used per tier for the hover breakdown.
-  const bustsAtPos = new Float64Array(N);
-  {
-    let hAcc = 0;
-    const H = new Float64Array(N);
-    for (let k = 1; k < N; k++) {
-      hAcc += 1 / k;
-      H[k] = hAcc;
-    }
-    const HTotal = H[N - 1];
-    for (let p = 1; p <= N; p++) {
-      bustsAtPos[p - 1] = HTotal - H[p - 1];
-    }
-  }
 
   const tiers: TierRow[] = [];
   let prevHi = 0;
@@ -1274,7 +1286,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
       bountyTier += pmf[i] * bountyByPlace[i];
       fTier += pmf[i];
       totalTierSum += totalByPlace[i];
-      bustsWeighted += pmf[i] * bustsAtPos[i];
+      bustsWeighted += pmf[i] * bountyBustsAtPos[i];
     }
     const width = hi - prevHi;
     const eqShareTier = N > 0 ? width / N : 0;
