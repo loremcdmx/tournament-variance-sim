@@ -416,15 +416,31 @@ export function ControlsPanel({
             </button>
           )}
           <div className="flex w-full items-center justify-center gap-4 font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg-muted)]">
-            <span>
+            <span className="inline-flex min-h-[1em] items-center gap-1">
               {running
                 ? remainingMs == null
                   ? t("controls.starting")
                   : remainingMs < 800
                   ? t("controls.finishing")
-                  : `${t("controls.remaining")} ≈ ${formatDuration(remainingMs)}`
+                  : (
+                    <>
+                      <span>{t("controls.remaining")}</span>
+                      <span className="relative -top-px text-[11px] leading-none">
+                        ≈
+                      </span>
+                      <span>{formatDuration(remainingMs)}</span>
+                    </>
+                  )
                 : estimatedMs != null && estimatedMs > 0
-                ? `${t("controls.eta")} ≈ ${formatDuration(estimatedMs)}`
+                ? (
+                  <>
+                    <span>{t("controls.eta")}</span>
+                    <span className="relative -top-px text-[11px] leading-none">
+                      ≈
+                    </span>
+                    <span>{formatDuration(estimatedMs)}</span>
+                  </>
+                )
                 : "\u00A0"}
             </span>
             <span className="text-[color:var(--color-fg-dim)]">·</span>
@@ -600,16 +616,25 @@ function useRemainingMs(opts: {
     const elapsed = runElapsedMs;
 
     const projection =
-      progress > 0.05 ? Math.max(0, elapsed / progress - elapsed) : null;
+      progress > 0.03 ? Math.max(0, elapsed / progress - elapsed) : null;
     const bootstrap =
       estimatedMs != null && estimatedMs > 0
         ? Math.max(0, estimatedMs - elapsed)
         : null;
-    // Prefer projection once progress is past the noise floor — it reflects
-    // actual observed rate. Bootstrap is only useful before projection data
-    // has accumulated. Blending the two causes an upward jump whenever
-    // projection disagrees with the stale estimate.
-    const raw = projection ?? bootstrap;
+    // Cross-fade bootstrap → projection as progress accumulates. Jumping
+    // straight to projection the moment it's available causes a visible
+    // cliff when the saved estimate is stale (e.g. last run was 18 s but
+    // this one will be 3 s — projection at progress 0.05 says "2 s left"
+    // and smoothed crashes toward it in half a second). Weighting by
+    // progress/0.30 keeps bootstrap dominant early and hands off by the
+    // time projection has enough samples to be credible.
+    let raw: number | null;
+    if (projection != null && bootstrap != null) {
+      const w = Math.min(1, Math.max(0, progress / 0.3));
+      raw = (1 - w) * bootstrap + w * projection;
+    } else {
+      raw = projection ?? bootstrap;
+    }
     if (raw == null) return;
 
     const now = performance.now();
@@ -629,8 +654,8 @@ function useRemainingMs(opts: {
       next = Math.max(0, smoothedRef.current - dt);
     }
     smoothedRef.current = next;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors elapsed wall time onto React state; this IS the external-signal synchronization the rule allows.
-    setSmoothed(next);
+    const frame = requestAnimationFrame(() => setSmoothed(next));
+    return () => cancelAnimationFrame(frame);
   }, [running, runElapsedMs, progress, estimatedMs]);
 
   return smoothed;
