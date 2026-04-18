@@ -23,6 +23,7 @@ import type {
 } from "./types";
 import type {
   BuildErrorMsg,
+  BuildProgressMsg,
   BuildRequest,
   BuildResultMsg,
   ShardErrorMsg,
@@ -294,17 +295,25 @@ export function useSimulation() {
 
       return new Promise((resolve, reject) => {
         let settled = false;
-        let buildTicker: ReturnType<typeof setInterval> | null = null;
-        const stopBuildTicker = () => {
-          if (buildTicker != null) {
-            clearInterval(buildTicker);
-            buildTicker = null;
-          }
+        // Real build-phase progress: buildResult emits ~10 build-progress
+        // messages during its run (envelope sorts + downswings). Each buildId
+        // tracks its own frac; the overall build fraction is the average
+        // across in-flight builds (one per pass). Replaces the old fake
+        // eased-timer which parked the bar at ~0.93 for 700+ ms on 200k-sample
+        // runs because its `totalAll * 0.02` wall-time estimate was 5× off.
+        const buildFracs = new Map<number, number>();
+        let totalBuildsExpected = 0;
+        const buildHeadroom = 0.995 - SHARD_FRACTION;
+        const emitBuildProgress = () => {
+          if (totalBuildsExpected === 0) return;
+          let sum = 0;
+          for (const f of buildFracs.values()) sum += f;
+          const frac = sum / totalBuildsExpected;
+          onProgress(SHARD_FRACTION + buildHeadroom * frac);
         };
         const onAbort = () => {
           if (settled) return;
           settled = true;
-          stopBuildTicker();
           detach();
           if (signal) signal.removeEventListener("abort", onAbort);
           reject(new Error("aborted"));
@@ -368,6 +377,8 @@ export function useSimulation() {
           const buildId = nextBuildId++;
           buildIdToPass.set(buildId, key);
           buildsRemaining++;
+          totalBuildsExpected++;
+          buildFracs.set(buildId, 0);
           const shards = ctx.shards.filter((x): x is RawShard => x !== null);
           const req: BuildRequest = {
             type: "build",
@@ -392,17 +403,26 @@ export function useSimulation() {
             | ShardProgressMsg
             | ShardResultMsg
             | ShardErrorMsg
+            | BuildProgressMsg
             | BuildResultMsg
             | BuildErrorMsg;
           if (msg.jobId !== jobId) return;
+          if (msg.type === "build-progress") {
+            const prev = buildFracs.get(msg.buildId) ?? 0;
+            if (msg.frac > prev) {
+              buildFracs.set(msg.buildId, Math.min(0.98, msg.frac));
+              emitBuildProgress();
+            }
+            return;
+          }
           if (msg.type === "build-result") {
             const key = buildIdToPass.get(msg.buildId);
             if (key == null) return;
             ctxs[key].result = msg.result;
+            buildFracs.set(msg.buildId, 1);
             buildsRemaining--;
             if (buildsRemaining === 0) {
               settled = true;
-              stopBuildTicker();
               detach();
               onProgress(1);
               const out: Record<PassPlan["key"], SimulationResult> =
@@ -411,12 +431,13 @@ export function useSimulation() {
                 out[k] = ctxs[k].result!;
               }
               resolve(out);
+            } else {
+              emitBuildProgress();
             }
             return;
           }
           if (msg.type === "build-error") {
             settled = true;
-            stopBuildTicker();
             detach();
             reject(new Error(msg.message));
             return;
@@ -454,25 +475,14 @@ export function useSimulation() {
                 reject(err);
                 return;
               }
-              // Reserved slice of the bar for the build phase would otherwise
-              // hang until build-result fires. Ease the bar from SHARD_FRACTION
-              // toward 0.995 on a timer so the user sees progress instead of a
-              // freeze + jump. Scaled by sample count (rough 20 µs/sample).
-              const expectedBuildMs = Math.max(500, Math.min(8000, totalAll * 0.02));
-              const tickStart = performance.now();
-              const buildHeadroom = 0.995 - SHARD_FRACTION;
-              buildTicker = setInterval(() => {
-                if (settled) return;
-                const t = (performance.now() - tickStart) / expectedBuildMs;
-                const eased = 1 - Math.exp(-t * 2.5);
-                onProgress(SHARD_FRACTION + buildHeadroom * eased);
-              }, 120);
+              // Real build-phase progress is now driven by build-progress
+              // messages from inside buildResult (see worker.ts). No fake
+              // timer needed.
             } else {
               emitProgress();
             }
           } else if (msg.type === "shard-error") {
             settled = true;
-            stopBuildTicker();
             detach();
             reject(new Error(msg.message));
           }

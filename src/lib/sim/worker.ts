@@ -79,6 +79,13 @@ export interface BuildResultMsg {
   result: SimulationResult;
 }
 
+export interface BuildProgressMsg {
+  type: "build-progress";
+  jobId: number;
+  buildId: number;
+  frac: number;
+}
+
 export interface BuildErrorMsg {
   type: "build-error";
   jobId: number;
@@ -204,6 +211,15 @@ function handleBuild(req: BuildRequest) {
       merged,
       calibrationMode,
       grid,
+      (frac) => {
+        const msg: BuildProgressMsg = {
+          type: "build-progress",
+          jobId,
+          buildId,
+          frac,
+        };
+        self.postMessage(msg);
+      },
     );
     const msg: BuildResultMsg = {
       type: "build-result",

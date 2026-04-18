@@ -946,6 +946,7 @@ function compileRowVariants(
 }
 
 type ProgressCb = (done: number, total: number) => void;
+type BuildProgressCb = (frac: number) => void;
 
 /**
  * Marsaglia polar gaussian factory. The polar method natively yields two
@@ -1029,6 +1030,7 @@ export function buildResult(
   shard: RawShard,
   calibrationMode: CalibrationMode,
   grid: CheckpointGrid,
+  onBuildProgress?: BuildProgressCb,
 ): SimulationResult {
   const N = compiled.tournamentsPerSample;
   const S = input.samples;
@@ -1047,6 +1049,7 @@ export function buildResult(
     rowBountyProfits,
     ruinedCount,
   } = shard;
+  onBuildProgress?.(0.02);
   let expectedProfitAccum = 0;
   for (let s = 0; s < S; s++) expectedProfitAccum += finalProfits[s];
 
@@ -1055,6 +1058,7 @@ export function buildResult(
   // Direct typed-array memcpy: .slice() on a Float64Array is a single
   // memcpy, .from() iterates and boxes. Same for other sorted copies below.
   const sorted = finalProfits.slice().sort();
+  onBuildProgress?.(0.10);
   const pct = (p: number) =>
     sorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
   const median = pct(0.5);
@@ -1279,6 +1283,7 @@ export function buildResult(
     shard.cashlessStreakCounts,
     60,
   );
+  onBuildProgress?.(0.18);
 
   // Envelopes ---------------------------------------------------------------
   // Percentile sorts run on the low-res K=80 grid (cheap). The final
@@ -1307,6 +1312,10 @@ export function buildResult(
   const envS = Math.min(S, ENV_CAP);
   const envStride = S / envS;
   const col = new Float64Array(envS);
+  // Emit build-progress every ~8 columns so the main thread sees steady
+  // motion through the dominant build phase (envelope sorts are ~65 % of
+  // buildResult wall time for large S).
+  const envEmitStride = Math.max(1, Math.floor(K1 / 10));
   for (let j = 0; j < K1; j++) {
     // Mean on the full S (cheap accumulator, no sort needed).
     let acc = 0;
@@ -1326,7 +1335,11 @@ export function buildResult(
     p975[j] = col[Math.floor(0.975 * (envS - 1))];
     p0015[j] = col[Math.floor(0.0015 * (envS - 1))];
     p9985[j] = col[Math.floor(0.9985 * (envS - 1))];
+    if (onBuildProgress && j > 0 && j % envEmitStride === 0) {
+      onBuildProgress(0.10 + 0.70 * ((j + 1) / K1));
+    }
   }
+  onBuildProgress?.(0.82);
 
   // Sample paths ------------------------------------------------------------
   // Hi-res capture was populated during simulateShard: shard 0's first N
@@ -1484,8 +1497,11 @@ export function buildResult(
     ddIdx[i] = i;
     upIdx[i] = i;
   }
+  onBuildProgress?.(0.88);
   ddIdx.sort((a, b) => maxDrawdowns[b] - maxDrawdowns[a]);
+  onBuildProgress?.(0.93);
   upIdx.sort((a, b) => maxRunUps[b] - maxRunUps[a]);
+  onBuildProgress?.(0.97);
   const downswings = ddIdx.slice(0, Math.min(3, S)).map((sampleIndex, i) => ({
     rank: i + 1,
     sampleIndex,
