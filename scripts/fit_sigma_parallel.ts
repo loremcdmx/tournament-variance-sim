@@ -46,10 +46,19 @@ const COMMON = {
   SAMPLES: 120_000,
   BUY_IN: 50,
   RAKE: 0.10,
+  // Per-format rake override. Mystery Battle Royale runs at 8% on GGPoker since
+  // March 2024 (verified via PokerListings + WorldPokerDeals). Fitting against
+  // the real-world rake means the ConvergenceChart baseline for Royale matches
+  // the format's actual math at slider-default 8%, instead of forcing the
+  // rake-rescale to do compensation work at every render.
+  RAKE_ROYALE: 0.08,
   SEED: 20260417,
   BOUNTY_FRACTION: 0.5,
   PKO_HEAD_VAR: 0.4,
-  MYSTERY_LOG_VAR: 0.8,
+  // Bumped 0.8 → 2.0 (#71): log-normal σ² = 0.8 gave P(X > 100·mean) = 1e-8,
+  // i.e. no jackpot tail. σ² = 2.0 gives ~3.7e-5, in line with BR empirical
+  // tier data (#92). Still lighter than true non-BR Mystery but defensible.
+  MYSTERY_LOG_VAR: 2.0,
   MYSTERY_ROYALE_LOG_VAR: 1.8,
 };
 
@@ -131,9 +140,9 @@ function buildInput(j: Job): SimulationInput {
       label: `f${j.field}`,
       players: j.field,
       buyIn: COMMON.BUY_IN,
-      rake: COMMON.RAKE,
+      rake: isRoyale ? COMMON.RAKE_ROYALE : COMMON.RAKE,
       roi: j.roi,
-      payoutStructure: "mtt-gg-bounty",
+      payoutStructure: isRoyale ? "battle-royale" : "mtt-gg-mystery",
       gameType: isRoyale ? "mystery-royale" : "mystery",
       bountyFraction: COMMON.BOUNTY_FRACTION,
       mysteryBountyVariance: isRoyale
@@ -337,7 +346,7 @@ async function mainOrchestrate() {
     );
   }
   console.log(
-    `  samples=${COMMON.SAMPLES} N=${COMMON.N_TOURNEYS} buyIn=${COMMON.BUY_IN} rake=${COMMON.RAKE}`,
+    `  samples=${COMMON.SAMPLES} N=${COMMON.N_TOURNEYS} buyIn=${COMMON.BUY_IN} rake=${COMMON.RAKE} (royale rake=${COMMON.RAKE_ROYALE})`,
   );
 
   const scriptPath = fileURLToPath(import.meta.url);
@@ -401,6 +410,7 @@ async function mainOrchestrate() {
     logVar: number,
     summary: ReturnType<typeof summarize>,
     mergedTable: Record<number, Array<{ field: number; sigmaRoi: number }>>,
+    rakeOverride?: number,
   ) => {
     await fs.writeFile(
       path,
@@ -410,7 +420,7 @@ async function mainOrchestrate() {
             N: COMMON.N_TOURNEYS,
             samples: COMMON.SAMPLES,
             buyIn: COMMON.BUY_IN,
-            rake: COMMON.RAKE,
+            rake: rakeOverride ?? COMMON.RAKE,
             bountyFraction: COMMON.BOUNTY_FRACTION,
             mysteryBountyVariance: logVar,
             pkoHeadVar: COMMON.PKO_HEAD_VAR,
@@ -455,6 +465,7 @@ async function mainOrchestrate() {
       COMMON.MYSTERY_ROYALE_LOG_VAR,
       royaleSummary,
       royaleMergedTable,
+      COMMON.RAKE_ROYALE,
     );
     console.log("");
     console.log("wrote scripts/fit_beta_mystery_royale.json (11 ROIs merged)");
@@ -626,6 +637,7 @@ async function mainOrchestrate() {
     COMMON.MYSTERY_ROYALE_LOG_VAR,
     royaleSummary,
     royaleMergedTable,
+    COMMON.RAKE_ROYALE,
   );
   console.log("wrote scripts/fit_beta_mystery_royale.json (11 ROIs merged)");
 

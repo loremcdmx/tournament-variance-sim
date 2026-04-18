@@ -41,7 +41,6 @@ describe("buildPkoCashPMF", () => {
   it("step variant has non-uniform OOTM tail (PKO-specific)", () => {
     const N = 1500;
     const pmf = buildPkoCashPMF(N, "step", 0);
-    const cashCount = Math.ceil((N * PKO_REALDATA_CASH_BAND_PCT) / 100);
     // Unlike freeze, OOTM is shaped: first-bust should be less probable
     // than mid-field non-cash places.
     const firstBust = pmf[N - 1]; // rank N = first bust = x ≈ 0.5

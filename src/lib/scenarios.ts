@@ -42,6 +42,7 @@ const BASE_CONTROLS: ControlsState = {
   modelPresetId: "naive",
   itmGlobalEnabled: true,
   itmGlobalPct: 15,
+  rakebackPct: 0,
 };
 
 export const SCENARIOS: DemoScenario[] = [

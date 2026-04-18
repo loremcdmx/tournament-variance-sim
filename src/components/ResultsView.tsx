@@ -18,8 +18,8 @@ import type {
   SimulationResult,
   TournamentRow,
 } from "@/lib/sim/types";
+import { aggregateStreaks } from "@/lib/sim/pathStreaks";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
-import { plural, WORDS } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
@@ -27,7 +27,6 @@ import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
   DEFAULT_EXTREME_STYLES,
   DEFAULT_LINE_STYLE_PRESET,
-  EXTREME_KEYS,
   LINE_STYLE_PRESETS,
   LINE_STYLE_PRESET_META,
   LINE_STYLE_PRESET_ORDER,
@@ -97,19 +96,9 @@ interface Props {
   onUsePdPayoutsChange?: (v: boolean) => void;
   onUsePdFinishModelChange?: (v: boolean) => void;
   onUsePdRakeMathChange?: (v: boolean) => void;
-  onPdRefresh?: () => void;
   pdOverrideResult?: SimulationResult | null;
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
-}
-
-function buildSettingsSummary(c: ControlsState | undefined): string | null {
-  if (!c) return null;
-  const parts: string[] = [];
-  parts.push(c.alphaOverride == null ? "α=auto" : `α=${c.alphaOverride.toFixed(2)}`);
-  if (c.roiStdErr > 0) parts.push(`σROI=${(c.roiStdErr * 100).toFixed(1)}%`);
-  // Shock/tilt UI disabled — omit from summary
-  return parts.join(" · ");
 }
 
 function fmt(template: string, vars: Record<string, string>): string {
@@ -227,14 +216,15 @@ const intFmt = (v: number) =>
   v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 /**
- * Relative delta of `cur` against `pd` as a signed fraction. Null when PD is
- * unavailable or the PD anchor is too small for a meaningful ratio.
+ * Delta displayed on the PD-badge row: how much PD's value differs from ours,
+ * relative to ours. Positive ⇒ PD is higher (PD row shows ▲X%, matching how a
+ * reader naturally parses "freezeouts are 13% more").
  */
 function pctDelta(cur: number, pd: number): number | null {
   if (!Number.isFinite(cur) || !Number.isFinite(pd)) return null;
-  const anchor = Math.abs(pd);
+  const anchor = Math.abs(cur) > 1e-9 ? Math.abs(cur) : Math.abs(pd);
   if (anchor < 1e-9) return null;
-  return (cur - pd) / anchor;
+  return (pd - cur) / anchor;
 }
 
 type AccentHue = "felt" | "magenta";
@@ -871,9 +861,210 @@ interface TrajectoryVisibilityMap {
   overlayWorstSeriesIdxs: number[];
 }
 
+// Expected extra bullets from a geometric re-entry process with cap `maxEntries`
+// and unconditional re-entry rate `reRate`. Matches the engine's closed form
+// for `reentryExpected` — client-side mirror so the trajectory RB overlay can
+// reconstruct per-tourney expected RB without going through a worker round-trip.
+function reentryExpectedClient(maxEntries: number, reRate: number): number {
+  if (maxEntries <= 1) return 0;
+  if (reRate >= 1) return maxEntries - 1;
+  if (reRate <= 0) return 0;
+  return (reRate * (1 - Math.pow(reRate, maxEntries - 1))) / (1 - reRate);
+}
+
+// Deterministic cumulative rakeback curve aligned to `xCheckpoints` (tournament
+// indices into the flat schedule). Walks `schedule × scheduleRepeats` in the
+// same order the engine flattens, so heterogeneous schedules produce the
+// correctly-shaped ramp (big buy-in rows contribute steeper segments). Values
+// are expected $ of RB accrued by that tournament, using engine-consistent
+// expected bullet counts (1 + reentryExpected, no ITM conditioning — matches
+// the `costPerEntry` convention used in rowBuyIns accounting).
+function computeExpectedRakebackCurve(
+  schedule: TournamentRow[],
+  scheduleRepeats: number,
+  rbFrac: number,
+  xCheckpoints: number[],
+): Float64Array | null {
+  if (rbFrac <= 0 || schedule.length === 0) return null;
+  const perTourneyRb: number[] = [];
+  for (let rep = 0; rep < Math.max(1, scheduleRepeats); rep++) {
+    for (const row of schedule) {
+      const count = Math.max(1, Math.floor(row.count));
+      const maxE = Math.max(1, row.maxEntries ?? 1);
+      const reRate = maxE > 1 ? Math.max(0, Math.min(1, row.reentryRate ?? 1)) : 0;
+      const expectedBullets = 1 + reentryExpectedClient(maxE, reRate);
+      const rbPer = rbFrac * row.rake * row.buyIn * expectedBullets;
+      for (let k = 0; k < count; k++) perTourneyRb.push(rbPer);
+    }
+  }
+  const N = perTourneyRb.length;
+  if (N === 0) return null;
+  const cum = new Float64Array(N + 1);
+  let acc = 0;
+  for (let t = 0; t < N; t++) {
+    acc += perTourneyRb[t];
+    cum[t + 1] = acc;
+  }
+  const K = xCheckpoints.length;
+  const out = new Float64Array(K);
+  for (let j = 0; j < K; j++) {
+    const idx = Math.max(0, Math.min(N, Math.floor(xCheckpoints[j])));
+    out[j] = cum[idx];
+  }
+  return out;
+}
+
+// Clones a SimulationResult with RB curve added/subtracted across every
+// series that's a pure function of final profit. Sign +1 adds, −1 subtracts.
+// Because RB is deterministic (same total per sample — no stochastic
+// component), scalar-shifting final-profit-derived stats/histograms is exact.
+// Path-shape-dependent outputs (drawdown histogram, streak/recovery stats)
+// are re-derived from the stored hi-res paths (~1000 samples) with the
+// curve sign applied — coarser than the engine's N-sample histograms but
+// the only way to make those widgets respond to the RB toggle without
+// re-running the engine.
+function shiftResultByRakeback(
+  r: SimulationResult,
+  curve: Float64Array,
+  sign: 1 | -1,
+): SimulationResult {
+  const signedCurve = new Float64Array(curve.length);
+  for (let i = 0; i < curve.length; i++) signedCurve[i] = sign * curve[i];
+  const streakAgg = aggregateStreaks(
+    r.samplePaths.paths,
+    r.samplePaths.x,
+    signedCurve,
+  );
+  const shiftArr = (a: Float64Array): Float64Array => {
+    const len = a.length;
+    const out = new Float64Array(len);
+    const K = Math.min(len, curve.length);
+    for (let i = 0; i < K; i++) out[i] = a[i] + sign * curve[i];
+    for (let i = K; i < len; i++) out[i] = a[i];
+    return out;
+  };
+  const totalShift = sign * curve[curve.length - 1];
+  const shiftedHistEdges = r.histogram.binEdges.map((e) => e + totalShift);
+  // Recompute probProfit from the shifted histogram: linearly interpolate
+  // the CDF at final-profit = 0 under the shifted edges. Bin counts are
+  // treated as uniform within each bin (standard histogram CDF).
+  const totalCount = r.histogram.counts.reduce((a, c) => a + c, 0) || 1;
+  let cumBelow = 0;
+  for (let i = 0; i < r.histogram.counts.length; i++) {
+    const lo = shiftedHistEdges[i];
+    const hi = shiftedHistEdges[i + 1];
+    const c = r.histogram.counts[i];
+    if (hi <= 0) {
+      cumBelow += c;
+    } else if (lo >= 0) {
+      // fully above zero — contributes nothing to "below 0" cum
+    } else {
+      const frac = (0 - lo) / (hi - lo);
+      cumBelow += c * frac;
+    }
+  }
+  const probProfit = Math.max(0, Math.min(1, 1 - cumBelow / totalCount));
+  return {
+    ...r,
+    expectedProfit: r.expectedProfit + totalShift,
+    histogram: {
+      ...r.histogram,
+      binEdges: shiftedHistEdges,
+    },
+    stats: {
+      ...r.stats,
+      mean: r.stats.mean + totalShift,
+      median: r.stats.median + totalShift,
+      min: r.stats.min + totalShift,
+      max: r.stats.max + totalShift,
+      p01: r.stats.p01 + totalShift,
+      p05: r.stats.p05 + totalShift,
+      p95: r.stats.p95 + totalShift,
+      p99: r.stats.p99 + totalShift,
+      probProfit,
+      // VaR/CVaR are "loss" magnitudes: shift in the OPPOSITE direction.
+      // (With RB added, a given tail loss shrinks by totalShift.)
+      var95: r.stats.var95 - totalShift,
+      var99: r.stats.var99 - totalShift,
+      cvar95: r.stats.cvar95 - totalShift,
+      cvar99: r.stats.cvar99 - totalShift,
+      maxDrawdownMean: streakAgg.stats.maxDrawdownMean,
+      maxDrawdownMedian: streakAgg.stats.maxDrawdownMedian,
+      maxDrawdownP95: streakAgg.stats.maxDrawdownP95,
+      maxDrawdownP99: streakAgg.stats.maxDrawdownP99,
+      maxDrawdownWorst: streakAgg.stats.maxDrawdownWorst,
+      longestBreakevenMean: streakAgg.stats.longestBreakevenMean,
+      // longestCashless* — engine defines this as "tournaments since last
+      // ITM cash", which is independent of rakeback (a game-event metric,
+      // not a profit-curve metric). Preserve engine output instead of
+      // re-deriving from paths (pathStreaks' delta-based proxy double-counts
+      // break-even cashes and misreads bounty-only wins).
+      recoveryMedian: streakAgg.stats.recoveryMedian,
+      recoveryP90: streakAgg.stats.recoveryP90,
+      recoveryUnrecoveredShare: streakAgg.stats.recoveryUnrecoveredShare,
+    },
+    drawdownHistogram: streakAgg.drawdownHistogram,
+    longestBreakevenHistogram: streakAgg.longestBreakevenHistogram,
+    recoveryHistogram: streakAgg.recoveryHistogram,
+    downswings: (() => {
+      const N = Math.min(3, r.downswings.length, streakAgg.perSample.length);
+      const idx = streakAgg.perSample
+        .map((_, i) => i)
+        .sort((a, b) => streakAgg.perSample[b].maxDrawdown - streakAgg.perSample[a].maxDrawdown)
+        .slice(0, N);
+      return idx.map((sampleIndex, i) => {
+        const s = streakAgg.perSample[sampleIndex];
+        return {
+          rank: i + 1,
+          sampleIndex,
+          depth: s.maxDrawdown,
+          finalProfit: s.finalProfit,
+          longestBreakeven: s.longestBreakeven,
+        };
+      });
+    })(),
+    upswings: (() => {
+      const N = Math.min(3, r.upswings.length, streakAgg.perSample.length);
+      const idx = streakAgg.perSample
+        .map((_, i) => i)
+        .sort((a, b) => streakAgg.perSample[b].maxRunUp - streakAgg.perSample[a].maxRunUp)
+        .slice(0, N);
+      return idx.map((sampleIndex, i) => {
+        const s = streakAgg.perSample[sampleIndex];
+        return {
+          rank: i + 1,
+          sampleIndex,
+          height: s.maxRunUp,
+          finalProfit: s.finalProfit,
+          longestBreakeven: s.longestBreakeven,
+        };
+      });
+    })(),
+    samplePaths: {
+      ...r.samplePaths,
+      paths: r.samplePaths.paths.map(shiftArr),
+      best: shiftArr(r.samplePaths.best),
+      worst: shiftArr(r.samplePaths.worst),
+    },
+    envelopes: {
+      ...r.envelopes,
+      mean: shiftArr(r.envelopes.mean),
+      p05: shiftArr(r.envelopes.p05),
+      p95: shiftArr(r.envelopes.p95),
+      p15: shiftArr(r.envelopes.p15),
+      p85: shiftArr(r.envelopes.p85),
+      p025: shiftArr(r.envelopes.p025),
+      p975: shiftArr(r.envelopes.p975),
+      p0015: shiftArr(r.envelopes.p0015),
+      p9985: shiftArr(r.envelopes.p9985),
+      min: shiftArr(r.envelopes.min),
+      max: shiftArr(r.envelopes.max),
+    },
+  };
+}
+
 function buildTrajectoryAssets(
   r: SimulationResult,
-  bankroll: number,
   hue: AccentHue,
   yRange?: { min: number; max: number },
   overlay?: SimulationResult | null,
@@ -884,6 +1075,7 @@ function buildTrajectoryAssets(
   lineOverrides: LineStyleOverrides = {},
   runMode: RunMode = "random",
   extremeStyles: ExtremeStyles = DEFAULT_EXTREME_STYLES,
+  overlayLabel: string = "PrimeDope",
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
@@ -923,6 +1115,27 @@ function buildTrajectoryAssets(
     preset.path,
     Math.max(1, Math.min(builtPathCount, 80)),
   );
+  const [pathR, pathG, pathB] = parseRgb(pathStyle.stroke);
+  const basePathAlpha =
+    Number(pathStyle.stroke.match(/rgba?\([^)]*?,([^,)]+)\)/i)?.[1] ?? 0.4);
+  // Profit-rank by final value so paths near the poles pop against the
+  // middle mass — alpha grows with polarity², width gets a linear boost.
+  // Median paths stay faint so the envelope still reads.
+  const totalPaths = r.samplePaths.paths.length;
+  const profitPolarity = new Float64Array(totalPaths);
+  if (totalPaths > 0) {
+    const order: { idx: number; v: number }[] = new Array(totalPaths);
+    for (let i = 0; i < totalPaths; i++) {
+      const p = r.samplePaths.paths[i];
+      order[i] = { idx: i, v: p.length > 0 ? p[p.length - 1] : 0 };
+    }
+    order.sort((a, b) => a.v - b.v);
+    const denom = Math.max(1, totalPaths - 1);
+    for (let k = 0; k < totalPaths; k++) {
+      const q = k / denom;
+      profitPolarity[order[k].idx] = Math.abs(2 * q - 1);
+    }
+  }
   const pathSeriesIdx: number[] = [];
   const bandSeriesIdx: number[] = [];
   const bestSeriesIdxs: number[] = [];
@@ -985,14 +1198,18 @@ function buildTrajectoryAssets(
 
   for (let rank = 0; rank < builtPathCount; rank++) {
     const runIdx = rankedIndices[rank];
-    const idx = pushSeries(r.samplePaths.paths[runIdx], {
-      stroke: pathStyle.stroke,
-      width: pathStyle.width,
-    });
+    const pol = profitPolarity[runIdx];
+    // Only the top/bottom ~1% by profit get a small (+20%) bump — every other
+    // path renders at the baseline stroke so the bulk reads as a flat flock.
+    const boost = pol >= 0.98 ? 1.2 : 1;
+    const alpha = Math.min(0.95, basePathAlpha * boost);
+    const width = pathStyle.width * boost;
+    const stroke = `rgba(${pathR},${pathG},${pathB},${alpha.toFixed(3)})`;
+    const idx = pushSeries(r.samplePaths.paths[runIdx], { stroke, width });
     pathSeriesIdx.push(idx);
     mainLines.push({
       label: `Run ${runIdx + 1}`,
-      color: pathStyle.stroke,
+      color: stroke,
       seriesIdx: idx,
       kind: "path",
       rank,
@@ -1206,29 +1423,29 @@ function buildTrajectoryAssets(
     };
     if (extremeStyles.realBest.enabled) {
       overlayBestSeriesIdxs.push(
-        pushOverlayExtreme(overlay.samplePaths.best as Float64Array, "PrimeDope real best", "best", "real"),
+        pushOverlayExtreme(overlay.samplePaths.best as Float64Array, `${overlayLabel} real best`, "best", "real"),
       );
     }
     if (extremeStyles.aggBest.enabled) {
       overlayBestSeriesIdxs.push(
-        pushOverlayExtreme(overlay.envelopes.max as Float64Array, "PrimeDope agg best", "best", "agg"),
+        pushOverlayExtreme(overlay.envelopes.max as Float64Array, `${overlayLabel} agg best`, "best", "agg"),
       );
     }
     if (extremeStyles.realWorst.enabled) {
       overlayWorstSeriesIdxs.push(
-        pushOverlayExtreme(overlay.samplePaths.worst as Float64Array, "PrimeDope real worst", "worst", "real"),
+        pushOverlayExtreme(overlay.samplePaths.worst as Float64Array, `${overlayLabel} real worst`, "worst", "real"),
       );
     }
     if (extremeStyles.aggWorst.enabled) {
       overlayWorstSeriesIdxs.push(
-        pushOverlayExtreme(overlay.envelopes.min as Float64Array, "PrimeDope agg worst", "worst", "agg"),
+        pushOverlayExtreme(overlay.envelopes.min as Float64Array, `${overlayLabel} agg worst`, "worst", "agg"),
       );
     }
     if (isLineEnabled("p05", lineOverrides) && overlay.envelopes.p05) {
-      pushOverlay(overlay.envelopes.p05, "PrimeDope p5", "band", [10, 6]);
+      pushOverlay(overlay.envelopes.p05, `${overlayLabel} p5`, "band", [10, 6]);
     }
     if (isLineEnabled("p95", lineOverrides) && overlay.envelopes.p95) {
-      pushOverlay(overlay.envelopes.p95, "PrimeDope p95", "band", [10, 6]);
+      pushOverlay(overlay.envelopes.p95, `${overlayLabel} p95`, "band", [10, 6]);
     }
   }
 
@@ -1287,33 +1504,59 @@ function buildTrajectoryAssets(
   };
 }
 
-function unionYRange(
-  a: SimulationResult,
-  b: SimulationResult,
-  bankroll: number,
+// Y-axis fits the visible mass (p025/p975 ≈ 95% coverage + mean) PLUS every
+// path the user has actually revealed via the visibleRuns slider. p0015/p9985
+// are deliberately excluded as a baseline: on heavy-tailed PKO/Mystery
+// distributions their ±3σ tail reaches jackpot territory ($25k+) while the
+// bulk of paths live in a few $k. But once the user raises visibleRuns toward
+// the cap, the rendered flock extends past p975 (5% of N paths fall outside),
+// so we union in the min/max of exactly the paths `TrajectoryPlot` will show.
+function computeYRange(
+  results: readonly SimulationResult[],
+  extremeStyles: ExtremeStyles,
+  visibleRuns: number,
+  runMode: RunMode,
 ): { min: number; max: number } {
   let lo = Infinity;
   let hi = -Infinity;
-  for (const r of [a, b]) {
-    for (const v of r.envelopes.p0015) {
-      if (v < lo) lo = v;
-    }
-    for (const v of r.envelopes.p9985) {
-      if (v > hi) hi = v;
-    }
-    for (const v of r.envelopes.min) {
-      if (v < lo) lo = v;
-    }
-    for (const v of r.envelopes.max) {
-      if (v > hi) hi = v;
+  const min = (a: Float64Array | readonly number[]) => {
+    for (const v of a) if (v < lo) lo = v;
+  };
+  const max = (a: Float64Array | readonly number[]) => {
+    for (const v of a) if (v > hi) hi = v;
+  };
+  for (const r of results) {
+    // p0015/p9985 are rendered unconditionally (bandExtreme), so they must
+    // be in the Y-range even when the user hides all extremes and keeps the
+    // path count low — otherwise the outer band pokes above the chart top
+    // on heavy-tail formats without any hover-able series responsible.
+    min(r.envelopes.p0015);
+    max(r.envelopes.p9985);
+    min(r.envelopes.p025);
+    max(r.envelopes.p975);
+    min(r.envelopes.mean);
+    max(r.envelopes.mean);
+    if (extremeStyles.realBest.enabled) max(r.samplePaths.best);
+    if (extremeStyles.realWorst.enabled) min(r.samplePaths.worst);
+    if (extremeStyles.aggBest.enabled) max(r.envelopes.max);
+    if (extremeStyles.aggWorst.enabled) min(r.envelopes.min);
+    if (visibleRuns > 0 && r.samplePaths.paths.length > 0) {
+      const ranked = rankedRunIndices(r.samplePaths.paths, runMode);
+      const cap = Math.min(visibleRuns, ranked.length);
+      for (let k = 0; k < cap; k++) {
+        const p = r.samplePaths.paths[ranked[k]];
+        for (let i = 0; i < p.length; i++) {
+          const v = p[i];
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+      }
     }
   }
-  // Bankroll line no longer forces y-range — if -bankroll is far from the
-  // data envelope it just wastes vertical space on both panes.
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
     return { min: -1, max: 1 };
   }
-  const pad = (hi - lo) * 0.05;
+  const pad = (hi - lo) * 0.08;
   return { min: lo - pad, max: hi + pad };
 }
 
@@ -1335,7 +1578,6 @@ export function ResultsView({
   onUsePdPayoutsChange,
   onUsePdFinishModelChange,
   onUsePdRakeMathChange,
-  onPdRefresh,
   pdOverrideResult,
   pdOverrideStatus = "idle",
   pdOverrideProgress = 0,
@@ -1352,21 +1594,102 @@ export function ResultsView({
     (r) => (r.bountyFraction ?? 0) > 0,
   );
   const pdPkoFallback = compareMode === "primedope" && hasPko;
-
-  const yRange = useMemo(
-    () =>
-      pdChart ? unionYRange(result, pdChart, bankroll) : undefined,
-    [result, pdChart, bankroll],
-  );
+  const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
 
   // Default ON in compare mode: the whole point of the side-by-side view is
   // to see how the two models differ, and the tail-level differences live in
   // the histograms (max-DD, final profit), not the trajectory fan.
   const [overlayPd, setOverlayPd] = useState(true);
 
-  const s = result.stats;
-  const pdStats = pdChart?.stats;
-  const roi = s.mean / result.totalBuyIn;
+  // Shared RB view switch — drives trajectory + profit-histogram + scalar-
+  // shiftable stats (BigStat expectedProfit / probProfit, and their PD twins).
+  // Engine bakes RB into everything, so default matches engine output when
+  // RB > 0; toggling OFF reveals the game-only view. Drawdown / streak stats
+  // stay as engine output since RB reshapes those nonlinearly.
+  const rbFrac = Math.max(0, (settings?.rakebackPct ?? 0) / 100);
+  const rakebackCurve = useMemo(
+    () =>
+      schedule && scheduleRepeats != null
+        ? computeExpectedRakebackCurve(
+            schedule,
+            scheduleRepeats,
+            rbFrac,
+            result.samplePaths.x,
+          )
+        : null,
+    [schedule, scheduleRepeats, rbFrac, result.samplePaths.x],
+  );
+  const pdRakebackCurve = useMemo(
+    () =>
+      pdChart && schedule && scheduleRepeats != null
+        ? computeExpectedRakebackCurve(
+            schedule,
+            scheduleRepeats,
+            rbFrac,
+            pdChart.samplePaths.x,
+          )
+        : null,
+    [pdChart, schedule, scheduleRepeats, rbFrac],
+  );
+  // Four independent region toggles — each controls whether its region
+  // shows RB baked in (engine default) or subtracts it for the game-only view.
+  // All default to rbFrac > 0 so initial view matches engine output.
+  const [rbTraj, setRbTraj] = useState<boolean>(rbFrac > 0);
+  const [rbStats, setRbStats] = useState<boolean>(rbFrac > 0);
+  const [rbDist, setRbDist] = useState<boolean>(rbFrac > 0);
+  const [rbStreaks, setRbStreaks] = useState<boolean>(rbFrac > 0);
+  useEffect(() => {
+    const on = rbFrac > 0;
+    setRbTraj(on);
+    setRbStats(on);
+    setRbDist(on);
+    setRbStreaks(on);
+  }, [rbFrac]);
+  // One shifted variant per base + one for each chart — re-used across regions
+  // via boolean picks below. Memoing by curve identity keeps the clone cheap.
+  const resultNoRb = useMemo(
+    () =>
+      rakebackCurve ? shiftResultByRakeback(result, rakebackCurve, -1) : result,
+    [result, rakebackCurve],
+  );
+  const pdChartNoRb = useMemo(
+    () =>
+      pdChart && pdRakebackCurve
+        ? shiftResultByRakeback(pdChart, pdRakebackCurve, -1)
+        : pdChart,
+    [pdChart, pdRakebackCurve],
+  );
+  const pickResult = (on: boolean) => (on ? result : resultNoRb);
+  const pickPd = (on: boolean) => (on ? pdChart : pdChartNoRb);
+  const displayResultTraj = pickResult(rbTraj);
+  const displayPdChartTraj = pickPd(rbTraj);
+  const displayResultStats = pickResult(rbStats);
+  const displayPdChartStats = pickPd(rbStats);
+  const displayResultDist = pickResult(rbDist);
+  const displayPdChartDist = pickPd(rbDist);
+  const displayResultStreaks = pickResult(rbStreaks);
+
+  // Freeze the profit-dist x domain across both RB states so toggling
+  // rbDist translates the bars inside a stable axis instead of auto-rescaling.
+  const distProfitXDomain = useMemo<[number, number] | undefined>(() => {
+    if (!rakebackCurve) return undefined;
+    const ours = result.histogram.binEdges;
+    const oursNoRb = resultNoRb.histogram.binEdges;
+    let lo = Math.min(ours[0], oursNoRb[0]);
+    let hi = Math.max(ours[ours.length - 1], oursNoRb[oursNoRb.length - 1]);
+    if (pdChart && pdChartNoRb) {
+      const pd = pdChart.histogram.binEdges;
+      const pdNoRb = pdChartNoRb.histogram.binEdges;
+      lo = Math.min(lo, pd[0], pdNoRb[0]);
+      hi = Math.max(hi, pd[pd.length - 1], pdNoRb[pdNoRb.length - 1]);
+    }
+    return [lo, hi];
+  }, [rakebackCurve, result, resultNoRb, pdChart, pdChartNoRb]);
+
+  const s = displayResultStats.stats;
+  const pdStats = displayPdChartStats?.stats;
+  const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
+  const roi = s.mean / displayResultStats.totalBuyIn;
   const modelPreset = modelPresetId
     ? STANDARD_PRESETS.find((p) => p.id === modelPresetId)
     : undefined;
@@ -1375,7 +1698,6 @@ export function ResultsView({
     : finishModelId
     ? t(FINISH_MODEL_LABEL_KEY[finishModelId])
     : t("twin.runA");
-  const settingsSummary = buildSettingsSummary(settings);
 
   const abi = useMemo(() => {
     const xs = result.samplePaths.x;
@@ -1472,22 +1794,41 @@ export function ResultsView({
           ) : null}
         </div>
       ) : null}
+      {rakebackCurve && (
+        <div className="flex items-center justify-end -mb-1">
+          <label
+            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
+            title={t("chart.trajectory.withRakeback.title")}
+          >
+            <input
+              type="checkbox"
+              checked={rbTraj}
+              onChange={(e) => setRbTraj(e.target.checked)}
+              className="h-3.5 w-3.5 accent-lime-400"
+            />
+            <span className="uppercase tracking-wider text-lime-400/80">
+              {t("chart.trajectory.withRakeback")}
+            </span>
+          </label>
+        </div>
+      )}
       <UnitScope id="trajectory">
         <TrajectoryCard
           settings={settings}
           result={result}
+          displayResult={displayResultTraj}
           compareResult={compareResult ?? null}
           bankroll={bankroll}
-          yRange={yRange}
           overlayPd={overlayPd}
           setOverlayPd={setOverlayPd}
           pdChart={pdChart ?? null}
+          displayPdChart={displayPdChartTraj ?? null}
+          showWithRakeback={rbTraj}
           pdPkoFallback={pdPkoFallback}
           compareMode={compareMode}
           schedule={schedule}
           scheduleRepeats={scheduleRepeats}
           modelLabel={modelLabel}
-          settingsSummary={settingsSummary}
           linePreset={linePreset}
           lineOverrides={lineOverrides}
           visibleRuns={deferredVisibleRuns}
@@ -1547,11 +1888,12 @@ export function ResultsView({
                     </span>
                   </>
                 ) : (
-                  <span className="w-10 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
+                  <span className="min-w-[3.5rem] whitespace-nowrap text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
                     {visibleRuns}/{maxRuns}
                   </span>
                 )}
                 <RunModeSlider value={runMode} onChange={setRunMode} t={t} />
+                <InlineUnitToggle />
               </div>
             </div>
           }
@@ -1568,7 +1910,6 @@ export function ResultsView({
           onUsePdFinishModelChange={onUsePdFinishModelChange}
           usePdRakeMath={settings?.usePrimedopeRakeMath ?? true}
           onUsePdRakeMathChange={onUsePdRakeMathChange}
-          onPdRefresh={onPdRefresh}
           pdOverrideStatus={pdOverrideStatus}
           pdOverrideProgress={pdOverrideProgress}
         />
@@ -1608,16 +1949,44 @@ export function ResultsView({
       )}
 
       {advanced && result.comparison && compareMode === "primedope" && (
-        <CollapsibleSection id="pdDiff" title={t("section.pdDiff")}>
-          <PrimedopeDiff primary={result} other={result.comparison} />
+        <CollapsibleSection
+          id="pdDiff"
+          title={pdPkoFallback ? t("section.pdDiff.freezeouts") : t("section.pdDiff")}
+        >
+          <PrimedopeDiff
+            primary={result}
+            other={result.comparison}
+            theirsLabel={pdPkoFallback ? t("chart.overlay.freezeouts") : undefined}
+            title={pdPkoFallback ? t("pd.title.freezeouts") : undefined}
+            subtitle={pdPkoFallback ? t("pd.subtitle.freezeouts") : undefined}
+          />
         </CollapsibleSection>
+      )}
+
+      {rakebackCurve && (
+        <div className="flex items-center justify-end -mb-1">
+          <label
+            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
+            title={t("chart.trajectory.withRakeback.title")}
+          >
+            <input
+              type="checkbox"
+              checked={rbStats}
+              onChange={(e) => setRbStats(e.target.checked)}
+              className="h-3.5 w-3.5 accent-lime-400"
+            />
+            <span className="uppercase tracking-wider text-lime-400/80">
+              {t("chart.trajectory.withRakeback")}
+            </span>
+          </label>
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <BigStat
           suit="club"
           label={t("stat.expectedProfit")}
-          value={money(result.expectedProfit)}
+          value={money(displayResultStats.expectedProfit)}
           sub={t("stat.expectedProfit.sub")
             .replace("{min}", money(s.min))
             .replace("{max}", money(s.max))}
@@ -1625,9 +1994,10 @@ export function ResultsView({
             .replace("{mean}", money(s.mean))
             .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
             .replace("{median}", money(s.median))}
-          tone={result.expectedProfit >= 0 ? "pos" : "neg"}
+          tone={displayResultStats.expectedProfit >= 0 ? "pos" : "neg"}
           pdValue={pdStats ? money(pdStats.mean) : undefined}
           pdDelta={pdStats ? pctDelta(s.mean, pdStats.mean) : null}
+          pdLabel={pdBadgeLabel}
         />
         <BigStat
           suit="spade"
@@ -1640,6 +2010,7 @@ export function ResultsView({
           tip={t("stat.tFor95.sub")}
           pdValue={pdStats ? pct(pdStats.probProfit) : undefined}
           pdDelta={pdStats ? pctDelta(s.probProfit, pdStats.probProfit) : null}
+          pdLabel={pdBadgeLabel}
         />
         <BigStat
           suit="heart"
@@ -1661,6 +2032,7 @@ export function ResultsView({
           pdValue={pdStats ? pct(pdStats.riskOfRuin) : undefined}
           pdDelta={pdStats ? pctDelta(s.riskOfRuin, pdStats.riskOfRuin) : null}
           emphasizeTail
+          pdLabel={pdBadgeLabel}
         />
       </div>
 
@@ -1668,18 +2040,25 @@ export function ResultsView({
         <MiniStat
           suit="heart"
           label={t("stat.ddWorst")}
-          value={`${money(s.maxDrawdownWorst)} · ${(s.maxDrawdownWorst / abi).toFixed(1)} ABI · ${Math.round(s.longestBreakevenMean)} ${tourneysWord}`}
+          value={
+            unit === "abi"
+              ? `${money(s.maxDrawdownWorst)} · ${Math.round(s.longestBreakevenMean)} ${tourneysWord}`
+              : `${money(s.maxDrawdownWorst)} · ${(s.maxDrawdownWorst / abi).toFixed(1)} ABI · ${Math.round(s.longestBreakevenMean)} ${tourneysWord}`
+          }
           tone="neg"
           tip={t("stat.ddWorst.tip")}
           pdValue={
             pdStats
-              ? `${money(pdStats.maxDrawdownWorst)} · ${(pdStats.maxDrawdownWorst / abi).toFixed(1)} ABI`
+              ? unit === "abi"
+                ? money(pdStats.maxDrawdownWorst)
+                : `${money(pdStats.maxDrawdownWorst)} · ${(pdStats.maxDrawdownWorst / abi).toFixed(1)} ABI`
               : undefined
           }
           pdDelta={
             pdStats ? pctDelta(s.maxDrawdownWorst, pdStats.maxDrawdownWorst) : null
           }
           emphasizeTail
+          pdLabel={pdBadgeLabel}
         />
         <MiniStat
           suit="heart"
@@ -1692,6 +2071,7 @@ export function ResultsView({
               ? pctDelta(s.maxDrawdownMedian, pdStats.maxDrawdownMedian)
               : null
           }
+          pdLabel={pdBadgeLabel}
         />
         <MiniStat
           suit="heart"
@@ -1704,6 +2084,7 @@ export function ResultsView({
             pdStats ? pctDelta(s.maxDrawdownP95, pdStats.maxDrawdownP95) : null
           }
           emphasizeTail
+          pdLabel={pdBadgeLabel}
         />
         <MiniStat
           suit="heart"
@@ -1716,6 +2097,7 @@ export function ResultsView({
             pdStats ? pctDelta(s.maxDrawdownP99, pdStats.maxDrawdownP99) : null
           }
           emphasizeTail
+          pdLabel={pdBadgeLabel}
         />
       </StatGroup>
 
@@ -1735,6 +2117,7 @@ export function ResultsView({
               ? pctDelta(s.longestBreakevenMean, pdStats.longestBreakevenMean)
               : null
           }
+          pdLabel={pdBadgeLabel}
         />
         <MiniStat
           suit="heart"
@@ -1751,6 +2134,7 @@ export function ResultsView({
               : null
           }
           emphasizeTail
+          pdLabel={pdBadgeLabel}
         />
         <MiniStat
           suit="diamond"
@@ -1769,6 +2153,7 @@ export function ResultsView({
           pdDelta={
             pdStats ? pctDelta(s.recoveryMedian, pdStats.recoveryMedian) : null
           }
+          pdLabel={pdBadgeLabel}
         />
         <MiniStat
           suit="heart"
@@ -1787,6 +2172,7 @@ export function ResultsView({
           }
           pdDelta={pdStats ? pctDelta(s.recoveryP90, pdStats.recoveryP90) : null}
           emphasizeTail
+          pdLabel={pdBadgeLabel}
         />
         <MiniStat
           suit="heart"
@@ -1804,24 +2190,45 @@ export function ResultsView({
               : null
           }
           emphasizeTail
+          pdLabel={pdBadgeLabel}
         />
       </StatGroup>
+
+      {rakebackCurve && (
+        <div className="flex items-center justify-end -mb-1">
+          <label
+            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
+            title={t("chart.trajectory.withRakeback.title")}
+          >
+            <input
+              type="checkbox"
+              checked={rbDist}
+              onChange={(e) => setRbDist(e.target.checked)}
+              className="h-3.5 w-3.5 accent-lime-400"
+            />
+            <span className="uppercase tracking-wider text-lime-400/80">
+              {t("chart.trajectory.withRakeback")}
+            </span>
+          </label>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <UnitScope id="dist.profit">
           <MoneyDistributionCard
             title={t("chart.dist")}
             subtitle={`${result.samples.toLocaleString()} ${t("app.samples")} · 60 bins`}
-            binEdges={result.histogram.binEdges}
-            counts={result.histogram.counts}
+            binEdges={displayResultDist.histogram.binEdges}
+            counts={displayResultDist.histogram.counts}
             color="#34d399"
             yAsPct
+            xDomain={distProfitXDomain}
             overlay={
-              overlayPd && pdChart
+              overlayPd && displayPdChartDist
                 ? {
-                    binEdges: pdChart.histogram.binEdges,
-                    counts: pdChart.histogram.counts,
-                    label: "PrimeDope",
+                    binEdges: displayPdChartDist.histogram.binEdges,
+                    counts: displayPdChartDist.histogram.counts,
+                    label: overlayLabel,
                   }
                 : null
             }
@@ -1840,7 +2247,7 @@ export function ResultsView({
                 ? {
                     binEdges: pdChart.drawdownHistogram.binEdges,
                     counts: pdChart.drawdownHistogram.counts,
-                    label: "PrimeDope",
+                    label: overlayLabel,
                   }
                 : null
             }
@@ -1859,9 +2266,28 @@ export function ResultsView({
         </Card>
         {result.downswings.length > 0 && (
           <UnitScope id="downswings">
+            <div className="flex flex-col gap-1.5">
+              {rakebackCurve && (
+                <div className="flex items-center justify-end -mb-1">
+                  <label
+                    className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
+                    title={t("chart.trajectory.withRakeback.title")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={rbStreaks}
+                      onChange={(e) => setRbStreaks(e.target.checked)}
+                      className="h-3.5 w-3.5 accent-lime-400"
+                    />
+                    <span className="uppercase tracking-wider text-lime-400/80">
+                      {t("chart.trajectory.withRakeback")}
+                    </span>
+                  </label>
+                </div>
+              )}
             <DownswingsCard
-              downswings={result.downswings}
-              upswings={result.upswings}
+              downswings={displayResultStreaks.downswings}
+              upswings={displayResultStreaks.upswings}
               tourneysWord={tourneysWord}
               streaks={
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:grid-rows-[auto_1fr_auto_auto]">
@@ -1872,8 +2298,8 @@ export function ResultsView({
                       tip={t("chart.longestBE.tip")}
                     />
                     <DistributionChart
-                      binEdges={result.longestBreakevenHistogram.binEdges}
-                      counts={result.longestBreakevenHistogram.counts}
+                      binEdges={displayResultStreaks.longestBreakevenHistogram.binEdges}
+                      counts={displayResultStreaks.longestBreakevenHistogram.counts}
                       color="#fbbf24"
                       unitLabel="tourneys"
                       yAsPct
@@ -1885,7 +2311,7 @@ export function ResultsView({
                               counts:
                                 pdChart.longestBreakevenHistogram.counts,
                               color: "#f472b6",
-                              label: "PrimeDope",
+                              label: overlayLabel,
                             }
                           : undefined
                       }
@@ -1902,8 +2328,8 @@ export function ResultsView({
                       tip={t("chart.longestCashless.tip")}
                     />
                     <DistributionChart
-                      binEdges={result.longestCashlessHistogram.binEdges}
-                      counts={result.longestCashlessHistogram.counts}
+                      binEdges={displayResultStreaks.longestCashlessHistogram.binEdges}
+                      counts={displayResultStreaks.longestCashlessHistogram.counts}
                       color="#f87171"
                       unitLabel="tourneys"
                       yAsPct
@@ -1915,7 +2341,7 @@ export function ResultsView({
                               counts:
                                 pdChart.longestCashlessHistogram.counts,
                               color: "#38bdf8",
-                              label: "PrimeDope",
+                              label: overlayLabel,
                             }
                           : undefined
                       }
@@ -1932,8 +2358,8 @@ export function ResultsView({
                       tip={t("chart.recovery.tip")}
                     />
                     <DistributionChart
-                      binEdges={result.recoveryHistogram.binEdges}
-                      counts={result.recoveryHistogram.counts}
+                      binEdges={displayResultStreaks.recoveryHistogram.binEdges}
+                      counts={displayResultStreaks.recoveryHistogram.counts}
                       color="#34d399"
                       unitLabel="tourneys"
                       yAsPct
@@ -1943,7 +2369,7 @@ export function ResultsView({
                               binEdges: pdChart.recoveryHistogram.binEdges,
                               counts: pdChart.recoveryHistogram.counts,
                               color: "#e879f9",
-                              label: "PrimeDope",
+                              label: overlayLabel,
                             }
                           : undefined
                       }
@@ -1952,7 +2378,7 @@ export function ResultsView({
                       {t("chart.recovery.sub")}
                       {" · "}
                       {fmt(t("chart.recovery.unrecovered"), {
-                        pct: pct(s.recoveryUnrecoveredShare),
+                        pct: pct(displayResultStreaks.stats.recoveryUnrecoveredShare),
                       })}
                     </div>
                     <div />
@@ -1960,6 +2386,7 @@ export function ResultsView({
                 </div>
               }
             />
+            </div>
           </UnitScope>
         )}
       </div>
@@ -2252,18 +2679,19 @@ function SatelliteCard({
 function TrajectoryCard({
   settings,
   result,
+  displayResult,
   compareResult,
   bankroll,
-  yRange,
   overlayPd,
   setOverlayPd,
   pdChart,
+  displayPdChart,
+  showWithRakeback,
   pdPkoFallback,
   compareMode,
   schedule,
   scheduleRepeats,
   modelLabel,
-  settingsSummary,
   linePreset,
   lineOverrides,
   visibleRuns,
@@ -2278,25 +2706,25 @@ function TrajectoryCard({
   onUsePdFinishModelChange,
   usePdRakeMath,
   onUsePdRakeMathChange,
-  onPdRefresh,
   pdOverrideStatus,
   pdOverrideProgress,
   toolbar,
 }: {
   settings?: ControlsState;
   result: SimulationResult;
+  displayResult: SimulationResult;
   compareResult: SimulationResult | null;
   bankroll: number;
-  yRange: { min: number; max: number } | undefined;
   overlayPd: boolean;
   setOverlayPd: (v: boolean) => void;
   pdChart: SimulationResult | null;
+  displayPdChart: SimulationResult | null;
+  showWithRakeback: boolean;
   pdPkoFallback: boolean;
   compareMode: "random" | "primedope";
   schedule: TournamentRow[] | undefined;
   scheduleRepeats: number | undefined;
   modelLabel: string;
-  settingsSummary: string | null;
   linePreset: LineStylePreset;
   lineOverrides: LineStyleOverrides;
   visibleRuns: number;
@@ -2311,14 +2739,14 @@ function TrajectoryCard({
   onUsePdFinishModelChange?: (v: boolean) => void;
   usePdRakeMath: boolean;
   onUsePdRakeMathChange?: (v: boolean) => void;
-  onPdRefresh?: () => void;
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
   toolbar?: React.ReactNode;
 }) {
   const t = useT();
-  const { money, compactMoney } = useMoneyFmt();
+  const { compactMoney } = useMoneyFmt();
   const { advanced } = useAdvancedMode();
+  const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
   const [extremeStyles, setExtremeStyles] = useLocalStorageState<ExtremeStyles>(
     "tvs.extremeStyles.v1",
     loadExtremeStyles,
@@ -2327,6 +2755,21 @@ function TrajectoryCard({
   );
   const setExtremeKey = (k: ExtremeKey, patch: Partial<ExtremeStyles[ExtremeKey]>) =>
     setExtremeStyles({ ...extremeStyles, [k]: { ...extremeStyles[k], ...patch } });
+  // Y-axis fits exactly the visible series (#96). Toggling an extreme line
+  // expands the axis to fit it; toggling off snaps back to the main mass.
+  // Without this uPlot would auto-scale over all series we feed it — including
+  // the 1000 sample paths, whose jackpot outliers on Mystery/BR stretch the
+  // axis even when extremes are hidden.
+  const effectiveYRange = useMemo(
+    () =>
+      computeYRange(
+        displayPdChart ? [displayResult, displayPdChart] : [displayResult],
+        extremeStyles,
+        visibleRuns,
+        runMode,
+      ),
+    [displayResult, displayPdChart, extremeStyles, visibleRuns, runMode],
+  );
   const oursCapKey: DictKey =
     modelPresetId === "naive"
       ? "chart.trajectory.ours.cap.naive"
@@ -2347,15 +2790,33 @@ function TrajectoryCard({
   const axisFmtRef = useRef(compactMoney);
   axisFmtRef.current = compactMoney;
   const stableAxisFmt = useMemo(() => (v: number) => axisFmtRef.current(v), []);
-  const maxPathCount = Math.min(1000, result.samplePaths.paths.length);
+  // `displayResult` / `displayPdChart` / `showWithRakeback` are owned by the
+  // parent (ResultsView) so the toggle is shared with BigStats + profit
+  // histogram. Only `compareResult` (an internal twin-run input) needs its
+  // own shift pipeline here.
+  const rbFrac = Math.max(0, (settings?.rakebackPct ?? 0) / 100);
+  const compareRakebackCurve = useMemo(
+    () =>
+      compareResult && schedule && scheduleRepeats != null
+        ? computeExpectedRakebackCurve(schedule, scheduleRepeats, rbFrac, compareResult.samplePaths.x)
+        : null,
+    [compareResult, schedule, scheduleRepeats, rbFrac],
+  );
+  const displayCompareResult = useMemo(
+    () =>
+      compareResult && !showWithRakeback && compareRakebackCurve
+        ? shiftResultByRakeback(compareResult, compareRakebackCurve, -1)
+        : compareResult,
+    [compareResult, showWithRakeback, compareRakebackCurve],
+  );
+  const maxPathCount = Math.min(1000, displayResult.samplePaths.paths.length);
   const primary = useMemo(
     () =>
       buildTrajectoryAssets(
-        result,
-        bankroll,
+        displayResult,
         "felt",
-        yRange,
-        overlayPd ? pdChart : null,
+        effectiveYRange,
+        overlayPd ? displayPdChart : null,
         stableAxisFmt,
         linePreset,
         maxPathCount,
@@ -2363,21 +2824,21 @@ function TrajectoryCard({
         lineOverrides,
         runMode,
         extremeStyles,
+        overlayLabel,
       ),
-    [result, bankroll, yRange, overlayPd, pdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, extremeStyles],
+    [displayResult, effectiveYRange, overlayPd, displayPdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, extremeStyles, overlayLabel],
   );
   const pdPanePreset = PRIMEDOPE_PANE_PRESET;
-  const secondaryMaxPathCount = pdChart
-    ? Math.min(1000, pdChart.samplePaths.paths.length)
+  const secondaryMaxPathCount = displayPdChart
+    ? Math.min(1000, displayPdChart.samplePaths.paths.length)
     : 0;
   const secondary = useMemo(
     () =>
-      pdChart
+      displayPdChart
         ? buildTrajectoryAssets(
-            pdChart,
-            bankroll,
+            displayPdChart,
             "magenta",
-            yRange,
+            effectiveYRange,
             undefined,
             stableAxisFmt,
             pdPanePreset,
@@ -2388,17 +2849,16 @@ function TrajectoryCard({
             extremeStyles,
           )
         : null,
-    [pdChart, bankroll, yRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
+    [displayPdChart, effectiveYRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
   );
-  const compareMaxPathCount = compareResult
-    ? Math.min(500, compareResult.samplePaths.paths.length)
+  const compareMaxPathCount = displayCompareResult
+    ? Math.min(500, displayCompareResult.samplePaths.paths.length)
     : 0;
   const slotOverlay = useMemo(
     () =>
-      compareResult
+      displayCompareResult
         ? buildTrajectoryAssets(
-            compareResult,
-            bankroll,
+            displayCompareResult,
             "magenta",
             undefined,
             undefined,
@@ -2411,7 +2871,7 @@ function TrajectoryCard({
             extremeStyles,
           )
         : null,
-    [compareResult, bankroll, stableAxisFmt, pdPanePreset, compareMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
+    [displayCompareResult, stableAxisFmt, pdPanePreset, compareMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
   );
 
   const extremeRows: Array<{ key: ExtremeKey; labelKey: DictKey }> = [
@@ -2468,6 +2928,7 @@ function TrajectoryCard({
         <ChartHeader
           title={t("chart.trajectory")}
           subtitle=""
+          showUnitToggle={false}
         />
         {toolbar}
         {extremesToggles}
@@ -2491,8 +2952,6 @@ function TrajectoryCard({
                 ? honestLabel
                 : pdPkoFallback
                 ? t("chart.trajectory.noKoLabel")
-                : usePdPayouts && usePdFinishModel && usePdRakeMath
-                ? "PrimeDope"
                 : "PrimeDope"
             }
             hueDot="#60a5fa"
@@ -2586,6 +3045,7 @@ function TrajectoryCard({
       <ChartHeader
         title={t("chart.trajectory")}
         subtitle=""
+        showUnitToggle={false}
       />
       {toolbar}
       {extremesToggles}
@@ -2630,6 +3090,7 @@ function MoneyDistributionCard({
   color,
   overlay,
   yAsPct,
+  xDomain,
 }: {
   title: string;
   subtitle: string;
@@ -2642,6 +3103,7 @@ function MoneyDistributionCard({
     label: string;
   } | null;
   yAsPct?: boolean;
+  xDomain?: [number, number];
 }) {
   const abi = useContext(AbiContext);
   const { unit } = useMoneyFmt();
@@ -2658,13 +3120,8 @@ function MoneyDistributionCard({
         unitLabel={unit === "abi" ? "ABI" : "$"}
         overlay={overlay}
         yAsPct={yAsPct}
+        xDomain={xDomain}
       />
-      {overlay && (
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-[color:var(--color-fg-dim)]">
-          <span className="inline-block h-[1px] w-5 border-t border-dashed border-[#f472b6]" />
-          <span>{overlay.label}</span>
-        </div>
-      )}
     </Card>
   );
 }
@@ -2786,25 +3243,34 @@ function RunModeSlider({
   t: ReturnType<typeof useT>;
 }) {
   const modes: RunMode[] = ["worst", "random", "best"];
-  const idx = modes.indexOf(value);
   return (
     <div
-      className="ml-2 flex items-center gap-1.5"
+      className="ml-2 inline-flex overflow-hidden rounded-md border border-[color:var(--color-border)]"
+      role="radiogroup"
+      aria-label={t("runs.mode.title")}
       title={t("runs.mode.title")}
     >
-      <input
-        type="range"
-        min={0}
-        max={2}
-        step={1}
-        value={idx < 0 ? 1 : idx}
-        onChange={(e) => onChange(modes[Number(e.target.value)] ?? "random")}
-        className="h-1 w-20 cursor-pointer accent-[color:var(--color-accent)]"
-        aria-label={t("runs.mode.title")}
-      />
-      <span className="w-12 text-right font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-        {t(`runs.mode.${value}` as DictKey)}
-      </span>
+      {modes.map((m, i) => {
+        const active = m === value;
+        return (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(m)}
+            className={
+              "px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors " +
+              (active
+                ? "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"
+                : "bg-[color:var(--color-bg-elev)] text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-bg-elev-2)] hover:text-[color:var(--color-fg)]") +
+              (i > 0 ? " border-l border-[color:var(--color-border)]" : "")
+            }
+          >
+            {t(`runs.mode.${m}` as DictKey)}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -3180,154 +3646,6 @@ function RefLineCustomizer({
   );
 }
 
-function GapExplainer({
-  ours,
-  pd,
-  money,
-  t,
-}: {
-  ours: SimulationResult;
-  pd: SimulationResult;
-  money: (v: number) => string;
-  t: (key: DictKey) => string;
-}) {
-  // "Biggest run-good vs EV" = how far the luckiest session overshot
-  // the expected session finish. max − mean is the cleanest derivable proxy:
-  // for {S} independent sessions, this is the tail of the upside distribution.
-  const spreadOurs = Math.max(0, ours.stats.max - ours.stats.mean);
-  const spreadPd = Math.max(0, pd.stats.max - pd.stats.mean);
-  const spreadRatio = spreadPd > 1e-6 ? spreadOurs / spreadPd : 0;
-  const ddOurs = ours.stats.maxDrawdownWorst;
-  const ddPd = pd.stats.maxDrawdownWorst;
-  const ddRatio = ddPd > 1e-6 ? ddOurs / ddPd : 0;
-  const itmOurs = ours.stats.itmRate;
-  const itmPd = pd.stats.itmRate;
-  const itmDelta = itmOurs - itmPd;
-  const rorOurs = ours.stats.minBankrollRoR1pct;
-  const rorPd = pd.stats.minBankrollRoR1pct;
-  const rorRatio = rorPd > 1e-6 ? rorOurs / rorPd : 0;
-  // BI count for RoR — a poker player reads "240 BI" instantly where "$12k"
-  // needs a mental divide. Derive ABI from total buy-in / N tournaments.
-  const abiOurs =
-    ours.tournamentsPerSample > 0 ? ours.totalBuyIn / ours.tournamentsPerSample : 0;
-  const abiPd =
-    pd.tournamentsPerSample > 0 ? pd.totalBuyIn / pd.tournamentsPerSample : 0;
-  const rorBiOurs = abiOurs > 0 ? rorOurs / abiOurs : 0;
-  const rorBiPd = abiPd > 0 ? rorPd / abiPd : 0;
-  const fmtBi = (n: number) =>
-    n >= 1000 ? `${(n / 1000).toFixed(1)}k BI` : `${Math.round(n)} BI`;
-  const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
-  const fmtPpDelta = (d: number) => `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)} pp`;
-  // Delta vs PD in %: +N % means ours is N % bigger. For drawdown / spread /
-  // RoR-bankroll, "bigger" = PD underestimates risk → warning colour.
-  const fmtPctDelta = (ratio: number) => {
-    if (!(ratio > 0)) return "—";
-    const pct = (ratio - 1) * 100;
-    const sign = pct > 0 ? "+" : "";
-    return `${sign}${pct.toFixed(pct > 99 || pct < -99 ? 0 : pct > 9 || pct < -9 ? 0 : 1)}%`;
-  };
-  const severityClass = (ratio: number) => {
-    if (!(ratio > 0)) return "text-[color:var(--color-fg-dim)]";
-    const abs = Math.abs(ratio - 1);
-    if (abs < 0.05) return "text-[color:var(--color-fg-dim)]";
-    if (abs < 0.20) return "text-amber-400";
-    return "text-rose-400";
-  };
-  const fillRatio = (key: DictKey, r: number) =>
-    t(key).replace("{pct}", fmtPctDelta(r));
-  return (
-    <div className="mt-3 mb-4 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/50 p-3">
-      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-        {t("chart.trajectory.gapTitle")}
-      </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="flex flex-col gap-0.5">
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            {t("chart.trajectory.gapSpread")}
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-[15px] font-bold tabular-nums text-[color:var(--color-fg)]">
-              {money(spreadOurs)}
-            </span>
-            <span className="text-[11px] tabular-nums text-[color:var(--color-fg-dim)]">
-              vs {money(spreadPd)}
-            </span>
-          </div>
-          {spreadRatio > 0 && (
-            <div className={`text-[11px] font-semibold tabular-nums ${severityClass(spreadRatio)}`}>
-              {fillRatio("chart.trajectory.gapRatio", spreadRatio)}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            {t("chart.trajectory.gapDd")}
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-[15px] font-bold tabular-nums text-[color:var(--color-fg)]">
-              {money(ddOurs)}
-            </span>
-            <span className="text-[11px] tabular-nums text-[color:var(--color-fg-dim)]">
-              vs {money(ddPd)}
-            </span>
-          </div>
-          {ddRatio > 0 && (
-            <div className={`text-[11px] font-semibold tabular-nums ${severityClass(ddRatio)}`}>
-              {fillRatio("chart.trajectory.gapRatioDeeper", ddRatio)}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            {t("chart.trajectory.gapItm")}
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-[15px] font-bold tabular-nums text-[color:var(--color-fg)]">
-              {fmtPct(itmOurs)}
-            </span>
-            <span className="text-[11px] tabular-nums text-[color:var(--color-fg-dim)]">
-              vs {fmtPct(itmPd)}
-            </span>
-          </div>
-          <div
-            className={`text-[11px] font-semibold tabular-nums ${
-              Math.abs(itmDelta) < 0.002
-                ? "text-[color:var(--color-fg-dim)]"
-                : "text-[color:var(--color-accent)]"
-            }`}
-          >
-            {fmtPpDelta(itmDelta)}
-          </div>
-        </div>
-        <div
-          className="flex flex-col gap-0.5"
-          title="Минимальный банкролл, при котором шанс уйти в ноль за всю дистанцию ≤1%. Меньше этой суммы — играешь в рулетку. Показано в деньгах и в бай-инах (BI = средний бай-ин расписания)."
-        >
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            {t("chart.trajectory.gapRor")}
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-[15px] font-bold tabular-nums text-[color:var(--color-fg)]">
-              {rorBiOurs > 0 ? fmtBi(rorBiOurs) : money(rorOurs)}
-            </span>
-            <span className="text-[11px] tabular-nums text-[color:var(--color-fg-dim)]">
-              vs {rorBiPd > 0 ? fmtBi(rorBiPd) : money(rorPd)}
-            </span>
-          </div>
-          {rorRatio > 0 && (
-            <div className={`text-[11px] font-semibold tabular-nums ${severityClass(rorRatio)}`}>
-              {fillRatio("chart.trajectory.gapRatio", rorRatio)}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="mt-2 border-t border-[color:var(--color-border)] pt-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
-        {t("chart.trajectory.gapExplain")}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Context-bound unit toggle. Reads the current money/abi mode from
  * MoneyFmtContext so any widget can drop it in without prop-drilling.
@@ -3371,98 +3689,6 @@ function UnitToggle({
     <div className="inline-flex shrink-0 items-stretch overflow-hidden rounded border border-[color:var(--color-border)]">
       {btn("money", t("unit.money"))}
       {btn("abi", t("unit.abi"))}
-    </div>
-  );
-}
-
-function SensitivityReadout({
-  deltas,
-  profits,
-  baseRoi,
-  totalBuyIn,
-}: {
-  deltas: number[];
-  profits: number[];
-  baseRoi: number;
-  totalBuyIn: number;
-}) {
-  const { compactMoney } = useMoneyFmt();
-  // Relationship is exactly linear: profit(Δ) = mean + Δ·totalBuyIn. A
-  // chart of 9 points on a straight line obscured the only two facts that
-  // matter: (1) how much $ one pp of ROI is worth, (2) what your EV looks
-  // like at a few alternative "true ROI" values. Replace with a compact
-  // tornado readout so both are scannable at a glance and the y-axis can't
-  // blow up at 1M-tourney samples.
-  const dollarsPerPp = totalBuyIn / 100;
-  const maxAbs = Math.max(...profits.map((p) => Math.abs(p)), 1);
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            ±1 pp ROI
-          </span>
-          <span className="font-mono text-base tabular-nums text-[color:var(--color-fg)]">
-            ±{compactMoney(dollarsPerPp)}
-          </span>
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            base ROI
-          </span>
-          <span className="font-mono text-base tabular-nums text-[color:var(--color-fg)]">
-            {(baseRoi * 100).toFixed(1)}%
-          </span>
-        </div>
-      </div>
-      <div className="flex flex-col gap-0.5">
-        {deltas.map((d, i) => {
-          const profit = profits[i];
-          const trueRoi = baseRoi + d;
-          const frac = Math.abs(profit) / maxAbs;
-          const isBase = d === 0;
-          const isPos = profit >= 0;
-          return (
-            <div
-              key={i}
-              className={`flex items-center gap-2 font-mono text-[11px] tabular-nums ${
-                isBase
-                  ? "text-[color:var(--color-fg)]"
-                  : "text-[color:var(--color-fg-muted)]"
-              }`}
-            >
-              <div className="w-24 text-right text-[color:var(--color-fg-dim)]">
-                {(trueRoi * 100).toFixed(1)}%
-                <span className="ml-1 text-[color:var(--color-fg-dim)]/60">
-                  ({d >= 0 ? "+" : ""}
-                  {(d * 100).toFixed(1)}pp)
-                </span>
-              </div>
-              <div className="relative flex h-4 flex-1 items-center">
-                <div className="absolute left-1/2 top-0 h-full w-px bg-[color:var(--color-border)]" />
-                {isPos ? (
-                  <div
-                    className="absolute left-1/2 h-2 rounded-r-sm bg-emerald-400/60"
-                    style={{ width: `${frac * 50}%` }}
-                  />
-                ) : (
-                  <div
-                    className="absolute h-2 rounded-l-sm bg-rose-400/60"
-                    style={{ width: `${frac * 50}%`, right: "50%" }}
-                  />
-                )}
-              </div>
-              <div
-                className={`w-20 text-right ${
-                  isPos ? "text-emerald-300/90" : "text-rose-300/90"
-                } ${isBase ? "font-semibold" : ""}`}
-              >
-                {compactMoney(profit)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -4002,10 +4228,16 @@ function buildPrimedopeCheatSheet(
       ? 10
       : r.payoutStructure === "mtt-flat"
       ? 20
+      : r.payoutStructure === "battle-royale"
+      ? (3 / 18) * 100
       : r.payoutStructure === "mtt-top-heavy"
       ? 12
       : r.payoutStructure === "mtt-gg"
       ? 18
+      : r.payoutStructure === "mtt-gg-bounty"
+      ? 11.5
+      : r.payoutStructure === "mtt-gg-mystery"
+      ? 13
       : r.payoutStructure === "mtt-sunday-million"
       ? 13.8
       : 15;
@@ -4343,6 +4575,7 @@ function BigStat({
   pdValue,
   pdDelta,
   emphasizeTail,
+  pdLabel,
 }: {
   label: string;
   value: string;
@@ -4353,6 +4586,7 @@ function BigStat({
   pdValue?: string;
   pdDelta?: number | null;
   emphasizeTail?: boolean;
+  pdLabel?: string;
 }) {
   const toneColor =
     tone === "pos"
@@ -4395,160 +4629,9 @@ function BigStat({
           pdValue={pdValue}
           delta={pdDelta ?? null}
           emphasizeTail={emphasizeTail}
+          pdLabel={pdLabel}
         />
       )}
-    </div>
-  );
-}
-
-function VerdictCard({
-  result,
-  bankroll,
-}: {
-  result: SimulationResult;
-  bankroll: number;
-}) {
-  const t = useT();
-  const { locale } = useLocale();
-  const { money } = useMoneyFmt();
-  const s = result.stats;
-  const roi = s.mean / result.totalBuyIn;
-  const roiStr = `${(roi * 100).toFixed(1)}%`;
-
-  const lines: { key: string; text: string; tone: "pos" | "neg" | "neutral" }[] =
-    [];
-
-  // Line 1 — expected outcome: what this schedule pays on average.
-  lines.push({
-    key: "ev",
-    text: fmt(t(s.mean >= 0 ? "verdict.ev.good" : "verdict.ev.bad"), {
-      mean: money(Math.abs(s.mean)),
-      roi: roiStr,
-    }),
-    tone: s.mean >= 0 ? "pos" : "neg",
-  });
-
-  // Line 2 — upswings: how big the top 10 % of runs end up. 95th percentile
-  // is a realistic "good run" headline, not the lottery winner.
-  lines.push({
-    key: "upswing",
-    text: fmt(t("verdict.streak.upswing"), {
-      p95: money(s.p95),
-      best: money(s.max),
-    }),
-    tone: "pos",
-  });
-
-  // Line 3 — downswings: tail drawdown. P95 max-DD is the honest "bad
-  // month" headline, not the average (which hides it under typical noise).
-  lines.push({
-    key: "downswing",
-    text: fmt(t("verdict.streak.downswing"), {
-      ddMean: money(s.maxDrawdownMean),
-      ddP95: money(s.maxDrawdownP95),
-      ddBi: s.maxDrawdownBuyIns.toFixed(0),
-    }),
-    tone: s.maxDrawdownP95 > result.totalBuyIn * 0.5 ? "neg" : "neutral",
-  });
-
-  // Line 4 — dry spells: how long the fallow stretches run. Breakeven =
-  // consecutive tourneys with no net profit; cashless = consecutive non-
-  // ITM. Both are the "mental game" numbers a grinder cares about.
-  const beRounded = Math.round(s.longestBreakevenMean);
-  lines.push({
-    key: "dry",
-    text: fmt(t("verdict.streak.dry"), {
-      be: intFmt(beRounded),
-      _tournament: plural(locale, beRounded, WORDS.tournament),
-      cashless: intFmt(Math.round(s.longestCashlessMean)),
-      cashlessWorst: intFmt(s.longestCashlessWorst),
-    }),
-    tone: "neutral",
-  });
-
-  // Line 5 — bankroll survival (only when a bankroll was set). This is
-  // the only line that depends on bankroll being configured.
-  if (bankroll > 0) {
-    lines.push({
-      key: "br-with",
-      text: fmt(t("verdict.bankroll.with"), {
-        br: money(bankroll),
-        ror: pct(s.riskOfRuin),
-      }),
-      tone: s.riskOfRuin > 0.05 ? "neg" : s.riskOfRuin > 0.01 ? "neutral" : "pos",
-    });
-  } else if (s.minBankrollRoR1pct > 0) {
-    lines.push({
-      key: "br-need",
-      text: fmt(t("verdict.bankroll.need"), {
-        minBR: money(s.minBankrollRoR1pct),
-      }),
-      tone: "neutral",
-    });
-  }
-
-  // Monte Carlo run precision — tells user "is this sample count enough?"
-  // mcRoiErrorPct is 1.96·σ_MC / |mean|. Three buckets:
-  // MC-precision warning (only when the run is too noisy to trust — the
-  // good/meh cases would just clutter the streak verdict).
-  if (s.mcPrecisionScore < 0.5) {
-    const relPct = (v: number) =>
-      Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : "∞";
-    const needSamples = Number.isFinite(s.mcSamplesFor1Pct)
-      ? intFmt(s.mcSamplesFor1Pct)
-      : "∞";
-    const needForPlural = Number.isFinite(s.mcSamplesFor1Pct)
-      ? s.mcSamplesFor1Pct
-      : 5;
-    lines.push({
-      key: "mc",
-      text: fmt(t("verdict.precision.bad"), {
-        ci: money(s.mcCi95HalfWidthMean),
-        rel: relPct(s.mcRoiErrorPct),
-        need: needSamples,
-        _need: plural(locale, needForPlural, WORDS.sample),
-      }),
-      tone: "neg",
-    });
-  }
-
-  return (
-    <div className="bracketed bracketed-heart relative border border-[color:var(--color-heart)]/60 bg-[color:var(--color-heart)]/[0.04] p-6">
-      <div className="mb-4 flex items-center justify-between border-b border-[color:var(--color-heart)]/30 pb-3">
-        <div className="flex items-center gap-3">
-          <span className="section-num text-2xl text-[color:var(--color-heart)]">
-            ♥
-          </span>
-          <div>
-            <div className="eyebrow text-[color:var(--color-heart)]">
-              / verdict
-            </div>
-            <div className="text-base font-bold uppercase tracking-tight text-[color:var(--color-fg)]">
-              {t("verdict.title")}
-            </div>
-          </div>
-        </div>
-      </div>
-      <ul className="flex flex-col gap-3">
-        {lines.map((l) => {
-          const dot =
-            l.tone === "pos"
-              ? "bg-[color:var(--color-success)]"
-              : l.tone === "neg"
-                ? "bg-[color:var(--color-danger)]"
-                : "bg-[color:var(--color-fg-dim)]";
-          return (
-            <li key={l.key} className="flex items-start gap-3">
-              <span
-                className={`mt-1 inline-block h-4 w-[3px] flex-shrink-0 ${dot}`}
-              />
-              <span className="text-[14px] leading-relaxed text-[color:var(--color-fg-muted)]">
-                {l.text}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }
@@ -4557,9 +4640,15 @@ function VerdictCard({
 function PrimedopeDiff({
   primary,
   other,
+  theirsLabel,
+  title,
+  subtitle,
 }: {
   primary: SimulationResult;
   other: SimulationResult;
+  theirsLabel?: string;
+  title?: string;
+  subtitle?: string;
 }) {
   const t = useT();
   const { money } = useMoneyFmt();
@@ -4657,10 +4746,10 @@ function PrimedopeDiff({
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <div className="text-sm font-semibold text-[color:var(--color-fg)]">
-            {t("pd.title")}
+            {title ?? t("pd.title")}
           </div>
           <div className="text-xs text-[color:var(--color-fg-dim)]">
-            {t("pd.subtitle")}
+            {subtitle ?? t("pd.subtitle")}
           </div>
         </div>
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider">
@@ -4670,7 +4759,7 @@ function PrimedopeDiff({
           </span>
           <span className="flex items-center gap-1 text-[color:var(--color-fg-muted)]">
             <span className="inline-block h-1.5 w-3 rounded-sm bg-[#60a5fa]" />{" "}
-            {t("pd.theirs")}
+            {theirsLabel ?? t("pd.theirs")}
           </span>
         </div>
       </div>
@@ -4688,7 +4777,7 @@ function PrimedopeDiff({
             <tr className="border-b border-[color:var(--color-border)] text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               <th className="py-2 text-left font-medium">{t("pd.metric")}</th>
               <th className="py-2 text-right font-medium">{t("pd.ours")}</th>
-              <th className="py-2 text-right font-medium">{t("pd.theirs")}</th>
+              <th className="py-2 text-right font-medium">{theirsLabel ?? "primedope"}</th>
               <th className="py-2 text-right font-medium">{t("pd.delta")}</th>
             </tr>
           </thead>
@@ -4744,6 +4833,7 @@ function MiniStat({
   pdValue,
   pdDelta,
   emphasizeTail,
+  pdLabel,
 }: {
   label: string;
   value: string;
@@ -4757,6 +4847,8 @@ function MiniStat({
   /** When true, the divergence thresholds for coloring are halved so tail
    *  metrics (worst run, p95/p99, deep DD, longest cashless) pop harder. */
   emphasizeTail?: boolean;
+  /** Override the "PD" prefix on the comparison badge (e.g. "ФРИЗЫ"). */
+  pdLabel?: string;
 }) {
   const toneColor =
     tone === "pos"
@@ -4787,6 +4879,7 @@ function MiniStat({
           pdValue={pdValue}
           delta={pdDelta ?? null}
           emphasizeTail={emphasizeTail}
+          pdLabel={pdLabel}
         />
       )}
     </div>
@@ -4814,13 +4907,16 @@ function PdCompareRow({
   pdValue,
   delta,
   emphasizeTail,
+  pdLabel,
 }: {
   pdValue: string;
   delta: number | null;
   emphasizeTail?: boolean;
+  pdLabel?: string;
 }) {
   const t = useT();
   const sev = pdBadgeSeverity(delta, emphasizeTail);
+  const label = pdLabel ?? "PD";
   // Tight precision gate: when the difference is within MC noise we collapse
   // the PD row to "matches PD · ±X%" instead of showing the full PD value +
   // colored delta. Tail-emphasized metrics use a stricter threshold.
@@ -4842,7 +4938,7 @@ function PdCompareRow({
           className="text-[9px] font-bold uppercase tracking-[0.15em]"
           style={{ color: "#e879f9" }}
         >
-          PD
+          {label}
         </span>
         <span className="truncate">{t("pd.match")}</span>
         <span className="shrink-0 opacity-70">· ±{precisionPct}%</span>
@@ -4884,7 +4980,7 @@ function PdCompareRow({
           className="text-[9px] font-bold uppercase tracking-[0.15em]"
           style={{ color: "#e879f9" }}
         >
-          PD
+          {label}
         </span>
         <span className="truncate text-[color:var(--color-fg)]">
           {pdValue}

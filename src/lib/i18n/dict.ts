@@ -24,8 +24,8 @@ export const DICT = {
     ru: "Симулятор Дисперсии",
   },
   "app.subtitle": {
-    en: "Real spread of profit and downswings across your schedule. Thousands of Monte Carlo runs.",
-    ru: "Реальный разброс профита и даунсвингов по расписанию. Тысячи ранов Монте-Карло.",
+    en: "Real spread of profit and streaks across your schedule. Thousands of Monte Carlo runs.",
+    ru: "Реальный разброс профита и стриков по расписанию. Тысячи ранов Монте-Карло.",
   },
   "app.shareLink": { en: "Share link", ru: "Поделиться" },
   "app.copied": { en: "copied ✓", ru: "скопировано ✓" },
@@ -190,8 +190,12 @@ export const DICT = {
   "row.payoutCompat.min": { en: "min", ru: "мин" },
   "row.payoutCompat.max": { en: "max", ru: "макс" },
   "row.payoutCompat.unavailable": {
-    en: "Unavailable for this field size",
-    ru: "Не подходит под размер поля",
+    en: "Unavailable",
+    ru: "Недоступно",
+  },
+  "row.payoutCompat.wrongGameType": {
+    en: "Not for {gameType}",
+    ru: "Не для формата {gameType}",
   },
   "row.payoutGroup.real2026": {
     en: "Real 2026 structures",
@@ -415,8 +419,8 @@ export const DICT = {
     ru: "Скрыть продвинутые настройки",
   },
   "controls.tiltHint": {
-    en: "Models the case where your play degrades during long downswings (or improves during winning streaks). Leave everything at 0 to disable.",
-    ru: "Моделирует случай, когда твоя игра проседает на даунсвингах (или наоборот, обостряется на апсвингах). Оставь всё на 0 — выключено.",
+    en: "Models the case where your play degrades during long streaks (or improves during winning streaks). Leave everything at 0 to disable.",
+    ru: "Моделирует случай, когда твоя игра проседает на стриках (или наоборот, обостряется на апсвингах). Оставь всё на 0 — выключено.",
   },
   "controls.tiltFastGain": {
     en: "Fast tilt: sensitivity",
@@ -424,7 +428,7 @@ export const DICT = {
   },
   "controls.tiltFastScale": {
     en: "Fast tilt: drawdown depth that hurts you",
-    ru: "Быстрый тильт: глубина даунсвинга, на которой ломаешься",
+    ru: "Быстрый тильт: глубина стрика, на которой ломаешься",
   },
   "controls.tiltSlowGain": {
     en: "Slow tilt: ROI shift while tilted",
@@ -432,7 +436,7 @@ export const DICT = {
   },
   "controls.tiltSlowThreshold": {
     en: "Slow tilt: drawdown that triggers it",
-    ru: "Медленный тильт: даунсвинг для запуска",
+    ru: "Медленный тильт: стрик для запуска",
   },
   "controls.tiltSlowMinDuration": {
     en: "Slow tilt: how long the streak must last",
@@ -569,7 +573,7 @@ export const DICT = {
     en: "For 1% RoR → need bankroll ≥ {br1}. For 5% RoR → need bankroll ≥ {br5}.",
     ru: "Для 1% риска разорения нужен БР ≥ {br1}. Для 5% — БР ≥ {br5}.",
   },
-  "stat.ddWorst": { en: "Worst downswing", ru: "Худший даунсвинг" },
+  "stat.ddWorst": { en: "Worst streak", ru: "Худший стрик" },
   "stat.ddWorst.tip": {
     en: "Deepest peak-to-trough across all samples. Shown in $, ABIs, and tournaments between equal profit points.",
     ru: "Самый глубокий пик-к-дну по всем сэмплам. Показан в $, ABI и турнирах между равными точками профита.",
@@ -597,15 +601,15 @@ export const DICT = {
   "statGroup.drawdowns": { en: "Streaks", ru: "Стрики" },
   "statGroup.streaks": { en: "Streaks & comeback", ru: "Серии и отмазка" },
   "statGroup.bankroll": { en: "Bankroll", ru: "Банкролл" },
-  "stat.avgMaxDD": { en: "Average downswing", ru: "Средний даунсвинг" },
+  "stat.avgMaxDD": { en: "Average streak", ru: "Средний стрик" },
   "stat.avgMaxDD.tip": {
     en: "Mean of the deepest per-sample drawdown (peak-to-trough). What a typical 'worst patch' looks like.",
-    ru: "Среднее самого глубокого даунсвинга по сэмплам (от пика к низу). Типичный «худший отрезок».",
+    ru: "Среднее самого глубокого стрика по сэмплам (от пика к низу). Типичный «худший отрезок».",
   },
-  "stat.ddMedian": { en: "Typical downswing", ru: "Типичный даунсвинг" },
+  "stat.ddMedian": { en: "Typical streak", ru: "Типичный стрик" },
   "stat.ddMedian.tip": {
     en: "Median deepest drawdown — half the futures swing less, half swing more. Robust to outliers.",
-    ru: "Медиана самого глубокого даунсвинга — половина мягче, половина жёстче. Устойчива к выбросам.",
+    ru: "Медиана самого глубокого стрика — половина мягче, половина жёстче. Устойчива к выбросам.",
   },
   "stat.ddP95": { en: "Worst 5% of runs", ru: "Худшие 5% ранов" },
   "stat.ddP95.tip": {
@@ -620,7 +624,7 @@ export const DICT = {
   "stat.recoveryMedian": { en: "Typical comeback", ru: "Типичная отмазка" },
   "stat.recoveryMedian.tip": {
     en: "Median tournaments needed to climb from the bottom of the deepest drawdown back to the prior peak. Excludes samples that never recover.",
-    ru: "Медиана турниров на подъём со дна самого глубокого даунсвинга к прежнему пику. Без не отмазавшихся сэмплов.",
+    ru: "Медиана турниров на подъём со дна самого глубокого стрика к прежнему пику. Без не отмазавшихся сэмплов.",
   },
   "stat.recoveryP90": { en: "Long comeback", ru: "Долгая отмазка" },
   "stat.recoveryP90.tip": {
@@ -703,7 +707,10 @@ export const DICT = {
   "sat.kpi.seatPrice": { en: "Seat price", ru: "Цена билета" },
   "sat.kpi.seats": { en: "Seats", ru: "Мест" },
   "sat.perSession": { en: "tourneys / session", ru: "турниров в сессии" },
-  "chart.trajectory": { en: "Bankroll trajectory", ru: "Траектория банкролла" },
+  "chart.trajectory": {
+    en: "Plausible run spread",
+    ru: "График разброса возможных ранов",
+  },
   "chart.trajectory.sub": {
     en: "Envelopes at 70 % / 95 % / 99.7 % confidence · 20 random samples · best / worst",
     ru: "Огибающие 70 % / 95 % / 99.7 % · 20 случайных сэмплов · лучший / худший",
@@ -738,11 +745,19 @@ export const DICT = {
   },
   "chart.trajectory.pdWarning": {
     en: "Why this is wrong: PrimeDope keeps the real top-heavy payouts but assumes every paid place is equally likely once you cash — a min-cash as probable as a WIN. In reality most cashes barely return the buy-in and deep runs are rare, so the uniform assumption inflates the average cash size. Result: smoother drawdowns, shorter breakeven streaks, and a bankroll recommendation too small for real swings.",
-    ru: "Почему это неправильно: PrimeDope сохраняет реальные top-heavy выплаты, но считает все призовые места равновероятными — мин-кэш как ПОБЕДА. На деле большая часть кэшей еле возвращает бай-ин, глубокие заходы редки, и равновероятная модель завышает средний размер кэша. Итог: сглаженные даунсвинги, короткие серии в ноль и заниженный рекомендуемый банкролл.",
+    ru: "Почему это неправильно: PrimeDope сохраняет реальные top-heavy выплаты, но считает все призовые места равновероятными — мин-кэш как ПОБЕДА. На деле большая часть кэшей еле возвращает бай-ин, глубокие заходы редки, и равновероятная модель завышает средний размер кэша. Итог: сглаженные стрики, короткие серии в ноль и заниженный рекомендуемый банкролл.",
   },
   "chart.trajectory.noKoLabel": {
     en: "Same schedule · bounties off",
     ru: "То же расписание · без ноков",
+  },
+  "chart.overlay.freezeouts": {
+    en: "Freezeouts",
+    ru: "Фризы",
+  },
+  "stat.pd.badge.freezeouts": {
+    en: "FREEZE",
+    ru: "ФРИЗЫ",
   },
   "chart.trajectory.noKoCap": {
     en: "Same schedule, bounties stripped — sanity check, not a comparison.",
@@ -754,7 +769,15 @@ export const DICT = {
   },
   "chart.trajectory.oursFix": {
     en: "How we fix it: finishes sampled from a real top-heavy pmf calibrated on fund data. A skilled player's 1st/2nd/3rd odds are meaningfully above the paid-pool average; most cashes stay min-cashes. Overall ITM is lower than PrimeDope's (~17% at 20% ROI vs their ~21%), but each cash is weighted correctly. Streak depth, recovery length, and drawdown shape match reality instead of PD's smoothed picture.",
-    ru: "Как решаем: места финиша сэмплируются из реальной top-heavy pmf, откалиброванной по данным фонда. Шанс скиллового игрока на 1-е/2-е/3-е значимо выше среднего по призовой зоне; основная масса кэшей — всё равно мин-кэши. Общий ITM ниже, чем у PrimeDope (~17% при ROI 20% против ~21%), зато каждый кэш взвешен корректно. Глубина стриков, отмазка и форма даунсвингов ложатся в реальность.",
+    ru: "Как решаем: места финиша сэмплируются из реальной top-heavy pmf, откалиброванной по данным фонда. Шанс скиллового игрока на 1-е/2-е/3-е значимо выше среднего по призовой зоне; основная масса кэшей — всё равно мин-кэши. Общий ITM ниже, чем у PrimeDope (~17% при ROI 20% против ~21%), зато каждый кэш взвешен корректно. Глубина стриков, отмазка и форма стриков ложатся в реальность.",
+  },
+  "chart.trajectory.withRakeback": {
+    en: "with RB",
+    ru: "с РБ",
+  },
+  "chart.trajectory.withRakeback.title": {
+    en: "Show the trajectory with rakeback applied (all sampled runs, EV, percentile bands and best/worst shift up by the deterministic RB curve). Uncheck to see the game-only view — exposes drawdowns, bust probability, and time-above-zero as they'd be without the RB cushion.",
+    ru: "Показывать траекторию с учётом рейкбэка (все семплированные раны, EV, перцентильные полосы и best/worst сдвигаются вверх на детерминированную кривую РБ). Отключи — увидишь чистый game-only: стрики, вероятность разорения и время под нулём без РБ-подушки.",
   },
   "chart.trajectory.overlay": {
     en: "Overlay PrimeDope on the left",
@@ -862,7 +885,7 @@ export const DICT = {
   },
   "chart.recovery": { en: "Recovery length", ru: "Отмазка" },
   "chart.recovery.sub": {
-    en: "How many tournaments it takes to climb from the bottom back to the pre-downswing peak",
+    en: "How many tournaments it takes to climb from the bottom back to the pre-streak peak",
     ru: "Сколько турниров уходит на то, чтобы со дна вернуться к прежнему пику",
   },
   "chart.recovery.tip": {
@@ -885,7 +908,7 @@ export const DICT = {
   "chart.traj.abi": { en: "ABI", ru: "ABI" },
   "chart.traj.finalProfit": { en: "final profit", ru: "итоговый профит" },
   "chart.traj.maxDD": { en: "max drawdown", ru: "макс. просадка" },
-  "chart.traj.longestLosing": { en: "longest downswing", ru: "макс. серия спада" },
+  "chart.traj.longestLosing": { en: "longest streak", ru: "макс. серия спада" },
   "chart.traj.longestBE": { en: "longest below-peak run", ru: "ниже пика (макс.)" },
   "chart.traj.tourneys": { en: "t", ru: "т" },
   "chart.traj.ddDuration": {
@@ -988,12 +1011,21 @@ export const DICT = {
   "chart.convergence.col.target": { en: "ROI range", ru: "Диапазон ROI" },
   "chart.convergence.col.tourneys": { en: "Tournaments", ru: "Турниров" },
   "chart.convergence.col.fields": { en: "AFS played", ru: "Сыграно AFS" },
+  "chart.convergence.afs.lockedBR": {
+    en: "Fixed at 18 for Battle Royale — the lobby is always 18-max, so AFS doesn't change across buy-in tiers",
+    ru: "Зафиксирован на 18 для Батл Рояля — лобби всегда 18-max, AFS не меняется между бай-ин тирами",
+  },
+  "chart.convergence.rake": { en: "rake", ru: "рейк" },
+  "chart.convergence.rake.title": {
+    en: "Room rake — fraction of buy-in taken per entry. σ fits were measured at rake = 10 %, so shifting this knob rescales σ by (1+0.10)/(1+rake). Higher rake compresses σ in ROI units (same $-variance spread over a bigger cost basis) and also scales the RB→ROI conversion, since RB is expressed as a fraction of rake.",
+    ru: "Рейк — доля бай-ина, которую забирает рум с каждого входа. σ измерена при рейке 10 %, так что ползунок пересчитывает σ как (1+0,10)/(1+рейк). Рост рейка сжимает σ в ROI-единицах (та же $-дисперсия, но делится на больший бай-ин+рейк) и одновременно меняет перевод РБ в ROI, ведь РБ задаётся в % от рейка.",
+  },
   "chart.convergence.rakeback": { en: "RB", ru: "РБ" },
   "chart.convergence.rakeback.title": {
-    en: "Rakeback — deterministic % of buy-in after every tournament. Subtracted from total ROI to get the game-edge component that feeds σ. Freeze σ doesn't depend on ROI, so rakeback is a no-op there; for PKO/Mystery/Battle Royale, more rakeback → lower game-edge → lower σ.",
-    ru: "Рейкбек — фиксированный % от бай-ина за каждый турнир. Вычитается из общего ROI, остаётся игровая составляющая — именно она попадает в σ. Для фриза σ не зависит от ROI, так что рейкбек ничего не меняет; для ПКО/Мистери/Батл Рояля больше рейкбека → меньше игровой эдж → меньше σ.",
+    en: "Rakeback — % of paid rake credited back after every tournament. Added on top of the game ROI to get the total ROI the player sees: RB → ROI = rakeback × rake (e.g. 30 % RB at 10 % rake → +3 pp of ROI). σ is driven only by the game ROI above (rakeback contributes zero variance), so bumping RB raises total ROI without changing convergence.",
+    ru: "Рейкбек — % от уплаченного рейка, возвращаемый после каждого турнира. Прибавляется к игровому ROI — получаем итоговый ROI: вклад в ROI = рейкбек × рейк (например, 30 % РБ при рейке 10 % → +3 пп ROI). σ считается по игровому ROI выше (рейкбек не добавляет дисперсии), так что РБ поднимает итоговый ROI, но не влияет на сходимость.",
   },
-  "chart.convergence.gameRoi": { en: "game", ru: "игра" },
+  "chart.convergence.totalRoi": { en: "total ROI:", ru: "итоговый рой:" },
   "chart.convergence.format.freeze": { en: "Freeze", ru: "Фриз" },
   "chart.convergence.format.pko": { en: "PKO", ru: "ПКО" },
   "chart.convergence.format.mystery": { en: "Mystery", ru: "Мистери" },
@@ -1002,6 +1034,10 @@ export const DICT = {
     ru: "Батл Рояль",
   },
   "chart.convergence.format.mix": { en: "Mix", ru: "Микс" },
+  "chart.convergence.rbHint": {
+    en: "RB shifts total ROI upward but doesn't add variance — the k / fields above are driven by game σ only, independent of RB%.",
+    ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",
+  },
   "chart.convergence.assumptions": {
     en: "Read a row as: «play this many tournaments and, with the chosen CI confidence, your observed ROI will land inside the target band around the true one». The Freeze / PKO / Mystery / Battle Royale / Mix toggle picks the format. PKO σ is the LOWEST — bounties spread 50 % of the pool per-knockout, flattening the top-heavy payout distribution. Mystery σ sits above PKO: bounty $ concentrates on ITM-only KOs (phase-split — pre-ITM plays as freeze, envelopes open at the bubble) with log-normal jackpot noise (σ²=0.8), so ROI-sensitivity is ~2× PKO's. Battle Royale cranks the envelope variance to σ²=1.8 (jackpot-tier right tail), lifting baseline σ ~27 % over Mystery and roughly tripling PKO's ROI-sensitivity. AFS pretends you're playing a different average field size, ROI a different true edge — freeze with the realdata finish is ~ROI-invariant, bounty formats grow σ with edge because deeper runs collect more bounty $. In Mix the slider sets PKO share vs freeze (Mystery formats aren't part of Mix), σ²_mix = p·σ²_pko + (1−p)·σ²_freeze. Independent-tournament assumption. Fits: freeze ≈ 0.656·field^0.369; PKO ≈ (0.627 + 0.496·ROI)·field^0.276; Mystery ≈ (1.006 + 1.099·ROI)·field^0.235; Battle Royale ≈ (1.283 + 1.646·ROI)·field^0.210 — 18-field × 7-ROI (freeze) / 11-ROI (PKO, Mystery, Battle Royale) engine sweep.",
     ru: "Строка читается так: «при заданном числе турниров с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного». Переключатель Фриз / ПКО / Мистери / Батл Рояль / Микс задаёт формат. У ПКО σ самая низкая — баунти распределяют 50 % пула за каждый нокаут, выравнивая top-heavy-структуру выплат. У Мистери σ выше ПКО: баунти-деньги концентрируются только на ITM-нокаутах (фазовое разделение — до ITM игра как фриз, конверты открываются на баббле) плюс log-normal jackpot-шум (σ²=0.8), ROI-чувствительность ~ вдвое выше ПКО. У Батл Рояль дисперсия конвертов поднята до σ²=1.8 (jackpot-хвост), базовая σ растёт ещё ~27 % над Мистери, а ROI-чувствительность примерно втрое выше ПКО. AFS задаёт средний размер филда, ROI — истинный эдж: для фриза с realdata-финишем σ почти не зависит от ROI, у баунти-форматов σ растёт с эджем (глубже проход → больше баунти). В Миксе ползунок задаёт долю ПКО против фриза (Мистери-форматы в Микс не входят), σ²_микс = p·σ²_пко + (1−p)·σ²_фриз. Предполагается независимость турниров. Фиты: фриз ≈ 0,656·field^0.369; ПКО ≈ (0,627 + 0,496·ROI)·field^0.276; Мистери ≈ (1,006 + 1,099·ROI)·field^0.235; Батл Рояль ≈ (1,283 + 1,646·ROI)·field^0.210 — свип движка 18 филдов × 7 ROI (фриз) / 11 ROI (ПКО, Мистери, Батл Рояль).",
@@ -1010,6 +1046,15 @@ export const DICT = {
   "chart.decomp.sub": {
     en: "How much each row contributes to expected profit and to total variance",
     ru: "Вклад каждой строки в ожидаемую прибыль и общую дисперсию",
+  },
+  "chart.decomp.bountyLabel": { en: "bty", ru: "ноки" },
+  "chart.decomp.bountyTip": {
+    en: "Mean bounty winnings per sample — the knockout portion of this row's profit",
+    ru: "Средние баунти за прогон — вклад ноков в профит этой строки",
+  },
+  "chart.decomp.cashTip": {
+    en: "Cash portion of this row's mean profit (prize payouts − rake − buy-in + rakeback)",
+    ru: "Кэш-часть среднего профита строки (призовые − рейк − бай-ин + рейкбек)",
   },
   "chart.sensitivity": { en: "ROI sensitivity", ru: "Чувствительность к ROI" },
   "chart.sensitivity.sub": {
@@ -1085,6 +1130,10 @@ export const DICT = {
   "section.settingsDump": { en: "Run settings", ru: "Настройки рана" },
   "section.pdVerdict": { en: "PrimeDope verdict", ru: "Вердикт PrimeDope" },
   "section.pdDiff": { en: "PrimeDope diff", ru: "Разница с PrimeDope" },
+  "section.pdDiff.freezeouts": {
+    en: "Freezeouts diff",
+    ru: "Разница с фризами",
+  },
   "lineStyle.customize": { en: "Customize", ru: "Настроить" },
   "lineStyle.reset": { en: "Reset", ru: "Сброс" },
   "lineStyle.resetAll": { en: "Reset all", ru: "Сбросить всё" },
@@ -1115,61 +1164,51 @@ export const DICT = {
     ru: "Импортировано {n} {_preset}.",
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
-  "changelog.v06c.title": { en: "v0.6c — current", ru: "v0.6c — текущая" },
-  "changelog.v06c.pdControls": {
-    en: "PD toolbar moved into the chart header — all PrimeDope toggles visible in every mode.",
-    ru: "Тулбар PD перенесён в шапку графика — все галки PrimeDope видны в любом режиме.",
+  "changelog.v07a.title": { en: "v0.7a — current", ru: "v0.7a — текущая" },
+  "changelog.v07a.polish": {
+    en: "Minor UI fixes.",
+    ru: "Мелкие правки интерфейса.",
   },
+  "changelog.v07.title": { en: "v0.7", ru: "v0.7" },
+  "changelog.v07.formats": {
+    en: "Mystery & Mystery Battle Royale: phase-split bounty model with σ_ROI fits from real data.",
+    ru: "Mystery и Mystery Battle Royale: модель баунти с фазовым сплитом и σ_ROI, откалиброванные по реальным данным.",
+  },
+  "changelog.v07.convergence": {
+    en: "Convergence widget: freeze / PKO / mystery mix with manual %, wider target band (±0.1% … ±50%).",
+    ru: "Виджет сходимости: микс фриз / PKO / mystery с ручным %, расширенный диапазон точности (±0.1% … ±50%).",
+  },
+  "changelog.v07.gameType": {
+    en: "Schedule gains a Game Type column — explicit freezeout / re-entry / PKO / mystery / Battle Royale selector with sensible defaults per format.",
+    ru: "В расписании появилась колонка «Тип турнира» — явный выбор фризаут / ре-энтри / PKO / mystery / Battle Royale с дефолтами по формату.",
+  },
+  "changelog.v07.rakeback": {
+    en: "Rakeback toggle on profit and streak widgets — deterministic $ shift applied across drawdown, break-even, cashless, recovery.",
+    ru: "Галочка «с РБ» на виджетах профита и стриков — детерминистский денежный сдвиг прокатывается через стрики, игру в ноль, серии без ИТМ и отыгрывание.",
+  },
+  "changelog.v07.polish": {
+    en: "Minor UI fixes.",
+    ru: "Мелкие правки интерфейса.",
+  },
+  "changelog.v06c.title": { en: "v0.6c", ru: "v0.6c" },
   "changelog.v06c.hoverHighlights": {
     en: "Hovered run: deepest peak-to-trough drawdown highlighted in red with its anchor peak marked.",
-    ru: "Ран под курсором: самый глубокий даунсвинг от пика до дна подсвечен красным с точкой-якорем на пике.",
-  },
-  "changelog.v06c.presets": {
-    en: "Four new demo presets: mid-stakes reg, micro-stakes grind, HighRoller Sunday, mixed freeze+PKO.",
-    ru: "Четыре новых пресета: мидстейкс-рег, микростейкс-гринд, HighRoller Sunday, микс фриз+PKO.",
-  },
-  "changelog.v06c.histTooltip": {
-    en: "Histogram tooltips pin to the opposite corner from the cursor.",
-    ru: "Тултипы гистограмм пинятся в угол напротив курсора.",
-  },
-  "changelog.v06c.polish": {
-    en: "EV breakdown labels, hover run stats, PD toggle tooltips — polish pass.",
-    ru: "Лейблы EV-брейкдауна, статы рана при наведении, тултипы галок PD — работа над деталями.",
+    ru: "Ран под курсором: самый глубокий стрик от пика до дна подсвечен красным с точкой-якорем на пике.",
   },
   "changelog.v06b.title": { en: "v0.6b", ru: "v0.6b" },
   "changelog.v06b.ev": {
-    en: "EV context: profit widget shows EV + ROI + median, worst/best runs show delta vs EV.",
-    ru: "EV-контекст: виджет профита показывает EV + ROI + медиану, худший/лучший раны — отклонение от EV.",
-  },
-  "changelog.v06b.pkoVar": {
-    en: "PKO bounty variance: per-knockout log-normal noise for realistic bounty swings.",
-    ru: "Дисперсия PKO баунти: log-normal шум на каждый нокаут для реалистичных колебаний баунти.",
-  },
-  "changelog.v06b.polish": {
-    en: "Text and design polish across the site.",
-    ru: "Работа над текстовым наполнением и дизайном.",
+    en: "EV context on profit and run widgets: EV + ROI + median, worst/best runs show delta vs EV.",
+    ru: "EV-контекст на виджетах профита и ранов: EV + ROI + медиана, худший/лучший раны — отклонение от EV.",
   },
   "changelog.v06.title": { en: "v0.6a", ru: "v0.6a" },
   "changelog.v06.pko": {
     en: "PKO compare mode: side-by-side view for bounty vs non-bounty variance.",
     ru: "PKO сравнение: параллельный вид дисперсии с баунти и без.",
   },
-  "changelog.v06.weakCards": {
-    en: "PrimeDope comparison cards with concrete numbers from variance sweep.",
-    ru: "Карточки сравнения с PrimeDope с конкретными числами из свипа дисперсии.",
-  },
-  "changelog.v06.polish": {
-    en: "UI and design improvements.",
-    ru: "Работа над дизайном и косметическими улучшениями.",
-  },
-  "changelog.v05.title": { en: "v0.5б", ru: "v0.5б" },
+  "changelog.v05.title": { en: "v0.5", ru: "v0.5" },
   "changelog.v05.pdWidget": {
-    en: "Redesigned PrimeDope comparison panel with clearer overlay and toggles.",
-    ru: "Переделана панель сравнения с PrimeDope: понятнее оверлей и переключатели.",
-  },
-  "changelog.v05.polish": {
-    en: "Hover highlights, worst-run selection by deepest drawdown, design fixes.",
-    ru: "Подсветка при наведении, выбор «худшего рана» по глубине дродауна, работа над дизайном.",
+    en: "PrimeDope comparison panel with overlay and toggles.",
+    ru: "Панель сравнения с PrimeDope с оверлеем и переключателями.",
   },
   "changelog.v04.title": { en: "v0.4", ru: "v0.4" },
   "changelog.v04.summary": {
@@ -1180,10 +1219,6 @@ export const DICT = {
   "changelog.v03.presets": {
     en: "Line style presets, $/ABI unit toggle, preset export/import.",
     ru: "Пресеты стилей линий, переключатель $/АБИ, экспорт/импорт пресетов.",
-  },
-  "changelog.v03.polish": {
-    en: "Tournament preview redesign, design improvements.",
-    ru: "Новый виджет превью турнира, работа над дизайном.",
   },
   "footer.madeBy": { en: "made by", ru: "сделал" },
 
@@ -1209,6 +1244,14 @@ export const DICT = {
     en: "Same seed, same schedule — the only difference is the calibration. PrimeDope treats every paid place as equally likely once you cash, so a skilled player's edge shows up only as a higher cash rate, not as deeper finishes. Losing runs and rare outcomes come out structurally softer than reality.",
     ru: "Одно и то же зерно, то же расписание — отличается только калибровка. PrimeDope считает все призовые места равновероятными внутри денег, поэтому эдж скилловика реализуется только через частоту попаданий в деньги, а не через более глубокий проход. Длинные минусы и редкие исходы у него поэтому всегда мягче реальности.",
   },
+  "pd.title.freezeouts": {
+    en: "Us vs Freezeouts",
+    ru: "Мы против фризов",
+  },
+  "pd.subtitle.freezeouts": {
+    en: "Same seed, same schedule — the only difference is bounties. The right column shows the same schedule with all knockout payouts stripped out, so you can see exactly how much variance (and EV) the bounty pool adds on top of a pure freezeout.",
+    ru: "Одно и то же зерно, то же расписание — отличаются только баунти. Правая колонка показывает то же расписание с полностью срезанными ноками, чтобы было видно, сколько дисперсии (и EV) баунти-пул добавляет поверх чистого фризаута.",
+  },
   "pd.ours": { en: "ours", ru: "наши" },
   "pd.theirs": { en: "primedope", ru: "primedope" },
   "pd.match": { en: "matches PD", ru: "совпадает с PD" },
@@ -1227,7 +1270,7 @@ export const DICT = {
   "pd.delta": { en: "Δ", ru: "Δ" },
   "pd.row.itm": { en: "Cash-in rate", ru: "Частота призовых" },
   "pd.row.stdDev": { en: "Profit swing", ru: "Разброс профита" },
-  "pd.row.dd": { en: "Average downswing", ru: "Средний даунсвинг" },
+  "pd.row.dd": { en: "Average streak", ru: "Средний стрик" },
   "pd.row.cvar": { en: "Average loss in worst 5%", ru: "Средний убыток в худших 5%" },
   "pd.row.pprofit": { en: "Chance to be up", ru: "Шанс выйти в плюс" },
   "pd.row.ror": { en: "Risk of ruin", ru: "Риск разорения" },
@@ -1237,7 +1280,7 @@ export const DICT = {
   "pd.row.bestRun": { en: "Best run", ru: "Лучший ран" },
   "pd.row.longestBE": { en: "Avg break-even streak", ru: "Средний стрик в ноль" },
   "pd.row.sharpe": { en: "Profit / swing", ru: "Профит к разбросу" },
-  "pd.row.ddWorst": { en: "Worst downswing ever seen", ru: "Худший даунсвинг за ран" },
+  "pd.row.ddWorst": { en: "Worst streak ever seen", ru: "Худший стрик за ран" },
   "pd.row.ev": { en: "Expected profit (EV)", ru: "Ожидаемый профит (EV)" },
   "pd.evDelta.title": {
     en: "Our EV is correct — PrimeDope's is off by the rake",
@@ -1266,6 +1309,16 @@ export const DICT = {
   "payouts.nonItmShare": {
     en: "{pct}% of field",
     ru: "{pct}% поля",
+  },
+  "payouts.pool.cash": { en: "Cash pool", ru: "Кеш-пул" },
+  "payouts.pool.bounty": { en: "Bounty pool", ru: "Пул ноков" },
+  "payouts.pool.note": {
+    en: "Bars below show how the cash pool is split across places. Bounties are distributed separately when opponents bust you.",
+    ru: "Полосы ниже показывают, как делится кеш-пул по местам. Ноки разыгрываются отдельно — при выбивании соперников.",
+  },
+  "payouts.pool.noteBr": {
+    en: "Bars below show how the cash pool is split across places. The bounty pool is drawn through tiered envelopes opened for the top 9 finishers.",
+    ru: "Полосы ниже — распределение кеш-пула по местам. Пул ноков разыгрывается через тиры конвертов, открываемых топ-9 финалистами.",
   },
 
   // Verdict — plain-language summary card
@@ -1297,7 +1350,7 @@ export const DICT = {
     en: "Good streaks: the top 5 % of runs finish at {p95} or better, with the absolute best landing at {best}.",
     ru: "Хорошие серии: верхние 5 % ранов заканчиваются на {p95} и выше, абсолютный максимум — {best}.",
   },
-  "verdict.streak.downswing": {
+  "verdict.streak.bad": {
     en: "Bad streaks: a typical drop from peak to bottom is {ddMean} (about {ddBi} buy-ins); 5 % of runs dig at least {ddP95} deep. That's the hole you need to be prepared to sit in.",
     ru: "Плохие серии: типичное падение от пика до дна — {ddMean} (около {ddBi} байинов); 5 % ранов уходят минимум на {ddP95}. Это яма, в которой нужно уметь сидеть.",
   },
@@ -1331,7 +1384,7 @@ export const DICT = {
   },
   "verdict.vsPD": {
     en: "Versus PrimeDope: our ITM is {itmDiff} pp lower and average drawdown is {ddDiff} deeper. PrimeDope assumes skill lifts every paid place equally — we model it concentrating toward deeper finishes, which matches real samples.",
-    ru: "По сравнению с PrimeDope: наш ITM на {itmDiff} пп ниже, а средний даунсвинг глубже на {ddDiff}. PrimeDope считает, что скилл одинаково поднимает шансы на все призовые места — мы же моделируем концентрацию скилла в глубоких финишах, что совпадает с реальными выборками.",
+    ru: "По сравнению с PrimeDope: наш ITM на {itmDiff} пп ниже, а средний стрик глубже на {ddDiff}. PrimeDope считает, что скилл одинаково поднимает шансы на все призовые места — мы же моделируем концентрацию скилла в глубоких финишах, что совпадает с реальными выборками.",
   },
 
   // PD narrative verdict (dynamic, templated)
@@ -1361,7 +1414,7 @@ export const DICT = {
   },
   "pdv.worst": {
     en: "Deepest drawdown (mean)",
-    ru: "Средний максимум даунсвинга",
+    ru: "Средний максимум стрика",
   },
   "pdv.worstDelta": {
     en: "{mult}× deeper than PrimeDope",
@@ -1405,7 +1458,7 @@ export const DICT = {
   },
   "pdv.why2": {
     en: "A flat-lifted ITM over-counts small cashes and under-counts long cash-less streaks. That's why their breakeven stretches look short and their drawdowns shallow — the tail is literally missing.",
-    ru: "Плоский ITM переоценивает мелкие кеши и недооценивает долгие бесприбыльные полосы. Поэтому у них полосы безубытка короткие, а даунсвинги мелкие — хвоста распределения там просто нет.",
+    ru: "Плоский ITM переоценивает мелкие кеши и недооценивает долгие бесприбыльные полосы. Поэтому у них полосы безубытка короткие, а стрики мелкие — хвоста распределения там просто нет.",
   },
   "pdv.why3": {
     en: "We auto-fit the skill curve to your ROI, then resample every tournament with a skill-weighted distribution (power-law / stretched-exp / linear / empirical). The resulting profit swing is what the math actually says your schedule will do.",
@@ -1431,13 +1484,29 @@ export const DICT = {
   "why.title": { en: "Why our numbers differ", ru: "Почему у нас цифры другие" },
   "why.body": {
     en: "PrimeDope models skill as a uniform lift over paid places: every paid finish gets the same bumped probability k/N. That's mathematically cleanest but wrong — real winners concentrate in deep finishes, not min-cashes. Our α-calibration fits a parametric skill model (power-law / stretched-exp / linear) so that cashes bias toward the top, reproducing the Muchomota 2024 observation that real-sample ITM sits ~3 pp below PrimeDope at 20% ROI. This matters for drawdowns too — flatter-ITM models understate swings.",
-    ru: "PrimeDope моделирует скилл как плоский лифт по призовым: каждое призовое место получает одинаковый повышенный шанс k/N. Это математически чистенько, но неверно — настоящие скилл-игроки чаще заходят глубоко, а не на мин-кеше. Наша α-калибровка натягивает параметрическую модель (power-law / stretched-exp / линейная) так, чтобы кеши смещались к верху — это воспроизводит наблюдение Muchomota (2024), что реальный ITM на ~3 пп ниже, чем у PrimeDope при 20% ROI. Это бьёт и по даунсвингам — плоский ITM занижает свинги.",
+    ru: "PrimeDope моделирует скилл как плоский лифт по призовым: каждое призовое место получает одинаковый повышенный шанс k/N. Это математически чистенько, но неверно — настоящие скилл-игроки чаще заходят глубоко, а не на мин-кеше. Наша α-калибровка натягивает параметрическую модель (power-law / stretched-exp / линейная) так, чтобы кеши смещались к верху — это воспроизводит наблюдение Muchomota (2024), что реальный ITM на ~3 пп ниже, чем у PrimeDope при 20% ROI. Это бьёт и по стрикам — плоский ITM занижает свинги.",
   },
   // Preview
   "preview.title": { en: "One tournament under the microscope", ru: "Один турнир под микроскопом" },
   "preview.eyebrow": { en: "One tournament", ru: "Один турнир" },
   "preview.youPay": { en: "Buy-in", ru: "Баин" },
   "preview.avgReturn": { en: "EV profit", ru: "EV профит" },
+  "preview.evSplit": { en: "Gross EV", ru: "Брутто EV" },
+  "preview.evSplit.cash": { en: "cash", ru: "кеш" },
+  "preview.evSplit.bounty": { en: "bounty", ru: "ноки" },
+  "preview.hover.places": { en: "places", ru: "места" },
+  "preview.hover.hitRate": { en: "Hit rate", ru: "Как часто" },
+  "preview.hover.oddsIn": { en: "in", ru: "из" },
+  "preview.hover.givenHit": { en: "When you land here", ru: "Когда попадаешь сюда" },
+  "preview.hover.cashPayout": { en: "Cash payout", ru: "Кеш-выплата" },
+  "preview.hover.bountyTotal": { en: "Bounty $", ru: "Ноки $" },
+  "preview.hover.bountyHeads": { en: "Heads busted (avg)", ru: "Выбитых голов (среднее)" },
+  "preview.hover.bountyAvgSize": { en: "Avg head size", ru: "Средний размер нока" },
+  "preview.hover.totalTake": { en: "Total take", ru: "Всего на руки" },
+  "preview.hover.perEntry": {
+    en: "Contribution to EV per entry (× hit rate)",
+    ru: "Вклад в EV на вход (× частота)",
+  },
   "preview.playersLabel": { en: "players", ru: "соперников" },
   "preview.itmLine": {
     en: "ITM {pct} (1 cash every {n} {_entry})",
@@ -1538,6 +1607,14 @@ export const DICT = {
     en: "ROI is fixed by the schedule — ITM% only controls how bursty the profit curve looks. Same long-run EV, different clip. Leave blank in a row to inherit this default.",
     ru: "ROI фиксируется расписанием — ITM меняет только «рваность» графика. Долгосрочное EV то же, меняется лишь частота заносов. Оставь поле пустым в строке, чтобы применить этот дефолт.",
   },
+  "controls.rakeback.label": {
+    en: "Rakeback %",
+    ru: "Рейкбек %",
+  },
+  "controls.rakeback.title": {
+    en: "Global rakeback — % of paid rake credited back after every entry. Added deterministically to each bullet's profit ((rb%/100) × row.rake × row.buyIn), so re-entries also earn rakeback. Pure mean shift: trajectories lift, σ and convergence are untouched.",
+    ru: "Глобальный рейкбек — % от уплаченного рейка, возвращаемый после каждого входа. Прибавляется детерминированно к профиту каждого bullet-а ((rb%/100) × рейк × бай-ин), так что ре-энтри тоже даёт рейкбек. Чистый сдвиг среднего: график поднимается, σ и сходимость не меняются.",
+  },
   "preview.footnote": {
     en: "If the top (EV) bar is much wider than the bottom (finishes) bar in the same colour, that slice of finishes carries way more money than its share of the field — and that's exactly where your variance lives.",
     ru: "Если верхний (EV) бар в каком-то цвете сильно шире нижнего (финиши) — этот кусок финишей приносит непропорционально больше денег. Именно там сконцентрирована дисперсия.",
@@ -1564,18 +1641,18 @@ export const DICT = {
     ru: "Линейно при α-калибровке — показывает, насколько EV зависит от ошибки в ROI.",
   },
 
-  // Downswing catalog
+  // Streak catalog
   "dd.title": { en: "Toughest streaks", ru: "Самые жёсткие стрики" },
   "dd.sub": {
-    en: "Top-3 deepest downswings and top-3 biggest upswings across samples",
-    ru: "Топ-3 самых глубоких даунсвинга и топ-3 самых больших апсвинга по сэмплам",
+    en: "Top-3 deepest streaks and top-3 biggest upswings across samples",
+    ru: "Топ-3 самых глубоких стрика и топ-3 самых больших апсвинга по сэмплам",
   },
   "dd.rank": { en: "#", ru: "#" },
   "dd.depth": { en: "Drawdown depth", ru: "Глубина просадки" },
   "dd.height": { en: "Upswing height", ru: "Высота апстрика" },
   "dd.final": { en: "Final profit", ru: "Итог сэмпла" },
   "dd.breakeven": { en: "Longest zero-streak", ru: "Самая долгая игра в ноль" },
-  "dd.worstDown": { en: "Worst downswings", ru: "Худшие даунсвинги" },
+  "dd.worstDown": { en: "Worst streaks", ru: "Худшие стрики" },
   "dd.bestUp": { en: "Best upswings", ru: "Лучшие апсвинги" },
 
   // Help tooltips — controls panel
@@ -1609,7 +1686,7 @@ export const DICT = {
   },
   "help.roiStdErr": {
     en: "How uncertain you are about your real ROI, as a fraction. 0.05 = \"my true ROI is maybe ±5 pp off\". 0 = you know ROI exactly (PrimeDope's assumption). On each run the engine rolls a random skill shift applied to every bullet — the biggest source of bad-tail swings PrimeDope ignores.",
-    ru: "Неопределённость в истинном ROI (как доля). 0.05 = «реальный ROI может быть ±5 пп от заданного». 0 = ROI известен точно (допущение PrimeDope). На каждом ране движок генерирует случайный сдвиг скилла на все пули — основной источник хвостовых даунсвингов, который PrimeDope игнорирует.",
+    ru: "Неопределённость в истинном ROI (как доля). 0.05 = «реальный ROI может быть ±5 пп от заданного». 0 = ROI известен точно (допущение PrimeDope). На каждом ране движок генерирует случайный сдвиг скилла на все пули — основной источник хвостовых стриков, который PrimeDope игнорирует.",
   },
   "help.roiShockPerTourney": {
     en: "Per-tournament ROI shock (σ). Every tourney independently rolls softer/tougher than average. 0.30 = each tourney's effective ROI is target ± 30 pp (1σ). Adds variance without moving long-run mean — a chunk PrimeDope misses.",
@@ -1637,7 +1714,7 @@ export const DICT = {
   },
   "help.tiltSlowThreshold": {
     en: "Dollar drawdown (or upswing) depth required to start the slow-tilt countdown. Smaller = easier to enter tilt.",
-    ru: "Глубина даунсвинга (или апсвинга) в долларах для запуска отсчёта медленного тильта. Меньше = легче войти в тильт.",
+    ru: "Глубина стрика (или апсвинга) в долларах для запуска отсчёта медленного тильта. Меньше = легче войти в тильт.",
   },
   "help.tiltSlowMinDuration": {
     en: "Number of tournaments you must stay past the threshold before slow-tilt actually engages. Defaults to 500. Short streaks (< this) don't matter — only sustained ones do.",

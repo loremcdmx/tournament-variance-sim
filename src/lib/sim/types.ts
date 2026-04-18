@@ -13,10 +13,12 @@ export type PayoutStructureId =
   | "mtt-primedope"
   | "mtt-flat"
   | "mtt-top-heavy"
+  | "battle-royale"
   | "mtt-pokerstars"
   | "mtt-gg"
   | "mtt-sunday-million"
   | "mtt-gg-bounty"
+  | "mtt-gg-mystery"
   | "satellite-ticket"
   | "sng-50-30-20"
   | "sng-65-35"
@@ -339,6 +341,15 @@ export interface SimulationInput {
    */
   primedopeStyleEV?: boolean;
   /**
+   * Global rakeback, as a fraction of rake paid back after every entry.
+   * E.g. 0.3 = 30 % of rake returned. A deterministic bonus of
+   * `rakebackFracOfRake × row.rake × row.buyIn` is added to profit for each
+   * bullet fired (re-entries included, since each bullet pays rake). Adds
+   * zero variance — it's a pure mean shift — so σ and convergence numbers
+   * are untouched; only EV and trajectory shift upward. Defaults to 0.
+   */
+  rakebackFracOfRake?: number;
+  /**
    * One-sigma uncertainty on the player's true ROI, expressed as a fraction
    * (e.g. 0.05 = ±5 pp on the configured target). Defaults to 0 — the
    * classical "you know your ROI exactly" PrimeDope assumption. When > 0,
@@ -418,6 +429,12 @@ export interface RowDecomposition {
   stdDev: number;
   /** Share of total variance (Var_row / Var_total) */
   varianceShare: number;
+  /**
+   * Mean bounty winnings per sample for this row (before subtracting
+   * buy-in). Zero for non-bounty formats. `mean` already includes this
+   * — `bountyMean` is a decomposition slice for charting.
+   */
+  bountyMean: number;
   tournamentsPerSample: number;
   totalBuyIn: number;
   /**

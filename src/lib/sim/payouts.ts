@@ -38,6 +38,21 @@ export function getPayoutTable(
       });
     }
 
+    case "battle-royale": {
+      // GG Mystery Battle Royale is 18-max — fixed 3 paid, cash split
+      // 100:75:50 per GG's published tables (e.g. $25 BIN pays $100/$75/$50
+      // out of the non-bounty pool). Normalised that's 4:3:2 = 44.4/33.3/22.2.
+      const paid = Math.max(1, Math.round((players * 3) / 18));
+      if (paid <= 3) {
+        return normalize([4, 3, 2].slice(0, paid));
+      }
+      return buildRealisticCurve(paid, players, {
+        firstShare: firstShareForField(0.44, 0.3, players),
+        ftRatio: 1.4,
+        minCashBuyIns: 1.2,
+      });
+    }
+
     case "mtt-primedope":
       return primedopeTable(players, custom);
 
@@ -52,6 +67,9 @@ export function getPayoutTable(
 
     case "mtt-gg-bounty":
       return ggBountyTable(players);
+
+    case "mtt-gg-mystery":
+      return ggMysteryTable(players);
 
     case "satellite-ticket": {
       // Ticket satellite — every "paid" place wins the same ticket, no
@@ -195,6 +213,37 @@ function ggBountyTable(players: number): number[] {
     ftRatio: 1.26,
     minCashBuyIns: 1.71,
     flatTop2: true,
+  });
+}
+
+/**
+ * GGPoker Mystery Bounty reference curve. Mystery format splits 50 % of
+ * the buy-in into a bounty pool, same as PKO — but unlike PKO's
+ * progressive heads, Mystery uses **fixed-amount envelopes** that only
+ * drop during the ITM phase. Two shape consequences vs. `ggBountyTable`:
+ *
+ *   1. The regular column is still half-sized, so 1st share sits lower
+ *      than a pure freezeout (7–11 % vs 14–17 %). But it's distinctly
+ *      higher than PKO's ~7 % because the winner doesn't cap out at
+ *      "one more head": envelopes don't replace the cash winner's
+ *      jackpot, they stack on top of it.
+ *   2. NO `flatTop2`. In PKO the 1st→2nd gap is mostly the final
+ *      bounty, so regular-column 1st ≈ 2nd. In Mystery the envelopes
+ *      are drawn fresh at every ITM KO; the winner's regular-side
+ *      pay-jump is proportional and distinct.
+ *
+ * paid-share slightly shallower than mtt-standard (13 % vs 15 %) — GG
+ * Mystery tends to pay tighter than vanilla MTTs to reserve budget for
+ * the jackpot envelopes. Anchors aren't from a single sample; they're
+ * sanity-checked against observed $100 / $215 Daily Mystery Bounty
+ * tables and will be retuned when real samples land (#data-plan).
+ */
+function ggMysteryTable(players: number): number[] {
+  const paid = Math.max(9, Math.floor(players * 0.13));
+  return buildRealisticCurve(paid, players, {
+    firstShare: firstShareForField(0.125, 0.09, players),
+    ftRatio: 1.38,
+    minCashBuyIns: 1.75,
   });
 }
 

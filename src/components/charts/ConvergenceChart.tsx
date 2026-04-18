@@ -15,7 +15,7 @@ interface Row {
   fields: number;
 }
 
-const TARGETS = [0.3, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005];
+const TARGETS = [0.5, 0.3, 0.2, 0.1, 0.05, 0.025, 0.01, 0.005, 0.001];
 
 // Log-scaled AFS slider range: ~50 .. ~50 000 players.
 const AFS_LOG_MIN = Math.log(50);
@@ -28,11 +28,14 @@ const AFS_LOG_MAX = Math.log(50_000);
 // "how many tourneys for a +80 % edge in MBR".
 const ROI_MIN_DEFAULT = -0.30;
 const ROI_MAX_DEFAULT = 1.00;
-const ROI_MIN_MBR = -0.05;
-const ROI_MAX_MBR = 0.05;
+const ROI_MIN_MBR = -0.10;
+const ROI_MAX_MBR = 0.10;
 
 // σ_ROI(field, roi) = (C0 + C1·roi) · field^β — pooled log-log fit across
-// an 18-point field sweep (50..50 000), rake 10 %, 500 tourneys × 120 k samples.
+// an 18-point field sweep (50..50 000), 500 tourneys × 120 k samples.
+// Freeze/PKO/Mystery fit at rake 10 %; Mystery Battle Royale at rake 8 %
+// (GGPoker's real-world rake since March 2024). The widget's rake-rescale
+// factor (1+FIT_RAKE_format)/(1+rake) converts to user-picked rake at render.
 //
 // Freeze: mtt-standard payout + freeze-realdata-linear finish, 7 ROIs (−20 %..+80 %).
 // σ_ROI is flat across ROI here (C1 ≈ 0) because the realdata-linear finish CDF
@@ -48,6 +51,8 @@ const ROI_MAX_MBR = 0.05;
 // Battle Royale: same finish model, mysteryBountyVariance=1.8 (jackpot tail).
 // Higher log-variance both lifts C0 (~27 %) and amplifies C1 further — deep runs
 // carry even more skew, so ROI-sensitivity is ~3× PKO's, ~1.5× Mystery's.
+// Fit at rake 8 %; coefficients = 1.01852 × old rake-10 values, confirming
+// σ_profit rake-invariance within fit noise (β unchanged).
 // All fits produced by scripts/fit_sigma_parallel.ts.
 const SIGMA_ROI_FREEZE = {
   C0: 0.6564,
@@ -59,15 +64,26 @@ const SIGMA_ROI_PKO = {
   C1: 0.4961,
   beta: 0.2763,
 };
+// Mystery coefficients recalibrated after #71 bumped the log-normal bounty
+// variance σ²=0.8→2.0 to give the envelope a jackpot tail ~4e-5 at 100× mean
+// (σ²=0.8 was 4500× too thin, see scripts/probe_mystery_tail.ts). Wider tail
+// inflates σ_ROI ≈ 55% across ROIs. Fit: 11 ROIs × 18 fields at buy-in $50,
+// rake 10%, mtt-gg-mystery payout. R²=0.927 global, R²=0.997 on linear C(roi).
 const SIGMA_ROI_MYSTERY = {
-  C0: 1.0063,
-  C1: 1.0994,
-  beta: 0.2348,
+  C0: 1.5669,
+  C1: 1.8493,
+  beta: 0.1914,
 };
+// Battle Royale is fixed AFS=18 in the UI (see BR_FIXED_AFS + #93), so the
+// field-sweep β is degenerate. `fit_br_fixed18.ts` measures σ_ROI across 11
+// ROIs at a single AFS=18 under the #92 discrete-tier envelope distribution
+// and linear-fits C(roi). β=0 bakes 18^β into the C coefficients. C0/C1 are
+// an order of magnitude higher than the pre-#92 log-normal fit — the tier
+// jackpot tail inflates σ_ROI roughly 4× vs the old σ²=1.8 log-normal path.
 const SIGMA_ROI_MYSTERY_ROYALE = {
-  C0: 1.2826,
-  C1: 1.6462,
-  beta: 0.2104,
+  C0: 7.0167,
+  C1: 6.7234,
+  beta: 0,
 };
 
 type ConvergenceFormat =
@@ -122,6 +138,8 @@ export function ConvergenceChart({ schedule }: Props) {
     let fieldWeighted = 0;
     let roiWeighted = 0;
     let pkoCount = 0;
+    let mysteryCount = 0;
+    let mysteryRoyaleCount = 0;
     if (schedule && schedule.length > 0) {
       for (const row of schedule) {
         const c = Math.max(0, row.count);
@@ -129,19 +147,42 @@ export function ConvergenceChart({ schedule }: Props) {
         countTotal += c;
         fieldWeighted += c * p;
         roiWeighted += c * row.roi;
-        if ((row.bountyFraction ?? 0) > 0) pkoCount += c;
+        // Match inferGameType's threshold so Battle Royale (σ²≥1.4) is
+        // tracked as its own bucket — otherwise it collapses into "mystery"
+        // and the baseline-format heuristic snaps to the wrong fit.
+        const b = row.bountyFraction ?? 0;
+        const m = row.mysteryBountyVariance ?? 0;
+        if (b > 0 && m >= 1.4) mysteryRoyaleCount += c;
+        else if (b > 0 && m > 0) mysteryCount += c;
+        else if (b > 0) pkoCount += c;
       }
     }
     const avgField = countTotal > 0 ? fieldWeighted / countTotal : 1000;
     const roi = countTotal > 0 ? roiWeighted / countTotal : 0.1;
     const pkoShare = countTotal > 0 ? pkoCount / countTotal : 0;
-    return { avgField, roi, pkoShare };
+    const mysteryShare = countTotal > 0 ? mysteryCount / countTotal : 0;
+    const mysteryRoyaleShare =
+      countTotal > 0 ? mysteryRoyaleCount / countTotal : 0;
+    const freezeShare = Math.max(
+      0,
+      1 - pkoShare - mysteryShare - mysteryRoyaleShare,
+    );
+    return {
+      avgField,
+      roi,
+      pkoShare,
+      mysteryShare,
+      mysteryRoyaleShare,
+      freezeShare,
+    };
   }, [schedule]);
 
   const [afsPosOverride, setAfsPosOverride] = useState<number | null>(null);
   const baselinePos = afsToPos(baseline.avgField);
-  const afsPos = afsPosOverride ?? baselinePos;
-  const effectiveAfs = posToAfs(afsPos);
+  // Battle Royale is a fixed 18-max SNG — lobby size never changes between
+  // buy-in tiers, and the σ_ROI fit was produced at N=18. Lock AFS so the
+  // slider doesn't lie about a knob the user can't turn.
+  const BR_FIXED_AFS = 18;
   // Confidence level for the CI bands — user-configurable in (75, 99.9).
   const [ciPct, setCiPct] = useState<number>(95);
   const z = ciToZ(ciPct / 100);
@@ -166,11 +207,15 @@ export function ConvergenceChart({ schedule }: Props) {
   const [formatOverride, setFormatOverride] =
     useState<ConvergenceFormat | null>(null);
   const baselineFormat: ConvergenceFormat =
-    baseline.pkoShare >= 0.99
-      ? "pko"
-      : baseline.pkoShare <= 0.01
-        ? "freeze"
-        : "mix";
+    baseline.mysteryRoyaleShare >= 0.99
+      ? "mystery-royale"
+      : baseline.pkoShare >= 0.99
+        ? "pko"
+        : baseline.mysteryShare >= 0.99
+          ? "mystery"
+          : baseline.freezeShare >= 0.99
+            ? "freeze"
+            : "mix";
   const format = formatOverride ?? baselineFormat;
 
   // Format-dependent ROI bounds. MBR clips to ±5 % (reg band); others keep
@@ -185,15 +230,55 @@ export function ConvergenceChart({ schedule }: Props) {
     roiMin,
     Math.min(roiMax, roiOverride ?? baselineRoi),
   );
-  // Mix fraction of PKO (0..1). null → schedule-derived default.
-  const [pkoMixOverride, setPkoMixOverride] = useState<number | null>(null);
-  const baselinePkoMix = baseline.pkoShare;
-  const pkoMix =
+
+  const afsLocked = format === "mystery-royale";
+  const afsPos = afsLocked
+    ? afsToPos(BR_FIXED_AFS)
+    : (afsPosOverride ?? baselinePos);
+  const effectiveAfs = afsLocked ? BR_FIXED_AFS : posToAfs(afsPos);
+
+  // 3-way mix: [freeze, pko, mystery], each 0..1, sum = 1.
+  // null → use schedule-derived baseline. Mystery in the mix uses the
+  // Mystery (not Battle Royale) σ fit — BR is a distinct format selection.
+  type MixTuple = [number, number, number];
+  const normalizeMix = (m: MixTuple): MixTuple => {
+    const s = m[0] + m[1] + m[2];
+    if (s <= 1e-9) return [1 / 3, 1 / 3, 1 / 3];
+    return [m[0] / s, m[1] / s, m[2] / s];
+  };
+  const [mixOverride, setMixOverride] = useState<MixTuple | null>(null);
+  const baselineMix: MixTuple = normalizeMix([
+    baseline.freezeShare,
+    baseline.pkoShare,
+    baseline.mysteryShare,
+  ]);
+  const mix: MixTuple =
     format === "pko"
-      ? 1
+      ? [0, 1, 0]
       : format === "freeze"
-        ? 0
-        : (pkoMixOverride ?? baselinePkoMix);
+        ? [1, 0, 0]
+        : format === "mystery"
+          ? [0, 0, 1]
+          : (mixOverride ?? baselineMix);
+  // When one mix component is edited, distribute the delta across the other
+  // two in proportion to their current values. If both others are zero,
+  // split the remainder evenly.
+  const updateMixComponent = (idx: 0 | 1 | 2, nextVal: number) => {
+    const v = Math.max(0, Math.min(1, nextVal));
+    const others: [number, number] = idx === 0 ? [1, 2] : idx === 1 ? [0, 2] : [0, 1];
+    const rest = 1 - v;
+    const sumOthers = mix[others[0]] + mix[others[1]];
+    const next: MixTuple = [...mix] as MixTuple;
+    next[idx] = v;
+    if (sumOthers > 1e-9) {
+      next[others[0]] = mix[others[0]] * rest / sumOthers;
+      next[others[1]] = mix[others[1]] * rest / sumOthers;
+    } else {
+      next[others[0]] = rest / 2;
+      next[others[1]] = rest / 2;
+    }
+    setMixOverride(next);
+  };
 
   // Text buffers so the user can freely type intermediate values without
   // each keystroke being log-clamped or range-clamped mid-edit.
@@ -228,32 +313,38 @@ export function ConvergenceChart({ schedule }: Props) {
     }
   };
 
-  // Rakeback — deterministic % of buy-in received after every tournament.
-  // The ROI slider above is the user's TOTAL expected ROI (what they see on
-  // their tracker). Rakeback is the portion of that coming from the fixed
-  // program, so game-edge ROI = total − rakeback — and σ is calibrated
-  // against game-edge ROI (which controls bounty-collection variance),
-  // not total. Bumping rakeback up thus lowers the game-ROI fed to σ, so
-  // bounty-format σ drops and fewer tournaments confirm the same total ROI.
-  // Freeze C1 ≈ 0, so rakeback is a no-op for freezeouts (correct: flat
-  // rake earnings don't change freeze variance regardless of split).
-  const [rakebackPct, setRakebackPct] = useState<number>(0);
-  const [rakebackInput, setRakebackInput] = useState<string>("0.0");
+  // Rake — fraction of buy-in taken by the room. σ fits were measured at
+  // format-specific baselines (see scripts/fit_sigma_parallel.ts): 10% for
+  // freeze/PKO/mystery, 8% for Mystery Battle Royale (GGPoker's actual
+  // rake since March 2024). We rescale by (1+FIT_RAKE_format)/(1+rake) —
+  // σ_profit is ~rake-invariant but σ_ROI divides by cost basis
+  // buyIn·(1+rake), so higher rake compresses ROI-unit σ.
+  const FIT_RAKE = format === "mystery-royale" ? 0.08 : 0.10;
+  // Default rake snaps to format's real-world baseline on format switch —
+  // matches "as-fit" σ for that format without relying on the rake-rescale
+  // to do compensation work at every render. Users can still slide away.
+  const formatDefaultRake = format === "mystery-royale" ? 8 : 10;
+  const [rakePct, setRakePct] = useState<number>(formatDefaultRake);
+  const [rakeInput, setRakeInput] = useState<string>(formatDefaultRake.toFixed(1));
   useEffect(() => {
-    setRakebackInput(rakebackPct.toFixed(1));
-  }, [rakebackPct]);
-  const commitRakebackInput = (raw: string) => {
+    setRakePct(formatDefaultRake);
+  }, [formatDefaultRake]);
+  useEffect(() => {
+    setRakeInput(rakePct.toFixed(1));
+  }, [rakePct]);
+  const commitRakeInput = (raw: string) => {
     const n = Number(raw);
     if (Number.isFinite(n)) {
-      setRakebackPct(Math.max(0, Math.min(3, n)));
+      setRakePct(Math.max(0, Math.min(20, n)));
     } else {
-      setRakebackInput(rakebackPct.toFixed(1));
+      setRakeInput(rakePct.toFixed(1));
     }
   };
-  const gameRoi = effectiveRoi - rakebackPct / 100;
+
+  const gameRoi = effectiveRoi;
 
   const rows = useMemo<Row[]>(() => {
-    const afs = posToAfs(afsPos);
+    const afs = effectiveAfs;
     // Closed-form σ_ROI from the 18-field × 7-ROI fits (freeze: fit_beta.ts,
     // PKO: fit_beta_pko.ts). Entirely analytic — doesn't depend on any
     // simulation run, so this widget is usable before the user clicks "go".
@@ -262,22 +353,37 @@ export function ConvergenceChart({ schedule }: Props) {
     //   σ²_eff          = p·σ²_pko + (1−p)·σ²_freeze      (mix)
     //   k               = ⌈(z · σ_eff / target)²⌉
     //   fields          = k / afs
+    // rake-rescale: fits baseline = FIT_RAKE (10%). σ_profit ≈ rake-invariant,
+    // but σ_ROI = σ_profit / cost where cost = buyIn·(1+rake), so scale by
+    // (1+FIT_RAKE)/(1+rake). At rake=0 this lifts σ by 10%; at rake=20% it
+    // drops σ by ~8%. Same factor applies to every format.
+    const rakeScale = (1 + FIT_RAKE) / (1 + rakePct / 100);
     const sigmaFor = (coef: typeof SIGMA_ROI_FREEZE): number =>
       Math.max(0, coef.C0 + coef.C1 * gameRoi) *
-      Math.pow(Math.max(1, afs), coef.beta);
+      Math.pow(Math.max(1, afs), coef.beta) *
+      rakeScale;
     const sigmaFreeze = sigmaFor(SIGMA_ROI_FREEZE);
     const sigmaPko = sigmaFor(SIGMA_ROI_PKO);
     const sigmaMystery = sigmaFor(SIGMA_ROI_MYSTERY);
     const sigmaMysteryRoyale = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE);
-    const p = Math.max(0, Math.min(1, pkoMix));
+    // 3-way mix: σ²_mix = f_freeze·σ²_freeze + f_pko·σ²_pko + f_mystery·σ²_mystery.
+    // Exact identity when each tournament is drawn independently from the pool
+    // and all types share the same gameRoi (ROI is a single widget slider).
+    const [fFreeze, fPko, fMystery] = mix;
     const sigmaRoi =
-      format === "mystery"
-        ? sigmaMystery
-        : format === "mystery-royale"
-          ? sigmaMysteryRoyale
-          : Math.sqrt(
-              p * sigmaPko * sigmaPko + (1 - p) * sigmaFreeze * sigmaFreeze,
-            );
+      format === "mystery-royale"
+        ? sigmaMysteryRoyale
+        : format === "mystery"
+          ? sigmaMystery
+          : format === "pko"
+            ? sigmaPko
+            : format === "freeze"
+              ? sigmaFreeze
+              : Math.sqrt(
+                  fFreeze * sigmaFreeze * sigmaFreeze +
+                    fPko * sigmaPko * sigmaPko +
+                    fMystery * sigmaMystery * sigmaMystery,
+                );
     return TARGETS.map((target) => {
       const k = Math.ceil(Math.pow((z * sigmaRoi) / target, 2));
       return {
@@ -286,11 +392,12 @@ export function ConvergenceChart({ schedule }: Props) {
         fields: k / Math.max(1, afs),
       };
     });
-  }, [afsPos, z, gameRoi, pkoMix, format]);
+  }, [effectiveAfs, z, gameRoi, mix, format, rakePct]);
 
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
-    if (n >= 1e7) return `${(n / 1e6).toFixed(1)}M`;
+    if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+    if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
     if (n >= 1e4) return `${(n / 1e3).toFixed(1)}k`;
     return Math.round(n).toLocaleString();
   };
@@ -346,36 +453,45 @@ export function ConvergenceChart({ schedule }: Props) {
           type="button"
           onClick={() => {
             setFormatOverride(null);
-            setPkoMixOverride(null);
+            setMixOverride(null);
           }}
           className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
-          title={`reset to ${baselineFormat}${baselineFormat === "mix" ? ` (${Math.round(baselinePkoMix * 100)}% PKO)` : ""}`}
+          title={`reset to ${baselineFormat}${baselineFormat === "mix" ? ` (${Math.round(baselineMix[0] * 100)}/${Math.round(baselineMix[1] * 100)}/${Math.round(baselineMix[2] * 100)} freeze/PKO/mystery)` : ""}`}
         >
           ↺
         </button>
       </div>
       {format === "mix" && (
-        <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
-          <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-fuchsia-400/80">
-            PKO
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={Math.round(pkoMix * 100)}
-            onChange={(e) => setPkoMixOverride(Number(e.target.value) / 100)}
-            className="flex-1 accent-fuchsia-400"
-            aria-label="PKO share"
+        <div className="mb-3 flex flex-col gap-1.5">
+          <MixRow
+            label={t("chart.convergence.format.freeze")}
+            idx={0}
+            mix={mix}
+            accent="sky"
+            onChange={updateMixComponent}
           />
-          <span className="w-20 text-center font-mono tabular-nums text-[color:var(--color-fg)]">
-            {Math.round(pkoMix * 100)}% / {100 - Math.round(pkoMix * 100)}%
-          </span>
-          <span className="w-[22px]" />
+          <MixRow
+            label={t("chart.convergence.format.pko")}
+            idx={1}
+            mix={mix}
+            accent="fuchsia"
+            onChange={updateMixComponent}
+          />
+          <MixRow
+            label={t("chart.convergence.format.mystery")}
+            idx={2}
+            mix={mix}
+            accent="purple"
+            onChange={updateMixComponent}
+          />
         </div>
       )}
-      <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
+      <div
+        className={`mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)] ${
+          afsLocked ? "opacity-60" : ""
+        }`}
+        title={afsLocked ? t("chart.convergence.afs.lockedBR") : undefined}
+      >
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-emerald-400/80">
           AFS
         </span>
@@ -386,14 +502,15 @@ export function ConvergenceChart({ schedule }: Props) {
           step={0.001}
           value={afsPos}
           onChange={(e) => setAfsPosOverride(Number(e.target.value))}
-          className="flex-1 accent-emerald-400"
+          disabled={afsLocked}
+          className="flex-1 accent-emerald-400 disabled:cursor-not-allowed"
           aria-label="AFS"
         />
         <input
           type="number"
           min={1}
           step={1}
-          value={afsInput}
+          value={afsLocked ? String(BR_FIXED_AFS) : afsInput}
           onChange={(e) => setAfsInput(e.target.value)}
           onBlur={(e) => commitAfsInput(e.target.value)}
           onKeyDown={(e) => {
@@ -402,14 +519,16 @@ export function ConvergenceChart({ schedule }: Props) {
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none"
+          disabled={afsLocked}
+          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed"
           aria-label="AFS value"
         />
         <button
           type="button"
           onClick={() => setAfsPosOverride(null)}
-          className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
-          title={`reset to ${fmtAfs(baseline.avgField)}`}
+          disabled={afsLocked}
+          className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          title={afsLocked ? "—" : `reset to ${fmtAfs(baseline.avgField)}`}
         >
           ↺
         </button>
@@ -456,59 +575,46 @@ export function ConvergenceChart({ schedule }: Props) {
       </div>
       <div
         className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
-        title={t("chart.convergence.rakeback.title")}
+        title={t("chart.convergence.rake.title")}
       >
-        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-lime-400/80">
-          {t("chart.convergence.rakeback")}
+        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-orange-400/80">
+          {t("chart.convergence.rake")}
         </span>
         <input
           type="range"
           min={0}
-          max={3}
-          step={0.1}
-          value={rakebackPct}
-          onChange={(e) => setRakebackPct(Number(e.target.value))}
-          className="flex-1 accent-lime-400"
-          aria-label="Rakeback"
+          max={20}
+          step={0.5}
+          value={rakePct}
+          onChange={(e) => setRakePct(Number(e.target.value))}
+          className="flex-1 accent-orange-400"
+          aria-label="Rake"
         />
         <input
           type="number"
           min={0}
-          max={3}
-          step={0.1}
-          value={rakebackInput}
-          onChange={(e) => setRakebackInput(e.target.value)}
-          onBlur={(e) => commitRakebackInput(e.target.value)}
+          max={20}
+          step={0.5}
+          value={rakeInput}
+          onChange={(e) => setRakeInput(e.target.value)}
+          onBlur={(e) => commitRakeInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
-              commitRakebackInput((e.target as HTMLInputElement).value);
+              commitRakeInput((e.target as HTMLInputElement).value);
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-lime-400 focus:outline-none"
-          aria-label="Rakeback percent"
+          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-orange-400 focus:outline-none"
+          aria-label="Rake percent"
         />
         <button
           type="button"
-          onClick={() => setRakebackPct(0)}
+          onClick={() => setRakePct(formatDefaultRake)}
           className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
-          title="reset to 0.0%"
+          title={`reset to ${formatDefaultRake.toFixed(1)}%`}
         >
           ↺
         </button>
-      </div>
-      <div className="mb-3 -mt-2 flex items-center gap-1.5 pl-11 text-[10px] text-[color:var(--color-fg-muted)]">
-        <span className="uppercase tracking-wider">
-          {t("chart.convergence.gameRoi")}
-        </span>
-        <span className="font-mono tabular-nums text-amber-400">
-          {gameRoi * 100 >= 0 ? "+" : ""}
-          {(gameRoi * 100).toFixed(1)}%
-        </span>
-        <span className="text-[color:var(--color-fg-muted)]/70">
-          ({(effectiveRoi * 100 >= 0 ? "+" : "") +
-            (effectiveRoi * 100).toFixed(1)}% − {rakebackPct.toFixed(1)}%)
-        </span>
       </div>
       <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
@@ -555,19 +661,19 @@ export function ConvergenceChart({ schedule }: Props) {
       </div>
       <table className="w-full table-fixed border-collapse text-[12px] tabular-nums">
         <colgroup>
-          <col className="w-[72px]" />
+          <col className="w-[112px]" />
           <col />
           <col />
         </colgroup>
         <thead>
           <tr className="text-left text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            <th className="py-1.5 pr-3 font-semibold">
+            <th className="py-1.5 pr-3 font-semibold whitespace-nowrap">
               {t("chart.convergence.col.target")}
             </th>
-            <th className="py-1.5 px-3 text-right font-semibold">
+            <th className="py-1.5 px-3 text-right font-semibold whitespace-nowrap">
               {t("chart.convergence.col.tourneys")}
             </th>
-            <th className="py-1.5 pl-3 text-right font-semibold">
+            <th className="py-1.5 pl-3 text-right font-semibold whitespace-nowrap">
               {t("chart.convergence.col.fields")}
             </th>
           </tr>
@@ -592,6 +698,94 @@ export function ConvergenceChart({ schedule }: Props) {
       <div className="mt-2 text-[10px] text-[color:var(--color-fg-dim)]">
         {t("chart.convergence.assumptions")}
       </div>
+    </div>
+  );
+}
+
+type MixAccent = "sky" | "fuchsia" | "purple";
+const MIX_ACCENT_CLASSES: Record<
+  MixAccent,
+  { label: string; range: string; focus: string }
+> = {
+  sky: {
+    label: "text-sky-400/80",
+    range: "accent-sky-400",
+    focus: "focus:border-sky-400",
+  },
+  fuchsia: {
+    label: "text-fuchsia-400/80",
+    range: "accent-fuchsia-400",
+    focus: "focus:border-fuchsia-400",
+  },
+  purple: {
+    label: "text-purple-400/80",
+    range: "accent-purple-400",
+    focus: "focus:border-purple-400",
+  },
+};
+
+function MixRow({
+  label,
+  idx,
+  mix,
+  accent,
+  onChange,
+}: {
+  label: string;
+  idx: 0 | 1 | 2;
+  mix: readonly [number, number, number];
+  accent: MixAccent;
+  onChange: (idx: 0 | 1 | 2, next: number) => void;
+}) {
+  const classes = MIX_ACCENT_CLASSES[accent];
+  const pct = Math.round(mix[idx] * 100);
+  const [raw, setRaw] = useState<string>(String(pct));
+  useEffect(() => {
+    setRaw(String(pct));
+  }, [pct]);
+  const commit = (s: string) => {
+    const n = Number(s);
+    if (Number.isFinite(n)) {
+      onChange(idx, Math.max(0, Math.min(100, n)) / 100);
+    } else {
+      setRaw(String(pct));
+    }
+  };
+  return (
+    <div className="flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
+      <span
+        className={`w-14 shrink-0 whitespace-nowrap uppercase tracking-wider ${classes.label}`}
+      >
+        {label}
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={pct}
+        onChange={(e) => onChange(idx, Number(e.target.value) / 100)}
+        className={`flex-1 ${classes.range}`}
+        aria-label={`${label} share`}
+      />
+      <input
+        type="number"
+        min={0}
+        max={100}
+        step={1}
+        value={raw}
+        onChange={(e) => setRaw(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            commit((e.target as HTMLInputElement).value);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className={`w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] outline-none ${classes.focus}`}
+        aria-label={`${label} percent`}
+      />
+      <span className="w-[22px]" />
     </div>
   );
 }

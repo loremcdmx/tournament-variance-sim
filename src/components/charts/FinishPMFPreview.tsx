@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   buildFinishPMF,
   calibrateAlpha,
@@ -49,8 +49,27 @@ interface TierRow {
   key: TierKey;
   labelKey: TierLabelKey;
   color: string;
-  /** Dollar EV contributed by places in this tier (gross). */
+  /** Dollar EV contributed by places in this tier (gross, cash + bounty). */
   ev: number;
+  /** Cash-pool slice of `ev` — Σ pmf[i]·prizeByPlace[i] for places in tier. */
+  cashEv: number;
+  /** Bounty-pool slice of `ev` — Σ pmf[i]·bountyByPlace[i] for places in tier.
+   *  For freezeouts this is 0; for PKO/Mystery/BR it's the chunk of this
+   *  tier's EV that comes from busting opponents rather than seat equity. */
+  bountyEv: number;
+  /** Expected cash prize GIVEN a finish in this tier (conditional mean). */
+  cashGivenFinish: number;
+  /** Expected bounty dollars GIVEN a finish in this tier. */
+  bountyGivenFinish: number;
+  /** Expected number of opponents busted GIVEN a finish in this tier,
+   *  under uniform-skill harmonic expectation E[busts | place p] =
+   *  H(N-1) − H(p-1). Weighted by pmf across the tier's place range.
+   *  For non-bounty formats this is still meaningful but less interesting. */
+  bustsGivenFinish: number;
+  /** Average size of one bounty collected in this tier (bounty$ / busts).
+   *  Captures progressive-PKO head-growth up the ladder: a deep finisher
+   *  collects fewer but bigger heads than someone busting early. */
+  bountySizePerBust: number;
   /** Skill-calibrated share of finishes in this tier (Σ pmf). */
   field: number;
   /** Equilibrium (uniform 1/N) share — the "zero-skill" baseline. */
@@ -127,21 +146,6 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
       .replace("{odds}", topOdds > 0 ? String(topOdds) : "∞");
   }
 
-  // Entertaining fact: the smallest k such that top-k places carry ≥50%
-  // of expected payout, and how rare that finish is. Only shown on
-  // high-field MTTs, where the answer is actually surprising (e.g. 3 of
-  // 500). For 18-man sit-and-gos it collapses to 1-of-3 and adds no info.
-  const halfMassLine =
-    highField && stats.halfMassK > 0 && stats.halfMassField > 0
-      ? t("preview.halfMass")
-          .replace("{k}", String(stats.halfMassK))
-          .replace("{n}", String(row.players))
-          .replace(
-            "{odds}",
-            String(Math.max(1, Math.round(1 / stats.halfMassField))),
-          )
-      : null;
-
   return (
     <div className="flex flex-col gap-3.5">
       {/* Tournament identity */}
@@ -189,6 +193,30 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
             </div>
           </div>
         </div>
+        {stats.bountyEvPerEntry > 0 && (
+          <div className="mt-2 flex items-center justify-end gap-2 border-t border-[color:var(--color-border)]/60 pt-1.5 text-[10px] text-[color:var(--color-fg-dim)]">
+            <span className="uppercase tracking-wider text-[9px]">
+              {t("preview.evSplit")}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-1.5 w-1.5 rounded-sm bg-[color:var(--color-accent)]" />
+              <span>{t("preview.evSplit.cash")}</span>
+              <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+                {moneyFmt(stats.cashEvPerEntry)}
+              </span>
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-sm"
+                style={{ background: "hsl(175, 72%, 55%)" }}
+              />
+              <span>{t("preview.evSplit.bounty")}</span>
+              <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+                {moneyFmt(stats.bountyEvPerEntry)}
+              </span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Hero: top-heaviness — the point of the whole widget */}
@@ -199,8 +227,6 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
         <div className="text-[12px] leading-snug text-[color:var(--color-fg)]">
           {heroBody}
         </div>
-        {/* halfMassLine removed — heroBody already conveys top-heaviness;
-             keeping the computation for potential future use */}
         <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
           {t("preview.heroTagline")}
         </div>
@@ -231,10 +257,18 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
             // Disjoint tiers + interleaved cumulative summary rows (top3
             // and FT) injected right after the winner tier, so "топ3" and
             // "финалка" sit next to "1st place" instead of at the end.
+            // Bounty overlay must contrast with every tier colour in the
+            // palette (yellow / orange / violet / fuchsia / grey). Teal is
+            // outside the tier hue range so the bounty slice stays visible
+            // even on violet tiers like "Финалка" and "Остальные кеши".
+            const bountyAccent = "hsl(175, 72%, 55%)";
+            const hasBounty = stats.bountyEvPerEntry > 1e-6;
             for (const tier of stats.tiers) {
               const evShare = tier.ev / evTotal;
               const fieldShare = tier.field;
               if (evShare <= 0.0005 && fieldShare <= 0.0005) continue;
+              const bountyShareOfTier =
+                tier.ev > 1e-9 ? tier.bountyEv / tier.ev : 0;
               rows.push(
                 <EvBreakdownRow
                   key={tier.key}
@@ -245,6 +279,17 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
                   eqShare={tier.eqShare}
                   netDollars={tier.netDollars}
                   maxEvShare={maxEv}
+                  bountyShareOfTier={bountyShareOfTier}
+                  bountyColor={bountyAccent}
+                  breakdown={{
+                    tier,
+                    hasBounty,
+                    bountyColor: bountyAccent,
+                    posRangeLabel:
+                      tier.posLo === tier.posHi
+                        ? `${tier.posLo}`
+                        : `${tier.posLo}–${tier.posHi}`,
+                  }}
                 />,
               );
             }
@@ -284,6 +329,13 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
   );
 }
 
+interface TierBreakdown {
+  tier: TierRow;
+  hasBounty: boolean;
+  bountyColor: string;
+  posRangeLabel: string;
+}
+
 function EvBreakdownRow({
   label,
   color,
@@ -292,6 +344,9 @@ function EvBreakdownRow({
   eqShare,
   netDollars,
   maxEvShare,
+  bountyShareOfTier = 0,
+  bountyColor,
+  breakdown,
 }: {
   label: string;
   color: string;
@@ -300,7 +355,18 @@ function EvBreakdownRow({
   eqShare: number;
   netDollars: number;
   maxEvShare?: number;
+  /** 0..1 — fraction of this tier's EV that comes from the bounty pool.
+   *  Renders as a right-anchored overlay on the EV bar in `bountyColor`,
+   *  so the user can see at a glance how much of the tier is cash-equity
+   *  (e.g. reaching the FT) vs busting opponents (heads for PKO/Mystery/BR). */
+  bountyShareOfTier?: number;
+  bountyColor?: string;
+  /** When present, hovering the row reveals a popup with cash/bounty
+   *  conditional means and heads busted — the "when I actually land
+   *  here, what do I pocket" readout the user asked for. */
+  breakdown?: TierBreakdown;
 }) {
+  const [hover, setHover] = useState(false);
   const labelClass = "text-[color:var(--color-fg)]";
   const netClass =
     netDollars > 0
@@ -308,8 +374,17 @@ function EvBreakdownRow({
       : netDollars < 0
         ? "text-[color:var(--color-danger)]"
         : "text-[color:var(--color-fg-dim)]";
+  const evWidthPct = Math.min(
+    100,
+    Math.max(0, (maxEvShare ? evShare / maxEvShare : evShare) * 100),
+  );
+  const bountyWidthPct = evWidthPct * Math.max(0, Math.min(1, bountyShareOfTier));
   return (
-    <div className="grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px]">
+    <div
+      className="relative grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px] hover:bg-[color:var(--color-bg-elev)]/30"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
       <span
         className="h-2.5 w-2.5 rounded-sm"
         style={{ background: color }}
@@ -327,10 +402,20 @@ function EvBreakdownRow({
         <div
           className="absolute inset-y-0 left-0 rounded-sm"
           style={{
-            width: `${Math.min(100, Math.max(0, (maxEvShare ? evShare / maxEvShare : evShare) * 100))}%`,
+            width: `${evWidthPct}%`,
             background: color,
           }}
         />
+        {bountyWidthPct > 0.5 && bountyColor && (
+          <div
+            className="absolute inset-y-0 rounded-sm"
+            style={{
+              left: `${evWidthPct - bountyWidthPct}%`,
+              width: `${bountyWidthPct}%`,
+              background: bountyColor,
+            }}
+          />
+        )}
       </div>
       <span className="text-right font-mono tabular-nums text-[color:var(--color-fg)]">
         {pct(evShare)}
@@ -346,8 +431,126 @@ function EvBreakdownRow({
       >
         {fmtSignedMoney(netDollars)}
       </span>
+      {hover && breakdown && (
+        <TierHoverPopup label={label} breakdown={breakdown} />
+      )}
     </div>
   );
+}
+
+function TierHoverPopup({
+  label,
+  breakdown,
+}: {
+  label: string;
+  breakdown: TierBreakdown;
+}) {
+  const t = useT();
+  const { tier, hasBounty, bountyColor, posRangeLabel } = breakdown;
+  const oddsStr =
+    tier.field > 1e-9
+      ? `1 ${t("preview.hover.oddsIn")} ${Math.max(
+          1,
+          Math.round(1 / tier.field),
+        )}`
+      : "—";
+  return (
+    <div
+      role="tooltip"
+      className="pointer-events-none absolute left-full top-0 z-50 ml-2 w-72 max-w-[85vw] rounded-md border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3 py-2.5 text-left text-[11px] leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)]"
+    >
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <div className="flex items-baseline gap-1.5">
+          <span
+            className="inline-block h-2 w-2 rounded-sm"
+            style={{ background: tier.color }}
+          />
+          <span className="text-[12px] font-semibold text-[color:var(--color-fg)]">
+            {label}
+          </span>
+        </div>
+        <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+          {t("preview.hover.places")} {posRangeLabel}
+        </span>
+      </div>
+      <div className="mb-2 flex items-baseline justify-between text-[10px]">
+        <span className="uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          {t("preview.hover.hitRate")}
+        </span>
+        <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+          {pct(tier.field)} · {oddsStr}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1 border-t border-[color:var(--color-border)]/70 pt-1.5">
+        <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          {t("preview.hover.givenHit")}
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-sm"
+              style={{ background: tier.color }}
+            />
+            <span>{t("preview.hover.cashPayout")}</span>
+          </span>
+          <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+            {fmtMoneyAbs(tier.cashGivenFinish)}
+          </span>
+        </div>
+        {hasBounty && (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-sm"
+                  style={{ background: bountyColor }}
+                />
+                <span>{t("preview.hover.bountyTotal")}</span>
+              </span>
+              <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtMoneyAbs(tier.bountyGivenFinish)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2 text-[color:var(--color-fg-dim)]">
+              <span>{t("preview.hover.bountyHeads")}</span>
+              <span className="font-mono tabular-nums">
+                {tier.bustsGivenFinish >= 1
+                  ? tier.bustsGivenFinish.toFixed(1)
+                  : tier.bustsGivenFinish.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2 text-[color:var(--color-fg-dim)]">
+              <span>{t("preview.hover.bountyAvgSize")}</span>
+              <span className="font-mono tabular-nums">
+                {fmtMoneyAbs(tier.bountySizePerBust)}
+              </span>
+            </div>
+          </>
+        )}
+        <div className="mt-1 flex items-center justify-between gap-2 border-t border-[color:var(--color-border)]/50 pt-1 text-[color:var(--color-fg)]">
+          <span className="font-semibold">{t("preview.hover.totalTake")}</span>
+          <span className="font-mono tabular-nums">
+            {fmtMoneyAbs(tier.cashGivenFinish + tier.bountyGivenFinish)}
+          </span>
+        </div>
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-[color:var(--color-border)]/70 pt-1.5 text-[10px] text-[color:var(--color-fg-dim)]">
+        <span>{t("preview.hover.perEntry")}</span>
+        <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+          {fmtMoneyAbs(tier.ev)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function fmtMoneyAbs(v: number): string {
+  if (!Number.isFinite(v) || v < 0.005) return "$0";
+  if (v < 1000) {
+    const hasFraction = Math.abs(v - Math.round(v)) > 0.005;
+    return `$${hasFraction ? v.toFixed(2) : Math.round(v).toString()}`;
+  }
+  return `$${Math.round(v).toLocaleString()}`;
 }
 
 function EvBreakdownFooter({
@@ -637,6 +840,12 @@ interface RowStats {
   evPerEntry: number;
   payoutStd: number;
   cv: number;
+  /** Gross cash-pool EV per entry — sum over places of pmf·prizeByPlace.
+   *  For freezeouts this equals evPerEntry; for bounty formats it's the
+   *  finish-only portion. */
+  cashEvPerEntry: number;
+  /** Gross bounty EV per entry — sum over places of pmf·bountyByPlace. */
+  bountyEvPerEntry: number;
   bountyShare: number;
   progressivePko: boolean;
   topPlaces: number;
@@ -797,10 +1006,14 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const totalByPlace = new Float64Array(N);
   let totalEv = 0;
   let totalEv2 = 0;
+  let cashEv = 0;
+  let bountyEv = 0;
   for (let i = 0; i < N; i++) {
     totalByPlace[i] = prizeByPlace[i] + bountyByPlace[i];
     totalEv += pmf[i] * totalByPlace[i];
     totalEv2 += pmf[i] * totalByPlace[i] * totalByPlace[i];
+    cashEv += pmf[i] * prizeByPlace[i];
+    bountyEv += pmf[i] * bountyByPlace[i];
   }
   const payoutVar = Math.max(0, totalEv2 - totalEv * totalEv);
   const payoutStd = Math.sqrt(payoutVar);
@@ -906,27 +1119,62 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   // Enforce monotonic, non-overlapping cuts — each tier starts where the
   // previous one ended, so ceil() rounding collapsing a tier into 0 width
   // just drops it cleanly.
+  // Harmonic expected-busts table: bustsAtPos[p-1] = H(N-1) − H(p-1).
+  // Uniform-skill approximation of how many opponents a finisher at
+  // position p busts on average — winner busts ~ln(N), last busts 0.
+  // Used per tier for the hover breakdown.
+  const bustsAtPos = new Float64Array(N);
+  {
+    let hAcc = 0;
+    const H = new Float64Array(N);
+    for (let k = 1; k < N; k++) {
+      hAcc += 1 / k;
+      H[k] = hAcc;
+    }
+    const HTotal = H[N - 1];
+    for (let p = 1; p <= N; p++) {
+      bustsAtPos[p - 1] = HTotal - H[p - 1];
+    }
+  }
+
   const tiers: TierRow[] = [];
   let prevHi = 0;
   for (const c of cuts) {
     const hi = Math.min(N, Math.max(prevHi, c.hi));
     if (hi <= prevHi) continue;
     let evTier = 0;
+    let cashTier = 0;
+    let bountyTier = 0;
     let fTier = 0;
     let totalTierSum = 0;
+    let bustsWeighted = 0;
     for (let i = prevHi; i < hi; i++) {
       evTier += evByPlace[i];
+      cashTier += pmf[i] * prizeByPlace[i];
+      bountyTier += pmf[i] * bountyByPlace[i];
       fTier += pmf[i];
       totalTierSum += totalByPlace[i];
+      bustsWeighted += pmf[i] * bustsAtPos[i];
     }
     const width = hi - prevHi;
     const eqShareTier = N > 0 ? width / N : 0;
     const evEqTier = N > 0 ? totalTierSum / N : 0;
+    const cashGivenFinish = fTier > 1e-12 ? cashTier / fTier : 0;
+    const bountyGivenFinish = fTier > 1e-12 ? bountyTier / fTier : 0;
+    const bustsGivenFinish = fTier > 1e-12 ? bustsWeighted / fTier : 0;
+    const bountySizePerBust =
+      bustsGivenFinish > 1e-9 ? bountyGivenFinish / bustsGivenFinish : 0;
     tiers.push({
       key: c.key,
       labelKey: c.labelKey,
       color: c.color,
       ev: evTier,
+      cashEv: cashTier,
+      bountyEv: bountyTier,
+      cashGivenFinish,
+      bountyGivenFinish,
+      bustsGivenFinish,
+      bountySizePerBust,
       field: fTier,
       eqShare: eqShareTier,
       netDollars: evTier - fTier * entryCost,
@@ -966,6 +1214,8 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     evPerEntry: totalEv,
     payoutStd,
     cv,
+    cashEvPerEntry: cashEv,
+    bountyEvPerEntry: bountyEv,
     bountyShare: bountyShareOfPayout,
     progressivePko: bountyFraction > 0,
     topPlaces: Math.max(1, Math.ceil(N * 0.01)),

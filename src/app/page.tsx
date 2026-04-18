@@ -3,6 +3,7 @@
 import {
   startTransition,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -22,7 +23,6 @@ import { validateSchedule } from "@/lib/sim/validation";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
-import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { SCENARIOS } from "@/lib/scenarios";
 
@@ -60,12 +60,13 @@ import {
 const initialSchedule: TournamentRow[] = [
   {
     id: "r1",
-    label: "$50 обычный турнир",
+    label: "тестовый турнир",
     players: 5000,
     buyIn: 50,
     rake: 0.1,
     roi: 0.1,
     payoutStructure: "mtt-standard",
+    gameType: "freezeout",
     count: 1,
   },
 ];
@@ -94,8 +95,9 @@ const initialControls: ControlsState = {
   tiltSlowRecoveryFrac: 0.5,
   modelPresetId: "naive",
   empiricalBuckets: undefined,
-  itmGlobalEnabled: true,
+  itmGlobalEnabled: false,
   itmGlobalPct: 18.7,
+  rakebackPct: 0,
 };
 
 interface CompareSlot {
@@ -107,7 +109,6 @@ interface CompareSlot {
 export default function Home() {
   const t = useT();
   const { locale } = useLocale();
-  const { advanced } = useAdvancedMode();
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
   const [compareSlot, setCompareSlot] = useState<CompareSlot | null>(null);
@@ -214,6 +215,7 @@ export default function Home() {
       tiltSlowThreshold: c.tiltSlowThreshold,
       tiltSlowMinDuration: c.tiltSlowMinDuration,
       tiltSlowRecoveryFrac: c.tiltSlowRecoveryFrac,
+      rakebackFracOfRake: c.rakebackPct / 100,
     }),
     [],
   );
@@ -230,6 +232,13 @@ export default function Home() {
     () => applyItmTarget(schedule, itmTargetCfg),
     [schedule, itmTargetCfg],
   );
+  // Heavy downstream widgets (FinishPMFPreview calibrates α via bisection on
+  // N places; PayoutStructureCard / ConvergenceChart re-walk the schedule)
+  // re-run on every keystroke and on gameType flips that rewrite 4+ row
+  // fields at once. Deferring their input lets React keep the inputs /
+  // selects responsive — the preview catches up in the background instead
+  // of blocking the click.
+  const deferredSchedule = useDeferredValue(effectiveSchedule);
 
   const previewModel = useMemo(
     () => ({
@@ -288,22 +297,6 @@ export default function Home() {
     },
     [runPdOnly],
   );
-  const onPdRefresh = useCallback(() => {
-    const base = lastRunInputRef.current;
-    if (!base) return;
-    runPdOnly({
-      ...base,
-      usePrimedopePayouts: controls.usePrimedopePayouts,
-      usePrimedopeFinishModel: controls.usePrimedopeFinishModel,
-      usePrimedopeRakeMath: controls.usePrimedopeRakeMath,
-    });
-  }, [
-    controls.usePrimedopePayouts,
-    controls.usePrimedopeFinishModel,
-    controls.usePrimedopeRakeMath,
-    runPdOnly,
-  ]);
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -318,12 +311,12 @@ export default function Home() {
   const running = status === "running";
 
   const previewRow = useMemo(() => {
-    if (!effectiveSchedule.length) return undefined;
+    if (!deferredSchedule.length) return undefined;
     const found = previewRowId
-      ? effectiveSchedule.find((r) => r.id === previewRowId)
+      ? deferredSchedule.find((r) => r.id === previewRowId)
       : undefined;
-    return found ?? effectiveSchedule[0];
-  }, [effectiveSchedule, previewRowId]);
+    return found ?? deferredSchedule[0];
+  }, [deferredSchedule, previewRowId]);
 
   const fixRowAuto = useCallback(
     (rowId: string) => {
@@ -703,8 +696,16 @@ export default function Home() {
               />
             </div>
           </div>
-          <div className="grid min-w-0 grid-cols-2 gap-2">
+          <div className="grid min-w-0 grid-cols-3 gap-2">
             <GlobalItmControl
+              value={controls}
+              onChange={(c) => {
+                setControls(c);
+                setActiveScenarioId(null);
+              }}
+              disabled={running}
+            />
+            <GlobalRakebackControl
               value={controls}
               onChange={(c) => {
                 setControls(c);
@@ -813,7 +814,7 @@ export default function Home() {
                   : null
               }
             />
-            <PayoutStructureCard schedule={schedule} />
+            <PayoutStructureCard schedule={deferredSchedule} />
           </div>
           {previewRow && (
             <Card className="p-5">
@@ -918,7 +919,7 @@ export default function Home() {
           <div className="mb-1 text-[11px] text-[color:var(--color-fg-muted)]">
             {t("chart.convergence.sub")}
           </div>
-          <ConvergenceChart schedule={schedule} />
+          <ConvergenceChart schedule={deferredSchedule} />
         </Card>
       )}
 
@@ -969,7 +970,6 @@ export default function Home() {
               onUsePdPayoutsChange={onUsePdPayoutsChange}
               onUsePdFinishModelChange={onUsePdFinishModelChange}
               onUsePdRakeMathChange={onUsePdRakeMathChange}
-              onPdRefresh={onPdRefresh}
               pdOverrideResult={pdResultOverride}
               pdOverrideStatus={pdStatus}
               pdOverrideProgress={pdProgress}
@@ -1009,6 +1009,18 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07a.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v07a.polish")}</li>
+            </ul>
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v07.formats")}</li>
+              <li>{t("changelog.v07.convergence")}</li>
+              <li>{t("changelog.v07.gameType")}</li>
+              <li>{t("changelog.v07.rakeback")}</li>
+              <li>{t("changelog.v07.polish")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06c.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v06c.hoverHighlights")}</li>
@@ -1097,6 +1109,48 @@ function GlobalItmControl({
             const v = Number(e.target.value);
             if (!Number.isFinite(v)) return;
             onChange({ ...value, itmGlobalPct: v });
+          }}
+          className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+        />
+        <span className="text-[11px] text-[color:var(--color-fg-dim)]">%</span>
+      </div>
+    </div>
+  );
+}
+
+function GlobalRakebackControl({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ControlsState;
+  onChange: (next: ControlsState) => void;
+  disabled?: boolean;
+}) {
+  const t = useT();
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
+      <span
+        className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]"
+        title={t("controls.rakeback.title")}
+      >
+        {t("controls.rakeback.label")}
+      </span>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step={1}
+          value={value.rakebackPct}
+          disabled={disabled}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (!Number.isFinite(v)) return;
+            onChange({
+              ...value,
+              rakebackPct: Math.max(0, Math.min(100, v)),
+            });
           }}
           className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
         />

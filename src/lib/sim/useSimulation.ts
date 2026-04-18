@@ -277,11 +277,12 @@ export function useSimulation() {
       let doneAll = 0;
       for (const s of allSlots) totalAll += s.total;
 
-      // Throttle UI updates: at most ~30 fps. Reserve the top 5 % of the
+      // Throttle UI updates: at most ~30 fps. Reserve the top 12 % of the
       // progress bar for the build phase (envelope sort / histograms) —
-      // on 1 M-sample runs that phase is multi-second, and if we let shards
-      // drive progress to 1.0 the ETA pins at "≈ 0 с" for the entire build.
-      const SHARD_FRACTION = 0.95;
+      // on 100k-sample+ runs the build is 10-15 % of wall time, so a 5 %
+      // reserve left the bar stuck at 0.95 for seconds. 0.88 matches the
+      // observed time share more closely.
+      const SHARD_FRACTION = 0.88;
       let lastEmit = 0;
       const emitProgress = () => {
         const now = performance.now();
@@ -441,17 +442,18 @@ export function useSimulation() {
                 reject(err);
                 return;
               }
-              // Reserved 5 % of the bar for the build phase would otherwise
-              // hang at 95 % until build-result fires. Ease the bar from 0.95
-              // toward 0.995 on a timer so the user sees progress instead of
-              // a freeze + jump. Scaled by sample count (rough 20 µs/sample).
+              // Reserved slice of the bar for the build phase would otherwise
+              // hang until build-result fires. Ease the bar from SHARD_FRACTION
+              // toward 0.995 on a timer so the user sees progress instead of a
+              // freeze + jump. Scaled by sample count (rough 20 µs/sample).
               const expectedBuildMs = Math.max(500, Math.min(8000, totalAll * 0.02));
               const tickStart = performance.now();
+              const buildHeadroom = 0.995 - SHARD_FRACTION;
               buildTicker = setInterval(() => {
                 if (settled) return;
                 const t = (performance.now() - tickStart) / expectedBuildMs;
                 const eased = 1 - Math.exp(-t * 2.5);
-                onProgress(SHARD_FRACTION + 0.045 * eased);
+                onProgress(SHARD_FRACTION + buildHeadroom * eased);
               }, 120);
             } else {
               emitProgress();

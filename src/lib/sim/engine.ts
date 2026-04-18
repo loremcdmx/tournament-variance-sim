@@ -25,6 +25,7 @@ import {
   itmProbability,
 } from "./finishModel";
 import { applyICMToPayoutTable } from "./icm";
+import { makeBrTierSampler } from "./brBountyTiers";
 import { mulberry32, mixSeed } from "./rng";
 import type {
   CalibrationMode,
@@ -104,6 +105,12 @@ interface CompiledEntry {
   /** Cost of a single bullet (buy-in + rake, no re-entry scaling). The hot
    *  loop charges this per fired bullet. */
   singleCost: number;
+  /** Deterministic rakeback credit added to profit for every bullet fired.
+   *  `input.rakebackFracOfRake × row.rake × row.buyIn`. Zero when rakeback
+   *  isn't configured; pure mean shift (adds zero variance, but reshapes
+   *  path-dependent stats — drawdown, running max, time-above-zero, bust
+   *  probability — since cumulative profit is what those read). */
+  rakebackBonusPerBullet: number;
   /** Cap on bullets fired per slot. 1 for freezeouts. */
   maxEntries: number;
   /** Probability of firing the next bullet after a non-cash bust. */
@@ -186,6 +193,17 @@ interface CompiledEntry {
    * equals the original `bountyMean`. Null → legacy PKO path.
    */
   heatBountyByPlace: Float64Array[] | null;
+  /**
+   * GG Mystery Battle Royale discrete envelope tier tables. When non-null,
+   * replaces the per-KO log-normal draw with a 10-tier Vose alias sample.
+   * Ratios are pre-normalised to E[ratio] = 1 under `brTierAliasProb`, so
+   * pool-accounting EV is preserved — only the shape of the KO-bounty
+   * variance changes (jackpot tier ≈ 10000× buy-in at freq 4e-7, etc).
+   * Null for every row except `payoutStructure === "battle-royale"`.
+   */
+  brTierRatios: Float64Array | null;
+  brTierAliasProb: Float64Array | null;
+  brTierAliasIdx: Int32Array | null;
 }
 
 interface CompiledSchedule {
@@ -235,6 +253,20 @@ export function compileSchedule(
     input.schedule.map((row, idx) =>
       compileRowVariants(row, idx, input.finishModel, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
     );
+
+  // Stamp rakeback onto each variant. Bonus is row-specific (scales with
+  // row.rake × row.buyIn) but the rakeback program % itself is global —
+  // sits on SimulationInput, not on the row. Mutating the compiled entries
+  // in-place here keeps compileRowVariants / compileSingleEntry signatures
+  // unchanged and means the hot loop just reads `entry.rakebackBonusPerBullet`.
+  const rbFrac = Math.max(0, input.rakebackFracOfRake ?? 0);
+  if (rbFrac > 0) {
+    for (let r = 0; r < input.schedule.length; r++) {
+      const row = input.schedule[r];
+      const bonus = rbFrac * row.rake * row.buyIn;
+      for (const v of variants[r]) v.entry.rakebackBonusPerBullet = bonus;
+    }
+  }
 
   const flat: CompiledEntry[] = [];
   let totalBuyIn = 0;
@@ -680,14 +712,19 @@ function compileSingleEntry(
       for (let i = 0; i < N; i++) raw[i] = cumulativeCash[i];
     }
 
-    // Mystery-format bounty phase-split: envelopes only drop on KOs made
-    // post-ITM, so pre-ITM busters never collect. Zero the raw weights for
-    // finishes below the cash line; all bounty mass redistributes onto cash
-    // finishes via the Σ-normalisation below (ROI still exact). The Poisson
+    // Mystery-format bounty phase-split: envelopes only drop inside a
+    // phase window. For plain `mystery` that window starts at the ITM
+    // bubble; for `mystery-royale` (GG 18-max BR) it starts at the final
+    // table — victims at places 10+ carry no envelope, so only top-9
+    // finishers collect. Zero the raw weights for places below the
+    // threshold; bounty mass redistributes onto the remaining finishes
+    // via the Σ-normalisation below (ROI still exact). The Poisson
     // KO-count draw is skipped at those places because bountyByPlace[i] = 0
     // short-circuits the hot-loop bounty branch.
     if (row.gameType === "mystery" || row.gameType === "mystery-royale") {
-      for (let i = paidCount; i < N; i++) raw[i] = 0;
+      const bountyCollectTop =
+        row.gameType === "mystery-royale" ? Math.min(9, N) : paidCount;
+      for (let i = bountyCollectTop; i < N; i++) raw[i] = 0;
     }
 
     // Normalize so Σ pmf[i]·bountyByPlace[i] = bountyMean (ROI intact).
@@ -808,10 +845,21 @@ function compileSingleEntry(
     Math.max(0, row.mysteryBountyVariance ?? 0) +
     Math.max(0, effectivePkoHeadVar);
 
+  // Attach discrete envelope tiers only for GG Mystery Battle Royale.
+  // The sampler replaces the log-normal per-KO draw inside the hot loop,
+  // restoring the heavy-tailed jackpot shape that ~1.8 log-variance can't
+  // reach. Non-BR rows keep the log-normal path (fields smoothly varying
+  // around `bountyMean` with the configured σ²).
+  const brSampler =
+    row.payoutStructure === "battle-royale" && bountyByPlace !== null
+      ? makeBrTierSampler(row.buyIn)
+      : null;
+
   return {
     rowIdx: idx,
     costPerEntry,
     singleCost: entryCostSingle,
+    rakebackBonusPerBullet: 0,
     maxEntries,
     reRate,
     paidCount,
@@ -831,6 +879,9 @@ function compileSingleEntry(
     mysteryBountyExpMinus1: perKoLogVar > 0 ? Math.exp(perKoLogVar) - 1 : 0,
     sigmaSingleAnalytic,
     heatBountyByPlace,
+    brTierRatios: brSampler?.ratios ?? null,
+    brTierAliasProb: brSampler?.aliasProb ?? null,
+    brTierAliasIdx: brSampler?.aliasIdx ?? null,
   };
 }
 
@@ -982,6 +1033,7 @@ export function buildResult(
     longestCashless,
     recoveryLengths,
     rowProfits,
+    rowBountyProfits,
     ruinedCount,
   } = shard;
   let expectedProfitAccum = 0;
@@ -1183,7 +1235,11 @@ export function buildResult(
   const neverBelowZeroFrac = neverBelowZero / S;
 
   // Histograms --------------------------------------------------------------
-  const histogram = histogramOf(finalProfits, 60);
+  // longTailClip folds jackpot outliers into the last bin so the Mystery/BR
+  // bulk stays readable — without it, a single $10k BI bounty stretches the
+  // 60-bin range across 2+ orders of magnitude and crushes the core mass
+  // into the first 2 bins. Raw extremes still available via stats.p99 etc.
+  const histogram = histogramOf(finalProfits, 60, false, true);
   // Drawdowns are non-negative by construction, so lo auto-ranges from the
   // real observed minimum instead of being pinned to 0 (which wasted leading
   // bins when every sample had dd ≥ some floor like 50 BI).
@@ -1348,12 +1404,14 @@ export function buildResult(
   const rowMeans = new Float64Array(numRows);
   const rowVariances = new Float64Array(numRows);
   const rowSumSq = new Float64Array(numRows);
+  const rowBountySums = new Float64Array(numRows);
   for (let s = 0; s < S; s++) {
     const base = s * numRows;
     for (let r = 0; r < numRows; r++) {
       const v = rowProfits[base + r];
       rowMeans[r] += v;
       rowSumSq[r] += v * v;
+      rowBountySums[r] += rowBountyProfits[base + r];
     }
   }
   for (let r = 0; r < numRows; r++) {
@@ -1382,6 +1440,7 @@ export function buildResult(
       mean: rm,
       stdDev: Math.sqrt(rv),
       varianceShare: rv / totalRowVarSum,
+      bountyMean: rowBountySums[r] / S,
       tournamentsPerSample: compiled.rowCounts[r],
       totalBuyIn: compiled.rowBuyIns[r],
       kellyFraction: rowKellyFraction,
@@ -1748,6 +1807,11 @@ export interface RawShard {
   breakevenStreakCounts: Int32Array;
   cashlessStreakCounts: Int32Array;
   rowProfits: Float64Array;
+  /** Bounty-only contribution per (sample, row), parallel-allocated to
+   *  `rowProfits`. Accumulates only the `bountyDraw` part of each delta;
+   *  zero entries for rows without bounty configuration. Used by the
+   *  decomposition chart to split the mean bar into cash vs. bounty. */
+  rowBountyProfits: Float64Array;
   ruinedCount: number;
   /** Hi-res capture grid (K'+1 points). Shared across all hi-res buffers
    *  in this shard. */
@@ -1846,6 +1910,7 @@ export function simulateShard(
   const longestCashless = new Int32Array(shardSize);
   const recoveryLengths = new Int32Array(shardSize);
   const rowProfits = new Float64Array(shardSize * numRows);
+  const rowBountyProfits = new Float64Array(shardSize * numRows);
   // Per-length streak counters. Cashless is indexed by integer tournament
   // count so it's allocated at N+1. Breakeven is indexed by chord-grid
   // position (0..K) to keep the downstream histogram aligned to the
@@ -2049,7 +2114,6 @@ export function simulateShard(
       let bp = t.bountyByPlace;
       const bkm = t.bountyKmean;
       const bkmExp = t.bountyKmeanExp;
-      const bkmSqrt = t.bountyKmeanSqrt;
       const bkmInv = t.bountyKmeanInv;
       const prizes = t.prizeByPlace;
       const aliasProb = t.aliasProb;
@@ -2070,10 +2134,14 @@ export function simulateShard(
       const aliasN = aliasProb.length;
       const single = t.singleCost;
       const bulletCost = single - effectiveDelta * single;
+      const rakebackPerBullet = t.rakebackBonusPerBullet;
       const maxB = t.maxEntries;
       const pc = t.paidCount;
       const mystVar = t.mysteryBountyLogVar;
       const mystSig = t.mysteryBountyLogSigma;
+      const brRatios = t.brTierRatios;
+      const brAliasProb = t.brTierAliasProb;
+      const brAliasIdx = t.brTierAliasIdx;
       let delta = 0;
       let cashedThisSlot = false;
       if (maxB === 1) {
@@ -2101,11 +2169,22 @@ export function simulateShard(
                 k = poissonPTRS(lam, bRng);
               }
               bountyDraw = mean * k * bkmInv![place];
-              if (mystVar > 0 && k > 0 && bountyDraw > 0) {
-                const perKO = mean * bkmInv![place];
-                bountyDraw = 0;
-                for (let j = 0; j < k; j++) {
-                  bountyDraw += perKO * Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+              if (k > 0 && bountyDraw > 0) {
+                if (brRatios !== null) {
+                  const perKO = mean * bkmInv![place];
+                  bountyDraw = 0;
+                  for (let j = 0; j < k; j++) {
+                    const rT = bRng() * 10;
+                    const iT = rT | 0;
+                    const pick = rT - iT < brAliasProb![iT] ? iT : brAliasIdx![iT];
+                    bountyDraw += perKO * brRatios[pick];
+                  }
+                } else if (mystVar > 0) {
+                  const perKO = mean * bkmInv![place];
+                  bountyDraw = 0;
+                  for (let j = 0; j < k; j++) {
+                    bountyDraw += perKO * Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                  }
                 }
               }
             } else {
@@ -2115,7 +2194,8 @@ export function simulateShard(
             bountyDraw = mean;
           }
         }
-        delta = prizes[place] + bountyDraw - bulletCost;
+        delta = prizes[place] + bountyDraw - bulletCost + rakebackPerBullet;
+        if (bountyDraw !== 0) rowBountyProfits[rowBase + t.rowIdx] += bountyDraw;
         if (place < pc) cashedThisSlot = true;
       } else {
         const reRate = t.reRate;
@@ -2143,11 +2223,22 @@ export function simulateShard(
                   k = poissonPTRS(lam, bRng);
                 }
                 bountyDraw = mean * k * bkmInv![place];
-                if (mystVar > 0 && k > 0 && bountyDraw > 0) {
-                  const perKO = mean * bkmInv![place];
-                  bountyDraw = 0;
-                  for (let j = 0; j < k; j++) {
-                    bountyDraw += perKO * Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                if (k > 0 && bountyDraw > 0) {
+                  if (brRatios !== null) {
+                    const perKO = mean * bkmInv![place];
+                    bountyDraw = 0;
+                    for (let j = 0; j < k; j++) {
+                      const rT = bRng() * 10;
+                      const iT = rT | 0;
+                      const pick = rT - iT < brAliasProb![iT] ? iT : brAliasIdx![iT];
+                      bountyDraw += perKO * brRatios[pick];
+                    }
+                  } else if (mystVar > 0) {
+                    const perKO = mean * bkmInv![place];
+                    bountyDraw = 0;
+                    for (let j = 0; j < k; j++) {
+                      bountyDraw += perKO * Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                    }
                   }
                 }
               } else {
@@ -2157,7 +2248,8 @@ export function simulateShard(
               bountyDraw = mean;
             }
           }
-          delta += prizes[place] + bountyDraw - bulletCost;
+          delta += prizes[place] + bountyDraw - bulletCost + rakebackPerBullet;
+          if (bountyDraw !== 0) rowBountyProfits[rowBase + t.rowIdx] += bountyDraw;
           if (place < pc) {
             cashedThisSlot = true;
             break;
@@ -2292,6 +2384,7 @@ export function simulateShard(
     breakevenStreakCounts,
     cashlessStreakCounts,
     rowProfits,
+    rowBountyProfits,
     ruinedCount,
     hiResCheckpointIdx: hiCheckpointIdx,
     hiResPaths,
@@ -2332,6 +2425,7 @@ export function mergeShards(
   const longestCashless = new Int32Array(S);
   const recoveryLengths = new Int32Array(S);
   const rowProfits = new Float64Array(S * numRows);
+  const rowBountyProfits = new Float64Array(S * numRows);
   const beCountsLen = sorted[0].breakevenStreakCounts.length;
   const clCountsLen = sorted[0].cashlessStreakCounts.length;
   const breakevenStreakCounts = new Int32Array(beCountsLen);
@@ -2347,6 +2441,7 @@ export function mergeShards(
     recoveryLengths.set(sh.recoveryLengths, sh.sStart);
     pathMatrix.set(sh.pathMatrix, sh.sStart * K1);
     rowProfits.set(sh.rowProfits, sh.sStart * numRows);
+    rowBountyProfits.set(sh.rowBountyProfits, sh.sStart * numRows);
     for (let i = 0; i < beCountsLen; i++) {
       breakevenStreakCounts[i] += sh.breakevenStreakCounts[i];
     }
@@ -2397,6 +2492,7 @@ export function mergeShards(
     breakevenStreakCounts,
     cashlessStreakCounts,
     rowProfits,
+    rowBountyProfits,
     ruinedCount,
     hiResCheckpointIdx,
     hiResPaths,

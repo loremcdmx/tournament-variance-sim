@@ -1,14 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { startTransition, useRef, useState } from "react";
 import type {
   FieldVariability,
+  GameType,
   PayoutStructureId,
   TournamentRow,
 } from "@/lib/sim/types";
 import { parsePayoutString } from "@/lib/sim/payouts";
 import {
   inferGameType,
+  applyGameType,
+  GAME_TYPE_ORDER,
 } from "@/lib/sim/gameType";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -79,10 +82,16 @@ const STRUCTURES: {
     full: "CoinPoker Mini CoinHunter PKO · calibrated to 2026-04-14 sample",
     real: true,
   },
+  {
+    id: "mtt-gg-mystery",
+    short: "GG Mystery Bounty",
+    full: "GG Mystery Bounty · ITM-phase envelopes · 13% paid, 1st ≈ 9–12.5%",
+  },
   { id: "mtt-primedope", short: "PrimeDope payouts", full: "PrimeDope native payout curves (15% paid)" },
   { id: "mtt-standard", short: "MTT Standard 15%", full: "MTT · Standard (15% paid)" },
   { id: "mtt-flat", short: "MTT Flat 20%", full: "MTT · Flat (20% paid)" },
   { id: "mtt-top-heavy", short: "MTT Top-heavy 12%", full: "MTT · Top-heavy (12% paid)" },
+  { id: "battle-royale", short: "Battle Royale", full: "Mystery Battle Royale · 18-max, top-3 paid" },
   { id: "satellite-ticket", short: "Satellite (tickets)", full: "Satellite · ticket cliff (10% seats)" },
   { id: "sng-50-30-20", short: "SNG 50/30/20", full: "SNG · 50/30/20" },
   { id: "sng-65-35", short: "SNG 65/35", full: "SNG · 65/35" },
@@ -121,10 +130,12 @@ const PAYOUT_COMPAT: Record<PayoutStructureId, CompatRange> = {
   "mtt-primedope": { min: 30, max: Infinity },
   "mtt-flat": { min: 30, max: Infinity },
   "mtt-top-heavy": { min: 30, max: Infinity },
+  "battle-royale": { min: 9, max: 36 },
   "mtt-pokerstars": { min: 50, max: Infinity },
   "mtt-gg": { min: 50, max: Infinity },
   "mtt-sunday-million": { min: 2000, max: Infinity },
   "mtt-gg-bounty": { min: 500, max: Infinity },
+  "mtt-gg-mystery": { min: 500, max: Infinity },
   "satellite-ticket": { min: 10, max: Infinity },
   "sng-50-30-20": { min: 3, max: 18 },
   "sng-65-35": { min: 2, max: 2 },
@@ -132,10 +143,61 @@ const PAYOUT_COMPAT: Record<PayoutStructureId, CompatRange> = {
   custom: { min: 2, max: Infinity },
 };
 
+// Strict gameType → allowed payout structures. Every format has its own
+// allowlist: pairing a bounty payout with a freezeout row (or vice versa)
+// makes no sense — the engine reads `bountyFraction` off the row, not the
+// payout. Dropdown relegates everything outside the allowlist to the
+// "Недоступно" optgroup. `custom` stays available for every format since
+// user-entered splits are arbitrary by design.
+const PAYOUT_GAMETYPE_ALLOW: Partial<Record<GameType, PayoutStructureId[]>> = {
+  freezeout: [
+    "mtt-standard",
+    "mtt-primedope",
+    "mtt-flat",
+    "mtt-top-heavy",
+    "mtt-pokerstars",
+    "mtt-gg",
+    "mtt-sunday-million",
+    "satellite-ticket",
+    "sng-50-30-20",
+    "sng-65-35",
+    "winner-takes-all",
+    "custom",
+  ],
+  "freezeout-reentry": [
+    "mtt-standard",
+    "mtt-primedope",
+    "mtt-flat",
+    "mtt-top-heavy",
+    "mtt-pokerstars",
+    "mtt-gg",
+    "mtt-sunday-million",
+    "satellite-ticket",
+    "sng-50-30-20",
+    "sng-65-35",
+    "winner-takes-all",
+    "custom",
+  ],
+  pko: ["mtt-gg-bounty", "custom"],
+  mystery: ["mtt-gg-mystery", "custom"],
+  "mystery-royale": ["battle-royale"],
+};
+
+type CompatFail =
+  | { reason: "tooFew"; range: CompatRange }
+  | { reason: "tooMany"; range: CompatRange }
+  | { reason: "wrongGameType"; gameType: GameType };
 function payoutCompat(
   id: PayoutStructureId,
   players: number,
-): { ok: true } | { ok: false; reason: "tooFew" | "tooMany"; range: CompatRange } {
+  gameType?: GameType,
+): { ok: true } | ({ ok: false } & CompatFail) {
+  if (gameType) {
+    const allow = PAYOUT_GAMETYPE_ALLOW[gameType];
+    if (allow && !allow.includes(id)) {
+      return { ok: false, reason: "wrongGameType", gameType };
+    }
+  }
   const range = PAYOUT_COMPAT[id];
   if (!range) return { ok: true };
   if (players < range.min) return { ok: false, reason: "tooFew", range };
@@ -147,10 +209,12 @@ const PAYOUT_IDS: PayoutStructureId[] = [
   "mtt-standard",
   "mtt-flat",
   "mtt-top-heavy",
+  "battle-royale",
   "mtt-pokerstars",
   "mtt-gg",
   "mtt-sunday-million",
   "mtt-gg-bounty",
+  "mtt-gg-mystery",
   "satellite-ticket",
   "sng-50-30-20",
   "sng-65-35",
@@ -296,6 +360,7 @@ export function ScheduleEditor({
             <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-left text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               <Th> </Th>
               <Th hint={t("help.row.label")}>{t("row.label")}</Th>
+              <Th hint={t("row.gameTypeHint")}>{t("row.gameType")}</Th>
               <Th align="right" hint={t("help.row.players")}>{t("row.players")}</Th>
               <Th align="right" hint={t("help.row.buyIn")}>{t("row.buyIn")}</Th>
               <Th align="right" hint={t("help.row.roi")}>{t("row.roi")}</Th>
@@ -362,8 +427,28 @@ export function ScheduleEditor({
                         value={r.label ?? ""}
                         onChange={(v) => update(r.id, { label: v })}
                         placeholder={t("row.unnamed")}
-                        className="w-full"
+                        className="w-full min-w-[120px]"
                       />
+                    </Td>
+                    <Td>
+                      <div className="flex items-center gap-1">
+                        <GameTypeSelect
+                          value={inferGameType(r)}
+                          onChange={(next) =>
+                            startTransition(() =>
+                              update(r.id, applyGameType(r, next)),
+                            )
+                          }
+                        />
+                        {inferGameType(r) === "mystery-royale" && (
+                          <BrPresetSelect
+                            row={r}
+                            onApply={(patch) =>
+                              startTransition(() => update(r.id, patch))
+                            }
+                          />
+                        )}
+                      </div>
                     </Td>
                     <Td align="right">
                       <NumInput
@@ -427,9 +512,10 @@ export function ScheduleEditor({
                     </Td>
                     <Td>
                       {(() => {
+                        const gt = inferGameType(r);
                         const grouped = STRUCTURES.map((s) => ({
                           s,
-                          compat: payoutCompat(s.id, r.players),
+                          compat: payoutCompat(s.id, r.players, gt),
                         }));
                         const available = grouped.filter((g) => g.compat.ok);
                         const unavailable = grouped.filter((g) => !g.compat.ok);
@@ -439,6 +525,23 @@ export function ScheduleEditor({
                         const currentDisabled = current && !current.compat.ok;
                         const describe = (g: (typeof grouped)[number]) => {
                           if (g.compat.ok) return "";
+                          if (g.compat.reason === "wrongGameType") {
+                            const gtKey = (
+                              {
+                                freezeout: "row.gameType.freezeout",
+                                "freezeout-reentry":
+                                  "row.gameType.freezeoutReentry",
+                                pko: "row.gameType.pko",
+                                mystery: "row.gameType.mystery",
+                                "mystery-royale":
+                                  "row.gameType.mysteryRoyale",
+                              } as const
+                            )[g.compat.gameType];
+                            return t("row.payoutCompat.wrongGameType").replace(
+                              "{gameType}",
+                              t(gtKey),
+                            );
+                          }
                           return g.compat.reason === "tooFew"
                             ? `${t("row.payoutCompat.tooFew")} (${t("row.payoutCompat.min")} ${g.compat.range.min})`
                             : `${t("row.payoutCompat.tooMany")} (${t("row.payoutCompat.max")} ${g.compat.range.max === Infinity ? "∞" : g.compat.range.max})`;
@@ -1125,6 +1228,112 @@ function TextInput({
       placeholder={placeholder}
       className={INPUT_BASE + " " + className}
     />
+  );
+}
+
+// GGPoker Mystery Battle Royale tier ladder — five fixed total buy-ins with
+// matching top-bounty prizes. Field size intentionally NOT in the preset:
+// across tiers the lobby structure is identical, only the jackpot scales.
+// Stored buy-in is the prize-pool portion (total / (1+rake)) at rake 8 %.
+export interface BrPreset {
+  total: number;
+  topBounty: number;
+}
+export const BR_PRESETS: BrPreset[] = [
+  { total: 0.25, topBounty: 5_000 },
+  { total: 1, topBounty: 10_000 },
+  { total: 3, topBounty: 30_000 },
+  { total: 10, topBounty: 100_000 },
+  { total: 25, topBounty: 250_000 },
+];
+const BR_RAKE = 0.08;
+function brTotalLabel(p: BrPreset): string {
+  const t = p.total < 1 ? p.total.toFixed(2) : p.total.toString();
+  const b = p.topBounty >= 1000 ? `${p.topBounty / 1000}k` : p.topBounty.toString();
+  return `$${t} · $${b} top`;
+}
+function brPresetMatch(
+  buyIn: number,
+  rake: number,
+): BrPreset | null {
+  const total = buyIn * (1 + rake);
+  let best: BrPreset | null = null;
+  let bestDiff = Infinity;
+  for (const p of BR_PRESETS) {
+    const d = Math.abs(total - p.total) / p.total;
+    if (d < 0.08 && d < bestDiff) {
+      bestDiff = d;
+      best = p;
+    }
+  }
+  return best;
+}
+
+function BrPresetSelect({
+  row,
+  onApply,
+}: {
+  row: TournamentRow;
+  onApply: (patch: Partial<TournamentRow>) => void;
+}) {
+  const current = brPresetMatch(row.buyIn, row.rake);
+  const value = current ? String(current.total) : "";
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        const p = BR_PRESETS.find((x) => String(x.total) === e.target.value);
+        if (!p) return;
+        const buyIn = p.total / (1 + BR_RAKE);
+        onApply({ buyIn, rake: BR_RAKE });
+      }}
+      className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+      title="Mystery Battle Royale tier"
+    >
+      {current == null && <option value="">— BR tier —</option>}
+      {BR_PRESETS.map((p) => (
+        <option key={p.total} value={p.total}>
+          {brTotalLabel(p)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function GameTypeSelect({
+  value,
+  onChange,
+}: {
+  value: GameType;
+  onChange: (next: GameType) => void;
+}) {
+  const t = useT();
+  const labelKey = (g: GameType): string => {
+    switch (g) {
+      case "freezeout":
+        return t("row.gameType.freezeout");
+      case "freezeout-reentry":
+        return t("row.gameType.freezeoutReentry");
+      case "pko":
+        return t("row.gameType.pko");
+      case "mystery":
+        return t("row.gameType.mystery");
+      case "mystery-royale":
+        return t("row.gameType.mysteryRoyale");
+    }
+  };
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as GameType)}
+      className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+    >
+      {GAME_TYPE_ORDER.map((g) => (
+        <option key={g} value={g}>
+          {labelKey(g)}
+        </option>
+      ))}
+    </select>
   );
 }
 

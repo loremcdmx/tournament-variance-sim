@@ -30,6 +30,13 @@ interface Props {
     color?: string;
     label?: string;
   } | null;
+  /**
+   * Pin the x-axis domain (in raw units, before `scaleBy` division). Useful
+   * when the parent toggles between two histograms whose edges shift (e.g.
+   * rakeback on/off) and wants the bars to translate inside a stable axis
+   * instead of the axis auto-rescaling around them.
+   */
+  xDomain?: [number, number];
 }
 
 function resampleOntoBins(
@@ -105,6 +112,7 @@ export function DistributionChart({
   unitLabel = "$",
   yAsPct = false,
   overlay,
+  xDomain,
 }: Props) {
   const t = useT();
   const divisor = scaleBy && scaleBy > 0 ? scaleBy : 1;
@@ -125,33 +133,58 @@ export function DistributionChart({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  // When overlaying, extend primary x-range to cover the overlay's tail so
-  // we don't clip a long PD tail off the right edge and under-report its
-  // mass. Append zero-count primary bins at the same bin width, capped at
-  // 3× primary range so a wild outlier can't flatten the chart.
+  // When overlaying, extend primary x-range to cover the overlay's tails so
+  // we don't clip a long PD tail off either edge and under-report its mass.
+  // Append zero-count primary bins at the same bin width on the side(s) where
+  // overlay extends past primary, capped so a wild outlier can't flatten the
+  // chart. Symmetric left-extension is what lets the first visible overlay
+  // bin settle smoothly to 0 instead of starting mid-air.
   const merged = useMemo(() => {
-    if (!overlay) return { edges: binEdges, counts };
+    if (!overlay || binEdges.length < 2) return { edges: binEdges, counts };
+    const primaryFirst = binEdges[0];
     const primaryLast = binEdges[binEdges.length - 1];
+    const overlayFirst = overlay.binEdges[0];
     const overlayLast = overlay.binEdges[overlay.binEdges.length - 1];
-    if (!(overlayLast > primaryLast) || binEdges.length < 2) {
+    const stepRight =
+      binEdges[binEdges.length - 1] - binEdges[binEdges.length - 2];
+    const stepLeft = binEdges[1] - binEdges[0];
+
+    const rightEdges: number[] = [];
+    const rightCounts: number[] = [];
+    if (overlayLast > primaryLast) {
+      const maxExtended = Math.min(overlayLast, primaryLast * 5);
+      let cur = primaryLast;
+      while (cur < maxExtended && rightEdges.length < 120) {
+        const next = Math.min(maxExtended, cur + stepRight);
+        if (next <= cur) break;
+        rightEdges.push(next);
+        rightCounts.push(0);
+        cur = next;
+      }
+    }
+
+    const leftEdges: number[] = [];
+    const leftCounts: number[] = [];
+    if (overlayFirst < primaryFirst) {
+      const primaryRange = Math.max(1e-9, primaryLast - primaryFirst);
+      const minExtended = Math.max(overlayFirst, primaryFirst - primaryRange * 4);
+      let cur = primaryFirst;
+      while (cur > minExtended && leftEdges.length < 120) {
+        const prev = Math.max(minExtended, cur - stepLeft);
+        if (prev >= cur) break;
+        leftEdges.push(prev);
+        leftCounts.push(0);
+        cur = prev;
+      }
+      leftEdges.reverse();
+    }
+
+    if (leftEdges.length === 0 && rightEdges.length === 0) {
       return { edges: binEdges, counts };
     }
-    const step = binEdges[binEdges.length - 1] - binEdges[binEdges.length - 2];
-    const maxExtended = Math.min(overlayLast, primaryLast * 5);
-    const extraEdges: number[] = [];
-    const extraCounts: number[] = [];
-    let cur = primaryLast;
-    while (cur < maxExtended && extraEdges.length < 120) {
-      const next = Math.min(maxExtended, cur + step);
-      if (next <= cur) break;
-      extraEdges.push(next);
-      extraCounts.push(0);
-      cur = next;
-    }
-    if (extraEdges.length === 0) return { edges: binEdges, counts };
     return {
-      edges: [...binEdges, ...extraEdges],
-      counts: [...counts, ...extraCounts],
+      edges: [...leftEdges, ...binEdges, ...rightEdges],
+      counts: [...leftCounts, ...counts, ...rightCounts],
     };
   }, [binEdges, counts, overlay]);
 
@@ -221,8 +254,13 @@ export function DistributionChart({
           label: overlay.label ?? "PrimeDope",
         });
       }
+      const xScale: NonNullable<Options["scales"]>[string] = { time: false };
+      if (xDomain) {
+        const [lo, hi] = xDomain;
+        xScale.range = () => [lo / divisor, hi / divisor];
+      }
       return {
-        scales: { x: { time: false } },
+        scales: { x: xScale },
         axes: [
           {
             stroke: "#8a8a95",
@@ -255,7 +293,7 @@ export function DistributionChart({
         legend: { show: false },
       };
     },
-    [color, unitLabel, overlay, overlayColor, yAsPct],
+    [color, unitLabel, overlay, overlayColor, yAsPct, xDomain, divisor],
   );
 
   // Precompute totals + cumulative counts for the hover tooltip. Runs once

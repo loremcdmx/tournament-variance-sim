@@ -1,6 +1,7 @@
 "use client";
 
 import type { RowDecomposition } from "@/lib/sim/types";
+import { useT } from "@/lib/i18n/LocaleProvider";
 
 interface Props {
   rows: RowDecomposition[];
@@ -17,8 +18,13 @@ const money = (v: number) => {
 /**
  * Horizontal stacked-style visualization — pure CSS, no uPlot, because
  * per-row decomposition with error bars is much clearer as an HTML table.
+ *
+ * For bounty formats (PKO/mystery/royale) the mean bar is split into a
+ * cash segment and a bounty segment so you can see how much of the EV
+ * comes from knockouts vs. regular prize payouts.
  */
 export function DecompositionChart({ rows }: Props) {
+  const t = useT();
   const maxAbsMean = Math.max(1, ...rows.map((r) => Math.abs(r.mean) + r.stdDev));
   return (
     <div className="flex flex-col gap-3">
@@ -26,6 +32,13 @@ export function DecompositionChart({ rows }: Props) {
         const meanPct = (r.mean / maxAbsMean) * 50; // ±50 % about center
         const sdPct = (r.stdDev / maxAbsMean) * 50;
         const isPos = r.mean >= 0;
+        // Bounty can't exceed the positive mean; clamp so the split never
+        // overdraws the bar. For negative-mean rows we don't split (the
+        // bounty is additive to a losing cash side — still informative,
+        // but the visual would imply structure that isn't there).
+        const hasBounty = r.bountyMean > 0 && isPos;
+        const bountyMean = hasBounty ? Math.min(r.bountyMean, r.mean) : 0;
+        const bountyPct = (bountyMean / maxAbsMean) * 50;
         return (
           <div key={r.rowId} className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between text-xs">
@@ -45,6 +58,14 @@ export function DecompositionChart({ rows }: Props) {
                 >
                   {money(r.mean)}
                 </span>
+                {hasBounty && (
+                  <span
+                    className="text-amber-300/80"
+                    title={t("chart.decomp.bountyTip")}
+                  >
+                    {t("chart.decomp.bountyLabel")} {money(bountyMean)}
+                  </span>
+                )}
                 <span
                   className="text-[color:var(--color-fg-dim)]"
                   title="Typical profit swing — one standard deviation on this row's P&L"
@@ -75,16 +96,38 @@ export function DecompositionChart({ rows }: Props) {
                   width: `${Math.min(sdPct * 2, 100)}%`,
                 }}
               />
-              {/* Mean bar */}
-              <div
-                className={`absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full ${
-                  isPos ? "bg-emerald-400/80" : "bg-red-400/80"
-                }`}
-                style={{
-                  left: isPos ? "50%" : `${50 + meanPct}%`,
-                  width: `${Math.abs(meanPct)}%`,
-                }}
-              />
+              {hasBounty ? (
+                <>
+                  {/* Cash portion (inner, from center outward) */}
+                  <div
+                    className="absolute top-1/2 h-2.5 -translate-y-1/2 rounded-l-full bg-emerald-400/80"
+                    title={t("chart.decomp.cashTip")}
+                    style={{
+                      left: "50%",
+                      width: `${Math.max(0, meanPct - bountyPct)}%`,
+                    }}
+                  />
+                  {/* Bounty portion (outer end, distinct amber) */}
+                  <div
+                    className="absolute top-1/2 h-2.5 -translate-y-1/2 rounded-r-full bg-amber-400/80"
+                    title={t("chart.decomp.bountyTip")}
+                    style={{
+                      left: `${50 + Math.max(0, meanPct - bountyPct)}%`,
+                      width: `${bountyPct}%`,
+                    }}
+                  />
+                </>
+              ) : (
+                <div
+                  className={`absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full ${
+                    isPos ? "bg-emerald-400/80" : "bg-red-400/80"
+                  }`}
+                  style={{
+                    left: isPos ? "50%" : `${50 + meanPct}%`,
+                    width: `${Math.abs(meanPct)}%`,
+                  }}
+                />
+              )}
             </div>
           </div>
         );

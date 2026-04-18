@@ -6,6 +6,7 @@ import { Card } from "./ui/Section";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { TournamentRow } from "@/lib/sim/types";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import type { DictKey } from "@/lib/i18n/dict";
 
 interface Props {
   schedule: TournamentRow[];
@@ -26,9 +27,9 @@ function paletteColor(id: PaletteId, place: number, paid: number, muted?: boolea
         : `var(--color-accent)`;
     case "medal":
       if (place === 1) return muted ? "hsla(45, 90%, 55%, 0.4)" : "hsl(45, 90%, 55%)";
-      if (place === 2) return muted ? "hsla(210, 15%, 75%, 0.4)" : "hsl(210, 15%, 75%)";
+      if (place === 2) return muted ? "hsla(200, 42%, 68%, 0.45)" : "hsl(200, 42%, 68%)";
       if (place === 3) return muted ? "hsla(25, 70%, 50%, 0.4)" : "hsl(25, 70%, 50%)";
-      return muted ? "hsla(220, 10%, 55%, 0.35)" : "hsl(220, 10%, 55%)";
+      return muted ? "hsla(265, 22%, 52%, 0.4)" : "hsl(265, 22%, 52%)";
     case "heat": {
       const t = paid > 1 ? (place - 1) / (paid - 1) : 0;
       const hue = 15 + t * 50;
@@ -108,6 +109,20 @@ export function PayoutStructureCard({ schedule }: Props) {
   const totalPaidPct = paid / row.players;
   const minCashBuyIns = (table[paid - 1] * row.players).toFixed(2);
 
+  // Bounty-format pool decomposition. The `table` above is the payout curve
+  // normalized over the CASH pool — for PKO/Mystery/BR a chunk of the gross
+  // prize pool sits in bounties, and the bars below only describe finish
+  // payouts. Showing the two pools explicitly so the user knows the bars
+  // aren't the whole prize. For BR the bounty pool is further sliced into
+  // tiered envelopes (#92) — flagged via a footer note, mini-chart deferred.
+  const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
+  const hasBounty = bountyFraction > 0;
+  const grossPool = row.players * row.buyIn;
+  const cashPoolShare = 1 - bountyFraction;
+  const cashPoolDollars = grossPool * cashPoolShare;
+  const bountyPoolDollars = grossPool * bountyFraction;
+  const isBr = row.payoutStructure === "battle-royale";
+
   return (
     <Card className="flex h-full flex-col p-5">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -153,6 +168,20 @@ export function PayoutStructureCard({ schedule }: Props) {
         </div>
       </div>
 
+      {hasBounty && (
+        <PoolSplit
+          cashPoolShare={cashPoolShare}
+          bountyShare={bountyFraction}
+          cashPoolDollars={cashPoolDollars}
+          bountyPoolDollars={bountyPoolDollars}
+          isBr={isBr}
+          cashLabel={t("payouts.pool.cash")}
+          bountyLabel={t("payouts.pool.bounty")}
+          noteKey={isBr ? "payouts.pool.noteBr" : "payouts.pool.note"}
+          t={t}
+        />
+      )}
+
       <div className="flex flex-col gap-1">
         {table.slice(0, topLen).map((v, i) => (
           <PayoutBar
@@ -194,6 +223,84 @@ export function PayoutStructureCard({ schedule }: Props) {
         )}
       </div>
     </Card>
+  );
+}
+
+function PoolSplit({
+  cashPoolShare,
+  bountyShare,
+  cashPoolDollars,
+  bountyPoolDollars,
+  isBr,
+  cashLabel,
+  bountyLabel,
+  noteKey,
+  t,
+}: {
+  cashPoolShare: number;
+  bountyShare: number;
+  cashPoolDollars: number;
+  bountyPoolDollars: number;
+  isBr: boolean;
+  cashLabel: string;
+  bountyLabel: string;
+  noteKey: DictKey;
+  t: (key: DictKey) => string;
+}) {
+  const fmtDollars = (v: number) => {
+    if (v >= 1000) return `$${Math.round(v).toLocaleString()}`;
+    if (v >= 100) return `$${v.toFixed(0)}`;
+    if (v >= 1) return `$${v.toFixed(2)}`;
+    return `$${v.toFixed(3)}`;
+  };
+  const cashColor = "var(--color-accent)";
+  const bountyColor = isBr ? "hsl(35, 85%, 58%)" : "hsl(270, 62%, 62%)";
+  return (
+    <div className="mb-3 flex flex-col gap-1.5">
+      <div className="flex h-5 w-full overflow-hidden rounded-sm bg-[color:var(--color-bg)]">
+        <div
+          className="flex items-center justify-start px-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-bg)]"
+          style={{ width: `${cashPoolShare * 100}%`, background: cashColor }}
+        >
+          {cashPoolShare >= 0.18 && `${Math.round(cashPoolShare * 100)}%`}
+        </div>
+        <div
+          className="flex items-center justify-end px-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-bg)]"
+          style={{ width: `${bountyShare * 100}%`, background: bountyColor }}
+        >
+          {bountyShare >= 0.18 && `${Math.round(bountyShare * 100)}%`}
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-[10px] text-[color:var(--color-fg-dim)]">
+        <div className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2 w-2 rounded-sm"
+            style={{ background: cashColor }}
+          />
+          <span>
+            {cashLabel}
+            <span className="ml-1 font-mono tabular-nums text-[color:var(--color-fg)]">
+              {fmtDollars(cashPoolDollars)}
+            </span>
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2 w-2 rounded-sm"
+            style={{ background: bountyColor }}
+          />
+          <span>
+            {bountyLabel}
+            <span className="ml-1 font-mono tabular-nums text-[color:var(--color-fg)]">
+              {fmtDollars(bountyPoolDollars)}
+            </span>
+          </span>
+        </div>
+      </div>
+      <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+        {t(noteKey)}
+      </div>
+    </div>
   );
 }
 

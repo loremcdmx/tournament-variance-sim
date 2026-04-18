@@ -49,7 +49,7 @@ export interface LineStylePreset {
 const classic: LineStylePreset = {
   id: "classic",
   mean: { stroke: "#fbbf24", width: 2.75 },
-  ev: { stroke: "#60a5fa", width: 1.5, dash: [6, 4] },
+  ev: { stroke: "#38bdf8", width: 2.25, dash: [10, 5] },
   best: { stroke: "#fde68a", width: 1.25 },
   worst: { stroke: "#bfdbfe", width: 1.25 },
   p05: { stroke: "#f87171", width: 1.5, dash: [5, 3] },
@@ -67,7 +67,7 @@ const classic: LineStylePreset = {
 const duotone: LineStylePreset = {
   id: "duotone",
   mean: { stroke: "#2dd4bf", width: 2.75 },
-  ev: { stroke: "#f472b6", width: 1.5, dash: [6, 4] },
+  ev: { stroke: "#f472b6", width: 2.25, dash: [10, 5] },
   best: { stroke: "#99f6e4", width: 1.25 },
   worst: { stroke: "#fbcfe8", width: 1.25 },
   p05: { stroke: "#fb923c", width: 1.5, dash: [5, 3] },
@@ -85,7 +85,7 @@ const duotone: LineStylePreset = {
 const mono: LineStylePreset = {
   id: "mono",
   mean: { stroke: "#f8fafc", width: 2.75 },
-  ev: { stroke: "#94a3b8", width: 1.5, dash: [6, 4] },
+  ev: { stroke: "#cbd5e1", width: 2.25, dash: [10, 5] },
   best: { stroke: "#cbd5e1", width: 1.25 },
   worst: { stroke: "#64748b", width: 1.25 },
   p05: { stroke: "#e2e8f0", width: 1.5, dash: [5, 3] },
@@ -103,7 +103,7 @@ const mono: LineStylePreset = {
 const vivid: LineStylePreset = {
   id: "vivid",
   mean: { stroke: "#c084fc", width: 2.75 },
-  ev: { stroke: "#facc15", width: 1.5, dash: [6, 4] },
+  ev: { stroke: "#facc15", width: 2.25, dash: [10, 5] },
   best: { stroke: "#e9d5ff", width: 1.25 },
   worst: { stroke: "#fef08a", width: 1.25 },
   p05: { stroke: "#fb7185", width: 1.5, dash: [5, 3] },
@@ -139,7 +139,7 @@ const highContrast: LineStylePreset = {
 const neon: LineStylePreset = {
   id: "neon",
   mean: { stroke: "#00ff88", width: 2.75 },
-  ev: { stroke: "#ff00ff", width: 1.5, dash: [6, 4] },
+  ev: { stroke: "#ff00ff", width: 2.25, dash: [10, 5] },
   best: { stroke: "#88ffcc", width: 1.25 },
   worst: { stroke: "#ff88ff", width: 1.25 },
   p05: { stroke: "#ff4444", width: 1.5, dash: [5, 3] },
@@ -424,7 +424,7 @@ export function savePdOverlayStyle(style: PdOverlayStyle) {
 export const PRIMEDOPE_PANE_PRESET: LineStylePreset = {
   id: "classic",
   mean: { stroke: "#f472b6", width: 2.5 },
-  ev: { stroke: "#fbbf24", width: 1.5 },
+  ev: { stroke: "#fbbf24", width: 2.25, dash: [10, 5] },
   best: { stroke: "#93c5fd", width: 1.25 },
   worst: { stroke: "#93c5fd", width: 1.25 },
   p05: { stroke: "#60a5fa", width: 1.75 },

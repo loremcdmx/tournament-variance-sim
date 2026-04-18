@@ -49,6 +49,10 @@ export interface ControlsState {
    *  an explicit per-row `itmRate` override. Whole-number percent. */
   itmGlobalEnabled: boolean;
   itmGlobalPct: number;
+  /** Global rakeback, as a whole-number % of rake paid back per entry.
+   *  Engine adds `(rakebackPct/100) × row.rake × row.buyIn` to each bullet's
+   *  profit. Pure deterministic shift — σ is untouched. */
+  rakebackPct: number;
   /**
    * Empirical histogram buckets in arbitrary units. Parsed out of CSV /
    * paste upload — each line is one finishing position from a real
@@ -130,19 +134,36 @@ export function ControlsPanel({
     }, 250);
     return () => window.clearInterval(id);
   }, [running]);
+  // Keep the progress bar mounted briefly after the run finishes so the CSS
+  // width transition has time to animate to 100 %. Without this hold, status
+  // flips to "done" in the same render tick as `setProgress(1)` and the bar
+  // unmounts while still visually stuck at SHARD_FRACTION (~88 %) or wherever
+  // the last shard-done event left it on a short run.
+  const [barVisible, setBarVisible] = useState(false);
+  useEffect(() => {
+    if (running) {
+      setBarVisible(true);
+      return undefined;
+    }
+    if (!barVisible) return undefined;
+    const id = window.setTimeout(() => setBarVisible(false), 450);
+    return () => window.clearTimeout(id);
+  }, [running, barVisible]);
   // ETA computation. Three sources blend into one countdown:
   //   1. Bootstrap — estimatedMs from the saved rate × work units. Accurate
   //      before any progress is reported, wrong if schedule/compare-mode
   //      differs from the last run.
   //   2. Projection — elapsed / progress. Accurate once real work has been
   //      done, noisy at very small progress.
-  //   3. Build-phase decay — at progress ≥ 0.95 shards are done and the bar
-  //      is driven by a ticker (see useSimulation). Projection would keep
-  //      inflating ETA as elapsed grows, so we freeze the ETA at entry and
-  //      linearly drain it against the 0.95 → 0.995 arc.
-  // Bootstrap and projection cross-fade over progress 0 → 0.3 to avoid the
-  // visible step the old < 0.1 cliff caused. Smoothing uses a time-constant
-  // formula so irregular render cadence stays stable.
+  //   3. Build-phase decay — once shard progress saturates (bar ≥ BUILD_START)
+  //      shards are done and the bar is driven by a ticker (see useSimulation).
+  //      Projection would keep inflating ETA as elapsed grows, so we freeze
+  //      the ETA at entry and drain it against the BUILD_START → 0.995 arc.
+  // Bootstrap and projection cross-fade over progress 0 → 0.15 to avoid the
+  // visible step the old < 0.1 cliff caused and reach projection sooner once
+  // real data arrives. Projection needs progress ≥ 0.03 to avoid a huge ETA
+  // swing from the very first checkpoint message.
+  const BUILD_START = 0.88;
   const smoothedEta = useRef<number | null>(null);
   const lastSmoothAt = useRef<number | null>(null);
   const buildPhaseAnchor = useRef<{ eta: number } | null>(null);
@@ -155,17 +176,18 @@ export function ControlsPanel({
     if (!running || runElapsedMs == null) return null;
     const elapsed = runElapsedMs;
 
-    if (progress >= 0.95) {
+    if (progress >= BUILD_START) {
       if (buildPhaseAnchor.current == null) {
-        const seed = smoothedEta.current ?? Math.max(300, elapsed * 0.05);
+        const seed = smoothedEta.current ?? Math.max(300, elapsed * 0.1);
         buildPhaseAnchor.current = { eta: seed };
       }
-      const frac = Math.min(1, Math.max(0, (progress - 0.95) / 0.045));
+      const buildSpan = 0.995 - BUILD_START;
+      const frac = Math.min(1, Math.max(0, (progress - BUILD_START) / buildSpan));
       return Math.max(0, buildPhaseAnchor.current.eta * (1 - frac));
     }
 
     const projectedEta =
-      progress > 0.01 ? Math.max(0, elapsed / progress - elapsed) : null;
+      progress > 0.03 ? Math.max(0, elapsed / progress - elapsed) : null;
     const bootstrapEta =
       estimatedMs != null && estimatedMs > 0
         ? Math.max(0, estimatedMs - elapsed)
@@ -173,7 +195,7 @@ export function ControlsPanel({
 
     let raw: number | null;
     if (projectedEta != null && bootstrapEta != null) {
-      const w = Math.min(1, Math.max(0, progress / 0.3));
+      const w = Math.min(1, Math.max(0, progress / 0.15));
       raw = (1 - w) * bootstrapEta + w * projectedEta;
     } else {
       raw = projectedEta ?? bootstrapEta;
@@ -183,7 +205,7 @@ export function ControlsPanel({
     const now = performance.now();
     const dt = lastSmoothAt.current == null ? 250 : now - lastSmoothAt.current;
     lastSmoothAt.current = now;
-    const alpha = 1 - Math.exp(-dt / 1200);
+    const alpha = 1 - Math.exp(-dt / 800);
     if (smoothedEta.current == null) smoothedEta.current = raw;
     else smoothedEta.current = alpha * raw + (1 - alpha) * smoothedEta.current;
     return smoothedEta.current;
@@ -462,11 +484,15 @@ export function ControlsPanel({
             </span>
           </div>
         </div>
-        {running && (
+        {barVisible && (
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
             <div
               className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width] duration-300 ease-linear"
-              style={{ width: `${Math.min(100, progress * 100).toFixed(1)}%` }}
+              style={{
+                width: running
+                  ? `${Math.min(100, progress * 100).toFixed(1)}%`
+                  : "100%",
+              }}
             />
           </div>
         )}
