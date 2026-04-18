@@ -406,20 +406,16 @@ export function ConvergenceChart({ schedule }: Props) {
   // {row index, AFS, ROI, format, count share, σ² share}.
   const exactBreakdown = useMemo(() => {
     if (effectiveMode !== "exact" || !schedule) return null;
-    // Per-row rake scale uses the widget's rake slider uniformly — the user
-    // typically sets one rake and compares formats, and per-row rake slider
-    // would muddle the averaged/exact comparison. Fit-baseline rake still
-    // differs by format (Mystery Royale = 8 % vs 10 % for others).
+    // In exact mode every row's own rake drives its σ rescale — the widget's
+    // rake slider is hidden so there's nothing to override with.
     const totalCount = schedule.reduce(
       (acc, r) => acc + Math.max(0, r.count),
       0,
     );
     if (totalCount <= 0) return null;
-    const rakeFrac = rakePct / 100;
     const perRow = schedule.map((row, i) => {
       const fmt = inferRowFormat(row);
-      const rakeScale = (1 + FIT_RAKE_BY_FORMAT[fmt]) / (1 + rakeFrac);
-      const { sigma } = sigmaRoiForRow(row, rakeScale);
+      const { sigma } = sigmaRoiForRow(row);
       const w = Math.max(0, row.count) / totalCount;
       return {
         index: i,
@@ -442,7 +438,7 @@ export function ConvergenceChart({ schedule }: Props) {
       })),
       sigmaEff,
     };
-  }, [effectiveMode, schedule, rakePct]);
+  }, [effectiveMode, schedule]);
 
   const rows = useMemo<Row[]>(() => {
     const afs = effectiveAfs;
@@ -702,6 +698,7 @@ export function ConvergenceChart({ schedule }: Props) {
         </button>
       </div>
       )}
+      {effectiveMode !== "exact" && (
       <div
         className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
         title={t("chart.convergence.rake.title")}
@@ -745,6 +742,7 @@ export function ConvergenceChart({ schedule }: Props) {
           ↺
         </button>
       </div>
+      )}
       <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
           CI
