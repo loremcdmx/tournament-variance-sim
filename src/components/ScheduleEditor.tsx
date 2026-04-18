@@ -1,13 +1,12 @@
 "use client";
 
-import { startTransition, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import type {
   FieldVariability,
   GameType,
   PayoutStructureId,
   TournamentRow,
 } from "@/lib/sim/types";
-import { parsePayoutString } from "@/lib/sim/payouts";
 import {
   inferGameType,
   applyGameType,
@@ -91,12 +90,11 @@ const STRUCTURES: {
   { id: "mtt-standard", short: "MTT Standard 15%", full: "MTT · Standard (15% paid)" },
   { id: "mtt-flat", short: "MTT Flat 20%", full: "MTT · Flat (20% paid)" },
   { id: "mtt-top-heavy", short: "MTT Top-heavy 12%", full: "MTT · Top-heavy (12% paid)" },
-  { id: "battle-royale", short: "Battle Royale", full: "Mystery Battle Royale · 18-max, top-3 paid" },
+  { id: "battle-royale", short: "GG Mystery Royal", full: "GG Mystery Royal · 18-max, top-3 paid" },
   { id: "satellite-ticket", short: "Satellite (tickets)", full: "Satellite · ticket cliff (10% seats)" },
   { id: "sng-50-30-20", short: "SNG 50/30/20", full: "SNG · 50/30/20" },
   { id: "sng-65-35", short: "SNG 65/35", full: "SNG · 65/35" },
   { id: "winner-takes-all", short: "Winner takes all", full: "Winner takes all" },
-  { id: "custom", short: "Custom %", full: "Custom (paste %)" },
 ];
 
 interface Props {
@@ -125,7 +123,7 @@ Hyper turbo, 200, 20+2, 15, 3, sng-50-30-20`;
 //   - Standard MTT curves need ≥30 runners for the 15 / 20 % paid slice to
 //     have more than a handful of places.
 type CompatRange = { min: number; max: number };
-const PAYOUT_COMPAT: Record<PayoutStructureId, CompatRange> = {
+const PAYOUT_COMPAT: Partial<Record<PayoutStructureId, CompatRange>> = {
   "mtt-standard": { min: 30, max: Infinity },
   "mtt-primedope": { min: 30, max: Infinity },
   "mtt-flat": { min: 30, max: Infinity },
@@ -140,7 +138,6 @@ const PAYOUT_COMPAT: Record<PayoutStructureId, CompatRange> = {
   "sng-50-30-20": { min: 3, max: 18 },
   "sng-65-35": { min: 2, max: 2 },
   "winner-takes-all": { min: 2, max: 20 },
-  custom: { min: 2, max: Infinity },
 };
 
 // Strict gameType → allowed payout structures. Every format has its own
@@ -162,7 +159,6 @@ const PAYOUT_GAMETYPE_ALLOW: Partial<Record<GameType, PayoutStructureId[]>> = {
     "sng-50-30-20",
     "sng-65-35",
     "winner-takes-all",
-    "custom",
   ],
   "freezeout-reentry": [
     "mtt-standard",
@@ -176,10 +172,9 @@ const PAYOUT_GAMETYPE_ALLOW: Partial<Record<GameType, PayoutStructureId[]>> = {
     "sng-50-30-20",
     "sng-65-35",
     "winner-takes-all",
-    "custom",
   ],
-  pko: ["mtt-gg-bounty", "custom"],
-  mystery: ["mtt-gg-mystery", "custom"],
+  pko: ["mtt-gg-bounty"],
+  mystery: ["mtt-gg-mystery"],
   "mystery-royale": ["battle-royale"],
 };
 
@@ -219,7 +214,6 @@ const PAYOUT_IDS: PayoutStructureId[] = [
   "sng-50-30-20",
   "sng-65-35",
   "winner-takes-all",
-  "custom",
 ];
 
 function parseImportCSV(raw: string): {
@@ -375,7 +369,6 @@ export function ScheduleEditor({
               const isOpen = advanced && expanded.has(r.id);
               const hasAdv =
                 (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
-                r.payoutStructure === "custom" ||
                 (r.maxEntries ?? 1) > 1 ||
                 (r.bountyFraction ?? 0) > 0 ||
                 !!r.icmFinalTable;
@@ -522,6 +515,7 @@ export function ScheduleEditor({
                         const current = grouped.find(
                           (g) => g.s.id === r.payoutStructure,
                         );
+                        const legacyCustom = r.payoutStructure === "custom";
                         const currentDisabled = current && !current.compat.ok;
                         const describe = (g: (typeof grouped)[number]) => {
                           if (g.compat.ok) return "";
@@ -553,11 +547,6 @@ export function ScheduleEditor({
                             onChange={(e) => {
                               const next = e.target.value as PayoutStructureId;
                               update(r.id, { payoutStructure: next });
-                              if (next === "custom") {
-                                const ex = new Set(expanded);
-                                ex.add(r.id);
-                                setExpanded(ex);
-                              }
                             }}
                             className={
                               "h-8 w-full rounded-md border px-2.5 text-xs outline-none transition-colors focus:border-[color:var(--color-accent)] " +
@@ -598,6 +587,13 @@ export function ScheduleEditor({
                                       {s.short}
                                     </option>
                                   ))}
+                              </optgroup>
+                            )}
+                            {legacyCustom && (
+                              <optgroup label="— Legacy —">
+                                <option value="custom">
+                                  Legacy custom (read-only)
+                                </option>
                               </optgroup>
                             )}
                             {unavailable.length > 0 && (
@@ -891,32 +887,6 @@ function AdvancedRowPanel({
           </div>
         )}
       </div>
-
-      {/* Custom payouts */}
-      {row.payoutStructure === "custom" && (
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[10px] font-medium uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
-            {t("row.customPct")}
-          </label>
-          <textarea
-            rows={4}
-            value={
-              row.customPayouts
-                ? row.customPayouts.map((v) => +(v * 100).toFixed(3)).join(", ")
-                : ""
-            }
-            placeholder="25, 18, 12, 9, 7, 5.5, 4.5, 4, 3.5, 3, 2.8, 2.5, 2, 1.2"
-            onChange={(e) => {
-              const parsed = parsePayoutString(e.target.value);
-              onChange({ customPayouts: parsed ?? undefined });
-            }}
-            className="resize-none rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 font-mono text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
-          />
-          <p className="text-[10px] leading-relaxed text-[color:var(--color-fg-dim)]">
-            {t("row.customHint")}
-          </p>
-        </div>
-      )}
 
       {/* Re-entry */}
       {showReentry && (
@@ -1220,11 +1190,22 @@ function TextInput({
   placeholder?: string;
   className?: string;
 }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
   return (
     <input
       type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
+      value={draft}
+      onChange={(e) => {
+        const next = e.target.value;
+        setDraft(next);
+        startTransition(() => onChange(next));
+      }}
+      onBlur={() => {
+        if (draft !== value) startTransition(() => onChange(draft));
+      }}
       placeholder={placeholder}
       className={INPUT_BASE + " " + className}
     />
@@ -1288,7 +1269,7 @@ function BrPresetSelect({
         onApply({ buyIn, rake: BR_RAKE });
       }}
       className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
-      title="Mystery Battle Royale tier"
+      title="GG Mystery Royal tier"
     >
       {current == null && <option value="">— BR tier —</option>}
       {BR_PRESETS.map((p) => (
@@ -1416,9 +1397,18 @@ function NumInput({
         if (raw.trim() === "" || !Number.isFinite(v)) return;
         if (min !== undefined && v < min) return;
         if (max !== undefined && v > max) return;
-        onChange(v);
+        startTransition(() => onChange(v));
       }}
-      onBlur={() => commitDraft(draft, value, min, max, onChange, setDraft)}
+      onBlur={() =>
+        commitDraft(
+          draft,
+          value,
+          min,
+          max,
+          (next) => startTransition(() => onChange(next)),
+          setDraft,
+        )
+      }
       className={
         INPUT_BASE +
         " w-20 text-center tabular-nums " +

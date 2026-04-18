@@ -280,13 +280,20 @@ export default function Home() {
     [controls.finishModelId, controls.alphaOverride, controls.empiricalBuckets],
   );
 
+  // Feasibility memo drives the banner + row highlights + fixAllAuto. Heavy
+  // (walks every row + calibrates α on finishBuckets rows), so feed it the
+  // deferred schedule — the banner catches up a tick after typing stops.
+  // The Run button gate re-validates synchronously against the *current*
+  // schedule, so clicking Run during the defer window never launches an
+  // invalid job.
   const feasibility = useMemo(
-    () => validateSchedule(effectiveSchedule, previewModel),
-    [effectiveSchedule, previewModel],
+    () => validateSchedule(deferredSchedule, previewModel),
+    [deferredSchedule, previewModel],
   );
 
   const onRun = useCallback(() => {
-    if (!feasibility.ok) return;
+    const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
+    if (!liveFeasibility.ok) return;
     const freshSeed =
       (((Math.random() * 0xffffffff) >>> 0) ^
         ((Date.now() & 0xffffffff) >>> 0)) >>>
@@ -296,7 +303,7 @@ export default function Home() {
     const input = buildInput(effectiveSchedule, nextControls);
     lastRunInputRef.current = input;
     run(input);
-  }, [effectiveSchedule, controls, run, buildInput, feasibility.ok]);
+  }, [effectiveSchedule, previewModel, controls, run, buildInput]);
 
   const onUsePdPayoutsChange = useCallback(
     (v: boolean) => {

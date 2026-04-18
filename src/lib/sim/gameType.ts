@@ -108,6 +108,7 @@ export function applyGameType(
       patch.bountyFraction = bounty > 0 ? bounty : 0.5;
       patch.mysteryBountyVariance = 1.8;
       patch.rake = 0.08;
+      patch.buyIn = 10 / 1.08;
       patch.roi = 0.03;
       // Skill-adjusted ITM: structural 3/18 = 16.7 % is the field average.
       // A reg edges it up modestly (≈1–2 pp) by surviving the FT bubble

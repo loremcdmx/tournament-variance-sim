@@ -20,6 +20,7 @@ import type {
   TournamentRow,
 } from "@/lib/sim/types";
 import { aggregateStreaks } from "@/lib/sim/pathStreaks";
+import { rankedRunIndices, type RunMode } from "@/lib/trajectorySelection";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
@@ -228,6 +229,21 @@ function pctDelta(cur: number, pd: number): number | null {
   return (pd - cur) / anchor;
 }
 
+function mergedHistogramDomain(
+  ...histograms: Array<{ binEdges: readonly number[] } | null | undefined>
+): [number, number] | undefined {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const hist of histograms) {
+    const edges = hist?.binEdges;
+    if (!edges || edges.length < 2) continue;
+    lo = Math.min(lo, edges[0]);
+    hi = Math.max(hi, edges[edges.length - 1]);
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return undefined;
+  return [lo, hi];
+}
+
 type AccentHue = "felt" | "magenta";
 
 const HUES: Record<AccentHue, {
@@ -341,6 +357,32 @@ function TrajectoryPlot({
   const handlePlotReady = useCallback((plot: uPlot | null) => {
     plotRef.current = plot;
   }, []);
+  const xs = assets.data[0] as ArrayLike<number>;
+  const xMin = Number(xs[0] ?? 0);
+  const xMax = Number(xs[xs.length - 1] ?? xMin);
+  const [xZoomed, setXZoomed] = useState(false);
+  const handleScaleChange = useCallback(
+    (scaleKey: string, min: number | null, max: number | null) => {
+      if (scaleKey !== "x") return;
+      if (min == null || max == null || !Number.isFinite(min) || !Number.isFinite(max)) {
+        setXZoomed(false);
+        return;
+      }
+      const span = Math.max(1, xMax - xMin);
+      const eps = span * 1e-6;
+      setXZoomed(Math.abs(min - xMin) > eps || Math.abs(max - xMax) > eps);
+    },
+    [xMin, xMax],
+  );
+  const resetZoom = useCallback(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    plot.setScale("x", { min: xMin, max: xMax });
+  }, [xMin, xMax]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setXZoomed(false));
+    return () => cancelAnimationFrame(frame);
+  }, [assets, xMin, xMax]);
 
   // Imperative visibility layer: instead of rebuilding the uPlot instance
   // on every slider tick, flip `show` on the pre-built path/band/best/worst
@@ -396,7 +438,6 @@ function TrajectoryPlot({
     });
   }, [assets, visibleRuns, trimTopPct, trimBotPct]);
 
-  const xs = assets.data[0] as ArrayLike<number>;
   const idx = cursor?.idx;
   const tournaments = idx != null ? Math.round(xs[idx] ?? 0) : 0;
   const showBands = visibleRuns > 0;
@@ -706,29 +747,46 @@ function TrajectoryPlot({
         height={height}
         onCursor={setCursor}
         onPlotReady={handlePlotReady}
+        onScaleChange={handleScaleChange}
+        onDoubleClick={resetZoom}
       />
-      {visibleRuns > 0 && (
-        <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-2 rounded border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/70 px-2 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)] backdrop-blur">
-          <span>{t("chart.traj.hoverHint.lead")}</span>
-          <span className="flex items-center gap-1">
-            <span
-              className="inline-block h-1.5 w-1.5 rounded-full"
-              style={{
-                background: "rgba(248,113,113,1)",
-                boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
-              }}
-            />
-            <span>{t("chart.traj.hoverHint.peak")}</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <span
-              className="inline-block h-[3px] w-3 rounded-sm"
-              style={{ background: "rgba(248,113,113,0.95)" }}
-            />
-            <span>{t("chart.traj.hoverHint.maxDd")}</span>
-          </span>
+      <div className="absolute right-2 top-2 z-10 flex flex-wrap items-center justify-end gap-2">
+        <div className="pointer-events-none rounded border border-[color:var(--color-border)]/50 bg-[color:var(--color-bg)]/65 px-2 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-muted)] backdrop-blur">
+          {t("chart.traj.zoomHint")}
         </div>
-      )}
+        {xZoomed && (
+          <button
+            type="button"
+            onClick={resetZoom}
+            className="rounded border border-[color:var(--color-accent)]/50 bg-[color:var(--color-bg)]/85 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] shadow-sm backdrop-blur transition hover:bg-[color:var(--color-accent)] hover:text-black"
+            title={t("chart.traj.resetZoom")}
+          >
+            {t("chart.traj.resetZoom")}
+          </button>
+        )}
+        {visibleRuns > 0 && (
+          <div className="pointer-events-none flex items-center gap-2 rounded border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/70 px-2 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)] backdrop-blur">
+            <span>{t("chart.traj.hoverHint.lead")}</span>
+            <span className="flex items-center gap-1">
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{
+                  background: "rgba(248,113,113,1)",
+                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
+                }}
+              />
+              <span>{t("chart.traj.hoverHint.peak")}</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                className="inline-block h-[3px] w-3 rounded-sm"
+                style={{ background: "rgba(248,113,113,0.95)" }}
+              />
+              <span>{t("chart.traj.hoverHint.maxDd")}</span>
+            </span>
+          </div>
+        )}
+      </div>
       {cursor && idx != null && nearest && (
         <div
           className="pointer-events-none z-10 mt-2 min-w-[220px] overflow-hidden rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 text-[11px] shadow-xl backdrop-blur"
@@ -876,8 +934,6 @@ interface TrajectoryLineMeta {
   rank?: number;
 }
 
-type RunMode = "worst" | "random" | "best";
-
 /** Extract r,g,b from a CSS color string — supports rgb/rgba/#rrggbb. Returns
  *  [200,200,200] as a soft fallback so path rendering never crashes on an
  *  unexpected preset value. */
@@ -904,31 +960,6 @@ function pathStyleForCount(
   const alpha = Math.min(0.9, Math.max(0.04, 0.9 / Math.sqrt(n)));
   const width = Math.min(1.6, Math.max(0.55, 1.55 - 0.115 * Math.log2(n)));
   return { stroke: `rgba(${r},${g},${b},${alpha.toFixed(3)})`, width };
-}
-
-/** Rank all path indices by display preference for the given mode, most
- *  preferred first. The first k elements are the paths that should be
- *  visible when `visibleRuns === k`, so adjusting the slider becomes a
- *  pure visibility toggle on a fixed series set instead of a rebuild.
- *  Random = natural engine order (an unbiased prefix sample). Best/worst
- *  = sort by each path's final (last-point) profit, descending/ascending. */
-function rankedRunIndices(
-  paths: Float64Array[],
-  mode: RunMode,
-): number[] {
-  const total = paths.length;
-  if (total === 0) return [];
-  if (mode === "random") {
-    return Array.from({ length: total }, (_, i) => i);
-  }
-  const ranked: { idx: number; v: number }[] = new Array(total);
-  for (let i = 0; i < total; i++) {
-    const p = paths[i];
-    const v = p.length > 0 ? p[p.length - 1] : 0;
-    ranked[i] = { idx: i, v };
-  }
-  ranked.sort((a, b) => (mode === "worst" ? a.v - b.v : b.v - a.v));
-  return ranked.map((r) => r.idx);
 }
 
 /** Metadata for the imperative visibility layer: which uPlot series indices
@@ -1830,18 +1861,61 @@ export function ResultsView({
   // rbDist translates the bars inside a stable axis instead of auto-rescaling.
   const distProfitXDomain = useMemo<[number, number] | undefined>(() => {
     if (!rakebackCurve) return undefined;
-    const ours = result.histogram.binEdges;
-    const oursNoRb = resultNoRb.histogram.binEdges;
-    let lo = Math.min(ours[0], oursNoRb[0]);
-    let hi = Math.max(ours[ours.length - 1], oursNoRb[oursNoRb.length - 1]);
-    if (pdChart && pdChartNoRb) {
-      const pd = pdChart.histogram.binEdges;
-      const pdNoRb = pdChartNoRb.histogram.binEdges;
-      lo = Math.min(lo, pd[0], pdNoRb[0]);
-      hi = Math.max(hi, pd[pd.length - 1], pdNoRb[pdNoRb.length - 1]);
-    }
-    return [lo, hi];
+    return mergedHistogramDomain(
+      result.histogram,
+      resultNoRb.histogram,
+      pdChart?.histogram,
+      pdChartNoRb?.histogram,
+    );
   }, [rakebackCurve, result, resultNoRb, pdChart, pdChartNoRb]);
+  // Keep streak histograms on a shared domain across RB on/off states.
+  // Otherwise auto-rescaling can visually hide the RB effect even when the
+  // underlying drawdown / recovery distribution really moved.
+  const streakDrawdownXDomain = useMemo<[number, number] | undefined>(() => {
+    if (!rakebackCurve) return undefined;
+    return mergedHistogramDomain(
+      resultStreaksWithRb.drawdownHistogram,
+      resultNoRb.drawdownHistogram,
+      pdChartStreaksWithRb?.drawdownHistogram,
+      pdChartNoRb?.drawdownHistogram,
+    );
+  }, [
+    rakebackCurve,
+    resultStreaksWithRb,
+    resultNoRb,
+    pdChartStreaksWithRb,
+    pdChartNoRb,
+  ]);
+  const streakBreakevenXDomain = useMemo<[number, number] | undefined>(() => {
+    if (!rakebackCurve) return undefined;
+    return mergedHistogramDomain(
+      resultStreaksWithRb.longestBreakevenHistogram,
+      resultNoRb.longestBreakevenHistogram,
+      pdChartStreaksWithRb?.longestBreakevenHistogram,
+      pdChartNoRb?.longestBreakevenHistogram,
+    );
+  }, [
+    rakebackCurve,
+    resultStreaksWithRb,
+    resultNoRb,
+    pdChartStreaksWithRb,
+    pdChartNoRb,
+  ]);
+  const streakRecoveryXDomain = useMemo<[number, number] | undefined>(() => {
+    if (!rakebackCurve) return undefined;
+    return mergedHistogramDomain(
+      resultStreaksWithRb.recoveryHistogram,
+      resultNoRb.recoveryHistogram,
+      pdChartStreaksWithRb?.recoveryHistogram,
+      pdChartNoRb?.recoveryHistogram,
+    );
+  }, [
+    rakebackCurve,
+    resultStreaksWithRb,
+    resultNoRb,
+    pdChartStreaksWithRb,
+    pdChartNoRb,
+  ]);
 
   const s = displayResultStats.stats;
   const pdStats = displayPdChartStats?.stats;
@@ -1922,7 +1996,7 @@ export function ResultsView({
     <AbiContext.Provider value={abi}>
     <MoneyFmtContext.Provider value={moneyFmt}>
     <div className="flex flex-col gap-5">
-      {availableRuns > 0 && onSelectRun ? (
+      {advanced && availableRuns > 0 && onSelectRun ? (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--color-fg-dim)]">
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
             {t("seedBatch.label")}
@@ -2383,7 +2457,11 @@ export function ResultsView({
             <input
               type="checkbox"
               checked={rbDist}
-              onChange={(e) => setRbDist(e.target.checked)}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setRbDist(checked);
+                setRbStreaks(checked);
+              }}
               className="h-3.5 w-3.5 accent-lime-400"
             />
             <span className="uppercase tracking-wider text-lime-400/80">
@@ -2415,23 +2493,26 @@ export function ResultsView({
           />
         </UnitScope>
         <UnitScope id="dist.drawdown">
-          <MoneyDistributionCard
-            title={t("chart.ddDist")}
-            subtitle={t("chart.ddDist.sub")}
-            binEdges={result.drawdownHistogram.binEdges}
-            counts={result.drawdownHistogram.counts}
-            color="#f87171"
-            yAsPct
-            overlay={
-              overlayPd && displayPdChartStreaks
-                ? {
-                    binEdges: displayPdChartStreaks.drawdownHistogram.binEdges,
-                    counts: displayPdChartStreaks.drawdownHistogram.counts,
-                    label: overlayLabel,
-                  }
-                : null
-            }
-          />
+          <div className="flex flex-col gap-1.5">
+            <MoneyDistributionCard
+              title={t("chart.ddDist")}
+              subtitle={t("chart.ddDist.sub")}
+              binEdges={displayResultStreaks.drawdownHistogram.binEdges}
+              counts={displayResultStreaks.drawdownHistogram.counts}
+              color="#f87171"
+              yAsPct
+              xDomain={streakDrawdownXDomain}
+              overlay={
+                overlayPd && displayPdChartStreaks
+                  ? {
+                      binEdges: displayPdChartStreaks.drawdownHistogram.binEdges,
+                      counts: displayPdChartStreaks.drawdownHistogram.counts,
+                      label: overlayLabel,
+                    }
+                  : null
+              }
+            />
+          </div>
         </UnitScope>
       </div>
 
@@ -2447,24 +2528,6 @@ export function ResultsView({
         {result.downswings.length > 0 && (
           <UnitScope id="downswings">
             <div className="flex flex-col gap-1.5">
-              {rakebackCurve && (
-                <div className="flex items-center justify-end -mb-1">
-                  <label
-                    className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
-                    title={t("chart.trajectory.withRakeback.title")}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={rbStreaks}
-                      onChange={(e) => setRbStreaks(e.target.checked)}
-                      className="h-3.5 w-3.5 accent-lime-400"
-                    />
-                    <span className="uppercase tracking-wider text-lime-400/80">
-                      {t("chart.trajectory.withRakeback")}
-                    </span>
-                  </label>
-                </div>
-              )}
             <DownswingsCard
               downswings={displayResultStreaks.downswings}
               upswings={displayResultStreaks.upswings}
@@ -2483,6 +2546,7 @@ export function ResultsView({
                       color="#fbbf24"
                       unitLabel="tourneys"
                       yAsPct
+                      xDomain={streakBreakevenXDomain}
                       overlay={
                         overlayPd && displayPdChartStreaks
                           ? {
@@ -2551,6 +2615,7 @@ export function ResultsView({
                       color="#34d399"
                       unitLabel="tourneys"
                       yAsPct
+                      xDomain={streakRecoveryXDomain}
                       overlay={
                         overlayPd && displayPdChartStreaks
                           ? {
@@ -3315,9 +3380,7 @@ function MoneyDistributionCard({
   const { unit } = useMoneyFmt();
   return (
     <Card className="p-5">
-      <div className="flex items-start justify-between gap-3">
-        <ChartHeader title={title} subtitle={subtitle} />
-      </div>
+      <ChartHeader title={title} subtitle={subtitle} />
       <DistributionChart
         binEdges={binEdges}
         counts={counts}
@@ -3834,11 +3897,9 @@ function RefLineCustomizer({
                   className="h-3 w-3 cursor-pointer accent-[color:var(--color-accent)]"
                   aria-label={t("refLines.enabled")}
                 />
-                <input
-                  type="color"
+                <DebouncedColorInput
                   value={hex}
-                  onChange={(e) => setAt(i, { color: e.target.value })}
-                  className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0"
+                  onChange={(v) => setAt(i, { color: v })}
                   aria-label={t("refLines.color")}
                 />
                 <span className="text-[color:var(--color-fg-dim)]">ROI</span>
@@ -4779,7 +4840,7 @@ function ChartHeader({
   tip?: React.ReactNode;
 }) {
   return (
-    <div className="mb-3 flex items-start justify-between gap-3">
+    <div className="mb-3 flex w-full items-start justify-between gap-3">
       <div>
         <div className="flex items-center gap-1.5">
           <div className="text-sm font-semibold text-[color:var(--color-fg)]">
@@ -5287,19 +5348,45 @@ function DebouncedColorInput({
   disabled?: boolean;
   onChange: (v: string) => void;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "type">) {
-  const [local, setLocal] = useState(value);
+  // Uncontrolled: native <input type="color"> tracks its own in-flight value
+  // during drag. We debounce the upstream onChange so each drag tick does not
+  // trigger a full ResultsView re-render. `key={value}` forces a reset if the
+  // prop changes externally (rare), sidestepping the controlled-vs-uncontrolled
+  // mirror pattern that tripped the hooks lint rules.
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef = useRef(value);
+  const onChangeRef = useRef(onChange);
   useEffect(() => {
-    setLocal(value);
-  }, [value]);
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   return (
     <input
+      key={value}
       type="color"
-      value={local}
+      defaultValue={value}
       disabled={disabled}
       onChange={(e) => {
         const v = e.target.value;
-        setLocal(v);
-        if (v !== value) onChange(v);
+        latestRef.current = v;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null;
+          onChangeRef.current(latestRef.current);
+        }, 120);
+      }}
+      onBlur={() => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+        if (latestRef.current !== value) onChangeRef.current(latestRef.current);
       }}
       className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0 disabled:opacity-40"
       {...rest}

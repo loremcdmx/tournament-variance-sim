@@ -279,12 +279,14 @@ export function useSimulation() {
       let doneAll = 0;
       for (const s of allSlots) totalAll += s.total;
 
-      // Throttle UI updates: at most ~30 fps. Reserve the top 12 % of the
-      // progress bar for the build phase (envelope sort / histograms) —
-      // on 100k-sample+ runs the build is 10-15 % of wall time, so a 5 %
-      // reserve left the bar stuck at 0.95 for seconds. 0.88 matches the
-      // observed time share more closely.
-      const SHARD_FRACTION = 0.92;
+      // Throttle UI updates: at most ~30 fps. Reserve the top 15 % of the
+      // progress bar for the build phase (envelope sort / histograms +
+      // serialize-and-post back to main). On 100k-sample+ runs the build is
+      // 10-15 % of wall time, and the post-message serialization adds another
+      // ~100-400 ms dead zone that the bar used to park on at 99 %. Bigger
+      // reserve gives the build phase visible travel space instead of one
+      // discrete jump.
+      const SHARD_FRACTION = 0.85;
       let lastEmit = 0;
       const emitProgress = () => {
         const now = performance.now();
@@ -410,7 +412,11 @@ export function useSimulation() {
           if (msg.type === "build-progress") {
             const prev = buildFracs.get(msg.buildId) ?? 0;
             if (msg.frac > prev) {
-              buildFracs.set(msg.buildId, Math.min(0.98, msg.frac));
+              // Cap just under 1.0 — the serialize + postMessage back to main
+              // is not part of msg.frac and we want the final tick to come
+              // from the build-result handler, not from build-progress
+              // overshooting into the "done" slot.
+              buildFracs.set(msg.buildId, Math.min(0.995, msg.frac));
               emitBuildProgress();
             }
             return;

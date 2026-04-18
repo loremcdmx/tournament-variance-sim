@@ -17,6 +17,8 @@ interface Props {
   height?: number;
   onCursor?: (info: CursorInfo | null) => void;
   onPlotReady?: (plot: uPlot | null) => void;
+  onScaleChange?: (scaleKey: string, min: number | null, max: number | null) => void;
+  onDoubleClick?: () => void;
 }
 
 /**
@@ -31,11 +33,21 @@ interface Props {
  * subscribe via `onPlotReady` and drive `plot.setSeries(i, { show })`
  * imperatively.
  */
-export function UplotChart({ data, options, height = 320, onCursor, onPlotReady }: Props) {
+export function UplotChart({
+  data,
+  options,
+  height = 320,
+  onCursor,
+  onPlotReady,
+  onScaleChange,
+  onDoubleClick,
+}: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
   const onCursorRef = useRef(onCursor);
   const onPlotReadyRef = useRef(onPlotReady);
+  const onScaleChangeRef = useRef(onScaleChange);
+  const onDoubleClickRef = useRef(onDoubleClick);
   const dataRef = useRef(data);
 
   useEffect(() => {
@@ -44,6 +56,12 @@ export function UplotChart({ data, options, height = 320, onCursor, onPlotReady 
   useEffect(() => {
     onPlotReadyRef.current = onPlotReady;
   }, [onPlotReady]);
+  useEffect(() => {
+    onScaleChangeRef.current = onScaleChange;
+  }, [onScaleChange]);
+  useEffect(() => {
+    onDoubleClickRef.current = onDoubleClick;
+  }, [onDoubleClick]);
 
   // Plot lifecycle — recreated only on options/height change.
   useEffect(() => {
@@ -71,6 +89,15 @@ export function UplotChart({ data, options, height = 320, onCursor, onPlotReady 
             cb({ idx, left, top: tp, valY });
           },
         ],
+        setScale: [
+          ...(options.hooks?.setScale ?? []),
+          (u: uPlot, key: string) => {
+            const cb = onScaleChangeRef.current;
+            if (!cb) return;
+            const scale = u.scales[key];
+            cb(key, scale?.min ?? null, scale?.max ?? null);
+          },
+        ],
       },
     };
     const plot = new uPlot(opts, dataRef.current, host);
@@ -84,11 +111,14 @@ export function UplotChart({ data, options, height = 320, onCursor, onPlotReady 
     ro.observe(host);
 
     const onLeave = () => onCursorRef.current?.(null);
+    const onDblClick = () => onDoubleClickRef.current?.();
     host.addEventListener("mouseleave", onLeave);
+    host.addEventListener("dblclick", onDblClick);
 
     return () => {
       ro.disconnect();
       host.removeEventListener("mouseleave", onLeave);
+      host.removeEventListener("dblclick", onDblClick);
       onPlotReadyRef.current?.(null);
       plot.destroy();
       plotRef.current = null;

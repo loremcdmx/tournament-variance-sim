@@ -163,9 +163,11 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
       </div>
 
       {/* Buy-in → avg profit */}
-      <div className="rounded-lg border border-[color:var(--color-border)] bg-gradient-to-br from-[color:var(--color-bg)] to-[color:var(--color-bg-elev)] p-3.5 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col gap-1">
+      <div className="group relative overflow-hidden rounded-xl border border-[color:var(--color-border-strong)]/70 bg-[linear-gradient(135deg,var(--color-bg)_0%,var(--color-bg-elev)_55%,rgba(255,222,81,0.08)_100%)] p-3.5 shadow-[0_18px_40px_-32px_rgba(0,0,0,0.9)]">
+        <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--color-accent)]/70 to-transparent" />
+        <div className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-[color:var(--color-accent)]/10 blur-2xl transition-opacity duration-700 group-hover:opacity-80" />
+        <div className="relative grid grid-cols-1 items-stretch gap-2.5 sm:grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]">
+          <div className="rounded-lg border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/65 px-3 py-2.5 shadow-sm">
             <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               {t("preview.youPay")}
             </div>
@@ -173,12 +175,15 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
               {moneyFmt(stats.cost)}
             </div>
           </div>
-          <div className="flex flex-1 items-center justify-center px-2">
-            <div className="h-px flex-1 bg-[color:var(--color-border)]" />
-            <div className="mx-1.5 text-base text-[color:var(--color-fg-dim)]">→</div>
-            <div className="h-px flex-1 bg-[color:var(--color-border)]" />
+          <div className="flex min-h-8 items-center justify-center">
+            <div className="relative flex h-full min-h-8 w-full items-center justify-center overflow-hidden rounded-lg border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/50">
+              <span className="absolute inset-x-2 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-[color:var(--color-accent)]/50 to-transparent" />
+              <span className="relative flex h-7 w-7 animate-pulse items-center justify-center rounded-full border border-[color:var(--color-accent)]/40 bg-[color:var(--color-bg-elev)] text-[9px] font-bold uppercase tracking-wider text-[color:var(--color-accent)] shadow-[0_0_18px_rgba(255,222,81,0.16)]">
+                EV
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
+          <div className="rounded-lg border border-[color:var(--color-accent)]/35 bg-[color:var(--color-accent)]/10 px-3 py-2.5 text-right shadow-sm">
             <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               {t("preview.avgReturn")}
             </div>
@@ -208,46 +213,34 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
             thresholdStr,
           );
           return (
-            <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-[color:var(--color-border)]/60 pt-1.5 text-[10px] text-[color:var(--color-fg-dim)]">
-              <span className="uppercase tracking-wider text-[9px]">
+            <div className="mt-3 border-t border-[color:var(--color-border)]/60 pt-2">
+              <div className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
                 {t("preview.evSplit")}
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-[color:var(--color-accent)]" />
-                <span>{t("preview.evSplit.cash")}</span>
-                <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-                  {moneyFmt(stats.cashEvPerEntry)}
-                </span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span
-                  className="inline-block h-1.5 w-1.5 rounded-sm"
-                  style={{ background: "hsl(175, 72%, 55%)" }}
+              </div>
+              <div className={`grid gap-2 ${hasJp ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+                <PreviewSplitStat
+                  label={t("preview.evSplit.cash")}
+                  value={moneyFmt(stats.cashEvPerEntry)}
+                  color="var(--color-accent)"
                 />
-                <span>
-                  {hasJp
-                    ? t("preview.evSplit.bountyRegular")
-                    : t("preview.evSplit.bounty")}
-                </span>
-                <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-                  {moneyFmt(hasJp ? regularBounty : stats.bountyEvPerEntry)}
-                </span>
-              </span>
-              {hasJp && (
-                <span
-                  className="flex items-center gap-1"
-                  title={jpTip}
-                >
-                  <span
-                    className="inline-block h-1.5 w-1.5 rounded-sm"
-                    style={{ background: "hsl(45, 95%, 60%)" }}
+                <PreviewSplitStat
+                  label={
+                    hasJp
+                      ? t("preview.evSplit.bountyRegular")
+                      : t("preview.evSplit.bounty")
+                  }
+                  value={moneyFmt(hasJp ? regularBounty : stats.bountyEvPerEntry)}
+                  color="hsl(175, 72%, 55%)"
+                />
+                {hasJp && (
+                  <PreviewSplitStat
+                    label={jpLabel}
+                    value={moneyFmt(jp)}
+                    color="hsl(45, 95%, 60%)"
+                    title={jpTip}
                   />
-                  <span>{jpLabel}</span>
-                  <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-                    {moneyFmt(jp)}
-                  </span>
-                </span>
-              )}
+                )}
+              </div>
             </div>
           );
         })()}
@@ -873,6 +866,36 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function PreviewSplitStat({
+  label,
+  value,
+  color,
+  title,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  title?: string;
+}) {
+  return (
+    <div
+      className="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/55 px-2.5 py-2 text-[10px] text-[color:var(--color-fg-dim)] shadow-sm"
+      title={title}
+    >
+      <div className="flex items-center gap-1.5">
+        <span
+          className="inline-block h-1.5 w-1.5 rounded-sm"
+          style={{ background: color }}
+        />
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="mt-1 font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)]">
+        {value}
+      </div>
     </div>
   );
 }

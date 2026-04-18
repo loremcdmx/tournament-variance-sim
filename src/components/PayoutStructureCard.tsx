@@ -13,6 +13,8 @@ interface Props {
 }
 
 const TOP_ROWS = 9;
+const PLACE_COL_CLASS = "w-14";
+const VALUE_COL_CLASS = "w-28";
 
 type PaletteId = "accent" | "medal" | "heat" | "ocean" | "mono";
 const PALETTE_IDS: readonly PaletteId[] = ["accent", "medal", "heat", "ocean", "mono"] as const;
@@ -257,48 +259,60 @@ function PoolSplit({
   const bountyColor = isBr ? "hsl(35, 85%, 58%)" : "hsl(270, 62%, 62%)";
   return (
     <div className="mb-3 flex flex-col gap-1.5">
-      <div className="flex h-5 w-full overflow-hidden rounded-sm bg-[color:var(--color-bg)]">
-        <div
-          className="flex items-center justify-start px-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-bg)]"
-          style={{ width: `${cashPoolShare * 100}%`, background: cashColor }}
-        >
-          {cashPoolShare >= 0.18 && `${Math.round(cashPoolShare * 100)}%`}
+      <div className="flex items-center gap-2">
+        <div className={`${PLACE_COL_CLASS} shrink-0`} />
+        <div className="flex h-5 flex-1 overflow-hidden rounded-sm bg-[color:var(--color-bg)]">
+          <div
+            className="flex items-center justify-start px-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-bg)]"
+            style={{ width: `${cashPoolShare * 100}%`, background: cashColor }}
+          >
+            {cashPoolShare >= 0.18 && `${Math.round(cashPoolShare * 100)}%`}
+          </div>
+          <div
+            className="flex items-center justify-end px-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-bg)]"
+            style={{ width: `${bountyShare * 100}%`, background: bountyColor }}
+          >
+            {bountyShare >= 0.18 && `${Math.round(bountyShare * 100)}%`}
+          </div>
         </div>
-        <div
-          className="flex items-center justify-end px-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-bg)]"
-          style={{ width: `${bountyShare * 100}%`, background: bountyColor }}
-        >
-          {bountyShare >= 0.18 && `${Math.round(bountyShare * 100)}%`}
-        </div>
+        <div className={`${VALUE_COL_CLASS} shrink-0`} />
       </div>
-      <div className="flex items-center justify-between gap-3 text-[10px] text-[color:var(--color-fg-dim)]">
-        <div className="flex items-center gap-1.5">
-          <span
-            className="inline-block h-2 w-2 rounded-sm"
-            style={{ background: cashColor }}
-          />
-          <span>
-            {cashLabel}
-            <span className="ml-1 font-mono tabular-nums text-[color:var(--color-fg)]">
-              {fmtDollars(cashPoolDollars)}
+      <div className="flex items-center gap-2 text-[10px] text-[color:var(--color-fg-dim)]">
+        <div className={`${PLACE_COL_CLASS} shrink-0`} />
+        <div className="flex flex-1 items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2 w-2 rounded-sm"
+              style={{ background: cashColor }}
+            />
+            <span>
+              {cashLabel}
+              <span className="ml-1 font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtDollars(cashPoolDollars)}
+              </span>
             </span>
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span
-            className="inline-block h-2 w-2 rounded-sm"
-            style={{ background: bountyColor }}
-          />
-          <span>
-            {bountyLabel}
-            <span className="ml-1 font-mono tabular-nums text-[color:var(--color-fg)]">
-              {fmtDollars(bountyPoolDollars)}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2 w-2 rounded-sm"
+              style={{ background: bountyColor }}
+            />
+            <span>
+              {bountyLabel}
+              <span className="ml-1 font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtDollars(bountyPoolDollars)}
+              </span>
             </span>
-          </span>
+          </div>
         </div>
+        <div className={`${VALUE_COL_CLASS} shrink-0`} />
       </div>
-      <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-        {t(noteKey)}
+      <div className="flex items-start gap-2">
+        <div className={`${PLACE_COL_CLASS} shrink-0`} />
+        <div className="flex-1 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t(noteKey)}
+        </div>
+        <div className={`${VALUE_COL_CLASS} shrink-0`} />
       </div>
     </div>
   );
@@ -325,7 +339,7 @@ function PayoutBar({
   return (
     <div className="flex items-center gap-2 text-[11px]">
       <div
-        className={`w-14 shrink-0 text-right font-mono tabular-nums ${
+        className={`${PLACE_COL_CLASS} shrink-0 text-right font-mono tabular-nums ${
           muted ? "text-[color:var(--color-fg-dim)]" : "text-[color:var(--color-fg-muted)]"
         }`}
       >
@@ -346,7 +360,7 @@ function PayoutBar({
         )}
       </div>
       <div
-        className={`w-28 shrink-0 whitespace-nowrap text-right font-mono tabular-nums ${
+        className={`${VALUE_COL_CLASS} shrink-0 whitespace-nowrap text-right font-mono tabular-nums ${
           muted ? "text-[color:var(--color-fg-dim)]" : "text-[color:var(--color-fg)]"
         }`}
       >
