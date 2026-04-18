@@ -151,22 +151,7 @@ export function ControlsPanel({
     const id = window.setTimeout(() => setBarVisible(false), 450);
     return () => window.clearTimeout(id);
   }, [running, barVisible]);
-  // ETA computation. Three sources blend into one countdown:
-  //   1. Bootstrap — estimatedMs from the saved rate × work units. Accurate
-  //      before any progress is reported, wrong if schedule/compare-mode
-  //      differs from the last run.
-  //   2. Projection — elapsed / progress. Accurate once real work has been
-  //      done, noisy at very small progress.
-  //   3. Build-phase decay — once shard progress saturates (bar ≥ BUILD_START)
-  //      shards are done and the bar is driven by a ticker (see useSimulation).
-  //      Projection would keep inflating ETA as elapsed grows, so we freeze
-  //      the ETA at entry and drain it against the BUILD_START → 0.995 arc.
-  // Bootstrap and projection cross-fade over progress 0 → 0.15 to avoid the
-  // visible step the old < 0.1 cliff caused and reach projection sooner once
-  // real data arrives. Projection needs progress ≥ 0.03 to avoid a huge ETA
-  // swing from the very first checkpoint message.
-  const BUILD_START = 0.92;
-  const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs, buildStart: BUILD_START });
+  const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
@@ -433,9 +418,11 @@ export function ControlsPanel({
           <div className="flex w-full items-center justify-center gap-4 font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg-muted)]">
             <span>
               {running
-                ? remainingMs != null
-                  ? `${t("controls.remaining")} ≈ ${formatDuration(remainingMs)}`
-                  : t("controls.starting")
+                ? remainingMs == null
+                  ? t("controls.starting")
+                  : remainingMs < 800
+                  ? t("controls.finishing")
+                  : `${t("controls.remaining")} ≈ ${formatDuration(remainingMs)}`
                 : estimatedMs != null && estimatedMs > 0
                 ? `${t("controls.eta")} ≈ ${formatDuration(estimatedMs)}`
                 : "\u00A0"}
@@ -588,73 +575,63 @@ function useRemainingMs(opts: {
   runElapsedMs: number | null;
   progress: number;
   estimatedMs: number | null | undefined;
-  buildStart: number;
 }): number | null {
-  const { running, runElapsedMs, progress, estimatedMs, buildStart } = opts;
+  const { running, runElapsedMs, progress, estimatedMs } = opts;
   const [smoothed, setSmoothed] = useState<number | null>(null);
   const smoothedRef = useRef<number | null>(null);
   const lastSmoothAt = useRef<number | null>(null);
-  const buildPhaseAnchor = useRef<{ eta: number } | null>(null);
 
-  // Two effects below drive a time-based ETA smoother. The smoothed value is
-  // inherently stateful (EMA across progress ticks) but needs to be read in
-  // render, so it lives in useState. The scoped setState-in-effect disables
-  // are deliberate: we're mirroring an external signal (elapsed wall time)
-  // onto React state — not computing a pure derivation of props.
   useEffect(() => {
     if (running) return;
     smoothedRef.current = null;
     lastSmoothAt.current = null;
-    buildPhaseAnchor.current = null;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets ETA display when run ends; sync with external run lifecycle.
     setSmoothed(null);
   }, [running]);
 
+  // Monotonic countdown. Raw target comes from either the saved rate
+  // (estimatedMs − elapsed) early in the run or a live projection
+  // (elapsed / progress − elapsed) once progress is informative. We never
+  // let the displayed value increase — if the target would raise, we tick
+  // down at real-time rate instead. A countdown that briefly pins at 0 is
+  // less jarring than one that climbs back up mid-run.
   useEffect(() => {
     if (!running || runElapsedMs == null) return;
     const elapsed = runElapsedMs;
 
-    if (progress >= buildStart) {
-      if (buildPhaseAnchor.current == null) {
-        const carried = smoothedRef.current ?? Math.max(200, elapsed * 0.1);
-        const cap = Math.max(200, elapsed * 0.18);
-        buildPhaseAnchor.current = { eta: Math.min(carried, cap) };
-      }
-      const buildSpan = 0.995 - buildStart;
-      const frac = Math.min(1, Math.max(0, (progress - buildStart) / buildSpan));
-      const next = Math.max(0, buildPhaseAnchor.current.eta * (1 - frac));
-      smoothedRef.current = next;
-      setSmoothed(next);
-      return;
-    }
-
-    const projectedEta =
-      progress > 0.03 ? Math.max(0, elapsed / progress - elapsed) : null;
-    const bootstrapEta =
+    const projection =
+      progress > 0.05 ? Math.max(0, elapsed / progress - elapsed) : null;
+    const bootstrap =
       estimatedMs != null && estimatedMs > 0
         ? Math.max(0, estimatedMs - elapsed)
         : null;
-
-    let raw: number | null;
-    if (projectedEta != null && bootstrapEta != null) {
-      const w = Math.min(1, Math.max(0, progress / 0.15));
-      raw = (1 - w) * bootstrapEta + w * projectedEta;
-    } else {
-      raw = projectedEta ?? bootstrapEta;
-    }
+    // Prefer projection once progress is past the noise floor — it reflects
+    // actual observed rate. Bootstrap is only useful before projection data
+    // has accumulated. Blending the two causes an upward jump whenever
+    // projection disagrees with the stale estimate.
+    const raw = projection ?? bootstrap;
     if (raw == null) return;
 
     const now = performance.now();
-    const dt = lastSmoothAt.current == null ? 250 : now - lastSmoothAt.current;
+    const dt = lastSmoothAt.current == null ? 0 : now - lastSmoothAt.current;
     lastSmoothAt.current = now;
-    const alpha = 1 - Math.exp(-dt / 800);
-    const next =
-      smoothedRef.current == null
-        ? raw
-        : alpha * raw + (1 - alpha) * smoothedRef.current;
+
+    let next: number;
+    if (smoothedRef.current == null) {
+      next = raw;
+    } else if (raw < smoothedRef.current) {
+      // Target is below current — ease toward it (catches up fast when a
+      // later projection tick shows we're further along than we thought).
+      const alpha = 1 - Math.exp(-dt / 400);
+      next = alpha * raw + (1 - alpha) * smoothedRef.current;
+    } else {
+      // Target would raise — count down at wall-clock rate instead.
+      next = Math.max(0, smoothedRef.current - dt);
+    }
     smoothedRef.current = next;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors elapsed wall time onto React state; this IS the external-signal synchronization the rule allows.
     setSmoothed(next);
-  }, [running, runElapsedMs, progress, estimatedMs, buildStart]);
+  }, [running, runElapsedMs, progress, estimatedMs]);
 
   return smoothed;
 }

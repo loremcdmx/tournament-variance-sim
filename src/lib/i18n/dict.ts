@@ -520,6 +520,7 @@ export const DICT = {
   },
   "controls.remaining": { en: "remaining", ru: "осталось" },
   "controls.starting": { en: "warming up…", ru: "разгоняемся…" },
+  "controls.finishing": { en: "wrapping up…", ru: "завершаем…" },
   "controls.done.label": { en: "Done", ru: "Готово" },
   "controls.done.seeBelow": { en: "See full results", ru: "Смотреть ниже" },
   "controls.done.profit": { en: "Avg profit", ru: "Средний профит" },
