@@ -19,6 +19,7 @@ import type {
   SimulationResult,
   TournamentRow,
 } from "@/lib/sim/types";
+import { histogramOf } from "@/lib/sim/engine";
 import { aggregateStreaks } from "@/lib/sim/pathStreaks";
 import { rankedRunIndices, type RunMode } from "@/lib/trajectorySelection";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
@@ -1183,6 +1184,74 @@ function shiftResultByRakeback(
   };
 }
 
+// Strip samples flagged in `jackpotMask` from the fields that drive
+// scale-sensitive charts (finalProfits → histogram, stored paths →
+// trajectory). Other fields (envelopes, decomposition, stats) use
+// percentiles or totals that the one-in-N-samples jackpot barely
+// perturbs, so they're left intact. `best` / `worst` paths are
+// reselected from the remaining stored paths so the trajectory chart
+// doesn't keep the jackpot curve as its extreme marker.
+function stripJackpots(r: SimulationResult): SimulationResult {
+  const mask = r.jackpotMask;
+  if (!mask || mask.length === 0) return r;
+
+  const keepFinal: number[] = [];
+  for (let s = 0; s < mask.length; s++) if (!mask[s]) keepFinal.push(s);
+  if (keepFinal.length === mask.length) return r;
+
+  const filteredFinal = new Float64Array(keepFinal.length);
+  for (let i = 0; i < keepFinal.length; i++) {
+    filteredFinal[i] = r.finalProfits[keepFinal[i]];
+  }
+  const histogram = histogramOf(filteredFinal, 60, false, true);
+
+  const keptPaths: Float64Array[] = [];
+  const keptSampleIndices: number[] = [];
+  for (let i = 0; i < r.samplePaths.sampleIndices.length; i++) {
+    const globalIdx = r.samplePaths.sampleIndices[i];
+    if (!mask[globalIdx]) {
+      keptPaths.push(r.samplePaths.paths[i]);
+      keptSampleIndices.push(globalIdx);
+    }
+  }
+
+  let best = r.samplePaths.best;
+  let worst = r.samplePaths.worst;
+  if (keptPaths.length > 0) {
+    let bestV = -Infinity;
+    let worstV = Infinity;
+    let bestI = 0;
+    let worstI = 0;
+    for (let i = 0; i < keptPaths.length; i++) {
+      const p = keptPaths[i];
+      const v = p.length > 0 ? p[p.length - 1] : 0;
+      if (v > bestV) {
+        bestV = v;
+        bestI = i;
+      }
+      if (v < worstV) {
+        worstV = v;
+        worstI = i;
+      }
+    }
+    best = keptPaths[bestI];
+    worst = keptPaths[worstI];
+  }
+
+  return {
+    ...r,
+    finalProfits: filteredFinal,
+    histogram,
+    samplePaths: {
+      ...r.samplePaths,
+      paths: keptPaths,
+      sampleIndices: keptSampleIndices,
+      best,
+      worst,
+    },
+  };
+}
+
 function buildTrajectoryAssets(
   r: SimulationResult,
   hue: AccentHue,
@@ -1799,6 +1868,21 @@ export function ResultsView({
   const [rbStats, setRbStats] = useState<boolean>(rbFrac > 0);
   const [rbDist, setRbDist] = useState<boolean>(rbFrac > 0);
   const [rbStreaks, setRbStreaks] = useState<boolean>(rbFrac > 0);
+  // Mystery / mystery-royale jackpot runs are a handful of samples out of
+  // hundreds of thousands, but their ratio ≥ 100× mean envelope blows up
+  // the distribution x-axis and the trajectory y-axis. Toggle strips them
+  // from both charts using the deterministic `jackpotMask` stored on the
+  // result. Only surfaced when the schedule contains a mystery row so
+  // non-mystery runs don't see a dead checkbox.
+  const hasMysteryRow = useMemo(
+    () =>
+      schedule?.some(
+        (r) =>
+          r.gameType === "mystery" || r.gameType === "mystery-royale",
+      ) ?? false,
+    [schedule],
+  );
+  const [hideJackpots, setHideJackpots] = useState<boolean>(false);
   // rbFrac change resets each region toggle back to default. Users can flip
   // individual regions after; a new rbFrac (e.g. rakeback % edit in controls)
   // wipes those overrides. Four sets in one pass — React batches them.
@@ -1813,20 +1897,30 @@ export function ResultsView({
   }, [rbFrac]);
   // One shifted variant per base + one for each chart — re-used across regions
   // via boolean picks below. Memoing by curve identity keeps the clone cheap.
+  const resultForCharts = useMemo(
+    () => (hideJackpots ? stripJackpots(result) : result),
+    [result, hideJackpots],
+  );
+  const pdChartForCharts = useMemo(
+    () => (hideJackpots && pdChart ? stripJackpots(pdChart) : pdChart),
+    [pdChart, hideJackpots],
+  );
   const resultNoRb = useMemo(
     () =>
-      rakebackCurve ? shiftResultByRakeback(result, rakebackCurve, -1) : result,
-    [result, rakebackCurve],
+      rakebackCurve
+        ? shiftResultByRakeback(resultForCharts, rakebackCurve, -1)
+        : resultForCharts,
+    [resultForCharts, rakebackCurve],
   );
   const pdChartNoRb = useMemo(
     () =>
-      pdChart && pdRakebackCurve
-        ? shiftResultByRakeback(pdChart, pdRakebackCurve, -1)
-        : pdChart,
-    [pdChart, pdRakebackCurve],
+      pdChartForCharts && pdRakebackCurve
+        ? shiftResultByRakeback(pdChartForCharts, pdRakebackCurve, -1)
+        : pdChartForCharts,
+    [pdChartForCharts, pdRakebackCurve],
   );
-  const pickResult = (on: boolean) => (on ? result : resultNoRb);
-  const pickPd = (on: boolean) => (on ? pdChart : pdChartNoRb);
+  const pickResult = (on: boolean) => (on ? resultForCharts : resultNoRb);
+  const pickPd = (on: boolean) => (on ? pdChartForCharts : pdChartNoRb);
   const displayResultTraj = pickResult(rbTraj);
   const displayPdChartTraj = pickPd(rbTraj);
   const displayResultStats = pickResult(rbStats);
@@ -2031,22 +2125,40 @@ export function ResultsView({
           ) : null}
         </div>
       ) : null}
-      {rakebackCurve && (
-        <div className="flex items-center justify-end -mb-1">
-          <label
-            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
-            title={t("chart.trajectory.withRakeback.title")}
-          >
-            <input
-              type="checkbox"
-              checked={rbTraj}
-              onChange={(e) => setRbTraj(e.target.checked)}
-              className="h-3.5 w-3.5 accent-lime-400"
-            />
-            <span className="uppercase tracking-wider text-lime-400/80">
-              {t("chart.trajectory.withRakeback")}
-            </span>
-          </label>
+      {(rakebackCurve || hasMysteryRow) && (
+        <div className="flex items-center justify-end gap-4 -mb-1">
+          {hasMysteryRow && (
+            <label
+              className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
+              title={t("chart.hideJackpots.title")}
+            >
+              <input
+                type="checkbox"
+                checked={hideJackpots}
+                onChange={(e) => setHideJackpots(e.target.checked)}
+                className="h-3.5 w-3.5 accent-amber-400"
+              />
+              <span className="uppercase tracking-wider text-amber-400/80">
+                {t("chart.hideJackpots")}
+              </span>
+            </label>
+          )}
+          {rakebackCurve && (
+            <label
+              className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
+              title={t("chart.trajectory.withRakeback.title")}
+            >
+              <input
+                type="checkbox"
+                checked={rbTraj}
+                onChange={(e) => setRbTraj(e.target.checked)}
+                className="h-3.5 w-3.5 accent-lime-400"
+              />
+              <span className="uppercase tracking-wider text-lime-400/80">
+                {t("chart.trajectory.withRakeback")}
+              </span>
+            </label>
+          )}
         </div>
       )}
       <UnitScope id="trajectory">

@@ -776,6 +776,14 @@ export const DICT = {
     en: "How we fix it: finishes sampled from a real top-heavy pmf calibrated on fund data. A skilled player's 1st/2nd/3rd odds are meaningfully above the paid-pool average; most cashes stay min-cashes. Overall ITM is lower than PrimeDope's (~17% at 20% ROI vs their ~21%), but each cash is weighted correctly. Streak depth, recovery length, and drawdown shape match reality instead of PD's smoothed picture.",
     ru: "Как решаем: места финиша сэмплируются из реальной top-heavy pmf, откалиброванной по данным фонда. Шанс скиллового игрока на 1-е/2-е/3-е значимо выше среднего по призовой зоне; основная масса кэшей — всё равно мин-кэши. Общий ITM ниже, чем у PrimeDope (~17% при ROI 20% против ~21%), зато каждый кэш взвешен корректно. Глубина стриков, отмазка и форма стриков ложатся в реальность.",
   },
+  "chart.hideJackpots": {
+    en: "hide jackpots",
+    ru: "скрыть джекпоты",
+  },
+  "chart.hideJackpots.title": {
+    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. A handful of jackpot samples stretch the distribution x-axis and the trajectory y-axis into unreadable territory even though they're statistically rare.",
+    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. Пара джекпотных сэмплов растягивает ось X гистограммы и ось Y траектории так, что остальной график становится нечитаемым, хотя статистически такие раны редки.",
+  },
   "chart.trajectory.withRakeback": {
     en: "with RB",
     ru: "с РБ",
@@ -1913,8 +1921,8 @@ export const DICT = {
   "cash.stats.sdFinalBb": { en: "SD final (BB)", ru: "SD финала (BB)" },
   "cash.stats.probLoss": { en: "P(loss)", ru: "P(убыток)" },
   "cash.stats.probSub100Bb": {
-    en: "P(≤ -100 BB)",
-    ru: "P(≤ -100 BB)",
+    en: "P(min ≤ -100 BB)",
+    ru: "P(min ≤ -100 BB)",
   },
   "cash.stats.recoveryUnrecoveredShare": {
     en: "Unrecovered share",

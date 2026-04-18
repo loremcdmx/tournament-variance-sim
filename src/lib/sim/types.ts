@@ -476,6 +476,15 @@ export interface SimulationResult {
    * rows only.
    */
   rowProfits: Float64Array;
+  /**
+   * Per-sample 0/1 flag — 1 if at least one mystery / mystery-royale
+   * envelope draw in that sample hit the jackpot threshold
+   * (ratio ≥ 100× mean envelope). Length === samples, regardless of
+   * schedule contents; schedules without any mystery row leave it all
+   * zeroes. The UI uses this to hide jackpot runs from scale-sensitive
+   * charts (histogram, trajectory) when the "hide jackpots" toggle is on.
+   */
+  jackpotMask: Uint8Array;
   histogram: { binEdges: number[]; counts: number[] };
 
   samplePaths: {

@@ -366,6 +366,7 @@ export function useSimulation() {
             out.push(sh.breakevenStreakCounts.buffer);
             out.push(sh.cashlessStreakCounts.buffer);
             out.push(sh.rowProfits.buffer);
+            out.push(sh.jackpotMask.buffer);
             out.push(sh.hiResCheckpointIdx.buffer);
             out.push(sh.hiResBestPath.buffer);
             out.push(sh.hiResWorstPath.buffer);

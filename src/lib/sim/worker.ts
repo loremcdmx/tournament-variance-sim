@@ -103,6 +103,7 @@ function collectResultTransfers(r: SimulationResult): Transferable[] {
   const out: Transferable[] = [];
   out.push(r.finalProfits.buffer);
   out.push(r.rowProfits.buffer);
+  out.push(r.jackpotMask.buffer);
   out.push(r.samplePaths.best.buffer);
   out.push(r.samplePaths.worst.buffer);
   for (const p of r.samplePaths.paths) out.push(p.buffer);
@@ -136,6 +137,7 @@ function collectShardTransfers(shard: RawShard): Transferable[] {
     shard.breakevenStreakCounts.buffer,
     shard.cashlessStreakCounts.buffer,
     shard.rowProfits.buffer,
+    shard.jackpotMask.buffer,
     shard.hiResCheckpointIdx.buffer,
     shard.hiResBestPath.buffer,
     shard.hiResWorstPath.buffer,

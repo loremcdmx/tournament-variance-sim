@@ -51,6 +51,12 @@ const HEAT_Z_RANGE = 3;
 // Precomputed scalar for z → bin index: (HEAT_BIN_COUNT - 1) / (2 · RANGE).
 const HEAT_BIN_SCALE = (HEAT_BIN_COUNT - 1) / (2 * HEAT_Z_RANGE);
 
+// Per-KO envelope ratio at which a draw is tagged as a jackpot in
+// `jackpotMask`. Matches the UI threshold (FinishPMFPreview's
+// `jackpotShareFrac`) so the "runs with jackpots" toggle uses the same
+// definition the preview stats advertise.
+export const JACKPOT_THRESHOLD = 100;
+
 // ---- PTRS Poisson sampler (Hörmann 1993) ----------------------------------
 // Unbiased, ~1.13 expected iterations, valid for λ ≥ 10. Replaces the Gaussian
 // approximation which introduces skewness bias at moderate λ.
@@ -1574,6 +1580,7 @@ export function buildResult(
     calibrationMode,
     finalProfits,
     rowProfits,
+    jackpotMask: shard.jackpotMask,
     histogram,
     drawdownHistogram,
     longestBreakevenHistogram,
@@ -1761,7 +1768,7 @@ function histogramFromCounts(
   return { binEdges, counts };
 }
 
-function histogramOf(
+export function histogramOf(
   arr: Float64Array,
   bins: number,
   nonNegative = false,
@@ -1853,6 +1860,12 @@ export interface RawShard {
    *  zero entries for rows without bounty configuration. Used by the
    *  decomposition chart to split the mean bar into cash vs. bounty. */
   rowBountyProfits: Float64Array;
+  /** Per-sample 0/1 flag: 1 if any mystery-royale tier draw or mystery
+   *  log-normal envelope in this sample had ratio ≥ JACKPOT_THRESHOLD.
+   *  Observational side-effect of existing bounty draws (no extra RNG),
+   *  so it preserves the seed→result determinism contract. Empty (length
+   *  0) for schedules without mystery rows — callers must null-check. */
+  jackpotMask: Uint8Array;
   ruinedCount: number;
   /** Hi-res capture grid (K'+1 points). Shared across all hi-res buffers
    *  in this shard. */
@@ -1952,6 +1965,7 @@ export function simulateShard(
   const recoveryLengths = new Int32Array(shardSize);
   const rowProfits = new Float64Array(shardSize * numRows);
   const rowBountyProfits = new Float64Array(shardSize * numRows);
+  const jackpotMask = new Uint8Array(shardSize);
   // Per-length streak counters. Cashless is indexed by integer tournament
   // count so it's allocated at N+1. Breakeven is indexed by chord-grid
   // position (0..K) to keep the downstream histogram aligned to the
@@ -2218,13 +2232,17 @@ export function simulateShard(
                     const rT = bRng() * 10;
                     const iT = rT | 0;
                     const pick = rT - iT < brAliasProb![iT] ? iT : brAliasIdx![iT];
-                    bountyDraw += perKO * brRatios[pick];
+                    const ratio = brRatios[pick];
+                    if (ratio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+                    bountyDraw += perKO * ratio;
                   }
                 } else if (mystVar > 0) {
                   const perKO = mean * bkmInv![place];
                   bountyDraw = 0;
                   for (let j = 0; j < k; j++) {
-                    bountyDraw += perKO * Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                    const ratio = Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                    if (ratio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+                    bountyDraw += perKO * ratio;
                   }
                 }
               }
@@ -2272,13 +2290,17 @@ export function simulateShard(
                       const rT = bRng() * 10;
                       const iT = rT | 0;
                       const pick = rT - iT < brAliasProb![iT] ? iT : brAliasIdx![iT];
-                      bountyDraw += perKO * brRatios[pick];
+                      const ratio = brRatios[pick];
+                      if (ratio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+                      bountyDraw += perKO * ratio;
                     }
                   } else if (mystVar > 0) {
                     const perKO = mean * bkmInv![place];
                     bountyDraw = 0;
                     for (let j = 0; j < k; j++) {
-                      bountyDraw += perKO * Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                      const ratio = Math.exp(mystSig * gaussB() - 0.5 * mystVar);
+                      if (ratio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+                      bountyDraw += perKO * ratio;
                     }
                   }
                 }
@@ -2426,6 +2448,7 @@ export function simulateShard(
     cashlessStreakCounts,
     rowProfits,
     rowBountyProfits,
+    jackpotMask,
     ruinedCount,
     hiResCheckpointIdx: hiCheckpointIdx,
     hiResPaths,
@@ -2467,6 +2490,7 @@ export function mergeShards(
   const recoveryLengths = new Int32Array(S);
   const rowProfits = new Float64Array(S * numRows);
   const rowBountyProfits = new Float64Array(S * numRows);
+  const jackpotMask = new Uint8Array(S);
   const beCountsLen = sorted[0].breakevenStreakCounts.length;
   const clCountsLen = sorted[0].cashlessStreakCounts.length;
   const breakevenStreakCounts = new Int32Array(beCountsLen);
@@ -2483,6 +2507,7 @@ export function mergeShards(
     pathMatrix.set(sh.pathMatrix, sh.sStart * K1);
     rowProfits.set(sh.rowProfits, sh.sStart * numRows);
     rowBountyProfits.set(sh.rowBountyProfits, sh.sStart * numRows);
+    jackpotMask.set(sh.jackpotMask, sh.sStart);
     for (let i = 0; i < beCountsLen; i++) {
       breakevenStreakCounts[i] += sh.breakevenStreakCounts[i];
     }
@@ -2534,6 +2559,7 @@ export function mergeShards(
     cashlessStreakCounts,
     rowProfits,
     rowBountyProfits,
+    jackpotMask,
     ruinedCount,
     hiResCheckpointIdx,
     hiResPaths,

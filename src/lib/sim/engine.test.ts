@@ -580,3 +580,58 @@ describe("compile contract — analytic per-bullet mean hits (1+ROI)·singleCost
     }
   }
 });
+
+describe("jackpotMask", () => {
+  // Schedule that produces a lot of envelope draws so the 1e-6 tier-0 ratio
+  // is reliably hit inside a moderate sample budget. Battle-royale tier 0
+  // is 10000× at ~6e-7 frequency, so with ~scheduleRepeats passes × samples
+  // × finalTable-size KO draws we expect tens of hits.
+  const mbrInput: SimulationInput = {
+    schedule: [
+      {
+        id: "mbr",
+        label: "mbr",
+        players: 180,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.15,
+        payoutStructure: "battle-royale",
+        bountyFraction: 0.5,
+        mysteryBountyVariance: 1.8,
+        count: 1,
+      },
+    ],
+    scheduleRepeats: 300,
+    samples: 2000,
+    bankroll: 1000,
+    seed: 31337,
+    finishModel: { id: "power-law" },
+  };
+
+  it("is identical across two runs with the same seed", () => {
+    const a = runSimulation(mbrInput);
+    const b = runSimulation(mbrInput);
+    expect(a.jackpotMask.length).toBe(a.samples);
+    expect(b.jackpotMask.length).toBe(b.samples);
+    for (let i = 0; i < a.jackpotMask.length; i++) {
+      expect(a.jackpotMask[i]).toBe(b.jackpotMask[i]);
+    }
+  });
+
+  it("fires for at least one sample in a BR schedule with enough draws", () => {
+    const r = runSimulation(mbrInput);
+    let hits = 0;
+    for (let i = 0; i < r.jackpotMask.length; i++) hits += r.jackpotMask[i];
+    expect(hits).toBeGreaterThan(0);
+  });
+
+  it("is all zeros for a freezeout schedule (no bounty draws)", () => {
+    const freeze = runSimulation(baseInput());
+    expect(freeze.jackpotMask.length).toBe(freeze.samples);
+    let hits = 0;
+    for (let i = 0; i < freeze.jackpotMask.length; i++) {
+      hits += freeze.jackpotMask[i];
+    }
+    expect(hits).toBe(0);
+  });
+});
