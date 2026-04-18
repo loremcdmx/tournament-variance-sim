@@ -1525,13 +1525,18 @@ function computeYRange(
   const max = (a: Float64Array | readonly number[]) => {
     for (const v of a) if (v > hi) hi = v;
   };
+  const wantHi =
+    extremeStyles.realBest.enabled || extremeStyles.aggBest.enabled;
+  const wantLo =
+    extremeStyles.realWorst.enabled || extremeStyles.aggWorst.enabled;
   for (const r of results) {
-    // p0015/p9985 are rendered unconditionally (bandExtreme), so they must
-    // be in the Y-range even when the user hides all extremes and keeps the
-    // path count low — otherwise the outer band pokes above the chart top
-    // on heavy-tail formats without any hover-able series responsible.
-    min(r.envelopes.p0015);
-    max(r.envelopes.p9985);
+    // p0015/p9985 bandExtreme is drawn at ~10% opacity; on heavy-tail formats
+    // it extends far past any visible path. Only include it in the Y-range
+    // on the side where the user has actually toggled on a best/worst series,
+    // otherwise disabling all extremes leaves no visible line up there yet Y
+    // still stretched into empty space.
+    if (wantHi) max(r.envelopes.p9985);
+    if (wantLo) min(r.envelopes.p0015);
     min(r.envelopes.p025);
     max(r.envelopes.p975);
     min(r.envelopes.mean);
