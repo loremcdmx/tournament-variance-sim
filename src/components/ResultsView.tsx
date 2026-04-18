@@ -645,6 +645,28 @@ function TrajectoryPlot({
         onCursor={setCursor}
         onPlotReady={handlePlotReady}
       />
+      {visibleRuns > 0 && (
+        <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-2 rounded border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/70 px-2 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)] backdrop-blur">
+          <span>{t("chart.traj.hoverHint.lead")}</span>
+          <span className="flex items-center gap-1">
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{
+                background: "rgba(248,113,113,1)",
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
+              }}
+            />
+            <span>{t("chart.traj.hoverHint.peak")}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span
+              className="inline-block h-[3px] w-3 rounded-sm"
+              style={{ background: "rgba(248,113,113,0.95)" }}
+            />
+            <span>{t("chart.traj.hoverHint.maxDd")}</span>
+          </span>
+        </div>
+      )}
       {cursor && idx != null && nearest && (
         <div
           className="pointer-events-none z-10 mt-2 min-w-[220px] overflow-hidden rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 text-[11px] shadow-xl backdrop-blur"

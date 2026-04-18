@@ -948,6 +948,18 @@ export const DICT = {
     en: "reference line for the expected ROI",
     ru: "опорная линия ожидаемого ROI",
   },
+  "chart.traj.hoverHint.lead": {
+    en: "Hover a run:",
+    ru: "Наведи на ран:",
+  },
+  "chart.traj.hoverHint.peak": {
+    en: "peak",
+    ru: "пик",
+  },
+  "chart.traj.hoverHint.maxDd": {
+    en: "max drawdown",
+    ru: "макс. просадка",
+  },
   "chart.traj.extreme.realBest": {
     en: "real best run",
     ru: "реал лучший ран",
@@ -1527,6 +1539,18 @@ export const DICT = {
   "preview.evSplit": { en: "Gross EV", ru: "Брутто EV" },
   "preview.evSplit.cash": { en: "cash", ru: "кеш" },
   "preview.evSplit.bounty": { en: "bounty", ru: "ноки" },
+  "preview.evSplit.bountyRegular": {
+    en: "bounty (regular)",
+    ru: "ноки (обычные)",
+  },
+  "preview.evSplit.bountyJackpot": {
+    en: "jackpot (≥{x}×)",
+    ru: "джекпот (≥{x}×)",
+  },
+  "preview.evSplit.jackpotTip": {
+    en: "Expected $ per entry from per-KO envelope draws that pay ≥{x}× the mean bounty. Mystery Royale reads GG's published 10-tier table; plain Mystery approximates via the log-normal tail. PKO and freezeouts effectively zero.",
+    ru: "Ожидаемые $ с входа от тех per-KO конвертов, которые платят ≥{x}× средней головы. Mystery Royale читает опубликованную GG 10-тировую таблицу; обычный Mystery — через хвост лог-нормали. PKO и фризы фактически 0.",
+  },
   "preview.hover.places": { en: "places", ru: "места" },
   "preview.hover.hitRate": { en: "Hit rate", ru: "Как часто" },
   "preview.hover.oddsIn": { en: "in", ru: "из" },

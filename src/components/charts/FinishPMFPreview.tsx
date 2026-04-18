@@ -6,6 +6,7 @@ import {
   calibrateAlpha,
   calibrateShelledItm,
 } from "@/lib/sim/finishModel";
+import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
 import { useT } from "@/lib/i18n/LocaleProvider";
@@ -193,30 +194,63 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
             </div>
           </div>
         </div>
-        {stats.bountyEvPerEntry > 0 && (
-          <div className="mt-2 flex items-center justify-end gap-2 border-t border-[color:var(--color-border)]/60 pt-1.5 text-[10px] text-[color:var(--color-fg-dim)]">
-            <span className="uppercase tracking-wider text-[9px]">
-              {t("preview.evSplit")}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-1.5 w-1.5 rounded-sm bg-[color:var(--color-accent)]" />
-              <span>{t("preview.evSplit.cash")}</span>
-              <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-                {moneyFmt(stats.cashEvPerEntry)}
+        {stats.bountyEvPerEntry > 0 && (() => {
+          const jp = stats.jackpotBountyEvPerEntry;
+          const hasJp = jp > 0 && jp / stats.bountyEvPerEntry > 0.001;
+          const regularBounty = stats.bountyEvPerEntry - jp;
+          const thresholdStr = String(stats.jackpotThreshold);
+          const jpLabel = t("preview.evSplit.bountyJackpot").replace(
+            "{x}",
+            thresholdStr,
+          );
+          const jpTip = t("preview.evSplit.jackpotTip").replace(
+            "{x}",
+            thresholdStr,
+          );
+          return (
+            <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-[color:var(--color-border)]/60 pt-1.5 text-[10px] text-[color:var(--color-fg-dim)]">
+              <span className="uppercase tracking-wider text-[9px]">
+                {t("preview.evSplit")}
               </span>
-            </span>
-            <span className="flex items-center gap-1">
-              <span
-                className="inline-block h-1.5 w-1.5 rounded-sm"
-                style={{ background: "hsl(175, 72%, 55%)" }}
-              />
-              <span>{t("preview.evSplit.bounty")}</span>
-              <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-                {moneyFmt(stats.bountyEvPerEntry)}
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-[color:var(--color-accent)]" />
+                <span>{t("preview.evSplit.cash")}</span>
+                <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+                  {moneyFmt(stats.cashEvPerEntry)}
+                </span>
               </span>
-            </span>
-          </div>
-        )}
+              <span className="flex items-center gap-1">
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-sm"
+                  style={{ background: "hsl(175, 72%, 55%)" }}
+                />
+                <span>
+                  {hasJp
+                    ? t("preview.evSplit.bountyRegular")
+                    : t("preview.evSplit.bounty")}
+                </span>
+                <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+                  {moneyFmt(hasJp ? regularBounty : stats.bountyEvPerEntry)}
+                </span>
+              </span>
+              {hasJp && (
+                <span
+                  className="flex items-center gap-1"
+                  title={jpTip}
+                >
+                  <span
+                    className="inline-block h-1.5 w-1.5 rounded-sm"
+                    style={{ background: "hsl(45, 95%, 60%)" }}
+                  />
+                  <span>{jpLabel}</span>
+                  <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
+                    {moneyFmt(jp)}
+                  </span>
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Hero: top-heaviness — the point of the whole widget */}
@@ -856,6 +890,14 @@ interface RowStats {
   cashEvPerEntry: number;
   /** Gross bounty EV per entry — sum over places of pmf·bountyByPlace. */
   bountyEvPerEntry: number;
+  /** Portion of bountyEvPerEntry coming from per-KO draws with ratio ≥
+   *  JACKPOT_THRESHOLD × mean. Zero for PKO/freezeouts and tiny for mystery
+   *  with σ²<1. Only meaningful on mystery / mystery-royale where the envelope
+   *  distribution has a real jackpot tier. */
+  jackpotBountyEvPerEntry: number;
+  /** Ratio threshold (multiples of mean bounty) used to classify "jackpot"
+   *  draws — same value for all rows so users compare apples to apples. */
+  jackpotThreshold: number;
   bountyShare: number;
   progressivePko: boolean;
   topPlaces: number;
@@ -911,6 +953,29 @@ interface PositionRow {
   /** Per-tier place range (1-indexed, inclusive). Drives the tiny label suffix. */
   posLo: number;
   posHi: number;
+}
+
+/** Minimum ratio (× mean bounty) that counts a per-KO draw as a "jackpot"
+ *  for the microscope widget split. Chosen so only the deep tail counts —
+ *  at 100× buy-in it captures the top 1-3 GG BR tiers (e.g. 10000×/1000×/100×
+ *  at the $1 profile) and gives essentially 0 for PKO/thin log-normal. */
+const JACKPOT_THRESHOLD = 100;
+
+/** Abramowitz & Stegun 7.1.26 approximation of the standard normal CDF
+ *  Φ(x). Max error ≈ 1.5e-7 — more than enough for a UI readout. */
+function stdNormalCdf(x: number): number {
+  const sign = x < 0 ? -1 : 1;
+  const a = Math.abs(x) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * a);
+  const y =
+    1 -
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) *
+      t +
+      0.254829592) *
+      t *
+      Math.exp(-a * a);
+  const erf = sign * y;
+  return 0.5 * (1 + erf);
 }
 
 /**
@@ -1025,6 +1090,28 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     cashEv += pmf[i] * prizeByPlace[i];
     bountyEv += pmf[i] * bountyByPlace[i];
   }
+  // Jackpot share of bounty EV — fraction of bountyEv that comes from
+  // per-KO draws with ratio ≥ JACKPOT_THRESHOLD × mean. Derived from the
+  // envelope distribution, independent of place (every KO is an iid draw).
+  // BR reads the discrete 10-tier GG table; mystery uses log-normal with
+  // E[Y]=1 → E[Y·1{Y>R}] = Φ((σ²/2 − ln R)/σ). PKO/freezeouts: thin tail, 0.
+  let jackpotShareFrac = 0;
+  if (bountyEv > 0) {
+    if (row.payoutStructure === "battle-royale") {
+      const { ratios, probs } = makeBrTierSampler(row.buyIn);
+      for (let i = 0; i < ratios.length; i++) {
+        if (ratios[i] >= JACKPOT_THRESHOLD) {
+          jackpotShareFrac += probs[i] * ratios[i];
+        }
+      }
+    } else if ((row.mysteryBountyVariance ?? 0) > 0) {
+      const sigma2 = row.mysteryBountyVariance!;
+      const sigma = Math.sqrt(sigma2);
+      const d = (sigma2 / 2 - Math.log(JACKPOT_THRESHOLD)) / sigma;
+      jackpotShareFrac = stdNormalCdf(d);
+    }
+  }
+  const jackpotBountyEv = bountyEv * jackpotShareFrac;
   const payoutVar = Math.max(0, totalEv2 - totalEv * totalEv);
   const payoutStd = Math.sqrt(payoutVar);
   const cv = totalEv > 1e-9 ? payoutStd / totalEv : 0;
@@ -1226,6 +1313,8 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     cv,
     cashEvPerEntry: cashEv,
     bountyEvPerEntry: bountyEv,
+    jackpotBountyEvPerEntry: jackpotBountyEv,
+    jackpotThreshold: JACKPOT_THRESHOLD,
     bountyShare: bountyShareOfPayout,
     progressivePko: bountyFraction > 0,
     topPlaces: Math.max(1, Math.ceil(N * 0.01)),
