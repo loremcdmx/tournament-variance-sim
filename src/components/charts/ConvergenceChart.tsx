@@ -91,7 +91,8 @@ type ConvergenceFormat =
   | "pko"
   | "mystery"
   | "mystery-royale"
-  | "mix";
+  | "mix"
+  | "exact";
 
 type RowFormat = "freeze" | "pko" | "mystery" | "mystery-royale";
 
@@ -251,16 +252,11 @@ export function ConvergenceChart({ schedule }: Props) {
   const [roiOverride, setRoiOverride] = useState<number | null>(null);
   const baselineRoi = baseline.roi;
 
-  // Mode: "avg" (original behaviour — one σ at weighted mean AFS/ROI) vs
-  // "exact" (per-row σ, combined as Σ w_r·σ²_r over the exact schedule).
-  // Exact mode is only meaningful when a schedule is loaded; falls back to
-  // "avg" otherwise.
   const hasSchedule = !!schedule && schedule.length > 0;
-  const [mode, setMode] = useState<"avg" | "exact">("avg");
-  const effectiveMode: "avg" | "exact" =
-    mode === "exact" && hasSchedule ? "exact" : "avg";
 
   // Format override. null → auto-pick from schedule composition.
+  // "exact" is a first-class tab that computes per-row σ over the schedule
+  // instead of averaging across AFS/ROI. Disabled when no schedule is loaded.
   const [formatOverride, setFormatOverride] =
     useState<ConvergenceFormat | null>(null);
   const baselineFormat: ConvergenceFormat =
@@ -273,7 +269,10 @@ export function ConvergenceChart({ schedule }: Props) {
           : baseline.freezeShare >= 0.99
             ? "freeze"
             : "mix";
-  const format = formatOverride ?? baselineFormat;
+  const rawFormat = formatOverride ?? baselineFormat;
+  const format: ConvergenceFormat =
+    rawFormat === "exact" && !hasSchedule ? "mix" : rawFormat;
+  const effectiveMode: "avg" | "exact" = format === "exact" ? "exact" : "avg";
 
   // Format-dependent ROI bounds. MBR clips to ±5 % (reg band); others keep
   // the default wide range. effectiveRoi is clamped on read so user's
@@ -531,68 +530,39 @@ export function ConvergenceChart({ schedule }: Props) {
       labelKey: "chart.convergence.format.mystery-royale",
     },
     { id: "mix", labelKey: "chart.convergence.format.mix" },
+    { id: "exact", labelKey: "chart.convergence.format.exact" },
   ];
 
   return (
     <div className="overflow-x-auto">
       <div
-        className="mb-3 flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]"
-        title={t("chart.convergence.mode.hint")}
-      >
-        <div className="flex flex-1 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-0.5">
-          {(["avg", "exact"] as const).map((m) => {
-            const active = effectiveMode === m;
-            const disabled = m === "exact" && !hasSchedule;
-            return (
-              <button
-                key={m}
-                type="button"
-                disabled={disabled}
-                onClick={() => setMode(m)}
-                className={`flex-1 rounded px-2 py-1 text-[11px] uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                  active
-                    ? "bg-emerald-500/20 text-emerald-200"
-                    : "text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
-                }`}
-              >
-                {t(
-                  m === "avg"
-                    ? "chart.convergence.mode.averaged"
-                    : "chart.convergence.mode.exact",
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div
-        className={`mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)] ${
-          effectiveMode === "exact" ? "opacity-50" : ""
-        }`}
+        className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
         title={
-          effectiveMode === "exact"
-            ? t("chart.convergence.mode.hint")
-            : undefined
+          effectiveMode === "exact" ? t("chart.convergence.mode.hint") : undefined
         }
       >
         <div className="flex flex-1 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-0.5">
           {FORMATS.map((f) => {
             const active = format === f.id;
+            const disabled = f.id === "exact" && !hasSchedule;
             return (
               <button
                 key={f.id}
                 type="button"
+                disabled={disabled}
                 onClick={() => {
                   // Pin current AFS / ROI / CI so switching format never
-                  // visually shifts them — lets the user A/B the three σ
-                  // tables at the same slider positions.
+                  // visually shifts them — lets the user A/B the σ tables
+                  // at the same slider positions.
                   if (afsPosOverride == null) setAfsPosOverride(afsPos);
                   if (roiOverride == null) setRoiOverride(effectiveRoi);
                   setFormatOverride(f.id);
                 }}
-                className={`flex-1 rounded px-2 py-1 text-[11px] uppercase tracking-wider transition ${
+                className={`flex-1 rounded px-2 py-1 text-[11px] uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-40 ${
                   active
-                    ? "bg-fuchsia-500/20 text-fuchsia-200"
+                    ? f.id === "exact"
+                      ? "bg-emerald-500/20 text-emerald-200"
+                      : "bg-fuchsia-500/20 text-fuchsia-200"
                     : "text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
                 }`}
               >
@@ -638,6 +608,7 @@ export function ConvergenceChart({ schedule }: Props) {
           />
         </div>
       )}
+      {effectiveMode !== "exact" && (
       <div
         className={`mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)] ${
           afsLocked ? "opacity-60" : ""
@@ -685,6 +656,8 @@ export function ConvergenceChart({ schedule }: Props) {
           ↺
         </button>
       </div>
+      )}
+      {effectiveMode !== "exact" && (
       <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-amber-400/80">
           ROI
@@ -725,6 +698,7 @@ export function ConvergenceChart({ schedule }: Props) {
           ↺
         </button>
       </div>
+      )}
       <div
         className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
         title={t("chart.convergence.rake.title")}

@@ -1046,6 +1046,7 @@ export const DICT = {
     ru: "Батл Рояль",
   },
   "chart.convergence.format.mix": { en: "Mix", ru: "Микс" },
+  "chart.convergence.format.exact": { en: "Exact", ru: "Точно" },
   "chart.convergence.mode.averaged": { en: "Averaged", ru: "Усреднённо" },
   "chart.convergence.mode.exact": { en: "Exact schedule", ru: "Точное расписание" },
   "chart.convergence.mode.hint": {
