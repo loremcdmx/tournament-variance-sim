@@ -216,18 +216,15 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 
 ---
 
-## ✅ Дожимать перед prod-merge (лежит на `dev`)
+## ✅ Закрыто (ранее «дожимать перед prod-merge»)
 
-Эти фиксы уже в `dev`, но **откачены** из prod 2026-04-17 после «хватит пушить без спросу». `main` на `6e96c20`.
+Проверено по коду 2026-04-18 — оба пункта уже в prod-ready состоянии.
 
-### #124 · Trim best/worst percentile sliders
-Двойной слайдер 0..40% слева от `visibleRuns`. Фильтрует paths по quantile финального профита; `computeYRange` гейтит envelope.
-**Файлы:** `ResultsView.tsx` (+ `TrimPctSlider` внутри), dict keys `runs.trim.best/worst`.
-**Перед prod-merge:** вынести под advanced-mode toggle — дефолтный UI без этих слайдеров.
+### #124 · Trim best/worst percentile sliders — **DONE**
+Загейтено под advanced-mode: `{advanced && <TrimPctSlider />}` в `ResultsView.tsx:2037`; `effectiveTrimTopPct/BotPct = advanced ? v : 0` (`:1921-1922`). В дефолтном UI слайдеры не рендерятся и не влияют на расчёт.
 
-### #123 · Convergence widget rename
-Табу «точно» / «Exact» → «расписание» / «Schedule». Семантика точнее: вкладка считает σ по конкретному расписанию, не по усреднённой формуле.
-**Файлы:** `ConvergenceChart.tsx` (format flag `"exact"` → `"schedule"` либо только UI-label), `dict.ts` keys `chart.convergence.format.{exact,avg}`.
+### #123 · Convergence widget rename — **DONE**
+`chart.convergence.format.exact` → UI-label `"Your schedule" / "ТВОЁ РАСПИСАНИЕ"` в `dict.ts:1066`. Внутренний format ID остался `"exact"` (BACKLOG разрешал этот вариант).
 
 ---
 
