@@ -31,6 +31,13 @@ const ROI_MAX_DEFAULT = 1.00;
 const ROI_MIN_MBR = -0.10;
 const ROI_MAX_MBR = 0.10;
 
+type MixTuple = [number, number, number];
+function normalizeMix(m: MixTuple): MixTuple {
+  const s = m[0] + m[1] + m[2];
+  if (s <= 1e-9) return [1 / 3, 1 / 3, 1 / 3];
+  return [m[0] / s, m[1] / s, m[2] / s];
+}
+
 // σ_ROI(field, roi) = (C0 + C1·roi) · field^β — pooled log-log fit across
 // an 18-point field sweep (50..50 000), 500 tourneys × 120 k samples.
 // Freeze/PKO/Mystery fit at rake 10 %; Mystery Battle Royale at rake 8 %
@@ -296,26 +303,22 @@ export function ConvergenceChart({ schedule }: Props) {
   // 3-way mix: [freeze, pko, mystery], each 0..1, sum = 1.
   // null → use schedule-derived baseline. Mystery in the mix uses the
   // Mystery (not Battle Royale) σ fit — BR is a distinct format selection.
-  type MixTuple = [number, number, number];
-  const normalizeMix = (m: MixTuple): MixTuple => {
-    const s = m[0] + m[1] + m[2];
-    if (s <= 1e-9) return [1 / 3, 1 / 3, 1 / 3];
-    return [m[0] / s, m[1] / s, m[2] / s];
-  };
   const [mixOverride, setMixOverride] = useState<MixTuple | null>(null);
-  const baselineMix: MixTuple = normalizeMix([
-    baseline.freezeShare,
-    baseline.pkoShare,
-    baseline.mysteryShare,
-  ]);
-  const mix: MixTuple =
-    format === "pko"
-      ? [0, 1, 0]
-      : format === "freeze"
-        ? [1, 0, 0]
-        : format === "mystery"
-          ? [0, 0, 1]
-          : (mixOverride ?? baselineMix);
+  const baselineMix = useMemo<MixTuple>(
+    () => normalizeMix([baseline.freezeShare, baseline.pkoShare, baseline.mysteryShare]),
+    [baseline.freezeShare, baseline.pkoShare, baseline.mysteryShare],
+  );
+  const mix = useMemo<MixTuple>(
+    () =>
+      format === "pko"
+        ? [0, 1, 0]
+        : format === "freeze"
+          ? [1, 0, 0]
+          : format === "mystery"
+            ? [0, 0, 1]
+            : (mixOverride ?? baselineMix),
+    [format, mixOverride, baselineMix],
+  );
   // When one mix component is edited, distribute the delta across the other
   // two in proportion to their current values. If both others are zero,
   // split the remainder evenly.

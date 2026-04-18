@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
+import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
@@ -142,6 +143,7 @@ export function ControlsPanel({
   const [barVisible, setBarVisible] = useState(false);
   useEffect(() => {
     if (running) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors external run state onto UI mount flag; deliberate sync, not derived.
       setBarVisible(true);
       return undefined;
     }
@@ -164,57 +166,7 @@ export function ControlsPanel({
   // real data arrives. Projection needs progress ≥ 0.03 to avoid a huge ETA
   // swing from the very first checkpoint message.
   const BUILD_START = 0.92;
-  const smoothedEta = useRef<number | null>(null);
-  const lastSmoothAt = useRef<number | null>(null);
-  const buildPhaseAnchor = useRef<{ eta: number } | null>(null);
-  if (!running) {
-    smoothedEta.current = null;
-    lastSmoothAt.current = null;
-    buildPhaseAnchor.current = null;
-  }
-  const remainingMs = (() => {
-    if (!running || runElapsedMs == null) return null;
-    const elapsed = runElapsedMs;
-
-    if (progress >= BUILD_START) {
-      if (buildPhaseAnchor.current == null) {
-        // Build phase is ~12 % of total wall time; projection-ETA carried in
-        // from shard phase can be wildly higher on short runs where the last
-        // projection was made near progress≈0.1. Cap the seed so the bar
-        // doesn't stall at 88 % waiting for a stale ETA to drain.
-        const carried = smoothedEta.current ?? Math.max(200, elapsed * 0.1);
-        const cap = Math.max(200, elapsed * 0.18);
-        buildPhaseAnchor.current = { eta: Math.min(carried, cap) };
-      }
-      const buildSpan = 0.995 - BUILD_START;
-      const frac = Math.min(1, Math.max(0, (progress - BUILD_START) / buildSpan));
-      return Math.max(0, buildPhaseAnchor.current.eta * (1 - frac));
-    }
-
-    const projectedEta =
-      progress > 0.03 ? Math.max(0, elapsed / progress - elapsed) : null;
-    const bootstrapEta =
-      estimatedMs != null && estimatedMs > 0
-        ? Math.max(0, estimatedMs - elapsed)
-        : null;
-
-    let raw: number | null;
-    if (projectedEta != null && bootstrapEta != null) {
-      const w = Math.min(1, Math.max(0, progress / 0.15));
-      raw = (1 - w) * bootstrapEta + w * projectedEta;
-    } else {
-      raw = projectedEta ?? bootstrapEta;
-    }
-    if (raw == null) return null;
-
-    const now = performance.now();
-    const dt = lastSmoothAt.current == null ? 250 : now - lastSmoothAt.current;
-    lastSmoothAt.current = now;
-    const alpha = 1 - Math.exp(-dt / 800);
-    if (smoothedEta.current == null) smoothedEta.current = raw;
-    else smoothedEta.current = alpha * raw + (1 - alpha) * smoothedEta.current;
-    return smoothedEta.current;
-  })();
+  const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs, buildStart: BUILD_START });
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
@@ -346,6 +298,11 @@ export function ControlsPanel({
             <option value="pko-realdata-tilt">PKO / real-data — tilt (α)</option>
             <option value="powerlaw-realdata-influenced">Power-law — real-data α</option>
           </select>
+          {!finishModelSupportsTargetRoi(value.finishModelId) && (
+            <div className="mt-1 text-[10px] uppercase tracking-wider text-amber-400/80">
+              {t("controls.finishModel.referenceShape")}
+            </div>
+          )}
         </Field>
         <Field label={t("controls.alphaOverride")} hint={t("help.alphaOverride")}>
           <input
@@ -624,6 +581,82 @@ function fmtMoneyCompact(v: number): string {
   if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
   if (abs === 0) return "$0";
   return `${sign}$${abs.toFixed(0)}`;
+}
+
+function useRemainingMs(opts: {
+  running: boolean;
+  runElapsedMs: number | null;
+  progress: number;
+  estimatedMs: number | null | undefined;
+  buildStart: number;
+}): number | null {
+  const { running, runElapsedMs, progress, estimatedMs, buildStart } = opts;
+  const [smoothed, setSmoothed] = useState<number | null>(null);
+  const smoothedRef = useRef<number | null>(null);
+  const lastSmoothAt = useRef<number | null>(null);
+  const buildPhaseAnchor = useRef<{ eta: number } | null>(null);
+
+  // Two effects below drive a time-based ETA smoother. The smoothed value is
+  // inherently stateful (EMA across progress ticks) but needs to be read in
+  // render, so it lives in useState. The scoped setState-in-effect disables
+  // are deliberate: we're mirroring an external signal (elapsed wall time)
+  // onto React state — not computing a pure derivation of props.
+  useEffect(() => {
+    if (running) return;
+    smoothedRef.current = null;
+    lastSmoothAt.current = null;
+    buildPhaseAnchor.current = null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets ETA display when run ends; sync with external run lifecycle.
+    setSmoothed(null);
+  }, [running]);
+
+  useEffect(() => {
+    if (!running || runElapsedMs == null) return;
+    const elapsed = runElapsedMs;
+
+    if (progress >= buildStart) {
+      if (buildPhaseAnchor.current == null) {
+        const carried = smoothedRef.current ?? Math.max(200, elapsed * 0.1);
+        const cap = Math.max(200, elapsed * 0.18);
+        buildPhaseAnchor.current = { eta: Math.min(carried, cap) };
+      }
+      const buildSpan = 0.995 - buildStart;
+      const frac = Math.min(1, Math.max(0, (progress - buildStart) / buildSpan));
+      const next = Math.max(0, buildPhaseAnchor.current.eta * (1 - frac));
+      smoothedRef.current = next;
+      setSmoothed(next);
+      return;
+    }
+
+    const projectedEta =
+      progress > 0.03 ? Math.max(0, elapsed / progress - elapsed) : null;
+    const bootstrapEta =
+      estimatedMs != null && estimatedMs > 0
+        ? Math.max(0, estimatedMs - elapsed)
+        : null;
+
+    let raw: number | null;
+    if (projectedEta != null && bootstrapEta != null) {
+      const w = Math.min(1, Math.max(0, progress / 0.15));
+      raw = (1 - w) * bootstrapEta + w * projectedEta;
+    } else {
+      raw = projectedEta ?? bootstrapEta;
+    }
+    if (raw == null) return;
+
+    const now = performance.now();
+    const dt = lastSmoothAt.current == null ? 250 : now - lastSmoothAt.current;
+    lastSmoothAt.current = now;
+    const alpha = 1 - Math.exp(-dt / 800);
+    const next =
+      smoothedRef.current == null
+        ? raw
+        : alpha * raw + (1 - alpha) * smoothedRef.current;
+    smoothedRef.current = next;
+    setSmoothed(next);
+  }, [running, runElapsedMs, progress, estimatedMs, buildStart]);
+
+  return smoothed;
 }
 
 function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {

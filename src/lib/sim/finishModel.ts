@@ -1,7 +1,29 @@
 import { buildFreezeCashPMF } from "./freezeShape";
 import { buildMysteryCashPMF } from "./mysteryShape";
 import { buildPkoCashPMF } from "./pkoShape";
-import type { FinishModelConfig } from "./types";
+import type { FinishModelConfig, FinishModelId } from "./types";
+
+const REFERENCE_SHAPE_MODELS: ReadonlySet<FinishModelId> = new Set([
+  "freeze-realdata-step",
+  "freeze-realdata-linear",
+  "freeze-realdata-tilt",
+  "pko-realdata-step",
+  "pko-realdata-linear",
+  "pko-realdata-tilt",
+  "mystery-realdata-step",
+  "mystery-realdata-linear",
+  "mystery-realdata-tilt",
+]);
+
+/**
+ * True when the model calibrates its α (or shell mass) so that
+ * Σ pmf·prize = singleCost·(1+ROI). False for embedded empirical shapes
+ * that ignore the ROI target by design. Used in UI to label the row and
+ * to suppress "target not hit" warnings on realdata-* models.
+ */
+export function finishModelSupportsTargetRoi(id: FinishModelId): boolean {
+  return !REFERENCE_SHAPE_MODELS.has(id);
+}
 
 /**
  * Probability distribution over finish places 1..N for a single player.
@@ -250,6 +272,13 @@ export interface ShelledCalibrationResult {
   pmf: Float64Array;
   currentWinnings: number;
   feasible: boolean;
+  /**
+   * False for reference-shape models that embed a fixed empirical
+   * distribution (`*-realdata-*`) — those ignore `targetWinnings` by
+   * design. Distinct from `feasible`, which reports whether shell locks
+   * left any α room to hit the target.
+   */
+  supportsTargetRoi: boolean;
   /** Computed cumulative shell probabilities in the final PMF. */
   shells: { first: number; top3: number; ft: number };
 }
@@ -301,6 +330,7 @@ export function calibrateShelledItm(
       pmf: full,
       currentWinnings: ew,
       feasible: true,
+      supportsTargetRoi: false,
       shells: {
         first: full[0] ?? 0,
         top3: sumR(0, Math.min(3, N)),
@@ -311,7 +341,7 @@ export function calibrateShelledItm(
 
   if (paid === 0 || prizePool <= 0 || clampedItm <= 0) {
     pmf.fill(1 / Math.max(1, N));
-    return { alpha: 0, pmf, currentWinnings: 0, feasible: true, shells: emptyShells };
+    return { alpha: 0, pmf, currentWinnings: 0, feasible: true, supportsTargetRoi: true, shells: emptyShells };
   }
   if (paid === 1) {
     pmf[0] = clampedItm;
@@ -326,6 +356,7 @@ export function calibrateShelledItm(
       pmf,
       currentWinnings: w,
       feasible: Math.abs(w - targetWinnings) < 1e-6,
+      supportsTargetRoi: true,
       shells: { first: pmf[0], top3: pmf[0], ft: pmf[0] },
     };
   }
@@ -479,7 +510,7 @@ export function calibrateShelledItm(
     ft: sumRange(0, ftEnd),
   };
 
-  return { alpha, pmf, currentWinnings, feasible, shells };
+  return { alpha, pmf, currentWinnings, feasible, supportsTargetRoi: true, shells };
 }
 
 /**

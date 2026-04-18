@@ -580,6 +580,7 @@ export default function Home() {
                         </div>
                         <div className="flex items-center gap-2">
                           {s.icon && (
+                            // eslint-disable-next-line @next/next/no-img-element -- 24px decorative preset icon from user-local scenarios; no LCP impact, no Image config payoff.
                             <img
                               src={s.icon}
                               alt=""

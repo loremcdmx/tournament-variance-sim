@@ -373,6 +373,10 @@ export const DICT = {
     ru: "Вторая случайная выборка — та же модель, другой сид.",
   },
   "controls.finishModel": { en: "Skill model", ru: "Модель скилла" },
+  "controls.finishModel.referenceShape": {
+    en: "Reference shape — ROI not calibrated",
+    ru: "Эталонная форма — ROI не калибруется",
+  },
   "controls.alphaOverride": {
     en: "Skill sharpness (optional)",
     ru: "Жёсткость кривой скилла (опц.)",

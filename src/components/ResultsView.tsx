@@ -6,6 +6,7 @@ import {
   useContext,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1703,12 +1704,17 @@ export function ResultsView({
   const [rbStats, setRbStats] = useState<boolean>(rbFrac > 0);
   const [rbDist, setRbDist] = useState<boolean>(rbFrac > 0);
   const [rbStreaks, setRbStreaks] = useState<boolean>(rbFrac > 0);
+  // rbFrac change resets each region toggle back to default. Users can flip
+  // individual regions after; a new rbFrac (e.g. rakeback % edit in controls)
+  // wipes those overrides. Four sets in one pass — React batches them.
   useEffect(() => {
     const on = rbFrac > 0;
+    /* eslint-disable react-hooks/set-state-in-effect */
     setRbTraj(on);
     setRbStats(on);
     setRbDist(on);
     setRbStreaks(on);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [rbFrac]);
   // One shifted variant per base + one for each chart — re-used across regions
   // via boolean picks below. Memoing by curve identity keeps the clone cheap.
@@ -1821,8 +1827,10 @@ export function ResultsView({
   const deferredRunMode = useDeferredValue(runMode);
   const [trimTopPct, setTrimTopPct] = useState<number>(0);
   const [trimBotPct, setTrimBotPct] = useState<number>(0);
-  const deferredTrimTopPct = useDeferredValue(trimTopPct);
-  const deferredTrimBotPct = useDeferredValue(trimBotPct);
+  const effectiveTrimTopPct = advanced ? trimTopPct : 0;
+  const effectiveTrimBotPct = advanced ? trimBotPct : 0;
+  const deferredTrimTopPct = useDeferredValue(effectiveTrimTopPct);
+  const deferredTrimBotPct = useDeferredValue(effectiveTrimBotPct);
   // Heavy trajectory rebuild (uPlot series allocation + path binding) lags
   // on every drag tick when maxRuns is in the hundreds. useDeferredValue keeps
   // the slider input responsive by letting the chart catch up asynchronously.
@@ -1935,16 +1943,20 @@ export function ResultsView({
                 <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
               </div>
               <div className="flex items-center gap-2">
-                <TrimPctSlider
-                  label={t("runs.trim.worst")}
-                  value={trimBotPct}
-                  onChange={setTrimBotPct}
-                />
-                <TrimPctSlider
-                  label={t("runs.trim.best")}
-                  value={trimTopPct}
-                  onChange={setTrimTopPct}
-                />
+                {advanced && (
+                  <>
+                    <TrimPctSlider
+                      label={t("runs.trim.worst")}
+                      value={trimBotPct}
+                      onChange={setTrimBotPct}
+                    />
+                    <TrimPctSlider
+                      label={t("runs.trim.best")}
+                      value={trimTopPct}
+                      onChange={setTrimTopPct}
+                    />
+                  </>
+                )}
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
                   {t("runs.label")}
                 </div>
@@ -2890,7 +2902,11 @@ function TrajectoryCard({
   // unit mode toggles (compactMoney identity changes). The formatter is
   // only called by uPlot during paint, so a ref indirection is safe.
   const axisFmtRef = useRef(compactMoney);
-  axisFmtRef.current = compactMoney;
+  useLayoutEffect(() => {
+    axisFmtRef.current = compactMoney;
+  }, [compactMoney]);
+  // uPlot reads this during paint, not React render — the ref indirection is
+  // intentional so a unit-mode toggle doesn't rebuild the whole chart.
   const stableAxisFmt = useMemo(() => (v: number) => axisFmtRef.current(v), []);
   // `displayResult` / `displayPdChart` / `showWithRakeback` are owned by the
   // parent (ResultsView) so the toggle is shared with BigStats + profit
@@ -2919,6 +2935,7 @@ function TrajectoryCard({
         "felt",
         effectiveYRange,
         overlayPd ? displayPdChart : null,
+        // eslint-disable-next-line react-hooks/refs
         stableAxisFmt,
         linePreset,
         maxPathCount,
@@ -2942,6 +2959,7 @@ function TrajectoryCard({
             "magenta",
             effectiveYRange,
             undefined,
+            // eslint-disable-next-line react-hooks/refs
             stableAxisFmt,
             pdPanePreset,
             secondaryMaxPathCount,
@@ -2964,6 +2982,7 @@ function TrajectoryCard({
             "magenta",
             undefined,
             undefined,
+            // eslint-disable-next-line react-hooks/refs
             stableAxisFmt,
             pdPanePreset,
             compareMaxPathCount,
@@ -5186,11 +5205,9 @@ function DebouncedColorInput({
   onChange: (v: string) => void;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "type">) {
   const [local, setLocal] = useState(value);
-  const prev = useRef(value);
-  if (prev.current !== value) {
-    prev.current = value;
+  useEffect(() => {
     setLocal(value);
-  }
+  }, [value]);
   return (
     <input
       type="color"

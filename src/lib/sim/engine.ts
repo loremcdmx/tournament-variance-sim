@@ -186,6 +186,14 @@ interface CompiledEntry {
    */
   sigmaSingleAnalytic: number;
   /**
+   * Analytical per-bullet E[prize + bounty] from the calibrated pmf. Should
+   * equal `singleCost · (1 + row.roi)` to within float tolerance for any
+   * calibrated model; realdata-* models return the reference-shape mean and
+   * may diverge. Exposed so regression tests can assert the ROI contract
+   * without running Monte Carlo.
+   */
+  analyticMeanSingle: number;
+  /**
    * PKO latent-heat bounty bank. When non-null, length is HEAT_BIN_COUNT
    * and each entry is an alternative `bountyByPlace` curve built by
    * raising the raw PKO weights to `1 + pkoHeat · z_b`, then re-normalized
@@ -880,6 +888,7 @@ function compileSingleEntry(
     mysteryBountyLogSigma: perKoLogVar > 0 ? Math.sqrt(perKoLogVar) : 0,
     mysteryBountyExpMinus1: perKoLogVar > 0 ? Math.exp(perKoLogVar) - 1 : 0,
     sigmaSingleAnalytic,
+    analyticMeanSingle: eX,
     heatBountyByPlace,
     brTierRatios: brSampler?.ratios ?? null,
     brTierAliasProb: brSampler?.aliasProb ?? null,
@@ -1193,10 +1202,11 @@ export function buildResult(
     const b = (-B + muPerTourn * N) / denom;
     const var1 = sigmaPerTournRuin * sigmaPerTournRuin;
     const expArg = (-2 * muPerTourn * B) / var1;
-    // Clamp exp arg to avoid Infinity — for strongly negative drift this
-    // term blows up but is capped at 1 (a probability).
-    const expTerm = expArg > 700 ? 1 : Math.exp(expArg);
-    const p = normalCdf(a) + Math.min(1, expTerm) * normalCdf(b);
+    // expArg blows up only under strongly unfavorable drift (μ≪0), where the
+    // infinite-horizon ruin probability equals 1; short-circuit to avoid
+    // Infinity·Φ(b) → NaN.
+    if (expArg > 700) return 1;
+    const p = normalCdf(a) + Math.exp(expArg) * normalCdf(b);
     return Math.min(1, Math.max(0, p));
   };
   const solveGaussianBankroll = (alpha: number): number => {

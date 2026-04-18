@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { runSimulation } from "./engine";
-import type { SimulationInput } from "./types";
+import { runSimulation, compileSchedule } from "./engine";
+import type { SimulationInput, FinishModelId, PayoutStructureId } from "./types";
 
 function baseInput(overrides: Partial<SimulationInput> = {}): SimulationInput {
   return {
@@ -521,4 +521,62 @@ describe("engine", () => {
     expect(() => runSimulation(mk(3.5))).toThrow(/pkoHeat/);
     expect(() => runSimulation(mk(Number.NaN))).toThrow(/pkoHeat/);
   });
+});
+
+describe("compile contract — analytic per-bullet mean hits (1+ROI)·singleCost", () => {
+  // Analytic check on the calibrated pmf. No Monte Carlo → no sampling flake.
+  // For every (model × payout × bounty × ROI) the compiler is supposed to
+  // solve for, E[prize+bounty] must equal singleCost·(1+row.roi) to float
+  // tolerance. Realdata-* models are exempt (they embed a fixed reference
+  // shape) — see P0.2 supportsTargetRoi.
+  const TOL_REL = 1e-3;
+
+  type Case = {
+    name: string;
+    model: FinishModelId;
+    payout: PayoutStructureId;
+    bountyFraction: number;
+    rois: number[];
+  };
+  const cases: Case[] = [
+    { name: "freeze/power-law/std", model: "power-law", payout: "mtt-standard", bountyFraction: 0, rois: [-0.2, 0, 0.15, 0.35] },
+    { name: "freeze/linear-skill/std", model: "linear-skill", payout: "mtt-standard", bountyFraction: 0, rois: [0, 0.25] },
+    { name: "freeze/stretched-exp/std", model: "stretched-exp", payout: "mtt-standard", bountyFraction: 0, rois: [0, 0.2] },
+    { name: "freeze/plackett-luce/std", model: "plackett-luce", payout: "mtt-standard", bountyFraction: 0, rois: [0, 0.2] },
+    { name: "pko/power-law", model: "power-law", payout: "mtt-standard", bountyFraction: 0.5, rois: [-0.1, 0, 0.2, 0.4] },
+    { name: "mystery/power-law", model: "power-law", payout: "mtt-gg-mystery", bountyFraction: 0.5, rois: [0, 0.25] },
+    { name: "mbr/power-law", model: "power-law", payout: "battle-royale", bountyFraction: 0.5, rois: [0, 0.2] },
+  ];
+
+  for (const c of cases) {
+    for (const roi of c.rois) {
+      it(`${c.name} @ ROI=${(roi * 100).toFixed(0)}%`, () => {
+        const input: SimulationInput = {
+          schedule: [
+            {
+              id: "r",
+              label: c.name,
+              players: 500,
+              buyIn: 10,
+              rake: 0.1,
+              roi,
+              payoutStructure: c.payout,
+              bountyFraction: c.bountyFraction,
+              count: 1,
+            },
+          ],
+          scheduleRepeats: 1,
+          samples: 1,
+          bankroll: 100,
+          seed: 1,
+          finishModel: { id: c.model },
+        };
+        const compiled = compileSchedule(input);
+        const entry = compiled.flat[0];
+        const expected = entry.singleCost * (1 + roi);
+        const rel = Math.abs(entry.analyticMeanSingle - expected) / Math.max(1e-9, expected);
+        expect(rel).toBeLessThan(TOL_REL);
+      });
+    }
+  }
 });
