@@ -223,3 +223,122 @@ describe("cashEngine — output shape", () => {
     expect(r.stats.hourlyEvUsd).toBeCloseTo(50, 6);
   });
 });
+
+describe("cashEngine — mix of stakes", () => {
+  it("single-row stakes array matches legacy single-stake input byte-for-byte", () => {
+    const legacy = simulateCash(baseInput({ hands: 5_000, nSimulations: 300 }));
+    const mixed = simulateCash(
+      baseInput({
+        hands: 5_000,
+        nSimulations: 300,
+        stakes: [
+          {
+            wrBb100: 5,
+            sdBb100: 100,
+            bbSize: 1,
+            handShare: 1,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+        ],
+      }),
+    );
+    expect(Array.from(mixed.finalBb)).toEqual(Array.from(legacy.finalBb));
+  });
+
+  it("two-row mix: expectedEvBb equals share-weighted sum of per-row EV", () => {
+    // Row A: wr 10 bb/100, bb=$1 (ref), 50% share → 10 × 0.5 = 5 bb ref per 100 hands
+    // Row B: wr 0 bb/100, bb=$2, 50% share → 0 × (2/1) × 0.5 = 0 bb ref per 100 hands
+    // Combined: 2.5 bb ref per 100 hands × 10_000 = 250 bb ref total.
+    const r = simulateCash(
+      baseInput({
+        hands: 10_000,
+        nSimulations: 500,
+        bbSize: 1,
+        stakes: [
+          {
+            wrBb100: 10,
+            sdBb100: 80,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+          {
+            wrBb100: 0,
+            sdBb100: 80,
+            bbSize: 2,
+            handShare: 0.5,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+        ],
+      }),
+    );
+    expect(r.stats.expectedEvBb).toBeCloseTo(500, 6);
+    // Realized mean's SE ≈ √(5000·64 + 5000·256)/√500 ≈ 57 bb, so 3σ ≈ ±170.
+    expect(r.stats.meanFinalBb).toBeGreaterThan(300);
+    expect(r.stats.meanFinalBb).toBeLessThan(700);
+  });
+
+  it("mix rake: total rake paid aggregates across rows in ref-bb", () => {
+    // Row A: rake 10 bb/100 × 5000 hands × bbSize=1 → 500 bb ref.
+    // Row B: rake 5 bb/100 × 5000 hands × bbSize=2 → 500 × (2/1) = 500 bb ref.
+    // Total: 1000 bb ref.
+    const r = simulateCash(
+      baseInput({
+        hands: 10_000,
+        nSimulations: 200,
+        bbSize: 1,
+        stakes: [
+          {
+            wrBb100: 5,
+            sdBb100: 80,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: { enabled: true, contributedRakeBb100: 10, advertisedRbPct: 0, pvi: 1 },
+          },
+          {
+            wrBb100: 5,
+            sdBb100: 80,
+            bbSize: 2,
+            handShare: 0.5,
+            rake: { enabled: true, contributedRakeBb100: 5, advertisedRbPct: 0, pvi: 1 },
+          },
+        ],
+      }),
+    );
+    expect(r.stats.meanRakePaidBb).toBeCloseTo(1000, 6);
+  });
+
+  it("mix determinism: same input+seed → byte-identical", () => {
+    const mk = () =>
+      simulateCash(
+        baseInput({
+          hands: 4_000,
+          nSimulations: 200,
+          stakes: [
+            { wrBb100: 3, sdBb100: 90, bbSize: 1, handShare: 0.3, rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 } },
+            { wrBb100: 6, sdBb100: 110, bbSize: 2, handShare: 0.7, rake: { enabled: true, contributedRakeBb100: 8, advertisedRbPct: 25, pvi: 0.8 } },
+          ],
+        }),
+      );
+    const a = mk();
+    const b = mk();
+    expect(Array.from(a.finalBb)).toEqual(Array.from(b.finalBb));
+  });
+
+  it("mix handShares normalize when they don't sum to 1", () => {
+    // Shares 2 + 2 → each 50%.
+    const r = simulateCash(
+      baseInput({
+        hands: 4_000,
+        nSimulations: 200,
+        bbSize: 1,
+        stakes: [
+          { wrBb100: 10, sdBb100: 80, bbSize: 1, handShare: 2, rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 } },
+          { wrBb100: 0, sdBb100: 80, bbSize: 1, handShare: 2, rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 } },
+        ],
+      }),
+    );
+    // 50% × 10 + 50% × 0 = 5 bb/100 → 200 bb over 4000 hands.
+    expect(r.stats.expectedEvBb).toBeCloseTo(200, 6);
+  });
+});

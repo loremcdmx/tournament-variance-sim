@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { CashApp } from "@/components/CashApp";
 import { ScheduleEditor } from "@/components/ScheduleEditor";
 import { ControlsPanel, type ControlsState } from "@/components/ControlsPanel";
 import { ModelPresetSelector } from "@/components/ModelPresetSelector";
@@ -24,6 +25,7 @@ import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
+import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { SCENARIOS } from "@/lib/scenarios";
 
 const scenarioDerived = new Map(
@@ -109,6 +111,7 @@ interface CompareSlot {
 export default function Home() {
   const t = useT();
   const { locale } = useLocale();
+  const { advanced } = useAdvancedMode();
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
   const [compareSlot, setCompareSlot] = useState<CompareSlot | null>(null);
@@ -120,6 +123,27 @@ export default function Home() {
     saveUserPresets,
     [],
   );
+  const [mode, setMode] = useLocalStorageState<"mtt" | "cash">(
+    "tvs:mode",
+    () => {
+      try {
+        const v = localStorage.getItem("tvs:mode");
+        return v === "cash" ? "cash" : "mtt";
+      } catch {
+        return "mtt";
+      }
+    },
+    (next) => {
+      try {
+        localStorage.setItem("tvs:mode", next);
+      } catch {
+        // localStorage full / unavailable — fall through, mode resets next load.
+      }
+    },
+    "mtt",
+  );
+  // Advanced mode off → force MTT view regardless of persisted state.
+  const activeMode: "mtt" | "cash" = advanced ? mode : "mtt";
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
   const abi = useMemo(() => {
     const totalCount = schedule.reduce((a, r) => a + Math.max(0, r.count), 0);
@@ -183,7 +207,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated) return;
-    saveLocal({ v: 1, schedule, controls });
+    const timeoutId = window.setTimeout(() => {
+      saveLocal({ v: 1, schedule, controls });
+    }, 200);
+    return () => window.clearTimeout(timeoutId);
   }, [schedule, controls, hydrated]);
 
   const buildInput = useCallback(
@@ -239,6 +266,7 @@ export default function Home() {
   // selects responsive — the preview catches up in the background instead
   // of blocking the click.
   const deferredSchedule = useDeferredValue(effectiveSchedule);
+  const deferredScheduleRepeats = useDeferredValue(controls.scheduleRepeats);
 
   const previewModel = useMemo(
     () => ({
@@ -680,6 +708,32 @@ export default function Home() {
           </details>
       </header>
 
+      {advanced && (
+        <div className="flex gap-1 border-b border-[color:var(--color-border)] pb-0">
+          {(["mtt", "cash"] as const).map((m) => {
+            const active = activeMode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={`border-b-2 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
+                  active
+                    ? "border-[color:var(--color-accent)] text-[color:var(--color-accent)]"
+                    : "border-transparent text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)]"
+                }`}
+              >
+                {t(m === "mtt" ? "mode.tab.mtt" : "mode.tab.cash")}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {activeMode === "cash" ? <CashApp /> : null}
+
+      {activeMode === "mtt" && (
+      <>
       <Section
         number="01"
         suit="spade"
@@ -761,16 +815,6 @@ export default function Home() {
             </>
           }
         />
-        {schedule.some(
-          (r) =>
-            (r.bountyFraction != null && r.bountyFraction > 0) ||
-            r.payoutStructure.includes("bounty"),
-        ) && (
-          <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-300/90">
-            <span className="mr-1.5 font-bold">⚠</span>
-            {t("schedule.betaFormats")}
-          </div>
-        )}
       </Section>
 
       <Section
@@ -957,8 +1001,8 @@ export default function Home() {
               result={result}
               compareResult={compareSlot?.result ?? null}
               bankroll={controls.bankroll}
-              schedule={schedule}
-              scheduleRepeats={controls.scheduleRepeats}
+              schedule={deferredSchedule}
+              scheduleRepeats={deferredScheduleRepeats}
               compareMode={controls.compareMode}
               modelPresetId={controls.modelPresetId}
               finishModelId={controls.finishModelId}
@@ -977,6 +1021,8 @@ export default function Home() {
             />
           </Section>
         </>
+      )}
+      </>
       )}
 
       <footer className="mt-4 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-6 text-xs text-[color:var(--color-fg-dim)]">

@@ -226,8 +226,8 @@ export const DICT = {
   "row.gameType.pko": { en: "PKO", ru: "PKO" },
   "row.gameType.mystery": { en: "Mystery", ru: "Мистери" },
   "row.gameType.mysteryRoyale": {
-    en: "Battle Royale",
-    ru: "Батл Рояль",
+    en: "GG Mystery Royal",
+    ru: "GG Mystery Royal",
   },
   "row.gameTypeHint": {
     en: "Top-level format switch. Toggles which fields apply: re-entry for freezeout+re-entry; bounty% for PKO/mystery; lognormal σ² for mystery variants (mystery ≈ 0.8, royale ≈ 1.8). Existing bounty% is preserved when switching between bounty types.",
@@ -1014,6 +1014,14 @@ export const DICT = {
     en: "roughly the unluckiest one in every N runs",
     ru: "примерно самый неудачный из каждых N ранов",
   },
+  "chart.traj.zoomHint": {
+    en: "drag to zoom x · double-click to reset",
+    ru: "drag = зум по X · двойной клик = сброс",
+  },
+  "chart.traj.resetZoom": {
+    en: "reset zoom",
+    ru: "сброс зума",
+  },
   "chart.unit.tourneys": { en: "units: tournaments", ru: "единицы: турниры" },
   "hist.tooltip.range": { en: "range", ru: "диапазон" },
   "hist.tooltip.share": { en: "share of runs", ru: "доля ранов" },
@@ -1051,13 +1059,19 @@ export const DICT = {
   "chart.convergence.format.pko": { en: "PKO", ru: "ПКО" },
   "chart.convergence.format.mystery": { en: "Mystery", ru: "Мистери" },
   "chart.convergence.format.mystery-royale": {
-    en: "Battle Royale",
-    ru: "Батл Рояль",
+    en: "GG Mystery Royal",
+    ru: "GG Mystery Royal",
   },
   "chart.convergence.format.mix": { en: "Mix", ru: "Микс" },
-  "chart.convergence.format.exact": { en: "Exact", ru: "Точно" },
+  "chart.convergence.format.exact": {
+    en: "Your schedule",
+    ru: "ТВОЁ РАСПИСАНИЕ",
+  },
   "chart.convergence.mode.averaged": { en: "Averaged", ru: "Усреднённо" },
-  "chart.convergence.mode.exact": { en: "Exact schedule", ru: "Точное расписание" },
+  "chart.convergence.mode.exact": {
+    en: "Your schedule",
+    ru: "Твоё расписание",
+  },
   "chart.convergence.mode.hint": {
     en: "Averaged: combines rows into one weighted σ_ROI at the mean AFS/ROI. Exact: computes σ per row at its own AFS/ROI/format and combines via σ²_eff = Σ w_r·σ²_r (w_r = row count share). Exact is honest for heterogeneous schedules; averaged smooths tail rows into the mean.",
     ru: "Усреднённо: сводит ряды в одну σ_ROI на среднем AFS/ROI. Точно: считает σ per-ряд на собственных AFS/ROI/формате и комбинирует σ²_эфф = Σ w_r·σ²_r (w_r = доля по числу турниров). Точный режим честнее для гетерогенных расписаний; averaged размазывает хвостовые ряды в средние.",
@@ -1837,6 +1851,97 @@ export const DICT = {
   "emp.loaded": { en: "Loaded", ru: "Загружено" },
   "emp.entries": { en: "entries", ru: "записей" },
   "emp.none": { en: "No data — model falls back to power-law.", ru: "Нет данных — откат на power-law." },
+
+  // Cash-game mode (advanced only)
+  "mode.tab.mtt": { en: "MTT", ru: "Турниры" },
+  "mode.tab.cash": { en: "Cash", ru: "Кэш" },
+  "cash.section.inputs.title": { en: "Cash inputs", ru: "Параметры кэша" },
+  "cash.section.results.title": { en: "Cash results", ru: "Результаты кэша" },
+  "cash.group.session": { en: "Session", ru: "Сессия" },
+  "cash.group.rake": { en: "Rakeback", ru: "Рейкбек" },
+  "cash.group.hourly": { en: "Hourly lens", ru: "Почасовка" },
+  "cash.group.stakes": { en: "Stake mix", ru: "Микс лимитов" },
+  "cash.stakes.toggle.hint": {
+    en: "Mix several stakes or rooms. Each row has its own winrate, SD, bbSize, rake.",
+    ru: "Миксуй несколько лимитов или румов. У каждой строки свой WR, SD, bbSize, рейк.",
+  },
+  "cash.stakes.row.label": { en: "Label", ru: "Метка" },
+  "cash.stakes.row.handShare": { en: "Share of hands", ru: "Доля раздач" },
+  "cash.stakes.row.bbSize": { en: "BB ($)", ru: "BB ($)" },
+  "cash.stakes.row.rake": { en: "Rake (bb/100)", ru: "Рейк (bb/100)" },
+  "cash.stakes.row.rbPct": { en: "RB %", ru: "RB %" },
+  "cash.stakes.row.pvi": { en: "PVI", ru: "PVI" },
+  "cash.stakes.add": { en: "+ Add row", ru: "+ Добавить строку" },
+  "cash.stakes.remove": { en: "Remove", ru: "Удалить" },
+  "cash.stakes.refBbHint": {
+    en: "Top-level BB size is the reference denomination for bankroll. Rows with larger BB scale up proportionally.",
+    ru: "Верхний BB — это базовая валюта банкролла. Строки с большим BB скейлятся вверх пропорционально.",
+  },
+  "cash.group.stats.expected": { en: "Expected", ru: "Ожидание" },
+  "cash.group.stats.realized": { en: "Realized", ru: "Реализация" },
+  "cash.group.stats.risk": { en: "Risk", ru: "Риски" },
+  "cash.group.stats.economics": { en: "Economics", ru: "Экономика" },
+  "cash.wrBb100.label": { en: "Winrate (bb/100)", ru: "Винрейт (bb/100)" },
+  "cash.sdBb100.label": { en: "Std dev (bb/100)", ru: "SD (bb/100)" },
+  "cash.hands.label": { en: "Hands", ru: "Раздач" },
+  "cash.nSimulations.label": { en: "Simulations", ru: "Симуляций" },
+  "cash.bbSize.label": { en: "BB size ($)", ru: "Размер BB ($)" },
+  "cash.baseSeed.label": { en: "Seed", ru: "Сид" },
+  "cash.rake.enabled.label": { en: "Rakeback", ru: "Рейкбек" },
+  "cash.rake.contrib.label": {
+    en: "Rake contributed (bb/100)",
+    ru: "Платишь рейка (bb/100)",
+  },
+  "cash.rake.rbPct.label": { en: "Advertised RB %", ru: "Заявленный RB %" },
+  "cash.rake.pvi.label": { en: "PVI", ru: "PVI" },
+  "cash.rake.pvi.hint": {
+    en: "PVI ≤ 1 discounts advertised RB (regs lose a share to segmentation).",
+    ru: "PVI ≤ 1 режет заявленный RB (рег теряет долю на сегментации).",
+  },
+  "cash.hours.enabled.label": { en: "Hourly lens", ru: "Почасовка" },
+  "cash.hours.handsPerHour.label": {
+    en: "Hands / hour",
+    ru: "Раздач в час",
+  },
+  "cash.run": { en: "Run simulation", ru: "Запустить симуляцию" },
+  "cash.running": { en: "Running…", ru: "Считаем…" },
+  "cash.stats.expectedEvBb": { en: "Expected EV (BB)", ru: "Ожидаемый EV (BB)" },
+  "cash.stats.meanFinalBb": {
+    en: "Mean final (BB)",
+    ru: "Средний финал (BB)",
+  },
+  "cash.stats.sdFinalBb": { en: "SD final (BB)", ru: "SD финала (BB)" },
+  "cash.stats.probLoss": { en: "P(loss)", ru: "P(убыток)" },
+  "cash.stats.probSub100Bb": {
+    en: "P(≤ -100 BB)",
+    ru: "P(≤ -100 BB)",
+  },
+  "cash.stats.recoveryUnrecoveredShare": {
+    en: "Unrecovered share",
+    ru: "Не откатились",
+  },
+  "cash.stats.hourlyEvUsd": { en: "EV / hour", ru: "EV / час" },
+  "cash.stats.meanRakePaidBb": {
+    en: "Rake paid (BB)",
+    ru: "Заплачено рейка (BB)",
+  },
+  "cash.stats.meanRbEarnedBb": {
+    en: "RB earned (BB)",
+    ru: "Рейкбек получен (BB)",
+  },
+  "cash.chart.trajectory.title": {
+    en: "Bankroll trajectory",
+    ru: "Траектория банкролла",
+  },
+  "cash.chart.final.title": {
+    en: "Final bankroll distribution",
+    ru: "Распределение финального BR",
+  },
+  "cash.chart.drawdown.title": { en: "Max drawdown", ru: "Max просадка" },
+  "cash.empty": {
+    en: "Press Run to simulate the cash session.",
+    ru: "Нажми «Запустить», чтобы посчитать кэш-сессию.",
+  },
 } as const satisfies Record<string, Entry>;
 
 export type DictKey = keyof typeof DICT;

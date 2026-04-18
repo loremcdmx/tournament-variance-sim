@@ -28,7 +28,115 @@ import type {
   CashResult,
   CashSamplePaths,
   CashEnvelopes,
+  CashStakeRow,
 } from "./cashTypes";
+
+/**
+ * Per-row compiled rates in reference-bb per hand. Ref bb = `input.bbSize`.
+ * For single-stake inputs this is an array of length 1; for mix mode the
+ * rows are sequential slices of `input.hands`.
+ */
+interface CompiledRow {
+  /** First hand owned by this row (inclusive). */
+  startHand: number;
+  /** Last hand owned by this row (exclusive). */
+  endHand: number;
+  driftPerHand: number;
+  sdPerHand: number;
+  rbPerHand: number;
+  /** Rake paid in ref-bb over this row's hands, totalled at compile time. */
+  totalRakeRefBb: number;
+  /** Rakeback earned in ref-bb, totalled. Includes PVI. */
+  totalRbRefBb: number;
+}
+
+/**
+ * Expand the mix into per-row hand slices. Legacy single-stake inputs yield
+ * one row covering the full horizon with ref-bb = row-bb (scale = 1).
+ */
+function compileStakes(input: CashInput): CompiledRow[] {
+  const refBb = input.bbSize;
+  const rowsSource: CashStakeRow[] =
+    input.stakes && input.stakes.length > 0
+      ? input.stakes
+      : [
+          {
+            wrBb100: input.wrBb100,
+            sdBb100: input.sdBb100,
+            bbSize: input.bbSize,
+            handShare: 1,
+            rake: input.rake,
+          },
+        ];
+
+  const shareSum = rowsSource.reduce((a, r) => a + Math.max(0, r.handShare), 0);
+  const shareNorm = shareSum > 0 ? shareSum : 1;
+
+  const compiled: CompiledRow[] = [];
+  let cursor = 0;
+  for (let r = 0; r < rowsSource.length; r++) {
+    const row = rowsSource[r];
+    const share = Math.max(0, row.handShare) / shareNorm;
+    const isLast = r === rowsSource.length - 1;
+    const rowHands = isLast
+      ? input.hands - cursor
+      : Math.round(share * input.hands);
+    const startHand = cursor;
+    const endHand = cursor + rowHands;
+    cursor = endHand;
+    if (rowHands <= 0) continue;
+
+    // Rescale each bb-denominated quantity to the reference-bb currency.
+    const scale = row.bbSize / refBb;
+    const wrBbRef = row.wrBb100 * scale;
+    const sdBbRef = row.sdBb100 * scale;
+    const rakeBbRef = row.rake.enabled ? row.rake.contributedRakeBb100 * scale : 0;
+
+    const driftPerHand = wrBbRef / 100;
+    const sdPerHand = sdBbRef / 10; // √100 = 10
+    const rbRateBb100 = row.rake.enabled
+      ? rakeBbRef * (row.rake.advertisedRbPct / 100) * row.rake.pvi
+      : 0;
+    const rbPerHand = rbRateBb100 / 100;
+    const totalRakeRefBb = (rakeBbRef * rowHands) / 100;
+    const totalRbRefBb = (rbRateBb100 * rowHands) / 100;
+
+    compiled.push({
+      startHand,
+      endHand,
+      driftPerHand,
+      sdPerHand,
+      rbPerHand,
+      totalRakeRefBb,
+      totalRbRefBb,
+    });
+  }
+
+  // Guarantee at least one row covering the full horizon (edge case: all
+  // handShares zero). Fall back to first source row with share = 1.
+  if (compiled.length === 0) {
+    const fallback = rowsSource[0];
+    const scale = fallback.bbSize / refBb;
+    const wrBbRef = fallback.wrBb100 * scale;
+    const sdBbRef = fallback.sdBb100 * scale;
+    const rakeBbRef = fallback.rake.enabled
+      ? fallback.rake.contributedRakeBb100 * scale
+      : 0;
+    const rbRateBb100 = fallback.rake.enabled
+      ? rakeBbRef * (fallback.rake.advertisedRbPct / 100) * fallback.rake.pvi
+      : 0;
+    compiled.push({
+      startHand: 0,
+      endHand: input.hands,
+      driftPerHand: wrBbRef / 100,
+      sdPerHand: sdBbRef / 10,
+      rbPerHand: rbRateBb100 / 100,
+      totalRakeRefBb: (rakeBbRef * input.hands) / 100,
+      totalRbRefBb: (rbRateBb100 * input.hands) / 100,
+    });
+  }
+  return compiled;
+}
 
 // Envelope columns (sorted per x): cheap O(S log S) × K.
 const ENV_K = 80;
@@ -100,15 +208,19 @@ export function simulateCashShard(
 ): CashShard {
   const shardS = sEnd - sStart;
   const H = input.hands;
-  const wrPerHand = input.wrBb100 / 100;
-  const sdPerHand = input.sdBb100 / 10; // √100 = 10
-  const rbPerHand = input.rake.enabled
-    ? (input.rake.contributedRakeBb100 *
-        (input.rake.advertisedRbPct / 100) *
-        input.rake.pvi) /
-      100
-    : 0;
-  const driftPerHand = wrPerHand + rbPerHand;
+  const rows = compileStakes(input);
+  const rowCount = rows.length;
+  // Hot-loop arrays — Float64Array for tight access patterns. driftPerHand is
+  // wr + rb folded together; keeping them separate would cost an extra add
+  // per hand for no gain.
+  const driftArr = new Float64Array(rowCount);
+  const sdArr = new Float64Array(rowCount);
+  const rowEndArr = new Int32Array(rowCount);
+  for (let r = 0; r < rowCount; r++) {
+    driftArr[r] = rows[r].driftPerHand + rows[r].rbPerHand;
+    sdArr[r] = rows[r].sdPerHand;
+    rowEndArr[r] = rows[r].endHand;
+  }
 
   const envK1 = envGrid.K + 1;
   const envIdx = envGrid.checkpointIdx;
@@ -167,6 +279,12 @@ export function simulateCashShard(
     let haveCachedZ = false;
     let cachedZ = 0;
 
+    // Current row index — advances as handIdx crosses rowEndArr[r].
+    let rowIx = 0;
+    let curDrift = driftArr[0];
+    let curSd = sdArr[0];
+    let curRowEnd = rowEndArr[0];
+
     for (let i = 0; i < H; i++) {
       let z: number;
       if (haveCachedZ) {
@@ -182,8 +300,16 @@ export function simulateCashShard(
         cachedZ = r * Math.sin(theta);
         haveCachedZ = true;
       }
-      br += driftPerHand + sdPerHand * z;
+      br += curDrift + curSd * z;
       const handIdx = i + 1;
+      // Advance the row cursor when we cross a boundary. Using a `while` to
+      // handle zero-length rows (possible if shares round to 0 hands).
+      while (handIdx >= curRowEnd && rowIx < rowCount - 1) {
+        rowIx++;
+        curDrift = driftArr[rowIx];
+        curSd = sdArr[rowIx];
+        curRowEnd = rowEndArr[rowIx];
+      }
 
       // Peak / drawdown / breakeven bookkeeping.
       if (br >= peak) {
@@ -416,21 +542,19 @@ export function buildCashResult(
   for (let s = 0; s < S; s++) if (recovery[s] === -1) unrecovered++;
   const recoveryUnrecoveredShare = unrecovered / S;
 
-  // Deterministic per-horizon totals (identical across paths given inputs).
-  const totalRake = input.rake.enabled
-    ? (input.rake.contributedRakeBb100 * input.hands) / 100
-    : 0;
-  const totalRb = input.rake.enabled
-    ? totalRake * (input.rake.advertisedRbPct / 100) * input.rake.pvi
-    : 0;
-  const expectedEvBb =
-    ((input.wrBb100 + (input.rake.enabled
-      ? input.rake.contributedRakeBb100 *
-        (input.rake.advertisedRbPct / 100) *
-        input.rake.pvi
-      : 0)) *
-      input.hands) /
-    100;
+  // Deterministic per-horizon totals. In mix mode these aggregate across
+  // rows after rescaling to the reference bb. compileStakes does the math,
+  // we just sum.
+  const rows = compileStakes(input);
+  let totalRake = 0;
+  let totalRb = 0;
+  let expectedEvBb = 0;
+  for (const row of rows) {
+    const rowHands = row.endHand - row.startHand;
+    totalRake += row.totalRakeRefBb;
+    totalRb += row.totalRbRefBb;
+    expectedEvBb += (row.driftPerHand + row.rbPerHand) * rowHands;
+  }
   const expectedEvUsd = expectedEvBb * input.bbSize;
   const meanFinalUsd = meanFinalBb * input.bbSize;
   const hourlyEvUsd = input.hoursBlock

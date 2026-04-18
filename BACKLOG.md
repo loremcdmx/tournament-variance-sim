@@ -22,8 +22,20 @@
 
 Корректность движка — главный приоритет. Любой cleanup или UI-фикс откладывается, если задача из этого блока открыта.
 
-### #121 · BR/Mystery finishModel: top1 at ROI>0 занимается реже равновесия
-Калибровка размазывает edge-EV между pmf и bounty, `top1 pmf reg` получается **меньше** freezeout-equivalent. Это искажает распределение мест в форматах с баунти.
+**Обязательный порядок (review 2026-04-18):** `#113` → `#121` → `#119` (probe-stage) → `#7`.
+Любой crypto-тяжёлый `σ`-sweep (#109) запрещён до закрытия всех четырёх — иначе рефит коэффициентов на промежуточной математике = выкинутое CPU-время.
+
+### 1. #113 · PKO/Mystery/BR: winner-bounty inflation edge case — **ДЕЛАТЬ ПЕРВЫМ**
+Когда финалист выбивает последнего оппонента — получает inflated собственный bounty. Нужно проверить ветки `if (aliveAfter === 1)` / `place === 1` в `engine.ts`:
+- **PKO:** half-to-winner half-to-pool
+- **Mystery:** mean не инфлируется per-KO
+- **BR:** independent draw per KO
+
+**Возможный systematic bias:** winner-EV ~0.5–2%.
+**Почему первым:** маленький вход, high-confidence audit, результат повышает доверие ко всему движку.
+
+### 2. #121 · BR/Mystery finishModel: top1 at ROI>0 занимается реже равновесия
+Калибровка размазывает edge-EV между pmf и bounty, `top1 pmf reg` получается **меньше** freezeout-equivalent. Это искажает распределение мест в форматах с баунти — бьёт прямо в основной продуктовый месседж.
 
 **План:**
 1. Fake-freezeout `calibrateAlpha` для row без bounty → зафиксировать reg top1 pmf
@@ -34,28 +46,27 @@
 **Артефакты:** новая функция `calibrateBountyBudget(schedule, targetRoi)`.
 **После правки:** recal `SIGMA_ROI_*` — связано с #119.
 
-### #119 · Mystery дисперсия — правый хвост + recal
+### 3. #119 · Mystery дисперсия — правый хвост + recal (ДВА ЭТАПА)
 Юзер воспринимает Mystery как менее дисповый, чем GG в реальности. Stopgap `mysteryBountyVariance=2.0` (log-normal) даёт `P(>100×mean) = 3.7e-5` vs BR empirical `4.5e-5`.
 
-**План:**
+**⚠️ Нельзя слепо поднимать σ² до 2.5–3.0** — можно попасть в один tail quantile и испортить остальные моменты.
+
+**Этап A (probe, без кода в движке):**
 1. Probe `scripts/probe_mystery_tail.ts` на текущем движке
-2. Сравнить skew/kurt с реальными GG-данными
-3. Либо поднять σ² до 2.5–3.0, либо перейти на discrete-tier draw как BR (#92)
+2. Замерить skew / kurt / tail-CDF на нескольких quantile'ах
+3. Сравнить с реальными GG-данными (или BR empirical как прокси)
+4. **Решение:** держать log-normal с подобранным σ² / переход на discrete-tier draw как BR (#92) / гибрид
 
-**После правки:** `SWEEP=mystery_only scripts/fit_sigma_parallel.ts` (~5 мин) + recal `SIGMA_ROI_MYSTERY`.
+**Этап B (после решения):**
+5. Применить выбранный подход
+6. `SWEEP=mystery_only scripts/fit_sigma_parallel.ts` (~5 мин) + recal `SIGMA_ROI_MYSTERY`
 
-### #113 · PKO/Mystery/BR: winner-bounty inflation edge case
-Когда финалист выбивает последнего оппонента — получает inflated собственный bounty. Нужно проверить ветки `if (aliveAfter === 1)` / `place === 1` в `engine.ts`:
-- **PKO:** half-to-winner half-to-pool
-- **Mystery:** mean не инфлируется per-KO
-- **BR:** independent draw per KO
-
-**Возможный systematic bias:** winner-EV ~0.5–2%.
-
-### #7 (audit) · PKO within-place bounty variance
-Текущая модель сохраняет `Σ pmf[i]·bountyByPlace[i] = bountyMean`, но без **within-place bounty variance**. Это систематическое занижение σ для PKO на 5–15%.
+### 4. #7 (audit) · PKO within-place bounty variance
+Текущая модель сохраняет `Σ pmf[i]·bountyByPlace[i] = bountyMean`, но без **within-place bounty variance**. Это систематическое занижение σ для PKO на 5–15% — прямо бьёт в ключевую претензию к PrimeDope.
 
 **План:** добавить per-place bounty-noise канал (fresh `mixSeed` slot для детерминизма) + determinism test.
+
+**Условие параллельной работы:** если кодовая зона изолирована в одном новом канале движка — можно параллельно с #113/#121. Если wiring тянет за собой `finishModel` — последовательно после #121.
 
 ---
 
@@ -98,8 +109,39 @@
 
 **Измерить через `performance.mark` в worker + main перед правкой.**
 
-### #114 · Progress-bar визуально не доезжает до 100%
-Fill не растягивается на всю ширину при `progress===1`. Возможно пересекается с #122. **Перепроверить после #122.**
+### #114 · Progress-bar визуально не доезжает до 100% — **ДОЧЕРНИЙ К #122**
+Fill не растягивается на всю ширину при `progress===1`. Почти наверняка симптом grainy progress из #122.
+**Правило:** не трогать отдельно — перепроверить после закрытия #122. Если останется — отдельный фикс на уровне CSS/rendering.
+
+---
+
+## 🎰 Cash UI — следующий виток после MVP
+
+Cash-мод вышел 2026-04-18 как MVP. Этот блок шипнут 2026-04-18 вторым коммитом: worker pool + design polish + progress bar + mix лимитов.
+
+### ✅ Cash: progress bar + worker pool + оптимизация — SHIPPED 2026-04-18
+`cashWorker.ts` + pool на `Math.min(12, hardwareConcurrency/2)` worker'ов. Shards фан-аутятся (targetShards = 2×W), прогресс обновляется per-shard, кнопка `×` отменяет job bump'ом `jobIdRef` (late messages ignore). Определённость сохранена: shard-разметка не меняет результат.
+
+**Ещё можно (не критично):**
+- Intra-shard progress для больших одиночных shard'ов (важно только если `nSimulations < W`)
+- Профилинг Box-Muller → Polar/Marsaglia (ожидаемый выигрыш ~15-20%)
+- ETA (elapsedMs / fraction)
+
+### ✅ Cash: белые точки на графике — SHIPPED 2026-04-18
+`series[..].points = { show: false }` на envelope + hi-res + histogram. `cursor.points = { show: false }`. Визуальный шум пропал; mean-линия как акцент остаётся читаемой.
+
+### ✅ Cash tab: design polish — SHIPPED 2026-04-18
+Inputs сгруппированы в `InputGroup` (session / rake / hourly / mix) с toggle'ами слева. Stats сгруппированы в 4 карточки (Expected / Realized / Risk / Economics) с масть-акцентами. `ToggleSwitch` заменил checkbox'ы для rake/hourly.
+
+### ✅ Cash: mix лимитов / румов — SHIPPED 2026-04-18
+`CashStakeRow[]` опциональное поле в `CashInput`. Каждая строка: wrBb100, sdBb100, bbSize, handShare, rake-block. Шкалирование к референсному bb (`input.bbSize`) — строки с большим BB вносят пропорционально больше. Single-stake остался byte-identical без `stakes`.
+
+UI: `StakeRowEditor` с label + per-row inputs + rake-toggle. Кнопка `+ Add row`. Удаление только если рядов > 1.
+
+**Ещё можно (не критично):**
+- Preset-loader для популярных румов (GG / Stars / Partypoker / Winamax defaults)
+- Per-row color in trajectory chart (сейчас все пути одного цвета)
+- Per-row mean EV в stats (сейчас aggregate only)
 
 ---
 
@@ -132,16 +174,10 @@ Segmented `RunModeSlider` в TrajectoryCard toolbar не даёт ожидаем
 
 ## 🟢 P2 — Features / медленный рост
 
-### #106 · Spins как формат
-Новый `gameType="spins"`. MVP:
-- 3-max фикс лобби, ROI ~3% read-only, AFS=3
-- Джекпот-структуры: PokerStars Spin&Go, GG Spin&Gold, Winamax Expresso, Partypoker SPINS, 888 BLAST, iPoker Twister
-- Pull тиры + вероятности
-- Payout-gating: новый id `spin-jackpot`, dropdown фильтр по `gameType`
-- σ_ROI формула другая (jackpot-tail, sqrt(N) не сходится) → отдельный `scripts/fit_spins.ts`
+### #109 · Масштабный σ-sweep по всем форматам — **BLOCKED BY P0 (#113, #121, #119, #7)**
+Прогнать large-scale fit по freeze/pko/mystery/mystery-royale на полной ROI × AFS матрице. Recal `SIGMA_ROI_*` после правок движка.
 
-### #109 · Масштабный σ-sweep по всем форматам
-Прогнать large-scale fit по freeze/pko/mystery/mystery-royale на полной ROI × AFS матрице. Recal `SIGMA_ROI_*` после недавних правок движка (#71, #92, #94).
+**⚠️ Запрет:** не запускать до закрытия всех четырёх P0 задач. Иначе рефит коэффициентов на промежуточной математике = выкинутые 4 часа CPU.
 
 **Цели:**
 - (a) рефит коэффициентов
@@ -149,17 +185,6 @@ Segmented `RunModeSlider` в TrajectoryCard toolbar не даёт ожидаем
 - (c) сравнить с `data/payout-samples/`
 
 **Ресурсы:** ~4 часа (12 workers × 7950X). Запускать автономно.
-
-### #120 · Mobile layout
-Viewport < 640px: ScheduleEditor row table (7 полей), EV breakdown (7-column grid), TrajectoryCard toolbar — overflow'ят.
-
-**Подход:** mobile-only preset-based mode:
-- dropdown сценариев → результаты, без ручного редактирования
-- Controls → `rbFrac` + `samples`
-- Advanced widgets collapsed
-- Отдельный `MobileApp` или pure CSS `hidden sm:block`
-
-**Тест:** portrait/landscape, iOS Safari.
 
 ### #126 · «Где прячется среднее» тултип — переписать под two-pool структуру
 `FinishPMFPreview.tsx`, тултип у EV-баланса. Сейчас текст трактует EV как единый поток. Реально движок калибрует **два канала независимо**:
@@ -170,13 +195,122 @@ Viewport < 640px: ScheduleEditor row table (7 полей), EV breakdown (7-colum
 Тултип должен объяснять, что «среднее» = cash (ITM-heavy) + bounty (равномернее по столу в PKO/Mystery), и показывать разбивку `cashEv / bountyEv`.
 **Файлы:** `src/lib/i18n/dict.ts`, `FinishPMFPreview.tsx`.
 
-### #6 (audit) · ICM до 12 мест
-Текущий лимит `ICM_MAX_PLAYERS = 9` в `icm.ts:25`. Покроет 10-max SNG без изменения алгоритма.
-**Риск:** при n=18 таблица ~4.7M состояний (медленно); n=12 — ещё быстро (~20K).
-
 ### #10 (audit) · UX tooltip про разницу ROI конвенций
 Наши числа ROI ниже, чем на Sharkscope (там ROI считается **от бай-ина без рейка**, у нас — с рейком). Это не баг, а разница конвенций.
 **Action:** добавить tooltip про Sharkscope-style vs наш расчёт.
+
+---
+
+## ❄️ Заморожено до закрытия P0 (review 2026-04-18)
+
+Откладываем до стабилизации математики движка (#113/#121/#119/#7). Код здесь не трогать.
+
+### #106 · Spins как формат
+Новый `gameType="spins"` со всей jackpot-tail σ-математикой. Это новый большой формат с отдельным engine-путём — распыление пока есть открытые P0 по существующим форматам.
+
+**Плановые компоненты (не стартовать):**
+- 3-max фикс лобби, джекпот-структуры с 6 румов
+- Новый `scripts/fit_spins.ts` (σ_ROI не сходится по sqrt(N))
+- Payout-gating: новый id `spin-jackpot`, dropdown фильтр
+
+### #120 · Mobile layout
+Нужен, но не раньше чем перестанут спорить математика и базовые desktop-баги. Mobile-layout правки на фоне открытых P0 — риск переделывать после.
+
+### #6 (audit) · ICM 9 → 12 мест
+Текущий лимит `ICM_MAX_PLAYERS = 9` в `icm.ts:25`. Не горит — в прошлых сессиях юзер сам сказал «про ICM забей». Не тратить фокус пока P0 открыты.
+
+---
+
+## 🚀 Perf / R&D epic (после математики)
+
+Отдельный трек **после** закрытия P0 и recal'а через #109. Цель — не «микрополиш», а 2–5× speedups и архитектурные подвижки hot-loop'а.
+
+**Потенциальные направления:**
+1. **Alias / precomputed categorical sampling** для выбора мест и bounty-tier draws.
+   Сейчас: linear scan по CDF за каждый sample.
+   Потенциал: O(1) draw через Vose alias method (setup O(n), draw O(1)).
+
+2. **Dual-path accumulation в одном прогоне для `with RB` / `no RB`.**
+   Сейчас: `shiftResultByRakeback` пересобирает drawdown/breakeven histograms пост-фактум от финальной P&L.
+   Потенциал: параллельный accumulator в hot-loop → честный RB-aware drawdown без post-process дубля.
+
+3. **WASM / SIMD для inner loop.**
+   Сейчас: JS + typed arrays.
+   Потенциал: AssemblyScript/Rust хот-луп с SIMD (`f64x2` add/mul). Оценка — 2–3× speedup на bounty-heavy формате.
+
+4. **Пересмотр структуры shard-ов и transferables.**
+   Сейчас: `oversub=4` включается только при `samples × scheduleRepeats ≥ 50_000` (`useSimulation.ts:240`). Transferables list main↔worker рассинхронизован (см. #122).
+   Потенциал: единый contract на transferables + более гранулярные shard'ы → smoother progress + меньше idle workers.
+
+**Предусловие:** математика движка стабилизирована (все P0 закрыты), `SIGMA_ROI_*` отфитованы через #109.
+**Риск при раннем старте:** любая перф-оптимизация до recal означает оптимизацию кривой модели. Работу придётся частично переделать.
+
+---
+
+## 🎰 Формат-зоопарк + модели рейка/RB (долгосрочная R&D-епопея)
+
+Набор «экзотики», без которой модель остаётся узкой. Каждый пункт — отдельный не-тривиальный формат или экономическая модель. Не брать до закрытия P0, но держать как задел — сюда идут все идеи от юзеров и коммьюнити.
+
+### Экзотические live/онлайн форматы
+Что хочется поддержать (каждый — отдельная задача):
+
+- **Squid Game (GG):** 8k+ игроков, 6 элим-раундов, вынос топ-X → разовая мультипликаторная выплата. Дисперсия совершенно иная vs обычного MTT — quantized ко-раундовой структурой.
+- **Bomb Pot (cash):** принудительный ante+straddle в начале раздачи, прыжок дисперсии per-hand (SD/100 растёт нелинейно с bomb-frequency). Cash-движок, параметры: частота bomb-раздач, размер bomb.
+- **Stand-Up Game / Double Board / Run-it-twice/thrice:** множественные boards → variance reduction (до -30% SD) при том же EV. Нужна отдельная модель «multi-board adjustment» на SD.
+- **Short Deck / 6+ / Siege:** другие equity распределения, hand frequencies; вариация effect на σ_ROI для MTT или SD/100 для cash.
+- **Heads-Up / SnG 2-max, 6-max / Hyper-turbo / Spin-SnG уровни:** матчапы с очень узким field size, variance по skew distr.
+- **Mixed games (8-game, HORSE, SHE):** per-game rotation с разным EV/SD. Моделировать как weighted mixture распределений.
+- **Exotic tourney formats:** bounty builder (GG), knockout (Stars), shoot-out, progressive rebuy, flipout, double chance, cashout lottery.
+
+**Как подходить:** каждый формат — research brief (реальная pooled-data если есть + параметры rooma) → препарирует один из существующих движков (MTT или cash) с доп. параметрами, либо новый `gameType`. Не гнаться за всеми сразу.
+
+### Модели рейка
+Сейчас: фикс `rake` per row (MTT, на уровне buy-in), в cash — `contributedRakeBb100` (flat). Реальность богаче:
+
+- **Capped weighted-contributed (real cash):** rake = min(cap, %pot × contribution_weight). Моделировать per-hand, зависит от equity/position.
+- **Dealt rake (старые сайты):** рейк делится поровну по всем в раздаче. Худший для tight-aggressive регов.
+- **Time-collection (live):** fixed $/полчаса, не связан с действиями. Нужен `hoursBlock` + rate. EV хит для микробанкролла.
+- **Progressive jackpot / Bad Beat / High Hand drop:** $1–2 per pot идёт в jackpot pool; реальная потеря EV с долей возврата через джек-пот (почти всегда -EV expected).
+- **Dynamic rake (GG-style promo weeks):** временные окна с -X% rake → дисперсия нестационарна. Модель: rake step function по времени.
+- **MTT layered fee:** некоторые rooms (Partypoker, 888) — ступенчатая схема `buyin+fee+bountyFee`. Сейчас сворачивается в один `rake` number; настоящее разделение даст корректный cashEV vs bountyEV.
+
+**Как подходить:** новая абстракция `RakeModel` с дискриминированным union:
+```ts
+type RakeModel =
+  | { kind: "mtt-flat"; pct: number }
+  | { kind: "cash-flat-bb100"; bb100: number }
+  | { kind: "cash-capped-weighted"; pctPot: number; capBb: number }
+  | { kind: "cash-dealt"; perHandBb: number }
+  | { kind: "cash-time"; usdPerHour: number }
+  | { kind: "cash-jackpot"; pctPot: number; capBb: number; expectedReturnShare: number };
+```
+
+### Модели рейкбека
+Сейчас: `advertisedRbPct × pvi`. Расширения:
+
+- **Tiered VIP (Stars/GG SuperCharger):** ступенчатый RB по volume tier. Параметры: thresholds по VPPs, RB% на каждом уровне. За горизонт игры игрок может пересечь границу — меняется RB mid-simulation.
+- **Rakerace / Leaderboard:** top-N из лобби по rake делят prize pool. Сильно right-skew RB: большинство регов получает ноль, топ — 10×adv_rb. Моделируется как дополнительный стохастический доход с распределением зависящим от field position.
+- **Deal-based / CoP (chase-of-players):** специальные кэшбек-акции на run (напр. стрики 5 cashes подряд). Epsilon-доход, но хороший example of path-dependent RB.
+- **Affiliate / rakechasing fund:** внешний партнёр возвращает X% от rake поверх. Линейно, но поверх PVI — эффективный RB% растёт.
+- **Skins-сплит (старые networks):** операторский rakeback × сеть-RB. Двухслойная модель.
+
+**Как подходить:** новая абстракция `RakebackModel`:
+```ts
+type RakebackModel =
+  | { kind: "flat"; pct: number; pvi: number }
+  | { kind: "tiered"; tiers: Array<{ volumeVpps: number; pct: number }>; pvi: number }
+  | { kind: "rakerace"; poolUsd: number; distribution: "top-n" | "exp-decay"; participantsEstimate: number }
+  | { kind: "streak-bonus"; triggers: Array<{ cashesInRow: number; bonusUsd: number }> }
+  | { kind: "layered"; layers: RakebackModel[] };
+```
+
+### Приоритизация внутри секции
+Не брать ничего пока не закрыта P0 + cash-мод не оттестирован против внешних симуляторов (#11). Затем — в порядке покрытия коммьюнити:
+1. Bomb Pot (MVP — частый вопрос cash-регов)
+2. Capped weighted-contributed rake (real-world MTT/cash)
+3. Tiered VIP RB (сейчас модель мажет все тиры одним числом)
+4. Run-it-three-times (variance reducer, часто включают)
+5. Остальное по запросу/данным
 
 ---
 
@@ -189,6 +323,26 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 
 **Сейчас:** localStorage + JSON export/import.
 **Не начинать** без env vars.
+
+### Cash-mode: cross-check vs сравнимые сервисы — **IN PROGRESS 2026-04-18**
+
+Первая половина сделана: UI в prod-ready, есть скрипт `scripts/cash_crosscheck.ts` с 5 фиксированными сценариями (baseline / breakeven / high-volume / high-volatility / losing). Скрипт печатает stats в формате, совместимом с внешними калькуляторами.
+
+**Shortlist сервисов с идентичным input contract (wr bb/100 + sd bb/100 + hands):**
+1. **PrimeDope** — https://www.primedope.com/poker-variance-calculator/ — web-форма, JS in-browser, результаты как график + `downswing table`.
+2. **GamblingCalc** — https://gamblingcalc.com/poker/variance-calculator-cash-games/ — web-форма, выдаёт EV, 95% CI, probLoss, downswings.
+3. **Limp Lab** — https://www.limplab.com/calculators/variance — визуализирует 95% CI.
+4. **PokerLog** — https://pokerlog.app/poker-tools/variance-calculator — MC на 1000 trajectories, близко к нашей логике.
+
+Все четыре — web-UI, публичных API нет. Автоматический side-by-side потребует headless-browser скрипт (Playwright / Puppeteer) — это overkill для single-pass валидации. Правильный план: ручной прогон, одноразово.
+
+**Что ещё сделать:**
+1. Прогнать 5 сценариев из `cash_crosscheck.ts` в каждом из 4 сервисов. Записать `meanFinalBb`, `sdFinalBb`, `probLoss` (где есть).
+2. Завести `data/cash-comparisons/{primedope,gamblingcalc,limplab,pokerlog}.json` с ручными записями.
+3. Отчёт `docs/CASH_COMPARE.md` — таблица расхождений, объяснение каждого > 2 SE gap.
+4. Analytic cross-check (независимый от сервисов): `E[final] = wr × hands / 100`, `σ[final] = sd × √(hands / 100)`. Наш симулятор должен попадать в ±1% на 20k paths — это внутренняя sanity-check.
+
+**Не блокирует:** остальные фичи. Это валидация существующей модели, а не разработка новой.
 
 ### Real-data calibration pipeline
 Юзер управляет покер-фондом на ~1500 игроков и предложил экспорт реальных данных. Данные пока не выгружены.

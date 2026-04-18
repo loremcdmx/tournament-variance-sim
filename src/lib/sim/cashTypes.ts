@@ -11,23 +11,58 @@
  * display layer can swap `$ / BB / bb/100` without re-running the MC.
  */
 
+/**
+ * One stake / room row in a mix. All bb-denominated fields are native to the
+ * row's own bbSize — the engine rescales to the reference bb (`CashInput.bbSize`)
+ * when running the hot loop.
+ */
+export interface CashStakeRow {
+  /** UI label only — not used by the engine. */
+  label?: string;
+  wrBb100: number;
+  sdBb100: number;
+  /** This row's big-blind in USD. */
+  bbSize: number;
+  /** Share of total hands, 0..1. Normalized across rows if the sum diverges. */
+  handShare: number;
+  rake: {
+    enabled: boolean;
+    contributedRakeBb100: number;
+    advertisedRbPct: number;
+    pvi: number;
+  };
+}
+
 /** Inputs the user actually fills in. */
 export interface CashInput {
   type: "cash";
 
-  /** Expected winrate in big blinds per 100 hands. */
+  /**
+   * Expected winrate in big blinds per 100 hands. Ignored when `stakes` has
+   * length ≥ 1 (each row provides its own).
+   */
   wrBb100: number;
-  /** Per-100-hand standard deviation of winrate in big blinds. */
+  /**
+   * Per-100-hand standard deviation of winrate in big blinds. Ignored in mix
+   * mode.
+   */
   sdBb100: number;
   /** Total hands to simulate per path. */
   hands: number;
   /** Number of MC paths. */
   nSimulations: number;
 
-  /** Big-blind size in USD. Pure display-lens — does not affect the random walk. */
+  /**
+   * Reference big-blind size in USD. When `stakes` is set, this is the
+   * denomination bankroll is reported in — rows with a different bbSize
+   * scale their contribution by `row.bbSize / bbSize`.
+   */
   bbSize: number;
 
-  /** Optional rakeback block. When `enabled=false`, PVI is irrelevant. */
+  /**
+   * Legacy single-stake rake block. Used when `stakes` is absent.
+   * In mix mode each row carries its own rake block.
+   */
   rake: {
     enabled: boolean;
     /** Rake the user contributes, bb/100. User reads this from tracker (PT4/HM2). */
@@ -45,6 +80,14 @@ export interface CashInput {
 
   /** PRNG base seed. */
   baseSeed: number;
+
+  /**
+   * Optional mix of stakes / rooms. When length ≥ 1, the engine runs
+   * sequentially through rows — row r owns `round(share_r × hands)` hands of
+   * each path. Rates are rescaled to the reference bb (`bbSize`). When absent
+   * or empty, behavior is byte-identical to the legacy single-stake path.
+   */
+  stakes?: CashStakeRow[];
 }
 
 /**
