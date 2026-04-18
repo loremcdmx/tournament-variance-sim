@@ -319,10 +319,14 @@ function TrajectoryPlot({
   assets,
   height,
   visibleRuns,
+  trimTopPct = 0,
+  trimBotPct = 0,
 }: {
   assets: ReturnType<typeof buildTrajectoryAssets>;
   height: number;
   visibleRuns: number;
+  trimTopPct?: number;
+  trimBotPct?: number;
 }) {
   const t = useT();
   const { compactMoney } = useMoneyFmt();
@@ -346,9 +350,13 @@ function TrajectoryPlot({
     if (!plot) return;
     const vis = assets.visibility;
     const showBands = visibleRuns > 0;
+    const loQ = trimBotPct / 100;
+    const hiQ = 1 - trimTopPct / 100;
     plot.batch(() => {
       for (let r = 0; r < vis.pathSeriesIdx.length; r++) {
-        plot.setSeries(vis.pathSeriesIdx[r], { show: r < visibleRuns }, false);
+        const q = vis.pathProfitQuantile[r] ?? 0;
+        const withinTrim = q >= loQ && q <= hiQ;
+        plot.setSeries(vis.pathSeriesIdx[r], { show: r < visibleRuns && withinTrim }, false);
       }
       for (const sIdx of vis.bandSeriesIdx) {
         plot.setSeries(sIdx, { show: showBands }, false);
@@ -366,7 +374,7 @@ function TrajectoryPlot({
         plot.setSeries(sIdx, { show: showBands }, false);
       }
     });
-  }, [assets, visibleRuns]);
+  }, [assets, visibleRuns, trimTopPct, trimBotPct]);
 
   const xs = assets.data[0] as ArrayLike<number>;
   const idx = cursor?.idx;
@@ -876,6 +884,7 @@ function rankedRunIndices(
  *  avoiding a full uPlot teardown on every frame. */
 interface TrajectoryVisibilityMap {
   pathSeriesIdx: number[];
+  pathProfitQuantile: number[];
   bandSeriesIdx: number[];
   bestSeriesIdxs: number[];
   worstSeriesIdxs: number[];
@@ -1145,6 +1154,7 @@ function buildTrajectoryAssets(
   // Median paths stay faint so the envelope still reads.
   const totalPaths = r.samplePaths.paths.length;
   const profitPolarity = new Float64Array(totalPaths);
+  const profitQuantile = new Float64Array(totalPaths);
   if (totalPaths > 0) {
     const order: { idx: number; v: number }[] = new Array(totalPaths);
     for (let i = 0; i < totalPaths; i++) {
@@ -1155,10 +1165,12 @@ function buildTrajectoryAssets(
     const denom = Math.max(1, totalPaths - 1);
     for (let k = 0; k < totalPaths; k++) {
       const q = k / denom;
+      profitQuantile[order[k].idx] = q;
       profitPolarity[order[k].idx] = Math.abs(2 * q - 1);
     }
   }
   const pathSeriesIdx: number[] = [];
+  const pathProfitQuantile: number[] = [];
   const bandSeriesIdx: number[] = [];
   const bestSeriesIdxs: number[] = [];
   const worstSeriesIdxs: number[] = [];
@@ -1229,6 +1241,7 @@ function buildTrajectoryAssets(
     const stroke = `rgba(${pathR},${pathG},${pathB},${alpha.toFixed(3)})`;
     const idx = pushSeries(r.samplePaths.paths[runIdx], { stroke, width });
     pathSeriesIdx.push(idx);
+    pathProfitQuantile.push(profitQuantile[runIdx]);
     mainLines.push({
       label: `Run ${runIdx + 1}`,
       color: stroke,
@@ -1477,6 +1490,7 @@ function buildTrajectoryAssets(
     mainLines,
     visibility: {
       pathSeriesIdx,
+      pathProfitQuantile,
       bandSeriesIdx,
       bestSeriesIdxs,
       worstSeriesIdxs,
@@ -1538,6 +1552,8 @@ function computeYRange(
   extremeStyles: ExtremeStyles,
   visibleRuns: number,
   runMode: RunMode,
+  trimTopPct: number = 0,
+  trimBotPct: number = 0,
 ): { min: number; max: number } {
   let lo = Infinity;
   let hi = -Infinity;
@@ -1551,27 +1567,49 @@ function computeYRange(
     extremeStyles.realBest.enabled || extremeStyles.aggBest.enabled;
   const wantLo =
     extremeStyles.realWorst.enabled || extremeStyles.aggWorst.enabled;
+  // Envelope inclusion gated by trim %: trimming past a percentile band's
+  // tail end drops that band from the Y-range so the axis can actually shrink.
+  const includeP9985 = trimTopPct < 0.15;
+  const includeP975 = trimTopPct < 2.5;
+  const includeP85 = trimTopPct < 15;
+  const includeP0015 = trimBotPct < 0.15;
+  const includeP025 = trimBotPct < 2.5;
+  const includeP15 = trimBotPct < 15;
   for (const r of results) {
-    // p0015/p9985 bandExtreme is drawn at ~10% opacity; on heavy-tail formats
-    // it extends far past any visible path. Only include it in the Y-range
-    // on the side where the user has actually toggled on a best/worst series,
-    // otherwise disabling all extremes leaves no visible line up there yet Y
-    // still stretched into empty space.
-    if (wantHi) max(r.envelopes.p9985);
-    if (wantLo) min(r.envelopes.p0015);
-    min(r.envelopes.p025);
-    max(r.envelopes.p975);
+    if (wantHi && includeP9985) max(r.envelopes.p9985);
+    if (wantLo && includeP0015) min(r.envelopes.p0015);
+    if (includeP025) min(r.envelopes.p025);
+    if (includeP975) max(r.envelopes.p975);
+    if (includeP15) min(r.envelopes.p15);
+    if (includeP85) max(r.envelopes.p85);
     min(r.envelopes.mean);
     max(r.envelopes.mean);
-    if (extremeStyles.realBest.enabled) max(r.samplePaths.best);
-    if (extremeStyles.realWorst.enabled) min(r.samplePaths.worst);
-    if (extremeStyles.aggBest.enabled) max(r.envelopes.max);
-    if (extremeStyles.aggWorst.enabled) min(r.envelopes.min);
+    if (extremeStyles.realBest.enabled && trimTopPct <= 0) max(r.samplePaths.best);
+    if (extremeStyles.realWorst.enabled && trimBotPct <= 0) min(r.samplePaths.worst);
+    if (extremeStyles.aggBest.enabled && trimTopPct <= 0) max(r.envelopes.max);
+    if (extremeStyles.aggWorst.enabled && trimBotPct <= 0) min(r.envelopes.min);
     if (visibleRuns > 0 && r.samplePaths.paths.length > 0) {
+      const total = r.samplePaths.paths.length;
+      const order: { idx: number; v: number }[] = new Array(total);
+      for (let i = 0; i < total; i++) {
+        const p = r.samplePaths.paths[i];
+        order[i] = { idx: i, v: p.length > 0 ? p[p.length - 1] : 0 };
+      }
+      order.sort((a, b) => a.v - b.v);
+      const qDenom = Math.max(1, total - 1);
+      const quantileByIdx = new Float64Array(total);
+      for (let k = 0; k < total; k++) {
+        quantileByIdx[order[k].idx] = k / qDenom;
+      }
+      const loQ = trimBotPct / 100;
+      const hiQ = 1 - trimTopPct / 100;
       const ranked = rankedRunIndices(r.samplePaths.paths, runMode);
       const cap = Math.min(visibleRuns, ranked.length);
       for (let k = 0; k < cap; k++) {
-        const p = r.samplePaths.paths[ranked[k]];
+        const runIdx = ranked[k];
+        const q = quantileByIdx[runIdx];
+        if (q < loQ || q > hiQ) continue;
+        const p = r.samplePaths.paths[runIdx];
         for (let i = 0; i < p.length; i++) {
           const v = p[i];
           if (v < lo) lo = v;
@@ -1781,6 +1819,10 @@ export function ResultsView({
   const setVisibleRuns = setDesiredVisibleRuns;
   const [runMode, setRunMode] = useState<RunMode>("random");
   const deferredRunMode = useDeferredValue(runMode);
+  const [trimTopPct, setTrimTopPct] = useState<number>(0);
+  const [trimBotPct, setTrimBotPct] = useState<number>(0);
+  const deferredTrimTopPct = useDeferredValue(trimTopPct);
+  const deferredTrimBotPct = useDeferredValue(trimBotPct);
   // Heavy trajectory rebuild (uPlot series allocation + path binding) lags
   // on every drag tick when maxRuns is in the hundreds. useDeferredValue keeps
   // the slider input responsive by letting the chart catch up asynchronously.
@@ -1871,6 +1913,8 @@ export function ResultsView({
           lineOverrides={lineOverrides}
           visibleRuns={deferredVisibleRuns}
           runMode={deferredRunMode}
+          trimTopPct={deferredTrimTopPct}
+          trimBotPct={deferredTrimBotPct}
           refLines={refLines}
           toolbar={
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1891,6 +1935,16 @@ export function ResultsView({
                 <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
               </div>
               <div className="flex items-center gap-2">
+                <TrimPctSlider
+                  label={t("runs.trim.worst")}
+                  value={trimBotPct}
+                  onChange={setTrimBotPct}
+                />
+                <TrimPctSlider
+                  label={t("runs.trim.best")}
+                  value={trimTopPct}
+                  onChange={setTrimTopPct}
+                />
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
                   {t("runs.label")}
                 </div>
@@ -2735,6 +2789,8 @@ function TrajectoryCard({
   lineOverrides,
   visibleRuns,
   runMode,
+  trimTopPct,
+  trimBotPct,
   refLines,
   pdPresetFlip,
   honestLabel,
@@ -2768,6 +2824,8 @@ function TrajectoryCard({
   lineOverrides: LineStyleOverrides;
   visibleRuns: number;
   runMode: RunMode;
+  trimTopPct: number;
+  trimBotPct: number;
   refLines: RefLineConfig[];
   pdPresetFlip: boolean;
   honestLabel: string;
@@ -2809,8 +2867,10 @@ function TrajectoryCard({
         extremeStyles,
         visibleRuns,
         runMode,
+        trimTopPct,
+        trimBotPct,
       ),
-    [displayResult, displayPdChart, extremeStyles, visibleRuns, runMode],
+    [displayResult, displayPdChart, extremeStyles, visibleRuns, runMode, trimTopPct, trimBotPct],
   );
   const oursCapKey: DictKey =
     modelPresetId === "naive"
@@ -2987,7 +3047,7 @@ function TrajectoryCard({
                 : t("twin.runA.cap")
             }
           >
-            <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} />
+            <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} />
           </ChartPane>
           <ChartPane
             label={
@@ -3043,7 +3103,7 @@ function TrajectoryCard({
               ) : null
             }
           >
-            <TrajectoryPlot assets={secondary} height={540} visibleRuns={visibleRuns} />
+            <TrajectoryPlot assets={secondary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} />
             {compareMode === "primedope" && !pdPkoFallback && schedule && scheduleRepeats != null && scheduleRepeats > 0 && (
               <div className="mt-1 flex justify-start">
                 <PrimedopeReproduceButton
@@ -3107,14 +3167,14 @@ function TrajectoryCard({
           />
         </div>
       ) : null}
-      <TrajectoryPlot assets={primary} height={440} visibleRuns={visibleRuns} />
+      <TrajectoryPlot assets={primary} height={440} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} />
       {slotOverlay && (
         <div className="mt-4">
           <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             <span className="inline-block h-1.5 w-3 rounded-sm bg-[#60a5fa]" />
             {t("slot.saved")}
           </div>
-          <TrajectoryPlot assets={slotOverlay} height={240} visibleRuns={visibleRuns} />
+          <TrajectoryPlot assets={slotOverlay} height={240} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} />
         </div>
       )}
     </Card>
@@ -3274,6 +3334,37 @@ function DownswingsCard({
       </div>
       {streaks && <div className="mt-6">{streaks}</div>}
     </Card>
+  );
+}
+
+function TrimPctSlider({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1" title={label}>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        {label}
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={40}
+        step={0.5}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-1 w-16 cursor-pointer accent-[color:var(--color-accent)]"
+        aria-label={label}
+      />
+      <span className="min-w-[2.25rem] whitespace-nowrap text-right font-mono text-[10px] tabular-nums text-[color:var(--color-fg-muted)]">
+        {value.toFixed(1)}%
+      </span>
+    </div>
   );
 }
 

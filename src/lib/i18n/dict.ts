@@ -1132,6 +1132,8 @@ export const DICT = {
     ru: "Яркие флуоресцентные цвета на тёмном фоне — максимальная видимость.",
   },
   "runs.label": { en: "Runs shown", ru: "Показано ранов" },
+  "runs.trim.best": { en: "− best", ru: "− лучш." },
+  "runs.trim.worst": { en: "− worst", ru: "− худш." },
   "seedBatch.label": { en: "Seed variant", ru: "Вариант сида" },
   "seedBatch.prev": { en: "Previous cached run", ru: "Предыдущий кэшированный ран" },
   "seedBatch.next": { en: "Next cached run", ru: "Следующий кэшированный ран" },
