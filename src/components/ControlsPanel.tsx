@@ -163,7 +163,7 @@ export function ControlsPanel({
   // visible step the old < 0.1 cliff caused and reach projection sooner once
   // real data arrives. Projection needs progress ≥ 0.03 to avoid a huge ETA
   // swing from the very first checkpoint message.
-  const BUILD_START = 0.88;
+  const BUILD_START = 0.92;
   const smoothedEta = useRef<number | null>(null);
   const lastSmoothAt = useRef<number | null>(null);
   const buildPhaseAnchor = useRef<{ eta: number } | null>(null);
@@ -178,8 +178,13 @@ export function ControlsPanel({
 
     if (progress >= BUILD_START) {
       if (buildPhaseAnchor.current == null) {
-        const seed = smoothedEta.current ?? Math.max(300, elapsed * 0.1);
-        buildPhaseAnchor.current = { eta: seed };
+        // Build phase is ~12 % of total wall time; projection-ETA carried in
+        // from shard phase can be wildly higher on short runs where the last
+        // projection was made near progress≈0.1. Cap the seed so the bar
+        // doesn't stall at 88 % waiting for a stale ETA to drain.
+        const carried = smoothedEta.current ?? Math.max(200, elapsed * 0.1);
+        const cap = Math.max(200, elapsed * 0.18);
+        buildPhaseAnchor.current = { eta: Math.min(carried, cap) };
       }
       const buildSpan = 0.995 - BUILD_START;
       const frac = Math.min(1, Math.max(0, (progress - BUILD_START) / buildSpan));

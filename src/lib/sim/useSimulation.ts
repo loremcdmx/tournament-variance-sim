@@ -282,7 +282,7 @@ export function useSimulation() {
       // on 100k-sample+ runs the build is 10-15 % of wall time, so a 5 %
       // reserve left the bar stuck at 0.95 for seconds. 0.88 matches the
       // observed time share more closely.
-      const SHARD_FRACTION = 0.88;
+      const SHARD_FRACTION = 0.92;
       let lastEmit = 0;
       const emitProgress = () => {
         const now = performance.now();
