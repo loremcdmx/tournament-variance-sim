@@ -680,18 +680,22 @@ describe("jackpotMask", () => {
     expect(hits).toBe(0);
   });
 
-  // Compound jackpot: no single per-KO draw crosses the threshold but
-  // the summed ratios of one bounty-bearing tournament do. A small
-  // schedule with σ=0.9 rarely produces ratio≥100 individually, yet a
-  // deep finish with many KOs can add up. The aggregate check widens
-  // `jackpotMask` to catch those "visual jackpot" samples that a pure
-  // per-KO cutoff would miss.
-  it("flags compound jackpots (Σ per-KO ratios ≥ threshold)", () => {
+  // Covers the aggregate path (Σ per-KO ratios ≥ threshold) — the
+  // widened definition that also flags compound jackpots. With σ=0.9
+  // single-ratio ≥ 100 events are reachable, so this test does not
+  // prove "compound-only"; it proves the aggregate flag fires in a
+  // regime where the pre-widening per-KO-only definition would also
+  // have fired on some of these samples. A strictly-compound fixture
+  // (no single ratio ≥ 100, sum ≥ 100) is not achievable with the
+  // engine's current K distribution (harmonic prefix caps winners'
+  // bounty count well below the ~50–100 draws compound would need at
+  // low σ), so we accept the weaker aggregate assertion here.
+  it("flags aggregate jackpots via Σ per-KO ratios ≥ threshold", () => {
     const mystery: SimulationInput = {
       schedule: [
         {
-          id: "pko-soft",
-          label: "pko-soft",
+          id: "pko-aggregate",
+          label: "pko-aggregate",
           players: 200,
           buyIn: 10,
           rake: 0.1,
