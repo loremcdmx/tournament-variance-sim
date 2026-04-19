@@ -15,6 +15,16 @@ const REFERENCE_SHAPE_MODELS: ReadonlySet<FinishModelId> = new Set([
   "mystery-realdata-tilt",
 ]);
 
+// Fixed-shape models: α is ignored (or the pmf is built directly from an
+// embedded sample), so `calibrateAlpha` short-circuits to 0 and the finish
+// distribution does not respond to the ROI target. Every realdata-* model
+// plus the two neutral shapes (uniform, empirical).
+const FIXED_SHAPE_MODELS: ReadonlySet<FinishModelId> = new Set<FinishModelId>([
+  "uniform",
+  "empirical",
+  ...REFERENCE_SHAPE_MODELS,
+]);
+
 /**
  * True when the model calibrates its α (or shell mass) so that
  * Σ pmf·prize = singleCost·(1+ROI). False for embedded empirical shapes
@@ -23,6 +33,43 @@ const REFERENCE_SHAPE_MODELS: ReadonlySet<FinishModelId> = new Set([
  */
 export function finishModelSupportsTargetRoi(id: FinishModelId): boolean {
   return !REFERENCE_SHAPE_MODELS.has(id);
+}
+
+/**
+ * True when the model's α is solved against the ROI target — so for any
+ * given `targetWinnings`, `calibrateAlpha` will move α until
+ * `Σ pmf × payouts × pool ≈ targetWinnings`. False for fixed-shape models
+ * (uniform / empirical / all realdata-*) and for models where the caller
+ * has pinned α explicitly — in both cases, cash EV does not adapt to
+ * external targets and the bounty budget must be closed via
+ * `calibrateBountyBudget` to keep the total-EV ROI contract honest.
+ */
+export function isAlphaAdjustable(model: FinishModelConfig): boolean {
+  if (model.alpha !== undefined) return false;
+  return !FIXED_SHAPE_MODELS.has(model.id);
+}
+
+/**
+ * Splits `totalWinningsEV` between cash and bounty by nudging bounty away
+ * from its principled anchor while keeping total EV pinned.
+ *
+ *   bias = 0         → bountyMean = anchor
+ *   bias ∈ (0, 0.25] → bountyMean = anchor × (1 − bias)          (more cash share)
+ *   bias ∈ [−0.25,0) → bountyMean = anchor + |bias|·(total − anchor)   (more bounty share)
+ *
+ * Bias ≥ 0 shrinks bounty proportionally; negative bias grows bounty part
+ * of the way toward the ceiling `totalWinningsEV`. Caller is responsible
+ * for clamping bias to ±0.25 and for pairing this with α-driven cash
+ * movement (α-adjustable models) or a shape-driven cashEV (fixed-shape
+ * models) — the helper only does the bounty-side split.
+ */
+export function applyBountyBias(
+  anchor: number,
+  totalWinningsEV: number,
+  bias: number,
+): number {
+  if (bias >= 0) return anchor * (1 - bias);
+  return anchor + (-bias) * Math.max(0, totalWinningsEV - anchor);
 }
 
 /**
@@ -243,20 +290,7 @@ export function calibrateAlpha(
   model: FinishModelConfig,
 ): number {
   if (model.alpha !== undefined) return model.alpha;
-  if (
-    model.id === "uniform" ||
-    model.id === "empirical" ||
-    model.id === "freeze-realdata-step" ||
-    model.id === "freeze-realdata-linear" ||
-    model.id === "freeze-realdata-tilt" ||
-    model.id === "pko-realdata-step" ||
-    model.id === "pko-realdata-linear" ||
-    model.id === "pko-realdata-tilt" ||
-    model.id === "mystery-realdata-step" ||
-    model.id === "mystery-realdata-linear" ||
-    model.id === "mystery-realdata-tilt"
-  )
-    return 0;
+  if (FIXED_SHAPE_MODELS.has(model.id)) return 0;
   const targetWinnings = costPerEntry * (1 + targetROI);
   const range =
     model.id === "stretched-exp" ? { lo: -5, hi: 8 } : { lo: -6, hi: 25 };

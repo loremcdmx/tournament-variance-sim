@@ -9,6 +9,8 @@ import {
   sampleFromCDF,
   buildBinaryItmAssets,
   itmProbability,
+  isAlphaAdjustable,
+  applyBountyBias,
 } from "./finishModel";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig } from "./types";
@@ -151,6 +153,89 @@ describe("calibrateBountyBudget", () => {
     const pmf = buildFinishPMF(N, { id: "power-law" }, 1);
     const r = calibrateBountyBudget(pmf, payouts, pool, 0);
     expect(r.cashEV).toBeCloseTo(expectedWinnings(pmf, payouts, pool), 9);
+  });
+});
+
+describe("isAlphaAdjustable", () => {
+  it("returns true for α-driven skill models", () => {
+    expect(isAlphaAdjustable({ id: "power-law" })).toBe(true);
+    expect(isAlphaAdjustable({ id: "linear-skill" })).toBe(true);
+    expect(isAlphaAdjustable({ id: "stretched-exp", beta: 1 })).toBe(true);
+    expect(isAlphaAdjustable({ id: "plackett-luce" })).toBe(true);
+    expect(isAlphaAdjustable({ id: "powerlaw-realdata-influenced" })).toBe(true);
+  });
+
+  it("returns false for fixed-shape neutral models", () => {
+    expect(isAlphaAdjustable({ id: "uniform" })).toBe(false);
+    expect(isAlphaAdjustable({ id: "empirical" })).toBe(false);
+  });
+
+  it("returns false for every realdata-* reference shape", () => {
+    const ids = [
+      "freeze-realdata-step",
+      "freeze-realdata-linear",
+      "freeze-realdata-tilt",
+      "pko-realdata-step",
+      "pko-realdata-linear",
+      "pko-realdata-tilt",
+      "mystery-realdata-step",
+      "mystery-realdata-linear",
+      "mystery-realdata-tilt",
+    ] as const;
+    for (const id of ids) {
+      expect(isAlphaAdjustable({ id })).toBe(false);
+    }
+  });
+
+  it("returns false when the caller pins α explicitly", () => {
+    expect(isAlphaAdjustable({ id: "power-law", alpha: 1.2 })).toBe(false);
+    expect(isAlphaAdjustable({ id: "plackett-luce", alpha: 0 })).toBe(false);
+  });
+
+  it("agrees with calibrateAlpha: adjustable ⇒ α responds to ROI", () => {
+    // Spot-check that the two predicates stay in sync: when the model is
+    // α-adjustable, changing the ROI target changes the α `calibrateAlpha`
+    // returns; when it isn't, α is pinned at 0 regardless of target.
+    const N = 200;
+    const pool = N * 10;
+    const payouts = getPayoutTable("mtt-standard", N);
+    const adjustable = calibrateAlpha(N, payouts, pool, 11, 0.5, {
+      id: "power-law",
+    });
+    const adjustableBase = calibrateAlpha(N, payouts, pool, 11, 0.0, {
+      id: "power-law",
+    });
+    expect(adjustable).not.toBeCloseTo(adjustableBase, 2);
+    const fixed = calibrateAlpha(N, payouts, pool, 11, 0.5, { id: "uniform" });
+    expect(fixed).toBe(0);
+  });
+});
+
+describe("applyBountyBias", () => {
+  it("bias=0 returns the anchor unchanged", () => {
+    expect(applyBountyBias(5, 10, 0)).toBe(5);
+    expect(applyBountyBias(0, 10, 0)).toBe(0);
+  });
+
+  it("positive bias shrinks bounty proportionally", () => {
+    expect(applyBountyBias(8, 12, 0.25)).toBeCloseTo(8 * 0.75, 12);
+    expect(applyBountyBias(8, 12, 0.1)).toBeCloseTo(8 * 0.9, 12);
+  });
+
+  it("negative bias grows bounty toward the total ceiling", () => {
+    // anchor=4, total=10, bias=-0.25 → 4 + 0.25 × (10 − 4) = 5.5
+    expect(applyBountyBias(4, 10, -0.25)).toBeCloseTo(5.5, 12);
+  });
+
+  it("negative bias with anchor already above total leaves anchor untouched", () => {
+    // max(0, 10 − 12) = 0, so the bonus term vanishes.
+    expect(applyBountyBias(12, 10, -0.25)).toBe(12);
+  });
+
+  it("result stays non-negative for anchor=0", () => {
+    expect(applyBountyBias(0, 10, 0.25)).toBe(0);
+    // anchor=0, total=10, bias=-0.25 → 0 + 0.25 × 10 = 2.5
+    expect(applyBountyBias(0, 10, -0.25)).toBeCloseTo(2.5, 12);
   });
 });
 
