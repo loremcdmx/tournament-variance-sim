@@ -64,7 +64,7 @@ const COMMON = {
 
 const FIELDS = [
   50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500,
-  10_000, 15_000, 25_000, 50_000,
+  10_000, 15_000, 25_000, 50_000, 75_000, 100_000, 150_000, 200_000,
 ];
 const ROIS_MAIN = [-0.20, -0.10, 0, 0.10, 0.20, 0.40, 0.80];
 const ROIS_DENSE = [0.05, 0.15, 0.25, 0.30];
@@ -256,6 +256,80 @@ function linFit(xv: number[], yv: number[]) {
   return { slope, intercept, r2: 1 - sr / st };
 }
 
+// Quadratic log-log fit: log σ = a + b1·log field + b2·(log field)². A
+// pooled version across all ROIs using centered log-field — captures the
+// saturation/acceleration curvature that single-β misses at extreme AFS.
+function fitQuadraticPooled(
+  rois: number[],
+  table: Record<number, Array<{ field: number; sigmaRoi: number }>>,
+): { a: number; b1: number; b2: number; r2: number } {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const roi of rois) {
+    const pts = table[roi];
+    const lx = pts.map((p) => Math.log(p.field));
+    const ly = pts.map((p) => Math.log(p.sigmaRoi));
+    const mx = lx.reduce((a, b) => a + b, 0) / lx.length;
+    const my = ly.reduce((a, b) => a + b, 0) / ly.length;
+    for (let i = 0; i < lx.length; i++) {
+      xs.push(lx[i] - mx);
+      ys.push(ly[i] - my);
+    }
+  }
+  const n = xs.length;
+  let Sx = 0, Sx2 = 0, Sx3 = 0, Sx4 = 0, Sy = 0, Sxy = 0, Sx2y = 0;
+  for (let i = 0; i < n; i++) {
+    const x = xs[i];
+    const y = ys[i];
+    Sx += x;
+    Sx2 += x * x;
+    Sx3 += x * x * x;
+    Sx4 += x * x * x * x;
+    Sy += y;
+    Sxy += x * y;
+    Sx2y += x * x * y;
+  }
+  // Normal equations for [a, b1, b2] given centered ys and xs (so Sx and Sy
+  // aren't exactly zero because rows were centered per-ROI, but close to).
+  const M = [
+    [n, Sx, Sx2],
+    [Sx, Sx2, Sx3],
+    [Sx2, Sx3, Sx4],
+  ];
+  const b = [Sy, Sxy, Sx2y];
+  const sol = solve3x3(M, b);
+  const [a, b1, b2] = sol;
+  let sr = 0;
+  let st = 0;
+  const myAll = Sy / n;
+  for (let i = 0; i < n; i++) {
+    const pred = a + b1 * xs[i] + b2 * xs[i] * xs[i];
+    sr += (ys[i] - pred) ** 2;
+    st += (ys[i] - myAll) ** 2;
+  }
+  return { a, b1, b2, r2: st > 0 ? 1 - sr / st : 1 };
+}
+
+function solve3x3(M: number[][], b: number[]): [number, number, number] {
+  const A = M.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < 3; col++) {
+    let piv = col;
+    for (let row = col + 1; row < 3; row++) {
+      if (Math.abs(A[row][col]) > Math.abs(A[piv][col])) piv = row;
+    }
+    if (piv !== col) [A[col], A[piv]] = [A[piv], A[col]];
+    const d = A[col][col];
+    if (Math.abs(d) < 1e-12) return [0, 0, 0];
+    for (let j = col; j < 4; j++) A[col][j] /= d;
+    for (let row = 0; row < 3; row++) {
+      if (row === col) continue;
+      const f = A[row][col];
+      for (let j = col; j < 4; j++) A[row][j] -= f * A[col][j];
+    }
+  }
+  return [A[0][3], A[1][3], A[2][3]];
+}
+
 function summarize(
   name: string,
   rois: number[],
@@ -307,7 +381,11 @@ function summarize(
   console.log(
     `  C(roi) lin: C = ${linC.intercept.toFixed(4)} + ${linC.slope.toFixed(4)}·roi  R²=${linC.r2.toFixed(5)}`,
   );
-  return { fits, betaGlobal, r2Global, linC };
+  const quad = fitQuadraticPooled(rois, table);
+  console.log(
+    `  quad log-poly: log σ = ${quad.a.toFixed(4)} + ${quad.b1.toFixed(4)}·log f + ${quad.b2.toFixed(4)}·(log f)²  R²=${quad.r2.toFixed(5)}`,
+  );
+  return { fits, betaGlobal, r2Global, linC, quad };
 }
 
 async function mainOrchestrate() {
@@ -444,6 +522,7 @@ async function mainOrchestrate() {
             C1: summary.linC.slope,
             r2: summary.linC.r2,
           },
+          logPolyPooled: summary.quad,
         },
         null,
         2,
@@ -550,6 +629,7 @@ async function mainOrchestrate() {
           C1: pkoMergedSummary.linC.slope,
           r2: pkoMergedSummary.linC.r2,
         },
+        logPolyPooled: pkoMergedSummary.quad,
       },
       null,
       2,
@@ -586,6 +666,7 @@ async function mainOrchestrate() {
           C1: freezeSummary.linC.slope,
           r2: freezeSummary.linC.r2,
         },
+        logPolyPooled: freezeSummary.quad,
       },
       null,
       2,
