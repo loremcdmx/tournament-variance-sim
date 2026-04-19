@@ -1972,29 +1972,45 @@ function ResultsViewImpl({
   // RB > 0; toggling OFF reveals the game-only view. Drawdown / streak stats
   // stay as engine output since RB reshapes those nonlinearly.
   const rbFrac = Math.max(0, (settings?.rakebackPct ?? 0) / 100);
+  // Rakeback %, schedule, and repeats all feed a chain of heavy post-hoc
+  // memos below (shiftResultByRakeback on full path matrices, plus
+  // aggregateStreaks over ~1000 hi-res paths — hundreds of ms on big runs).
+  // Typing in the rakeback field or clicking through the buy-in / format
+  // dropdown would otherwise block the keystroke on that whole chain.
+  // Defer the values so the input frame commits first; React then re-runs
+  // the heavy memos behind the input. `rbRecomputing` drives a small
+  // "пересчёт…" badge so the gap between click and visible update isn't
+  // read as "frozen".
+  const deferredRbFrac = useDeferredValue(rbFrac);
+  const deferredSchedule = useDeferredValue(schedule);
+  const deferredScheduleRepeats = useDeferredValue(scheduleRepeats);
+  const rbRecomputing =
+    rbFrac !== deferredRbFrac ||
+    schedule !== deferredSchedule ||
+    scheduleRepeats !== deferredScheduleRepeats;
   const rakebackCurve = useMemo(
     () =>
-      schedule && scheduleRepeats != null
+      deferredSchedule && deferredScheduleRepeats != null
         ? computeExpectedRakebackCurve(
-            schedule,
-            scheduleRepeats,
-            rbFrac,
+            deferredSchedule,
+            deferredScheduleRepeats,
+            deferredRbFrac,
             result.samplePaths.x,
           )
         : null,
-    [schedule, scheduleRepeats, rbFrac, result.samplePaths.x],
+    [deferredSchedule, deferredScheduleRepeats, deferredRbFrac, result.samplePaths.x],
   );
   const pdRakebackCurve = useMemo(
     () =>
-      pdChart && schedule && scheduleRepeats != null
+      pdChart && deferredSchedule && deferredScheduleRepeats != null
         ? computeExpectedRakebackCurve(
-            schedule,
-            scheduleRepeats,
-            rbFrac,
+            deferredSchedule,
+            deferredScheduleRepeats,
+            deferredRbFrac,
             pdChart.samplePaths.x,
           )
         : null,
-    [pdChart, schedule, scheduleRepeats, rbFrac],
+    [pdChart, deferredSchedule, deferredScheduleRepeats, deferredRbFrac],
   );
   // Four independent region toggles — each controls whether its region
   // shows RB baked in (engine default) or subtracts it for the game-only view.
@@ -2361,8 +2377,23 @@ function ResultsViewImpl({
           ) : null}
         </div>
       ) : null}
-      {(rakebackCurve || hasMysteryRow) && (
-        <div className="flex items-center justify-end gap-4 -mb-1">
+      {(rakebackCurve || hasMysteryRow || rbRecomputing) && (
+        <div className="flex items-center justify-between gap-4 -mb-1">
+          <div
+            className={`flex items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)] transition-opacity duration-150 ${
+              rbRecomputing ? "opacity-100" : "opacity-0"
+            }`}
+            aria-live="polite"
+          >
+            <span
+              className="inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-400"
+              aria-hidden
+            />
+            <span className="uppercase tracking-wider text-indigo-300/80">
+              {t("chart.recomputing")}
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
           {hasMysteryRow && (
             <label
               className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
@@ -2395,6 +2426,7 @@ function ResultsViewImpl({
               </span>
             </label>
           )}
+          </div>
         </div>
       )}
       <UnitScope id="trajectory">

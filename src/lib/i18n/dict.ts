@@ -798,6 +798,10 @@ export const DICT = {
     en: "with RB",
     ru: "с РБ",
   },
+  "chart.recomputing": {
+    en: "recomputing…",
+    ru: "пересчёт…",
+  },
   "chart.trajectory.withRakeback.title": {
     en: "Show the trajectory with rakeback applied (all sampled runs, EV, percentile bands and best/worst shift up by the deterministic RB curve). Uncheck to see the game-only view — exposes drawdowns, bust probability, and time-above-zero as they'd be without the RB cushion.",
     ru: "Показывать траекторию с учётом рейкбэка (все семплированные раны, EV, перцентильные полосы и best/worst сдвигаются вверх на детерминированную кривую РБ). Отключи — увидишь чистый game-only: стрики, вероятность разорения и время под нулём без РБ-подушки.",
