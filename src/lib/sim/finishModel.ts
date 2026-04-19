@@ -190,6 +190,44 @@ export function expectedWinnings(
 }
 
 /**
+ * Residual bounty budget for a fixed pmf.
+ *
+ * Given a cash-payout curve + a pmf (shaped however — empirical, power-law,
+ * real-data, etc.) and a target total expected winnings, returns the bounty
+ * mean required to close the gap. Pairs with the stage-2 normalisation that
+ * rescales a raw bounty-by-place curve so `Σ pmf[i] × bountyByPlace[i] =
+ * bountyMean`.
+ *
+ * This is the seam for data-driven two-stage calibration: callers can fit
+ * pmf to empirical finish data first, then use this to derive the bounty
+ * budget that keeps total ROI on contract — instead of deriving bountyMean
+ * from an analytical `(1+rake)(1+ROI)` lift.
+ *
+ * `feasible: false` when the required bountyMean is negative (the pmf's
+ * cash EV alone already overshoots the target — typically a too-aggressive
+ * empirical shape paired with a flat target).
+ */
+export interface BountyBudgetResult {
+  /** Σ pmf[i] × payouts[i] × prizePool over the paid places. */
+  cashEV: number;
+  /** Required bountyMean = targetTotal − cashEV. May be negative (see feasible). */
+  bountyMean: number;
+  /** True iff bountyMean ≥ 0. */
+  feasible: boolean;
+}
+
+export function calibrateBountyBudget(
+  pmf: Float64Array,
+  payouts: readonly number[],
+  prizePool: number,
+  targetTotal: number,
+): BountyBudgetResult {
+  const cashEV = expectedWinnings(pmf, payouts as number[], prizePool);
+  const bountyMean = targetTotal - cashEV;
+  return { cashEV, bountyMean, feasible: bountyMean >= 0 };
+}
+
+/**
  * Binary-search an alpha value so that player's expected ROI matches target.
  * E[W] is monotonically increasing in alpha for power-law, linear-skill,
  * and stretched-exp. For `uniform` E[W] is constant in alpha, so calibration
