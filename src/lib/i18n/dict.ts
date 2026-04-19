@@ -1103,6 +1103,10 @@ export const DICT = {
     en: "Load a schedule to see per-row σ breakdown.",
     ru: "Загрузите расписание, чтобы увидеть разбивку σ по рядам.",
   },
+  "chart.convergence.bandWarning.pkoMystery": {
+    en: "For PKO / Mystery the closed-form σ approximation isn't accurate enough to show a ± band yet. Use the numbers as a ballpark — lean on a full run for the real answer.",
+    ru: "Для ПКО / Мистери быстрая σ-аппроксимация пока недостаточно точна, чтобы показывать ±-полосу. Считай цифры ориентиром — настоящий ответ даёт полный прогон.",
+  },
   "chart.convergence.rbHint": {
     en: "RB shifts total ROI upward but doesn't add variance — the k / fields above are driven by game σ only, independent of RB%.",
     ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",

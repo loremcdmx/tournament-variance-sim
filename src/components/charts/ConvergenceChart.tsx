@@ -4,6 +4,10 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import type { TournamentRow } from "@/lib/sim/types";
+import {
+  getConvergenceBandPolicy,
+  type ConvergenceRowFormat,
+} from "@/lib/sim/convergencePolicy";
 
 interface Props {
   schedule?: TournamentRow[];
@@ -575,6 +579,31 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     FIT_RAKE,
   ]);
 
+  const effectiveFormats = useMemo<readonly ConvergenceRowFormat[]>(() => {
+    if (effectiveMode === "exact" && schedule) {
+      return schedule.map(inferRowFormat);
+    }
+    if (
+      format === "freeze" ||
+      format === "pko" ||
+      format === "mystery" ||
+      format === "mystery-royale"
+    ) {
+      return [format];
+    }
+    const [fFreeze, fPko, fMystery] = mix;
+    const list: ConvergenceRowFormat[] = [];
+    if (fFreeze > 0) list.push("freeze");
+    if (fPko > 0) list.push("pko");
+    if (fMystery > 0) list.push("mystery");
+    return list;
+  }, [effectiveMode, schedule, format, mix]);
+  const bandPolicy = useMemo(
+    () => getConvergenceBandPolicy(effectiveFormats),
+    [effectiveFormats],
+  );
+  const showBand = bandPolicy.kind === "numeric";
+
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
     if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
@@ -855,6 +884,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       <div className="mb-2 text-[10px] text-[color:var(--color-fg-dim)]">
         z = {z.toFixed(3)}
       </div>
+      {bandPolicy.kind === "warning" && (
+        <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
+          {t("chart.convergence.bandWarning.pkoMystery")}
+        </div>
+      )}
       <table className="w-full table-fixed border-collapse text-[12px] tabular-nums">
         <colgroup>
           <col className="w-[112px]" />
@@ -883,10 +917,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                 )
               : 0;
             const kPct = Math.round(kRel * 100);
-            const kBandLabel = kPct > 0
+            const kBandLabel = showBand && kPct > 0
               ? `±${kPct}% (${fmtInt(row.tourneysLo)}–${fmtInt(row.tourneysHi)})`
               : undefined;
-            const fBandLabel = kPct > 0
+            const fBandLabel = showBand && kPct > 0
               ? `${fmtField(row.fieldsLo)}–${fmtField(row.fieldsHi)}`
               : undefined;
             return (
@@ -902,7 +936,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                   title={kBandLabel}
                 >
                   {fmtInt(row.tourneys)}
-                  {kPct > 0 && (
+                  {showBand && kPct > 0 && (
                     <span className="ml-1 text-[10px] text-[color:var(--color-fg-dim)]">
                       ±{kPct}%
                     </span>
