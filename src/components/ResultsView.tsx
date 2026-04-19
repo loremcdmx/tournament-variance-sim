@@ -452,6 +452,10 @@ function TrajectoryPlot({
       Number(baseStyle.stroke.match(/rgba?\([^)]*?,([^,)]+)\)/i)?.[1] ?? 0.4);
 
     plot.batch(() => {
+      // uPlot wraps `series[i].stroke` in fnOrSelf at init, so after init
+      // it's a function, not the raw string. Assigning a string here makes
+      // the next redraw throw "s.stroke is not a function". Wrap in a thunk
+      // to stay compatible with uPlot's call-site.
       const plotSeries = plot.series as Array<{ stroke?: unknown; width?: number }>;
       for (let r = 0; r < vis.pathSeriesIdx.length; r++) {
         const sIdx = vis.pathSeriesIdx[r];
@@ -463,7 +467,8 @@ function TrajectoryPlot({
           const width = baseStyle.width * boost;
           const s = plotSeries[sIdx];
           if (s) {
-            s.stroke = `rgba(${baseR},${baseG},${baseB},${alpha.toFixed(3)})`;
+            const color = `rgba(${baseR},${baseG},${baseB},${alpha.toFixed(3)})`;
+            s.stroke = () => color;
             s.width = width;
           }
         }
