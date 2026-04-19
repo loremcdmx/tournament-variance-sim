@@ -6,6 +6,7 @@ import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
 import type { ProgressStage } from "@/lib/sim/useSimulation";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { computeRemainingMs } from "@/lib/ui/etaEstimator";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 
@@ -635,44 +636,17 @@ function useRemainingMs(opts: {
 
   useEffect(() => {
     if (!running || runElapsedMs == null) return;
-    const elapsed = runElapsedMs;
-
-    // Naive projection: assume wall-clock scales linearly with bar progress.
-    // Wrong in detail (shard vs build phases have different cost per %), but
-    // honest — we don't model per-machine rates. Blended with the bootstrap
-    // hint early and driven purely by observed progress once mid-run.
-    const tProjection = progress > 0.03 ? elapsed / progress : null;
-    const tBootstrap =
-      estimatedMs != null && estimatedMs > 0 ? estimatedMs : null;
-
-    let tEst: number | null;
-    if (tProjection != null && tBootstrap != null) {
-      const w = Math.min(1, Math.max(0, progress / 0.5));
-      tEst = (1 - w) * tBootstrap + w * tProjection;
-    } else {
-      tEst = tProjection ?? tBootstrap;
-    }
-    if (tEst == null) return;
-
-    const raw = Math.max(0, tEst - elapsed);
-
     const now = performance.now();
     const dt = lastSmoothAt.current == null ? 0 : now - lastSmoothAt.current;
     lastSmoothAt.current = now;
-
-    // Monotonic countdown with phase-adaptive smoothing: τ=400 mid-run
-    // absorbs projection jitter, τ=150 near the tail lets the display
-    // track raw closely so it doesn't pin ~1 s while work wraps up.
-    let next: number;
-    if (smoothedRef.current == null) {
-      next = raw;
-    } else if (raw < smoothedRef.current) {
-      const tau = smoothedRef.current < 1500 ? 150 : 400;
-      const alpha = 1 - Math.exp(-dt / tau);
-      next = alpha * raw + (1 - alpha) * smoothedRef.current;
-    } else {
-      next = Math.max(0, smoothedRef.current - dt);
-    }
+    const next = computeRemainingMs({
+      elapsedMs: runElapsedMs,
+      progress,
+      estimatedMs,
+      prevSmoothedMs: smoothedRef.current,
+      dtMs: dt,
+    });
+    if (next == null) return;
     smoothedRef.current = next;
     const frame = requestAnimationFrame(() => setSmoothed(next));
     return () => cancelAnimationFrame(frame);

@@ -17,6 +17,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { compileSchedule, makeCheckpointGrid } from "./engine";
 import type { RawShard } from "./engine";
 import { BUILD_PROGRESS_CAP, shardProgressFracFor } from "./progressConstants";
+import { composeProgress } from "./progressAggregation";
+
+const EMPTY_BUILD_FRACS: ReadonlyMap<number, number> = new Map();
 import type {
   CalibrationMode,
   SimulationInput,
@@ -326,7 +329,13 @@ export function useSimulation() {
         if (now - lastEmit < 33 && doneAll < totalAll) return;
         lastEmit = now;
         onProgress(
-          totalAll > 0 ? (doneAll / totalAll) * shardFrac : 0,
+          composeProgress({
+            shardDone: doneAll,
+            shardTotal: totalAll,
+            shardFrac,
+            buildFracs: EMPTY_BUILD_FRACS,
+            totalBuildsExpected: 0,
+          }),
           "simulating",
         );
       };
@@ -345,13 +354,18 @@ export function useSimulation() {
         // recent build-progress message was tagged with, so the UI follows
         // the leading edge rather than averaging across passes.
         let latestBuildStage: BuildStage = "stats";
-        const buildHeadroom = BUILD_PROGRESS_CAP - shardFrac;
         const emitBuildProgress = () => {
           if (totalBuildsExpected === 0) return;
-          let sum = 0;
-          for (const f of buildFracs.values()) sum += f;
-          const frac = sum / totalBuildsExpected;
-          onProgress(shardFrac + buildHeadroom * frac, latestBuildStage);
+          onProgress(
+            composeProgress({
+              shardDone: doneAll,
+              shardTotal: totalAll,
+              shardFrac,
+              buildFracs,
+              totalBuildsExpected,
+            }),
+            latestBuildStage,
+          );
         };
         const onAbort = () => {
           if (settled) return;
