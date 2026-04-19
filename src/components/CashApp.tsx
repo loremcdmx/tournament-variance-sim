@@ -72,13 +72,18 @@ export function CashApp() {
   const [progress, setProgress] = useState(0);
   const jobIdRef = useRef(0);
   const poolRef = useRef<Worker[] | null>(null);
+  const destroyPool = () => {
+    if (!poolRef.current) return;
+    for (const w of poolRef.current) {
+      w.onmessage = null;
+      w.terminate();
+    }
+    poolRef.current = null;
+  };
 
   useEffect(() => {
     return () => {
-      if (poolRef.current) {
-        for (const w of poolRef.current) w.terminate();
-        poolRef.current = null;
-      }
+      destroyPool();
     };
   }, []);
 
@@ -141,6 +146,7 @@ export function CashApp() {
         if (errored) return;
         errored = true;
         cleanup();
+        destroyPool();
         setRunning(false);
         console.error("[cash] shard error:", msg.message);
         return;
@@ -186,8 +192,10 @@ export function CashApp() {
   };
 
   const cancelSim = () => {
-    // Bump the job id — late worker messages are ignored by the jobId check.
+    // Bump the job id so any late worker messages are ignored, then tear down
+    // the pool to stop burning CPU on a job the user already canceled.
     jobIdRef.current++;
+    destroyPool();
     setRunning(false);
     setProgress(0);
   };

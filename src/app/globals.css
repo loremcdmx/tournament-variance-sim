@@ -261,3 +261,14 @@ input[type="number"] {
 *::after {
   font-feature-settings: "zero" off;
 }
+
+/* Indeterminate progress pulse — used by the EV-bias slider to signal that
+   a recalc is in flight on the main thread. */
+@keyframes biasBar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}

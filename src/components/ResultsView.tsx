@@ -385,14 +385,11 @@ function TrajectoryPlot({
     return () => cancelAnimationFrame(frame);
   }, [assets, xMin, xMax]);
 
-  // Imperative visibility layer: instead of rebuilding the uPlot instance
-  // on every slider tick, flip `show` on the pre-built path/band/best/worst
-  // series. `plot.batch` collapses all the per-series toggles into a single
-  // redraw, so a 0→500 drag costs one repaint, not five hundred.
-  useEffect(() => {
-    const plot = plotRef.current;
-    if (!plot) return;
-    const vis = assets.visibility;
+  // Single source of truth for which series are currently visible.
+  // Both the imperative visibility effect (flipping uPlot `show`) and the
+  // hover nearest-line lookup read the same predicates — keeping them in
+  // sync used to require mirroring two identical blocks.
+  const visibilityGate = useMemo(() => {
     const showBands = visibleRuns > 0;
     const loQ = trimBotPct / 100;
     const hiQ = 1 - trimTopPct / 100;
@@ -407,7 +404,14 @@ function TrajectoryPlot({
     const includeP15 = trimBotPct < 15;
     const includeBest = showBands && trimTopPct <= 0;
     const includeWorst = showBands && trimBotPct <= 0;
-    const bandIncluded = (pct: number): boolean => {
+    const qByRank = assets.visibility.pathProfitQuantile;
+    const isPathVisible = (rank: number): boolean => {
+      if (rank >= visibleRuns) return false;
+      const q = qByRank[rank] ?? 0;
+      return q >= loQ && q <= hiQ;
+    };
+    const isBandVisible = (pct: number): boolean => {
+      if (!showBands) return false;
       if (pct >= 0.99) return includeP9985;
       if (pct >= 0.9) return includeP975;
       if (pct >= 0.5) return includeP85;
@@ -415,14 +419,24 @@ function TrajectoryPlot({
       if (pct <= 0.1) return includeP025;
       return includeP15;
     };
+    return { showBands, includeBest, includeWorst, isPathVisible, isBandVisible };
+  }, [assets, visibleRuns, trimTopPct, trimBotPct]);
+
+  // Imperative visibility layer: instead of rebuilding the uPlot instance
+  // on every slider tick, flip `show` on the pre-built path/band/best/worst
+  // series. `plot.batch` collapses all the per-series toggles into a single
+  // redraw, so a 0→500 drag costs one repaint, not five hundred.
+  useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const vis = assets.visibility;
+    const { includeBest, includeWorst, isPathVisible, isBandVisible } = visibilityGate;
     plot.batch(() => {
       for (let r = 0; r < vis.pathSeriesIdx.length; r++) {
-        const q = vis.pathProfitQuantile[r] ?? 0;
-        const withinTrim = q >= loQ && q <= hiQ;
-        plot.setSeries(vis.pathSeriesIdx[r], { show: r < visibleRuns && withinTrim }, false);
+        plot.setSeries(vis.pathSeriesIdx[r], { show: isPathVisible(r) }, false);
       }
       for (const { idx, percentile } of vis.bands) {
-        plot.setSeries(idx, { show: showBands && bandIncluded(percentile) }, false);
+        plot.setSeries(idx, { show: isBandVisible(percentile) }, false);
       }
       for (const sIdx of vis.bestSeriesIdxs) {
         plot.setSeries(sIdx, { show: includeBest }, false);
@@ -437,11 +451,11 @@ function TrajectoryPlot({
         plot.setSeries(sIdx, { show: includeWorst }, false);
       }
     });
-  }, [assets, visibleRuns, trimTopPct, trimBotPct]);
+  }, [assets, visibilityGate]);
 
   const idx = cursor?.idx;
   const tournaments = idx != null ? Math.round(xs[idx] ?? 0) : 0;
-  const showBands = visibleRuns > 0;
+  const { showBands, includeBest, includeWorst, isPathVisible, isBandVisible } = visibilityGate;
 
   let nearest: TrajectoryLineMeta | null = null;
   let nearestVal = 0;
@@ -449,40 +463,15 @@ function TrajectoryPlot({
   if (cursor && idx != null) {
     let bestDist = Infinity;
     let bestPathDist = Infinity;
-    // Mirror the exact gates the visibility effect applies so the hover
-    // loop never lights up a line that's currently hidden — this used to
-    // read plotRef.current.series[i].show, but that trips the
-    // react-hooks/refs rule since we're in render. The upside of mirroring
-    // is that the logic is self-contained and obvious; the downside is
-    // that this duplicates the effect — keep the two blocks in sync.
-    const loQ = trimBotPct / 100;
-    const hiQ = 1 - trimTopPct / 100;
-    const includeP9985 = trimTopPct < 0.15;
-    const includeP975 = trimTopPct < 2.5;
-    const includeP85 = trimTopPct < 15;
-    const includeP0015 = trimBotPct < 0.15;
-    const includeP025 = trimBotPct < 2.5;
-    const includeP15 = trimBotPct < 15;
-    const includeBest = showBands && trimTopPct <= 0;
-    const includeWorst = showBands && trimBotPct <= 0;
-    const bandVisible = (pct: number): boolean => {
-      if (pct >= 0.99) return includeP9985;
-      if (pct >= 0.9) return includeP975;
-      if (pct >= 0.5) return includeP85;
-      if (pct <= 0.01) return includeP0015;
-      if (pct <= 0.1) return includeP025;
-      return includeP15;
-    };
-    const qByRank = assets.visibility.pathProfitQuantile;
     for (const line of assets.mainLines) {
       if (line.kind === "path") {
-        const rank = line.rank ?? 0;
-        if (rank >= visibleRuns) continue;
-        const q = qByRank[rank] ?? 0;
-        if (q < loQ || q > hiQ) continue;
+        if (!isPathVisible(line.rank ?? 0)) continue;
       } else if (line.kind === "band") {
-        if (!showBands) continue;
-        if (line.percentile != null && !bandVisible(line.percentile)) continue;
+        if (line.percentile == null) {
+          if (!showBands) continue;
+        } else if (!isBandVisible(line.percentile)) {
+          continue;
+        }
       } else if (line.kind === "best") {
         if (!includeBest) continue;
       } else if (line.kind === "worst") {
@@ -1007,30 +996,41 @@ function computeExpectedRakebackCurve(
   xCheckpoints: number[],
 ): Float64Array | null {
   if (rbFrac <= 0 || schedule.length === 0) return null;
-  const perTourneyRb: number[] = [];
-  for (let rep = 0; rep < Math.max(1, scheduleRepeats); rep++) {
-    for (const row of schedule) {
-      const count = Math.max(1, Math.floor(row.count));
-      const maxE = Math.max(1, row.maxEntries ?? 1);
-      const reRate = maxE > 1 ? Math.max(0, Math.min(1, row.reentryRate ?? 1)) : 0;
-      const expectedBullets = 1 + reentryExpectedClient(maxE, reRate);
-      const rbPer = rbFrac * row.rake * row.buyIn * expectedBullets;
-      for (let k = 0; k < count; k++) perTourneyRb.push(rbPer);
+  const repeats = Number.isFinite(scheduleRepeats) ? Math.max(1, Math.floor(scheduleRepeats)) : 1;
+  const rowCounts: number[] = [];
+  const rowRbs: number[] = [];
+  let cycleCount = 0;
+  let cycleRb = 0;
+  for (const row of schedule) {
+    const count = Number.isFinite(row.count) ? Math.max(1, Math.floor(row.count)) : 1;
+    const maxE = Math.max(1, row.maxEntries ?? 1);
+    const reRate = maxE > 1 ? Math.max(0, Math.min(1, row.reentryRate ?? 1)) : 0;
+    const expectedBullets = 1 + reentryExpectedClient(maxE, reRate);
+    const rbPer = rbFrac * row.rake * row.buyIn * expectedBullets;
+    rowCounts.push(count);
+    rowRbs.push(rbPer);
+    cycleCount += count;
+    cycleRb += count * rbPer;
+  }
+  if (cycleCount === 0) return null;
+  const totalCount = cycleCount * repeats;
+  const rbWithinCycle = (partialCount: number): number => {
+    let remaining = partialCount;
+    let sum = 0;
+    for (let i = 0; i < rowCounts.length && remaining > 0; i++) {
+      const take = Math.min(rowCounts[i], remaining);
+      sum += take * rowRbs[i];
+      remaining -= take;
     }
-  }
-  const N = perTourneyRb.length;
-  if (N === 0) return null;
-  const cum = new Float64Array(N + 1);
-  let acc = 0;
-  for (let t = 0; t < N; t++) {
-    acc += perTourneyRb[t];
-    cum[t + 1] = acc;
-  }
-  const K = xCheckpoints.length;
-  const out = new Float64Array(K);
-  for (let j = 0; j < K; j++) {
-    const idx = Math.max(0, Math.min(N, Math.floor(xCheckpoints[j])));
-    out[j] = cum[idx];
+    return sum;
+  };
+  const out = new Float64Array(xCheckpoints.length);
+  for (let j = 0; j < xCheckpoints.length; j++) {
+    const checkpoint = Number.isFinite(xCheckpoints[j]) ? xCheckpoints[j] : 0;
+    const idx = Math.max(0, Math.min(totalCount, Math.floor(checkpoint)));
+    const fullCycles = Math.floor(idx / cycleCount);
+    const partialCount = idx - fullCycles * cycleCount;
+    out[j] = fullCycles * cycleRb + rbWithinCycle(partialCount);
   }
   return out;
 }
@@ -1884,6 +1884,7 @@ export function ResultsView({
     [schedule],
   );
   const [hideJackpots, setHideJackpots] = useState<boolean>(false);
+  const deferredHideJackpots = useDeferredValue(hideJackpots);
   // rbFrac change resets each region toggle back to default. Users can flip
   // individual regions after; a new rbFrac (e.g. rakeback % edit in controls)
   // wipes those overrides. Four sets in one pass — React batches them.
@@ -1899,12 +1900,12 @@ export function ResultsView({
   // One shifted variant per base + one for each chart — re-used across regions
   // via boolean picks below. Memoing by curve identity keeps the clone cheap.
   const resultForCharts = useMemo(
-    () => (hideJackpots ? stripJackpots(result) : result),
-    [result, hideJackpots],
+    () => (deferredHideJackpots ? stripJackpots(result) : result),
+    [result, deferredHideJackpots],
   );
   const pdChartForCharts = useMemo(
-    () => (hideJackpots && pdChart ? stripJackpots(pdChart) : pdChart),
-    [pdChart, hideJackpots],
+    () => (deferredHideJackpots && pdChart ? stripJackpots(pdChart) : pdChart),
+    [pdChart, deferredHideJackpots],
   );
   const resultNoRb = useMemo(
     () =>

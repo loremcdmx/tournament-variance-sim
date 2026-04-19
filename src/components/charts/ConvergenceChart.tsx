@@ -557,7 +557,7 @@ export function ConvergenceChart({ schedule }: Props) {
                   if (roiOverride == null) setRoiOverride(effectiveRoi);
                   setFormatOverride(f.id);
                 }}
-                className={`flex-1 rounded px-2 py-1 text-[11px] uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`flex-1 whitespace-nowrap rounded px-1.5 py-1 text-[10px] uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-40 ${
                   active
                     ? f.id === "exact"
                       ? "bg-emerald-500/20 text-emerald-200"

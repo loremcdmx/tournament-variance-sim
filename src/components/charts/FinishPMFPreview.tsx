@@ -98,10 +98,11 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
   const t = useT();
   const { advanced } = useAdvancedMode();
 
+  const committedBias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
+
   const stats = useMemo(() => computeRowStats(row, model), [row, model]);
 
-  const evTotal =
-    stats.tiers.reduce((a, tier) => a + tier.ev, 0) || 1;
+  const evTotal = stats.tiers.reduce((a, tier) => a + tier.ev, 0) || 1;
 
   const moneyFmt = (v: number) => {
     if (v === 0) return "$0";
@@ -115,37 +116,6 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
   };
 
   const netProfitPerEntry = stats.evPerEntry - stats.cost;
-
-  // Top-heaviness hero. For small/medium fields we describe the top-1%
-  // tier (winner + anything between places 2..ceil(N*1%)). For high-field
-  // MTTs we switch to a final-table framing — "share that lives at the
-  // FT, which you reach 1 in K" — because it's the slice a high-field
-  // grinder actually tracks in their head.
-  const highField = row.players >= 300;
-  const useFtFraming = highField && stats.ftEvShare > 0.3;
-  let heroBody: string;
-  if (useFtFraming) {
-    const ftOdds =
-      stats.ftField > 0 ? Math.max(1, Math.round(1 / stats.ftField)) : 0;
-    heroBody = t("preview.heroBodyFt")
-      .replace("{share}", pct(stats.ftEvShare))
-      .replace("{odds}", ftOdds > 0 ? String(ftOdds) : "∞");
-  } else {
-    const topTier = stats.tiers.find((x) => x.key === "top3");
-    const winnerTier = stats.tiers.find((x) => x.key === "winner");
-    const topShare =
-      (winnerTier?.ev ?? 0) + (topTier?.ev ?? 0);
-    const topField =
-      (winnerTier?.field ?? 0) + (topTier?.field ?? 0);
-    const topEvShareFrac = evTotal > 0 ? topShare / evTotal : 0;
-    const topOdds = topField > 0 ? Math.max(1, Math.round(1 / topField)) : 0;
-    const heroBodyKey =
-      stats.topPlaces <= 1 ? "preview.heroBodyTop1" : "preview.heroBodyTopN";
-    heroBody = t(heroBodyKey)
-      .replace("{share}", pct(topEvShareFrac))
-      .replace("{n}", String(stats.topPlaces))
-      .replace("{odds}", topOdds > 0 ? String(topOdds) : "∞");
-  }
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -244,25 +214,24 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
             </div>
           );
         })()}
-      </div>
-
-      {/* Hero: top-heaviness — the point of the whole widget */}
-      <div className="rounded-md border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/5 p-3">
-        <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)]">
-          {t("preview.heroTitle")}
-        </div>
-        <div className="text-[12px] leading-snug text-[color:var(--color-fg)]">
-          {heroBody}
-        </div>
-        <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-          {t("preview.heroTagline")}
-        </div>
+        {(row.bountyFraction ?? 0) > 0 && onRowChange && (
+          <EvBiasSlider
+            committedBias={committedBias}
+            onCommit={(v) => onRowChange({ ...row, bountyEvBias: v })}
+            title={t("preview.evBias.label")}
+            cashLabel={t("preview.evBias.cash")}
+            bountyLabel={t("preview.evBias.bounty")}
+            centerLabel={t("preview.evBias.center")}
+            tip={t("preview.evBias.tip")}
+            resetLabel={t("preview.evBias.reset")}
+          />
+        )}
       </div>
 
       {/* Tier-by-tier breakdown + discrete position rows. Shared grid
           template: swatch | label | bar | %EV | field % | equilibrium % | $ ROI */}
       <div className="flex flex-col gap-1.5">
-        <div className="grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        <div className="grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
           <span />
           <span>{t("preview.evBreakdown")}</span>
           <span />
@@ -408,7 +377,7 @@ function EvBreakdownRow({
   const bountyWidthPct = evWidthPct * Math.max(0, Math.min(1, bountyShareOfTier));
   return (
     <div
-      className="relative grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px] hover:bg-[color:var(--color-bg-elev)]/30"
+      className="relative grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px] hover:bg-[color:var(--color-bg-elev)]/30"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -608,7 +577,7 @@ function EvBreakdownFooter({
         ? "text-[color:var(--color-danger)]"
         : "text-[color:var(--color-fg-dim)]";
   return (
-    <div className="mt-0.5 grid grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 border-t border-[color:var(--color-border)] pt-1.5 text-[11px] font-semibold">
+    <div className="mt-0.5 grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 border-t border-[color:var(--color-border)] pt-1.5 text-[11px] font-semibold">
       <span />
       <span className="col-span-4 text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
         {label}
@@ -900,6 +869,134 @@ function PreviewSplitStat({
   );
 }
 
+// Isolated slider so pointer-move re-renders don't cascade into the rest of
+// the preview. The draft lives inside this subcomponent; the parent only
+// hears about it on pointer-up / key-up / blur, which is when the expensive
+// calibrateAlpha path actually needs to run.
+function EvBiasSlider({
+  committedBias,
+  onCommit,
+  title,
+  cashLabel,
+  bountyLabel,
+  centerLabel,
+  tip,
+  resetLabel,
+}: {
+  committedBias: number;
+  onCommit: (v: number) => void;
+  title: string;
+  cashLabel: string;
+  bountyLabel: string;
+  centerLabel: string;
+  tip: string;
+  resetLabel: string;
+}) {
+  const [draft, setDraft] = useState<number | null>(null);
+  // Derived: once committedBias has caught up to the dragged value, the
+  // draft is "stale" and we ignore it. This keeps the thumb visually
+  // locked at the released position through the computeRowStats hang
+  // (otherwise it would snap back to old committedBias for one paint
+  // while waiting for row → stats → re-render to propagate).
+  const effectiveDraft =
+    draft !== null && Math.abs(committedBias - draft) < 1e-9 ? null : draft;
+  const value = effectiveDraft ?? committedBias;
+  // Pending = dragged value hasn't been reflected by committedBias yet.
+  // Used to show an indeterminate progress pulse while computeRowStats
+  // re-runs on the main thread (drag → commit → parent recalc → prop update).
+  const pending = effectiveDraft !== null;
+  // Slider runs with the sign inverted (visual-left = cash, visual-right =
+  // bounty) so the label order and drag direction match. Engine semantics
+  // (positive bias → cash) are preserved; only the <input> sees the flipped
+  // value.
+  const sliderValue = -value;
+  const commit = (raw: number) => {
+    const v = -raw;
+    if (v === committedBias) {
+      setDraft(null);
+      return;
+    }
+    setDraft(v);
+    onCommit(v);
+  };
+
+  const numberStr =
+    value === 0 ? "0" : value > 0 ? `+${value.toFixed(2)}` : value.toFixed(2);
+
+  return (
+    <div
+      className="mt-3 border-t border-[color:var(--color-border)]/60 pt-2"
+      title={tip}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--color-fg)]">
+          {title}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="rounded px-1 py-0.5 text-[11px] font-mono tabular-nums text-[color:var(--color-fg)]">
+            {numberStr}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(null);
+              if (committedBias !== 0) onCommit(0);
+            }}
+            disabled={value === 0}
+            className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
+          >
+            {resetLabel}
+          </button>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-[12px] font-semibold text-[color:var(--color-fg)]">
+          {cashLabel}
+        </span>
+        <div className="flex flex-1 flex-col">
+          <div className="relative">
+            <input
+              type="range"
+              min={-0.25}
+              max={0.25}
+              step={0.0125}
+              value={sliderValue}
+              onChange={(e) => setDraft(-Number(e.target.value))}
+              onPointerUp={(e) => commit(Number(e.currentTarget.value))}
+              onKeyUp={(e) => commit(Number(e.currentTarget.value))}
+              onBlur={(e) => commit(Number(e.currentTarget.value))}
+              className="relative z-10 block h-1 w-full cursor-pointer accent-[color:var(--color-accent)]"
+              aria-label={title}
+            />
+            <span
+              aria-hidden
+              className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-px -translate-x-1/2 -translate-y-1/2 bg-[color:var(--color-border-strong)]"
+            />
+          </div>
+          <span className="mt-1 self-center text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {centerLabel}
+          </span>
+        </div>
+        <span className="text-[12px] font-semibold text-[color:var(--color-fg)]">
+          {bountyLabel}
+        </span>
+      </div>
+      <div
+        aria-hidden
+        className="mt-1 h-0.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg-elev-2)]"
+      >
+        <div
+          className={
+            pending
+              ? "h-full w-1/3 animate-[biasBar_900ms_linear_infinite] rounded-full bg-[color:var(--color-accent)]"
+              : "h-full w-0"
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
 interface RowStats {
   alpha: number;
   cost: number;
@@ -1015,7 +1112,18 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
   const bountyPerSeat = row.buyIn * bountyFraction;
   const bountyLift = Math.max(0.1, Math.min(3, (1 + row.rake) * (1 + row.roi)));
-  const bountyMean = bountyPerSeat * bountyLift;
+  const defaultBountyMean = bountyPerSeat * bountyLift;
+  // Mirror engine.ts compileSingleEntry: user-tunable EV-bias shifts the
+  // split between cash and bounty channels while keeping total ROI intact.
+  const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
+  const totalWinningsEV = entryCost * (1 + row.roi);
+  const bountyMean =
+    bountyFraction > 0
+      ? bias >= 0
+        ? defaultBountyMean * (1 - bias)
+        : defaultBountyMean +
+          -bias * Math.max(0, totalWinningsEV - defaultBountyMean)
+      : 0;
   const prizePool = basePool * (1 - bountyFraction);
 
   const targetRegular = Math.max(0.01, entryCost * (1 + row.roi) - bountyMean);

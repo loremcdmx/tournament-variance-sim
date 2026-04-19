@@ -222,6 +222,34 @@ describe("cashEngine — output shape", () => {
     // wr 5 bb/100, bb=$2 → $0.10/hand → $50/hour at 500 hands/hour.
     expect(r.stats.hourlyEvUsd).toBeCloseTo(50, 6);
   });
+
+  it("probSub100Bb tracks path minimum, not just the final bankroll", () => {
+    const r = simulateCash(
+      baseInput({
+        hands: 200,
+        nSimulations: 1,
+        bbSize: 1,
+        stakes: [
+          {
+            wrBb100: -200,
+            sdBb100: 0,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+          {
+            wrBb100: 200,
+            sdBb100: 0,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+        ],
+      }),
+    );
+    expect(r.stats.meanFinalBb).toBeCloseTo(0, 9);
+    expect(r.stats.probSub100Bb).toBe(1);
+  });
 });
 
 describe("cashEngine — mix of stakes", () => {
@@ -248,7 +276,7 @@ describe("cashEngine — mix of stakes", () => {
   it("two-row mix: expectedEvBb equals share-weighted sum of per-row EV", () => {
     // Row A: wr 10 bb/100, bb=$1 (ref), 50% share → 10 × 0.5 = 5 bb ref per 100 hands
     // Row B: wr 0 bb/100, bb=$2, 50% share → 0 × (2/1) × 0.5 = 0 bb ref per 100 hands
-    // Combined: 2.5 bb ref per 100 hands × 10_000 = 250 bb ref total.
+    // Combined: 5 bb ref per 100 hands × 10_000 = 500 bb ref total.
     const r = simulateCash(
       baseInput({
         hands: 10_000,
@@ -276,6 +304,41 @@ describe("cashEngine — mix of stakes", () => {
     // Realized mean's SE ≈ √(5000·64 + 5000·256)/√500 ≈ 57 bb, so 3σ ≈ ±170.
     expect(r.stats.meanFinalBb).toBeGreaterThan(300);
     expect(r.stats.meanFinalBb).toBeLessThan(700);
+  });
+
+  it("interleaves stake rows instead of creating one giant regime switch", () => {
+    const r = simulateCash(
+      baseInput({
+        hands: 1_000,
+        nSimulations: 1,
+        bbSize: 1,
+        stakes: [
+          {
+            wrBb100: 10,
+            sdBb100: 0,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+          {
+            wrBb100: -10,
+            sdBb100: 0,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+        ],
+      }),
+    );
+    const path = r.samplePaths.paths[0];
+    let peak = path[0] ?? 0;
+    let maxDd = 0;
+    for (const v of path) {
+      if (v > peak) peak = v;
+      const dd = peak - v;
+      if (dd > maxDd) maxDd = dd;
+    }
+    expect(maxDd).toBeLessThanOrEqual(10.000001);
   });
 
   it("mix rake: total rake paid aggregates across rows in ref-bb", () => {

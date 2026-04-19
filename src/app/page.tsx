@@ -159,6 +159,7 @@ export default function Home() {
     elapsedMs,
     run,
     cancel,
+    interruptBackground,
     estimateMs,
     availableRuns,
     activeRunIdx,
@@ -267,6 +268,7 @@ export default function Home() {
   // of blocking the click.
   const deferredSchedule = useDeferredValue(effectiveSchedule);
   const deferredScheduleRepeats = useDeferredValue(controls.scheduleRepeats);
+  const deferredControls = useDeferredValue(controls);
 
   const previewModel = useMemo(
     () => ({
@@ -758,10 +760,11 @@ export default function Home() {
               />
             </div>
           </div>
-          <div className="grid min-w-0 grid-cols-3 gap-2">
+          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
             <GlobalItmControl
               value={controls}
               onChange={(c) => {
+                interruptBackground();
                 setControls(c);
                 setActiveScenarioId(null);
               }}
@@ -770,6 +773,7 @@ export default function Home() {
             <GlobalRakebackControl
               value={controls}
               onChange={(c) => {
+                interruptBackground();
                 setControls(c);
                 setActiveScenarioId(null);
               }}
@@ -778,6 +782,7 @@ export default function Home() {
             <BankrollControl
               value={controls}
               onChange={(c) => {
+                interruptBackground();
                 setControls(c);
                 setActiveScenarioId(null);
               }}
@@ -789,6 +794,7 @@ export default function Home() {
         <ScheduleEditor
           schedule={schedule}
           onChange={(s) => {
+            interruptBackground();
             setSchedule(s);
             setActiveScenarioId(null);
           }}
@@ -834,6 +840,7 @@ export default function Home() {
             <ControlsPanel
               value={controls}
               onChange={(c) => {
+                interruptBackground();
                 setControls(c);
                 setActiveScenarioId(null);
               }}
@@ -894,13 +901,14 @@ export default function Home() {
                 row={previewRow}
                 model={previewModel}
                 itmLocked={itmTargetLocked}
-                onRowChange={(updates) =>
+                onRowChange={(updates) => {
+                  interruptBackground();
                   setSchedule((prev) =>
                     prev.map((r) =>
                       r.id === previewRow.id ? { ...r, ...updates } : r,
                     ),
-                  )
-                }
+                  );
+                }}
               />
             </Card>
           )}
@@ -1007,13 +1015,13 @@ export default function Home() {
             <ResultsView
               result={result}
               compareResult={compareSlot?.result ?? null}
-              bankroll={controls.bankroll}
+              bankroll={deferredControls.bankroll}
               schedule={deferredSchedule}
               scheduleRepeats={deferredScheduleRepeats}
-              compareMode={controls.compareMode}
-              modelPresetId={controls.modelPresetId}
-              finishModelId={controls.finishModelId}
-              settings={controls}
+              compareMode={deferredControls.compareMode}
+              modelPresetId={deferredControls.modelPresetId}
+              finishModelId={deferredControls.finishModelId}
+              settings={deferredControls}
               elapsedMs={elapsedMs}
               availableRuns={availableRuns}
               activeRunIdx={activeRunIdx}

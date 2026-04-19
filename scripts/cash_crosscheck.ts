@@ -124,7 +124,7 @@ function main(): void {
       `  95% CI (±1.96σ) (BB)  = [${fmt(r.ci95Lo)}, ${fmt(r.ci95Hi)}]`,
     );
     console.log(`  P(loss)               = ${pct(r.probLoss)}`);
-    console.log(`  P(final ≤ -100 BB)    = ${pct(r.probSub100)}`);
+    console.log(`  P(min ≤ -100 BB)      = ${pct(r.probSub100)}`);
     console.log(`  P(max DD ≥ 500 BB)    = ${pct(r.pDd500)}`);
     console.log("");
   }

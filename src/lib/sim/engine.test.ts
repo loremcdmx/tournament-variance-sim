@@ -581,6 +581,51 @@ describe("compile contract — analytic per-bullet mean hits (1+ROI)·singleCost
   }
 });
 
+describe("mystery-royale KO window", () => {
+  const harmonic = (n: number) => {
+    let acc = 0;
+    for (let k = 1; k <= n; k++) acc += 1 / k;
+    return acc;
+  };
+
+  it("uses a top-9 envelope window with harmonic KO means", () => {
+    const compiled = compileSchedule({
+      schedule: [
+        {
+          id: "mbr",
+          label: "mbr",
+          gameType: "mystery-royale",
+          players: 18,
+          buyIn: 10,
+          rake: 0.08,
+          roi: 0,
+          payoutStructure: "battle-royale",
+          bountyFraction: 0.5,
+          count: 1,
+        },
+      ],
+      scheduleRepeats: 1,
+      samples: 1,
+      bankroll: 100,
+      seed: 1,
+      finishModel: { id: "power-law" },
+    });
+    const entry = compiled.flat[0];
+    expect(entry.bountyKmean).not.toBeNull();
+    expect(entry.bountyByPlace).not.toBeNull();
+    const kmean = entry.bountyKmean!;
+    const bounty = entry.bountyByPlace!;
+
+    expect(kmean[0]).toBeCloseTo(harmonic(8), 12);
+    expect(kmean[1]).toBeCloseTo(harmonic(8) - 1, 12);
+    expect(kmean[7]).toBeCloseTo(1 / 8, 12);
+    expect(kmean[8]).toBe(0);
+    expect(kmean[17]).toBe(0);
+    expect(bounty[8]).toBe(0);
+    expect(bounty[17]).toBe(0);
+  });
+});
+
 describe("jackpotMask", () => {
   // Schedule that produces a lot of envelope draws so the 1e-6 tier-0 ratio
   // is reliably hit inside a moderate sample budget. Battle-royale tier 0
@@ -633,6 +678,56 @@ describe("jackpotMask", () => {
       hits += freeze.jackpotMask[i];
     }
     expect(hits).toBe(0);
+  });
+});
+
+describe("bountyEvBias", () => {
+  const pkoInput = (bias?: number): SimulationInput => ({
+    schedule: [
+      {
+        id: "pko",
+        label: "pko",
+        players: 180,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.2,
+        payoutStructure: "mtt-gg-bounty" as PayoutStructureId,
+        bountyFraction: 0.5,
+        count: 1,
+        ...(bias !== undefined ? { bountyEvBias: bias } : {}),
+      },
+    ],
+    scheduleRepeats: 300,
+    samples: 4000,
+    bankroll: 1000,
+    seed: 31337,
+    finishModel: { id: "power-law" } as { id: FinishModelId },
+  });
+
+  it("undefined bias matches bias=0 byte-for-byte (default preserved)", () => {
+    const unset = runSimulation(pkoInput());
+    const zero = runSimulation(pkoInput(0));
+    expect(zero.stats.mean).toBe(unset.stats.mean);
+    expect(zero.stats.stdDev).toBe(unset.stats.stdDev);
+  });
+
+  it("total EV stays on ROI target across bias values", () => {
+    // Engine defines ROI on entryCost (buyIn × (1+rake)), so per-tournament
+    // profit target = 10 × 1.1 × 0.2 = 2.2, not 10 × 0.2.
+    const targetProfit = 10 * 1.1 * 0.2;
+    for (const bias of [-0.25, -0.125, 0, 0.125, 0.25]) {
+      const r = runSimulation(pkoInput(bias));
+      const perTournProfit = r.stats.mean / r.tournamentsPerSample;
+      const se = r.stats.stdDev / Math.sqrt(r.samples) / r.tournamentsPerSample;
+      expect(Math.abs(perTournProfit - targetProfit)).toBeLessThan(5 * se);
+    }
+  });
+
+  it("clamps bias to ±0.25 — out-of-range values fold onto the edge", () => {
+    const edge = runSimulation(pkoInput(0.25));
+    const over = runSimulation(pkoInput(1));
+    expect(over.stats.mean).toBe(edge.stats.mean);
+    expect(over.stats.stdDev).toBe(edge.stats.stdDev);
   });
 });
 

@@ -33,14 +33,11 @@ import type {
 
 /**
  * Per-row compiled rates in reference-bb per hand. Ref bb = `input.bbSize`.
- * For single-stake inputs this is an array of length 1; for mix mode the
- * rows are sequential slices of `input.hands`.
+ * `rowHands` is the exact hand budget allocated to that row after share
+ * normalization and rounding.
  */
 interface CompiledRow {
-  /** First hand owned by this row (inclusive). */
-  startHand: number;
-  /** Last hand owned by this row (exclusive). */
-  endHand: number;
+  rowHands: number;
   driftPerHand: number;
   sdPerHand: number;
   rbPerHand: number;
@@ -51,10 +48,30 @@ interface CompiledRow {
 }
 
 /**
- * Expand the mix into per-row hand slices. Legacy single-stake inputs yield
- * one row covering the full horizon with ref-bb = row-bb (scale = 1).
+ * Deterministic execution segments. In mix mode we interleave short blocks
+ * instead of front-loading one stake then another, which would otherwise
+ * exaggerate streak / recovery metrics.
  */
-function compileStakes(input: CashInput): CompiledRow[] {
+interface CompiledSegment {
+  /** Last hand owned by this segment (exclusive, cumulative). */
+  endHand: number;
+  rowIx: number;
+}
+
+interface CompiledStakeSchedule {
+  rows: CompiledRow[];
+  segments: CompiledSegment[];
+}
+
+const MIX_BLOCK_HANDS = 100;
+
+/**
+ * Compile the row economics first, then build a deterministic interleaved
+ * schedule of short blocks when more than one row is active. Legacy
+ * single-stake inputs yield one row and one segment covering the full
+ * horizon with ref-bb = row-bb (scale = 1).
+ */
+function compileStakeSchedule(input: CashInput): CompiledStakeSchedule {
   const refBb = input.bbSize;
   const rowsSource: CashStakeRow[] =
     input.stakes && input.stakes.length > 0
@@ -72,7 +89,7 @@ function compileStakes(input: CashInput): CompiledRow[] {
   const shareSum = rowsSource.reduce((a, r) => a + Math.max(0, r.handShare), 0);
   const shareNorm = shareSum > 0 ? shareSum : 1;
 
-  const compiled: CompiledRow[] = [];
+  const compiledRows: CompiledRow[] = [];
   let cursor = 0;
   for (let r = 0; r < rowsSource.length; r++) {
     const row = rowsSource[r];
@@ -81,9 +98,7 @@ function compileStakes(input: CashInput): CompiledRow[] {
     const rowHands = isLast
       ? input.hands - cursor
       : Math.round(share * input.hands);
-    const startHand = cursor;
-    const endHand = cursor + rowHands;
-    cursor = endHand;
+    cursor += rowHands;
     if (rowHands <= 0) continue;
 
     // Rescale each bb-denominated quantity to the reference-bb currency.
@@ -101,9 +116,8 @@ function compileStakes(input: CashInput): CompiledRow[] {
     const totalRakeRefBb = (rakeBbRef * rowHands) / 100;
     const totalRbRefBb = (rbRateBb100 * rowHands) / 100;
 
-    compiled.push({
-      startHand,
-      endHand,
+    compiledRows.push({
+      rowHands,
       driftPerHand,
       sdPerHand,
       rbPerHand,
@@ -114,7 +128,7 @@ function compileStakes(input: CashInput): CompiledRow[] {
 
   // Guarantee at least one row covering the full horizon (edge case: all
   // handShares zero). Fall back to first source row with share = 1.
-  if (compiled.length === 0) {
+  if (compiledRows.length === 0) {
     const fallback = rowsSource[0];
     const scale = fallback.bbSize / refBb;
     const wrBbRef = fallback.wrBb100 * scale;
@@ -125,9 +139,8 @@ function compileStakes(input: CashInput): CompiledRow[] {
     const rbRateBb100 = fallback.rake.enabled
       ? rakeBbRef * (fallback.rake.advertisedRbPct / 100) * fallback.rake.pvi
       : 0;
-    compiled.push({
-      startHand: 0,
-      endHand: input.hands,
+    compiledRows.push({
+      rowHands: input.hands,
       driftPerHand: wrBbRef / 100,
       sdPerHand: sdBbRef / 10,
       rbPerHand: rbRateBb100 / 100,
@@ -135,7 +148,67 @@ function compileStakes(input: CashInput): CompiledRow[] {
       totalRbRefBb: (rbRateBb100 * input.hands) / 100,
     });
   }
-  return compiled;
+
+  if (compiledRows.length === 1) {
+    return {
+      rows: compiledRows,
+      segments: [{ rowIx: 0, endHand: input.hands }],
+    };
+  }
+
+  const remainingHands = compiledRows.map((row) => row.rowHands);
+  const assignedBlocks = new Int32Array(compiledRows.length);
+  const segments: CompiledSegment[] = [];
+  let handCursor = 0;
+  let blocksPlaced = 0;
+
+  while (handCursor < input.hands) {
+    const nextBlockOrdinal = blocksPlaced + 1;
+    let bestIx = -1;
+    let bestDeficit = -Infinity;
+    let bestRemaining = -1;
+
+    for (let i = 0; i < compiledRows.length; i++) {
+      const remaining = remainingHands[i];
+      if (remaining <= 0) continue;
+      const targetBlocks =
+        (compiledRows[i].rowHands / input.hands) * nextBlockOrdinal;
+      const deficit = targetBlocks - assignedBlocks[i];
+      if (
+        deficit > bestDeficit + 1e-12 ||
+        (Math.abs(deficit - bestDeficit) <= 1e-12 &&
+          (remaining > bestRemaining ||
+            (remaining === bestRemaining && (bestIx < 0 || i < bestIx))))
+      ) {
+        bestIx = i;
+        bestDeficit = deficit;
+        bestRemaining = remaining;
+      }
+    }
+
+    if (bestIx < 0) {
+      throw new Error("compileStakeSchedule: failed to allocate mix blocks");
+    }
+
+    const segLen = Math.min(
+      MIX_BLOCK_HANDS,
+      remainingHands[bestIx],
+      input.hands - handCursor,
+    );
+    remainingHands[bestIx] -= segLen;
+    assignedBlocks[bestIx] += 1;
+    blocksPlaced += 1;
+    handCursor += segLen;
+
+    const last = segments[segments.length - 1];
+    if (last && last.rowIx === bestIx) {
+      last.endHand = handCursor;
+    } else {
+      segments.push({ rowIx: bestIx, endHand: handCursor });
+    }
+  }
+
+  return { rows: compiledRows, segments };
 }
 
 // Envelope columns (sorted per x): cheap O(S log S) × K.
@@ -158,6 +231,8 @@ export interface CashShard {
   longestBreakevenHands: Int32Array;
   /** Hands from deepest drawdown to recovery; -1 if never recovered. */
   recoveryHands: Int32Array;
+  /** 1 if the running minimum touched <= -100 BB at any point. */
+  hitSub100: Uint8Array;
   /** Envelope grid: column-major (K1 columns × shardS rows). BR at checkpoint j of sample s = envMatrix[j*shardS + s]. */
   envMatrix: Float64Array;
   /** Hi-res grid positions in hands space, length K_HI + 1. */
@@ -208,18 +283,24 @@ export function simulateCashShard(
 ): CashShard {
   const shardS = sEnd - sStart;
   const H = input.hands;
-  const rows = compileStakes(input);
+  const schedule = compileStakeSchedule(input);
+  const rows = schedule.rows;
+  const segments = schedule.segments;
   const rowCount = rows.length;
   // Hot-loop arrays — Float64Array for tight access patterns. driftPerHand is
   // wr + rb folded together; keeping them separate would cost an extra add
   // per hand for no gain.
   const driftArr = new Float64Array(rowCount);
   const sdArr = new Float64Array(rowCount);
-  const rowEndArr = new Int32Array(rowCount);
+  const segEndArr = new Int32Array(segments.length);
+  const segRowArr = new Int32Array(segments.length);
   for (let r = 0; r < rowCount; r++) {
     driftArr[r] = rows[r].driftPerHand + rows[r].rbPerHand;
     sdArr[r] = rows[r].sdPerHand;
-    rowEndArr[r] = rows[r].endHand;
+  }
+  for (let i = 0; i < segments.length; i++) {
+    segEndArr[i] = segments[i].endHand;
+    segRowArr[i] = segments[i].rowIx;
   }
 
   const envK1 = envGrid.K + 1;
@@ -231,6 +312,7 @@ export function simulateCashShard(
   const maxDrawdownBb = new Float64Array(shardS);
   const longestBreakevenHands = new Int32Array(shardS);
   const recoveryHands = new Int32Array(shardS);
+  const hitSub100 = new Uint8Array(shardS);
   // Column-major: envMatrix[j*shardS + s] — keeps each envelope column
   // contiguous for the later sort pass.
   const envMatrix = new Float64Array(envK1 * shardS);
@@ -279,11 +361,12 @@ export function simulateCashShard(
     let haveCachedZ = false;
     let cachedZ = 0;
 
-    // Current row index — advances as handIdx crosses rowEndArr[r].
-    let rowIx = 0;
-    let curDrift = driftArr[0];
-    let curSd = sdArr[0];
-    let curRowEnd = rowEndArr[0];
+    // Current execution segment — advances as handIdx crosses segEndArr[i].
+    let segIx = 0;
+    let curRowIx = segRowArr[0];
+    let curDrift = driftArr[curRowIx];
+    let curSd = sdArr[curRowIx];
+    let curSegEnd = segEndArr[0];
 
     for (let i = 0; i < H; i++) {
       let z: number;
@@ -301,14 +384,14 @@ export function simulateCashShard(
         haveCachedZ = true;
       }
       br += curDrift + curSd * z;
+      if (br <= -100) hitSub100[localS] = 1;
       const handIdx = i + 1;
-      // Advance the row cursor when we cross a boundary. Using a `while` to
-      // handle zero-length rows (possible if shares round to 0 hands).
-      while (handIdx >= curRowEnd && rowIx < rowCount - 1) {
-        rowIx++;
-        curDrift = driftArr[rowIx];
-        curSd = sdArr[rowIx];
-        curRowEnd = rowEndArr[rowIx];
+      while (handIdx >= curSegEnd && segIx < segEndArr.length - 1) {
+        segIx++;
+        curRowIx = segRowArr[segIx];
+        curDrift = driftArr[curRowIx];
+        curSd = sdArr[curRowIx];
+        curSegEnd = segEndArr[segIx];
       }
 
       // Peak / drawdown / breakeven bookkeeping.
@@ -384,6 +467,7 @@ export function simulateCashShard(
     maxDrawdownBb,
     longestBreakevenHands,
     recoveryHands,
+    hitSub100,
     envMatrix,
     hiCheckpointIdx: hiIdx,
     hiResPaths,
@@ -418,6 +502,7 @@ export function buildCashResult(
   const recovery = new Int32Array(S);
   // Row-major env matrix for merged samples: envAll[j*S + s].
   const envAll = new Float64Array(envK1 * S);
+  let sub100 = 0;
 
   let cursor = 0;
   for (const sh of sorted) {
@@ -426,6 +511,7 @@ export function buildCashResult(
     maxDd.set(sh.maxDrawdownBb, cursor);
     longestBe.set(sh.longestBreakevenHands, cursor);
     recovery.set(sh.recoveryHands, cursor);
+    for (let k = 0; k < n; k++) sub100 += sh.hitSub100[k];
     for (let j = 0; j < envK1; j++) {
       // Copy env column j from shard into [cursor..cursor+n).
       const dstBase = j * S + cursor;
@@ -521,13 +607,11 @@ export function buildCashResult(
 
   // Stats --------------------------------------------------------------------
   let sumFinal = 0;
-  let sub100 = 0;
   let lossCount = 0;
   for (let s = 0; s < S; s++) {
     const v = finalBb[s];
     sumFinal += v;
     if (v < 0) lossCount++;
-    if (v <= -100) sub100++;
   }
   const meanFinalBb = sumFinal / S;
   let varAcc = 0;
@@ -545,15 +629,14 @@ export function buildCashResult(
   // Deterministic per-horizon totals. In mix mode these aggregate across
   // rows after rescaling to the reference bb. compileStakes does the math,
   // we just sum.
-  const rows = compileStakes(input);
+  const rows = compileStakeSchedule(input).rows;
   let totalRake = 0;
   let totalRb = 0;
   let expectedEvBb = 0;
   for (const row of rows) {
-    const rowHands = row.endHand - row.startHand;
     totalRake += row.totalRakeRefBb;
     totalRb += row.totalRbRefBb;
-    expectedEvBb += (row.driftPerHand + row.rbPerHand) * rowHands;
+    expectedEvBb += (row.driftPerHand + row.rbPerHand) * row.rowHands;
   }
   const expectedEvUsd = expectedEvBb * input.bbSize;
   const meanFinalUsd = meanFinalBb * input.bbSize;

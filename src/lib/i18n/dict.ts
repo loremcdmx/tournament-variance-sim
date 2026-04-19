@@ -226,8 +226,8 @@ export const DICT = {
   "row.gameType.pko": { en: "PKO", ru: "PKO" },
   "row.gameType.mystery": { en: "Mystery", ru: "Мистери" },
   "row.gameType.mysteryRoyale": {
-    en: "GG Mystery Royal",
-    ru: "GG Mystery Royal",
+    en: "GG Battle Royal",
+    ru: "GG Battle Royal",
   },
   "row.gameTypeHint": {
     en: "Top-level format switch. Toggles which fields apply: re-entry for freezeout+re-entry; bounty% for PKO/mystery; lognormal σ² for mystery variants (mystery ≈ 0.8, royale ≈ 1.8). Existing bounty% is preserved when switching between bounty types.",
@@ -1072,18 +1072,18 @@ export const DICT = {
   "chart.convergence.format.pko": { en: "PKO", ru: "ПКО" },
   "chart.convergence.format.mystery": { en: "Mystery", ru: "Мистери" },
   "chart.convergence.format.mystery-royale": {
-    en: "GG Mystery Royal",
-    ru: "GG Mystery Royal",
+    en: "GG Battle Royal",
+    ru: "GG Battle Royal",
   },
   "chart.convergence.format.mix": { en: "Mix", ru: "Микс" },
   "chart.convergence.format.exact": {
-    en: "Your schedule",
-    ru: "ТВОЁ РАСПИСАНИЕ",
+    en: "Schedule",
+    ru: "Расписание",
   },
   "chart.convergence.mode.averaged": { en: "Averaged", ru: "Усреднённо" },
   "chart.convergence.mode.exact": {
-    en: "Your schedule",
-    ru: "Твоё расписание",
+    en: "Schedule",
+    ru: "Расписание",
   },
   "chart.convergence.mode.hint": {
     en: "Averaged: combines rows into one weighted σ_ROI at the mean AFS/ROI. Exact: computes σ per row at its own AFS/ROI/format and combines via σ²_eff = Σ w_r·σ²_r (w_r = row count share). Exact is honest for heterogeneous schedules; averaged smooths tail rows into the mean.",
@@ -1578,6 +1578,18 @@ export const DICT = {
   "preview.evSplit": { en: "Gross EV", ru: "Брутто EV" },
   "preview.evSplit.cash": { en: "cash", ru: "кеш" },
   "preview.evSplit.bounty": { en: "bounty", ru: "ноки" },
+  "preview.evBias.label": {
+    en: "Where EV comes from — places or KOs",
+    ru: "Откуда берётся EV — занимаемые места или ноки",
+  },
+  "preview.evBias.center": { en: "balanced", ru: "равномерно" },
+  "preview.evBias.tip": {
+    en: "Shifts expected winnings between cash payouts and knockouts without changing total ROI. Center = default split; toward cash = finish higher on average and collect fewer bounties; toward bounty = finish lower but collect more bounties. α recalibrates to keep total ROI on target.",
+    ru: "Сдвигает ожидание между кэш-выплатами и ноками, не меняя суммарный ROI. Центр = дефолтный сплит; к кэшу = финишируем в среднем выше, но собираем меньше ноков; к нокам = финишируем ниже, но больше ноков за турнир. α перекалибруется, чтобы общий ROI остался на цели.",
+  },
+  "preview.evBias.cash": { en: "cash", ru: "кэш" },
+  "preview.evBias.bounty": { en: "KOs", ru: "ноки" },
+  "preview.evBias.reset": { en: "reset", ru: "сброс" },
   "preview.evSplit.bountyRegular": {
     en: "bounty (regular)",
     ru: "ноки (обычные)",
@@ -1587,8 +1599,8 @@ export const DICT = {
     ru: "джекпот (≥{x}×)",
   },
   "preview.evSplit.jackpotTip": {
-    en: "Expected $ per entry from per-KO envelope draws that pay ≥{x}× the mean bounty. Mystery Royale reads GG's published 10-tier table; plain Mystery approximates via the log-normal tail. PKO and freezeouts effectively zero.",
-    ru: "Ожидаемые $ с входа от тех per-KO конвертов, которые платят ≥{x}× средней головы. Mystery Royale читает опубликованную GG 10-тировую таблицу; обычный Mystery — через хвост лог-нормали. PKO и фризы фактически 0.",
+    en: "Expected $ per entry from per-KO envelope draws that pay ≥{x}× the mean bounty. Battle Royal reads GG's published 10-tier table; plain Mystery approximates via the log-normal tail. PKO and freezeouts effectively zero.",
+    ru: "Ожидаемые $ с входа от тех per-KO конвертов, которые платят ≥{x}× средней головы. Battle Royal читает опубликованную GG 10-тировую таблицу; обычный Mystery — через хвост лог-нормали. PKO и фризы фактически 0.",
   },
   "preview.hover.places": { en: "places", ru: "места" },
   "preview.hover.hitRate": { en: "Hit rate", ru: "Как часто" },

@@ -90,7 +90,7 @@ const STRUCTURES: {
   { id: "mtt-standard", short: "MTT Standard 15%", full: "MTT · Standard (15% paid)" },
   { id: "mtt-flat", short: "MTT Flat 20%", full: "MTT · Flat (20% paid)" },
   { id: "mtt-top-heavy", short: "MTT Top-heavy 12%", full: "MTT · Top-heavy (12% paid)" },
-  { id: "battle-royale", short: "GG Mystery Royal", full: "GG Mystery Royal · 18-max, top-3 paid" },
+  { id: "battle-royale", short: "GG Battle Royal", full: "GG Battle Royal · 18-max, top-3 paid" },
   { id: "satellite-ticket", short: "Satellite (tickets)", full: "Satellite · ticket cliff (10% seats)" },
   { id: "sng-50-30-20", short: "SNG 50/30/20", full: "SNG · 50/30/20" },
   { id: "sng-65-35", short: "SNG 65/35", full: "SNG · 65/35" },
@@ -1269,7 +1269,7 @@ function BrPresetSelect({
         onApply({ buyIn, rake: BR_RAKE });
       }}
       className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
-      title="GG Mystery Royal tier"
+      title="GG Battle Royal tier"
     >
       {current == null && <option value="">— BR tier —</option>}
       {BR_PRESETS.map((p) => (
@@ -1343,7 +1343,7 @@ function BuyInInput({
         setFocused(false);
         const p = parseBuyIn(local, rake);
         if (p) {
-          onChange(p.buyIn, p.rake);
+          startTransition(() => onChange(p.buyIn, p.rake));
           setLocal(formatBuyIn(p.buyIn, p.rake));
         } else {
           setLocal(canonical);
@@ -1352,7 +1352,7 @@ function BuyInInput({
       onChange={(e) => {
         setLocal(e.target.value);
         const p = parseBuyIn(e.target.value, rake);
-        if (p) onChange(p.buyIn, p.rake);
+        if (p) startTransition(() => onChange(p.buyIn, p.rake));
       }}
       placeholder="50+5"
       title="50+5 = $50 buy-in + $5 rake (or just a number)"

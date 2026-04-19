@@ -248,6 +248,25 @@ export interface TournamentRow {
    * PKO game types (CV ≈ 0.68), 0 for non-bounty formats.
    */
   pkoHeadVar?: number;
+
+  /**
+   * Bounty EV bias slider ∈ [−0.25, +0.25], default 0. Shifts the split of
+   * the player's expected winnings between cash (finish-place payouts) and
+   * bounty (KO collections) without changing total ROI:
+   *   s = 0    → default split (bountyMean keeps the structural
+   *              `bountyPerSeat × (1+rake)(1+roi)` target).
+   *   s > 0    → toward cash: bountyMean scales to `default × (1−s)`;
+   *              cash target absorbs the shortfall, α recalibrates upward.
+   *   s < 0    → toward bounty: bountyMean grows linearly toward
+   *              `totalWinningsEV` (cash target shrinks, player profit
+   *              comes more from KOs).
+   * Clamped to ±0.25 at the engine — empirically, α calibration begins to
+   * bottom out against its search envelope near ±0.3, which would leave
+   * realized EV below the ROI contract. ±0.25 keeps the shift inside the
+   * feasible cone for every payout / bountyFraction combination we ship.
+   * Only meaningful for rows with `bountyFraction > 0` — ignored otherwise.
+   */
+  bountyEvBias?: number;
 }
 
 /**

@@ -28,37 +28,41 @@ const LABEL_RE = /^([A-ZА-ЯЁ][\p{L}\s-]{1,20}:)\s*/u;
 function renderTooltipBody(content: React.ReactNode): React.ReactNode {
   if (typeof content !== "string") return content;
   const paragraphs = content.split(/\n\n+/);
+  // The tooltip's outer element is a <span>; any <div>/<p> here would be
+  // block-level and cause the browser to auto-close the span, dropping the
+  // width/max-width constraints and letting text escape the container.
+  // Keep everything as <span> with explicit block display.
   return (
-    <div className="flex flex-col gap-2">
+    <span className="flex flex-col gap-2">
       {paragraphs.map((p, i) => {
         const m = p.match(LABEL_RE);
         if (m) {
           const rest = p.slice(m[0].length);
           return (
-            <p key={i} className="leading-relaxed">
+            <span key={i} className="block leading-relaxed">
               <span className="mr-1 font-semibold uppercase tracking-wider text-[10px] text-[color:var(--color-accent)]">
                 {m[1]}
               </span>
               <span className="text-[color:var(--color-fg-muted)]">
                 {renderInline(rest)}
               </span>
-            </p>
+            </span>
           );
         }
         return (
-          <p
+          <span
             key={i}
             className={
               i === 0
-                ? "leading-relaxed text-[color:var(--color-fg)]"
-                : "leading-relaxed text-[color:var(--color-fg-muted)]"
+                ? "block leading-relaxed text-[color:var(--color-fg)]"
+                : "block leading-relaxed text-[color:var(--color-fg-muted)]"
             }
           >
             {renderInline(p)}
-          </p>
+          </span>
         );
       })}
-    </div>
+    </span>
   );
 }
 

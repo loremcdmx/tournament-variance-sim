@@ -188,6 +188,24 @@ export function useSimulation() {
     poolRef.current = spawnPool();
   }, []);
 
+  const interruptBackground = useCallback(() => {
+    let shouldReset = false;
+    if (bgAbortRef.current) {
+      bgAbortRef.current.abort();
+      bgAbortRef.current = null;
+      shouldReset = true;
+    }
+    if (pdStatus === "running") {
+      pdJobIdRef.current++;
+      shouldReset = true;
+    }
+    if (!shouldReset) return;
+    resetPool();
+    setBackgroundStatus("idle");
+    setPdStatus("idle");
+    setPdProgress(0);
+  }, [pdStatus, resetPool]);
+
   const cancel = useCallback(() => {
     jobIdRef.current++;
     pdJobIdRef.current++;
@@ -795,6 +813,7 @@ export function useSimulation() {
     elapsedMs,
     run,
     cancel,
+    interruptBackground,
     estimateMs,
     availableRuns,
     activeRunIdx,

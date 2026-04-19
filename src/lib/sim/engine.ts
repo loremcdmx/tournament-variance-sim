@@ -468,7 +468,25 @@ function compileSingleEntry(
     // proportionally over cash + bounty, so lift = (1+rake)(1+roi). Capped
     // at 3× for sanity.
     const bountyLift = Math.max(0.1, Math.min(3, (1 + row.rake) * (1 + row.roi)));
-    bountyMean = bountyPerSeat * bountyLift;
+    const defaultBountyMean = bountyPerSeat * bountyLift;
+
+    // EV-bias: user-tunable shift of the expected-winnings split between
+    // the cash and bounty channels, preserving total ROI. At s=0 we keep
+    // the structural default; at s=+0.25 bountyMean shrinks 25% below
+    // default; at s=−0.25 bountyMean grows 25% of the way toward
+    // totalWinningsEV. Clamped to ±0.25 — empirically at ±0.28 cash /
+    // ±0.33 bounty calibrateAlpha's α search starts bottoming out against
+    // its [αmin, αmax] envelope, which leaves total EV short of the ROI
+    // contract. ±0.25 keeps the shift well inside the feasible cone.
+    const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
+    const totalWinningsEV = entryCostSingle * (1 + row.roi);
+    if (bias >= 0) {
+      bountyMean = defaultBountyMean * (1 - bias);
+    } else {
+      bountyMean =
+        defaultBountyMean + (-bias) * Math.max(0, totalWinningsEV - defaultBountyMean);
+    }
+
     // Shrink the regular pool by the bounty share.
     prizePool = prizePool * (1 - bountyFraction);
   }
