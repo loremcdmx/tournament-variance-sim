@@ -1,16 +1,12 @@
 /**
- * Shared progress-bar constants. Kept outside engine.ts because they define a
- * UI contract between the worker-pool dispatcher (`useSimulation.ts`) and the
- * ETA projector (`ControlsPanel.tsx`).
+ * Shared progress-bar layout constant.
  *
- * The old model used a fixed shard fraction (85% of the bar for shards, ~15%
- * for build/finalize). That falls apart on large runs where envelope sorts,
- * histograms, and serialize/postMessage dominate wall time: the bar reaches
- * the high 90s while the run is still materially busy.
- *
- * The helpers below keep the bar split dynamic and shared between the
- * dispatcher and the ETA projection logic, so visual progress and textual ETA
- * drift together instead of contradicting each other.
+ * The bar position is driven by real signals (shards done + build-phase frac
+ * from the worker). The only heuristic here is *where on the bar* the
+ * shard→build seam sits, and it's flat-ish on purpose: machine performance
+ * decides what fraction of wall-clock the build phase actually takes, and we
+ * won't pretend to know that per user. Pre-launch ETA is a separate orientation
+ * estimate — it doesn't read this file.
  */
 
 /**
@@ -20,24 +16,15 @@
 export const BUILD_PROGRESS_CAP = 0.995;
 
 /**
- * Fraction of wall time that build (envelope sort + histogram + serialize +
- * postMessage) typically consumes as a function of sample count.
- *
- * Rough empirical ramp: calibrated for honesty, not profiler-perfectness.
- * 10k -> ~10%, 100k -> ~25%, 1M -> ~40%, 10M+ -> capped at ~55%.
- */
-export function buildTimeFracFor(samples: number): number {
-  if (!(samples > 0)) return 0.15;
-  const logScale = Math.log10(Math.max(1, samples / 10_000));
-  return Math.min(0.55, 0.10 + 0.15 * logScale);
-}
-
-/**
  * Fraction of the visible progress bar reserved for shard simulation. The
- * remainder up to BUILD_PROGRESS_CAP is owned by build/finalize. This mirrors
- * the buildTimeFrac heuristic so large runs reserve visibly more headroom for
- * the slower tail stage.
+ * remainder up to BUILD_PROGRESS_CAP is owned by build/finalize.
+ *
+ * Gentle ramp so large runs reserve a bit more headroom for envelope sorts +
+ * serialize/postMessage, but without over-committing to a per-machine model:
+ * 10k → 0.80, 100k → 0.72, 1M+ → floored at 0.60.
  */
 export function shardProgressFracFor(samples: number): number {
-  return Math.max(0.35, BUILD_PROGRESS_CAP - buildTimeFracFor(samples));
+  if (!(samples > 0)) return 0.78;
+  const logScale = Math.log10(Math.max(1, samples / 10_000));
+  return Math.max(0.60, 0.80 - 0.08 * logScale);
 }

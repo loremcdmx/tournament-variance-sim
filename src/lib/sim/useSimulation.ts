@@ -440,7 +440,7 @@ export function useSimulation() {
               // is not part of msg.frac and we want the final tick to come
               // from the build-result handler, not from build-progress
               // overshooting into the "done" slot.
-              buildFracs.set(msg.buildId, Math.min(0.995, msg.frac));
+              buildFracs.set(msg.buildId, Math.min(BUILD_PROGRESS_CAP, msg.frac));
               emitBuildProgress();
             }
             return;

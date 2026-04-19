@@ -3,10 +3,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
-import {
-  buildTimeFracFor,
-  shardProgressFracFor,
-} from "@/lib/sim/progressConstants";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
@@ -111,6 +107,18 @@ function formatDuration(ms: number): string {
   return s === 0 ? `${m} мин` : `${m} мин ${s} с`;
 }
 
+// Pre-launch ETA is a per-machine guess based on one prior run's rate; showing
+// "9.3 с" implies a precision we don't have. Round coarsely so the label
+// reads as orientation, not a promise.
+function formatRoughDuration(ms: number): string {
+  if (ms < 2000) return "~1 с";
+  if (ms < 15_000) return `${Math.round(ms / 1000)} с`;
+  if (ms < 60_000) return `${Math.round(ms / 5000) * 5} с`;
+  const m = Math.floor(ms / 60_000);
+  const remSec = Math.round((ms % 60_000) / 10_000) * 10;
+  return remSec === 0 ? `${m} мин` : `${m} мин ${remSec} с`;
+}
+
 export const ControlsPanel = memo(function ControlsPanel({
   value,
   onChange,
@@ -155,7 +163,7 @@ export const ControlsPanel = memo(function ControlsPanel({
     const id = window.setTimeout(() => setBarVisible(false), 450);
     return () => window.clearTimeout(id);
   }, [running, barVisible]);
-  const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs, samples: value.samples });
+  const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
@@ -442,7 +450,7 @@ export const ControlsPanel = memo(function ControlsPanel({
                     <span className="relative -top-px text-[11px] leading-none">
                       ≈
                     </span>
-                    <span>{formatDuration(estimatedMs)}</span>
+                    <span>{formatRoughDuration(estimatedMs)}</span>
                   </>
                 )
                 : "\u00A0"}
@@ -595,11 +603,8 @@ function useRemainingMs(opts: {
   runElapsedMs: number | null;
   progress: number;
   estimatedMs: number | null | undefined;
-  samples: number;
 }): number | null {
-  const { running, runElapsedMs, progress, estimatedMs, samples } = opts;
-  const BUILD_TIME_FRAC = buildTimeFracFor(samples);
-  const SHARD_FRAC = shardProgressFracFor(samples);
+  const { running, runElapsedMs, progress, estimatedMs } = opts;
   const [smoothed, setSmoothed] = useState<number | null>(null);
   const smoothedRef = useRef<number | null>(null);
   const lastSmoothAt = useRef<number | null>(null);
@@ -616,20 +621,11 @@ function useRemainingMs(opts: {
     if (!running || runElapsedMs == null) return;
     const elapsed = runElapsedMs;
 
-    // Progress is non-uniform in time: shards fill [0, SHARD_FRAC]
-    // but only consume (1 - BUILD_TIME_FRAC) of wall-clock; build fills
-    // the remainder on the slower end. Map progress → expected wall-
-    // clock work-share so `elapsed / share` is smooth across the seam.
-    let tProjection: number | null = null;
-    if (progress > 0.03) {
-      const share =
-        progress < SHARD_FRAC
-          ? (progress / SHARD_FRAC) * (1 - BUILD_TIME_FRAC)
-          : 1 - BUILD_TIME_FRAC +
-            ((progress - SHARD_FRAC) / (1 - SHARD_FRAC)) * BUILD_TIME_FRAC;
-      tProjection = elapsed / share;
-    }
-
+    // Naive projection: assume wall-clock scales linearly with bar progress.
+    // Wrong in detail (shard vs build phases have different cost per %), but
+    // honest — we don't model per-machine rates. Blended with the bootstrap
+    // hint early and driven purely by observed progress once mid-run.
+    const tProjection = progress > 0.03 ? elapsed / progress : null;
     const tBootstrap =
       estimatedMs != null && estimatedMs > 0 ? estimatedMs : null;
 
@@ -664,7 +660,7 @@ function useRemainingMs(opts: {
     smoothedRef.current = next;
     const frame = requestAnimationFrame(() => setSmoothed(next));
     return () => cancelAnimationFrame(frame);
-  }, [running, runElapsedMs, progress, estimatedMs, BUILD_TIME_FRAC, SHARD_FRAC]);
+  }, [running, runElapsedMs, progress, estimatedMs]);
 
   return smoothed;
 }
