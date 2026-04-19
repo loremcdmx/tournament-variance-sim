@@ -7,6 +7,12 @@ import type { ProgressStage } from "@/lib/sim/useSimulation";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
+import {
+  COMPLETING_HOLD_MS,
+  type BarState,
+  barFillPercent,
+  nextBarState,
+} from "@/lib/ui/progressBarState";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 
@@ -163,31 +169,17 @@ export const ControlsPanel = memo(function ControlsPanel({
     }, 250);
     return () => window.clearInterval(id);
   }, [running]);
-  // Bar state machine:
-  //   running     → width tracks `progress`, stage label live
-  //   completing  → 450 ms hold at 100 % so the fill animation actually plays
-  //                 out; only reached on natural completion (`progress === 1`)
-  //   hidden      → bar unmounted. Cancel/error skip `completing` so the bar
-  //                 never snaps to 100 % on an aborted run — that mis-sold a
-  //                 cancel as a completed run. `progress === 1` is the
-  //                 completion signal: `composeProgress` caps at
-  //                 BUILD_PROGRESS_CAP (0.985), so only the terminal
-  //                 `setProgress(1)` in `run()` can push it to exactly 1.
-  type BarState = "hidden" | "running" | "completing";
+  // Bar state transitions live in `progressBarState.ts` (pure, unit-tested).
+  // The only React-owned concern here is the `completing → hidden` timeout.
   const [barState, setBarState] = useState<BarState>("hidden");
   useEffect(() => {
-    if (running) {
+    const next = nextBarState({ running, progress, prev: barState });
+    if (next !== barState) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors external run state onto UI mount flag; deliberate sync, not derived.
-      setBarState("running");
-      return undefined;
+      setBarState(next);
     }
-    if (barState === "hidden") return undefined;
-    if (progress < 1) {
-      setBarState("hidden");
-      return undefined;
-    }
-    setBarState("completing");
-    const id = window.setTimeout(() => setBarState("hidden"), 450);
+    if (next !== "completing") return undefined;
+    const id = window.setTimeout(() => setBarState("hidden"), COMPLETING_HOLD_MS);
     return () => window.clearTimeout(id);
   }, [running, progress, barState]);
   const barVisible = barState !== "hidden";
@@ -504,12 +496,7 @@ export const ControlsPanel = memo(function ControlsPanel({
               <div
                 key={runToken}
                 className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width] duration-100 ease-linear"
-                style={{
-                  width:
-                    barState === "running"
-                      ? `${Math.min(100, progress * 100).toFixed(1)}%`
-                      : "100%",
-                }}
+                style={{ width: barFillPercent(barState, progress) }}
               />
             </div>
             {barState === "running" && stage && (
