@@ -462,6 +462,17 @@ export default function Home() {
     },
     [],
   );
+  const previewRowId_ = previewRow?.id;
+  const onPreviewRowChange = useCallback(
+    (updates: Partial<TournamentRow>) => {
+      if (!previewRowId_) return;
+      interruptBackground();
+      setSchedule((prev) =>
+        prev.map((r) => (r.id === previewRowId_ ? { ...r, ...updates } : r)),
+      );
+    },
+    [previewRowId_, interruptBackground],
+  );
   const fixRowPreset = useCallback(
     (rowId: string) => {
       setSchedule((prev) =>
@@ -927,14 +938,7 @@ export default function Home() {
                 row={previewRow}
                 model={previewModel}
                 itmLocked={itmTargetLocked}
-                onRowChange={(updates) => {
-                  interruptBackground();
-                  setSchedule((prev) =>
-                    prev.map((r) =>
-                      r.id === previewRow.id ? { ...r, ...updates } : r,
-                    ),
-                  );
-                }}
+                onRowChange={onPreviewRowChange}
               />
             </Card>
           )}
