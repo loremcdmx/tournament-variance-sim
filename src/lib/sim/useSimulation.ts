@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compileSchedule, makeCheckpointGrid } from "./engine";
 import type { RawShard } from "./engine";
-import { SHARD_FRACTION } from "./progressConstants";
+import { BUILD_PROGRESS_CAP, shardProgressFracFor } from "./progressConstants";
 import type {
   CalibrationMode,
   SimulationInput,
@@ -298,16 +298,23 @@ export function useSimulation() {
       let doneAll = 0;
       for (const s of allSlots) totalAll += s.total;
 
-      // Throttle UI updates: at most ~30 fps. Reserve the top slice of the
-      // progress bar for the build phase (envelope sort / histograms +
-      // serialize-and-post back to main). SHARD_FRACTION is shared with
-      // ControlsPanel's ETA projector — see src/lib/sim/progressConstants.ts.
+      // Sample-count-aware split: larger runs reserve more headroom for the
+      // build phase so the bar doesn't park at ~95% while envelope sorts and
+      // serialize-and-post finish. Use the largest pass (twin runs share the
+      // same visible bar; the slower pass dominates).
+      let maxPassSamples = 0;
+      for (const p of passes) {
+        if (p.input.samples > maxPassSamples) maxPassSamples = p.input.samples;
+      }
+      const shardFrac = shardProgressFracFor(maxPassSamples);
+
+      // Throttle UI updates: at most ~30 fps.
       let lastEmit = 0;
       const emitProgress = () => {
         const now = performance.now();
         if (now - lastEmit < 33 && doneAll < totalAll) return;
         lastEmit = now;
-        onProgress(totalAll > 0 ? (doneAll / totalAll) * SHARD_FRACTION : 0);
+        onProgress(totalAll > 0 ? (doneAll / totalAll) * shardFrac : 0);
       };
 
       return new Promise((resolve, reject) => {
@@ -320,13 +327,13 @@ export function useSimulation() {
         // runs because its `totalAll * 0.02` wall-time estimate was 5× off.
         const buildFracs = new Map<number, number>();
         let totalBuildsExpected = 0;
-        const buildHeadroom = 0.995 - SHARD_FRACTION;
+        const buildHeadroom = BUILD_PROGRESS_CAP - shardFrac;
         const emitBuildProgress = () => {
           if (totalBuildsExpected === 0) return;
           let sum = 0;
           for (const f of buildFracs.values()) sum += f;
           const frac = sum / totalBuildsExpected;
-          onProgress(SHARD_FRACTION + buildHeadroom * frac);
+          onProgress(shardFrac + buildHeadroom * frac);
         };
         const onAbort = () => {
           if (settled) return;
@@ -486,7 +493,7 @@ export function useSimulation() {
               // used to cause a 2–5 s freeze at 99% on 100k-sample runs.
               // Hand off to one worker per pass so a twin run parallelizes.
               lastEmit = 0;
-              onProgress(SHARD_FRACTION);
+              onProgress(shardFrac);
               const keys = Object.keys(ctxs) as PassPlan["key"][];
               try {
                 keys.forEach((k, i) => {

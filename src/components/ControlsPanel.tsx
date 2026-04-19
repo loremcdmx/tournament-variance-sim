@@ -3,7 +3,10 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
-import { SHARD_FRACTION, buildTimeFracFor } from "@/lib/sim/progressConstants";
+import {
+  buildTimeFracFor,
+  shardProgressFracFor,
+} from "@/lib/sim/progressConstants";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
@@ -139,7 +142,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   // Keep the progress bar mounted briefly after the run finishes so the CSS
   // width transition has time to animate to 100 %. Without this hold, status
   // flips to "done" in the same render tick as `setProgress(1)` and the bar
-  // unmounts while still visually stuck at SHARD_FRACTION (~88 %) or wherever
+  // unmounts while still visually stuck at the shard-phase cap or wherever
   // the last shard-done event left it on a short run.
   const [barVisible, setBarVisible] = useState(false);
   useEffect(() => {
@@ -596,6 +599,7 @@ function useRemainingMs(opts: {
 }): number | null {
   const { running, runElapsedMs, progress, estimatedMs, samples } = opts;
   const BUILD_TIME_FRAC = buildTimeFracFor(samples);
+  const SHARD_FRAC = shardProgressFracFor(samples);
   const [smoothed, setSmoothed] = useState<number | null>(null);
   const smoothedRef = useRef<number | null>(null);
   const lastSmoothAt = useRef<number | null>(null);
@@ -612,18 +616,17 @@ function useRemainingMs(opts: {
     if (!running || runElapsedMs == null) return;
     const elapsed = runElapsedMs;
 
-    // Progress is non-uniform in time: shards fill [0, SHARD_FRACTION]
+    // Progress is non-uniform in time: shards fill [0, SHARD_FRAC]
     // but only consume (1 - BUILD_TIME_FRAC) of wall-clock; build fills
     // the remainder on the slower end. Map progress → expected wall-
     // clock work-share so `elapsed / share` is smooth across the seam.
     let tProjection: number | null = null;
     if (progress > 0.03) {
       const share =
-        progress < SHARD_FRACTION
-          ? (progress / SHARD_FRACTION) * (1 - BUILD_TIME_FRAC)
+        progress < SHARD_FRAC
+          ? (progress / SHARD_FRAC) * (1 - BUILD_TIME_FRAC)
           : 1 - BUILD_TIME_FRAC +
-            ((progress - SHARD_FRACTION) / (1 - SHARD_FRACTION)) *
-              BUILD_TIME_FRAC;
+            ((progress - SHARD_FRAC) / (1 - SHARD_FRAC)) * BUILD_TIME_FRAC;
       tProjection = elapsed / share;
     }
 
@@ -661,7 +664,7 @@ function useRemainingMs(opts: {
     smoothedRef.current = next;
     const frame = requestAnimationFrame(() => setSmoothed(next));
     return () => cancelAnimationFrame(frame);
-  }, [running, runElapsedMs, progress, estimatedMs, BUILD_TIME_FRAC]);
+  }, [running, runElapsedMs, progress, estimatedMs, BUILD_TIME_FRAC, SHARD_FRAC]);
 
   return smoothed;
 }
