@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { AlignedData, Options } from "uplot";
 import { UplotChart, type CursorInfo } from "./UplotChart";
 import { barsPath } from "./barsPath";
@@ -103,7 +103,7 @@ const formatEdge = (v: number, unitLabel: Props["unitLabel"]): string => {
   }
 };
 
-export function DistributionChart({
+function DistributionChartImpl({
   binEdges,
   counts,
   color = "#818cf8",
@@ -441,3 +441,5 @@ export function DistributionChart({
     </div>
   );
 }
+
+export const DistributionChart = memo(DistributionChartImpl);

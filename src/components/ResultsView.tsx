@@ -1920,7 +1920,7 @@ function computeYRange(
   return { min: lo - pad, max: hi + pad };
 }
 
-export function ResultsView({
+function ResultsViewImpl({
   result,
   compareResult,
   bankroll = 0,
@@ -2944,6 +2944,8 @@ export function ResultsView({
     </AbiContext.Provider>
   );
 }
+
+export const ResultsView = memo(ResultsViewImpl);
 
 // ---------------------------------------------------------------------
 // Satellite mode

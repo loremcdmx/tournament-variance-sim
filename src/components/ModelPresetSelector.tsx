@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
@@ -24,7 +24,7 @@ interface Props {
   onChange: (next: ControlsState) => void;
 }
 
-export function ModelPresetSelector({ value, onChange }: Props) {
+function ModelPresetSelectorImpl({ value, onChange }: Props) {
   const t = useT();
   const { advanced } = useAdvancedMode();
   const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
@@ -250,6 +250,8 @@ export function ModelPresetSelector({ value, onChange }: Props) {
     </div>
   );
 }
+
+export const ModelPresetSelector = memo(ModelPresetSelectorImpl);
 
 // re-export for convenience
 export type { DictKey };

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   startTransition,
   useCallback,
   useDeferredValue,
@@ -1159,7 +1160,7 @@ function TextBtn({
   );
 }
 
-function GlobalItmControl({
+const GlobalItmControl = memo(function GlobalItmControl({
   value,
   onChange,
   disabled,
@@ -1202,9 +1203,9 @@ function GlobalItmControl({
       </div>
     </div>
   );
-}
+});
 
-function GlobalRakebackControl({
+const GlobalRakebackControl = memo(function GlobalRakebackControl({
   value,
   onChange,
   disabled,
@@ -1244,9 +1245,9 @@ function GlobalRakebackControl({
       </div>
     </div>
   );
-}
+});
 
-function BankrollControl({
+const BankrollControl = memo(function BankrollControl({
   value,
   onChange,
   disabled,
@@ -1292,4 +1293,4 @@ function BankrollControl({
       </div>
     </div>
   );
-}
+});

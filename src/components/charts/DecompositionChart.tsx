@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { RowDecomposition } from "@/lib/sim/types";
 import { useT } from "@/lib/i18n/LocaleProvider";
 
@@ -23,7 +24,7 @@ const money = (v: number) => {
  * cash segment and a bounty segment so you can see how much of the EV
  * comes from knockouts vs. regular prize payouts.
  */
-export function DecompositionChart({ rows }: Props) {
+function DecompositionChartImpl({ rows }: Props) {
   const t = useT();
   const maxAbsMean = Math.max(1, ...rows.map((r) => Math.abs(r.mean) + r.stdDev));
   return (
@@ -135,3 +136,5 @@ export function DecompositionChart({ rows }: Props) {
     </div>
   );
 }
+
+export const DecompositionChart = memo(DecompositionChartImpl);

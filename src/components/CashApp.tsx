@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Section, Card } from "@/components/ui/Section";
 import { UplotChart } from "@/components/charts/UplotChart";
 import { useT } from "@/lib/i18n/LocaleProvider";
@@ -59,7 +59,7 @@ function saveInput(next: CashInput): void {
   }
 }
 
-export function CashApp() {
+export const CashApp = memo(function CashApp() {
   const t = useT();
   const [input, setInput] = useLocalStorageState<CashInput>(
     STORAGE_KEY,
@@ -480,7 +480,7 @@ export function CashApp() {
       </Section>
     </>
   );
-}
+});
 
 function CashResultsView({ result }: { result: CashResult }) {
   const t = useT();
