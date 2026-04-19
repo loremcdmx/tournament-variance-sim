@@ -152,6 +152,12 @@ export const ControlsPanel = memo(function ControlsPanel({
   useEffect(() => {
     if (!running) return undefined;
     const start = performance.now();
+    // Clear any stale value from the previous run *before* the first interval
+    // tick. Otherwise `useRemainingMs` sees elapsed=<prev final> on the first
+    // render of the new run and computes a nonsense ETA that counts down from
+    // a wrong anchor until the 250 ms tick repairs it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors external run-start edge; one-shot reset, no cascade.
+    setRunElapsedMs(0);
     const id = window.setInterval(() => {
       setRunElapsedMs(performance.now() - start);
     }, 250);
@@ -160,20 +166,15 @@ export const ControlsPanel = memo(function ControlsPanel({
   // Bar state machine:
   //   running     → width tracks `progress`, stage label live
   //   completing  → 450 ms hold at 100 % so the fill animation actually plays
-  //                 out; only reached if the run finished naturally
-  //   hidden      → bar unmounted. Cancel/error skip `completing` entirely
-  //                 so the bar never snaps to 100 % on an aborted run —
-  //                 that mis-sold a cancel as a completed run.
+  //                 out; only reached on natural completion (`progress === 1`)
+  //   hidden      → bar unmounted. Cancel/error skip `completing` so the bar
+  //                 never snaps to 100 % on an aborted run — that mis-sold a
+  //                 cancel as a completed run. `progress === 1` is the
+  //                 completion signal: `composeProgress` caps at
+  //                 BUILD_PROGRESS_CAP (0.985), so only the terminal
+  //                 `setProgress(1)` in `run()` can push it to exactly 1.
   type BarState = "hidden" | "running" | "completing";
   const [barState, setBarState] = useState<BarState>("hidden");
-  // Did this run reach a "nearly done" state before `running` flipped false?
-  // Used to distinguish natural completion from cancel/error without needing
-  // to plumb the run status down as a prop.
-  const reachedDoneRef = useRef(false);
-  useEffect(() => {
-    if (running && progress === 0) reachedDoneRef.current = false;
-    if (progress >= 0.99) reachedDoneRef.current = true;
-  }, [running, progress]);
   useEffect(() => {
     if (running) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors external run state onto UI mount flag; deliberate sync, not derived.
@@ -181,14 +182,14 @@ export const ControlsPanel = memo(function ControlsPanel({
       return undefined;
     }
     if (barState === "hidden") return undefined;
-    if (!reachedDoneRef.current) {
+    if (progress < 1) {
       setBarState("hidden");
       return undefined;
     }
     setBarState("completing");
     const id = window.setTimeout(() => setBarState("hidden"), 450);
     return () => window.clearTimeout(id);
-  }, [running, barState]);
+  }, [running, progress, barState]);
   const barVisible = barState !== "hidden";
   // Remount the filled portion on each new-run edge so a previously-completed
   // bar (frozen at 100 %) doesn't animate 100 → 0 via CSS width transition
