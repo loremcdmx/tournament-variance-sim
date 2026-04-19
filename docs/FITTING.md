@@ -93,7 +93,7 @@ Each file contains the raw σ grid and the fitted coefficients. See
 
 | Dimension | Values                                                    |
 | --------- | --------------------------------------------------------- |
-| Field     | 18 log-spaced sizes 50…50 000                             |
+| Field     | 22 log-spaced sizes 50…200 000                            |
 | ROI       | 7 main: {−20, −10, 0, +10, +20, +40, +80}%                |
 |           | 4 dense (PKO/mystery): {+5, +15, +25, +30}%               |
 | Tourneys  | 500 per sample (enough for stable σ, short enough to run) |
@@ -109,7 +109,7 @@ them.
 ```json
 {
   "meta": { "N": 500, "samples": 120000, "buyIn": 50, "rake": 0.1 },
-  "fields": [50, 75, 100, ..., 50000],
+  "fields": [50, 75, 100, ..., 200000],
   "rois": [-0.2, -0.1, 0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.8],
   "table": {
     "0.1": [3.018, 3.459, ..., 22.7],     // σ_ROI per field at ROI=0.1
@@ -122,9 +122,18 @@ them.
   ],
   "globalBeta": 0.2763,
   "globalR2": 0.9377,
-  "cRoiLinear": { "C0": 0.6265, "C1": 0.4961, "r2": 0.9973 }
+  "cRoiLinear": { "C0": 0.6265, "C1": 0.4961, "r2": 0.9973 },
+  "logPolyPooled": { "a": 0.0, "b1": 0.2763, "b2": 0.0123, "r2": 0.9721 }
 }
 ```
+
+The `logPolyPooled` fit captures `log σ = a + b₁·log field + b₂·(log field)²`
+across all ROIs pooled (per-ROI y and log field both mean-centered). It's
+an optional richer shape for formats whose σ(field) curves noticeably at
+the mega-field tail — inspect `b₂` and `logPolyPooled.r2` vs `globalR2`
+to decide whether to wire it into `ConvergenceChart.tsx`. Nonzero `b₂`
+with materially higher R² ⇒ the simple `field^β` is leaving structure on
+the table past 10k AFS; swap `σ = exp(a + b₁·log f + b₂·(log f)²) × rake-scale`.
 
 The pair you paste into the UI is
 `{ C0: cRoiLinear.C0, C1: cRoiLinear.C1, beta: globalBeta }`.
