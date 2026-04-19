@@ -161,13 +161,26 @@ export interface UserPreset {
 
 const USER_PRESETS_KEY = "tvs.userPresets.v1";
 
+function isValidUserPreset(v: unknown): v is UserPreset {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.id === "string" &&
+    typeof o.name === "string" &&
+    typeof o.createdAt === "number" &&
+    !!o.patch &&
+    typeof o.patch === "object"
+  );
+}
+
 export function loadUserPresets(): UserPreset[] {
   if (typeof localStorage === "undefined") return [];
   try {
     const raw = localStorage.getItem(USER_PRESETS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed as UserPreset[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isValidUserPreset);
   } catch {}
   return [];
 }
@@ -181,8 +194,11 @@ export function saveUserPresets(list: UserPreset[]) {
 
 export function addUserPreset(name: string, patch: ModelPatch): UserPreset {
   const list = loadUserPresets();
+  // Two presets saved in the same millisecond used to share an id — deleting
+  // either one then removed both. Mix in a short random suffix.
+  const suffix = Math.random().toString(36).slice(2, 6);
   const preset: UserPreset = {
-    id: `user:${Date.now().toString(36)}`,
+    id: `user:${Date.now().toString(36)}-${suffix}`,
     name,
     createdAt: Date.now(),
     patch,

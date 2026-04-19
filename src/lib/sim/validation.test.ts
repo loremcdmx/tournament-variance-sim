@@ -1,0 +1,103 @@
+import { describe, it, expect } from "vitest";
+import { validateSchedule } from "./validation";
+import type { FinishModelConfig, TournamentRow } from "./types";
+
+const baseModel: FinishModelConfig = { id: "power-law" };
+
+function row(over: Partial<TournamentRow> = {}): TournamentRow {
+  return {
+    id: "r1",
+    players: 1000,
+    buyIn: 50,
+    rake: 0.1,
+    roi: 0.1,
+    payoutStructure: "mtt-standard",
+    gameType: "freezeout",
+    count: 1,
+    ...over,
+  };
+}
+
+describe("validateSchedule", () => {
+  it("empty schedule is feasible", () => {
+    expect(validateSchedule([], baseModel)).toEqual({ ok: true, issues: [] });
+  });
+
+  it("row without itmRate skips checks", () => {
+    const r = row();
+    expect(validateSchedule([r], baseModel).ok).toBe(true);
+  });
+
+  it("row with itmRate but no finishBuckets skips checks", () => {
+    const r = row({ itmRate: 0.16 });
+    expect(validateSchedule([r], baseModel).ok).toBe(true);
+  });
+
+  it("row with finishBuckets but no lock fields skips checks", () => {
+    const r = row({ itmRate: 0.16, finishBuckets: {} });
+    expect(validateSchedule([r], baseModel).ok).toBe(true);
+  });
+
+  it("row with reasonable first-place lock is feasible", () => {
+    const r = row({
+      roi: 0.1,
+      itmRate: 0.16,
+      finishBuckets: { first: 0.002 },
+    });
+    expect(validateSchedule([r], baseModel).ok).toBe(true);
+  });
+
+  it("flags infeasible row when first lock leaves no budget for other places", () => {
+    // Force a huge first-place mass with modest ROI → the remaining ITM
+    // budget for paid places 2..N can't reach the required regular-side
+    // target. calibrateShelledItm should return feasible: false.
+    const r = row({
+      roi: 1.5,
+      itmRate: 0.20,
+      finishBuckets: { first: 0.9 },
+    });
+    const res = validateSchedule([r], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0].rowId).toBe("r1");
+    expect(res.issues[0].label).toBe("#1");
+    expect(typeof res.issues[0].gap).toBe("number");
+  });
+
+  it("falls back to index label when row has no label", () => {
+    const r = row({
+      id: "X",
+      roi: 1.5,
+      itmRate: 0.20,
+      finishBuckets: { first: 0.9 },
+    });
+    const res = validateSchedule([r], baseModel);
+    expect(res.issues[0].rowIdx).toBe(0);
+    expect(res.issues[0].label).toBe("#1");
+  });
+
+  it("uses provided label when present", () => {
+    const r = row({
+      label: "Mini Main",
+      roi: 1.5,
+      itmRate: 0.20,
+      finishBuckets: { first: 0.9 },
+    });
+    const res = validateSchedule([r], baseModel);
+    expect(res.issues[0].label).toBe("Mini Main");
+  });
+
+  it("flags only the infeasible rows in a mixed schedule", () => {
+    const ok = row({ id: "ok", itmRate: 0.16, finishBuckets: { first: 0.002 } });
+    const bad = row({
+      id: "bad",
+      roi: 1.5,
+      itmRate: 0.20,
+      finishBuckets: { first: 0.9 },
+    });
+    const res = validateSchedule([ok, bad], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues.map((i) => i.rowId)).toEqual(["bad"]);
+    expect(res.issues[0].rowIdx).toBe(1);
+  });
+});

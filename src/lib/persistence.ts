@@ -93,18 +93,31 @@ export interface UserPreset {
 
 const PRESETS_KEY = "tvs:user-presets";
 
+function isValidUserPreset(v: unknown): v is UserPreset {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  if (typeof o.id !== "string") return false;
+  if (typeof o.name !== "string") return false;
+  if (typeof o.createdAt !== "number") return false;
+  const s = o.state as Record<string, unknown> | undefined;
+  if (!s || typeof s !== "object") return false;
+  if (s.v !== 1) return false;
+  if (!Array.isArray(s.schedule)) return false;
+  if (!s.controls || typeof s.controls !== "object") return false;
+  return true;
+}
+
 export function loadUserPresets(): UserPreset[] {
   try {
     const raw = localStorage.getItem(PRESETS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      for (const p of parsed as UserPreset[]) {
-        warnOnBrMrDrift(p?.state?.schedule, `preset "${p?.name ?? "?"}"`);
-      }
-      return parsed as UserPreset[];
+    if (!Array.isArray(parsed)) return [];
+    const safe = parsed.filter(isValidUserPreset);
+    for (const p of safe) {
+      warnOnBrMrDrift(p.state.schedule, `preset "${p.name}"`);
     }
-    return [];
+    return safe;
   } catch {
     return [];
   }
