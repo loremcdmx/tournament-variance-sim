@@ -1612,8 +1612,8 @@ export const DICT = {
   },
   "preview.evBias.center": { en: "balanced", ru: "равномерно" },
   "preview.evBias.tip": {
-    en: "Shifts expected winnings between cash payouts and knockouts without changing total ROI. Center = default split; toward cash = finish higher on average and collect fewer bounties; toward bounty = finish lower but collect more bounties. α recalibrates to keep total ROI on target.",
-    ru: "Сдвигает ожидание между кэш-выплатами и ноками, не меняя суммарный ROI. Центр = дефолтный сплит; к кэшу = финишируем в среднем выше, но собираем меньше ноков; к нокам = финишируем ниже, но больше ноков за турнир. α перекалибруется, чтобы общий ROI остался на цели.",
+    en: "Total ROI = expected cash payouts + expected knockouts. The engine calibrates each pool independently: α shapes the finish PMF so Σ pmf·prize = cash target, then bounties scale so Σ pmf·bounty = bounty target. This slider moves the target between the two pools without changing their sum. Toward cash: cash target grows, α tightens toward top finishes, bounty EV shrinks. Toward bounty: cash target shrinks (α flattens), each KO pays more. ROI stays exactly on target either way.",
+    ru: "Суммарный ROI = ожидание от кэш-выплат + ожидание от ноков. Движок калибрует пулы независимо: α подгоняет PMF финишей так, чтобы Σ pmf·приз = цель по кэшу, затем ноки масштабируются так, чтобы Σ pmf·нок = цель по нокам. Слайдер переливает цель между пулами, не меняя их сумму. К кэшу: цель по кэшу растёт, α сдвигается к верхним местам, EV с ноков падает. К нокам: цель по кэшу падает (α размазывается), средний размер нока растёт. Общий ROI в любом случае остаётся ровно на цели.",
   },
   "preview.evBias.cash": { en: "cash", ru: "кэш" },
   "preview.evBias.bounty": { en: "KOs", ru: "ноки" },
@@ -1883,8 +1883,8 @@ export const DICT = {
     ru: "Рейк в % от бай-ина — доля рума. 5% мажоры, 7% хайстейкс, 10% мягкие регуляры, 12% микро. Чистый минус к ROI.",
   },
   "help.row.roi": {
-    en: "Target ROI as a %. +20 = you expect +20% return on every $1 spent on entries. Engine binary-searches α so the finish model hits exactly this. Drives everything downstream.",
-    ru: "Целевой ROI в %. +20 = +20% возврата на каждый $1 входа. Движок подбирает α бинарным поиском, чтобы модель финишей давала ровно это. От этого пляшет всё остальное.",
+    en: "Target ROI as a %, net of rake: profit ÷ (buy-in × (1+rake)). +20 means +$1.20 average return per $1 of total ticket cost. Engine binary-searches α so the finish model hits exactly this. Heads-up: Sharkscope reports ROI over buy-in without rake, so its number is always higher than ours at the same skill — a 10% Sharkscope ROI on a 10%-rake tourney is ≈0% here (you're just paying back the rake). Subtract your rake% to convert Sharkscope → this field.",
+    ru: "Целевой ROI в %, считается от полной стоимости входа: прибыль ÷ (бай-ин × (1+рейк)). +20 = +$1.20 средний возврат на каждый $1 билета (с рейком). Движок подбирает α бинарным поиском, чтобы модель финишей давала ровно это. Внимание: Sharkscope считает ROI от бай-ина БЕЗ рейка, поэтому его число всегда выше нашего при том же скилле — 10% ROI на Sharkscope для турнира с 10% рейка = ≈0% здесь (вся прибыль отъедается рейком). Чтобы перевести: вычти свой рейк% из числа на Sharkscope.",
   },
   "help.row.payouts": {
     en: "Shape of the prize ladder. Standard ~15% ITM, Flat ~20% (shallower top), Top-heavy ~12% (steeper), plus real captured curves (PokerStars / GG / Sunday Million / Bounty Builder). WTA = 100% to 1st. Custom = your own %.",

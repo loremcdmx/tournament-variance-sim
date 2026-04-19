@@ -939,3 +939,85 @@ describe("bounty conventions and conservation", () => {
     }
   });
 });
+
+// #121a — accounting-invariant fixtures. realized_mean / totalBuyIn ≈ roi for
+// every gameType. Fires on silent drift in calibrateAlpha that only shows up
+// as a σ shift in the live UI. Tolerance is 3·SE — tight enough to catch
+// ~0.5 % bias on a 5k-sample run, loose enough to stay flake-free.
+describe("conservation fixtures per gameType", () => {
+  const FIXTURES = [
+    {
+      name: "freezeout",
+      row: {
+        payoutStructure: "mtt-standard" as PayoutStructureId,
+        players: 500,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.15,
+      },
+    },
+    {
+      name: "freezeout-reentry",
+      row: {
+        payoutStructure: "mtt-standard" as PayoutStructureId,
+        players: 500,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.1,
+        maxEntries: 2,
+        reentryRate: 1,
+      },
+    },
+    {
+      name: "pko",
+      row: {
+        payoutStructure: "mtt-gg-bounty" as PayoutStructureId,
+        players: 500,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.1,
+        bountyFraction: 0.5,
+      },
+    },
+    {
+      name: "mystery",
+      row: {
+        payoutStructure: "mtt-gg-mystery" as PayoutStructureId,
+        players: 500,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.08,
+        bountyFraction: 0.5,
+        mysteryBountyVariance: 2.0,
+      },
+    },
+    {
+      name: "mystery-royale",
+      row: {
+        payoutStructure: "battle-royale" as PayoutStructureId,
+        gameType: "mystery-royale" as const,
+        players: 18,
+        buyIn: 10 / 1.08,
+        rake: 0.08,
+        roi: 0.03,
+        bountyFraction: 0.5,
+        mysteryBountyVariance: 1.8,
+      },
+    },
+  ];
+
+  for (const f of FIXTURES) {
+    it(`${f.name}: realized mean ROI within 3·SE of target`, () => {
+      const r = runSimulation(
+        baseInput({
+          schedule: [{ id: "x", label: "x", count: 1, ...f.row }],
+          samples: 5000,
+          scheduleRepeats: 50,
+        }),
+      );
+      const realized = r.stats.mean / r.totalBuyIn;
+      const se = r.stats.stdDev / Math.sqrt(r.samples) / r.totalBuyIn;
+      expect(Math.abs(realized - f.row.roi)).toBeLessThan(3 * se);
+    });
+  }
+});
