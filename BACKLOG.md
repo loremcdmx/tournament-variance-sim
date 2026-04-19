@@ -18,27 +18,12 @@
 
 ---
 
-## 🔴 P0 — Math / engine correctness
+## 🟣 Активный список (не blocked, не hold)
 
-Корректность движка — главный приоритет. Любой cleanup или UI-фикс откладывается, если задача из этого блока открыта.
+Всё, что сейчас можно брать. Порядок = приоритет (сначала математика, потом полиш).
 
-**Review 2026-04-18 (после meta-critique):** `#113` закрыт как audit-done (винс-конвенция — не баг, зафиксирована тестами). `#131` закрыт (normalize в `compileSchedule` + warn в persistence). `#119` probe-этап сделан. `#121` расщеплён на три честных подпункта. `#7` переписан: претензия «variance = 0» была неточной — канал within-place существует в виде `pkoHeadVar/mysteryBountyVariance`, нужен аудит, не новый канал.
-
-Любой crypto-тяжёлый `σ`-sweep (#109) запрещён до закрытия `#121a/#121b/#7` — иначе рефит коэффициентов на промежуточной математике = выкинутое CPU-время.
-
-### ✅ #113 · Winner-bounty conservation audit — ЗАКРЫТО 2026-04-18
-Audit PKO / Mystery / Battle Royale на «winner получает inflated собственный bounty» выполнен:
-- **PKO:** `engine.ts:~774` — `raw[0] += Tfinal` (winner собирает собственную голову). Это стандартная PokerStars PKO-конвенция, НЕ баг. Half-to-winner / half-to-pool это **progressive rule на каждом KO** (половина идёт в голову победителя, половина в его личную bounty-награду за будущие ноки) — уже реализовано в `bountyByPlace`. Финальный нок по PKO-правилу → winner имеет право на собственную голову, как и на все предыдущие.
-- **Mystery / Battle Royale:** envelope draws независимы per KO; финальный envelope rolled из тех же 8 тиров. Никакой per-winner inflation.
-- **Тесты:** `engine.test.ts` → `"bounty conventions and conservation"` — три инварианта (MR winner 8 envelopes, PKO winner own-head paid, bounty budget conservation Σ bountyByPlace > 0).
-
-**Почему раньше числилось как P0:** формулировка «may have systematic bias 0.5–2%» была гипотезой, не measurement. Actual audit показал конвенцию корректной для PKO и структурно невозможной inflation для Mystery/BR.
-
-### ✅ #121a · Conservation invariants как permanent check — ЗАКРЫТО 2026-04-18
-Fixture-based regression шипнут в `engine.test.ts` → `describe("conservation fixtures per gameType")`: для freezeout / re-entry / PKO / mystery / mystery-royale проверяем `|realized_roi − target_roi| < 3·SE` (N=5k samples × 50 repeats). Seed стабилен, 0 engine changes. Любой будущий drift в `calibrateAlpha` теперь падает в CI.
-
-### #121b · Calibration decomposition: pmf-shape vs bounty-budget (бывш. #121 semantics)
-Текущий `calibrateAlpha` (`finishModel.ts:199-250`) — одностадийный binary search: один α тащит и pmf-шейп, и bounty-lift. Для reg у ROI>0 top1 pmf размазывается (edge-EV частично уезжает в bounty). EV-bias slider (`engine.ts:473-488`, clamp ±0.25) это НЕ решает — он shift'ит между каналами **post-calibration**, не чинит smear **во время** поиска α.
+### #121b · Calibration decomposition: pmf-shape vs bounty-budget — **P0**
+Текущий `calibrateAlpha` (`finishModel.ts:199-250`) — одностадийный binary search: один α тащит и pmf-шейп, и bounty-lift. Для reg с ROI>0 top1 pmf размазывается (edge-EV частично уезжает в bounty). EV-bias slider (`engine.ts:473-488`, clamp ±0.25) это НЕ решает — он shift'ит между каналами **post-calibration**, не чинит smear **во время** поиска α.
 
 **План двухстадийной калибровки:**
 1. Fake-freezeout `calibrateAlpha` для row без bounty → зафиксировать top1 pmf
@@ -48,149 +33,46 @@ Fixture-based regression шипнут в `engine.test.ts` → `describe("conserv
 
 **Артефакты:** новая функция `calibrateBountyBudget(schedule, targetRoi)`. Tests покрывают «pmf shape монотонна по ROI».
 
-### #121c · External validation — **BLOCKED BY DATA DROP**
-Сверка `top1/top3/top9/ITM pmf` против реальных MTT-выборок. Ждёт CSV-дроп от юзерского фонда (1.5k игроков) — см. `tournament_variance_sim_data_plan.md`. Без внешнего ground-truth любые правки #121b — это регрессия к предположениям. Триггер: CSV от юзера.
+**Блокирует:** #7, #109 — пока одностадийка, любой recal сидит на mis-calibration.
 
-### ✅ #119a · Mystery tail probe — ЗАКРЫТО 2026-04-18
-`scripts/probe_mystery_tail.ts` прогнан на `mysteryBountyVariance=2.0`: `P(X > 100×mean) = 3.7e-5` vs BR empirical `4.5e-5`. Совпадение в одном квантиле, skew/kurt в приемлемых границах log-normal. Stopgap σ²=2.0 сохранён до поступления реальных GG-tier данных.
-
-### #119b · Mystery tail apply — **BLOCKED BY DATA**
-При поступлении GG Mystery-tier выборки (не BR прокси): переход на discrete-tier draw по образцу BR (#92) — single-line change в `engine.ts:~901` (переиспользовать `brTierRatios`-путь) + новый `mysteryTierRatios` preset. После: `SWEEP=mystery_only scripts/fit_sigma_parallel.ts` (~5 мин) + recal `SIGMA_ROI_MYSTERY`. Триггер: CSV от юзера (см. `tournament_variance_sim_data_plan.md`).
-
-### ✅ #131 · BR/mystery-royale split-brain — ЗАКРЫТО 2026-04-18
-Fixed: `compileSchedule` вызывает `normalizeBrMrConsistency` из `gameType.ts` (force mirror между `gameType` и `payoutStructure`). `persistence.ts` warn'ит в dev при drift из `decodeState`/`loadLocal`/`loadUserPresets`. Regression tests: `engine.test.ts` → `"compileSchedule normalizes BR ↔ mystery-royale split-brain"` (два теста: BR-payout-no-gameType, MR-gameType-mtt-standard-payout).
-
-### #7 (audit) · PKO/Mystery within-place bounty variance — **rewrite 2026-04-18**
-**Старая формулировка была неточной.** Канал within-place bounty variance **уже существует**:
+### #7 (audit) · PKO/Mystery within-place bounty variance — **P0** (после #121b)
+Канал within-place bounty variance **уже существует**:
 - PKO: `pkoHeadVar` в `applyGameType` (`gameType.ts:95`), default 0.4, разгоняет голову через heat-bin preconcentration.
 - Mystery/BR: per-draw envelope lottery в hot loop (`engine.ts:~901`), σ² = `mysteryBountyVariance` либо discrete tiers.
 
-**Актуальная задача — audit, не feature:**
+**Audit-задачи:**
 1. Verify calibration: не отменяет ли `calibrateAlpha` часть variance? (`scripts/xval_mystery.ts` показал mean |Δ/σ|=17.6% — часть residual возможно из-за этого)
 2. Decide target metric: σ_final, или tail-CDF, или moments? Сейчас fit использует σ только.
-3. Удалить или исправить stale claims в comments («variance is zero», если где-то осталось).
+3. Удалить / исправить stale claims в comments («variance is zero», если где-то осталось).
 4. Если audit покажет реальный under-shoot >5% на PKO специфично — тогда новый канал, но с measurement-first.
 
 **Условие:** делать после `#121b` (иначе calibration-shift замаскирует результат).
 
----
+### #109 · Масштабный σ-sweep по всем форматам — **P2** (после #121b, #7)
+Прогнать large-scale fit по freeze/pko/mystery/mystery-royale на полной ROI × AFS матрице. Recal `SIGMA_ROI_*`. Ресурсы: ~4ч (12 workers × 7950X), автономный запуск.
 
-## 🟠 P1 — UX-баги, root-cause уже найден
+**⚠️ Запрет:** не запускать до закрытия `#121b` + `#7`. Рефит коэффициентов на промежуточной математике = выкинутое CPU-время.
 
-Все root causes установлены 2026-04-17. Нужны точечные фиксы + regression-тесты.
-
-### ✅ #127 · hover/trim рассинхрон — ЗАКРЫТО ранее
-Проверено: `ResultsView.tsx` → `visibilityGate` memo c `isPathVisible`/`isBandVisible` предикатами уже используется и render-effect'ом, и nearest-path hover lookup. Коммит `f098b64` (merge visibility gate).
-
-### #128 · «Размытие» графика при -best/-worst trim
-Канвас корректен (`UplotChart.tsx:48` пересоздаёт uPlot, overlay учитывает DPR). Реальные причины:
-- Path-style фиксируется заранее как **mid-density compromise** (`ResultsView.tsx:1142-1149`, `:845`)
-- Trim прячет серии **без полного rebuild** (`ResultsView.tsx:345`)
-- Y-range ведёт себя так, как будто хвостовые bands выбрасываются при trim (`ResultsView.tsx:1571-1591`), но visibility их не прячет
-
-**Фикс (на выбор):**
-- (a) ребилд path-style при смене trim — пересчитать density по visible count
-- (b) выровнять visibility-слой с Y-range trim-гейтом
-
-### #122 · Progress-bar «зависает посередине» — grainy progress
-**Не** настоящий freeze, а грубая дискретизация по завершённым шардам.
-
-**Корни:**
-1. Пул шардов слишком мал. `useSimulation.ts:56` режет до ~½ logical cores; `oversub=4` включается только при `samples × scheduleRepeats ≥ 50_000` (`useSimulation.ts:240`). Иначе шардов всего `W`. На `W=2` один тяжёлый хвост паркует бар на ~46%; на `W=4` — 69/46/23%.
-2. Прогресс считается как `doneAll / totalAll * 0.92` (`useSimulation.ts:285`) — квантованно по штукам, не по времени.
-3. Верхние 8% (0.92→1.0) **синтетические** — тикер в `useSimulation.ts:445`.
-4. `useSimulation.ts:339` transfer'ит не все TypedArray — worker-side список шире (`worker.ts:119`). Возможный late-stall.
-
-**План:**
-- (a) снизить порог `oversub=4` или включить его всегда
-- (b) time-weighted прогресс: `done-fraction × α + elapsed/estimated × (1−α)`
-- (c) синхронизировать transferables main ↔ worker
-- (d) верхние 8% либо честно driven по build-phase tick, либо убрать искусственный offset
-
-**Измерить через `performance.mark` в worker + main перед правкой.**
-
-### #114 · Progress-bar визуально не доезжает до 100% — **ДОЧЕРНИЙ К #122**
-Fill не растягивается на всю ширину при `progress===1`. Почти наверняка симптом grainy progress из #122.
-**Правило:** не трогать отдельно — перепроверить после закрытия #122. Если останется — отдельный фикс на уровне CSS/rendering.
-
----
-
-## 🎰 Cash UI — следующий виток после MVP
-
-Cash-мод вышел 2026-04-18 как MVP. Этот блок шипнут 2026-04-18 вторым коммитом: worker pool + design polish + progress bar + mix лимитов.
-
-### ✅ Cash: progress bar + worker pool + оптимизация — SHIPPED 2026-04-18
-`cashWorker.ts` + pool на `Math.min(12, hardwareConcurrency/2)` worker'ов. Shards фан-аутятся (targetShards = 2×W), прогресс обновляется per-shard, кнопка `×` отменяет job bump'ом `jobIdRef` (late messages ignore). Определённость сохранена: shard-разметка не меняет результат.
-
-**Ещё можно (не критично):**
-- Intra-shard progress для больших одиночных shard'ов (важно только если `nSimulations < W`)
-- Профилинг Box-Muller → Polar/Marsaglia (ожидаемый выигрыш ~15-20%)
+### Cash follow-up — **P2** (nice-to-have после MVP 2026-04-18)
+Не критично, но полирует готовый модуль:
+- Preset-loader популярных румов (GG / Stars / Partypoker / Winamax)
+- Per-row color в trajectory chart (сейчас все пути одного цвета)
+- Per-row mean EV в stats (сейчас aggregate)
+- Intra-shard progress для `nSimulations < W`
+- Box-Muller → Polar/Marsaglia (~15-20% winning)
 - ETA (elapsedMs / fraction)
 
-### ✅ Cash: белые точки на графике — SHIPPED 2026-04-18
-`series[..].points = { show: false }` на envelope + hi-res + histogram. `cursor.points = { show: false }`. Визуальный шум пропал; mean-линия как акцент остаётся читаемой.
-
-### ✅ Cash tab: design polish — SHIPPED 2026-04-18
-Inputs сгруппированы в `InputGroup` (session / rake / hourly / mix) с toggle'ами слева. Stats сгруппированы в 4 карточки (Expected / Realized / Risk / Economics) с масть-акцентами. `ToggleSwitch` заменил checkbox'ы для rake/hourly.
-
-### ✅ Cash: mix лимитов / румов — SHIPPED 2026-04-18
-`CashStakeRow[]` опциональное поле в `CashInput`. Каждая строка: wrBb100, sdBb100, bbSize, handShare, rake-block. Шкалирование к референсному bb (`input.bbSize`) — строки с большим BB вносят пропорционально больше. Single-stake остался byte-identical без `stakes`.
-
-UI: `StakeRowEditor` с label + per-row inputs + rake-toggle. Кнопка `+ Add row`. Удаление только если рядов > 1.
-
-**Ещё можно (не критично):**
-- Preset-loader для популярных румов (GG / Stars / Partypoker / Winamax defaults)
-- Per-row color in trajectory chart (сейчас все пути одного цвета)
-- Per-row mean EV в stats (сейчас aggregate only)
-
 ---
 
-## 🟡 P1 — Bugs, требуется repro/clarification
+## ⏳ Blocked — ждут данных / внешнего триггера
 
-### #13 · Editable finish % в микроскопе
-Слишком vague. `ShapeControls` уже имеет first/top3/ft lock inputs.
-**Action:** спросить юзера — что ещё должно редактироваться?
+Не брать самостоятельно. Триггер прописан в каждом пункте.
 
-### #125 · Worst/random/best фильтр работает некорректно
-Segmented `RunModeSlider` в TrajectoryCard toolbar не даёт ожидаемого эффекта.
-**Подозрение:** `rankedRunIndices` сортирует не по тому критерию, либо `visibleRuns` не применяет ranking к `setSeries(show)`.
-**Нужно:** конкретный repro — какой пресет, что ожидается.
+### #121c · External validation — **BLOCKED BY DATA DROP**
+Сверка `top1/top3/top9/ITM pmf` против реальных MTT-выборок. Ждёт CSV-дроп от юзерского фонда (1.5k игроков) — см. `tournament_variance_sim_data_plan.md`. Без ground-truth правки #121b — регрессия к предположениям. **Триггер:** CSV от юзера.
 
-### #129 · Галка «с RB» не двигает cashless-график в streaks
-**By design, но конфликтует с ожиданиями.** Wiring-бага нет:
-- Панель переключает `displayResultStreaks` (`ResultsView.tsx:1742-1747`)
-- Cashless-часть специально RB-independent (см. comment в `ResultsView.tsx:1029`)
-- `shiftResultByRakeback()` пересобирает только drawdown/longestBreakeven/recovery (`ResultsView.tsx:1038-1040`)
-- В compare-режиме overlay берётся из сырого `pdChart` **без RB-ветки** (`ResultsView.tsx:2414/2444/2473`)
-
-**Решение (выбор):**
-- (a) документировать в тултипе «cashless measures bankroll zero — independent of RB by definition»
-- (b) добавить RB shift к cashless тоже (логически спорно, но uniform behaviour)
-- (c) compare-overlay: сделать RB-aware ветку в pdChart
-
-**Уточнить у юзера, какое поведение правильное.**
-
----
-
-## 🟢 P2 — Features / медленный рост
-
-### #109 · Масштабный σ-sweep по всем форматам — **BLOCKED BY P0 (#121a, #121b, #7)**
-Прогнать large-scale fit по freeze/pko/mystery/mystery-royale на полной ROI × AFS матрице. Recal `SIGMA_ROI_*` после правок движка.
-
-**⚠️ Запрет:** не запускать до закрытия всех четырёх P0 задач. Иначе рефит коэффициентов на промежуточной математике = выкинутые 4 часа CPU.
-
-**Цели:**
-- (a) рефит коэффициентов
-- (b) выявить систематические отклонения модели
-- (c) сравнить с `data/payout-samples/`
-
-**Ресурсы:** ~4 часа (12 workers × 7950X). Запускать автономно.
-
-### ✅ #126 · Two-pool EV-bias тултип — ЗАКРЫТО 2026-04-18
-`preview.evBias.tip` переписан: теперь явно называет две независимые калибровки (α → cash pool так, чтобы `Σ pmf·prize = cash target`; bounty scale так, чтобы `Σ pmf·bounty = bounty target`) и объясняет, почему суммарный ROI остаётся ровно на цели при любом положении слайдера.
-
-### ✅ #10 · Sharkscope ROI convention тултип — ЗАКРЫТО 2026-04-18
-`help.row.roi` расширен: наш ROI считается от полной стоимости входа (с рейком), Sharkscope — без рейка. Правило конверсии: вычесть свой rake% из Sharkscope-числа.
+### #119b · Mystery tail apply — **BLOCKED BY DATA**
+При поступлении GG Mystery-tier выборки (не BR прокси): переход на discrete-tier draw по образцу BR (#92) — single-line change в `engine.ts:~901` (переиспользовать `brTierRatios`-путь) + новый `mysteryTierRatios` preset. После: `SWEEP=mystery_only scripts/fit_sigma_parallel.ts` (~5 мин) + recal `SIGMA_ROI_MYSTERY`. **Триггер:** CSV от юзера.
 
 ---
 
@@ -363,15 +245,29 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 
 ---
 
-## ✅ Закрыто (ранее «дожимать перед prod-merge»)
+## ✅ Закрыто (архив последней волны)
 
-Проверено по коду 2026-04-18 — оба пункта уже в prod-ready состоянии.
+Раскрывать по требованию — детали в `git log`. Ниже — что закрыто за текущую волну (2026-04-18) + старые pre-MVP.
 
-### #124 · Trim best/worst percentile sliders — **DONE**
-Загейтено под advanced-mode: `{advanced && <TrimPctSlider />}` в `ResultsView.tsx:2037`; `effectiveTrimTopPct/BotPct = advanced ? v : 0` (`:1921-1922`). В дефолтном UI слайдеры не рендерятся и не влияют на расчёт.
+**Shipped 2026-04-18 (последняя волна):**
+- ✅ **#121a** conservation fixture tests — per-gameType `|realized − target ROI| < 3·SE` regression guard
+- ✅ **#127** hover/trim visibility gate unified (коммит `f098b64`)
+- ✅ **#128** imperative path-style rebuild on trim — brightens survivors via `plot.series[i].stroke` mutation внутри visibility batch
+- ✅ **#126** two-pool EV-bias tooltip — объясняет раздельную калибровку α и bounty scale
+- ✅ **#10** Sharkscope ROI convention tooltip — правило конверсии «−rake%»
+- ✅ **#113** winner-bounty conservation audit — PKO own-head это конвенция, не баг
+- ✅ **#131** BR/mystery-royale split-brain — `normalizeBrMrConsistency` в compileSchedule
+- ✅ **#119a** mystery tail probe — log-normal σ²=2.0 совпадает с BR в одном квантиле
 
-### #123 · Convergence widget rename — **DONE**
-`chart.convergence.format.exact` → UI-label `"Your schedule" / "ТВОЁ РАСПИСАНИЕ"` в `dict.ts:1066`. Внутренний format ID остался `"exact"` (BACKLOG разрешал этот вариант).
+**Закрыто как stale / by-design (2026-04-18):**
+- **#125** worst/random/best filter — код работает (ranked by final profit → visibility gate по quantile). Нужен repro если всё-таки не так; пока не триггерится.
+- **#129** RB-галка на cashless-графике — documented at `ResultsView.tsx:2026` as by-design. Cashless меряет "bankroll hits zero" — специально RB-independent.
+- **#122 / #114** progress-bar grainy progress + 100% — снято с беклога (не критично, скорее наблюдение, чем баг).
+- **#13** editable finish % — vague; уже есть `ShapeControls` с first/top3/ft lock inputs.
+
+**Pre-MVP prod-ready (проверено 2026-04-18):**
+- ✅ **#124** trim best/worst sliders advanced-mode-gated
+- ✅ **#123** convergence widget label rename
 
 ---
 
