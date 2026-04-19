@@ -729,6 +729,39 @@ describe("bountyEvBias", () => {
     expect(over.stats.mean).toBe(edge.stats.mean);
     expect(over.stats.stdDev).toBe(edge.stats.stdDev);
   });
+
+  // Fixed-shape models can't move cashEV to cancel the heuristic's
+  // bountyMean error, so without the `calibrateBountyBudget` reconcile
+  // total EV would drift away from the ROI contract even at bias=0. With
+  // the reconcile in place, bias=0 should land on the target within SE.
+  it("realdata PKO + bountyFraction>0 stays on ROI target at bias=0", () => {
+    const input: SimulationInput = {
+      schedule: [
+        {
+          id: "pko-rd",
+          label: "pko-rd",
+          players: 180,
+          buyIn: 10,
+          rake: 0.1,
+          roi: 0.2,
+          payoutStructure: "mtt-gg-bounty" as PayoutStructureId,
+          bountyFraction: 0.5,
+          count: 1,
+        },
+      ],
+      scheduleRepeats: 300,
+      samples: 4000,
+      bankroll: 1000,
+      seed: 31337,
+      finishModel: { id: "pko-realdata-linear" } as { id: FinishModelId },
+    };
+    const r = runSimulation(input);
+    // entryCost = 10 × 1.1 = 11, target profit per tournament = 11 × 0.2 = 2.2
+    const targetProfit = 10 * 1.1 * 0.2;
+    const perTournProfit = r.stats.mean / r.tournamentsPerSample;
+    const se = r.stats.stdDev / Math.sqrt(r.samples) / r.tournamentsPerSample;
+    expect(Math.abs(perTournProfit - targetProfit)).toBeLessThan(5 * se);
+  });
 });
 
 describe("breakevenStreakMean", () => {
