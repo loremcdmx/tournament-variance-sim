@@ -12,7 +12,11 @@ interface Props {
 interface Row {
   targetPct: number;
   tourneys: number;
+  tourneysLo: number;
+  tourneysHi: number;
   fields: number;
+  fieldsLo: number;
+  fieldsHi: number;
 }
 
 const TARGETS = [0.5, 0.3, 0.2, 0.1, 0.05, 0.025, 0.01, 0.005, 0.001];
@@ -61,15 +65,22 @@ function normalizeMix(m: MixTuple): MixTuple {
 // Fit at rake 8 %; coefficients = 1.01852 × old rake-10 values, confirming
 // σ_profit rake-invariance within fit noise (β unchanged).
 // All fits produced by scripts/fit_sigma_parallel.ts.
+// `resid` is a relative σ uncertainty derived from per-ROI fit R² and
+// cross-validation bench (scripts/verify_convergence_tabs.ts). It's
+// propagated into k as a ±k band: k ∝ σ², so ±ε on σ → ±2ε on k. These
+// are ceilings on in-band drift; past AFS 10k and ROI ±30% the real
+// residual can exceed these and the widget flags it via a warning row.
 const SIGMA_ROI_FREEZE = {
   C0: 0.6564,
   C1: 0,
   beta: 0.3694,
+  resid: 0.06,
 };
 const SIGMA_ROI_PKO = {
   C0: 0.6265,
   C1: 0.4961,
   beta: 0.2763,
+  resid: 0.08,
 };
 // Mystery coefficients refit 2026-04-18 after adbf278 restricted the mystery
 // envelope harmonic window to top-9 FT. Probe showed non-uniform drift
@@ -86,6 +97,7 @@ const SIGMA_ROI_MYSTERY = {
   C0: 2.5164,
   C1: 3.7097,
   beta: 0.1325,
+  resid: 0.18,
 };
 // Battle Royale is fixed AFS=18 in the UI (see BR_FIXED_AFS + #93), so the
 // field-sweep β is degenerate. `fit_br_fixed18.ts` measures σ_ROI across 11
@@ -100,6 +112,7 @@ const SIGMA_ROI_MYSTERY_ROYALE = {
   C0: 8.1534,
   C1: 7.9063,
   beta: 0,
+  resid: 0.02,
 };
 
 type ConvergenceFormat =
@@ -141,7 +154,7 @@ const FIT_RAKE_BY_FORMAT: Record<RowFormat, number> = {
 function sigmaRoiForRow(
   row: TournamentRow,
   rakeScaleOverride?: number,
-): { sigma: number; format: RowFormat } {
+): { sigma: number; sigmaLo: number; sigmaHi: number; format: RowFormat } {
   const fmt = inferRowFormat(row);
   const coef = SIGMA_COEF_BY_FORMAT[fmt];
   const afs = Math.max(1, row.players);
@@ -155,7 +168,12 @@ function sigmaRoiForRow(
     Math.max(0, coef.C0 + coef.C1 * roi) *
     Math.pow(afs, coef.beta) *
     rakeScale;
-  return { sigma, format: fmt };
+  return {
+    sigma,
+    sigmaLo: sigma * (1 - coef.resid),
+    sigmaHi: sigma * (1 + coef.resid),
+    format: fmt,
+  };
 }
 
 function posToAfs(pos: number): number {
@@ -433,7 +451,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     if (totalCount <= 0) return null;
     const perRow = schedule.map((row, i) => {
       const fmt = inferRowFormat(row);
-      const { sigma } = sigmaRoiForRow(row);
+      const { sigma, sigmaLo, sigmaHi } = sigmaRoiForRow(row);
       const w = Math.max(0, row.count) / totalCount;
       return {
         index: i,
@@ -443,18 +461,28 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         format: fmt,
         weight: w,
         sigma,
+        sigmaLo,
+        sigmaHi,
         variance: sigma * sigma,
         varContribution: w * sigma * sigma,
+        varContributionLo: w * sigmaLo * sigmaLo,
+        varContributionHi: w * sigmaHi * sigmaHi,
       };
     });
     const totalVar = perRow.reduce((a, r) => a + r.varContribution, 0);
+    const totalVarLo = perRow.reduce((a, r) => a + r.varContributionLo, 0);
+    const totalVarHi = perRow.reduce((a, r) => a + r.varContributionHi, 0);
     const sigmaEff = Math.sqrt(Math.max(0, totalVar));
+    const sigmaEffLo = Math.sqrt(Math.max(0, totalVarLo));
+    const sigmaEffHi = Math.sqrt(Math.max(0, totalVarHi));
     return {
       perRow: perRow.map((r) => ({
         ...r,
         varShare: totalVar > 0 ? r.varContribution / totalVar : 0,
       })),
       sigmaEff,
+      sigmaEffLo,
+      sigmaEffHi,
     };
   }, [effectiveMode, schedule]);
 
@@ -473,42 +501,66 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     // (1+FIT_RAKE)/(1+rake). At rake=0 this lifts σ by 10%; at rake=20% it
     // drops σ by ~8%. Same factor applies to every format.
     const rakeScale = (1 + FIT_RAKE) / (1 + rakePct / 100);
-    const sigmaFor = (coef: typeof SIGMA_ROI_FREEZE): number =>
-      Math.max(0, coef.C0 + coef.C1 * gameRoi) *
-      Math.pow(Math.max(1, afs), coef.beta) *
-      rakeScale;
-    const sigmaFreeze = sigmaFor(SIGMA_ROI_FREEZE);
-    const sigmaPko = sigmaFor(SIGMA_ROI_PKO);
-    const sigmaMystery = sigmaFor(SIGMA_ROI_MYSTERY);
-    const sigmaMysteryRoyale = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE);
+    type CoefT = typeof SIGMA_ROI_FREEZE;
+    const sigmaFor = (coef: CoefT): { s: number; lo: number; hi: number } => {
+      const s =
+        Math.max(0, coef.C0 + coef.C1 * gameRoi) *
+        Math.pow(Math.max(1, afs), coef.beta) *
+        rakeScale;
+      return { s, lo: s * (1 - coef.resid), hi: s * (1 + coef.resid) };
+    };
+    const f = sigmaFor(SIGMA_ROI_FREEZE);
+    const p = sigmaFor(SIGMA_ROI_PKO);
+    const m = sigmaFor(SIGMA_ROI_MYSTERY);
+    const mr = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE);
     // 3-way mix: σ²_mix = f_freeze·σ²_freeze + f_pko·σ²_pko + f_mystery·σ²_mystery.
     // Exact identity when each tournament is drawn independently from the pool
     // and all types share the same gameRoi (ROI is a single widget slider).
+    // Uncertainty bands propagate by composing σ_lo² / σ_hi² with the same
+    // mixture weights — a conservative bound since per-format residuals are
+    // treated as perfectly correlated (worst case for the mix width).
     const [fFreeze, fPko, fMystery] = mix;
-    const sigmaRoiAvg =
+    const pick = (
+      key: "s" | "lo" | "hi",
+    ): number =>
       format === "mystery-royale"
-        ? sigmaMysteryRoyale
+        ? mr[key]
         : format === "mystery"
-          ? sigmaMystery
+          ? m[key]
           : format === "pko"
-            ? sigmaPko
+            ? p[key]
             : format === "freeze"
-              ? sigmaFreeze
+              ? f[key]
               : Math.sqrt(
-                  fFreeze * sigmaFreeze * sigmaFreeze +
-                    fPko * sigmaPko * sigmaPko +
-                    fMystery * sigmaMystery * sigmaMystery,
+                  fFreeze * f[key] * f[key] +
+                    fPko * p[key] * p[key] +
+                    fMystery * m[key] * m[key],
                 );
     const sigmaRoi =
       effectiveMode === "exact" && exactBreakdown
         ? exactBreakdown.sigmaEff
-        : sigmaRoiAvg;
+        : pick("s");
+    const sigmaRoiLo =
+      effectiveMode === "exact" && exactBreakdown
+        ? exactBreakdown.sigmaEffLo
+        : pick("lo");
+    const sigmaRoiHi =
+      effectiveMode === "exact" && exactBreakdown
+        ? exactBreakdown.sigmaEffHi
+        : pick("hi");
     return TARGETS.map((target) => {
       const k = Math.ceil(Math.pow((z * sigmaRoi) / target, 2));
+      const kLo = Math.ceil(Math.pow((z * sigmaRoiLo) / target, 2));
+      const kHi = Math.ceil(Math.pow((z * sigmaRoiHi) / target, 2));
+      const invAfs = 1 / Math.max(1, afs);
       return {
         targetPct: target,
         tourneys: k,
-        fields: k / Math.max(1, afs),
+        tourneysLo: kLo,
+        tourneysHi: kHi,
+        fields: k * invAfs,
+        fieldsLo: kLo * invAfs,
+        fieldsHi: kHi * invAfs,
       };
     });
   }, [
@@ -823,20 +875,48 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.targetPct}
-              className="border-t border-[color:var(--color-border)]/50 text-[color:var(--color-fg)]"
-            >
-              <td className="py-1.5 pr-3 font-semibold">
-                ±{(row.targetPct * 100).toFixed(row.targetPct < 0.01 ? 1 : 0)}%
-              </td>
-              <td className="py-1.5 px-3 text-right">{fmtInt(row.tourneys)}</td>
-              <td className="py-1.5 pl-3 text-right text-[color:var(--color-accent)]">
-                {fmtField(row.fields)}
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const kRel = row.tourneys > 0
+              ? Math.max(
+                  (row.tourneys - row.tourneysLo) / row.tourneys,
+                  (row.tourneysHi - row.tourneys) / row.tourneys,
+                )
+              : 0;
+            const kPct = Math.round(kRel * 100);
+            const kBandLabel = kPct > 0
+              ? `±${kPct}% (${fmtInt(row.tourneysLo)}–${fmtInt(row.tourneysHi)})`
+              : undefined;
+            const fBandLabel = kPct > 0
+              ? `${fmtField(row.fieldsLo)}–${fmtField(row.fieldsHi)}`
+              : undefined;
+            return (
+              <tr
+                key={row.targetPct}
+                className="border-t border-[color:var(--color-border)]/50 text-[color:var(--color-fg)]"
+              >
+                <td className="py-1.5 pr-3 font-semibold">
+                  ±{(row.targetPct * 100).toFixed(row.targetPct < 0.01 ? 1 : 0)}%
+                </td>
+                <td
+                  className="py-1.5 px-3 text-right"
+                  title={kBandLabel}
+                >
+                  {fmtInt(row.tourneys)}
+                  {kPct > 0 && (
+                    <span className="ml-1 text-[10px] text-[color:var(--color-fg-dim)]">
+                      ±{kPct}%
+                    </span>
+                  )}
+                </td>
+                <td
+                  className="py-1.5 pl-3 text-right text-[color:var(--color-accent)]"
+                  title={fBandLabel}
+                >
+                  {fmtField(row.fields)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {effectiveMode === "exact" && exactBreakdown && (
