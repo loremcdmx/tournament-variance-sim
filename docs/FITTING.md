@@ -63,9 +63,30 @@ full engine is only run when the user hits "Run".
 
 ## Quickstart
 
-Runs the main parallel sweep across all four formats (pko, freeze,
-mystery, mystery-royale) and writes `scripts/fit_beta_*.json`. 12 workers
-on a 7950X, ~10 minutes per sweep.
+Two producers — pick the right one for what you're doing:
+
+### Canonical (promoted to UI coefficients)
+
+- **`scripts/fit_br_fixed18.ts`** — Mystery Battle Royale at fixed AFS=18
+  (MBR is AFS-locked in the UI, so a field-sweep is meaningless for it).
+  Writes `scripts/fit_beta_mystery_royale.json`.
+- **Freeze / PKO / Mystery canonical fits** — current production artifacts
+  `scripts/fit_beta_{freeze_realdata,pko,pko_core,mystery}.json`. These
+  back the `SIGMA_ROI_*` constants in `ConvergenceChart.tsx`. They are
+  updated manually after a drift-report review (see below) — no single
+  script re-writes them end-to-end today.
+
+### Diagnostic 200k-AFS probe (NOT promoted automatically)
+
+`scripts/fit_sigma_parallel.ts` runs freeze/PKO/mystery out to AFS 200k
+and emits `*_200k_probe.json` files. It exists to **diagnose** how the
+current power-law fit extrapolates beyond the 50k AFS used for the
+canonical fits — it does not overwrite the canonical artifacts and its
+outputs are not wired into the UI. Use it with `scripts/fit_drift_report.ts`
+to quantify in-sample residuals (mean / RMS / p95 / max) in the user-facing
+zone before deciding whether to promote any probe coefficient.
+
+12 workers on a 7950X, ~10 minutes per sweep.
 
 ```bash
 npx tsx scripts/fit_sigma_parallel.ts
@@ -74,20 +95,33 @@ npx tsx scripts/fit_sigma_parallel.ts
 Narrow it:
 
 ```bash
-SWEEP=mystery_only        npx tsx scripts/fit_sigma_parallel.ts
-SWEEP=mystery_royale_only npx tsx scripts/fit_sigma_parallel.ts
-N_WORKERS=8               npx tsx scripts/fit_sigma_parallel.ts
+SWEEP=mystery_only  npx tsx scripts/fit_sigma_parallel.ts
+N_WORKERS=8         npx tsx scripts/fit_sigma_parallel.ts
 ```
 
-Outputs:
+Probe outputs (diagnostic only):
 
-- `scripts/fit_beta_pko.json` — PKO (realdata-linear finish, mtt-gg-bounty payout, bountyFraction=0.5)
-- `scripts/fit_beta_freeze_realdata.json` — freezeout (realdata-linear finish, mtt-standard payout)
-- `scripts/fit_beta_mystery.json` — Mystery Bounty
-- `scripts/fit_beta_mystery_royale.json` — Battle Royale
+- `scripts/fit_beta_pko_200k_probe.json`
+- `scripts/fit_beta_pko_core_200k_probe.json`
+- `scripts/fit_beta_freeze_realdata_200k_probe.json`
+- `scripts/fit_beta_mystery_200k_probe.json`
 
 Each file contains the raw σ grid and the fitted coefficients. See
-[Output format](#output-format).
+[Output format](#output-format). MBR is intentionally excluded from this
+sweep — use `fit_br_fixed18.ts` for MBR.
+
+Drift report:
+
+```bash
+npx tsx scripts/fit_drift_report.ts
+```
+
+Reads canonical + optional probe artifacts, evaluates residuals against
+the measured grids across the full range, the wide user zone
+(field ∈ [100, 50k], roi ∈ [−20 %, +40 %]), and the narrow user zone
+(field ∈ [500, 10k], roi ∈ [−10 %, +30 %]). Writes
+`scripts/fit_drift_report.json`. Inspect it before promoting any probe
+fit to the UI.
 
 ## The sweep space
 
@@ -127,13 +161,17 @@ them.
 }
 ```
 
-The `logPolyPooled` fit captures `log σ = a + b₁·log field + b₂·(log field)²`
-across all ROIs pooled (per-ROI y and log field both mean-centered). It's
-an optional richer shape for formats whose σ(field) curves noticeably at
-the mega-field tail — inspect `b₂` and `logPolyPooled.r2` vs `globalR2`
-to decide whether to wire it into `ConvergenceChart.tsx`. Nonzero `b₂`
-with materially higher R² ⇒ the simple `field^β` is leaving structure on
-the table past 10k AFS; swap `σ = exp(a + b₁·log f + b₂·(log f)²) × rake-scale`.
+`logPolyPooled` is a **diagnostic-only** pooled quadratic fit of
+`log σ` against `log field`, with both inputs per-ROI mean-centered
+before pooling (`xs = log f − mx(roi)`, `ys = log σ − my(roi)`). That
+centering means the reported `{a, b1, b2}` **cannot be evaluated at an
+arbitrary (field, roi)** without the per-ROI `mx(roi)`, `my(roi)`
+constants, which aren't stored in the artifact. Use it only to compare
+curvature: `b2 ≈ 0` with `logPolyPooled.r2 ≈ globalR2` means single-β
+captures the shape; a materially nonzero `b2` with higher `r2` says
+single-β is leaving structure on the table past ~10k AFS. Promoting a
+log-poly form to the UI requires a second, runtime-usable fit (not
+centered) — this artifact doesn't provide that.
 
 The pair you paste into the UI is
 `{ C0: cRoiLinear.C0, C1: cRoiLinear.C1, beta: globalBeta }`.
@@ -163,12 +201,18 @@ Pitfalls:
 
 ## Wiring a fit into the UI
 
+Never promote a probe fit without first running `fit_drift_report.ts`
+and confirming that user-zone residuals don't regress. A fit with better
+global R² but worse residuals inside `field ∈ [500, 10k], roi ∈ [−10 %, +30 %]`
+is a net loss for the UI.
+
 1. Open `src/components/charts/ConvergenceChart.tsx`.
 2. Find the coefficient constants near the top of the file:
    `SIGMA_ROI_FREEZE`, `SIGMA_ROI_PKO`, `SIGMA_ROI_MYSTERY`,
    `SIGMA_ROI_MYSTERY_ROYALE`. Each is a `{ C0, C1, beta }` literal.
 3. Paste in the new values: `C0` and `C1` come from `cRoiLinear`, `beta`
-   comes from `globalBeta`.
+   comes from `globalBeta`. For MBR, use `fit_beta_mystery_royale.json`
+   (produced by `scripts/fit_br_fixed18.ts`); its β is 0 by construction.
 4. Verify: `npx tsc --noEmit && npm test && npm run build`. The widget
    recomputes σ on every ROI/field scrub, so a broken constant shows up
    instantly as `NaN` or a visually flat curve.

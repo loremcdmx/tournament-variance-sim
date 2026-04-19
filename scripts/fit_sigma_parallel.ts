@@ -1,19 +1,26 @@
 /**
- * Parallel σ_ROI sweep runner — spawns N tsx child processes, each handling
- * a slice of the job list, then aggregates results. Four sweeps in one run:
+ * DIAGNOSTIC σ_ROI sweep runner — spawns N tsx child processes, each handling
+ * a slice of the job list, then aggregates results. Writes *_200k_probe.json
+ * artifacts for diagnostic analysis. Does NOT write canonical fit_beta_*.json —
+ * canonical UI coefficients are promoted manually after a drift-report review
+ * (scripts/fit_drift_report.ts).
  *
- *   - pko:            (7 ROIs × 18 fields) + (4 dense ROIs × 18 fields) → merged
- *   - freeze_rd:      7 ROIs × 18 fields
- *   - mystery:        (7 ROIs × 18 fields) + (4 dense ROIs × 18 fields) → merged
- *   - mystery_royale: (7 ROIs × 18 fields) + (4 dense ROIs × 18 fields) → merged
+ * Three sweeps in one run:
+ *
+ *   - pko:       (7 ROIs × 22 fields) + (4 dense ROIs × 22 fields) → merged
+ *   - freeze_rd: 7 ROIs × 22 fields
+ *   - mystery:   (7 ROIs × 22 fields) + (4 dense ROIs × 22 fields) → merged
+ *
+ * MBR is intentionally excluded. It is AFS-locked to 18 in the UI, so a
+ * field-sweep produces a synthetic measurement not relevant to the product.
+ * Use scripts/fit_br_fixed18.ts for MBR — it writes fit_beta_mystery_royale.json.
  *
  *   npx tsx scripts/fit_sigma_parallel.ts
  *
  * Env:
  *   N_WORKERS=12                number of parallel child processes (default 12)
  *   WORKER_IDX=i  N_SLICES=n    internal; worker slice of (i mod n)
- *   SWEEP=mystery_only          skip pko/freeze/royale, run mystery only
- *   SWEEP=mystery_royale_only   skip pko/freeze/mystery, run royale only
+ *   SWEEP=mystery_only          skip pko/freeze, run mystery only
  */
 
 import { spawn } from "node:child_process";
@@ -27,9 +34,7 @@ type SweepId =
   | "pko_dense"
   | "freeze_rd"
   | "mystery"
-  | "mystery_dense"
-  | "mystery_royale"
-  | "mystery_royale_dense";
+  | "mystery_dense";
 
 interface Job {
   sweep: SweepId;
@@ -46,12 +51,6 @@ const COMMON = {
   SAMPLES: 120_000,
   BUY_IN: 50,
   RAKE: 0.10,
-  // Per-format rake override. Mystery Battle Royale runs at 8% on GGPoker since
-  // March 2024 (verified via PokerListings + WorldPokerDeals). Fitting against
-  // the real-world rake means the ConvergenceChart baseline for Royale matches
-  // the format's actual math at slider-default 8%, instead of forcing the
-  // rake-rescale to do compensation work at every render.
-  RAKE_ROYALE: 0.08,
   SEED: 20260417,
   BOUNTY_FRACTION: 0.5,
   PKO_HEAD_VAR: 0.4,
@@ -59,7 +58,6 @@ const COMMON = {
   // i.e. no jackpot tail. σ² = 2.0 gives ~3.7e-5, in line with BR empirical
   // tier data (#92). Still lighter than true non-BR Mystery but defensible.
   MYSTERY_LOG_VAR: 2.0,
-  MYSTERY_ROYALE_LOG_VAR: 1.8,
 };
 
 const FIELDS = [
@@ -71,9 +69,8 @@ const ROIS_DENSE = [0.05, 0.15, 0.25, 0.30];
 
 function allJobs(): Job[] {
   const mysteryOnly = process.env.SWEEP === "mystery_only";
-  const royaleOnly = process.env.SWEEP === "mystery_royale_only";
   const jobs: Job[] = [];
-  if (!mysteryOnly && !royaleOnly) {
+  if (!mysteryOnly) {
     for (const roi of ROIS_MAIN)
       for (const field of FIELDS) jobs.push({ sweep: "pko", field, roi });
     for (const roi of ROIS_DENSE)
@@ -82,21 +79,11 @@ function allJobs(): Job[] {
       for (const field of FIELDS)
         jobs.push({ sweep: "freeze_rd", field, roi });
   }
-  if (!royaleOnly) {
-    for (const roi of ROIS_MAIN)
-      for (const field of FIELDS) jobs.push({ sweep: "mystery", field, roi });
-    for (const roi of ROIS_DENSE)
-      for (const field of FIELDS)
-        jobs.push({ sweep: "mystery_dense", field, roi });
-  }
-  if (!mysteryOnly) {
-    for (const roi of ROIS_MAIN)
-      for (const field of FIELDS)
-        jobs.push({ sweep: "mystery_royale", field, roi });
-    for (const roi of ROIS_DENSE)
-      for (const field of FIELDS)
-        jobs.push({ sweep: "mystery_royale_dense", field, roi });
-  }
+  for (const roi of ROIS_MAIN)
+    for (const field of FIELDS) jobs.push({ sweep: "mystery", field, roi });
+  for (const roi of ROIS_DENSE)
+    for (const field of FIELDS)
+      jobs.push({ sweep: "mystery_dense", field, roi });
   // Deterministic "shuffle" — interleave by index hash so each slice has a
   // mix of sweep types and field sizes, not a contiguous block.
   jobs.sort((a, b) => {
@@ -119,8 +106,6 @@ function hash(s: string): number {
 function buildInput(j: Job): SimulationInput {
   const isFreeze = j.sweep === "freeze_rd";
   const isMystery = j.sweep === "mystery" || j.sweep === "mystery_dense";
-  const isRoyale =
-    j.sweep === "mystery_royale" || j.sweep === "mystery_royale_dense";
   let row: TournamentRow;
   if (isFreeze) {
     row = {
@@ -134,20 +119,18 @@ function buildInput(j: Job): SimulationInput {
       gameType: "freezeout",
       count: COMMON.N_TOURNEYS,
     };
-  } else if (isMystery || isRoyale) {
+  } else if (isMystery) {
     row = {
       id: "sweep",
       label: `f${j.field}`,
       players: j.field,
       buyIn: COMMON.BUY_IN,
-      rake: isRoyale ? COMMON.RAKE_ROYALE : COMMON.RAKE,
+      rake: COMMON.RAKE,
       roi: j.roi,
-      payoutStructure: isRoyale ? "battle-royale" : "mtt-gg-mystery",
-      gameType: isRoyale ? "mystery-royale" : "mystery",
+      payoutStructure: "mtt-gg-mystery",
+      gameType: "mystery",
       bountyFraction: COMMON.BOUNTY_FRACTION,
-      mysteryBountyVariance: isRoyale
-        ? COMMON.MYSTERY_ROYALE_LOG_VAR
-        : COMMON.MYSTERY_LOG_VAR,
+      mysteryBountyVariance: COMMON.MYSTERY_LOG_VAR,
       pkoHeadVar: COMMON.PKO_HEAD_VAR,
       count: COMMON.N_TOURNEYS,
     };
@@ -168,7 +151,7 @@ function buildInput(j: Job): SimulationInput {
   }
   const finishId = isFreeze
     ? "freeze-realdata-linear"
-    : isMystery || isRoyale
+    : isMystery
       ? "mystery-realdata-linear"
       : "pko-realdata-linear";
   return {
@@ -391,12 +374,11 @@ function summarize(
 async function mainOrchestrate() {
   const N_WORKERS = Number(process.env.N_WORKERS ?? 12);
   const mysteryOnly = process.env.SWEEP === "mystery_only";
-  const royaleOnly = process.env.SWEEP === "mystery_royale_only";
   const jobs = allJobs();
   console.log(
-    `fit_sigma_parallel: ${jobs.length} jobs across ${N_WORKERS} workers`,
+    `fit_sigma_parallel (200k probe): ${jobs.length} jobs across ${N_WORKERS} workers`,
   );
-  if (!mysteryOnly && !royaleOnly) {
+  if (!mysteryOnly) {
     console.log(
       `  pko(main):         ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
     );
@@ -407,24 +389,17 @@ async function mainOrchestrate() {
       `  freeze_rd:         ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
     );
   }
-  if (!royaleOnly) {
-    console.log(
-      `  mystery:           ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
-    );
-    console.log(
-      `  mystery(dense):    ${ROIS_DENSE.length} ROIs × ${FIELDS.length} fields`,
-    );
-  }
-  if (!mysteryOnly) {
-    console.log(
-      `  royale:            ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
-    );
-    console.log(
-      `  royale(dense):     ${ROIS_DENSE.length} ROIs × ${FIELDS.length} fields`,
-    );
-  }
   console.log(
-    `  samples=${COMMON.SAMPLES} N=${COMMON.N_TOURNEYS} buyIn=${COMMON.BUY_IN} rake=${COMMON.RAKE} (royale rake=${COMMON.RAKE_ROYALE})`,
+    `  mystery:           ${ROIS_MAIN.length} ROIs × ${FIELDS.length} fields`,
+  );
+  console.log(
+    `  mystery(dense):    ${ROIS_DENSE.length} ROIs × ${FIELDS.length} fields`,
+  );
+  console.log(
+    `  samples=${COMMON.SAMPLES} N=${COMMON.N_TOURNEYS} buyIn=${COMMON.BUY_IN} rake=${COMMON.RAKE}`,
+  );
+  console.log(
+    `  outputs: scripts/fit_beta_*_200k_probe.json (diagnostic; not canonical)`,
   );
 
   const scriptPath = fileURLToPath(import.meta.url);
@@ -485,10 +460,8 @@ async function mainOrchestrate() {
 
   const writeMysteryFile = async (
     path: string,
-    logVar: number,
     summary: ReturnType<typeof summarize>,
     mergedTable: Record<number, Array<{ field: number; sigmaRoi: number }>>,
-    rakeOverride?: number,
   ) => {
     await fs.writeFile(
       path,
@@ -498,13 +471,14 @@ async function mainOrchestrate() {
             N: COMMON.N_TOURNEYS,
             samples: COMMON.SAMPLES,
             buyIn: COMMON.BUY_IN,
-            rake: rakeOverride ?? COMMON.RAKE,
+            rake: COMMON.RAKE,
             bountyFraction: COMMON.BOUNTY_FRACTION,
-            mysteryBountyVariance: logVar,
+            mysteryBountyVariance: COMMON.MYSTERY_LOG_VAR,
             pkoHeadVar: COMMON.PKO_HEAD_VAR,
-            payout: "mtt-gg-bounty",
+            payout: "mtt-gg-mystery",
             finishModel: "mystery-realdata-linear",
             mergedWithDense: true,
+            probe: true,
           },
           fields: FIELDS,
           rois: mergedRois,
@@ -522,6 +496,11 @@ async function mainOrchestrate() {
             C1: summary.linC.slope,
             r2: summary.linC.r2,
           },
+          // logPolyPooled is fit on per-ROI centered log(field) and log(σ).
+          // Cannot be evaluated at arbitrary (field, roi) without the per-ROI
+          // mx/my constants, which aren't stored. Diagnostic only — reports
+          // pooled curvature shape (b2 != 0 ⇒ single-β leaves structure) and
+          // in-sample R² relative to globalR2. Not a runtime model.
           logPolyPooled: summary.quad,
         },
         null,
@@ -529,30 +508,6 @@ async function mainOrchestrate() {
       ),
     );
   };
-
-  if (royaleOnly) {
-    const royaleTable = byRoi("mystery_royale", ROIS_MAIN);
-    const royaleDenseTable = byRoi("mystery_royale_dense", ROIS_DENSE);
-    const royaleMergedTable = { ...royaleTable, ...royaleDenseTable };
-    const royaleSummary = summarize(
-      "mystery-royale MERGED (11 ROIs)",
-      mergedRois,
-      royaleMergedTable,
-    );
-    await writeMysteryFile(
-      "scripts/fit_beta_mystery_royale.json",
-      COMMON.MYSTERY_ROYALE_LOG_VAR,
-      royaleSummary,
-      royaleMergedTable,
-      COMMON.RAKE_ROYALE,
-    );
-    console.log("");
-    console.log("wrote scripts/fit_beta_mystery_royale.json (11 ROIs merged)");
-    await cleanupTmp();
-    console.log("");
-    console.log(`total wall time: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    return;
-  }
 
   const mysteryTable = byRoi("mystery", ROIS_MAIN);
   const mysteryDenseTable = byRoi("mystery_dense", ROIS_DENSE);
@@ -568,13 +523,14 @@ async function mainOrchestrate() {
 
   if (mysteryOnly) {
     await writeMysteryFile(
-      "scripts/fit_beta_mystery.json",
-      COMMON.MYSTERY_LOG_VAR,
+      "scripts/fit_beta_mystery_200k_probe.json",
       mysterySummary,
       mysteryMergedTable,
     );
     console.log("");
-    console.log("wrote scripts/fit_beta_mystery.json (11 ROIs merged)");
+    console.log(
+      "wrote scripts/fit_beta_mystery_200k_probe.json (11 ROIs merged; diagnostic)",
+    );
     await cleanupTmp();
     console.log("");
     console.log(`total wall time: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
@@ -599,7 +555,7 @@ async function mainOrchestrate() {
   const freezeSummary = summarize("freeze_rd", ROIS_MAIN, freezeTable);
 
   await fs.writeFile(
-    "scripts/fit_beta_pko.json",
+    "scripts/fit_beta_pko_200k_probe.json",
     JSON.stringify(
       {
         meta: {
@@ -612,6 +568,7 @@ async function mainOrchestrate() {
           payout: "mtt-gg-bounty",
           finishModel: "pko-realdata-linear",
           mergedWithDense: true,
+          probe: true,
         },
         fields: FIELDS,
         rois: pkoMergedRois,
@@ -636,10 +593,12 @@ async function mainOrchestrate() {
     ),
   );
   console.log("");
-  console.log("wrote scripts/fit_beta_pko.json (11 ROIs merged)");
+  console.log(
+    "wrote scripts/fit_beta_pko_200k_probe.json (11 ROIs merged; diagnostic)",
+  );
 
   await fs.writeFile(
-    "scripts/fit_beta_freeze_realdata.json",
+    "scripts/fit_beta_freeze_realdata_200k_probe.json",
     JSON.stringify(
       {
         meta: {
@@ -649,6 +608,7 @@ async function mainOrchestrate() {
           rake: COMMON.RAKE,
           payout: "mtt-standard",
           finishModel: "freeze-realdata-linear",
+          probe: true,
         },
         fields: FIELDS,
         rois: ROIS_MAIN,
@@ -672,10 +632,10 @@ async function mainOrchestrate() {
       2,
     ),
   );
-  console.log("wrote scripts/fit_beta_freeze_realdata.json");
+  console.log("wrote scripts/fit_beta_freeze_realdata_200k_probe.json (diagnostic)");
 
   await fs.writeFile(
-    "scripts/fit_beta_pko_core.json",
+    "scripts/fit_beta_pko_core_200k_probe.json",
     JSON.stringify(
       {
         rois: ROIS_MAIN,
@@ -687,40 +647,24 @@ async function mainOrchestrate() {
           C1: pkoCoreSummary.linC.slope,
           r2: pkoCoreSummary.linC.r2,
         },
+        probe: true,
       },
       null,
       2,
     ),
   );
-  console.log("wrote scripts/fit_beta_pko_core.json (7-ROI subset for compare)");
+  console.log(
+    "wrote scripts/fit_beta_pko_core_200k_probe.json (7-ROI subset; diagnostic)",
+  );
 
   await writeMysteryFile(
-    "scripts/fit_beta_mystery.json",
-    COMMON.MYSTERY_LOG_VAR,
+    "scripts/fit_beta_mystery_200k_probe.json",
     mysterySummary,
     mysteryMergedTable,
   );
-  console.log("wrote scripts/fit_beta_mystery.json (11 ROIs merged)");
-
-  const royaleTable = byRoi("mystery_royale", ROIS_MAIN);
-  const royaleDenseTable = byRoi("mystery_royale_dense", ROIS_DENSE);
-  const royaleMergedTable: Record<
-    number,
-    Array<{ field: number; sigmaRoi: number }>
-  > = { ...royaleTable, ...royaleDenseTable };
-  const royaleSummary = summarize(
-    "mystery-royale MERGED (11 ROIs)",
-    mergedRois,
-    royaleMergedTable,
+  console.log(
+    "wrote scripts/fit_beta_mystery_200k_probe.json (11 ROIs merged; diagnostic)",
   );
-  await writeMysteryFile(
-    "scripts/fit_beta_mystery_royale.json",
-    COMMON.MYSTERY_ROYALE_LOG_VAR,
-    royaleSummary,
-    royaleMergedTable,
-    COMMON.RAKE_ROYALE,
-  );
-  console.log("wrote scripts/fit_beta_mystery_royale.json (11 ROIs merged)");
 
   await cleanupTmp();
 
