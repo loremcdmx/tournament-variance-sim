@@ -1235,61 +1235,89 @@ export const DICT = {
     ru: "Импортировано {n} {_preset}.",
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
-  "changelog.v07a.title": { en: "v0.7a — current", ru: "v0.7a — текущая" },
+  "changelog.v07a.title": { en: "v0.7.1 — 2026-04-18", ru: "v0.7.1 — 2026-04-18" },
+  "changelog.v07a.cash": {
+    en: "Advanced mode now has a separate cash-game variance simulator with mixed limits and parallel workers.",
+    ru: "В advanced mode появился отдельный симулятор дисперсии для кэша с миксом лимитов и параллельными воркерами.",
+  },
+  "changelog.v07a.mttPerf": {
+    en: "MTT became more responsive: less lag on edits, cleaner chart behavior, and a batch of small UI fixes.",
+    ru: "MTT стал отзывчивее: меньше лагов при редактировании, аккуратнее поведение графиков и пачка мелких правок интерфейса.",
+  },
+  "changelog.v07a.progress": {
+    en: "Progress bar and ETA now track the real run phases much closer and stop freezing in the middle.",
+    ru: "Прогресс-бар и ETA стали заметно ближе к реальным фазам расчёта и меньше залипают посередине.",
+  },
+  "changelog.v07a.mystery": {
+    en: "Mystery / Battle Royale got a bounty-window fix, a jackpot-hide toggle, and refreshed convergence coefficients after the model fix.",
+    ru: "Для Mystery / Battle Royale поправили окно баунти, добавили скрытие джекпотов и пересчитали коэффициенты сходимости после фикса модели.",
+  },
+  "changelog.v07a.stats": {
+    en: "Streak and convergence widgets were cleaned up: exact mode uses per-row rake and the stats block now shows an average 'any streak' metric.",
+    ru: "Почистили виджеты стриков и сходимости: exact mode использует рейк по рядам, а в статистике появился средний показатель по «любому стрику».",
+  },
   "changelog.v07a.polish": {
     en: "Minor UI fixes.",
     ru: "Мелкие правки интерфейса.",
   },
-  "changelog.v07.title": { en: "v0.7", ru: "v0.7" },
+  "changelog.v07.title": { en: "v0.7 — 2026-04-17", ru: "v0.7 — 2026-04-17" },
   "changelog.v07.formats": {
-    en: "Mystery & Mystery Battle Royale: phase-split bounty model with σ_ROI fits from real data.",
-    ru: "Mystery и Mystery Battle Royale: модель баунти с фазовым сплитом и σ_ROI, откалиброванные по реальным данным.",
+    en: "The model moved beyond plain freezeouts: Mystery, Battle Royale and exact schedule mode became first-class parts of the app.",
+    ru: "Модель ушла дальше простых фризаутов: Mystery, Battle Royale и exact-режим для точного расписания стали полноценной частью приложения.",
   },
   "changelog.v07.convergence": {
-    en: "Convergence widget: freeze / PKO / mystery mix with manual %, wider target band (±0.1% … ±50%).",
-    ru: "Виджет сходимости: микс фриз / PKO / mystery с ручным %, расширенный диапазон точности (±0.1% … ±50%).",
+    en: "The convergence widget turned into a real planning tool: format tabs, wider CI range, and schedule-aware calculations.",
+    ru: "Виджет сходимости превратился в рабочий инструмент: вкладки по форматам, более широкий диапазон CI и расчёты с учётом расписания.",
   },
   "changelog.v07.gameType": {
-    en: "Schedule gains a Game Type column — explicit freezeout / re-entry / PKO / mystery / Battle Royale selector with sensible defaults per format.",
-    ru: "В расписании появилась колонка «Тип турнира» — явный выбор фризаут / ре-энтри / PKO / mystery / Battle Royale с дефолтами по формату.",
+    en: "Schedule controls became clearer: explicit game types, better trim/filter controls, and fewer compare-mode surprises.",
+    ru: "Управление расписанием стало понятнее: явные типы турниров, более внятные trim/filter-контролы и меньше сюрпризов в compare-режимах.",
   },
   "changelog.v07.rakeback": {
-    en: "Rakeback toggle on profit and streak widgets — deterministic $ shift applied across drawdown, break-even, cashless, recovery.",
-    ru: "Галочка «с РБ» на виджетах профита и стриков — детерминистский денежный сдвиг прокатывается через стрики, игру в ноль, серии без ИТМ и отыгрывание.",
-  },
-  "changelog.v07.polish": {
-    en: "Minor UI fixes.",
-    ru: "Мелкие правки интерфейса.",
+    en: "Rakeback became part of the results view instead of a side note: profit, streak and recovery widgets now react to it consistently.",
+    ru: "Рейкбек стал частью результата, а не сноской: виджеты профита, стриков и отыгрывания теперь учитывают его заметно последовательнее.",
   },
   "changelog.v06c.title": { en: "v0.6c", ru: "v0.6c" },
   "changelog.v06c.hoverHighlights": {
     en: "Hovered run: deepest peak-to-trough drawdown highlighted in red with its anchor peak marked.",
     ru: "Ран под курсором: самый глубокий стрик от пика до дна подсвечен красным с точкой-якорем на пике.",
   },
-  "changelog.v06b.title": { en: "v0.6b", ru: "v0.6b" },
+  "changelog.v06b.title": { en: "v0.6b — 2026-04-16", ru: "v0.6b — 2026-04-16" },
+  "changelog.v06b.summary": {
+    en: "A polish release: line presets, overlay styling, better controls, and smaller fixes around EV and global ITM behavior.",
+    ru: "Полировочный релиз: пресеты линий, стиль оверлеев, правки контролов и несколько точечных фиксов вокруг EV и глобального ITM.",
+  },
   "changelog.v06b.ev": {
     en: "EV context on profit and run widgets: EV + ROI + median, worst/best runs show delta vs EV.",
     ru: "EV-контекст на виджетах профита и ранов: EV + ROI + медиана, худший/лучший раны — отклонение от EV.",
   },
-  "changelog.v06.title": { en: "v0.6a", ru: "v0.6a" },
+  "changelog.v06.title": { en: "v0.6 — 2026-04-15", ru: "v0.6 — 2026-04-15" },
+  "changelog.v06.summary": {
+    en: "PKO support, a redesigned first screen, EV breakdowns, and a much more realistic payout model landed together here.",
+    ru: "Здесь одновременно приехали PKO, новый первый экран, разложение EV по каналам и намного более реалистичная модель выплат.",
+  },
   "changelog.v06.pko": {
     en: "PKO compare mode: side-by-side view for bounty vs non-bounty variance.",
     ru: "PKO сравнение: параллельный вид дисперсии с баунти и без.",
   },
-  "changelog.v05.title": { en: "v0.5", ru: "v0.5" },
+  "changelog.v05.title": { en: "v0.5 — 2026-04-15", ru: "v0.5 — 2026-04-15" },
+  "changelog.v05.summary": {
+    en: "PrimeDope comparison became a separate feature: overlay, toggles and the first serious convergence widget all appeared in this cycle.",
+    ru: "Сравнение с PrimeDope стало отдельной фичей: оверлей, переключатели и первый серьёзный виджет сходимости появились именно здесь.",
+  },
   "changelog.v05.pdWidget": {
     en: "PrimeDope comparison panel with overlay and toggles.",
     ru: "Панель сравнения с PrimeDope с оверлеем и переключателями.",
   },
-  "changelog.v04.title": { en: "v0.4", ru: "v0.4" },
+  "changelog.v04.title": { en: "v0.4 — 2026-04-14", ru: "v0.4 — 2026-04-14" },
   "changelog.v04.summary": {
-    en: "Streaks & comeback block: break-even grind, cashless runs, recovery, upswings table.",
-    ru: "Блок «стрики и отмазка»: игра в ноль, серии без ИТМ, отыгрывание, таблица апсвингов.",
+    en: "The app shifted from 'profit only' to 'what kind of downswings and recoveries can actually happen'.",
+    ru: "Приложение сместилось от «просто профита» к вопросу «какие именно просадки и отыгрывания реально бывают».",
   },
-  "changelog.v03.title": { en: "v0.3", ru: "v0.3" },
+  "changelog.v03.title": { en: "v0.3 — 2026-04-13", ru: "v0.3 — 2026-04-13" },
   "changelog.v03.presets": {
-    en: "Line style presets, $/ABI unit toggle, preset export/import.",
-    ru: "Пресеты стилей линий, переключатель $/АБИ, экспорт/импорт пресетов.",
+    en: "The first usable simulator build: presets, trajectory styling, unit switcher and import/export.",
+    ru: "Первая реально рабочая версия симулятора: пресеты, стили траекторий, переключатель единиц и импорт/экспорт.",
   },
   "footer.madeBy": { en: "made by", ru: "сделал" },
 

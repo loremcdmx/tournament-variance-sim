@@ -22,51 +22,59 @@
 
 Корректность движка — главный приоритет. Любой cleanup или UI-фикс откладывается, если задача из этого блока открыта.
 
-**Обязательный порядок (review 2026-04-18):** `#113` → `#121` → `#119` (probe-stage) → `#7`.
-Любой crypto-тяжёлый `σ`-sweep (#109) запрещён до закрытия всех четырёх — иначе рефит коэффициентов на промежуточной математике = выкинутое CPU-время.
+**Review 2026-04-18 (после meta-critique):** `#113` закрыт как audit-done (винс-конвенция — не баг, зафиксирована тестами). `#131` закрыт (normalize в `compileSchedule` + warn в persistence). `#119` probe-этап сделан. `#121` расщеплён на три честных подпункта. `#7` переписан: претензия «variance = 0» была неточной — канал within-place существует в виде `pkoHeadVar/mysteryBountyVariance`, нужен аудит, не новый канал.
 
-### 1. #113 · PKO/Mystery/BR: winner-bounty inflation edge case — **ДЕЛАТЬ ПЕРВЫМ**
-Когда финалист выбивает последнего оппонента — получает inflated собственный bounty. Нужно проверить ветки `if (aliveAfter === 1)` / `place === 1` в `engine.ts`:
-- **PKO:** half-to-winner half-to-pool
-- **Mystery:** mean не инфлируется per-KO
-- **BR:** independent draw per KO
+Любой crypto-тяжёлый `σ`-sweep (#109) запрещён до закрытия `#121a/#121b/#7` — иначе рефит коэффициентов на промежуточной математике = выкинутое CPU-время.
 
-**Возможный systematic bias:** winner-EV ~0.5–2%.
-**Почему первым:** маленький вход, high-confidence audit, результат повышает доверие ко всему движку.
+### ✅ #113 · Winner-bounty conservation audit — ЗАКРЫТО 2026-04-18
+Audit PKO / Mystery / Battle Royale на «winner получает inflated собственный bounty» выполнен:
+- **PKO:** `engine.ts:~774` — `raw[0] += Tfinal` (winner собирает собственную голову). Это стандартная PokerStars PKO-конвенция, НЕ баг. Half-to-winner / half-to-pool это **progressive rule на каждом KO** (половина идёт в голову победителя, половина в его личную bounty-награду за будущие ноки) — уже реализовано в `bountyByPlace`. Финальный нок по PKO-правилу → winner имеет право на собственную голову, как и на все предыдущие.
+- **Mystery / Battle Royale:** envelope draws независимы per KO; финальный envelope rolled из тех же 8 тиров. Никакой per-winner inflation.
+- **Тесты:** `engine.test.ts` → `"bounty conventions and conservation"` — три инварианта (MR winner 8 envelopes, PKO winner own-head paid, bounty budget conservation Σ bountyByPlace > 0).
 
-### 2. #121 · BR/Mystery finishModel: top1 at ROI>0 занимается реже равновесия
-Калибровка размазывает edge-EV между pmf и bounty, `top1 pmf reg` получается **меньше** freezeout-equivalent. Это искажает распределение мест в форматах с баунти — бьёт прямо в основной продуктовый месседж.
+**Почему раньше числилось как P0:** формулировка «may have systematic bias 0.5–2%» была гипотезой, не measurement. Actual audit показал конвенцию корректной для PKO и структурно невозможной inflation для Mystery/BR.
 
-**План:**
-1. Fake-freezeout `calibrateAlpha` для row без bounty → зафиксировать reg top1 pmf
+### #121a · Conservation invariants как permanent check (бывш. #121 accounting)
+Fixture-based regression: для каждого gameType в `testing-scenarios` проверять `E[prize+bounty per run] ≈ singleCost × (1+roi) ± 0.1%` (N=10k). Сейчас calibration пишется per-run, но без reject-on-drift — случайная регрессия в `calibrateAlpha` заметна только по визуальному σ-сдвигу.
+
+**План:** `engine.test.ts` → "conservation fixtures" describe, seed стабилен, tolerance fixed.
+**Размер:** ~30 строк test-кода, 0 engine changes.
+
+### #121b · Calibration decomposition: pmf-shape vs bounty-budget (бывш. #121 semantics)
+Текущий `calibrateAlpha` (`finishModel.ts:199-250`) — одностадийный binary search: один α тащит и pmf-шейп, и bounty-lift. Для reg у ROI>0 top1 pmf размазывается (edge-EV частично уезжает в bounty). EV-bias slider (`engine.ts:473-488`, clamp ±0.25) это НЕ решает — он shift'ит между каналами **post-calibration**, не чинит smear **во время** поиска α.
+
+**План двухстадийной калибровки:**
+1. Fake-freezeout `calibrateAlpha` для row без bounty → зафиксировать top1 pmf
 2. `cashEv = Σ pmf·cashPayout`
 3. `residualBountyEv = (1+roi)·buyIn − cashEv − bulletCost`
 4. Scale bounty-distribution mean под residual
 
-**Артефакты:** новая функция `calibrateBountyBudget(schedule, targetRoi)`.
-**После правки:** recal `SIGMA_ROI_*` — связано с #119.
+**Артефакты:** новая функция `calibrateBountyBudget(schedule, targetRoi)`. Tests покрывают «pmf shape монотонна по ROI».
 
-### 3. #119 · Mystery дисперсия — правый хвост + recal (ДВА ЭТАПА)
-Юзер воспринимает Mystery как менее дисповый, чем GG в реальности. Stopgap `mysteryBountyVariance=2.0` (log-normal) даёт `P(>100×mean) = 3.7e-5` vs BR empirical `4.5e-5`.
+### #121c · External validation — **BLOCKED BY DATA DROP**
+Сверка `top1/top3/top9/ITM pmf` против реальных MTT-выборок. Ждёт CSV-дроп от юзерского фонда (1.5k игроков) — см. `tournament_variance_sim_data_plan.md`. Без внешнего ground-truth любые правки #121b — это регрессия к предположениям. Триггер: CSV от юзера.
 
-**⚠️ Нельзя слепо поднимать σ² до 2.5–3.0** — можно попасть в один tail quantile и испортить остальные моменты.
+### ✅ #119a · Mystery tail probe — ЗАКРЫТО 2026-04-18
+`scripts/probe_mystery_tail.ts` прогнан на `mysteryBountyVariance=2.0`: `P(X > 100×mean) = 3.7e-5` vs BR empirical `4.5e-5`. Совпадение в одном квантиле, skew/kurt в приемлемых границах log-normal. Stopgap σ²=2.0 сохранён до поступления реальных GG-tier данных.
 
-**Этап A (probe, без кода в движке):**
-1. Probe `scripts/probe_mystery_tail.ts` на текущем движке
-2. Замерить skew / kurt / tail-CDF на нескольких quantile'ах
-3. Сравнить с реальными GG-данными (или BR empirical как прокси)
-4. **Решение:** держать log-normal с подобранным σ² / переход на discrete-tier draw как BR (#92) / гибрид
+### #119b · Mystery tail apply — **BLOCKED BY DATA**
+При поступлении GG Mystery-tier выборки (не BR прокси): переход на discrete-tier draw по образцу BR (#92) — single-line change в `engine.ts:~901` (переиспользовать `brTierRatios`-путь) + новый `mysteryTierRatios` preset. После: `SWEEP=mystery_only scripts/fit_sigma_parallel.ts` (~5 мин) + recal `SIGMA_ROI_MYSTERY`. Триггер: CSV от юзера (см. `tournament_variance_sim_data_plan.md`).
 
-**Этап B (после решения):**
-5. Применить выбранный подход
-6. `SWEEP=mystery_only scripts/fit_sigma_parallel.ts` (~5 мин) + recal `SIGMA_ROI_MYSTERY`
+### ✅ #131 · BR/mystery-royale split-brain — ЗАКРЫТО 2026-04-18
+Fixed: `compileSchedule` вызывает `normalizeBrMrConsistency` из `gameType.ts` (force mirror между `gameType` и `payoutStructure`). `persistence.ts` warn'ит в dev при drift из `decodeState`/`loadLocal`/`loadUserPresets`. Regression tests: `engine.test.ts` → `"compileSchedule normalizes BR ↔ mystery-royale split-brain"` (два теста: BR-payout-no-gameType, MR-gameType-mtt-standard-payout).
 
-### 4. #7 (audit) · PKO within-place bounty variance
-Текущая модель сохраняет `Σ pmf[i]·bountyByPlace[i] = bountyMean`, но без **within-place bounty variance**. Это систематическое занижение σ для PKO на 5–15% — прямо бьёт в ключевую претензию к PrimeDope.
+### #7 (audit) · PKO/Mystery within-place bounty variance — **rewrite 2026-04-18**
+**Старая формулировка была неточной.** Канал within-place bounty variance **уже существует**:
+- PKO: `pkoHeadVar` в `applyGameType` (`gameType.ts:95`), default 0.4, разгоняет голову через heat-bin preconcentration.
+- Mystery/BR: per-draw envelope lottery в hot loop (`engine.ts:~901`), σ² = `mysteryBountyVariance` либо discrete tiers.
 
-**План:** добавить per-place bounty-noise канал (fresh `mixSeed` slot для детерминизма) + determinism test.
+**Актуальная задача — audit, не feature:**
+1. Verify calibration: не отменяет ли `calibrateAlpha` часть variance? (`scripts/xval_mystery.ts` показал mean |Δ/σ|=17.6% — часть residual возможно из-за этого)
+2. Decide target metric: σ_final, или tail-CDF, или moments? Сейчас fit использует σ только.
+3. Удалить или исправить stale claims в comments («variance is zero», если где-то осталось).
+4. Если audit покажет реальный under-shoot >5% на PKO специфично — тогда новый канал, но с measurement-first.
 
-**Условие параллельной работы:** если кодовая зона изолирована в одном новом канале движка — можно параллельно с #113/#121. Если wiring тянет за собой `finishModel` — последовательно после #121.
+**Условие:** делать после `#121b` (иначе calibration-shift замаскирует результат).
 
 ---
 
@@ -174,7 +182,7 @@ Segmented `RunModeSlider` в TrajectoryCard toolbar не даёт ожидаем
 
 ## 🟢 P2 — Features / медленный рост
 
-### #109 · Масштабный σ-sweep по всем форматам — **BLOCKED BY P0 (#113, #121, #119, #7)**
+### #109 · Масштабный σ-sweep по всем форматам — **BLOCKED BY P0 (#121a, #121b, #7)**
 Прогнать large-scale fit по freeze/pko/mystery/mystery-royale на полной ROI × AFS матрице. Recal `SIGMA_ROI_*` после правок движка.
 
 **⚠️ Запрет:** не запускать до закрытия всех четырёх P0 задач. Иначе рефит коэффициентов на промежуточной математике = выкинутые 4 часа CPU.
@@ -203,7 +211,7 @@ Segmented `RunModeSlider` в TrajectoryCard toolbar не даёт ожидаем
 
 ## ❄️ Заморожено до закрытия P0 (review 2026-04-18)
 
-Откладываем до стабилизации математики движка (#113/#121/#119/#7). Код здесь не трогать.
+Откладываем до стабилизации математики движка (#121a/#121b/#7). Код здесь не трогать.
 
 ### #106 · Spins как формат
 Новый `gameType="spins"` со всей jackpot-tail σ-математикой. Это новый большой формат с отдельным engine-путём — распыление пока есть открытые P0 по существующим форматам.
