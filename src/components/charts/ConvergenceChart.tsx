@@ -277,6 +277,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   // instead of averaging across AFS/ROI. Disabled when no schedule is loaded.
   const [formatOverride, setFormatOverride] =
     useState<ConvergenceFormat | null>(null);
+  // "mix" aggregates the 3-way {freeze, pko, mystery} tuple — MBR is
+  // deliberately excluded because it's AFS-locked at 18 and ROI-clipped.
+  // So a schedule containing MBR alongside other formats would silently
+  // drop MBR's σ contribution if we defaulted to "mix". Fall back to
+  // "exact" in that case so per-row σ over the real schedule is shown.
   const baselineFormat: ConvergenceFormat =
     baseline.mysteryRoyaleShare >= 0.99
       ? "mystery-royale"
@@ -286,7 +291,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           ? "mystery"
           : baseline.freezeShare >= 0.99
             ? "freeze"
-            : "mix";
+            : baseline.mysteryRoyaleShare > 0 && hasSchedule
+              ? "exact"
+              : "mix";
   const rawFormat = formatOverride ?? baselineFormat;
   const format: ConvergenceFormat =
     rawFormat === "exact" && !hasSchedule ? "mix" : rawFormat;
