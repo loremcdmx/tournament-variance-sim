@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  memo,
   useCallback,
   useContext,
   useDeferredValue,
@@ -1044,6 +1045,71 @@ function computeExpectedRakebackCurve(
 // curve sign applied — coarser than the engine's N-sample histograms but
 // the only way to make those widgets respond to the RB toggle without
 // re-running the engine.
+// Streak-only variant: re-run pathStreaks over the stored hi-res paths (with
+// optional RB shift) and merge the streak-derived fields back onto `r`.
+// Envelopes, paths, histogram, and expectedProfit are left untouched — used
+// when the caller only needs the histograms/stats to reflect pathStreaks
+// vs engine K=240 chord algo parity (same source, same stride).
+function recomputeStreaksFromPaths(
+  r: SimulationResult,
+  signedCurve: Float64Array | null,
+): SimulationResult {
+  const streakAgg = aggregateStreaks(r.samplePaths.paths, r.samplePaths.x, signedCurve);
+  return {
+    ...r,
+    stats: {
+      ...r.stats,
+      maxDrawdownMean: streakAgg.stats.maxDrawdownMean,
+      maxDrawdownMedian: streakAgg.stats.maxDrawdownMedian,
+      maxDrawdownP95: streakAgg.stats.maxDrawdownP95,
+      maxDrawdownP99: streakAgg.stats.maxDrawdownP99,
+      maxDrawdownWorst: streakAgg.stats.maxDrawdownWorst,
+      longestBreakevenMean: streakAgg.stats.longestBreakevenMean,
+      breakevenStreakMean: streakAgg.stats.breakevenStreakMean,
+      recoveryMedian: streakAgg.stats.recoveryMedian,
+      recoveryP90: streakAgg.stats.recoveryP90,
+      recoveryUnrecoveredShare: streakAgg.stats.recoveryUnrecoveredShare,
+    },
+    drawdownHistogram: streakAgg.drawdownHistogram,
+    longestBreakevenHistogram: streakAgg.longestBreakevenHistogram,
+    recoveryHistogram: streakAgg.recoveryHistogram,
+    downswings: (() => {
+      const N = Math.min(3, r.downswings.length, streakAgg.perSample.length);
+      const idx = streakAgg.perSample
+        .map((_, i) => i)
+        .sort((a, b) => streakAgg.perSample[b].maxDrawdown - streakAgg.perSample[a].maxDrawdown)
+        .slice(0, N);
+      return idx.map((sampleIndex, i) => {
+        const ps = streakAgg.perSample[sampleIndex];
+        return {
+          rank: i + 1,
+          sampleIndex,
+          depth: ps.maxDrawdown,
+          finalProfit: ps.finalProfit,
+          longestBreakeven: ps.longestBreakeven,
+        };
+      });
+    })(),
+    upswings: (() => {
+      const N = Math.min(3, r.upswings.length, streakAgg.perSample.length);
+      const idx = streakAgg.perSample
+        .map((_, i) => i)
+        .sort((a, b) => streakAgg.perSample[b].maxRunUp - streakAgg.perSample[a].maxRunUp)
+        .slice(0, N);
+      return idx.map((sampleIndex, i) => {
+        const ps = streakAgg.perSample[sampleIndex];
+        return {
+          rank: i + 1,
+          sampleIndex,
+          height: ps.maxRunUp,
+          finalProfit: ps.finalProfit,
+          longestBreakeven: ps.longestBreakeven,
+        };
+      });
+    })(),
+  };
+}
+
 function shiftResultByRakeback(
   r: SimulationResult,
   curve: Float64Array,
@@ -1051,11 +1117,6 @@ function shiftResultByRakeback(
 ): SimulationResult {
   const signedCurve = new Float64Array(curve.length);
   for (let i = 0; i < curve.length; i++) signedCurve[i] = sign * curve[i];
-  const streakAgg = aggregateStreaks(
-    r.samplePaths.paths,
-    r.samplePaths.x,
-    signedCurve,
-  );
   const shiftArr = (a: Float64Array): Float64Array => {
     const len = a.length;
     const out = new Float64Array(len);
@@ -1085,15 +1146,16 @@ function shiftResultByRakeback(
     }
   }
   const probProfit = Math.max(0, Math.min(1, 1 - cumBelow / totalCount));
+  const streakMerged = recomputeStreaksFromPaths(r, signedCurve);
   return {
-    ...r,
+    ...streakMerged,
     expectedProfit: r.expectedProfit + totalShift,
     histogram: {
       ...r.histogram,
       binEdges: shiftedHistEdges,
     },
     stats: {
-      ...r.stats,
+      ...streakMerged.stats,
       mean: r.stats.mean + totalShift,
       median: r.stats.median + totalShift,
       min: r.stats.min + totalShift,
@@ -1109,59 +1171,7 @@ function shiftResultByRakeback(
       var99: r.stats.var99 - totalShift,
       cvar95: r.stats.cvar95 - totalShift,
       cvar99: r.stats.cvar99 - totalShift,
-      maxDrawdownMean: streakAgg.stats.maxDrawdownMean,
-      maxDrawdownMedian: streakAgg.stats.maxDrawdownMedian,
-      maxDrawdownP95: streakAgg.stats.maxDrawdownP95,
-      maxDrawdownP99: streakAgg.stats.maxDrawdownP99,
-      maxDrawdownWorst: streakAgg.stats.maxDrawdownWorst,
-      longestBreakevenMean: streakAgg.stats.longestBreakevenMean,
-      breakevenStreakMean: streakAgg.stats.breakevenStreakMean,
-      // longestCashless* — engine defines this as "tournaments since last
-      // ITM cash", which is independent of rakeback (a game-event metric,
-      // not a profit-curve metric). Preserve engine output instead of
-      // re-deriving from paths (pathStreaks' delta-based proxy double-counts
-      // break-even cashes and misreads bounty-only wins).
-      recoveryMedian: streakAgg.stats.recoveryMedian,
-      recoveryP90: streakAgg.stats.recoveryP90,
-      recoveryUnrecoveredShare: streakAgg.stats.recoveryUnrecoveredShare,
     },
-    drawdownHistogram: streakAgg.drawdownHistogram,
-    longestBreakevenHistogram: streakAgg.longestBreakevenHistogram,
-    recoveryHistogram: streakAgg.recoveryHistogram,
-    downswings: (() => {
-      const N = Math.min(3, r.downswings.length, streakAgg.perSample.length);
-      const idx = streakAgg.perSample
-        .map((_, i) => i)
-        .sort((a, b) => streakAgg.perSample[b].maxDrawdown - streakAgg.perSample[a].maxDrawdown)
-        .slice(0, N);
-      return idx.map((sampleIndex, i) => {
-        const s = streakAgg.perSample[sampleIndex];
-        return {
-          rank: i + 1,
-          sampleIndex,
-          depth: s.maxDrawdown,
-          finalProfit: s.finalProfit,
-          longestBreakeven: s.longestBreakeven,
-        };
-      });
-    })(),
-    upswings: (() => {
-      const N = Math.min(3, r.upswings.length, streakAgg.perSample.length);
-      const idx = streakAgg.perSample
-        .map((_, i) => i)
-        .sort((a, b) => streakAgg.perSample[b].maxRunUp - streakAgg.perSample[a].maxRunUp)
-        .slice(0, N);
-      return idx.map((sampleIndex, i) => {
-        const s = streakAgg.perSample[sampleIndex];
-        return {
-          rank: i + 1,
-          sampleIndex,
-          height: s.maxRunUp,
-          finalProfit: s.finalProfit,
-          longestBreakeven: s.longestBreakeven,
-        };
-      });
-    })(),
     samplePaths: {
       ...r.samplePaths,
       paths: r.samplePaths.paths.map(shiftArr),
@@ -1202,16 +1212,19 @@ function rebuildEnvelopesFromPaths(
   const p9985 = new Float64Array(len);
   const min = new Float64Array(len);
   const max = new Float64Array(len);
-  const scratch = new Array<number>(paths.length);
+  // Float64Array.sort() without comparator uses a numeric-typed fast path —
+  // roughly 5-10× faster than Array<number>.sort((a,b)=>a-b) on V8. At 1000
+  // paths × 10k timesteps (~200ms cost), that's the difference between a
+  // visible hitch and an imperceptible rebuild.
+  const scratch = new Float64Array(paths.length);
+  const lastIdx = Math.max(0, paths.length - 1);
   const pick = (q: number) => {
-    const pos = q * Math.max(0, scratch.length - 1);
+    const pos = q * lastIdx;
     const lo = Math.floor(pos);
     const hi = Math.ceil(pos);
-    if (lo === hi) return scratch[lo] ?? 0;
+    if (lo === hi) return scratch[lo];
     const w = pos - lo;
-    const a = scratch[lo] ?? 0;
-    const b = scratch[hi] ?? a;
-    return a + (b - a) * w;
+    return scratch[lo] + (scratch[hi] - scratch[lo]) * w;
   };
 
   for (let t = 0; t < len; t++) {
@@ -1223,10 +1236,10 @@ function rebuildEnvelopesFromPaths(
       scratch[i] = v;
       sum += v;
     }
-    scratch.sort((a, b) => a - b);
+    scratch.sort();
     mean[t] = sum / paths.length;
-    min[t] = scratch[0] ?? 0;
-    max[t] = scratch[scratch.length - 1] ?? 0;
+    min[t] = scratch[0];
+    max[t] = scratch[scratch.length - 1];
     p0015[t] = pick(0.0015);
     p025[t] = pick(0.025);
     p05[t] = pick(0.05);
@@ -2005,8 +2018,7 @@ export function ResultsView({
   // difference is the rbShift.
   const resultStreaksWithRb = useMemo(() => {
     if (!rakebackCurve) return result;
-    const zeroCurve = new Float64Array(rakebackCurve.length);
-    return shiftResultByRakeback(result, zeroCurve, 1);
+    return recomputeStreaksFromPaths(result, null);
   }, [result, rakebackCurve]);
   const displayResultStreaks = rbStreaks ? resultStreaksWithRb : resultNoRb;
   // Parallel pdChart streak variant so the compare overlay in the streaks
@@ -2016,8 +2028,7 @@ export function ResultsView({
   const pdChartStreaksWithRb = useMemo(() => {
     if (!pdChart) return null;
     if (!pdRakebackCurve) return pdChart;
-    const zeroCurve = new Float64Array(pdRakebackCurve.length);
-    return shiftResultByRakeback(pdChart, zeroCurve, 1);
+    return recomputeStreaksFromPaths(pdChart, null);
   }, [pdChart, pdRakebackCurve]);
   const displayPdChartStreaks = rbStreaks ? pdChartStreaksWithRb : pdChartNoRb;
 
@@ -2156,6 +2167,108 @@ export function ResultsView({
     DEFAULT_REF_LINES,
   );
 
+  // Stabilize the TrajectoryCard toolbar so unrelated re-renders (schedule
+  // keystrokes, language switches) don't recreate this JSX subtree — combined
+  // with memo(TrajectoryCard) this skips reconciliation for the whole card.
+  const trajectoryToolbar = useMemo(
+    () => (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+            {t("lineStyle.label")}
+          </div>
+          <LineStylePresetPicker
+            value={lineStylePresetId}
+            onChange={setLineStylePresetId}
+          />
+          <LineStyleCustomizer
+            preset={LINE_STYLE_PRESETS[lineStylePresetId]}
+            overrides={lineOverrides}
+            onChange={setLineOverrides}
+            t={t}
+          />
+          <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
+        </div>
+        <div className="flex items-center gap-2">
+          {advanced && (
+            <>
+              <TrimPctSlider
+                label={t("runs.trim.worst")}
+                value={trimBotPct}
+                onChange={setTrimBotPct}
+              />
+              <TrimPctSlider
+                label={t("runs.trim.best")}
+                value={trimTopPct}
+                onChange={setTrimTopPct}
+              />
+            </>
+          )}
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+            {t("runs.label")}
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={maxRuns}
+            step={1}
+            value={visibleRuns}
+            onChange={(e) => setVisibleRuns(Number(e.target.value))}
+            className="h-1 w-28 cursor-pointer accent-[color:var(--color-accent)]"
+            aria-label={t("runs.label")}
+          />
+          {advanced ? (
+            <>
+              <input
+                type="number"
+                min={0}
+                max={maxRuns}
+                step={1}
+                value={visibleRuns}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  if (!Number.isFinite(raw)) return;
+                  setVisibleRuns(Math.max(0, Math.min(maxRuns, Math.round(raw))));
+                }}
+                className="w-14 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+                aria-label={t("runs.label")}
+                title={`max ${maxRuns} (captured paths)`}
+              />
+              <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+                /{maxRuns}
+              </span>
+            </>
+          ) : (
+            <span className="min-w-[3.5rem] whitespace-nowrap text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
+              {visibleRuns}/{maxRuns}
+            </span>
+          )}
+          <RunModeSlider value={runMode} onChange={setRunMode} t={t} />
+          <InlineUnitToggle />
+        </div>
+      </div>
+    ),
+    [
+      t,
+      lineStylePresetId,
+      setLineStylePresetId,
+      lineOverrides,
+      setLineOverrides,
+      refLines,
+      setRefLines,
+      advanced,
+      trimBotPct,
+      setTrimBotPct,
+      trimTopPct,
+      setTrimTopPct,
+      maxRuns,
+      visibleRuns,
+      setVisibleRuns,
+      runMode,
+      setRunMode,
+    ],
+  );
+
   return (
     <AbiContext.Provider value={abi}>
     <MoneyFmtContext.Provider value={moneyFmt}>
@@ -2255,83 +2368,7 @@ export function ResultsView({
           trimTopPct={deferredTrimTopPct}
           trimBotPct={deferredTrimBotPct}
           refLines={refLines}
-          toolbar={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-                  {t("lineStyle.label")}
-                </div>
-                <LineStylePresetPicker
-                  value={lineStylePresetId}
-                  onChange={setLineStylePresetId}
-                />
-                <LineStyleCustomizer
-                  preset={LINE_STYLE_PRESETS[lineStylePresetId]}
-                  overrides={lineOverrides}
-                  onChange={setLineOverrides}
-                  t={t}
-                />
-                <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
-              </div>
-              <div className="flex items-center gap-2">
-                {advanced && (
-                  <>
-                    <TrimPctSlider
-                      label={t("runs.trim.worst")}
-                      value={trimBotPct}
-                      onChange={setTrimBotPct}
-                    />
-                    <TrimPctSlider
-                      label={t("runs.trim.best")}
-                      value={trimTopPct}
-                      onChange={setTrimTopPct}
-                    />
-                  </>
-                )}
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-                  {t("runs.label")}
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={maxRuns}
-                  step={1}
-                  value={visibleRuns}
-                  onChange={(e) => setVisibleRuns(Number(e.target.value))}
-                  className="h-1 w-28 cursor-pointer accent-[color:var(--color-accent)]"
-                  aria-label={t("runs.label")}
-                />
-                {advanced ? (
-                  <>
-                    <input
-                      type="number"
-                      min={0}
-                      max={maxRuns}
-                      step={1}
-                      value={visibleRuns}
-                      onChange={(e) => {
-                        const raw = Number(e.target.value);
-                        if (!Number.isFinite(raw)) return;
-                        setVisibleRuns(Math.max(0, Math.min(maxRuns, Math.round(raw))));
-                      }}
-                      className="w-14 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
-                      aria-label={t("runs.label")}
-                      title={`max ${maxRuns} (captured paths)`}
-                    />
-                    <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
-                      /{maxRuns}
-                    </span>
-                  </>
-                ) : (
-                  <span className="min-w-[3.5rem] whitespace-nowrap text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
-                    {visibleRuns}/{maxRuns}
-                  </span>
-                )}
-                <RunModeSlider value={runMode} onChange={setRunMode} t={t} />
-                <InlineUnitToggle />
-              </div>
-            </div>
-          }
+          toolbar={trajectoryToolbar}
           pdPresetFlip={modelPresetId === "primedope" && compareMode === "primedope"}
           honestLabel={
             finishModelId
@@ -3117,7 +3154,7 @@ function SatelliteCard({
  * toggle in the card header only affects this widget's formatters (the
  * trajectory hover tooltip and bankroll/subtitle text).
  */
-function TrajectoryCard({
+const TrajectoryCard = memo(function TrajectoryCard({
   settings,
   result,
   displayResult,
@@ -3534,7 +3571,7 @@ function TrajectoryCard({
       )}
     </Card>
   );
-}
+});
 
 /**
  * Money-denominated histogram card. Reads the current unit from its
@@ -4342,209 +4379,143 @@ function PrimeDopeWeaknessCard() {
     <Card className="rounded-none border-0 p-4">
       <div className="flex flex-col gap-4 text-[11px] leading-relaxed text-[color:var(--color-fg)]">
         <p className="text-[color:var(--color-fg-dim)]">
-          Каждый фактор ниже изолирован эмпирически: 30k samples, три сценария
-          (100/1000/5000 игроков), одна переменная за раз. Ошибки PD частично
-          компенсируют друг друга — суммарный разрыв σ с нашим движком
-          составляет <b>1–12%</b> в зависимости от поля и ROI.
+          PrimeDope по сути — калькулятор одного фризаута. Для грубой прикидки
+          простого MTT он может попасть рядом. Как модель реального современного
+          расписания это уже слишком жёсткое упрощение.
         </p>
 
-        {/* ---- КРУПНЫЕ: >5% влияния на графики ---- */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[#f87171]" />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-              Крупные — видно на графиках (&gt;5% σ)
+              Понятно текстом
             </span>
           </div>
           <div className="grid gap-2 lg:grid-cols-2">
             <WeakBlock
-              tag="σ +9–13%"
+              tag="ФИНИШИ"
               tone="#f87171"
-              title="Пейаут-кривые PD шире реальных"
+              title="После ITM все оплачиваемые места у него фиксированно равновероятны"
             >
-              PD использует собственные кривые выплат, которые более
-              top-heavy, чем стандартные структуры румов. Это <b>завышает</b> σ
-              на 9–13% на средних и больших полях.
-              <WeakTable
-                headers={["Поле", "σ (наши кривые)", "σ (PD кривые)", "Δ"]}
-                rows={[
-                  ["1 000", "16 512", "18 703", "+13.3%"],
-                  ["5 000", "18 289", "20 002", "+9.4%"],
-                  ["100", "12 707", "12 373", "−2.6%"],
-                ]}
-                caption="30k samples, $50+10% rake, +10% ROI. Остальные параметры фиксированы."
-              />
-              Парадокс: единственный фактор PD, который <em>увеличивает</em> σ.
-              Именно он компенсирует остальные занижающие ошибки — поэтому
-              итоговый разрыв небольшой.
+              Как только игрок попал в деньги, PrimeDope считает мин-кэш,
+              17-е место и победу одинаково вероятными внутри оплачиваемой
+              зоны. Это и есть его центральное упрощение. В реальности
+              большинство кэшей — мелкие, а глубокие проходы редки, поэтому
+              стрики и восстановление выглядят иначе.
             </WeakBlock>
 
             <WeakBlock
-              tag="σ −7–10%"
+              tag="ФОРМАТЫ"
               tone="#f87171"
-              title="Рейк в формуле дважды — EV и σ занижены"
+              title="Кроме фризов он ничего честно не поддерживает"
             >
-              PD считает EV от <code>buyin</code> (без рейка), а σ — от{" "}
-              <code>buyin − rake</code> (ещё раз без рейка). Две ошибки
-              складываются: EV занижен на весь рейк, σ сжат.
-              <WeakTable
-                headers={["Эффект", "Поле 100", "Поле 1000", "Поле 5000"]}
-                rows={[
-                  ["EV без рейка", "−4.3%", "−6.0%", "−5.8%"],
-                  ["σ от пула без рейка", "−3.5%", "−3.5%", "−2.9%"],
-                  ["Суммарно", "−7.6%", "−9.3%", "−8.6%"],
-                ]}
-                caption="Изолированный вклад каждого фактора в σ. $50+10% rake, +10% ROI."
-              />
-              На 10% рейке EV занижен на $550 с каждых 1000 турниров
-              ($50+$5.50). PD считает вход $50, реально $55.50.
-              Sharpe-ratio не должен расти от рейка.
+              У него нет отдельного баунти-канала, нет нокаутов, нет конвертов
+              и нет джекпотных хвостов. PKO, Mystery и Battle Royale он не
+              моделирует вообще — только маскирует их под фризаутную задачу.
+              Для современных GG/PS расписаний это не маленькая погрешность, а
+              подмена формата.
             </WeakBlock>
 
             <WeakBlock
-              tag="σ ±44%"
+              tag="ДОПУЩЕНИЯ"
               tone="#f87171"
-              title="√field масштабирование — ошибка до 44%"
+              title="Это калькулятор одной строки с «идеально известным ROI»"
             >
-              PD предполагает σ ∝ √field. Реальный показатель — <b>0.372</b>,
-              не 0.5.
-              <WeakTable
-                headers={["Поле", "σ факт", "σ по √", "Ошибка √"]}
-                rows={[
-                  ["100", "3.77", "2.62", "−31%"],
-                  ["1 000", "8.28", "8.28", "0%"],
-                  ["5 000", "15.13", "18.51", "+22%"],
-                  ["10 000", "19.46", "26.18", "+35%"],
-                  ["50 000", "40.52", "58.54", "+44%"],
-                ]}
-                caption="σ_ROI (mtt-standard, ROI=10%). √-модель калибрована на 1000p"
-              />
-              На маленьких полях (100p) PD занижает σ на 31% — банкролл
-              нужен больше, чем он рисует. На 10k+ полях — завышает.
+              PrimeDope предполагает, что ты знаешь свой ROI точно и что каждый
+              турнир похож на средний. В жизни так не бывает: поле то мягче, то
+              жёстче; сам игрок тоже плавает; расписание обычно состоит не из
+              одной строки. Для “салфеточной” оценки этого хватает, для решения
+              про банкролл и ожидания хвостов — уже нет.
+            </WeakBlock>
+
+            <WeakBlock
+              tag="ЛОВУШКА"
+              tone="#f87171"
+              title="Иногда итоговая цифра близка, но по неправильной причине"
+            >
+              У PrimeDope часть упрощений сжимает дисперсию, часть иногда её
+              раздувает. На простых фризаутах ошибки могут случайно
+              компенсироваться, и финальная σ окажется “примерно рядом”. Это не
+              делает модель честной: просто два перекоса временно попали друг в
+              друга.
             </WeakBlock>
           </div>
         </div>
 
-        {/* ---- МЕЛКИЕ: <5% на графиках ---- */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[#94a3b8]" />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-              Мелочи — влияние &lt;5%, на графике не заметны
+              Занудная математика
             </span>
           </div>
           <div className="grid gap-2 lg:grid-cols-2">
             <WeakBlock
-              tag="σ ±2%"
+              tag="PMF"
               tone="#94a3b8"
-              title="Бинарный ITM-финиш и постоянная σ"
+              title="Что именно воспроизводит наш PrimeDope-совместимый режим"
             >
-              PD кидает монетку: в призы или нет, дальше равномерно по местам.
-              Скилл весь в ITM-частоте (<code>itm = (1+ROI) × paid / field</code>),
-              σ не зависит от ROI. Изолированный эффект на σ: <b>всего 1–2%</b>.
-              Старая оценка «25% разрыв для +40% ROI» верна для σ<sub>ROI</sub>,
-              но на итоговые графики при типичном ROI 5–15% влияние незначительно.
+              <div className="space-y-2">
+                <p>
+                  Внутри PrimeDope всё сводится к одной вероятности попасть в
+                  деньги, после чего любое оплачиваемое место равновероятно.
+                </p>
+                <pre className="overflow-x-auto rounded border border-[color:var(--color-border)]/40 bg-[color:var(--color-bg-elev)] px-2 py-1 font-mono text-[10px] text-[color:var(--color-fg-dim)]">
+{`pmf[i < paid]  = l / paid
+pmf[i >= paid] = (1 - l) / (N - paid)
+l = clamp(targetWinnings * paid / prizePool, 0, 1)`}
+                </pre>
+                <p>
+                  Важная деталь: реальные top-heavy выплаты на оплачиваемых
+                  местах при этом остаются как есть. Поэтому большие спрэды на
+                  крупных MTT у PrimeDope бывают не потому, что он хорошо
+                  понимает глубину прохода, а потому что редкие высокие призы
+                  просто умножаются на слишком грубую PMF.
+                </p>
+              </div>
             </WeakBlock>
 
             <WeakBlock
-              tag="~4%"
+              tag="COMPARE"
               tone="#94a3b8"
-              title="Гауссов RoR — хвосты MTT тяжелее"
+              title="Что наш compare-mode умеет раскрутить по отдельности"
             >
-              PD считает Risk of Ruin аналитически через Brownian first-passage.
-              Реальная PMF скошена — жирные спайки наверху, масса в нуле.
-              Разница ~4 п.п. на типичных сценариях (70.8% vs ~75% RoR).
-              У нас RoR эмпирический через running-min по всем сэмплам.
-            </WeakBlock>
-          </div>
-        </div>
-
-        {/* ---- FORMAT GAP ---- */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#fb923c]" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-              Не поддерживаемые форматы
-            </span>
-          </div>
-          <div className="grid gap-2 lg:grid-cols-2">
-            <WeakBlock
-              tag="FORMAT"
-              tone="#fb923c"
-              title="PKO / баунти вообще не поддерживаются"
-            >
-              У PD нет поля под bounty-фракцию. Типичное расписание рега
-              (60% GG PKO / PS BB) нельзя вбить честно — всё идёт как
-              фризаут.
-              <WeakTable
-                headers={["Формат", "Канал ROI", "Хвост σ"]}
-                rows={[
-                  ["Фризаут", "100% призы", "длинный, top-heavy"],
-                  ["PKO 50/50", "50% призы + 50% ноки", "короче — ноки сглаживают"],
-                  ["PD (PKO как фриз)", "100% призы", "завышенный σ"],
-                ]}
-                caption="PKO бьёт ROI на два канала — приз + баунти — с разной волатильностью"
-              />
-              PD трактует PKO как фриз → завышает σ → завышает банкролл.
-              У нас PKO моделируется отдельно (harmonic KO + Poisson).
+              <div className="space-y-2">
+                <p>
+                  В движке сравнение раскладывается на три независимых куска:
+                </p>
+                <ul className="list-disc space-y-1 pl-4 text-[color:var(--color-fg-dim)]">
+                  <li>
+                    <code>usePrimedopeFinishModel</code> — их бинарный ITM против
+                    нашей калиброванной PMF финишей
+                  </li>
+                  <li>
+                    <code>usePrimedopePayouts</code> — их payout-кривые против
+                    выбранной структуры выплат
+                  </li>
+                  <li>
+                    <code>usePrimedopeRakeMath</code> — их cost/rake-конвенция
+                    против нашей
+                  </li>
+                </ul>
+                <p>
+                  Это важно, потому что честный вывод сейчас не такой:
+                  “PrimeDope всегда врёт на X%”, а такой: “его стек допущений
+                  слишком узкий, а разные упрощения могут случайно
+                  компенсироваться”.
+                </p>
+              </div>
             </WeakBlock>
           </div>
         </div>
 
         <div className="text-[10px] text-[color:var(--color-fg-dim)]">
-          Данные: 30k samples × 3 сценария, изоляция по флагам{" "}
-          <code>usePrimedopeFinishModel / usePrimedopeRakeMath / usePrimedopePayouts</code>.
-          Свип 2026-04-14 (<code>data/variance-fits/sweep-v1.json</code>),
-          обновлено 2026-04-16 (изоляция).
+          Нижняя строка: PrimeDope полезен как baseline для одного простого
+          фризаута. Как модель современного MTT-гринда, особенно для PKO /
+          Mystery / Battle Royale, он концептуально слишком бедный.
         </div>
       </div>
     </Card>
-  );
-}
-
-function WeakTable({
-  headers,
-  rows,
-  caption,
-}: {
-  headers: string[];
-  rows: string[][];
-  caption: string;
-}) {
-  return (
-    <div className="my-2 overflow-x-auto">
-      <table className="w-full text-[10px]">
-        <thead>
-          <tr>
-            {headers.map((h, i) => (
-              <th
-                key={i}
-                className="border-b border-[color:var(--color-border)]/30 px-2 py-1 text-left font-semibold text-[color:var(--color-fg-muted)]"
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri}>
-              {row.map((cell, ci) => (
-                <td
-                  key={ci}
-                  className="border-b border-[color:var(--color-border)]/10 px-2 py-0.5 font-mono text-[color:var(--color-fg-dim)]"
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="mt-1 text-[9px] text-[color:var(--color-fg-dim)] opacity-70">
-        {caption}
-      </div>
-    </div>
   );
 }
 

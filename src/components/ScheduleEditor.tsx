@@ -1,6 +1,15 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  startTransition,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   FieldVariability,
   GameType,
@@ -263,7 +272,7 @@ function parseImportCSV(raw: string): {
   return { rows, errors };
 }
 
-export function ScheduleEditor({
+export const ScheduleEditor = memo(function ScheduleEditor({
   schedule,
   onChange,
   disabled,
@@ -278,6 +287,16 @@ export function ScheduleEditor({
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
+  // Keep refs to latest schedule/onChange so the row-level callbacks we hand
+  // out to <ScheduleRow/> are referentially stable — without this every edit
+  // invalidates the memoized rows below, defeating the whole point.
+  const scheduleRef = useRef(schedule);
+  const onChangeRef = useRef(onChange);
+  useLayoutEffect(() => {
+    scheduleRef.current = schedule;
+    onChangeRef.current = onChange;
+  });
+
   const applyImport = (text: string, mode: "append" | "replace") => {
     const { rows, errors } = parseImportCSV(text);
     setImportErrors(errors);
@@ -287,26 +306,30 @@ export function ScheduleEditor({
     setImportOpen(false);
   };
 
-  const update = (id: string, patch: Partial<TournamentRow>) => {
-    onChange(schedule.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  };
-  const remove = (id: string) => {
-    onChange(schedule.filter((r) => r.id !== id));
-  };
-  const duplicate = (id: string) => {
-    const row = schedule.find((r) => r.id === id);
+  const update = useCallback((id: string, patch: Partial<TournamentRow>) => {
+    onChangeRef.current(
+      scheduleRef.current.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+    );
+  }, []);
+  const remove = useCallback((id: string) => {
+    onChangeRef.current(scheduleRef.current.filter((r) => r.id !== id));
+  }, []);
+  const duplicate = useCallback((id: string) => {
+    const sched = scheduleRef.current;
+    const row = sched.find((r) => r.id === id);
     if (!row) return;
     const copy = { ...row, id: crypto.randomUUID() };
-    const idx = schedule.findIndex((r) => r.id === id);
-    const next = [...schedule];
+    const idx = sched.findIndex((r) => r.id === id);
+    const next = [...sched];
     next.splice(idx + 1, 0, copy);
-    onChange(next);
-  };
-  const cloneAsReentry = (id: string) => {
+    onChangeRef.current(next);
+  }, []);
+  const cloneAsReentry = useCallback((id: string) => {
     // A late re-entry is just another entry with lower skill edge (player
     // arrives short / plays a bigger field). Clone the row, drop ROI by
     // 5pp, and tag the label. User can tune further if needed.
-    const row = schedule.find((r) => r.id === id);
+    const sched = scheduleRef.current;
+    const row = sched.find((r) => r.id === id);
     if (!row) return;
     const baseLabel = row.label || "";
     const copy = {
@@ -315,17 +338,19 @@ export function ScheduleEditor({
       roi: row.roi - 0.05,
       label: baseLabel ? `${baseLabel} (re-entry)` : "(re-entry)",
     };
-    const idx = schedule.findIndex((r) => r.id === id);
-    const next = [...schedule];
+    const idx = sched.findIndex((r) => r.id === id);
+    const next = [...sched];
     next.splice(idx + 1, 0, copy);
-    onChange(next);
-  };
-  const toggleExpand = (id: string) => {
-    const next = new Set(expanded);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setExpanded(next);
-  };
+    onChangeRef.current(next);
+  }, []);
+  const toggleExpand = useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const add = () => {
     onChange([
       ...schedule,
@@ -341,6 +366,7 @@ export function ScheduleEditor({
       },
     ]);
   };
+  const canRemove = schedule.length > 1;
 
   return (
     <Card>
@@ -365,316 +391,22 @@ export function ScheduleEditor({
             </tr>
           </thead>
           <tbody>
-            {schedule.map((r, i) => {
-              const isOpen = advanced && expanded.has(r.id);
-              const hasAdv =
-                (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
-                (r.maxEntries ?? 1) > 1 ||
-                (r.bountyFraction ?? 0) > 0 ||
-                !!r.icmFinalTable;
-              return (
-                <RowGroup key={r.id}>
-                  <tr
-                    className={
-                      "group border-b border-[color:var(--color-border)]/60 transition-colors hover:bg-[color:var(--color-fg)]/[0.03] " +
-                      (i % 2 === 1 ? "bg-[color:var(--color-fg)]/[0.02]" : "")
-                    }
-                  >
-                    <Td>
-                      <button
-                        type="button"
-                        onClick={() => advanced && toggleExpand(r.id)}
-                        disabled={!advanced}
-                        title={advanced ? t("row.advanced") : t("controls.expandAdvanced")}
-                        aria-label={t("row.advanced")}
-                        className={
-                          "inline-flex h-6 w-6 items-center justify-center rounded text-[color:var(--color-fg-dim)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)] " +
-                          (isOpen ? "text-[color:var(--color-accent)]" : "")
-                        }
-                      >
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          style={{
-                            transform: isOpen ? "rotate(90deg)" : "none",
-                            transition: "transform 0.15s",
-                          }}
-                        >
-                          <path
-                            d="M9 6l6 6-6 6"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        {hasAdv && !isOpen && (
-                          <span className="ml-0.5 h-1 w-1 rounded-full bg-[color:var(--color-accent)]" />
-                        )}
-                      </button>
-                    </Td>
-                    <Td className="w-full">
-                      <TextInput
-                        value={r.label ?? ""}
-                        onChange={(v) => update(r.id, { label: v })}
-                        placeholder={t("row.unnamed")}
-                        className="w-full min-w-[120px]"
-                      />
-                    </Td>
-                    <Td>
-                      <div className="flex items-center gap-1">
-                        <GameTypeSelect
-                          value={inferGameType(r)}
-                          onChange={(next) =>
-                            startTransition(() =>
-                              update(r.id, applyGameType(r, next)),
-                            )
-                          }
-                        />
-                        {inferGameType(r) === "mystery-royale" && (
-                          <BrPresetSelect
-                            row={r}
-                            onApply={(patch) =>
-                              startTransition(() => update(r.id, patch))
-                            }
-                          />
-                        )}
-                      </div>
-                    </Td>
-                    <Td align="right">
-                      <NumInput
-                        value={r.players}
-                        onChange={(v) =>
-                          update(r.id, { players: Math.floor(v) })
-                        }
-                        min={2}
-                        max={1_000_000}
-                        step={1}
-                      />
-                    </Td>
-                    <Td align="right">
-                      <BuyInInput
-                        buyIn={r.buyIn}
-                        rake={r.rake}
-                        onChange={(buyIn, rake) =>
-                          update(r.id, { buyIn, rake })
-                        }
-                      />
-                    </Td>
-                    <Td align="right">
-                      <NumInput
-                        value={+(r.roi * 100).toFixed(2)}
-                        onChange={(v) => update(r.id, { roi: v / 100 })}
-                        min={-99}
-                        max={10_000}
-                        step={1}
-                      />
-                    </Td>
-                    <Td align="right">
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        disabled={globalItmPct != null}
-                        placeholder={
-                          globalItmPct != null ? `${globalItmPct}` : "auto"
-                        }
-                        value={
-                          globalItmPct != null
-                            ? ""
-                            : r.itmRate != null
-                              ? +(r.itmRate * 100).toFixed(2)
-                              : ""
-                        }
-                        onChange={(e) => {
-                          if (globalItmPct != null) return;
-                          const raw = e.target.value;
-                          if (raw === "") {
-                            update(r.id, { itmRate: undefined });
-                            return;
-                          }
-                          const v = Number(raw);
-                          if (!Number.isFinite(v) || v < 0 || v > 100) return;
-                          update(r.id, { itmRate: v / 100 });
-                        }}
-                        className="h-8 w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
-                    </Td>
-                    <Td>
-                      {(() => {
-                        const gt = inferGameType(r);
-                        const grouped = STRUCTURES.map((s) => ({
-                          s,
-                          compat: payoutCompat(s.id, r.players, gt),
-                        }));
-                        const available = grouped.filter((g) => g.compat.ok);
-                        const unavailable = grouped.filter((g) => !g.compat.ok);
-                        const current = grouped.find(
-                          (g) => g.s.id === r.payoutStructure,
-                        );
-                        const legacyCustom = r.payoutStructure === "custom";
-                        const currentDisabled = current && !current.compat.ok;
-                        const describe = (g: (typeof grouped)[number]) => {
-                          if (g.compat.ok) return "";
-                          if (g.compat.reason === "wrongGameType") {
-                            const gtKey = (
-                              {
-                                freezeout: "row.gameType.freezeout",
-                                "freezeout-reentry":
-                                  "row.gameType.freezeoutReentry",
-                                pko: "row.gameType.pko",
-                                mystery: "row.gameType.mystery",
-                                "mystery-royale":
-                                  "row.gameType.mysteryRoyale",
-                              } as const
-                            )[g.compat.gameType];
-                            return t("row.payoutCompat.wrongGameType").replace(
-                              "{gameType}",
-                              t(gtKey),
-                            );
-                          }
-                          return g.compat.reason === "tooFew"
-                            ? `${t("row.payoutCompat.tooFew")} (${t("row.payoutCompat.min")} ${g.compat.range.min})`
-                            : `${t("row.payoutCompat.tooMany")} (${t("row.payoutCompat.max")} ${g.compat.range.max === Infinity ? "∞" : g.compat.range.max})`;
-                        };
-                        return (
-                          <select
-                            value={r.payoutStructure}
-                            title={current?.s.full ?? ""}
-                            onChange={(e) => {
-                              const next = e.target.value as PayoutStructureId;
-                              update(r.id, { payoutStructure: next });
-                            }}
-                            className={
-                              "h-8 w-full rounded-md border px-2.5 text-xs outline-none transition-colors focus:border-[color:var(--color-accent)] " +
-                              (currentDisabled
-                                ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
-                                : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
-                            }
-                          >
-                            {available.some(({ s }) => s.real) && (
-                              <optgroup
-                                label={`— ${t("row.payoutGroup.real2026")} —`}
-                              >
-                                {available
-                                  .filter(({ s }) => s.real)
-                                  .map(({ s }) => (
-                                    <option
-                                      key={s.id}
-                                      value={s.id}
-                                      title={s.full}
-                                    >
-                                      ★ {s.short}
-                                    </option>
-                                  ))}
-                              </optgroup>
-                            )}
-                            {available.some(({ s }) => !s.real) && (
-                              <optgroup
-                                label={`— ${t("row.payoutGroup.generic")} —`}
-                              >
-                                {available
-                                  .filter(({ s }) => !s.real)
-                                  .map(({ s }) => (
-                                    <option
-                                      key={s.id}
-                                      value={s.id}
-                                      title={s.full}
-                                    >
-                                      {s.short}
-                                    </option>
-                                  ))}
-                              </optgroup>
-                            )}
-                            {legacyCustom && (
-                              <optgroup label="— Legacy —">
-                                <option value="custom">
-                                  Legacy custom (read-only)
-                                </option>
-                              </optgroup>
-                            )}
-                            {unavailable.length > 0 && (
-                              <optgroup
-                                label={`— ${t("row.payoutCompat.unavailable")} —`}
-                              >
-                                {unavailable.map((g) => {
-                                  const reasonText = describe(g);
-                                  return (
-                                    <option
-                                      key={g.s.id}
-                                      value={g.s.id}
-                                      disabled
-                                      title={`${g.s.full} — ${reasonText}`}
-                                    >
-                                      {`✕ ${g.s.short} — ${reasonText}`}
-                                    </option>
-                                  );
-                                })}
-                              </optgroup>
-                            )}
-                          </select>
-                        );
-                      })()}
-                    </Td>
-                    <Td align="right">
-                      <NumInput
-                        value={r.count}
-                        onChange={(v) =>
-                          update(r.id, { count: Math.floor(v) })
-                        }
-                        min={1}
-                        max={100_000}
-                        step={1}
-                      />
-                    </Td>
-                    <Td>
-                      <div className="flex justify-end gap-1 opacity-60 transition-opacity group-hover:opacity-100">
-                        <IconBtn
-                          onClick={() => duplicate(r.id)}
-                          label={t("row.addRow")}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                            <rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
-                            <path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                          </svg>
-                        </IconBtn>
-                        <IconBtn
-                          onClick={() => cloneAsReentry(r.id)}
-                          label={t("row.cloneAsReentry")}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                            <path d="M4 12a8 8 0 0 1 14-5.3L20 4v6h-6l2.3-2.3A6 6 0 1 0 18 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </IconBtn>
-                        <IconBtn
-                          onClick={() => remove(r.id)}
-                          disabled={schedule.length === 1}
-                          label={t("row.delete")}
-                          danger
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                          </svg>
-                        </IconBtn>
-                      </div>
-                    </Td>
-                  </tr>
-                  {isOpen && (
-                    <tr className="border-b border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30">
-                      <td colSpan={10} className="px-6 py-4">
-                        <AdvancedRowPanel
-                          row={r}
-                          onChange={(patch) => update(r.id, patch)}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </RowGroup>
-              );
-            })}
+            {schedule.map((r, i) => (
+              <ScheduleRow
+                key={r.id}
+                row={r}
+                rowIndex={i}
+                advanced={advanced}
+                isOpen={advanced && expanded.has(r.id)}
+                globalItmPct={globalItmPct}
+                canRemove={canRemove}
+                update={update}
+                remove={remove}
+                duplicate={duplicate}
+                cloneAsReentry={cloneAsReentry}
+                toggleExpand={toggleExpand}
+              />
+            ))}
           </tbody>
         </table>
       </div>
@@ -780,11 +512,343 @@ export function ScheduleEditor({
       </fieldset>
     </Card>
   );
+});
+
+interface ScheduleRowProps {
+  row: TournamentRow;
+  rowIndex: number;
+  advanced: boolean;
+  isOpen: boolean;
+  globalItmPct: number | null;
+  canRemove: boolean;
+  update: (id: string, patch: Partial<TournamentRow>) => void;
+  remove: (id: string) => void;
+  duplicate: (id: string) => void;
+  cloneAsReentry: (id: string) => void;
+  toggleExpand: (id: string) => void;
 }
 
-function RowGroup({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
+const ScheduleRow = memo(function ScheduleRow({
+  row: r,
+  rowIndex: i,
+  advanced,
+  isOpen,
+  globalItmPct,
+  canRemove,
+  update,
+  remove,
+  duplicate,
+  cloneAsReentry,
+  toggleExpand,
+}: ScheduleRowProps) {
+  const t = useT();
+  const hasAdv =
+    (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
+    (r.maxEntries ?? 1) > 1 ||
+    (r.bountyFraction ?? 0) > 0 ||
+    !!r.icmFinalTable;
+  const gt = inferGameType(r);
+
+  // The payout dropdown would otherwise re-run STRUCTURES.map+filter (14×3)
+  // on every keystroke in any sibling field. Only players/gameType shift the
+  // compat grid, so memo on those.
+  const dropdownData = useMemo(() => {
+    const grouped = STRUCTURES.map((s) => ({
+      s,
+      compat: payoutCompat(s.id, r.players, gt),
+    }));
+    const available = grouped.filter((g) => g.compat.ok);
+    const unavailable = grouped.filter((g) => !g.compat.ok);
+    const availableReal = available.filter(({ s }) => s.real);
+    const availableGeneric = available.filter(({ s }) => !s.real);
+    return { grouped, available, unavailable, availableReal, availableGeneric };
+  }, [r.players, gt]);
+
+  const current = dropdownData.grouped.find(
+    (g) => g.s.id === r.payoutStructure,
+  );
+  const legacyCustom = r.payoutStructure === "custom";
+  const currentDisabled = current && !current.compat.ok;
+  const describe = (g: (typeof dropdownData.grouped)[number]) => {
+    if (g.compat.ok) return "";
+    if (g.compat.reason === "wrongGameType") {
+      const gtKey = (
+        {
+          freezeout: "row.gameType.freezeout",
+          "freezeout-reentry": "row.gameType.freezeoutReentry",
+          pko: "row.gameType.pko",
+          mystery: "row.gameType.mystery",
+          "mystery-royale": "row.gameType.mysteryRoyale",
+        } as const
+      )[g.compat.gameType];
+      return t("row.payoutCompat.wrongGameType").replace(
+        "{gameType}",
+        t(gtKey),
+      );
+    }
+    return g.compat.reason === "tooFew"
+      ? `${t("row.payoutCompat.tooFew")} (${t("row.payoutCompat.min")} ${g.compat.range.min})`
+      : `${t("row.payoutCompat.tooMany")} (${t("row.payoutCompat.max")} ${g.compat.range.max === Infinity ? "∞" : g.compat.range.max})`;
+  };
+
+  return (
+    <>
+      <tr
+        className={
+          "group border-b border-[color:var(--color-border)]/60 transition-colors hover:bg-[color:var(--color-fg)]/[0.03] " +
+          (i % 2 === 1 ? "bg-[color:var(--color-fg)]/[0.02]" : "")
+        }
+      >
+        <Td>
+          <button
+            type="button"
+            onClick={() => advanced && toggleExpand(r.id)}
+            disabled={!advanced}
+            title={advanced ? t("row.advanced") : t("controls.expandAdvanced")}
+            aria-label={t("row.advanced")}
+            className={
+              "inline-flex h-6 w-6 items-center justify-center rounded text-[color:var(--color-fg-dim)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)] " +
+              (isOpen ? "text-[color:var(--color-accent)]" : "")
+            }
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              style={{
+                transform: isOpen ? "rotate(90deg)" : "none",
+                transition: "transform 0.15s",
+              }}
+            >
+              <path
+                d="M9 6l6 6-6 6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {hasAdv && !isOpen && (
+              <span className="ml-0.5 h-1 w-1 rounded-full bg-[color:var(--color-accent)]" />
+            )}
+          </button>
+        </Td>
+        <Td className="w-full">
+          <TextInput
+            value={r.label ?? ""}
+            onChange={(v) => update(r.id, { label: v })}
+            placeholder={t("row.unnamed")}
+            className="w-full min-w-[120px]"
+          />
+        </Td>
+        <Td>
+          <div className="flex items-center gap-1">
+            <GameTypeSelect
+              value={gt}
+              onChange={(next) =>
+                startTransition(() => update(r.id, applyGameType(r, next)))
+              }
+            />
+            {gt === "mystery-royale" && (
+              <BrPresetSelect
+                row={r}
+                onApply={(patch) =>
+                  startTransition(() => update(r.id, patch))
+                }
+              />
+            )}
+          </div>
+        </Td>
+        <Td align="right">
+          <NumInput
+            value={r.players}
+            onChange={(v) => update(r.id, { players: Math.floor(v) })}
+            min={2}
+            max={1_000_000}
+            step={1}
+          />
+        </Td>
+        <Td align="right">
+          <BuyInInput
+            buyIn={r.buyIn}
+            rake={r.rake}
+            onChange={(buyIn, rake) => update(r.id, { buyIn, rake })}
+          />
+        </Td>
+        <Td align="right">
+          <NumInput
+            value={+(r.roi * 100).toFixed(2)}
+            onChange={(v) => update(r.id, { roi: v / 100 })}
+            min={-99}
+            max={10_000}
+            step={1}
+          />
+        </Td>
+        <Td align="right">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            disabled={globalItmPct != null}
+            placeholder={globalItmPct != null ? `${globalItmPct}` : "auto"}
+            value={
+              globalItmPct != null
+                ? ""
+                : r.itmRate != null
+                  ? +(r.itmRate * 100).toFixed(2)
+                  : ""
+            }
+            onChange={(e) => {
+              if (globalItmPct != null) return;
+              const raw = e.target.value;
+              if (raw === "") {
+                update(r.id, { itmRate: undefined });
+                return;
+              }
+              const v = Number(raw);
+              if (!Number.isFinite(v) || v < 0 || v > 100) return;
+              update(r.id, { itmRate: v / 100 });
+            }}
+            className="h-8 w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+        </Td>
+        <Td>
+          <select
+            value={r.payoutStructure}
+            title={current?.s.full ?? ""}
+            onChange={(e) => {
+              const next = e.target.value as PayoutStructureId;
+              update(r.id, { payoutStructure: next });
+            }}
+            className={
+              "h-8 w-full rounded-md border px-2.5 text-xs outline-none transition-colors focus:border-[color:var(--color-accent)] " +
+              (currentDisabled
+                ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
+                : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
+            }
+          >
+            {dropdownData.availableReal.length > 0 && (
+              <optgroup label={`— ${t("row.payoutGroup.real2026")} —`}>
+                {dropdownData.availableReal.map(({ s }) => (
+                  <option key={s.id} value={s.id} title={s.full}>
+                    ★ {s.short}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {dropdownData.availableGeneric.length > 0 && (
+              <optgroup label={`— ${t("row.payoutGroup.generic")} —`}>
+                {dropdownData.availableGeneric.map(({ s }) => (
+                  <option key={s.id} value={s.id} title={s.full}>
+                    {s.short}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {legacyCustom && (
+              <optgroup label="— Legacy —">
+                <option value="custom">Legacy custom (read-only)</option>
+              </optgroup>
+            )}
+            {dropdownData.unavailable.length > 0 && (
+              <optgroup label={`— ${t("row.payoutCompat.unavailable")} —`}>
+                {dropdownData.unavailable.map((g) => {
+                  const reasonText = describe(g);
+                  return (
+                    <option
+                      key={g.s.id}
+                      value={g.s.id}
+                      disabled
+                      title={`${g.s.full} — ${reasonText}`}
+                    >
+                      {`✕ ${g.s.short} — ${reasonText}`}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            )}
+          </select>
+        </Td>
+        <Td align="right">
+          <NumInput
+            value={r.count}
+            onChange={(v) => update(r.id, { count: Math.floor(v) })}
+            min={1}
+            max={100_000}
+            step={1}
+          />
+        </Td>
+        <Td>
+          <div className="flex justify-end gap-1 opacity-60 transition-opacity group-hover:opacity-100">
+            <IconBtn
+              onClick={() => duplicate(r.id)}
+              label={t("row.addRow")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <rect
+                  x="8"
+                  y="8"
+                  width="12"
+                  height="12"
+                  rx="2"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+                <path
+                  d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </IconBtn>
+            <IconBtn
+              onClick={() => cloneAsReentry(r.id)}
+              label={t("row.cloneAsReentry")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M4 12a8 8 0 0 1 14-5.3L20 4v6h-6l2.3-2.3A6 6 0 1 0 18 12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </IconBtn>
+            <IconBtn
+              onClick={() => remove(r.id)}
+              disabled={!canRemove}
+              label={t("row.delete")}
+              danger
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M6 6l12 12M18 6L6 18"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </IconBtn>
+          </div>
+        </Td>
+      </tr>
+      {isOpen && (
+        <tr className="border-b border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30">
+          <td colSpan={10} className="px-6 py-4">
+            <AdvancedRowPanel
+              row={r}
+              onChange={(patch) => update(r.id, patch)}
+            />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+});
 
 function SectionLabel({
   children,

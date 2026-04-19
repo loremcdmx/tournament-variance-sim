@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
+import { SHARD_FRACTION, buildTimeFracFor } from "@/lib/sim/progressConstants";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
@@ -107,7 +108,7 @@ function formatDuration(ms: number): string {
   return s === 0 ? `${m} мин` : `${m} мин ${s} с`;
 }
 
-export function ControlsPanel({
+export const ControlsPanel = memo(function ControlsPanel({
   value,
   onChange,
   onRun,
@@ -151,7 +152,7 @@ export function ControlsPanel({
     const id = window.setTimeout(() => setBarVisible(false), 450);
     return () => window.clearTimeout(id);
   }, [running, barVisible]);
-  const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
+  const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs, samples: value.samples });
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
@@ -467,7 +468,7 @@ export function ControlsPanel({
       </div>
     </Card>
   );
-}
+});
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -586,23 +587,15 @@ function fmtMoneyCompact(v: number): string {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
-// Must match the SHARD_FRACTION constant in useSimulation.ts — the
-// fraction of the progress bar that shard-phase work fills before the
-// build phase takes over. Used below to compute phase-aware ETAs.
-const SHARD_FRACTION = 0.92;
-// Prior on build-phase share of total run time. Build work (envelope
-// sorts, histograms, final posting) has a fixed-ish cost that doesn't
-// scale the same way as shard work, so shard-rate extrapolation alone
-// underestimates. 15 % is a defensible average across the N we see.
-const BUILD_TIME_FRAC = 0.15;
-
 function useRemainingMs(opts: {
   running: boolean;
   runElapsedMs: number | null;
   progress: number;
   estimatedMs: number | null | undefined;
+  samples: number;
 }): number | null {
-  const { running, runElapsedMs, progress, estimatedMs } = opts;
+  const { running, runElapsedMs, progress, estimatedMs, samples } = opts;
+  const BUILD_TIME_FRAC = buildTimeFracFor(samples);
   const [smoothed, setSmoothed] = useState<number | null>(null);
   const smoothedRef = useRef<number | null>(null);
   const lastSmoothAt = useRef<number | null>(null);
@@ -668,7 +661,7 @@ function useRemainingMs(opts: {
     smoothedRef.current = next;
     const frame = requestAnimationFrame(() => setSmoothed(next));
     return () => cancelAnimationFrame(frame);
-  }, [running, runElapsedMs, progress, estimatedMs]);
+  }, [running, runElapsedMs, progress, estimatedMs, BUILD_TIME_FRAC]);
 
   return smoothed;
 }

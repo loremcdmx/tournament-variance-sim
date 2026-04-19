@@ -347,6 +347,102 @@ export default function Home() {
 
   const running = status === "running";
 
+  const loadScenario = useCallback((id: string) => {
+    const s = SCENARIOS.find((x) => x.id === id);
+    if (!s) return;
+    setSchedule(s.schedule);
+    setControls({ ...initialControls, ...s.controls });
+    setActiveScenarioId(id);
+  }, []);
+
+  // Stable callbacks for ScheduleEditor / ControlsPanel / sub-controls. Without
+  // these the inline arrow handlers below force a fresh reference on every
+  // parent render (a single keystroke, a locale flip, a mouse hover). Memoized
+  // children then re-render anyway — memo broken.
+  const handleScheduleChange = useCallback(
+    (s: TournamentRow[]) => {
+      interruptBackground();
+      setSchedule(s);
+      setActiveScenarioId(null);
+    },
+    [interruptBackground],
+  );
+  const handleControlsChange = useCallback(
+    (c: ControlsState) => {
+      interruptBackground();
+      setControls(c);
+      setActiveScenarioId(null);
+    },
+    [interruptBackground],
+  );
+  const handleModelPresetChange = useCallback((c: ControlsState) => {
+    setControls(c);
+    setActiveScenarioId(null);
+  }, []);
+
+  const tournamentsPerSession = useMemo(
+    () =>
+      schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0) *
+      Math.max(1, controls.scheduleRepeats),
+    [schedule, controls.scheduleRepeats],
+  );
+  const estimatedMs = useMemo(
+    () =>
+      estimateMs(
+        controls.samples,
+        controls.scheduleRepeats,
+        schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
+      ),
+    [estimateMs, controls.samples, controls.scheduleRepeats, schedule],
+  );
+  const scheduleGlobalItmPct = useMemo(
+    () => (controls.itmGlobalEnabled ? controls.itmGlobalPct : null),
+    [controls.itmGlobalEnabled, controls.itmGlobalPct],
+  );
+  const scheduleToolbarExtras = useMemo(
+    () => (
+      <>
+        <span className="eyebrow whitespace-nowrap text-[color:var(--color-fg-dim)]">
+          {t("demo.label")}
+        </span>
+        <select
+          value={activeScenarioId ?? ""}
+          onChange={(e) => {
+            const id = e.target.value;
+            if (id) loadScenario(id);
+          }}
+          className="max-w-[200px] truncate rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1 text-xs text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+          aria-label={t("demo.label")}
+        >
+          <option value="">—</option>
+          {SCENARIOS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {t(s.labelKey)}
+            </option>
+          ))}
+        </select>
+      </>
+    ),
+    [t, activeScenarioId, loadScenario],
+  );
+  const doneSummary = useMemo(
+    () =>
+      status === "done" && result
+        ? {
+            mean: result.stats.mean,
+            median: result.stats.median,
+            roi: result.stats.mean / result.totalBuyIn,
+            probProfit: result.stats.probProfit,
+            riskOfRuin: result.stats.riskOfRuin,
+            worstDrawdown: result.stats.maxDrawdownP99,
+            longestCashlessWorst: result.stats.longestCashlessWorst,
+            elapsedMs,
+            resultsAnchorId: "results-top",
+          }
+        : null,
+    [status, result, elapsedMs],
+  );
+
   const previewRow = useMemo(() => {
     if (!deferredSchedule.length) return undefined;
     const found = previewRowId
@@ -402,14 +498,6 @@ export default function Home() {
     if (!compareSlot) return;
     setSchedule(compareSlot.state.schedule);
     setControls({ ...initialControls, ...compareSlot.state.controls });
-  };
-
-  const loadScenario = (id: string) => {
-    const s = SCENARIOS.find((x) => x.id === id);
-    if (!s) return;
-    setSchedule(s.schedule);
-    setControls({ ...initialControls, ...s.controls });
-    setActiveScenarioId(id);
   };
 
   const onSaveUserPreset = () => {
@@ -760,39 +848,24 @@ export default function Home() {
             <div className="w-full max-w-sm">
               <ModelPresetSelector
                 value={controls}
-                onChange={(c) => {
-                  setControls(c);
-                  setActiveScenarioId(null);
-                }}
+                onChange={handleModelPresetChange}
               />
             </div>
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
             <GlobalItmControl
               value={controls}
-              onChange={(c) => {
-                interruptBackground();
-                setControls(c);
-                setActiveScenarioId(null);
-              }}
+              onChange={handleControlsChange}
               disabled={running}
             />
             <GlobalRakebackControl
               value={controls}
-              onChange={(c) => {
-                interruptBackground();
-                setControls(c);
-                setActiveScenarioId(null);
-              }}
+              onChange={handleControlsChange}
               disabled={running}
             />
             <BankrollControl
               value={controls}
-              onChange={(c) => {
-                interruptBackground();
-                setControls(c);
-                setActiveScenarioId(null);
-              }}
+              onChange={handleControlsChange}
               disabled={running}
               abi={abi}
             />
@@ -800,40 +873,10 @@ export default function Home() {
         </div>
         <ScheduleEditor
           schedule={schedule}
-          onChange={(s) => {
-            interruptBackground();
-            setSchedule(s);
-            setActiveScenarioId(null);
-          }}
+          onChange={handleScheduleChange}
           disabled={running}
-          globalItmPct={
-            controls.itmGlobalEnabled ? controls.itmGlobalPct : null
-          }
-          toolbarExtras={
-            <>
-              <span className="eyebrow whitespace-nowrap text-[color:var(--color-fg-dim)]">
-                {t("demo.label")}
-              </span>
-              <select
-                value={activeScenarioId ?? ""}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  if (id) loadScenario(id);
-                }}
-                className="max-w-[200px] truncate rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1 text-xs text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
-                aria-label={t("demo.label")}
-              >
-                <option value="">—</option>
-                {SCENARIOS.map(
-                  (s) => (
-                    <option key={s.id} value={s.id}>
-                      {t(s.labelKey)}
-                    </option>
-                  ),
-                )}
-              </select>
-            </>
-          }
+          globalItmPct={scheduleGlobalItmPct}
+          toolbarExtras={scheduleToolbarExtras}
         />
       </Section>
 
@@ -846,39 +889,14 @@ export default function Home() {
           <div className="flex min-w-0 flex-col gap-4">
             <ControlsPanel
               value={controls}
-              onChange={(c) => {
-                interruptBackground();
-                setControls(c);
-                setActiveScenarioId(null);
-              }}
+              onChange={handleControlsChange}
               onRun={onRun}
               onCancel={cancel}
               running={running}
               progress={progress}
-              estimatedMs={estimateMs(
-                controls.samples,
-                controls.scheduleRepeats,
-                schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
-              )}
-              tournamentsPerSession={
-                schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0) *
-                Math.max(1, controls.scheduleRepeats)
-              }
-              doneSummary={
-                status === "done" && result
-                  ? {
-                      mean: result.stats.mean,
-                      median: result.stats.median,
-                      roi: result.stats.mean / result.totalBuyIn,
-                      probProfit: result.stats.probProfit,
-                      riskOfRuin: result.stats.riskOfRuin,
-                      worstDrawdown: result.stats.maxDrawdownP99,
-                      longestCashlessWorst: result.stats.longestCashlessWorst,
-                      elapsedMs,
-                      resultsAnchorId: "results-top",
-                    }
-                  : null
-              }
+              estimatedMs={estimatedMs}
+              tournamentsPerSession={tournamentsPerSession}
+              doneSummary={doneSummary}
             />
             <PayoutStructureCard schedule={deferredSchedule} />
           </div>
@@ -1080,7 +1098,11 @@ export default function Home() {
           <div className="mt-3 space-y-3 pl-2">
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07a.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v07a.polish")}</li>
+              <li>{t("changelog.v07a.cash")}</li>
+              <li>{t("changelog.v07a.mttPerf")}</li>
+              <li>{t("changelog.v07a.progress")}</li>
+              <li>{t("changelog.v07a.mystery")}</li>
+              <li>{t("changelog.v07a.stats")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
@@ -1088,11 +1110,6 @@ export default function Home() {
               <li>{t("changelog.v07.convergence")}</li>
               <li>{t("changelog.v07.gameType")}</li>
               <li>{t("changelog.v07.rakeback")}</li>
-              <li>{t("changelog.v07.polish")}</li>
-            </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06c.title")}</div>
-            <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v06c.hoverHighlights")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06b.title")}</div>
             <ul className="list-disc space-y-1 pl-5">

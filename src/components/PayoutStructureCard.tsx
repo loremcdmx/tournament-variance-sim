@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 
 import { Card } from "./ui/Section";
 import { getPayoutTable } from "@/lib/sim/payouts";
@@ -65,7 +65,9 @@ function placeLabel(n: number): string {
   return `${n}th`;
 }
 
-export function PayoutStructureCard({ schedule }: Props) {
+export const PayoutStructureCard = memo(function PayoutStructureCard({
+  schedule,
+}: Props) {
   const t = useT();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [palette, setPalette] = useState<PaletteId>(() => {
@@ -226,7 +228,7 @@ export function PayoutStructureCard({ schedule }: Props) {
       </div>
     </Card>
   );
-}
+});
 
 function PoolSplit({
   cashPoolShare,

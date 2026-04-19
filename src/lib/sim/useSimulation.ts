@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compileSchedule, makeCheckpointGrid } from "./engine";
 import type { RawShard } from "./engine";
+import { SHARD_FRACTION } from "./progressConstants";
 import type {
   CalibrationMode,
   SimulationInput,
@@ -297,14 +298,10 @@ export function useSimulation() {
       let doneAll = 0;
       for (const s of allSlots) totalAll += s.total;
 
-      // Throttle UI updates: at most ~30 fps. Reserve the top 15 % of the
+      // Throttle UI updates: at most ~30 fps. Reserve the top slice of the
       // progress bar for the build phase (envelope sort / histograms +
-      // serialize-and-post back to main). On 100k-sample+ runs the build is
-      // 10-15 % of wall time, and the post-message serialization adds another
-      // ~100-400 ms dead zone that the bar used to park on at 99 %. Bigger
-      // reserve gives the build phase visible travel space instead of one
-      // discrete jump.
-      const SHARD_FRACTION = 0.85;
+      // serialize-and-post back to main). SHARD_FRACTION is shared with
+      // ControlsPanel's ETA projector — see src/lib/sim/progressConstants.ts.
       let lastEmit = 0;
       const emitProgress = () => {
         const now = performance.now();

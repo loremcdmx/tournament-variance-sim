@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import type { TournamentRow } from "@/lib/sim/types";
@@ -175,6 +175,11 @@ function fmtAfs(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
+function fmtCoef(n: number, digits = 4): string {
+  const fixed = n.toFixed(digits);
+  return fixed.replace(/(\.\d*?[1-9])0+$/u, "$1").replace(/\.0+$/u, "");
+}
+
 // Winitzki's approximation of the inverse error function (max error ~4e-4),
 // good enough to turn a user-picked two-tailed CI into a z-score.
 function inverseErf(x: number): number {
@@ -190,7 +195,9 @@ function ciToZ(ciFrac: number): number {
   return Math.SQRT2 * inverseErf(clamped);
 }
 
-export function ConvergenceChart({ schedule }: Props) {
+export const ConvergenceChart = memo(function ConvergenceChart({
+  schedule,
+}: Props) {
   const t = useT();
 
   // Baseline avgField / roi are taken from the current schedule when present;
@@ -539,6 +546,33 @@ export function ConvergenceChart({ schedule }: Props) {
     },
     { id: "mix", labelKey: "chart.convergence.format.mix" },
     { id: "exact", labelKey: "chart.convergence.format.exact" },
+  ];
+  const targetBandsLabel = TARGETS.map((target) => `${target * 100}%`).join(", ");
+  const fitRows = [
+    {
+      label: t("chart.convergence.format.freeze"),
+      coef: SIGMA_ROI_FREEZE,
+      fitRake: FIT_RAKE_BY_FORMAT.freeze,
+      note: "realdata-linear finish",
+    },
+    {
+      label: t("chart.convergence.format.pko"),
+      coef: SIGMA_ROI_PKO,
+      fitRake: FIT_RAKE_BY_FORMAT.pko,
+      note: "bountyFraction=0.5, pkoHeadVar=0.4",
+    },
+    {
+      label: t("chart.convergence.format.mystery"),
+      coef: SIGMA_ROI_MYSTERY,
+      fitRake: FIT_RAKE_BY_FORMAT.mystery,
+      note: "mysteryBountyVariance=2.0, roughest fit",
+    },
+    {
+      label: t("chart.convergence.format.mystery-royale"),
+      coef: SIGMA_ROI_MYSTERY_ROYALE,
+      fitRake: FIT_RAKE_BY_FORMAT["mystery-royale"],
+      note: "AFS fixed at 18, beta baked to 0",
+    },
   ];
 
   return (
@@ -890,7 +924,7 @@ export function ConvergenceChart({ schedule }: Props) {
       </div>
     </div>
   );
-}
+});
 
 type MixAccent = "sky" | "fuchsia" | "purple";
 const MIX_ACCENT_CLASSES: Record<

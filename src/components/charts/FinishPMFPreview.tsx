@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   buildFinishPMF,
   calibrateAlpha,
@@ -94,7 +94,12 @@ interface TierRow {
   posHi: number;
 }
 
-export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) {
+export const FinishPMFPreview = memo(function FinishPMFPreview({
+  row,
+  model,
+  onRowChange,
+  itmLocked,
+}: Props) {
   const t = useT();
   const { advanced } = useAdvancedMode();
 
@@ -323,7 +328,7 @@ export function FinishPMFPreview({ row, model, onRowChange, itmLocked }: Props) 
       )}
     </div>
   );
-}
+});
 
 interface TierBreakdown {
   tier: TierRow;
