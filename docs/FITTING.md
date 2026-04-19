@@ -33,8 +33,8 @@ of `src/components/charts/ConvergenceChart.tsx`):
 | ------------------------------ | ------ | ------ | ------ |
 | freezeout (realdata-linear)    | 0.6564 | 0      | 0.3694 |
 | PKO (realdata-linear)          | 0.6265 | 0.4961 | 0.2763 |
-| Mystery Bounty                 | 1.0063 | 1.0994 | 0.2348 |
-| Mystery Battle Royale          | 1.2826 | 1.6462 | 0.2104 |
+| Mystery Bounty                 | 2.5164 | 3.7097 | 0.1325 |
+| Mystery Battle Royale          | 8.1534 | 7.9063 | 0      |
 | mix freeze/PKO (effective)     | —      | —      | —      |
 
 The mix row is effective-only: σ²\_mix = p·σ²\_PKO + (1−p)·σ²\_freeze
@@ -46,9 +46,11 @@ analytically.
 
 Reading of coefficients: `β` drops as ROI-sensitivity rises because
 bounty-heavy formats concentrate variance on deep runs, which
-scales sub-linearly with field. Mystery Royale's C0 is ~2× freeze's
-because the jackpot log-normal noise (`mysteryBountyVariance=1.8`)
-lifts the whole surface.
+scales sub-linearly with field. Mystery Royale's C0 is an order of
+magnitude above freeze's (~12×) because the jackpot log-normal
+envelope noise lifts the whole surface; MBR's β is 0 by construction
+since the AFS slider is locked at 18 in the UI, so `fit_br_fixed18.ts`
+absorbs any field dependence into C0.
 
 ## Why a fit and not a formula?
 
@@ -70,11 +72,18 @@ Two producers — pick the right one for what you're doing:
 - **`scripts/fit_br_fixed18.ts`** — Mystery Battle Royale at fixed AFS=18
   (MBR is AFS-locked in the UI, so a field-sweep is meaningless for it).
   Writes `scripts/fit_beta_mystery_royale.json`.
-- **Freeze / PKO / Mystery canonical fits** — current production artifacts
-  `scripts/fit_beta_{freeze_realdata,pko,pko_core,mystery}.json`. These
-  back the `SIGMA_ROI_*` constants in `ConvergenceChart.tsx`. They are
-  updated manually after a drift-report review (see below) — no single
-  script re-writes them end-to-end today.
+- **Freeze / PKO / Mystery canonical fits** — production artifacts
+  `scripts/fit_beta_freeze_realdata.json`, `scripts/fit_beta_pko.json`,
+  `scripts/fit_beta_mystery.json`. These back the `SIGMA_ROI_*`
+  constants in `ConvergenceChart.tsx`. They are updated manually after
+  a drift-report review (see below) — no single script re-writes them
+  end-to-end today.
+- **`scripts/fit_beta_pko_core.json`** — *not* an independent UI
+  canonical. It's a 7-ROI PKO baseline subset (same ROIs as the
+  200k-AFS probe) retained purely so `fit_drift_report.ts` can
+  compare the probe against a matched-shape reference. It has no
+  current producer script and is not promoted to the widget; revisit
+  together with the PKO runtime-fit overhaul.
 
 ### Diagnostic 200k-AFS probe (NOT promoted automatically)
 

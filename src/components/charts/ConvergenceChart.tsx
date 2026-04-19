@@ -69,11 +69,13 @@ function normalizeMix(m: MixTuple): MixTuple {
 // Fit at rake 8 %; coefficients = 1.01852 × old rake-10 values, confirming
 // σ_profit rake-invariance within fit noise (β unchanged).
 // All fits produced by scripts/fit_sigma_parallel.ts.
-// `resid` is a relative σ uncertainty derived from per-ROI fit R² and
-// cross-validation bench (scripts/verify_convergence_tabs.ts). It's
-// propagated into k as a ±k band: k ∝ σ², so ±ε on σ → ±2ε on k. These
-// are ceilings on in-band drift; past AFS 10k and ROI ±30% the real
-// residual can exceed these and the widget flags it via a warning row.
+// `resid` is a per-format relative σ uncertainty applied only when the ±band
+// is actually rendered — i.e. for freeze-only, MBR-only, or freeze+MBR
+// schedules. See src/lib/sim/convergencePolicy.ts for the gate. The PKO and
+// Mystery values carried below are placeholders that noticeably understate
+// observed drift at the edges of their fit boxes, which is exactly why the
+// policy hides the band for any schedule containing those formats until a
+// data-driven residual model replaces them. k ∝ σ², so ±ε on σ → ±2ε on k.
 const SIGMA_ROI_FREEZE = {
   C0: 0.6564,
   C1: 0,
@@ -95,8 +97,9 @@ const SIGMA_ROI_PKO = {
 // power-law: at small fields the top-9 harmonic envelope saturates σ near
 // ~5.6, then σ grows log-linearly past field≈1000. Global β=0.1325 averages
 // this. Cross-validation on 10 held-out (field,roi) pairs (xval_mystery.ts):
-// mean |Δ/σ|=17.6%, max 26.6% at extremes. Acceptable for a quick-estimate
-// widget, but a richer 2D model (or dual-β) would halve the residuals.
+// mean |Δ/σ|=17.6%, max 26.6% at extremes. The σ point-estimate is still the
+// best quick estimate we have for Mystery, but the ±band is suppressed in
+// the widget (convergencePolicy.ts) until a data-driven residual model lands.
 const SIGMA_ROI_MYSTERY = {
   C0: 2.5164,
   C1: 3.7097,
@@ -492,9 +495,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
 
   const rows = useMemo<Row[]>(() => {
     const afs = effectiveAfs;
-    // Closed-form σ_ROI from the 18-field × 7-ROI fits (freeze: fit_beta.ts,
-    // PKO: fit_beta_pko.ts). Entirely analytic — doesn't depend on any
-    // simulation run, so this widget is usable before the user clicks "go".
+    // Closed-form σ_ROI from the per-format sweeps described at the top of
+    // this file. Entirely analytic — doesn't depend on any simulation run,
+    // so this widget is usable before the user clicks "go".
     //
     //   σ_ROI(afs, roi) = (C0 + C1·roi) · afs^β           (per format)
     //   σ²_eff          = p·σ²_pko + (1−p)·σ²_freeze      (mix)
