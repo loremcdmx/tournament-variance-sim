@@ -679,6 +679,40 @@ describe("jackpotMask", () => {
     }
     expect(hits).toBe(0);
   });
+
+  // Compound jackpot: no single per-KO draw crosses the threshold but
+  // the summed ratios of one bounty-bearing tournament do. A small
+  // schedule with σ=0.9 rarely produces ratio≥100 individually, yet a
+  // deep finish with many KOs can add up. The aggregate check widens
+  // `jackpotMask` to catch those "visual jackpot" samples that a pure
+  // per-KO cutoff would miss.
+  it("flags compound jackpots (Σ per-KO ratios ≥ threshold)", () => {
+    const mystery: SimulationInput = {
+      schedule: [
+        {
+          id: "pko-soft",
+          label: "pko-soft",
+          players: 200,
+          buyIn: 10,
+          rake: 0.1,
+          roi: 0.15,
+          payoutStructure: "mtt-gg-bounty",
+          bountyFraction: 0.5,
+          mysteryBountyVariance: 0.9,
+          count: 1,
+        },
+      ],
+      scheduleRepeats: 100,
+      samples: 3000,
+      bankroll: 1000,
+      seed: 42,
+      finishModel: { id: "power-law" },
+    };
+    const r = runSimulation(mystery);
+    let hits = 0;
+    for (let i = 0; i < r.jackpotMask.length; i++) hits += r.jackpotMask[i];
+    expect(hits).toBeGreaterThan(0);
+  });
 });
 
 describe("bountyEvBias", () => {

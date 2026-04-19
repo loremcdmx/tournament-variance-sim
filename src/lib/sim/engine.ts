@@ -55,10 +55,14 @@ const HEAT_Z_RANGE = 3;
 // Precomputed scalar for z → bin index: (HEAT_BIN_COUNT - 1) / (2 · RANGE).
 const HEAT_BIN_SCALE = (HEAT_BIN_COUNT - 1) / (2 * HEAT_Z_RANGE);
 
-// Per-KO envelope ratio at which a draw is tagged as a jackpot in
-// `jackpotMask`. Matches the UI threshold (FinishPMFPreview's
-// `jackpotShareFrac`) so the "runs with jackpots" toggle uses the same
-// definition the preview stats advertise.
+// Threshold (in units of per-KO mean) used to tag a sample as having
+// hit a "jackpot" in `jackpotMask`. We flag at the tournament level:
+// if the sum of per-KO ratios in a single bounty-bearing tournament
+// crosses this threshold, the sample is marked. Matches the scale of
+// FinishPMFPreview's `jackpotShareFrac` so the preview stats and the
+// UI toggle share a definition — but the per-tournament aggregation
+// also catches compound jackpots (many moderate-ratio KOs in one
+// tournament summing past the threshold) that a per-KO cutoff misses.
 export const JACKPOT_THRESHOLD = 100;
 
 // ---- PTRS Poisson sampler (Hörmann 1993) ----------------------------------
@@ -1946,11 +1950,14 @@ export interface RawShard {
    *  zero entries for rows without bounty configuration. Used by the
    *  decomposition chart to split the mean bar into cash vs. bounty. */
   rowBountyProfits: Float64Array;
-  /** Per-sample 0/1 flag: 1 if any mystery-royale tier draw or mystery
-   *  log-normal envelope in this sample had ratio ≥ JACKPOT_THRESHOLD.
-   *  Observational side-effect of existing bounty draws (no extra RNG),
-   *  so it preserves the seed→result determinism contract. Empty (length
-   *  0) for schedules without mystery rows — callers must null-check. */
+  /** Per-sample 0/1 flag: 1 if any single bounty-bearing tournament in
+   *  this sample had its summed per-KO envelope ratios reach
+   *  JACKPOT_THRESHOLD. Catches both single-tier jackpots (one ratio
+   *  ≥ threshold) and compound jackpots (many moderate tiers adding up
+   *  within one tournament). Observational side-effect of existing
+   *  bounty draws (no extra RNG), so it preserves the seed→result
+   *  determinism contract. Empty (length 0) for schedules without
+   *  mystery rows — callers must null-check. */
   jackpotMask: Uint8Array;
   ruinedCount: number;
   /** Hi-res capture grid (K'+1 points). Shared across all hi-res buffers
@@ -2315,22 +2322,26 @@ export function simulateShard(
                 if (brRatios !== null) {
                   const perKO = mean * bkmInv![place];
                   bountyDraw = 0;
+                  let sumRatio = 0;
                   for (let j = 0; j < k; j++) {
                     const rT = bRng() * 10;
                     const iT = rT | 0;
                     const pick = rT - iT < brAliasProb![iT] ? iT : brAliasIdx![iT];
                     const ratio = brRatios[pick];
-                    if (ratio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+                    sumRatio += ratio;
                     bountyDraw += perKO * ratio;
                   }
+                  if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
                 } else if (mystVar > 0) {
                   const perKO = mean * bkmInv![place];
                   bountyDraw = 0;
+                  let sumRatio = 0;
                   for (let j = 0; j < k; j++) {
                     const ratio = Math.exp(mystSig * gaussB() - 0.5 * mystVar);
-                    if (ratio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+                    sumRatio += ratio;
                     bountyDraw += perKO * ratio;
                   }
+                  if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
                 }
               }
             } else {
@@ -2373,22 +2384,26 @@ export function simulateShard(
                   if (brRatios !== null) {
                     const perKO = mean * bkmInv![place];
                     bountyDraw = 0;
+                    let sumRatio = 0;
                     for (let j = 0; j < k; j++) {
                       const rT = bRng() * 10;
                       const iT = rT | 0;
                       const pick = rT - iT < brAliasProb![iT] ? iT : brAliasIdx![iT];
                       const ratio = brRatios[pick];
-                      if (ratio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+                      sumRatio += ratio;
                       bountyDraw += perKO * ratio;
                     }
+                    if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
                   } else if (mystVar > 0) {
                     const perKO = mean * bkmInv![place];
                     bountyDraw = 0;
+                    let sumRatio = 0;
                     for (let j = 0; j < k; j++) {
                       const ratio = Math.exp(mystSig * gaussB() - 0.5 * mystVar);
-                      if (ratio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+                      sumRatio += ratio;
                       bountyDraw += perKO * ratio;
                     }
+                    if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
                   }
                 }
               } else {
