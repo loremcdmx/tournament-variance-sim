@@ -157,22 +157,48 @@ export const ControlsPanel = memo(function ControlsPanel({
     }, 250);
     return () => window.clearInterval(id);
   }, [running]);
-  // Keep the progress bar mounted briefly after the run finishes so the CSS
-  // width transition has time to animate to 100 %. Without this hold, status
-  // flips to "done" in the same render tick as `setProgress(1)` and the bar
-  // unmounts while still visually stuck at the shard-phase cap or wherever
-  // the last shard-done event left it on a short run.
-  const [barVisible, setBarVisible] = useState(false);
+  // Bar state machine:
+  //   running     → width tracks `progress`, stage label live
+  //   completing  → 450 ms hold at 100 % so the fill animation actually plays
+  //                 out; only reached if the run finished naturally
+  //   hidden      → bar unmounted. Cancel/error skip `completing` entirely
+  //                 so the bar never snaps to 100 % on an aborted run —
+  //                 that mis-sold a cancel as a completed run.
+  type BarState = "hidden" | "running" | "completing";
+  const [barState, setBarState] = useState<BarState>("hidden");
+  // Did this run reach a "nearly done" state before `running` flipped false?
+  // Used to distinguish natural completion from cancel/error without needing
+  // to plumb the run status down as a prop.
+  const reachedDoneRef = useRef(false);
+  useEffect(() => {
+    if (running && progress === 0) reachedDoneRef.current = false;
+    if (progress >= 0.99) reachedDoneRef.current = true;
+  }, [running, progress]);
   useEffect(() => {
     if (running) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors external run state onto UI mount flag; deliberate sync, not derived.
-      setBarVisible(true);
+      setBarState("running");
       return undefined;
     }
-    if (!barVisible) return undefined;
-    const id = window.setTimeout(() => setBarVisible(false), 450);
+    if (barState === "hidden") return undefined;
+    if (!reachedDoneRef.current) {
+      setBarState("hidden");
+      return undefined;
+    }
+    setBarState("completing");
+    const id = window.setTimeout(() => setBarState("hidden"), 450);
     return () => window.clearTimeout(id);
-  }, [running, barVisible]);
+  }, [running, barState]);
+  const barVisible = barState !== "hidden";
+  // Remount the filled portion on each new-run edge so a previously-completed
+  // bar (frozen at 100 %) doesn't animate 100 → 0 via CSS width transition
+  // when the next run starts. Incrementing a key on the false→true edge is
+  // enough — React replaces the node, starting fresh at 0 %.
+  const [runToken, setRunToken] = useState(0);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- bumps a remount key on the !running → running edge; no cascade (running is external state).
+    if (running) setRunToken((t) => t + 1);
+  }, [running]);
   const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
@@ -475,15 +501,17 @@ export const ControlsPanel = memo(function ControlsPanel({
           <>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
               <div
+                key={runToken}
                 className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width] duration-100 ease-linear"
                 style={{
-                  width: running
-                    ? `${Math.min(100, progress * 100).toFixed(1)}%`
-                    : "100%",
+                  width:
+                    barState === "running"
+                      ? `${Math.min(100, progress * 100).toFixed(1)}%`
+                      : "100%",
                 }}
               />
             </div>
-            {running && stage && (
+            {barState === "running" && stage && (
               <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
                 {t(`controls.stage.${stage}`)}
               </div>
