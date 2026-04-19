@@ -1,6 +1,6 @@
 # Backlog — tournament-variance-sim
 
-> Живой беклог. Актуален на **2026-04-18** (v0.7.1, ветка `dev`).
+> Живой беклог. Актуален на **2026-04-19** (v0.7.1, ветка `dev`).
 > Закрытые задачи см. в `git log`. История прогресса — в `CHANGELOG.md`.
 > Feature scope на 2026-04-13 расширен: re-entry / PKO / ICM / empirical model **IN SCOPE** (см. commit ec88189 и ранее).
 
@@ -48,10 +48,16 @@
 
 **Условие:** делать после `#121b` (иначе calibration-shift замаскирует результат).
 
-### #109 · Масштабный σ-sweep по всем форматам — **P2** (после #121b, #7)
+### #109 · Масштабный σ-sweep по всем форматам — **IN PROGRESS 2026-04-19**
 Прогнать large-scale fit по freeze/pko/mystery/mystery-royale на полной ROI × AFS матрице. Recal `SIGMA_ROI_*`. Ресурсы: ~4ч (12 workers × 7950X), автономный запуск.
 
-**⚠️ Запрет:** не запускать до закрытия `#121b` + `#7`. Рефит коэффициентов на промежуточной математике = выкинутое CPU-время.
+**Статус:** часть 1 (script) закрыта коммитами `76640be` + `befaa1c` — `FIELDS` расширен до 200 000 + к каждому JSON добавлен `logPolyPooled` (log-polynomial `log σ = a + b₁·log field + b₂·(log field)²`) поверх single-β формы. Фоновый прогон запущен 2026-04-19.
+
+**Следующая стадия (после окончания sweep-а):**
+1. Разобрать output JSON-ы, подставить новые `{C0, C1, β}` + `logPolyPooled` (если материально лучше) в `SIGMA_ROI_*` константы в `ConvergenceChart.tsx`.
+2. Поднять `AFS_LOG_MAX` с `log(50_000)` до `log(200_000)`.
+3. Обновить `resid` per-format на основании нового cross-validation bench'а.
+4. Один атомарный коммит: «coefficient refresh + AFS ceiling raise».
 
 ### #132 · Compare-dropdown + recalc-кнопка под PKO EV-slider — **P2**
 Сейчас правый график в compare-mode зашит в `compareWithPrimedope` / cashless twin-pool — булевые тумблеры. Нужно вытащить в dropdown «с чем сравниваем» с опциями:
@@ -265,9 +271,15 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 
 ## ✅ Закрыто (архив последней волны)
 
-Раскрывать по требованию — детали в `git log`. Ниже — что закрыто за текущую волну (2026-04-18) + старые pre-MVP.
+Раскрывать по требованию — детали в `git log`. Ниже — что закрыто за текущую волну (2026-04-19 / 2026-04-18) + старые pre-MVP.
 
-**Shipped 2026-04-18 (последняя волна):**
+**Shipped 2026-04-19:**
+- ✅ **#75** strip personal/brand mentions — коммит `350e4b9` (LoremCDMX / bitB Staking / «1.5k-player fund» → нейтральные формулировки; преcет `loremcdmx` → `steady-reg`)
+- ✅ **#76** MBR-in-mix baseline fix — коммит `ecfb4d7` (`mysteryRoyaleShare > 0` + mixed schedule теперь дефолтится на "exact", 3-way mix-tuple глушил σ MBR)
+- ✅ **#77** σ fit uncertainty band — коммит `7d181bd` (k теперь показывает `±X%` suffix + `[k_lo..k_hi]` в tooltip; `resid` пер-формату пропагируется через `sigmaRoiForRow`/`exactBreakdown`)
+- ✅ **#78 (part 1)** fit script extended — коммиты `76640be` + `befaa1c` (FIELDS до 200k, log-polynomial pooled fit в каждый JSON, FITTING.md обновлён). Recal коэффициентов — отдельно после окончания фонового sweep-а.
+
+**Shipped 2026-04-18 (предыдущая волна):**
 - ✅ **#121a** conservation fixture tests — per-gameType `|realized − target ROI| < 3·SE` regression guard
 - ✅ **#127** hover/trim visibility gate unified (коммит `f098b64`)
 - ✅ **#128** imperative path-style rebuild on trim — brightens survivors via `plot.series[i].stroke` mutation внутри visibility batch
