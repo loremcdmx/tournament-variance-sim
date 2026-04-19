@@ -34,11 +34,8 @@ Audit PKO / Mystery / Battle Royale на «winner получает inflated со
 
 **Почему раньше числилось как P0:** формулировка «may have systematic bias 0.5–2%» была гипотезой, не measurement. Actual audit показал конвенцию корректной для PKO и структурно невозможной inflation для Mystery/BR.
 
-### #121a · Conservation invariants как permanent check (бывш. #121 accounting)
-Fixture-based regression: для каждого gameType в `testing-scenarios` проверять `E[prize+bounty per run] ≈ singleCost × (1+roi) ± 0.1%` (N=10k). Сейчас calibration пишется per-run, но без reject-on-drift — случайная регрессия в `calibrateAlpha` заметна только по визуальному σ-сдвигу.
-
-**План:** `engine.test.ts` → "conservation fixtures" describe, seed стабилен, tolerance fixed.
-**Размер:** ~30 строк test-кода, 0 engine changes.
+### ✅ #121a · Conservation invariants как permanent check — ЗАКРЫТО 2026-04-18
+Fixture-based regression шипнут в `engine.test.ts` → `describe("conservation fixtures per gameType")`: для freezeout / re-entry / PKO / mystery / mystery-royale проверяем `|realized_roi − target_roi| < 3·SE` (N=5k samples × 50 repeats). Seed стабилен, 0 engine changes. Любой будущий drift в `calibrateAlpha` теперь падает в CI.
 
 ### #121b · Calibration decomposition: pmf-shape vs bounty-budget (бывш. #121 semantics)
 Текущий `calibrateAlpha` (`finishModel.ts:199-250`) — одностадийный binary search: один α тащит и pmf-шейп, и bounty-lift. Для reg у ROI>0 top1 pmf размазывается (edge-EV частично уезжает в bounty). EV-bias slider (`engine.ts:473-488`, clamp ±0.25) это НЕ решает — он shift'ит между каналами **post-calibration**, не чинит smear **во время** поиска α.
@@ -82,13 +79,8 @@ Fixed: `compileSchedule` вызывает `normalizeBrMrConsistency` из `gameT
 
 Все root causes установлены 2026-04-17. Нужны точечные фиксы + regression-тесты.
 
-### #127 · Часть ранов «живёт по своим правилам» на hover/trim
-Прямой рассинхрон visibility и hover:
-- Видимость path-ранов режется по quantile в `ResultsView.tsx:349-378`
-- Но nearest-path поиск при hover **не учитывает trim** (`ResultsView.tsx:391-414`) — отсекает только `rank >= visibleRuns`
-- Best/worst real lines остаются hoverable через `isHighlightable` (`ResultsView.tsx:406`)
-
-**Фикс:** единый `visibleRunIndicesSet`, который читают и render, и hover. Альтернатива — продублировать visibility-маску в nearest-path lookup.
+### ✅ #127 · hover/trim рассинхрон — ЗАКРЫТО ранее
+Проверено: `ResultsView.tsx` → `visibilityGate` memo c `isPathVisible`/`isBandVisible` предикатами уже используется и render-effect'ом, и nearest-path hover lookup. Коммит `f098b64` (merge visibility gate).
 
 ### #128 · «Размытие» графика при -best/-worst trim
 Канвас корректен (`UplotChart.tsx:48` пересоздаёт uPlot, overlay учитывает DPR). Реальные причины:
@@ -194,18 +186,11 @@ Segmented `RunModeSlider` в TrajectoryCard toolbar не даёт ожидаем
 
 **Ресурсы:** ~4 часа (12 workers × 7950X). Запускать автономно.
 
-### #126 · «Где прячется среднее» тултип — переписать под two-pool структуру
-`FinishPMFPreview.tsx`, тултип у EV-баланса. Сейчас текст трактует EV как единый поток. Реально движок калибрует **два канала независимо**:
+### ✅ #126 · Two-pool EV-bias тултип — ЗАКРЫТО 2026-04-18
+`preview.evBias.tip` переписан: теперь явно называет две независимые калибровки (α → cash pool так, чтобы `Σ pmf·prize = cash target`; bounty scale так, чтобы `Σ pmf·bounty = bounty target`) и объясняет, почему суммарный ROI остаётся ровно на цели при любом положении слайдера.
 
-1. **Cash prize pool** через `targetRegular = entryCost·(1+roi) − bountyMean`, `finish-pmf × payoutByPlace`
-2. **Bounty pool** через `bountyLift = (1+rake)(1+roi)`, `Σ pmf·bountyByPlace = bountyMean`
-
-Тултип должен объяснять, что «среднее» = cash (ITM-heavy) + bounty (равномернее по столу в PKO/Mystery), и показывать разбивку `cashEv / bountyEv`.
-**Файлы:** `src/lib/i18n/dict.ts`, `FinishPMFPreview.tsx`.
-
-### #10 (audit) · UX tooltip про разницу ROI конвенций
-Наши числа ROI ниже, чем на Sharkscope (там ROI считается **от бай-ина без рейка**, у нас — с рейком). Это не баг, а разница конвенций.
-**Action:** добавить tooltip про Sharkscope-style vs наш расчёт.
+### ✅ #10 · Sharkscope ROI convention тултип — ЗАКРЫТО 2026-04-18
+`help.row.roi` расширен: наш ROI считается от полной стоимости входа (с рейком), Sharkscope — без рейка. Правило конверсии: вычесть свой rake% из Sharkscope-числа.
 
 ---
 
