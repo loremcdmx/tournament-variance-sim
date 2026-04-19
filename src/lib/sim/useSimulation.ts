@@ -14,7 +14,6 @@
  * `engine.ts` is preserved.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { compileSchedule, makeCheckpointGrid } from "./engine";
 import type { RawShard } from "./engine";
 import { BUILD_PROGRESS_CAP, shardProgressFracFor } from "./progressConstants";
 import { composeProgress } from "./progressAggregation";
@@ -249,13 +248,12 @@ export function useSimulation() {
       if (!pool) throw new Error("worker pool not ready");
       const W = pool.workers.length;
 
-      // Compile + plan shards for each pass on the main thread. Compilation
-      // is cheap (<<1 ms) and we need the grid for mergeShards downstream.
+      // Plan shards for each pass. Compilation + checkpoint-grid construction
+      // both happen inside the worker on shard dispatch — no main-thread copy
+      // is needed, and on heavy schedules (10 rows × 20 repeats × twin) the
+      // redundant work cost 35 ms of click→first-dispatch latency.
       type PassCtx = {
         plan: PassPlan;
-        compiled: ReturnType<typeof compileSchedule>;
-        grid: ReturnType<typeof makeCheckpointGrid>;
-        K1: number;
         shards: (RawShard | null)[];
         shardBounds: Array<[number, number]>;
         result: SimulationResult | null;
@@ -264,11 +262,6 @@ export function useSimulation() {
       const allSlots: ShardSlot[] = [];
       let nextShardId = 0;
       for (const plan of passes) {
-        const compiled = compileSchedule(
-          { ...plan.input, calibrationMode: plan.calibrationMode },
-          plan.calibrationMode,
-        );
-        const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
         const S = plan.input.samples;
         // Over-subscribe shards relative to the worker pool so stragglers
         // don't park the progress bar at a coarse fraction. Large runs get a
@@ -287,9 +280,6 @@ export function useSimulation() {
         }
         ctxs[plan.key] = {
           plan,
-          compiled,
-          grid,
-          K1: grid.K + 1,
           shards: bounds.map(() => null),
           shardBounds: bounds,
           result: null,
