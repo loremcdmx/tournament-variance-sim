@@ -53,6 +53,24 @@
 
 **⚠️ Запрет:** не запускать до закрытия `#121b` + `#7`. Рефит коэффициентов на промежуточной математике = выкинутое CPU-время.
 
+### #132 · Compare-dropdown + recalc-кнопка под PKO EV-slider — **P2**
+Сейчас правый график в compare-mode зашит в `compareWithPrimedope` / cashless twin-pool — булевые тумблеры. Нужно вытащить в dropdown «с чем сравниваем» с опциями:
+- PD (Shelled ITM) — existing twin-pass, instant
+- MTT без ноков — existing cashless pool, instant
+- MTT с взвешенным KO/cash распределением (текущий slider) — **requires recalc**
+- MTT низкий / средний / высокий ABI — pre-baked baseline schedules ($3.30 / $22 / $215 reg, PP ITM 15%), off-main воркер + localStorage кэш
+
+**Recalc-кнопка** появляется при движении PKO EV-slider'а: жмём → генерируем mutated `SimulationInput` с целевым KO/cash share (скаляр на все `pkoBountyRatio` в schedule, buy-in preserved) и гоним отдельный pass. Прогресс-бар во втором графике под время recalc'а.
+
+**i18n:** переписать все легенды/тултипы, где сейчас «сравнение с ПД» / «сравнение с расписанием без ноков» под выбранный dropdown-режим.
+
+**Design-вопросы к юзеру до имплементации:**
+1. ABI-baselines: $3.30 / $22 / $215 reg-schedule — ок или есть свой эталон?
+2. KO-shift mechanics: скалировать per-row `pkoBountyRatio` в target или через новое поле в `SimulationInput`?
+3. Recalc-кнопка — под PKO-слайдером или глобальная «пересчитать правый график»?
+
+---
+
 ### Cash follow-up — **P2** (nice-to-have после MVP 2026-04-18)
 Не критично, но полирует готовый модуль:
 - Preset-loader популярных румов (GG / Stars / Partypoker / Winamax)
