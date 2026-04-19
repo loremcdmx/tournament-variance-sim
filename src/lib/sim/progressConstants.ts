@@ -12,8 +12,10 @@
 /**
  * Build-progress updates intentionally stop just below 1.0. The final
  * `build-result` / `postMessage` handoff owns the last visible tick to 100%.
+ * Keep a slightly fatter tail than before so large result payloads don't pin
+ * the bar at an artificial 99.x for seconds.
  */
-export const BUILD_PROGRESS_CAP = 0.995;
+export const BUILD_PROGRESS_CAP = 0.985;
 
 /**
  * Fraction of the visible progress bar reserved for shard simulation. The
@@ -21,10 +23,10 @@ export const BUILD_PROGRESS_CAP = 0.995;
  *
  * Gentle ramp so large runs reserve a bit more headroom for envelope sorts +
  * serialize/postMessage, but without over-committing to a per-machine model:
- * 10k → 0.80, 100k → 0.72, 1M+ → floored at 0.60.
+ * 10k → 0.80, 100k → 0.70, 1M → 0.60, 10M+ → floored at 0.55.
  */
 export function shardProgressFracFor(samples: number): number {
   if (!(samples > 0)) return 0.78;
   const logScale = Math.log10(Math.max(1, samples / 10_000));
-  return Math.max(0.60, 0.80 - 0.08 * logScale);
+  return Math.max(0.55, 0.80 - 0.10 * logScale);
 }

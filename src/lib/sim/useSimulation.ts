@@ -258,13 +258,14 @@ export function useSimulation() {
         const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
         const S = plan.input.samples;
         // Over-subscribe shards relative to the worker pool so stragglers
-        // don't park the progress bar at a coarse fraction (on W=2, oversub=1
-        // means a single heavy tail freezes the bar at 46%). Oversub=4 gives
-        // at most 1/(4W) granularity. Floor on samples-per-shard keeps tiny
-        // runs from paying too much dispatch overhead.
-        const MIN_SAMPLES_PER_SHARD = 64;
+        // don't park the progress bar at a coarse fraction. Large runs get a
+        // denser split because the worker-message overhead is tiny compared to
+        // multi-second shard tails, while the extra granularity makes the bar
+        // look materially less "stuck in the middle".
+        const MIN_SAMPLES_PER_SHARD = S >= 100_000 ? 32 : 64;
+        const oversub = S >= 200_000 ? 6 : 4;
         const maxShards = Math.max(1, Math.floor(S / MIN_SAMPLES_PER_SHARD));
-        const shardCount = Math.max(1, Math.min(W * 4, maxShards, S));
+        const shardCount = Math.max(1, Math.min(W * oversub, maxShards, S));
         const bounds: Array<[number, number]> = [];
         for (let i = 0; i < shardCount; i++) {
           const lo = Math.floor((i * S) / shardCount);
