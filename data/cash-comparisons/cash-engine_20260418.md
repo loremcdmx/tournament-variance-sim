@@ -1,4 +1,4 @@
-# Our cash engine — reference outputs 2026-04-18
+# Cash engine — reference outputs 2026-04-18
 
 > Note (2026-04-18): this snapshot predates the `P(min ≤ -100 BB)` fix in
 > `cashEngine.ts`. The sub-100 column below reflects the older

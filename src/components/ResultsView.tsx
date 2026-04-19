@@ -3317,8 +3317,8 @@ const TrajectoryCard = memo(function TrajectoryCard({
       ? "chart.trajectory.ours.cap.naive"
       : modelPresetId === "realistic-solo"
         ? "chart.trajectory.ours.cap.realisticSolo"
-        : modelPresetId === "loremcdmx"
-          ? "chart.trajectory.ours.cap.loremcdmx"
+        : modelPresetId === "steady-reg"
+          ? "chart.trajectory.ours.cap.steadyReg"
           : modelPresetId && modelPresetId !== "primedope"
             ? "chart.trajectory.ours.cap.custom"
             : "chart.trajectory.ours.cap";

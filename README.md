@@ -238,7 +238,7 @@ SimulationResult → ResultsView
 - [x] Фаза 3 — i18n (RU+EN), демо-сценарии, tooltips
 - [x] Фаза 4 — Vercel deploy
 - [x] Фаза 5 — ROI noise / tilt каналы, global ITM с per-row override
-- [ ] Калибровка α на реальных данных (фонд на 1.5k игроков, валидация покрытия MC 90%-envelope на фактических P&L)
+- [ ] Калибровка α на реальных данных (см. `docs/INGEST.md` — пайплайн приёма CSV, валидация покрытия MC 90%-envelope на фактических P&L)
 
 ---
 

@@ -1076,25 +1076,6 @@ export default function Home() {
           <span className="text-[color:var(--color-fg-muted)]">
             {t("footer.state")}
           </span>
-          {" · "}
-          <a
-            href="https://github.com/loremcdmx/tournament-variance-sim"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]"
-          >
-            {t("footer.github")}
-          </a>
-          {" · "}
-          {t("footer.madeBy")}{" "}
-          <a
-            href="https://t.me/loremnopoker"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]"
-          >
-            LoremCDMX
-          </a>
         </div>
         <details id="changelog" className="group scroll-mt-4">
           <summary className="cursor-pointer select-none text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]">

@@ -497,8 +497,8 @@ export const DICT = {
     en: "Baseline run with your settings — no additional noise channels. Use as a clean reference before adding variance sources.",
     ru: "Базовый ран с вашими настройками — без дополнительных каналов шума. Используйте как чистый референс перед добавлением источников дисперсии.",
   },
-  "preset.loremcdmx.label": { en: "LoremCDMX", ru: "LoremCDMX" },
-  "preset.loremcdmx.tagline": {
+  "preset.steadyReg.label": { en: "Steady regular", ru: "Стабильный регуляр" },
+  "preset.steadyReg.tagline": {
     en: "Calibrated for a steady, disciplined regular. Baseline run with minimal noise — most sessions play out at your true ROI.",
     ru: "Откалибровано под стабильного дисциплинированного регуляра. Базовый ран с минимальным шумом — большинство сессий проходят на реальном ROI.",
   },
@@ -741,7 +741,7 @@ export const DICT = {
     en: "Deep-finish skill — solo grinder baseline.",
     ru: "Глубокие финиши — базовый ран одиночного грайндера.",
   },
-  "chart.trajectory.ours.cap.loremcdmx": {
+  "chart.trajectory.ours.cap.steadyReg": {
     en: "Deep-finish skill — stable regular baseline.",
     ru: "Глубокие финиши — базовый ран стабильного регуляра.",
   },
@@ -778,8 +778,8 @@ export const DICT = {
     ru: "Почему не PrimeDope: в калькуляторе PrimeDope нет поля для баунти, PKO-расписание через него не проходит. Вместо этого справа — то же расписание через нашу модель без ноков: тот же алгоритм, тот же сид, PKO-компонент выключен. Позволяет оценить, какая доля дисперсии приходится на ноки.",
   },
   "chart.trajectory.oursFix": {
-    en: "How we fix it: finishes sampled from a real top-heavy pmf calibrated on fund data. A skilled player's 1st/2nd/3rd odds are meaningfully above the paid-pool average; most cashes stay min-cashes. Overall ITM is lower than PrimeDope's (~17% at 20% ROI vs their ~21%), but each cash is weighted correctly. Streak depth, recovery length, and drawdown shape match reality instead of PD's smoothed picture.",
-    ru: "Как решаем: места финиша сэмплируются из реальной top-heavy pmf, откалиброванной по данным фонда. Шанс скиллового игрока на 1-е/2-е/3-е значимо выше среднего по призовой зоне; основная масса кэшей — всё равно мин-кэши. Общий ITM ниже, чем у PrimeDope (~17% при ROI 20% против ~21%), зато каждый кэш взвешен корректно. Глубина стриков, отмазка и форма стриков ложатся в реальность.",
+    en: "How we fix it: finishes sampled from a real top-heavy pmf calibrated on pooled MTT data. A skilled player's 1st/2nd/3rd odds are meaningfully above the paid-pool average; most cashes stay min-cashes. Overall ITM is lower than PrimeDope's (~17% at 20% ROI vs their ~21%), but each cash is weighted correctly. Streak depth, recovery length, and drawdown shape match reality instead of PD's smoothed picture.",
+    ru: "Как решаем: места финиша сэмплируются из реальной top-heavy pmf, откалиброванной по реальным пулам MTT-данных. Шанс скиллового игрока на 1-е/2-е/3-е значимо выше среднего по призовой зоне; основная масса кэшей — всё равно мин-кэши. Общий ITM ниже, чем у PrimeDope (~17% при ROI 20% против ~21%), зато каждый кэш взвешен корректно. Глубина стриков, отмазка и форма стриков ложатся в реальность.",
   },
   "chart.hideJackpots": {
     en: "hide jackpots",
@@ -1319,8 +1319,6 @@ export const DICT = {
     en: "The first usable simulator build: presets, trajectory styling, unit switcher and import/export.",
     ru: "Первая реально рабочая версия симулятора: пресеты, стили траекторий, переключатель единиц и импорт/экспорт.",
   },
-  "footer.madeBy": { en: "made by", ru: "сделал" },
-
   "chart.convergence.help": {
     en: "Simple idea: the fewer tournaments you've played, the more your observed ROI is just noise. This table tells you, for each target ROI band, how many tournaments you need to grind before the number on your dashboard means anything. «±2 %» doesn't say your ROI is exactly right — it says that with the chosen confidence level the truth lies within 2 pp of what you see. Wider band → fewer tournaments.\n\nThe format toggle picks Freeze / PKO / Mix. PKO σ is actually LOWER than freeze at the same field / ROI: half the prize pool is distributed per-knockout (bounties), which flattens the top-heavy finish-place payout curve, so tails are shorter and you converge ~2–3× faster on PKO than on an equivalent freeze. Mix blends them; the mix slider sets PKO share (rest = freeze), σ²_mix = p·σ²_pko + (1−p)·σ²_freeze.\n\nThe CI slider controls how strict «trust» is: 95 % is the classic «19 out of 20», 99 % stricter, 99.9 % paranoid. The second column expresses the same count in full fields of the selected AFS.\n\nThe AFS slider assumes a different average field size — bigger fields have heavier tails, same certainty takes more tourneys; freeze σ ∝ field^0.369, PKO σ ∝ field^0.276 (PKO tail grows slower because bounties dilute finish-place dependence).\n\nThe ROI slider assumes a different true edge. For freeze with the realdata finish σ is ~ROI-invariant (the empirical finish CDF is fixed; ROI only shifts the mean). For PKO σ ∝ (1 + 0.79·ROI) — higher edge = more deep runs = fatter bounty payouts = wider tail.\n\nCoefficients are fits to the engine across an 18-field × 7-ROI (freeze) / 11-ROI (PKO) sweep with 120 k samples per cell.",
     ru: "Идея: чем меньше сыграно турниров, тем больше наблюдаемый ROI определяется шумом, а не скиллом. Таблица показывает, для каждой полосы точности, сколько турниров необходимо для статистически значимого результата.\n\n«±2 %» означает: с выбранным уровнем доверия истинный ROI лежит в пределах 2 пп от наблюдаемого. Шире полоса — меньше турниров требуется.\n\nПереключатель формата: Фриз / ПКО / Микс. σ в ПКО на самом деле НИЖЕ, чем во фризе при тех же филде/ROI: половина пула раздаётся за нокауты (баунти), что сглаживает top-heavy-структуру выплат за места — хвосты короче, ПКО сходится в ~2–3 раза быстрее эквивалентного фриза. Микс смешивает форматы; ползунок задаёт долю ПКО (остальное — фризы), σ²_микс = p·σ²_пко + (1−p)·σ²_фриз.\n\nCI — строгость доверительного интервала: 95 % = классический «19 из 20», 99 % — строже, 99,9 % — максимальная строгость. Вторая колонка выражает то же количество в «полных полях» выбранного AFS.\n\nAFS — средний размер поля. У больших филдов хвост тяжелее, та же точность требует больше турниров; фриз σ ∝ field^0.369, ПКО σ ∝ field^0.276 (в ПКО хвост растёт медленнее — баунти размывают зависимость от места).\n\nROI — истинный эдж. Для фриза с realdata-финишем σ почти не зависит от ROI (эмпирический финиш-CDF фиксирован, ROI лишь сдвигает среднее). Для ПКО σ ∝ (1 + 0,79·ROI) — выше эдж → чаще глубокие проходы → жирнее баунти → шире хвост.\n\nКоэффициенты — эмпирические фиты по свипу движка (18 филдов × 7 ROI для фриза / 11 ROI для ПКО, по 120 тыс сэмплов на ячейку).",
@@ -1589,8 +1587,8 @@ export const DICT = {
     ru: "Независимая проверка.",
   },
   "pdv.externalBody": {
-    en: "Measured on real fund data (bitB Staking), ITM at 20% ROI sits near 17% — while PrimeDope's uniform-lift model predicts ~21%. This is corroboration from outside our codebase:",
-    ru: "На реальных данных фонда (bitB Staking) ITM при ROI 20% держится около 17%, тогда как модель PrimeDope (uniform lift) предсказывает ~21%. Это подтверждение извне нашей кодовой базы:",
+    en: "Measured on real pooled MTT data, ITM at 20% ROI sits near 17% — while PrimeDope's uniform-lift model predicts ~21%. This is corroboration from outside our codebase:",
+    ru: "На реальных пулах MTT-данных ITM при ROI 20% держится около 17%, тогда как модель PrimeDope (uniform lift) предсказывает ~21%. Это подтверждение извне нашей кодовой базы:",
   },
   // Explainer (legacy, still referenced)
   "why.title": { en: "Why our numbers differ", ru: "Почему у нас цифры другие" },
@@ -1764,10 +1762,6 @@ export const DICT = {
   "footer.state": {
     en: "state autosaved and shareable via URL",
     ru: "состояние автосохраняется и шарится по URL",
-  },
-  "footer.github": {
-    en: "source on GitHub",
-    ru: "исходники на GitHub",
   },
 
   // Sensitivity

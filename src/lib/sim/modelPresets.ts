@@ -100,9 +100,9 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     },
   },
   {
-    id: "loremcdmx",
-    labelKey: "preset.loremcdmx.label",
-    taglineKey: "preset.loremcdmx.tagline",
+    id: "steady-reg",
+    labelKey: "preset.steadyReg.label",
+    taglineKey: "preset.steadyReg.tagline",
     patch: {
       ...ZERO_SHOCKS,
       roiStdErr: 0.02,

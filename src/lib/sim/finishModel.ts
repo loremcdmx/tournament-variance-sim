@@ -61,7 +61,7 @@ export function buildFinishPMF(
     case "powerlaw-realdata-influenced": {
       // Same power-law shape as the plain "power-law" model. The
       // "real-data-influenced" label means the surrounding defaults (global
-      // ITM = 18.7%, matching our 1.5k-player sample) shape the distribution;
+      // ITM = 18.7%, matching the reference sample) shape the distribution;
       // α is still solved upstream against the user's target ROI so this
       // model obeys global/per-row ROI settings instead of pinning them.
       let s = 0;
