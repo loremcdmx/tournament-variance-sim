@@ -427,14 +427,47 @@ function TrajectoryPlot({
   // on every slider tick, flip `show` on the pre-built path/band/best/worst
   // series. `plot.batch` collapses all the per-series toggles into a single
   // redraw, so a 0→500 drag costs one repaint, not five hundred.
+  //
+  // Also recalibrates per-path stroke/width for the *current* visible count —
+  // trimming 500 → 5 survivors would otherwise leave them at mid-density ink
+  // (near-invisible). Stroke + lineWidth are applied at draw time by uPlot,
+  // so mutating `plot.series[i].stroke` and `.width` before the batch-close
+  // redraw is enough to restyle without rebuilding the chart.
   useEffect(() => {
     const plot = plotRef.current;
     if (!plot) return;
     const vis = assets.visibility;
     const { includeBest, includeWorst, isPathVisible, isBandVisible } = visibilityGate;
+
+    let visiblePathCount = 0;
+    for (let r = 0; r < vis.pathSeriesIdx.length; r++) {
+      if (isPathVisible(r)) visiblePathCount++;
+    }
+    const baseStyle = pathStyleForCount(
+      vis.pathBasePreset,
+      Math.max(1, visiblePathCount),
+    );
+    const [baseR, baseG, baseB] = parseRgb(baseStyle.stroke);
+    const baseAlpha =
+      Number(baseStyle.stroke.match(/rgba?\([^)]*?,([^,)]+)\)/i)?.[1] ?? 0.4);
+
     plot.batch(() => {
+      const plotSeries = plot.series as Array<{ stroke?: unknown; width?: number }>;
       for (let r = 0; r < vis.pathSeriesIdx.length; r++) {
-        plot.setSeries(vis.pathSeriesIdx[r], { show: isPathVisible(r) }, false);
+        const sIdx = vis.pathSeriesIdx[r];
+        const visible = isPathVisible(r);
+        if (visible) {
+          const pol = vis.pathPolarityByRank[r] ?? 0;
+          const boost = pol >= 0.98 ? 1.2 : 1;
+          const alpha = Math.min(0.95, baseAlpha * boost);
+          const width = baseStyle.width * boost;
+          const s = plotSeries[sIdx];
+          if (s) {
+            s.stroke = `rgba(${baseR},${baseG},${baseB},${alpha.toFixed(3)})`;
+            s.width = width;
+          }
+        }
+        plot.setSeries(sIdx, { show: visible }, false);
       }
       for (const { idx, percentile } of vis.bands) {
         plot.setSeries(idx, { show: isBandVisible(percentile) }, false);
@@ -452,6 +485,7 @@ function TrajectoryPlot({
         plot.setSeries(sIdx, { show: includeWorst }, false);
       }
     });
+    plot.redraw(false);
   }, [assets, visibilityGate]);
 
   const idx = cursor?.idx;
@@ -961,6 +995,16 @@ function pathStyleForCount(
 interface TrajectoryVisibilityMap {
   pathSeriesIdx: number[];
   pathProfitQuantile: number[];
+  /** |2q−1| per rank — drives the ±polarity boost applied on top of the
+   *  density-calibrated baseline alpha/width. Kept parallel to `pathSeriesIdx`
+   *  so the trim-aware restyler can recompute strokes without hitting the
+   *  full-index profit sort again. */
+  pathPolarityByRank: Float64Array;
+  /** Base LineStyle for the path family (preset.path). The visibility effect
+   *  reruns `pathStyleForCount` with the current visible count and mutates
+   *  each path series' stroke/width — so trimming from 500 → 5 actually
+   *  brightens the survivors instead of leaving them at mid-density ink. */
+  pathBasePreset: LineStyle;
   /** Each band tagged by its percentile so the visibility layer can gate
    *  it by the same trim thresholds that `computeYRange` uses. Without
    *  this, the Y-range drops clipped tails but the series keep drawing —
@@ -1411,6 +1455,7 @@ function buildTrajectoryAssets(
   }
   const pathSeriesIdx: number[] = [];
   const pathProfitQuantile: number[] = [];
+  const pathPolarityList: number[] = [];
   const bands: { idx: number; percentile: number }[] = [];
   const bestSeriesIdxs: number[] = [];
   const worstSeriesIdxs: number[] = [];
@@ -1489,6 +1534,7 @@ function buildTrajectoryAssets(
     const idx = pushSeries(r.samplePaths.paths[runIdx], { stroke, width });
     pathSeriesIdx.push(idx);
     pathProfitQuantile.push(profitQuantile[runIdx]);
+    pathPolarityList.push(pol);
     mainLines.push({
       label: `Run ${runIdx + 1}`,
       color: stroke,
@@ -1738,6 +1784,8 @@ function buildTrajectoryAssets(
     visibility: {
       pathSeriesIdx,
       pathProfitQuantile,
+      pathPolarityByRank: Float64Array.from(pathPolarityList),
+      pathBasePreset: preset.path,
       bands,
       bestSeriesIdxs,
       worstSeriesIdxs,
