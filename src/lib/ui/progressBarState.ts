@@ -41,15 +41,31 @@ export function nextBarState(inputs: BarStateInputs): BarState {
 }
 
 /**
+ * Integer percent (0..100) derived from a [0,1] progress fraction.
+ * Single source of truth for both the visible bar fill width and the
+ * numeric label on the stop button. Rounding stays identical so the
+ * user never sees "85 %" next to a bar filled to 85.7 %.
+ *
+ * Uses Math.floor so the label never overstates progress: if the engine
+ * has reported 0.859, we show 85 %, not 86 % — a user-facing promise
+ * about finished work, not a rounding display.
+ */
+export function progressPercent(progress: number): number {
+  if (Number.isNaN(progress)) return 0;
+  const pct = progress * 100;
+  if (pct <= 0) return 0;
+  if (pct >= 100) return 100;
+  return Math.floor(pct);
+}
+
+/**
  * Width style for the filled portion of the bar. Clamped to [0, 100].
  * In `completing` we render 100 % regardless of the in-flight `progress`
- * snapshot so the CSS width transition animates cleanly to the end.
+ * snapshot so the fill ends cleanly. Pairs with the stop-button label
+ * through `progressPercent` so the two can never disagree.
  */
 export function barFillPercent(state: BarState, progress: number): string {
   if (state === "hidden") return "0%";
   if (state === "completing") return "100%";
-  const pct = progress * 100;
-  if (!(pct > 0)) return "0.0%";
-  if (pct > 100) return "100.0%";
-  return `${pct.toFixed(1)}%`;
+  return `${progressPercent(progress)}%`;
 }

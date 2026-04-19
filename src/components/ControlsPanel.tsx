@@ -12,6 +12,7 @@ import {
   type BarState,
   barFillPercent,
   nextBarState,
+  progressPercent,
 } from "@/lib/ui/progressBarState";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
@@ -442,7 +443,7 @@ export const ControlsPanel = memo(function ControlsPanel({
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="6" width="12" height="12" rx="1" />
               </svg>
-              {t("controls.stop")} {Math.min(100, Math.floor(progress * 100))}%
+              {t("controls.stop")} {progressPercent(progress)}%
             </button>
           ) : (
             <button
@@ -495,7 +496,7 @@ export const ControlsPanel = memo(function ControlsPanel({
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
               <div
                 key={runToken}
-                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width] duration-100 ease-linear"
+                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300"
                 style={{ width: barFillPercent(barState, progress) }}
               />
             </div>

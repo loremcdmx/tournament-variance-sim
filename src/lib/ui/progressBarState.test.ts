@@ -4,6 +4,7 @@ import {
   type BarState,
   barFillPercent,
   nextBarState,
+  progressPercent,
 } from "./progressBarState";
 
 describe("nextBarState", () => {
@@ -129,6 +130,39 @@ describe("nextBarState", () => {
   });
 });
 
+describe("progressPercent", () => {
+  it("maps a [0,1] fraction to an integer in [0,100] via floor", () => {
+    expect(progressPercent(0)).toBe(0);
+    expect(progressPercent(0.25)).toBe(25);
+    expect(progressPercent(0.857)).toBe(85);
+    expect(progressPercent(0.985)).toBe(98);
+    expect(progressPercent(0.999)).toBe(99);
+    expect(progressPercent(1)).toBe(100);
+  });
+
+  it("clamps to [0,100]", () => {
+    expect(progressPercent(-0.01)).toBe(0);
+    expect(progressPercent(-1)).toBe(0);
+    expect(progressPercent(1.2)).toBe(100);
+    expect(progressPercent(9999)).toBe(100);
+  });
+
+  it("rejects non-finite input as 0 — never NaN%", () => {
+    expect(progressPercent(Number.NaN)).toBe(0);
+    expect(progressPercent(Number.NEGATIVE_INFINITY)).toBe(0);
+    expect(progressPercent(Number.POSITIVE_INFINITY)).toBe(100);
+  });
+
+  it("never overstates: floor, not round — 0.859 renders as 85, not 86", () => {
+    // Users read "85 %" as "85 % of the work has completed". Rounding to
+    // the nearest integer would advertise progress that hasn't happened
+    // yet. Floor makes the label a lower bound on real progress.
+    expect(progressPercent(0.859)).toBe(85);
+    expect(progressPercent(0.899)).toBe(89);
+    expect(progressPercent(0.999999)).toBe(99);
+  });
+});
+
 describe("barFillPercent", () => {
   it("hidden renders 0%", () => {
     expect(barFillPercent("hidden", 0)).toBe("0%");
@@ -139,28 +173,60 @@ describe("barFillPercent", () => {
   it("completing pins to 100% regardless of progress snapshot", () => {
     // The raw progress may be 0.985 (cap) or 1 depending on whether the
     // build-result tick has fired yet — either way the completing frame
-    // renders 100 % so the CSS transition ends cleanly.
+    // renders 100 % so the fill ends cleanly.
     expect(barFillPercent("completing", 0.985)).toBe("100%");
     expect(barFillPercent("completing", 1)).toBe("100%");
   });
 
-  it("running tracks progress to one decimal", () => {
-    expect(barFillPercent("running", 0)).toBe("0.0%");
-    expect(barFillPercent("running", 0.25)).toBe("25.0%");
-    expect(barFillPercent("running", 0.985)).toBe("98.5%");
-    expect(barFillPercent("running", 0.9999)).toBe("100.0%");
+  it("running tracks progress as an integer percent (matches button label)", () => {
+    // Must match progressPercent exactly — the fill width and the numeric
+    // label on the stop button both round via the same function, otherwise
+    // users see "85 %" next to a bar filled to 85.7 %.
+    expect(barFillPercent("running", 0)).toBe("0%");
+    expect(barFillPercent("running", 0.25)).toBe("25%");
+    expect(barFillPercent("running", 0.857)).toBe("85%");
+    expect(barFillPercent("running", 0.985)).toBe("98%");
+    expect(barFillPercent("running", 0.9999)).toBe("99%");
   });
 
   it("running clamps to [0, 100]", () => {
     // Defensive — composeProgress can't produce these, but if upstream
     // ever does, the bar shouldn't overflow or render a negative width.
-    expect(barFillPercent("running", -0.1)).toBe("0.0%");
-    expect(barFillPercent("running", 1.2)).toBe("100.0%");
+    expect(barFillPercent("running", -0.1)).toBe("0%");
+    expect(barFillPercent("running", 1.2)).toBe("100%");
   });
 
   it("NaN / non-finite progress renders 0%", () => {
-    expect(barFillPercent("running", Number.NaN)).toBe("0.0%");
-    expect(barFillPercent("running", Number.POSITIVE_INFINITY)).toBe("100.0%");
+    expect(barFillPercent("running", Number.NaN)).toBe("0%");
+    expect(barFillPercent("running", Number.POSITIVE_INFINITY)).toBe("100%");
+  });
+});
+
+describe("barFillPercent ↔ progressPercent invariant", () => {
+  // The user-facing invariant: at every point in a run, the bar fill
+  // width and the stop-button numeric label display the same integer.
+  // This test enumerates a dense set of progress values — if anyone
+  // reintroduces toFixed(1) or Math.round in one place but not the
+  // other, the suite breaks loudly.
+  it("bar fill in 'running' equals progressPercent()+'%' for every test progress", () => {
+    const samples: number[] = [];
+    for (let p = 0; p <= 1; p += 0.001) samples.push(p);
+    samples.push(0.985, 0.857, 0.3333, 0.6667, 0.9999);
+    for (const p of samples) {
+      expect(barFillPercent("running", p)).toBe(`${progressPercent(p)}%`);
+    }
+  });
+
+  it("monotonic in progress — more work done, more bar filled", () => {
+    // Not strictly monotonic at the integer level (small deltas round to
+    // the same percent), but must never decrease. Catches "rolled rounding"
+    // bugs where a borderline value ticks down on a subsequent update.
+    let last = -1;
+    for (let p = 0; p <= 1; p += 0.0005) {
+      const pct = progressPercent(p);
+      expect(pct).toBeGreaterThanOrEqual(last);
+      last = pct;
+    }
   });
 });
 
