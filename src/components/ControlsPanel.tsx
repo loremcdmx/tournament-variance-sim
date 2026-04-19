@@ -3,6 +3,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
+import type { ProgressStage } from "@/lib/sim/useSimulation";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
@@ -81,6 +82,13 @@ interface Props {
   onCancel: () => void;
   running: boolean;
   progress: number;
+  /**
+   * Current pipeline phase while running. Surfaced as a small label under
+   * the progress bar so 82→99% isn't a silent stall — the bar moves slowly
+   * through envelopes/streaks on large S, and the label is what tells the
+   * user the sim is still live rather than hung.
+   */
+  stage?: ProgressStage | null;
   /** Projected run duration in ms, or null when no prior run exists. */
   estimatedMs?: number | null;
   /** Total tournaments per sample (sum of row.count * scheduleRepeats). */
@@ -126,6 +134,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   onCancel,
   running,
   progress,
+  stage,
   estimatedMs,
   tournamentsPerSession,
   doneSummary,
@@ -462,16 +471,23 @@ export const ControlsPanel = memo(function ControlsPanel({
           </div>
         </div>
         {barVisible && (
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
-            <div
-              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width] duration-300 ease-linear"
-              style={{
-                width: running
-                  ? `${Math.min(100, progress * 100).toFixed(1)}%`
-                  : "100%",
-              }}
-            />
-          </div>
+          <>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
+              <div
+                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300 transition-[width] duration-100 ease-linear"
+                style={{
+                  width: running
+                    ? `${Math.min(100, progress * 100).toFixed(1)}%`
+                    : "100%",
+                }}
+              />
+            </div>
+            {running && stage && (
+              <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                {t(`controls.stage.${stage}`)}
+              </div>
+            )}
+          </>
         )}
         {!running && doneSummary && (
           <DoneSummaryBlock summary={doneSummary} />

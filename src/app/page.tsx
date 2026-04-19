@@ -155,6 +155,7 @@ export default function Home() {
   const {
     status,
     progress,
+    stage,
     result,
     error,
     elapsedMs,
@@ -906,6 +907,7 @@ export default function Home() {
               onCancel={cancel}
               running={running}
               progress={progress}
+              stage={stage}
               estimatedMs={estimatedMs}
               tournamentsPerSession={tournamentsPerSession}
               doneSummary={doneSummary}

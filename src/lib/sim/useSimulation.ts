@@ -22,6 +22,7 @@ import type {
   SimulationInput,
   SimulationResult,
 } from "./types";
+import type { BuildStage } from "./engine";
 import type {
   BuildErrorMsg,
   BuildProgressMsg,
@@ -35,6 +36,13 @@ import type {
 
 type Status = "idle" | "running" | "done" | "error";
 type BackgroundStatus = "idle" | "computing" | "full";
+/**
+ * Coarse phase label rendered under the progress bar so the user can tell
+ * which part of the pipeline the bar is currently advancing through.
+ * "simulating" covers the shard-parallel monte carlo phase; the four
+ * BuildStage variants come from buildResult in the engine.
+ */
+export type ProgressStage = "simulating" | BuildStage;
 
 /** Max sibling runs cached per batch (foreground + background). */
 const MAX_CACHED_RUNS = 5;
@@ -127,6 +135,7 @@ export function useSimulation() {
   const jobIdRef = useRef(0);
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState<ProgressStage | null>(null);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -216,6 +225,7 @@ export function useSimulation() {
     resetPool();
     setStatus("idle");
     setProgress(0);
+    setStage(null);
     setBackgroundStatus("idle");
     setPdStatus("idle");
     setPdProgress(0);
@@ -229,7 +239,7 @@ export function useSimulation() {
     async (
       jobId: number,
       passes: PassPlan[],
-      onProgress: (frac: number) => void,
+      onProgress: (frac: number, stage: ProgressStage) => void,
       signal?: AbortSignal,
     ): Promise<Record<PassPlan["key"], SimulationResult>> => {
       const pool = poolRef.current;
@@ -315,7 +325,10 @@ export function useSimulation() {
         const now = performance.now();
         if (now - lastEmit < 33 && doneAll < totalAll) return;
         lastEmit = now;
-        onProgress(totalAll > 0 ? (doneAll / totalAll) * shardFrac : 0);
+        onProgress(
+          totalAll > 0 ? (doneAll / totalAll) * shardFrac : 0,
+          "simulating",
+        );
       };
 
       return new Promise((resolve, reject) => {
@@ -328,13 +341,17 @@ export function useSimulation() {
         // runs because its `totalAll * 0.02` wall-time estimate was 5× off.
         const buildFracs = new Map<number, number>();
         let totalBuildsExpected = 0;
+        // Latest reported build stage — we surface whichever phase the most
+        // recent build-progress message was tagged with, so the UI follows
+        // the leading edge rather than averaging across passes.
+        let latestBuildStage: BuildStage = "stats";
         const buildHeadroom = BUILD_PROGRESS_CAP - shardFrac;
         const emitBuildProgress = () => {
           if (totalBuildsExpected === 0) return;
           let sum = 0;
           for (const f of buildFracs.values()) sum += f;
           const frac = sum / totalBuildsExpected;
-          onProgress(shardFrac + buildHeadroom * frac);
+          onProgress(shardFrac + buildHeadroom * frac, latestBuildStage);
         };
         const onAbort = () => {
           if (settled) return;
@@ -442,6 +459,7 @@ export function useSimulation() {
               // from the build-result handler, not from build-progress
               // overshooting into the "done" slot.
               buildFracs.set(msg.buildId, Math.min(BUILD_PROGRESS_CAP, msg.frac));
+              latestBuildStage = msg.stage;
               emitBuildProgress();
             }
             return;
@@ -455,7 +473,7 @@ export function useSimulation() {
             if (buildsRemaining === 0) {
               settled = true;
               detach();
-              onProgress(1);
+              onProgress(1, latestBuildStage);
               const out: Record<PassPlan["key"], SimulationResult> =
                 {} as never;
               for (const k of Object.keys(ctxs) as PassPlan["key"][]) {
@@ -494,7 +512,10 @@ export function useSimulation() {
               // used to cause a 2–5 s freeze at 99% on 100k-sample runs.
               // Hand off to one worker per pass so a twin run parallelizes.
               lastEmit = 0;
-              onProgress(shardFrac);
+              // Shards complete → transitioning into the build phase; tag
+              // with the first build stage so the UI flips the label away
+              // from "simulating" even before the first build-progress emit.
+              onProgress(shardFrac, "stats");
               const keys = Object.keys(ctxs) as PassPlan["key"][];
               try {
                 keys.forEach((k, i) => {
@@ -676,6 +697,7 @@ export function useSimulation() {
       setPdResultOverride(null);
       setStatus("running");
       setProgress(0);
+      setStage("simulating");
       setResult(null);
       setError(null);
       setElapsedMs(null);
@@ -684,7 +706,10 @@ export function useSimulation() {
       const passes = buildPasses(input);
 
       try {
-        const out = await runJob(jobId, passes, (f) => setProgress(f));
+        const out = await runJob(jobId, passes, (f, s) => {
+          setProgress(f);
+          setStage(s);
+        });
         if (jobIdRef.current !== jobId) return;
         if (batchRef.current.version !== myVersion) return;
         const merged = mergePasses(passes, out);
@@ -693,6 +718,7 @@ export function useSimulation() {
         setActiveRunIdx(0);
         setResult(merged);
         setProgress(1);
+        setStage(null);
         const elapsed = performance.now() - t0;
         setElapsedMs(elapsed);
         setStatus("done");
@@ -719,6 +745,7 @@ export function useSimulation() {
         if (jobIdRef.current !== jobId) return;
         setError(err instanceof Error ? err.message : String(err));
         setStatus("error");
+        setStage(null);
         return;
       }
 
@@ -813,6 +840,7 @@ export function useSimulation() {
   return {
     status,
     progress,
+    stage,
     result,
     error,
     elapsedMs,

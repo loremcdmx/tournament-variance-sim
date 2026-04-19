@@ -16,7 +16,7 @@ import {
   simulateShard,
 } from "./engine";
 import type { CalibrationMode, SimulationInput, SimulationResult } from "./types";
-import type { RawShard } from "./engine";
+import type { BuildStage, RawShard } from "./engine";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -84,6 +84,7 @@ export interface BuildProgressMsg {
   jobId: number;
   buildId: number;
   frac: number;
+  stage: BuildStage;
 }
 
 export interface BuildErrorMsg {
@@ -214,12 +215,13 @@ function handleBuild(req: BuildRequest) {
       merged,
       calibrationMode,
       grid,
-      (frac) => {
+      (frac, stage) => {
         const msg: BuildProgressMsg = {
           type: "build-progress",
           jobId,
           buildId,
           frac,
+          stage,
         };
         self.postMessage(msg);
       },

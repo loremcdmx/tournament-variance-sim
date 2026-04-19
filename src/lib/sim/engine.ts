@@ -1007,7 +1007,14 @@ function compileRowVariants(
 }
 
 type ProgressCb = (done: number, total: number) => void;
-type BuildProgressCb = (frac: number) => void;
+/**
+ * Coarse phase label for the current emit. The four stages together cover
+ * every emit site inside `buildResult` so the UI can tell a user which
+ * phase is taking the wall-clock — envelope sorts and streak rankings
+ * dominate on large S, stats/convergence are cheap.
+ */
+export type BuildStage = "stats" | "envelopes" | "streaks" | "convergence";
+type BuildProgressCb = (frac: number, stage: BuildStage) => void;
 
 /**
  * Marsaglia polar gaussian factory. The polar method natively yields two
@@ -1111,7 +1118,7 @@ export function buildResult(
     rowBountyProfits,
     ruinedCount,
   } = shard;
-  onBuildProgress?.(0.02);
+  onBuildProgress?.(0.02, "stats");
   let expectedProfitAccum = 0;
   for (let s = 0; s < S; s++) expectedProfitAccum += finalProfits[s];
 
@@ -1120,7 +1127,7 @@ export function buildResult(
   // Direct typed-array memcpy: .slice() on a Float64Array is a single
   // memcpy, .from() iterates and boxes. Same for other sorted copies below.
   const sorted = finalProfits.slice().sort();
-  onBuildProgress?.(0.10);
+  onBuildProgress?.(0.10, "stats");
   const pct = (p: number) =>
     sorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
   const median = pct(0.5);
@@ -1345,7 +1352,7 @@ export function buildResult(
     shard.cashlessStreakCounts,
     60,
   );
-  onBuildProgress?.(0.18);
+  onBuildProgress?.(0.18, "stats");
 
   // Envelopes ---------------------------------------------------------------
   // Percentile sorts run on the low-res K=80 grid (cheap). The final
@@ -1398,10 +1405,10 @@ export function buildResult(
     p0015[j] = col[Math.floor(0.0015 * (envS - 1))];
     p9985[j] = col[Math.floor(0.9985 * (envS - 1))];
     if (onBuildProgress && j > 0 && j % envEmitStride === 0) {
-      onBuildProgress(0.10 + 0.70 * ((j + 1) / K1));
+      onBuildProgress(0.10 + 0.70 * ((j + 1) / K1), "envelopes");
     }
   }
-  onBuildProgress?.(0.82);
+  onBuildProgress?.(0.82, "envelopes");
 
   // Sample paths ------------------------------------------------------------
   // Hi-res capture was populated during simulateShard: shard 0's first N
@@ -1431,9 +1438,9 @@ export function buildResult(
   // Tail quantiles of max drawdown — a straight answer to
   // "how bad is a typical/5%/1% worst run". PrimeDope only shows a single
   // aggregate estimate; we expose the whole tail shape.
-  onBuildProgress?.(0.83);
+  onBuildProgress?.(0.83, "streaks");
   const ddSorted = maxDrawdowns.slice().sort();
-  onBuildProgress?.(0.85);
+  onBuildProgress?.(0.85, "streaks");
   const ddPct = (p: number) =>
     ddSorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
   const maxDrawdownMedian = ddPct(0.5);
@@ -1569,11 +1576,11 @@ export function buildResult(
     ddIdx[i] = i;
     upIdx[i] = i;
   }
-  onBuildProgress?.(0.88);
+  onBuildProgress?.(0.88, "streaks");
   ddIdx.sort((a, b) => maxDrawdowns[b] - maxDrawdowns[a]);
-  onBuildProgress?.(0.93);
+  onBuildProgress?.(0.93, "streaks");
   upIdx.sort((a, b) => maxRunUps[b] - maxRunUps[a]);
-  onBuildProgress?.(0.97);
+  onBuildProgress?.(0.97, "streaks");
   const downswings = ddIdx.slice(0, Math.min(3, S)).map((sampleIndex, i) => ({
     rank: i + 1,
     sampleIndex,
@@ -1623,7 +1630,7 @@ export function buildResult(
       idxConv++;
     }
   }
-  onBuildProgress?.(0.99);
+  onBuildProgress?.(0.99, "convergence");
 
   return {
     type: "result",
