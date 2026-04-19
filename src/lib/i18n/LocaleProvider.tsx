@@ -37,7 +37,12 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setLocale = useCallback((l: Locale) => {
-    setLocaleState(l);
+    // Every consumer of useLocale re-renders when locale flips, which on this
+    // app is the whole tree (ScheduleEditor, ControlsPanel, ResultsView,
+    // charts). Deferring inside startTransition lets React paint the switcher
+    // click immediately and fan out the translation pass behind the input
+    // frame, so the toggle itself feels instant.
+    startTransition(() => setLocaleState(l));
     try {
       localStorage.setItem(LS_KEY, l);
     } catch {
