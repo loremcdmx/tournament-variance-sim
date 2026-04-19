@@ -30,21 +30,6 @@ export function isItmTargetActive(cfg: ItmTargetConfig): boolean {
 }
 
 /**
- * Resolve the effective ITM fraction for a single row. When the global
- * toggle is on, it always wins; per-row values only apply when global is
- * off. Returns null when neither is set.
- */
-export function rowItmTarget(
-  row: TournamentRow,
-  cfg: ItmTargetConfig,
-): number | null {
-  const global = resolveItmTarget(cfg);
-  if (global != null) return global;
-  if (row.itmRate != null) return row.itmRate;
-  return null;
-}
-
-/**
  * Stamp `itmRate` on every row when the global toggle is on. The global
  * value overrides any per-row ITM the user may have typed — if the toggle
  * is on, the number it shows is the number every row gets. When the toggle

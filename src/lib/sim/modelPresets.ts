@@ -119,10 +119,6 @@ export const STANDARD_PRESETS: ModelPreset[] = [
   },
 ];
 
-export function getStandardPreset(id: string): ModelPreset | undefined {
-  return STANDARD_PRESETS.find((p) => p.id === id);
-}
-
 /** Apply a model patch to a ControlsState, returning a new state. */
 export function applyModelPatch(
   state: ControlsState,

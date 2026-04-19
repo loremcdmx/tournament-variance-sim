@@ -175,11 +175,6 @@ function fmtAfs(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
-function fmtCoef(n: number, digits = 4): string {
-  const fixed = n.toFixed(digits);
-  return fixed.replace(/(\.\d*?[1-9])0+$/u, "$1").replace(/\.0+$/u, "");
-}
-
 // Winitzki's approximation of the inverse error function (max error ~4e-4),
 // good enough to turn a user-picked two-tailed CI into a z-score.
 function inverseErf(x: number): number {
@@ -547,34 +542,6 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     { id: "mix", labelKey: "chart.convergence.format.mix" },
     { id: "exact", labelKey: "chart.convergence.format.exact" },
   ];
-  const targetBandsLabel = TARGETS.map((target) => `${target * 100}%`).join(", ");
-  const fitRows = [
-    {
-      label: t("chart.convergence.format.freeze"),
-      coef: SIGMA_ROI_FREEZE,
-      fitRake: FIT_RAKE_BY_FORMAT.freeze,
-      note: "realdata-linear finish",
-    },
-    {
-      label: t("chart.convergence.format.pko"),
-      coef: SIGMA_ROI_PKO,
-      fitRake: FIT_RAKE_BY_FORMAT.pko,
-      note: "bountyFraction=0.5, pkoHeadVar=0.4",
-    },
-    {
-      label: t("chart.convergence.format.mystery"),
-      coef: SIGMA_ROI_MYSTERY,
-      fitRake: FIT_RAKE_BY_FORMAT.mystery,
-      note: "mysteryBountyVariance=2.0, roughest fit",
-    },
-    {
-      label: t("chart.convergence.format.mystery-royale"),
-      coef: SIGMA_ROI_MYSTERY_ROYALE,
-      fitRake: FIT_RAKE_BY_FORMAT["mystery-royale"],
-      note: "AFS fixed at 18, beta baked to 0",
-    },
-  ];
-
   return (
     <div className="overflow-x-auto">
       <div
