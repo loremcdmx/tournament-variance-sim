@@ -1197,7 +1197,7 @@ export const DICT = {
   "refLines.add": { en: "Add line", ru: "Добавить линию" },
   "section.verdict": { en: "Verdict", ru: "Вердикт" },
   "section.primedopeReport": { en: "PrimeDope report", ru: "PrimeDope отчёт" },
-  "section.pdWeakness": { en: "PokerDope model flaws", ru: "Минусы модели PokerDope" },
+  "section.pdWeakness": { en: "PrimeDope model flaws", ru: "Минусы модели PrimeDope" },
   "section.settingsDump": { en: "Run settings", ru: "Настройки рана" },
   "section.pdVerdict": { en: "PrimeDope verdict", ru: "Вердикт PrimeDope" },
   "section.pdDiff": { en: "PrimeDope diff", ru: "Разница с PrimeDope" },

@@ -509,7 +509,7 @@ export default function Home() {
             <h1 className="flex flex-col leading-none">
               <div className="flex items-baseline gap-0">
                 <span className="text-[22px] font-black tracking-[-0.02em] text-[color:var(--color-fg)] sm:text-[28px]" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
-                  Poker
+                  Prime
                 </span>
                 <span className="text-[22px] font-black tracking-[-0.02em] text-[color:var(--color-accent)] sm:text-[28px]" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
                   Dope
@@ -519,9 +519,16 @@ export default function Home() {
                 but better
               </span>
             </h1>
-            <span className="hidden rounded-sm border border-[color:var(--color-accent)]/40 px-1.5 py-0.5 font-mono text-[9px] font-bold tabular-nums text-[color:var(--color-accent)]/70 sm:inline">
-              v0.6
-            </span>
+            <a
+              href="#changelog"
+              onClick={() => {
+                const el = document.getElementById("changelog");
+                if (el instanceof HTMLDetailsElement) el.open = true;
+              }}
+              className="hidden cursor-pointer rounded-sm border border-[color:var(--color-accent)]/40 px-1.5 py-0.5 font-mono text-[9px] font-bold tabular-nums text-[color:var(--color-accent)]/70 transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] sm:inline"
+            >
+              v0.7a
+            </a>
           </div>
           <CornerToggles />
         </div>
@@ -1066,7 +1073,7 @@ export default function Home() {
             LoremCDMX
           </a>
         </div>
-        <details className="group">
+        <details id="changelog" className="group scroll-mt-4">
           <summary className="cursor-pointer select-none text-[color:var(--color-fg-muted)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[color:var(--color-fg)]">
             {t("changelog.title")}
           </summary>

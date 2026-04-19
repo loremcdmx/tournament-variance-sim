@@ -71,25 +71,34 @@ const SIGMA_ROI_PKO = {
   C1: 0.4961,
   beta: 0.2763,
 };
-// Mystery coefficients recalibrated after #71 bumped the log-normal bounty
-// variance σ²=0.8→2.0 to give the envelope a jackpot tail ~4e-5 at 100× mean
-// (σ²=0.8 was 4500× too thin, see scripts/probe_mystery_tail.ts). Wider tail
-// inflates σ_ROI ≈ 55% across ROIs. Fit: 11 ROIs × 18 fields at buy-in $50,
-// rake 10%, mtt-gg-mystery payout. R²=0.927 global, R²=0.997 on linear C(roi).
+// Mystery coefficients refit 2026-04-18 after adbf278 restricted the mystery
+// envelope harmonic window to top-9 FT. Probe showed non-uniform drift
+// (-5.7% to +17.4% across field×ROI) → full resweep.
+// Fit: 11 ROIs × 18 fields at buy-in $50, rake 10%, mtt-gg-mystery payout,
+// mysteryBountyVariance=2.0 (#71 jackpot tail). R²=0.996 on linear C(roi),
+// but per-ROI field-fits only reach R²=0.80-0.87 — σ(field) isn't cleanly
+// power-law: at small fields the top-9 harmonic envelope saturates σ near
+// ~5.6, then σ grows log-linearly past field≈1000. Global β=0.1325 averages
+// this. Cross-validation on 10 held-out (field,roi) pairs (xval_mystery.ts):
+// mean |Δ/σ|=17.6%, max 26.6% at extremes. Acceptable for a quick-estimate
+// widget, but a richer 2D model (or dual-β) would halve the residuals.
 const SIGMA_ROI_MYSTERY = {
-  C0: 1.5669,
-  C1: 1.8493,
-  beta: 0.1914,
+  C0: 2.5164,
+  C1: 3.7097,
+  beta: 0.1325,
 };
 // Battle Royale is fixed AFS=18 in the UI (see BR_FIXED_AFS + #93), so the
 // field-sweep β is degenerate. `fit_br_fixed18.ts` measures σ_ROI across 11
-// ROIs at a single AFS=18 under the #92 discrete-tier envelope distribution
-// and linear-fits C(roi). β=0 bakes 18^β into the C coefficients. C0/C1 are
-// an order of magnitude higher than the pre-#92 log-normal fit — the tier
-// jackpot tail inflates σ_ROI roughly 4× vs the old σ²=1.8 log-normal path.
+// ROIs at a single AFS=18 and linear-fits C(roi). β=0 bakes 18^β into the
+// C coefficients. Refit 2026-04-18 after adbf278 restricted the mystery
+// envelope harmonic window to top-9 FT — bounty mass concentrates on fewer
+// finishers, inflating σ_ROI by ~16% across the ROI band. Cross-validated
+// on 10 held-out ROIs in [-15%, 60%]: max residual 0.07% of σ, mean
+// |resid/SE|=0.16 (noise-indistinguishable). Quadratic term has curvature
+// 0.048 — negligible over the UI's ±10% band. Linear is optimal.
 const SIGMA_ROI_MYSTERY_ROYALE = {
-  C0: 7.0167,
-  C1: 6.7234,
+  C0: 8.1534,
+  C1: 7.9063,
   beta: 0,
 };
 

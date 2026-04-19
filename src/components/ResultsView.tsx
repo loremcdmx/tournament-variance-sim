@@ -1185,13 +1185,78 @@ function shiftResultByRakeback(
   };
 }
 
+function rebuildEnvelopesFromPaths(
+  fallback: SimulationResult["envelopes"],
+  paths: Float64Array[],
+): SimulationResult["envelopes"] {
+  if (paths.length === 0) return fallback;
+  const len = fallback.x.length;
+  const mean = new Float64Array(len);
+  const p05 = new Float64Array(len);
+  const p95 = new Float64Array(len);
+  const p15 = new Float64Array(len);
+  const p85 = new Float64Array(len);
+  const p025 = new Float64Array(len);
+  const p975 = new Float64Array(len);
+  const p0015 = new Float64Array(len);
+  const p9985 = new Float64Array(len);
+  const min = new Float64Array(len);
+  const max = new Float64Array(len);
+  const scratch = new Array<number>(paths.length);
+  const pick = (q: number) => {
+    const pos = q * Math.max(0, scratch.length - 1);
+    const lo = Math.floor(pos);
+    const hi = Math.ceil(pos);
+    if (lo === hi) return scratch[lo] ?? 0;
+    const w = pos - lo;
+    const a = scratch[lo] ?? 0;
+    const b = scratch[hi] ?? a;
+    return a + (b - a) * w;
+  };
+
+  for (let t = 0; t < len; t++) {
+    let sum = 0;
+    for (let i = 0; i < paths.length; i++) {
+      const path = paths[i];
+      const v =
+        t < path.length ? path[t] : path.length > 0 ? path[path.length - 1] : 0;
+      scratch[i] = v;
+      sum += v;
+    }
+    scratch.sort((a, b) => a - b);
+    mean[t] = sum / paths.length;
+    min[t] = scratch[0] ?? 0;
+    max[t] = scratch[scratch.length - 1] ?? 0;
+    p0015[t] = pick(0.0015);
+    p025[t] = pick(0.025);
+    p05[t] = pick(0.05);
+    p15[t] = pick(0.15);
+    p85[t] = pick(0.85);
+    p95[t] = pick(0.95);
+    p975[t] = pick(0.975);
+    p9985[t] = pick(0.9985);
+  }
+
+  return {
+    ...fallback,
+    mean,
+    p05,
+    p95,
+    p15,
+    p85,
+    p025,
+    p975,
+    p0015,
+    p9985,
+    min,
+    max,
+  };
+}
+
 // Strip samples flagged in `jackpotMask` from the fields that drive
-// scale-sensitive charts (finalProfits → histogram, stored paths →
-// trajectory). Other fields (envelopes, decomposition, stats) use
-// percentiles or totals that the one-in-N-samples jackpot barely
-// perturbs, so they're left intact. `best` / `worst` paths are
-// reselected from the remaining stored paths so the trajectory chart
-// doesn't keep the jackpot curve as its extreme marker.
+// scale-sensitive charts (finalProfits, stored paths, trajectory envelopes).
+// `best` / `worst` paths are reselected from the remaining stored paths so
+// the trajectory chart doesn't keep the jackpot curve as its extreme marker.
 function stripJackpots(r: SimulationResult): SimulationResult {
   const mask = r.jackpotMask;
   if (!mask || mask.length === 0) return r;
@@ -1239,10 +1304,13 @@ function stripJackpots(r: SimulationResult): SimulationResult {
     worst = keptPaths[worstI];
   }
 
+  const envelopes = rebuildEnvelopesFromPaths(r.envelopes, keptPaths);
+
   return {
     ...r,
     finalProfits: filteredFinal,
     histogram,
+    envelopes,
     samplePaths: {
       ...r.samplePaths,
       paths: keptPaths,
@@ -2059,7 +2127,7 @@ export function ResultsView({
     () => applyLineStyleOverrides(LINE_STYLE_PRESETS[lineStylePresetId], lineOverrides),
     [lineStylePresetId, lineOverrides],
   );
-  const maxRunsAvailable = result.samplePaths.paths.length;
+  const maxRunsAvailable = displayResultTraj.samplePaths.paths.length;
   const runsCap = Math.min(1000, maxRunsAvailable);
   const maxRuns = runsCap;
   // Desired slider value is preserved even when a new sim lowers maxRuns
@@ -2784,7 +2852,7 @@ export function ResultsView({
         title={t("section.pdWeakness")}
         showUnitToggle={false}
       >
-        <PokerDopeWeaknessCard />
+        <PrimeDopeWeaknessCard />
       </CollapsibleSection>
     </div>
     </MoneyFmtContext.Provider>
@@ -4269,7 +4337,7 @@ function PrimedopeReportCard({ result }: { result: SimulationResult }) {
 // + raw probe responses: notes/pokerdope_weaknesses.md, scripts/pd_probe.mjs,
 // scripts/pd_cache/. Collapsed by default so it doesn't shout at users who
 // just want the numbers.
-function PokerDopeWeaknessCard() {
+function PrimeDopeWeaknessCard() {
   return (
     <Card className="rounded-none border-0 p-4">
       <div className="flex flex-col gap-4 text-[11px] leading-relaxed text-[color:var(--color-fg)]">
