@@ -303,12 +303,12 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 
 ## 🧹 Tech debt / cleanup
 
-### Dead code — статус после knip-прохода 2026-04-18
+### Dead code — статус после knip-прохода 2026-04-19
 - ✅ Удалено: `SensitivityChart.tsx`, `charts/common.ts` (unused)
 - ✅ Удалено: `calibrateFixedItm`, `translate`, `LOCATIVE`, `OVERRIDABLE_LINE_KEYS`, `isOptionalLine`, `loadPdOverlayStyle`/`savePdOverlayStyle`/`DEFAULT_PD_OVERLAY_STYLE`/`PdOverlayStyle`
 - ✅ Удалено: `rowItmTarget`, `findScenario`, `getStandardPreset`, `fmtCoef`, `targetBandsLabel`, `fitRows` (2026-04-18 pre-prod sweep)
 - ✅ Создан `knip.json` с конфигом для `scripts/` + tailwind/postcss ignore
-- ⏭️ Unused types: 22 штуки — большинство в публичных модулях движка, решить case-by-case
+- ✅ `npx knip` clean (0 issues на 2026-04-19) — открытый пункт «22 unused types» разрешён предыдущими волнами очистки.
 
 ### Knip false-positive profile
 Next.js + worker-pool + dev-only scripts дают систематические false positives в knip:
