@@ -10,6 +10,22 @@ import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from
 import type { TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
 
+// Warn dev if a loaded row has BR/mystery-royale flags out of sync — the
+// compile boundary will fix it silently, but surfacing here helps catch
+// bad imports or stale JSON before engine behavior depends on the fix.
+function warnOnBrMrDrift(schedule: TournamentRow[] | undefined, source: string) {
+  if (!schedule) return;
+  for (const r of schedule) {
+    const isBR = r.payoutStructure === "battle-royale";
+    const isMR = r.gameType === "mystery-royale";
+    if (isBR !== isMR) {
+      console.warn(
+        `[persistence/${source}] row "${r.label || r.id}" has BR/mystery-royale flags out of sync (gameType=${r.gameType}, payoutStructure=${r.payoutStructure}); compiler will normalize.`,
+      );
+    }
+  }
+}
+
 export interface PersistedState {
   v: 1;
   schedule: TournamentRow[];
@@ -28,6 +44,7 @@ export function decodeState(encoded: string): PersistedState | null {
     if (!json) return null;
     const parsed = JSON.parse(json);
     if (parsed && typeof parsed === "object" && parsed.v === 1) {
+      warnOnBrMrDrift(parsed.schedule, "decodeState");
       return parsed as PersistedState;
     }
     return null;
@@ -50,6 +67,7 @@ export function loadLocal(): PersistedState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && parsed.v === 1) {
+      warnOnBrMrDrift(parsed.schedule, "loadLocal");
       return parsed as PersistedState;
     }
     return null;
@@ -80,7 +98,12 @@ export function loadUserPresets(): UserPreset[] {
     const raw = localStorage.getItem(PRESETS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed as UserPreset[];
+    if (Array.isArray(parsed)) {
+      for (const p of parsed as UserPreset[]) {
+        warnOnBrMrDrift(p?.state?.schedule, `preset "${p?.name ?? "?"}"`);
+      }
+      return parsed as UserPreset[];
+    }
     return [];
   } catch {
     return [];

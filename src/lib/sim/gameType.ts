@@ -52,6 +52,23 @@ export function inferGameType(row: TournamentRow): GameType {
  * possible (e.g. switching between mystery ↔ mystery-royale keeps the
  * current bountyFraction), so the user's manual tweaks survive.
  */
+/**
+ * Normalize the gameType ↔ payoutStructure invariant. Mystery Battle Royale
+ * format is keyed on two flags that MUST agree: `gameType === "mystery-royale"`
+ * gates the FT-window harmonic KO accumulator (engine.ts top-9 window), while
+ * `payoutStructure === "battle-royale"` gates the discrete envelope-tier
+ * sampler. Legacy rows (pre-gameType column, manual JSON edits, old
+ * localStorage) can drift — silently fix at compile boundary so both hot-loop
+ * branches see consistent state. Returns the row unchanged if already in sync.
+ */
+export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
+  const isBR = row.payoutStructure === "battle-royale";
+  const isMR = row.gameType === "mystery-royale";
+  if (isBR && !isMR) return { ...row, gameType: "mystery-royale" };
+  if (isMR && !isBR) return { ...row, payoutStructure: "battle-royale" };
+  return row;
+}
+
 export function applyGameType(
   row: TournamentRow,
   next: GameType,

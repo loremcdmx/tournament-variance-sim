@@ -26,6 +26,7 @@ import {
 } from "./finishModel";
 import { applyICMToPayoutTable } from "./icm";
 import { makeBrTierSampler } from "./brBountyTiers";
+import { normalizeBrMrConsistency } from "./gameType";
 import { mulberry32, mixSeed } from "./rng";
 import type {
   CalibrationMode,
@@ -169,19 +170,18 @@ interface CompiledEntry {
   /**
    * Expected number of knockouts by finish place. Used by the hot loop to
    * add within-place stochastic noise to the bounty haul: at a fixed place
-   * the realized KO count is Poisson-ish around `bountyKmean[place]`, so the
-   * realized bounty payout equals `bountyByPlace[place] × K / kmean` with K
-   * drawn from a Gaussian approximation around that mean. Mean is preserved
-   * exactly, but the per-tournament variance that was previously zero within
-   * place is now modelled. Shares null with bountyByPlace.
+   * the realized KO count is Poisson around `bountyKmean[place]`, and the
+   * realized bounty payout equals `bountyByPlace[place] × K / kmean`. K is
+   * drawn via Knuth's inverse-CDF for small λ and PTRS (Hörmann 1993) for
+   * λ ≥ 10 — see `poissonPTRS` / `poissonKnuth` above. Mean is preserved
+   * exactly; the per-tournament within-place variance is real (not zero
+   * as in the original scalar-per-place bounty formulation). Shares null
+   * with bountyByPlace.
    */
   bountyKmean: Float64Array | null;
   /** Precomputed exp(−bountyKmean[i]) for the Knuth Poisson path. Saves one
    *  `Math.exp` per tourney in bounty rows. Zero where bountyKmean is zero. */
   bountyKmeanExp: Float64Array | null;
-  /** Precomputed sqrt(bountyKmean[i]) for the Gaussian-Poisson path. Saves one
-   *  `Math.sqrt` per tourney in bounty rows. Zero where bountyKmean is zero. */
-  bountyKmeanSqrt: Float64Array | null;
   /** Precomputed 1/bountyKmean[i] for the bounty normalization. Replaces the
    *  per-tourney divide with a multiply. Zero where bountyKmean is zero. */
   bountyKmeanInv: Float64Array | null;
@@ -238,6 +238,11 @@ export function compileSchedule(
   input: SimulationInput,
   calibrationMode: CalibrationMode = "alpha",
 ): CompiledSchedule {
+  // Normalize BR ↔ mystery-royale pairing at the compile boundary: legacy
+  // rows with drifted flags silently get fixed up so both gameType-gated and
+  // payoutStructure-gated hot-loop branches see consistent state (#131).
+  const normalizedSchedule = input.schedule.map(normalizeBrMrConsistency);
+  input = normalizedSchedule === input.schedule ? input : { ...input, schedule: normalizedSchedule };
   const rowCounts = new Array<number>(input.schedule.length).fill(0);
   const rowBuyIns = new Array<number>(input.schedule.length).fill(0);
   const rowLabels = input.schedule.map((r, i) => r.label || `Row ${i + 1}`);
@@ -788,19 +793,16 @@ function compileSingleEntry(
   }
 
   // Derived bountyKmean transforms. Hoisting these out of the hot loop saves
-  // one exp, one sqrt, and one divide per tournament in bounty rows.
+  // one exp and one divide per tournament in bounty rows.
   let bountyKmeanExp: Float64Array | null = null;
-  let bountyKmeanSqrt: Float64Array | null = null;
   let bountyKmeanInv: Float64Array | null = null;
   if (bountyKmean !== null) {
     bountyKmeanExp = new Float64Array(N);
-    bountyKmeanSqrt = new Float64Array(N);
     bountyKmeanInv = new Float64Array(N);
     for (let i = 0; i < N; i++) {
       const lam = bountyKmean[i];
       if (lam > 0) {
         bountyKmeanExp[i] = Math.exp(-lam);
-        bountyKmeanSqrt[i] = Math.sqrt(lam);
         bountyKmeanInv[i] = 1 / lam;
       }
     }
@@ -919,7 +921,6 @@ function compileSingleEntry(
     bountyByPlace,
     bountyKmean,
     bountyKmeanExp,
-    bountyKmeanSqrt,
     bountyKmeanInv,
     mysteryBountyLogVar: perKoLogVar,
     mysteryBountyLogSigma: perKoLogVar > 0 ? Math.sqrt(perKoLogVar) : 0,
@@ -1407,7 +1408,9 @@ export function buildResult(
   // Tail quantiles of max drawdown — a straight answer to
   // "how bad is a typical/5%/1% worst run". PrimeDope only shows a single
   // aggregate estimate; we expose the whole tail shape.
+  onBuildProgress?.(0.83);
   const ddSorted = maxDrawdowns.slice().sort();
+  onBuildProgress?.(0.85);
   const ddPct = (p: number) =>
     ddSorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
   const maxDrawdownMedian = ddPct(0.5);
@@ -1597,6 +1600,7 @@ export function buildResult(
       idxConv++;
     }
   }
+  onBuildProgress?.(0.99);
 
   return {
     type: "result",
@@ -1814,19 +1818,36 @@ export function histogramOf(
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi === lo) {
     hi = lo + 1;
   }
-  // Long-tail guard (opt-in): when the distribution is heavy on the right
-  // (drawdowns, recovery lengths), a single outlier stretches the x-axis
-  // and crushes the visible bulk into the first bin. Clip the upper edge
-  // to p99 of the sample distribution; overflow folds into the last bin.
-  // Raw extremes still available via stats.*. Lower bound is left alone
-  // to avoid distorting two-sided distributions (finalProfits doesn't use
-  // this branch at all).
+  // Long-tail guard (opt-in): a single jackpot sample at 100× median
+  // (Mystery Royale right tail) stretches the x-axis 2+ orders of
+  // magnitude and crushes the visible bulk into the first 1-2 bins.
+  // Upper bound = min(p99.9, median + 4·IQR): for approximately-Gaussian
+  // data the p99.9 wins and behavior is unchanged; for jackpot-heavy data
+  // the Tukey bound wins and keeps the bulk readable. Overflow folds into
+  // the last bin; raw extremes still exposed via stats.*.
+  //
+  // For signed data (finalProfits: losses AND wins) mirror the same clip
+  // on the lower side so an asymmetric right tail can't push the bulk
+  // off-axis to the left. Right-skewed non-negative distributions
+  // (drawdowns, recovery) keep lo = min(arr) — the left side carries
+  // real information there, not a clipped tail.
   if (longTailClip && n > 1) {
     const sorted = new Float64Array(arr);
     sorted.sort();
-    const idx = Math.min(n - 1, Math.floor(0.999 * (n - 1)));
-    const p999 = sorted[idx];
+    const q = (p: number): number =>
+      sorted[Math.min(n - 1, Math.max(0, Math.floor(p * (n - 1))))];
+    const p999 = q(0.999);
     if (p999 > lo + 1e-9 && p999 < hi) hi = p999;
+    if (!nonNegative && lo < 0) {
+      const med = q(0.5);
+      const iqr = q(0.75) - q(0.25);
+      if (iqr > 0) {
+        const upper = med + 4 * iqr;
+        const lower = med - 4 * iqr;
+        if (upper < hi) hi = upper;
+        if (lower > lo) lo = lower;
+      }
+    }
   }
   const span = hi - lo;
   const binEdges: number[] = new Array(bins + 1);
