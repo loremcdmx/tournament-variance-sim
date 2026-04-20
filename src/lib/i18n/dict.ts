@@ -330,8 +330,12 @@ export const DICT = {
 
   // Controls panel
   "controls.scheduleRepeats": {
-    en: "Sessions to play",
-    ru: "Сколько сессий сыграем",
+    en: "Tournaments per sample",
+    ru: "Турниров в сэмпле",
+  },
+  "controls.scheduleRepeatsComputed": {
+    en: "schedule repeats",
+    ru: "повторов расписания",
   },
   "controls.samples": { en: "Simulations", ru: "Симуляций" },
   "controls.bankroll": { en: "Bankroll", ru: "Банкролл" },
@@ -532,8 +536,8 @@ export const DICT = {
   "controls.done.worstDD": { en: "Max drawdown", ru: "Макс. просадка" },
   "controls.done.dryStreak": { en: "Longest cashless", ru: "Без ИТМ, макс" },
   "controls.totalTourneys": {
-    en: "tournaments on chart",
-    ru: "турниров на графике",
+    en: "tournaments/sample",
+    ru: "турниров в сэмпле",
   },
   "controls.uploadCSV": { en: "Upload CSV…", ru: "Загрузить CSV…" },
   "controls.empHint": {
@@ -1821,8 +1825,8 @@ export const DICT = {
 
   // Help tooltips — controls panel
   "help.scheduleRepeats": {
-    en: "How many times your schedule replays inside one sample. 200 × 10 tourneys = 2,000 tourneys/sample. Bigger = longer distance, variance averages out.",
-    ru: "Сколько раз расписание проигрывается внутри одного сэмпла. 200 × 10 турниров = 2 000 турниров/сэмпл. Больше — длиннее дистанция, дисперсия усредняется.",
+    en: "Target distance inside one simulated sample. The app rounds up to full schedule repeats: if the schedule has 47 tournaments and you ask for 1,000, the engine runs 22 repeats = 1,034 tournaments/sample.",
+    ru: "Целевая дистанция внутри одного сэмпла. Приложение округляет вверх до целых повторов расписания: если в расписании 47 турниров, а нужно 1 000, движок запустит 22 повтора = 1 034 турнира/сэмпл.",
   },
   "help.samples": {
     en: "How many alternative futures to simulate. More = smoother tails and worst-case numbers, slower to compute. 5k is quick, 50k is overkill-nice.",

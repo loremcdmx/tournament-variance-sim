@@ -99,7 +99,9 @@ interface Props {
   stage?: ProgressStage | null;
   /** Projected run duration in ms, or null when no prior run exists. */
   estimatedMs?: number | null;
-  /** Total tournaments per sample (sum of row.count * scheduleRepeats). */
+  /** Tournaments in one schedule pass before repeat expansion. */
+  tournamentsPerSchedule: number;
+  /** Actual tournaments per sample after rounding to full schedule repeats. */
   tournamentsPerSession: number;
   /** When a run has just finished, a compact snapshot to display under the
    * run button so the user sees *something* happened without scrolling to
@@ -144,6 +146,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   progress,
   stage,
   estimatedMs,
+  tournamentsPerSchedule,
   tournamentsPerSession,
   doneSummary,
 }: Props) {
@@ -194,11 +197,18 @@ export const ControlsPanel = memo(function ControlsPanel({
     if (running) setRunToken((t) => t + 1);
   }, [running]);
   const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
+  const scheduleTournaments = Math.max(1, Math.round(tournamentsPerSchedule));
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
+  const maxTournamentsPerSample = scheduleTournaments * 100_000;
   const seedLabel = `0x${(value.seed >>> 0).toString(16).padStart(8, "0")}`;
   const showSeedLabel = running || !!doneSummary;
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
+  const setTournamentTarget = (target: number) => {
+    const roundedTarget = Math.max(scheduleTournaments, Math.floor(target));
+    const repeats = Math.max(1, Math.ceil(roundedTarget / scheduleTournaments));
+    set("scheduleRepeats", repeats);
+  };
 
   const handleEmpiricalPaste = (raw: string) => {
     setEmpError(null);
@@ -251,16 +261,21 @@ export const ControlsPanel = memo(function ControlsPanel({
         disabled={running}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      {/* Run controls: sessions, samples */}
+      {/* Run controls: target tournaments per sample, samples */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
-          <NumInput
-            value={value.scheduleRepeats}
-            min={1}
-            max={100_000}
-            step={1}
-            onChange={(v) => set("scheduleRepeats", Math.floor(v))}
-          />
+          <>
+            <NumInput
+              value={totalTournaments}
+              min={scheduleTournaments}
+              max={maxTournamentsPerSample}
+              step={scheduleTournaments}
+              onChange={setTournamentTarget}
+            />
+            <div className="mt-1 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+              ≈ {formatCount(value.scheduleRepeats)} {t("controls.scheduleRepeatsComputed")}
+            </div>
+          </>
         </Field>
         <Field label={t("controls.samples")} hint={t("help.samples")}>
           <NumInput

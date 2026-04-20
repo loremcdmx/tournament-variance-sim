@@ -377,20 +377,23 @@ export default function Home() {
     },
     [interruptBackground],
   );
+  const tournamentsPerSchedule = useMemo(
+    () => schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
+    [schedule],
+  );
   const tournamentsPerSession = useMemo(
     () =>
-      schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0) *
-      Math.max(1, controls.scheduleRepeats),
-    [schedule, controls.scheduleRepeats],
+      tournamentsPerSchedule * Math.max(1, controls.scheduleRepeats),
+    [tournamentsPerSchedule, controls.scheduleRepeats],
   );
   const estimatedMs = useMemo(
     () =>
       estimateMs(
         controls.samples,
         controls.scheduleRepeats,
-        schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
+        tournamentsPerSchedule,
       ),
-    [estimateMs, controls.samples, controls.scheduleRepeats, schedule],
+    [estimateMs, controls.samples, controls.scheduleRepeats, tournamentsPerSchedule],
   );
   const scheduleGlobalItmPct = useMemo(
     () => (controls.itmGlobalEnabled ? controls.itmGlobalPct : null),
@@ -899,6 +902,7 @@ export default function Home() {
               progress={progress}
               stage={stage}
               estimatedMs={estimatedMs}
+              tournamentsPerSchedule={tournamentsPerSchedule}
               tournamentsPerSession={tournamentsPerSession}
               doneSummary={doneSummary}
             />
