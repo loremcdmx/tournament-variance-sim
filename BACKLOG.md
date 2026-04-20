@@ -3,7 +3,7 @@
 > **Single source of truth.** Все активные и закрытые задачи живут здесь.
 > Memory-файлы содержат только указатель на этот документ — не дублировать статус.
 >
-> Актуален на **2026-04-20** (v0.7.2, ветка `main`).
+> Актуален на **2026-04-20** (v0.7.3, ветка `dev`).
 > Закрытые задачи см. в `git log`. История прогресса — в `CHANGELOG.md`.
 > Feature scope на 2026-04-13 расширен: re-entry / PKO / empirical model **IN SCOPE** (см. commit ec88189 и ранее).
 
@@ -367,7 +367,7 @@ Next.js + worker-pool + dev-only scripts дают систематические
 | `docs/FITTING.md` | Как запускать σ-sweep, интерпретировать `{C0, C1, β}` |
 | `CONTRIBUTING.md` | Dev setup, branching, commit style, testing rules |
 | `AGENTS.md` | Post-compression re-entry point + sharp edges |
-| `CHANGELOG.md` | Релиз-история (последний: v0.7.2) |
+| `CHANGELOG.md` | Релиз-история (последний: v0.7.3) |
 
 ---
 
