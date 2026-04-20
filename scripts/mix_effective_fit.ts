@@ -1,13 +1,21 @@
 /**
- * Mix σ_ROI = sqrt(p·σ²_pko + (1−p)·σ²_freeze) is NOT a clean power law —
- * it's a sum of two power laws with different exponents. Fit an effective
- * C·field^β over [50, 50k] for common mix ratios × ROIs to report.
+ * Mix σ_ROI = sqrt(p·σ²_pko + (1−p)·σ²_freeze) is NOT a clean power law.
+ * Freeze is single-β, while the runtime PKO surface is a 2D log-polynomial.
+ * Fit an effective C·field^β over [50, 50k] for common mix ratios × ROIs
+ * to report.
  *
  *   npx tsx scripts/mix_effective_fit.ts
  */
 
 const FREEZE = { C0: 0.6564, C1: 0, beta: 0.3694 };
-const PKO = { C0: 0.6265, C1: 0.4961, beta: 0.2763 };
+const PKO = {
+  a0: 1.21374,
+  a1: -0.21789,
+  a2: 0.03473,
+  b1: 0.67318,
+  b2: -0.03445,
+  c: -0.05298,
+};
 
 const FIELDS = [
   50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500,
@@ -16,7 +24,15 @@ const FIELDS = [
 
 function sigmaMix(afs: number, roi: number, p: number): number {
   const sigmaF = Math.max(0, FREEZE.C0 + FREEZE.C1 * roi) * Math.pow(afs, FREEZE.beta);
-  const sigmaP = Math.max(0, PKO.C0 + PKO.C1 * roi) * Math.pow(afs, PKO.beta);
+  const L = Math.log(Math.max(1, afs));
+  const sigmaP = Math.exp(
+    PKO.a0 +
+      PKO.a1 * L +
+      PKO.a2 * L * L +
+      PKO.b1 * roi +
+      PKO.b2 * roi * roi +
+      PKO.c * roi * L,
+  );
   return Math.sqrt(p * sigmaP * sigmaP + (1 - p) * sigmaF * sigmaF);
 }
 
@@ -48,7 +64,7 @@ const ROIS = [-0.1, 0, 0.1, 0.2, 0.4];
 const MIXES = [0, 0.3, 0.4, 0.5, 0.6, 0.7, 1];
 
 console.log("Effective σ_ROI = C · field^β fit over field ∈ [50, 50 000].");
-console.log("(mix is a sum of two power laws — fit is approximate, R² drops in 30..70 %)");
+console.log("(mix composes runtime freeze + PKO surfaces — fit is approximate, R² drops in 30..70 %)");
 console.log("");
 console.log(
   "  ROI    pkoShare    C        β       R²      σ(1k)    σ(10k)",

@@ -100,4 +100,35 @@ describe("validateSchedule", () => {
     expect(res.issues.map((i) => i.rowId)).toEqual(["bad"]);
     expect(res.issues[0].rowIdx).toBe(1);
   });
+
+  it("allows fixed-ITM bounty rows when residual bounty EV closes total ROI", () => {
+    // The shelled cash side cannot hit targetRegular here: first-place mass is
+    // already too valuable. Engine compile then reconciles the actual bounty
+    // budget as totalWinningsEV - cashEV, so the total row EV is still pinned.
+    const r = row({
+      payoutStructure: "mtt-gg-bounty",
+      roi: 1,
+      itmRate: 0.20,
+      bountyFraction: 0.5,
+      finishBuckets: { first: 0.05 },
+    });
+
+    expect(validateSchedule([r], baseModel).ok).toBe(true);
+  });
+
+  it("still flags fixed-ITM bounty rows when locked cash EV already exceeds total ROI", () => {
+    // Residual bounty reconcile can add missing bounty EV, but it cannot
+    // subtract cash EV. This remains infeasible and must keep blocking Run.
+    const r = row({
+      payoutStructure: "mtt-gg-bounty",
+      roi: 0.2,
+      itmRate: 0.20,
+      bountyFraction: 0.5,
+      finishBuckets: { first: 0.05 },
+    });
+    const res = validateSchedule([r], baseModel);
+
+    expect(res.ok).toBe(false);
+    expect(res.issues[0].currentEv).toBeGreaterThan(res.issues[0].targetEv);
+  });
 });

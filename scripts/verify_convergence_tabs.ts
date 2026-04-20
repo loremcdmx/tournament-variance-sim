@@ -12,18 +12,66 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const SIGMA_ROI_FREEZE = { C0: 0.6564, C1: 0, beta: 0.3694 };
-const SIGMA_ROI_PKO = { C0: 0.6265, C1: 0.4961, beta: 0.2763 };
-const SIGMA_ROI_MYSTERY = { C0: 2.5164, C1: 3.7097, beta: 0.1325 };
-const SIGMA_ROI_MYSTERY_ROYALE = { C0: 8.1534, C1: 7.9063, beta: 0 };
+type SingleBetaCoef = {
+  kind: "single-beta";
+  C0: number;
+  C1: number;
+  beta: number;
+};
+type LogPoly2DCoef = {
+  kind: "log-poly-2d";
+  a0: number;
+  a1: number;
+  a2: number;
+  b1: number;
+  b2: number;
+  c: number;
+};
+type RuntimeCoef = SingleBetaCoef | LogPoly2DCoef;
+
+const SIGMA_ROI_FREEZE: SingleBetaCoef = { kind: "single-beta", C0: 0.6564, C1: 0, beta: 0.3694 };
+const SIGMA_ROI_PKO: LogPoly2DCoef = {
+  kind: "log-poly-2d",
+  a0: 1.21374,
+  a1: -0.21789,
+  a2: 0.03473,
+  b1: 0.67318,
+  b2: -0.03445,
+  c: -0.05298,
+};
+const SIGMA_ROI_MYSTERY: LogPoly2DCoef = {
+  kind: "log-poly-2d",
+  a0: 2.33290,
+  a1: -0.27564,
+  a2: 0.02917,
+  b1: 1.14218,
+  b2: -0.09962,
+  c: -0.08406,
+};
+const SIGMA_ROI_MYSTERY_ROYALE: SingleBetaCoef = { kind: "single-beta", C0: 8.1534, C1: 7.9063, beta: 0 };
 const FIT_RAKE_BY_FORMAT = { freeze: 0.1, pko: 0.1, mystery: 0.1, "mystery-royale": 0.08 } as const;
 
-type Coef = typeof SIGMA_ROI_FREEZE;
 type Fmt = keyof typeof FIT_RAKE_BY_FORMAT;
 
-function sigmaFor(coef: Coef, afs: number, roi: number, rake: number, fitRake: number): number {
+function evalSigma(coef: RuntimeCoef, afs: number, roi: number): number {
+  const f = Math.max(1, afs);
+  if (coef.kind === "log-poly-2d") {
+    const L = Math.log(f);
+    return Math.exp(
+      coef.a0 +
+        coef.a1 * L +
+        coef.a2 * L * L +
+        coef.b1 * roi +
+        coef.b2 * roi * roi +
+        coef.c * roi * L,
+    );
+  }
+  return Math.max(0, coef.C0 + coef.C1 * roi) * Math.pow(f, coef.beta);
+}
+
+function sigmaFor(coef: RuntimeCoef, afs: number, roi: number, rake: number, fitRake: number): number {
   const rakeScale = (1 + fitRake) / (1 + rake);
-  return Math.max(0, coef.C0 + coef.C1 * roi) * Math.pow(Math.max(1, afs), coef.beta) * rakeScale;
+  return evalSigma(coef, afs, roi) * rakeScale;
 }
 
 function inverseErf(x: number): number {
@@ -64,20 +112,20 @@ console.log(`  ✓ σ invariant in ROI (C1=0)  [σ@-30%=${sLoRoi.toFixed(3)}, σ
 // ---------- Tab 2: PKO ------------------------------------------------------
 
 console.log("\n==== TAB: pko ====");
-const sPkoLoRoi = sigmaFor(SIGMA_ROI_PKO, 1000, -0.3, 0.1, 0.1);
-const sPkoHiRoi = sigmaFor(SIGMA_ROI_PKO, 1000, 1.0, 0.1, 0.1);
-console.log(`σ@-30% = ${sPkoLoRoi.toFixed(3)}  σ@+100% = ${sPkoHiRoi.toFixed(3)}  (must be ↑)`);
+const sPkoLoRoi = sigmaFor(SIGMA_ROI_PKO, 1000, -0.2, 0.1, 0.1);
+const sPkoHiRoi = sigmaFor(SIGMA_ROI_PKO, 1000, 0.8, 0.1, 0.1);
+console.log(`σ@-20% = ${sPkoLoRoi.toFixed(3)}  σ@+80% = ${sPkoHiRoi.toFixed(3)}  (must be ↑ in-box)`);
 if (sPkoHiRoi <= sPkoLoRoi) throw new Error(`pko σ not monotone↑ in ROI`);
-console.log("  ✓ σ monotone↑ in ROI (C1>0)");
+console.log("  ✓ σ monotone↑ in ROI inside fit box");
 
 // ---------- Tab 3: MYSTERY --------------------------------------------------
 
 console.log("\n==== TAB: mystery ====");
-const sMyLoRoi = sigmaFor(SIGMA_ROI_MYSTERY, 1000, -0.3, 0.1, 0.1);
-const sMyHiRoi = sigmaFor(SIGMA_ROI_MYSTERY, 1000, 1.0, 0.1, 0.1);
-console.log(`σ@-30% = ${sMyLoRoi.toFixed(3)}  σ@+100% = ${sMyHiRoi.toFixed(3)}  (must be ↑)`);
+const sMyLoRoi = sigmaFor(SIGMA_ROI_MYSTERY, 1000, -0.2, 0.1, 0.1);
+const sMyHiRoi = sigmaFor(SIGMA_ROI_MYSTERY, 1000, 0.8, 0.1, 0.1);
+console.log(`σ@-20% = ${sMyLoRoi.toFixed(3)}  σ@+80% = ${sMyHiRoi.toFixed(3)}  (must be ↑ in-box)`);
 if (sMyHiRoi <= sMyLoRoi) throw new Error(`mystery σ not monotone↑ in ROI`);
-console.log("  ✓ σ monotone↑ in ROI");
+console.log("  ✓ σ monotone↑ in ROI inside fit box");
 
 // ---------- Tab 4: MYSTERY-ROYALE (β=0, AFS-independent) --------------------
 
@@ -139,7 +187,7 @@ const rows = [
   { fmt: "mystery-royale" as Fmt, afs: 18, roi: 0.05, rake: 0.08, count: 20 },
 ];
 const totalCount = rows.reduce((a, r) => a + r.count, 0);
-const COEF: Record<Fmt, Coef> = {
+const COEF: Record<Fmt, RuntimeCoef> = {
   freeze: SIGMA_ROI_FREEZE,
   pko: SIGMA_ROI_PKO,
   mystery: SIGMA_ROI_MYSTERY,

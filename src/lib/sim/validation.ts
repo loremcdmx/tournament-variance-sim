@@ -5,7 +5,8 @@
  * UI as structured warnings rather than silent clamps. Runs on the main
  * thread before the worker dispatch.
  */
-import { calibrateShelledItm } from "./finishModel";
+import { applyBountyBias, calibrateShelledItm } from "./finishModel";
+import { normalizeBrMrConsistency } from "./gameType";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
@@ -39,7 +40,8 @@ export function validateSchedule(
   model: FinishModelConfig,
 ): ScheduleFeasibility {
   const issues: RowFeasibilityIssue[] = [];
-  schedule.forEach((row, idx) => {
+  schedule.forEach((rawRow, idx) => {
+    const row = normalizeBrMrConsistency(rawRow);
     if (row.itmRate == null || row.itmRate <= 0) return;
     if (!row.finishBuckets) return;
     const hasLock =
@@ -48,17 +50,46 @@ export function validateSchedule(
       row.finishBuckets.ft != null;
     if (!hasLock) return;
 
-    const N = Math.max(2, Math.floor(row.players));
+    const lateRegMult = Math.max(1, row.lateRegMultiplier ?? 1);
+    const N = Math.max(2, Math.floor(row.players * lateRegMult));
+
+    const maxEntries = Math.max(1, Math.floor(row.maxEntries ?? 1));
+    const reRate = Math.max(
+      0,
+      Math.min(1, row.reentryRate ?? (maxEntries > 1 ? 1 : 0)),
+    );
+    let reentryExpected = 0;
+    if (maxEntries > 1 && reRate > 0) {
+      if (reRate === 1) {
+        reentryExpected = maxEntries - 1;
+      } else {
+        const M = maxEntries - 1;
+        reentryExpected = (reRate * (1 - Math.pow(reRate, M))) / (1 - reRate);
+      }
+    }
+
     const payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
     const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
-    const basePool = row.players * row.buyIn;
+    const effectiveSeats = N * (1 + reentryExpected);
+    const basePool = effectiveSeats * row.buyIn;
+    const overlay = Math.max(0, (row.guarantee ?? 0) - basePool);
     const entryCost = row.buyIn * (1 + row.rake);
+    const totalWinningsEV = entryCost * (1 + row.roi);
     const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
-    const bountyPerSeat = row.buyIn * bountyFraction;
-    const bountyLift = Math.max(0.1, Math.min(3, (1 + row.rake) * (1 + row.roi)));
-    const bountyMean = bountyPerSeat * bountyLift;
-    const prizePool = basePool * (1 - bountyFraction);
-    const targetRegular = Math.max(0.01, entryCost * (1 + row.roi) - bountyMean);
+    let bountyMean = 0;
+    let prizePool = basePool + overlay;
+    if (bountyFraction > 0) {
+      const bountyPerSeat = row.buyIn * bountyFraction;
+      const bountyLift = Math.max(
+        0.1,
+        Math.min(3, (1 + row.rake) * (1 + row.roi)),
+      );
+      const defaultBountyMean = bountyPerSeat * bountyLift;
+      const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
+      bountyMean = applyBountyBias(defaultBountyMean, totalWinningsEV, bias);
+      prizePool = prizePool * (1 - bountyFraction);
+    }
+    const targetRegular = Math.max(0.01, totalWinningsEV - bountyMean);
 
     const r = calibrateShelledItm(
       N,
@@ -70,14 +101,22 @@ export function validateSchedule(
       row.finishBuckets,
       model,
     );
-    if (!r.feasible) {
+    const residualCanCloseTotal =
+      bountyFraction > 0 && r.currentWinnings <= totalWinningsEV + 1e-3;
+    const feasible = r.feasible || residualCanCloseTotal;
+    if (!feasible) {
+      const targetEv = bountyFraction > 0 ? totalWinningsEV : targetRegular;
+      const currentEv =
+        bountyFraction > 0
+          ? r.currentWinnings + Math.max(0, totalWinningsEV - r.currentWinnings)
+          : r.currentWinnings;
       issues.push({
         rowId: row.id,
         rowIdx: idx,
         label: row.label || `#${idx + 1}`,
-        targetEv: targetRegular,
-        currentEv: r.currentWinnings,
-        gap: r.currentWinnings - targetRegular,
+        targetEv,
+        currentEv,
+        gap: currentEv - targetEv,
       });
     }
   });

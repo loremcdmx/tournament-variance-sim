@@ -1,10 +1,16 @@
 /**
- * In-sample drift report for σ_ROI power-law fits.
+ * In-sample drift report for σ_ROI runtime fits.
  *
  * Reads canonical scripts/fit_beta_*.json + optional matching
- * *_200k_probe.json artifacts and evaluates how well the fitted surface
- * σ_fit(field, roi) = (C0 + C1·roi) · field^β reproduces the measured
- * σ grid in each artifact. No simulation runs — pure re-evaluation.
+ * *_200k_probe.json artifacts and evaluates how well the runtime surface
+ * reproduces the measured σ grid in each artifact. No simulation runs —
+ * pure re-evaluation.
+ *
+ * Runtime forms:
+ *   - Freeze: single-β, σ = (C0 + C1·roi) · field^β
+ *   - PKO / Mystery: 2D log-poly,
+ *       log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L
+ *   - Mystery Battle Royale: fixed-AFS linear σ = C0 + C1·roi
  *
  * For freeze / pko / mystery the artifact carries a (fields × rois) table,
  * and we report residuals r = (σ_fit − σ_measured) / σ_measured in three
@@ -34,10 +40,23 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 interface FieldFit {
+  kind: "single-beta";
   C0: number;
   C1: number;
   beta: number;
 }
+
+interface LogPoly2DFit {
+  kind: "log-poly-2d";
+  a0: number;
+  a1: number;
+  a2: number;
+  b1: number;
+  b2: number;
+  c: number;
+}
+
+type RuntimeFit = FieldFit | LogPoly2DFit;
 
 interface FieldArtifact {
   fields: number[];
@@ -82,8 +101,8 @@ interface FormatReport {
   format: "freeze" | "pko" | "pko_core" | "mystery";
   canonicalPath: string;
   probePath: string | null;
-  canonicalFit: FieldFit;
-  probeFit: FieldFit | null;
+  canonicalFit: RuntimeFit;
+  probeFit: RuntimeFit | null;
   combos: ComboReport[];
 }
 
@@ -122,8 +141,19 @@ const FORMATS: Array<{
 
 const MBR_PATH = "scripts/fit_beta_mystery_royale.json";
 
-function sigmaFit(f: FieldFit, field: number, roi: number): number {
-  return (f.C0 + f.C1 * roi) * Math.pow(field, f.beta);
+function sigmaFit(f: RuntimeFit, field: number, roi: number): number {
+  if (f.kind === "single-beta") {
+    return (f.C0 + f.C1 * roi) * Math.pow(field, f.beta);
+  }
+  const L = Math.log(field);
+  return Math.exp(
+    f.a0 +
+      f.a1 * L +
+      f.a2 * L * L +
+      f.b1 * roi +
+      f.b2 * roi * roi +
+      f.c * roi * L,
+  );
 }
 
 function quantile(xs: number[], q: number): number {
@@ -137,7 +167,7 @@ function quantile(xs: number[], q: number): number {
 }
 
 function statsFor(
-  fit: FieldFit,
+  fit: RuntimeFit,
   art: FieldArtifact,
   zone: Zone,
 ): ResidualStats {
@@ -187,12 +217,70 @@ async function readJsonIfExists<T>(p: string): Promise<T | null> {
   }
 }
 
-function asFit(art: { cRoiLinear: { C0: number; C1: number }; globalBeta?: number }): FieldFit {
+function asSingleBetaFit(art: { cRoiLinear: { C0: number; C1: number }; globalBeta?: number }): FieldFit {
   return {
+    kind: "single-beta",
     C0: art.cRoiLinear.C0,
     C1: art.cRoiLinear.C1,
     beta: art.globalBeta ?? 0,
   };
+}
+
+function features2DLogPoly(field: number, roi: number): number[] {
+  const L = Math.log(field);
+  return [1, L, L * L, roi, roi * roi, roi * L];
+}
+
+function solve(A: number[][], b: number[]): number[] {
+  const n = A.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(M[row][col]) > Math.abs(M[piv][col])) piv = row;
+    }
+    if (piv !== col) [M[col], M[piv]] = [M[piv], M[col]];
+    const d = M[col][col];
+    if (Math.abs(d) < 1e-14) throw new Error(`singular normal equation at col=${col}`);
+    for (let j = col; j <= n; j++) M[col][j] /= d;
+    for (let row = 0; row < n; row++) {
+      if (row === col) continue;
+      const f = M[row][col];
+      for (let j = col; j <= n; j++) M[row][j] -= f * M[col][j];
+    }
+  }
+  return M.map((row) => row[n]);
+}
+
+function fitLogPoly2D(art: FieldArtifact): LogPoly2DFit {
+  const p = 6;
+  const xtx: number[][] = Array.from({ length: p }, () => Array(p).fill(0));
+  const xty: number[] = Array(p).fill(0);
+  for (const roi of art.rois) {
+    const row = art.table[String(roi)];
+    if (!row || row.length !== art.fields.length) {
+      throw new Error(`mismatched table row for roi=${roi}`);
+    }
+    for (let i = 0; i < art.fields.length; i++) {
+      const sigma = row[i];
+      if (!Number.isFinite(sigma) || sigma <= 0) {
+        throw new Error(`invalid sigma=${sigma} for roi=${roi}, field=${art.fields[i]}`);
+      }
+      const x = features2DLogPoly(art.fields[i], roi);
+      const y = Math.log(sigma);
+      for (let j = 0; j < p; j++) {
+        xty[j] += x[j] * y;
+        for (let k = 0; k < p; k++) xtx[j][k] += x[j] * x[k];
+      }
+    }
+  }
+  const [a0, a1, a2, b1, b2, c] = solve(xtx, xty);
+  return { kind: "log-poly-2d", a0, a1, a2, b1, b2, c };
+}
+
+function runtimeFitFor(format: FormatReport["format"], art: FieldArtifact): RuntimeFit {
+  if (format === "pko" || format === "mystery") return fitLogPoly2D(art);
+  return asSingleBetaFit(art);
 }
 
 async function runFieldFormat(
@@ -211,12 +299,12 @@ async function runFieldFormat(
   }
   const probe = await readJsonIfExists<FieldArtifact>(probePath);
 
-  const canonicalFit = asFit(canonical);
-  const probeFit = probe ? asFit(probe) : null;
+  const canonicalFit = runtimeFitFor(id, canonical);
+  const probeFit = probe ? runtimeFitFor(id, probe) : null;
 
   const combos: ComboReport[] = [];
 
-  const build = (fit: FieldFit, art: FieldArtifact): ComboReport["zones"] => ({
+  const build = (fit: RuntimeFit, art: FieldArtifact): ComboReport["zones"] => ({
     full: statsFor(fit, art, ZONES[0]),
     userWide: statsFor(fit, art, ZONES[1]),
     userNarrow: statsFor(fit, art, ZONES[2]),
@@ -289,6 +377,17 @@ function fmtPct(x: number): string {
   return (x * 100).toFixed(2) + "%";
 }
 
+function fitSummary(f: RuntimeFit): string {
+  if (f.kind === "single-beta") {
+    return `single-β C0=${f.C0.toFixed(4)} C1=${f.C1.toFixed(4)} β=${f.beta.toFixed(4)}`;
+  }
+  return (
+    `log-poly-2d a0=${f.a0.toFixed(4)} a1=${f.a1.toFixed(4)} ` +
+    `a2=${f.a2.toFixed(4)} b1=${f.b1.toFixed(4)} ` +
+    `b2=${f.b2.toFixed(4)} c=${f.c.toFixed(4)}`
+  );
+}
+
 function logCombo(format: string, combo: ComboReport): void {
   const label = `${combo.fit} fit × ${combo.grid} grid`;
   console.log(`  ${format.padEnd(12)} ${label}`);
@@ -311,12 +410,12 @@ async function main() {
   }
   const mbr = await runMbr();
 
-  console.log("fit_drift_report — in-sample residuals (σ_fit − σ_measured) / σ_measured\n");
+  console.log("fit_drift_report — runtime-fit residuals (σ_fit − σ_measured) / σ_measured\n");
   for (const rep of fieldReports) {
     console.log(
-      `${rep.format}:  canonical C0=${rep.canonicalFit.C0.toFixed(4)} C1=${rep.canonicalFit.C1.toFixed(4)} β=${rep.canonicalFit.beta.toFixed(4)}` +
+      `${rep.format}:  canonical ${fitSummary(rep.canonicalFit)}` +
         (rep.probeFit
-          ? `  |  probe C0=${rep.probeFit.C0.toFixed(4)} C1=${rep.probeFit.C1.toFixed(4)} β=${rep.probeFit.beta.toFixed(4)}`
+          ? `  |  probe ${fitSummary(rep.probeFit)}`
           : "  (no probe on disk)"),
     );
     for (const c of rep.combos) logCombo(rep.format, c);

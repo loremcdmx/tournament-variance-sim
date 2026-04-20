@@ -195,6 +195,8 @@ export const ControlsPanel = memo(function ControlsPanel({
   }, [running]);
   const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
+  const seedLabel = `0x${(value.seed >>> 0).toString(16).padStart(8, "0")}`;
+  const showSeedLabel = running || !!doneSummary;
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
 
@@ -488,6 +490,15 @@ export const ControlsPanel = memo(function ControlsPanel({
             <span className="text-[color:var(--color-fg-dim)]">·</span>
             <span>
               {formatCount(totalTournaments)} {t("controls.totalTourneys")}
+            </span>
+          </div>
+          <div
+            className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]"
+            title={t("help.seed")}
+          >
+            {t("controls.seed")}:{" "}
+            <span className="tracking-normal text-[color:var(--color-fg-muted)]">
+              {showSeedLabel ? seedLabel : t("controls.seedAuto")}
             </span>
           </div>
         </div>

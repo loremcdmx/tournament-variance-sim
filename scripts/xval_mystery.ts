@@ -3,7 +3,7 @@
  *
  * Training (fit_beta_mystery.json, 2026-04-18) used 18 fields × 11 ROIs.
  * This script measures σ_ROI on held-out combinations not in the training
- * grid, comparing against the predictor σ = (C0 + C1·roi) · field^β.
+ * grid, comparing against the runtime 2D log-poly Mystery predictor.
  *
  *   npx tsx scripts/xval_mystery.ts
  */
@@ -18,10 +18,15 @@ const RAKE = 0.1;
 // Different seed from training (20260417/20260418) — independence of samples.
 const SEED = 20260419;
 
-// Fresh Mystery coefficients from fit_beta_mystery.json.
-const C0 = 2.5164;
-const C1 = 3.7097;
-const BETA = 0.1325;
+// Runtime Mystery coefficients from ConvergenceChart.tsx.
+const MYSTERY = {
+  a0: 2.33290,
+  a1: -0.27564,
+  a2: 0.02917,
+  b1: 1.14218,
+  b2: -0.09962,
+  c: -0.08406,
+};
 
 // Held-out (field, ROI) pairs: none of these appear in the training grid.
 // Fields chosen between training grid points; ROIs chosen between the 11 trained ROIs.
@@ -72,12 +77,26 @@ function measure(afs: number, roi: number): { sigma: number; sigmaSE: number } {
   return { sigma, sigmaSE };
 }
 
+function predictMystery(afs: number, roi: number): number {
+  const L = Math.log(Math.max(1, afs));
+  return Math.exp(
+    MYSTERY.a0 +
+      MYSTERY.a1 * L +
+      MYSTERY.a2 * L * L +
+      MYSTERY.b1 * roi +
+      MYSTERY.b2 * roi * roi +
+      MYSTERY.c * roi * L,
+  );
+}
+
 async function main() {
   const t0 = Date.now();
   console.log(
     `xval_mystery: ${HELD_OUT.length} held-out (field,roi) points, N=${N_TOURNEYS}, samples=${SAMPLES}, seed=${SEED}`,
   );
-  console.log(`  predictor: σ = (${C0} + ${C1}·roi) · field^${BETA}`);
+  console.log(
+    "  predictor: log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L",
+  );
   console.log("");
   console.log(
     "  field   roi      σ(actual)  σ(SE)    σ(pred)    Δ        Δ/σ(SE)  Δ/σ(%)",
@@ -97,7 +116,7 @@ async function main() {
   }> = [];
   for (const { afs, roi } of HELD_OUT) {
     const { sigma, sigmaSE } = measure(afs, roi);
-    const pred = (C0 + C1 * roi) * Math.pow(afs, BETA);
+    const pred = predictMystery(afs, roi);
     const resid = sigma - pred;
     const residStd = resid / sigmaSE;
     const residPct = (resid / sigma) * 100;

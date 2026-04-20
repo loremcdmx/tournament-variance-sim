@@ -12,45 +12,49 @@ If you want to fit your own data, skip to [Fit your own data](#fit-your-own-data
 ## What we're fitting
 
 The headline surface is σ\_ROI — the per-tournament standard deviation of
-ROI — as a function of **field size** and **true ROI edge**. Empirically
-it's close to a power law, with a linear ROI-intercept:
+ROI — as a function of **field size** and **true ROI edge**. The UI uses
+two runtime forms:
+
+Single-β power law for formats where the residuals stay small enough:
 
 ```
 σ_ROI(field, roi) ≈ (C0 + C1 · roi) · field^β
 ```
 
-Three scalars per tournament format — `{C0, C1, β}`. `β` is the
-field-size exponent (how fast σ grows with field), `C0` is the edge-free
-intercept, `C1` is how much a +1.0 ROI edge inflates σ. Zeros are legal;
-freezeout-realdata currently fits with `C1 ≈ 0`, meaning σ is nearly
-ROI-invariant for freeze.
+2D log-polynomial for PKO / Mystery, where the single-β surface left
+visible structure in the grid residuals:
 
-Current production fits (raw in `scripts/fit_beta_*.json`, inlined as
-constants `SIGMA_ROI_{FREEZE,PKO,MYSTERY,MYSTERY_ROYALE}` near the top
-of `src/components/charts/ConvergenceChart.tsx`):
+```
+log σ_ROI(field, roi) =
+  a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L
 
-| Format                         | C0     | C1     | β      |
-| ------------------------------ | ------ | ------ | ------ |
-| freezeout (realdata-linear)    | 0.6564 | 0      | 0.3694 |
-| PKO (realdata-linear)          | 0.6265 | 0.4961 | 0.2763 |
-| Mystery Bounty                 | 2.5164 | 3.7097 | 0.1325 |
-| Mystery Battle Royale          | 8.1534 | 7.9063 | 0      |
-| mix freeze/PKO (effective)     | —      | —      | —      |
+where L = log(field), R = roi
+```
+
+Current production fits (raw grid data in `scripts/fit_beta_*.json`,
+runtime constants in `SIGMA_ROI_{FREEZE,PKO,MYSTERY,MYSTERY_ROYALE}`
+near the top of `src/components/charts/ConvergenceChart.tsx`):
+
+| Format                      | Runtime form  | Coefficients |
+| --------------------------- | ------------- | ------------ |
+| freezeout (realdata-linear) | single-β      | C0=0.6564, C1=0, β=0.3694 |
+| PKO                         | 2D log-poly   | a0=1.21374, a1=-0.21789, a2=0.03473, b1=0.67318, b2=-0.03445, c=-0.05298 |
+| Mystery Bounty              | 2D log-poly   | a0=2.33290, a1=-0.27564, a2=0.02917, b1=1.14218, b2=-0.09962, c=-0.08406 |
+| Mystery Battle Royale       | fixed-AFS linear | C0=8.1534, C1=7.9063, β=0 |
+| mix freeze/PKO              | exact σ² composition | no promoted `{C,β}` |
 
 The mix row is effective-only: σ²\_mix = p·σ²\_PKO + (1−p)·σ²\_freeze
-is a sum of two power laws with different exponents, so no single
-`{C,β}` fits cleanly. `scripts/mix_effective_fit.ts` reports the
-best-fit effective `{C,β}` for common mix ratios × ROIs — useful for
-reporting but not for live UI math, which composes freeze+PKO
-analytically.
+is a composition of two runtime surfaces, so no single `{C,β}` fits
+cleanly. `scripts/mix_effective_fit.ts` reports an approximate effective
+`{C,β}` for common mix ratios × ROIs — useful for reporting, not for live
+UI math.
 
-Reading of coefficients: `β` drops as ROI-sensitivity rises because
-bounty-heavy formats concentrate variance on deep runs, which
-scales sub-linearly with field. Mystery Royale's C0 is an order of
-magnitude above freeze's (~12×) because the jackpot log-normal
-envelope noise lifts the whole surface; MBR's β is 0 by construction
-since the AFS slider is locked at 18 in the UI, so `fit_br_fixed18.ts`
-absorbs any field dependence into C0.
+Reading of coefficients: in the single-β form, `β` is the field-size
+exponent, `C0` is the edge-free intercept, and `C1` is how much a +1.0
+ROI edge inflates σ. In the 2D log-poly form, inspect the residual report
+instead of trying to interpret one coefficient in isolation. Mystery
+Royale's β is 0 by construction since the AFS slider is locked at 18 in
+the UI, so `fit_br_fixed18.ts` absorbs any field dependence into C0.
 
 ## Why a fit and not a formula?
 
@@ -182,11 +186,16 @@ single-β is leaving structure on the table past ~10k AFS. Promoting a
 log-poly form to the UI requires a second, runtime-usable fit (not
 centered) — this artifact doesn't provide that.
 
-The pair you paste into the UI is
+For a single-β promotion, the tuple you paste into the UI is
 `{ C0: cRoiLinear.C0, C1: cRoiLinear.C1, beta: globalBeta }`.
 `perRoiFits[i].C` are the per-ROI intercepts that `cRoiLinear` then
 regresses through — the joint fit freezes β across all ROIs and lets
 only `C(roi)` vary.
+
+For PKO / Mystery, do not paste the artifact's single-β summary into
+the UI. Run `scripts/refit_2d_logpoly.ts` and promote the reported
+`a0/a1/a2/b1/b2/c` coefficients only after `fit_drift_report.ts` confirms
+user-zone residuals are acceptable.
 
 Pitfalls:
 
@@ -218,10 +227,13 @@ is a net loss for the UI.
 1. Open `src/components/charts/ConvergenceChart.tsx`.
 2. Find the coefficient constants near the top of the file:
    `SIGMA_ROI_FREEZE`, `SIGMA_ROI_PKO`, `SIGMA_ROI_MYSTERY`,
-   `SIGMA_ROI_MYSTERY_ROYALE`. Each is a `{ C0, C1, beta }` literal.
-3. Paste in the new values: `C0` and `C1` come from `cRoiLinear`, `beta`
-   comes from `globalBeta`. For MBR, use `fit_beta_mystery_royale.json`
-   (produced by `scripts/fit_br_fixed18.ts`); its β is 0 by construction.
+   `SIGMA_ROI_MYSTERY_ROYALE`. Each is a `SigmaCoef` literal with
+   `kind: "single-beta"` or `kind: "log-poly-2d"`.
+3. For single-β fits, paste `C0`/`C1` from `cRoiLinear` and `beta` from
+   `globalBeta`. For PKO / Mystery, paste the 2D coefficients from
+   `scripts/refit_2d_logpoly.ts`. For MBR, use
+   `fit_beta_mystery_royale.json` (produced by
+   `scripts/fit_br_fixed18.ts`); its β is 0 by construction.
 4. Verify: `npx tsc --noEmit && npm test && npm run build`. The widget
    recomputes σ on every ROI/field scrub, so a broken constant shows up
    instantly as `NaN` or a visually flat curve.
@@ -250,7 +262,8 @@ short version:
 3. Emit an α-table keyed by `(roi_bucket, format)`; load it in
    `finishModel.ts` as a new finish model.
 4. Re-run the σ sweep (above) using that finish model instead of
-   `pko-realdata-linear`. The new `{C0, C1, β}` is your data-calibrated fit.
+   `pko-realdata-linear`. The new runtime coefficients are your
+   data-calibrated fit; use single-β only if residuals justify it.
 
 This is multi-day work. The scaffold script doesn't exist yet —
 `scripts/calibrate.ts` is a TODO in the memory doc. Ping the author
@@ -266,9 +279,9 @@ sample of real players. Fit the surface directly:
    ```json
    { "fields": [...], "rois": [...], "table": { "0.1": [σ, σ, ...] } }
    ```
-2. Reuse the log-log fit block from `scripts/fit_sigma_parallel.ts` (the
-   `fitLogLog` helper that emits `perRoiFits`, then a second OLS on
-   `C(roi)` to produce `cRoiLinear: {C0, C1, r2}`).
+2. Reuse the log-log fit block from `scripts/fit_sigma_parallel.ts` if
+   single-β is enough. If residuals show field/ROI interaction, use the
+   2D log-poly workflow from `scripts/refit_2d_logpoly.ts`.
 3. Compare your fitted coefficients to the engine's. Divergence tells
    you where the engine's defaults are wrong for your population —
    usually in `pkoHeadVar`, `mysteryBountyVariance`, or the payout

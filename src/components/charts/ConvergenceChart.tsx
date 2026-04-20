@@ -1,8 +1,8 @@
 "use client";
 
 import { memo, useEffect, useMemo, useState } from "react";
-import { useT } from "@/lib/i18n/LocaleProvider";
-import type { DictKey } from "@/lib/i18n/dict";
+import { useLocale } from "@/lib/i18n/LocaleProvider";
+import type { DictKey, Locale } from "@/lib/i18n/dict";
 import type { TournamentRow } from "@/lib/sim/types";
 import {
   getConvergenceBandPolicy,
@@ -234,11 +234,14 @@ function afsToPos(afs: number): number {
   );
   return (clamped - AFS_LOG_MIN) / (AFS_LOG_MAX - AFS_LOG_MIN);
 }
-function fmtAfs(n: number): string {
+function localeTag(locale: Locale): "ru-RU" | "en-US" {
+  return locale === "ru" ? "ru-RU" : "en-US";
+}
+function fmtAfs(n: number, locale: Locale): string {
   if (!Number.isFinite(n)) return "—";
   if (n >= 10_000) return `${(n / 1000).toFixed(1)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(2)}k`;
-  return Math.round(n).toLocaleString();
+  return Math.round(n).toLocaleString(localeTag(locale));
 }
 
 // Winitzki's approximation of the inverse error function (max error ~4e-4),
@@ -259,7 +262,7 @@ function ciToZ(ciFrac: number): number {
 export const ConvergenceChart = memo(function ConvergenceChart({
   schedule,
 }: Props) {
-  const t = useT();
+  const { locale, t } = useLocale();
 
   // Baseline avgField / roi are taken from the current schedule when present;
   // if the user hasn't loaded a schedule yet, fall back to neutral defaults
@@ -280,14 +283,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         countTotal += c;
         fieldWeighted += c * p;
         roiWeighted += c * row.roi;
-        // Match inferGameType's threshold so Battle Royale (σ²≥1.4) is
-        // tracked as its own bucket — otherwise it collapses into "mystery"
-        // and the baseline-format heuristic snaps to the wrong fit.
-        const b = row.bountyFraction ?? 0;
-        const m = row.mysteryBountyVariance ?? 0;
-        if (b > 0 && m >= 1.4) mysteryRoyaleCount += c;
-        else if (b > 0 && m > 0) mysteryCount += c;
-        else if (b > 0) pkoCount += c;
+        const rowFormat = inferRowFormat(row);
+        if (rowFormat === "mystery-royale") mysteryRoyaleCount += c;
+        else if (rowFormat === "mystery") mysteryCount += c;
+        else if (rowFormat === "pko") pkoCount += c;
       }
     }
     const avgField = countTotal > 0 ? fieldWeighted / countTotal : 1000;
@@ -665,7 +664,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
     if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
     if (n >= 1e4) return `${(n / 1e3).toFixed(1)}k`;
-    return Math.round(n).toLocaleString();
+    return Math.round(n).toLocaleString(localeTag(locale));
   };
   const fmtField = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
@@ -804,7 +803,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           onClick={() => setAfsPosOverride(null)}
           disabled={afsLocked}
           className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
-          title={afsLocked ? "—" : `reset to ${fmtAfs(baseline.avgField)}`}
+          title={afsLocked ? "—" : `reset to ${fmtAfs(baseline.avgField, locale)}`}
         >
           ↺
         </button>
@@ -1048,7 +1047,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                   className="border-t border-[color:var(--color-border)]/50 text-[color:var(--color-fg-muted)]"
                 >
                   <td className="py-1 pr-2 truncate max-w-[160px]">{r.label}</td>
-                  <td className="py-1 px-2 text-right">{fmtAfs(r.afs)}</td>
+                  <td className="py-1 px-2 text-right">{fmtAfs(r.afs, locale)}</td>
                   <td className="py-1 px-2 text-right">
                     {(r.roi * 100).toFixed(1)}%
                   </td>

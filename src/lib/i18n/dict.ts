@@ -380,6 +380,10 @@ export const DICT = {
     en: "Run number (reproducibility)",
     ru: "Номер рана (повторяемость)",
   },
+  "controls.seedAuto": {
+    en: "new seed on launch",
+    ru: "новый сид при запуске",
+  },
   "controls.seedReroll": { en: "Re-roll", ru: "Перебросить" },
   "controls.roiStdErr": {
     en: "Uncertainty about your true ROI",
