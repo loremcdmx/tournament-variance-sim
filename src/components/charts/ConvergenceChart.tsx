@@ -31,6 +31,62 @@ interface Props {
   schedule?: TournamentRow[];
 }
 
+function RangeBandValue({
+  pointLabel,
+  loLabel,
+  hiLabel,
+  showRange,
+  title,
+  accent = false,
+}: {
+  pointLabel: string;
+  loLabel: string;
+  hiLabel: string;
+  showRange: boolean;
+  title?: string;
+  accent?: boolean;
+}) {
+  if (!showRange) {
+    return (
+      <span className={accent ? "text-[color:var(--color-accent)]" : undefined}>
+        {pointLabel}
+      </span>
+    );
+  }
+
+  return (
+    <div
+      className="min-w-0 text-right"
+      title={title}
+      aria-label={title}
+    >
+      <div className="relative mx-1 mb-1.5 h-2" aria-hidden="true">
+        <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/55" />
+        <div className="absolute left-0 top-1/2 h-2 w-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/80" />
+        <div className="absolute right-0 top-1/2 h-2 w-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/80" />
+        <div className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_24%,transparent)]" />
+      </div>
+      <div className="grid min-w-0 grid-cols-[auto_auto_auto] items-center justify-between gap-2 font-mono tabular-nums">
+        <span className="whitespace-nowrap text-left text-[10px] leading-none text-[color:var(--color-fg-dim)]">
+          {loLabel}
+        </span>
+        <span
+          className={
+            accent
+              ? "rounded border border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/15 px-1.5 py-0.5 text-[11px] font-bold leading-none text-[color:var(--color-accent)]"
+              : "rounded border border-sky-300/45 bg-sky-300/15 px-1.5 py-0.5 text-[11px] font-bold leading-none text-sky-200"
+          }
+        >
+          {pointLabel}
+        </span>
+        <span className="whitespace-nowrap text-right text-[10px] leading-none text-[color:var(--color-fg-dim)]">
+          {hiLabel}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export const ConvergenceChart = memo(function ConvergenceChart({
   schedule,
 }: Props) {
@@ -617,41 +673,48 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           )}
         </div>
       )}
-      <table className="w-full table-fixed border-collapse text-[12px] tabular-nums">
-        <colgroup>
-          <col className="w-[112px]" />
-          <col />
-          <col />
-        </colgroup>
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            <th className="py-1.5 pr-3 font-semibold whitespace-nowrap">
-              {t("chart.convergence.col.target")}
-            </th>
-            <th className="py-1.5 px-3 text-right font-semibold whitespace-nowrap">
-              {t("chart.convergence.col.tourneys")}
-            </th>
-            <th className="py-1.5 pl-3 text-right font-semibold whitespace-nowrap">
-              {t("chart.convergence.col.fields")}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] table-fixed border-collapse text-[12px] tabular-nums">
+          <colgroup>
+            <col className="w-[112px]" />
+            <col />
+            <col />
+          </colgroup>
+          <thead>
+            <tr className="text-left text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+              <th className="py-1.5 pr-3 font-semibold whitespace-nowrap">
+                {t("chart.convergence.col.target")}
+              </th>
+              <th className="py-1.5 px-3 text-right font-semibold whitespace-nowrap">
+                {t("chart.convergence.col.tourneys")}
+              </th>
+              <th className="py-1.5 pl-3 text-right font-semibold whitespace-nowrap">
+                {t("chart.convergence.col.fields")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
             const showTourneysRange =
               showBand && row.tourneysLo !== row.tourneysHi;
             const showFieldsRange =
               showBand && row.fieldsLo !== row.fieldsHi;
+            const tourneysPointLabel = fmtInt(row.tourneys);
+            const tourneysLoLabel = fmtInt(row.tourneysLo);
+            const tourneysHiLabel = fmtInt(row.tourneysHi);
+            const fieldsPointLabel = fmtField(row.fields);
+            const fieldsLoLabel = fmtField(row.fieldsLo);
+            const fieldsHiLabel = fmtField(row.fieldsHi);
             const tourneysLabel = formatPointRange(
-              fmtInt(row.tourneys),
-              fmtInt(row.tourneysLo),
-              fmtInt(row.tourneysHi),
+              tourneysPointLabel,
+              tourneysLoLabel,
+              tourneysHiLabel,
               showTourneysRange,
             );
             const fieldsLabel = formatPointRange(
-              fmtField(row.fields),
-              fmtField(row.fieldsLo),
-              fmtField(row.fieldsHi),
+              fieldsPointLabel,
+              fieldsLoLabel,
+              fieldsHiLabel,
               showFieldsRange,
             );
             return (
@@ -663,22 +726,36 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                   ±{(row.targetPct * 100).toFixed(row.targetPct < 0.01 ? 1 : 0)}%
                 </td>
                 <td
-                  className="py-1.5 px-3 text-right"
+                  className="py-2 px-3 text-right align-middle"
                   title={showTourneysRange ? tourneysLabel : undefined}
                 >
-                  {tourneysLabel}
+                  <RangeBandValue
+                    pointLabel={tourneysPointLabel}
+                    loLabel={tourneysLoLabel}
+                    hiLabel={tourneysHiLabel}
+                    showRange={showTourneysRange}
+                    title={showTourneysRange ? tourneysLabel : undefined}
+                  />
                 </td>
                 <td
-                  className="py-1.5 pl-3 text-right text-[color:var(--color-accent)]"
+                  className="py-2 pl-3 text-right align-middle"
                   title={showFieldsRange ? fieldsLabel : undefined}
                 >
-                  {fieldsLabel}
+                  <RangeBandValue
+                    pointLabel={fieldsPointLabel}
+                    loLabel={fieldsLoLabel}
+                    hiLabel={fieldsHiLabel}
+                    showRange={showFieldsRange}
+                    title={showFieldsRange ? fieldsLabel : undefined}
+                    accent
+                  />
                 </td>
               </tr>
             );
           })}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
       {effectiveMode === "exact" && exactBreakdown && (
         <div className="mt-3 overflow-x-auto">
           <div className="mb-1 text-[11px] uppercase tracking-wider text-emerald-400/80">
