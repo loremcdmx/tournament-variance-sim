@@ -1776,6 +1776,7 @@ function ResultsViewImpl({
 
   const s = displayResultStats.stats;
   const pdStats = displayPdChartStats?.stats;
+  const pdExpectedProfit = displayPdChartStats?.expectedProfit;
   const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
   const roi = s.mean / displayResultStats.totalBuyIn;
   const modelPreset = modelPresetId
@@ -2166,8 +2167,12 @@ function ResultsViewImpl({
             .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
             .replace("{median}", money(s.median))}
           tone={displayResultStats.expectedProfit >= 0 ? "pos" : "neg"}
-          pdValue={pdStats ? money(pdStats.mean) : undefined}
-          pdDelta={pdStats ? pctDelta(s.mean, pdStats.mean) : null}
+          pdValue={pdExpectedProfit != null ? money(pdExpectedProfit) : undefined}
+          pdDelta={
+            pdExpectedProfit != null
+              ? pctDelta(displayResultStats.expectedProfit, pdExpectedProfit)
+              : null
+          }
           pdLabel={pdBadgeLabel}
         />
         <BigStat
@@ -4710,9 +4715,9 @@ function PrimedopeDiff({
   }[] = [
     {
       label: t("pd.row.ev"),
-      ours: money(ours.mean),
-      theirs: money(theirs.mean),
-      delta: diffMoney(ours.mean, theirs.mean),
+      ours: money(primary.expectedProfit),
+      theirs: money(other.expectedProfit),
+      delta: diffMoney(primary.expectedProfit, other.expectedProfit),
       highlight: true,
     },
     {

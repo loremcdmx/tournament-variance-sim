@@ -562,8 +562,8 @@ export const DICT = {
     ru: "разброс: {min} → {max}",
   },
   "stat.expectedProfit.tip": {
-    en: "Analytical EV (expected payout − buy-in × entries). Actual MC mean: {mean} · ROI {roi} · median {median}.",
-    ru: "Аналитическое EV (ожидаемая выплата − бай-ин × входы). Фактическое MC-среднее: {mean} · ROI {roi} · медиана {median}.",
+    en: "Analytical EV (expected payout − full entry cost × entries). Actual MC mean: {mean} · ROI {roi} · median {median}.",
+    ru: "Аналитическое EV (ожидаемая выплата − полная стоимость входов). Фактическое MC-среднее: {mean} · ROI {roi} · медиана {median}.",
   },
   "stat.probProfit.sub": {
     en: "{n} tourneys to reach ±5% ROI",
@@ -841,8 +841,8 @@ export const DICT = {
     ru: "Рейк-арифметика ПД",
   },
   "chart.trajectory.pdRakeMath.hint": {
-    en: "PD rake quirk (their §7): variance is driven by the POST-rake prize pool, while the EV formula pretends rake doesn't exist.\n\nExample — $100 + $9 rake, 1000 entrants, player ROI +20%:\n  Our EV per tourney = 0.20 × $100 = $20 (rake already paid out of pocket)\n  PD  EV             = 0.20 × $100 = $20 (same number)\n\nBut SD differs:\n  Our SD scales with the full $109 × 1000 pool (rake is a real cost)\n  PD  SD scales with $100 × 1000 pool only (post-rake)\n  → PD's SD comes out ≈8.3% lower on this row\n\nConsequence: crank rake up to $20 and PD's simulated SD keeps *dropping* while their EV stays flat — unphysical. We treat rake as a fixed cost that enters both EV and variance.\n\nUncheck to use the pre-rake pool in PD's pass; isolates how much of the gap comes from this coupling alone.",
-    ru: "Квирк рейка ПД (их §7): дисперсия считается от ПОСТ-рейкового призового пула, а формула EV делает вид, что рейка нет.\n\nПример — $100 + $9 рейк, 1000 участников, ROI игрока +20%:\n  Наш EV на турнир = 0.20 × $100 = $20 (рейк уже вычтен из кармана)\n  EV ПД            = 0.20 × $100 = $20 (та же цифра)\n\nНо SD разная:\n  Наша SD считается от полного пула $109 × 1000 (рейк — реальная стоимость)\n  SD ПД  считается только от $100 × 1000 (пост-рейк)\n  → SD ПД на этой строке выходит ≈8.3% ниже\n\nСледствие: подними рейк до $20 — у ПД симулированная SD будет *падать*, а EV держаться. Нефизично. Мы трактуем рейк как фиксированную стоимость, входящую и в EV, и в дисперсию.\n\nСнимите галку — использовать пре-рейковый пул в прогоне ПД; виден вклад именно этого сочленения в разрыв.",
+    en: "PD rake quirk (their §7): variance is driven by the POST-rake prize pool. In this comparison the EV target stays pinned to the same full-cost ROI as the left chart.\n\nExample — $100 + $9 rake, 1000 entrants, player ROI +20%:\n  EV target in both panes = 0.20 × $109 = $21.80\n\nBut SD differs:\n  Our SD scales with the full $109 × 1000 pool (rake is a real cost)\n  PD  SD scales with $100 × 1000 pool only (post-rake)\n  → PD's SD comes out ≈8.3% lower on this row\n\nConsequence: crank rake up to $20 and PD's simulated SD keeps dropping while EV stays pinned. This toggle isolates that coupling alone.\n\nUncheck to use the pre-rake pool in PD's pass.",
+    ru: "Квирк рейка ПД (их §7): дисперсия считается от ПОСТ-рейкового призового пула. В этом сравнении EV-таргет закреплён тем же ROI от полной стоимости, что и левый график.\n\nПример — $100 + $9 рейк, 1000 участников, ROI игрока +20%:\n  EV-таргет в обеих панелях = 0.20 × $109 = $21.80\n\nНо SD разная:\n  Наша SD считается от полного пула $109 × 1000 (рейк — реальная стоимость)\n  SD ПД  считается только от $100 × 1000 (пост-рейк)\n  → SD ПД на этой строке выходит ≈8.3% ниже\n\nСледствие: подними рейк до $20 — у ПД симулированная SD будет падать, а EV останется закреплённым. Эта галка изолирует только этот эффект.\n\nСнимите галку — использовать пре-рейковый пул в прогоне ПД.",
   },
   "chart.trajectory.sharedY": {
     en: "Both charts share the same Y-axis range so the visual difference in envelope width is directly comparable.",
@@ -1408,12 +1408,12 @@ export const DICT = {
   "pd.row.ddWorst": { en: "Worst streak ever seen", ru: "Худший стрик за ран" },
   "pd.row.ev": { en: "Expected profit (EV)", ru: "Ожидаемый профит (EV)" },
   "pd.evDelta.title": {
-    en: "Our EV is correct — PrimeDope's is off by the rake",
-    ru: "Наш EV правильный — у PrimeDope он занижен на величину рейка",
+    en: "EV target is pinned in both panes",
+    ru: "EV-таргет одинаковый в обеих панелях",
   },
   "pd.evDelta.body": {
-    en: "PD computes EV as buyin × ROI, ignoring the fee you actually pay from your pocket. We compute it against (buyin + fee), the real cost basis. The dollar gap is exactly the rake PD quietly eats. See the 'PD's EV is off' weakness block below.",
-    ru: "PD считает EV как buyin × ROI, игнорируя фи. Мы считаем от полного коста (buyin + fee). Разница в долларах — ровно тот рейк, который PD не учитывает. Подробности в блоке «EV посчитан мимо кассы» ниже.",
+    en: "The comparison keeps the same schedule ROI and full-cost EV target on both sides. Differences below are variance / distribution effects, while the actual MC mean can still wander with finite samples.",
+    ru: "Сравнение держит один и тот же ROI расписания и EV от полной стоимости на обеих сторонах. Разницы ниже — это эффекты дисперсии и распределения, а фактическое MC-среднее всё ещё может гулять на конечном числе сэмплов.",
   },
 
   // Payout structure card

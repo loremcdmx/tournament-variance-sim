@@ -51,6 +51,12 @@ describe("engine", () => {
     expect(Math.abs(realized - 0.2)).toBeLessThan(3 * se);
   });
 
+  it("reports expectedProfit as the deterministic schedule EV target", () => {
+    const r = runSimulation(baseInput({ samples: 1 }));
+    expect(r.totalBuyIn).toBeCloseTo(10 * 1.1 * 200, 12);
+    expect(r.expectedProfit).toBeCloseTo(r.totalBuyIn * 0.2, 10);
+  });
+
   it("uniform model yields realized ROI ≈ -rake", () => {
     const r = runSimulation(
       baseInput({
@@ -175,6 +181,9 @@ describe("engine", () => {
     expect(r.comparison!.calibrationMode).toBe("primedope-binary-itm");
     // Same tournamentsPerSample — compile is deterministic re: schedule size.
     expect(r.comparison!.tournamentsPerSample).toBe(r.tournamentsPerSample);
+    // Same ROI target — the comparison changes distribution assumptions, not EV.
+    expect(r.comparison!.totalBuyIn).toBeCloseTo(r.totalBuyIn, 12);
+    expect(r.comparison!.expectedProfit).toBeCloseTo(r.expectedProfit, 12);
     // Both calibrations aim at the same expected ROI. Binary-ITM is "no skill"
     // (uniform 1/N finish) but keeps the real top-heavy payout curve, so it
     // should still produce meaningful drawdown — just driven by pure luck.
