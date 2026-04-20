@@ -5,6 +5,7 @@ import {
   buildFinishPMF,
   calibrateAlpha,
   calibrateShelledItm,
+  isAlphaAdjustable,
 } from "@/lib/sim/finishModel";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { getPayoutTable } from "@/lib/sim/payouts";
@@ -112,18 +113,25 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     maxBountyShare,
   } = useMemo(() => {
     const nextStats = computeRowStats(row, model);
-    const nextCommittedBountyShare = clampUnit(nextStats.bountyShare);
-    const nextDefaultBountyShare = inferDefaultBountyShare(
-      nextCommittedBountyShare,
-      committedBias,
-    );
-    const { minShare, maxShare } = getBountyShareRange(nextDefaultBountyShare);
+    const hasBounty = (row.bountyFraction ?? 0) > 0;
+    const baseStats =
+      hasBounty && Math.abs(committedBias) > 1e-9
+        ? computeRowStats({ ...row, bountyEvBias: 0 }, model)
+        : nextStats;
+    const lowKoStats =
+      hasBounty && Math.abs(committedBias - MAX_BOUNTY_BIAS) > 1e-9
+        ? computeRowStats({ ...row, bountyEvBias: MAX_BOUNTY_BIAS }, model)
+        : nextStats;
+    const highKoStats =
+      hasBounty && Math.abs(committedBias - MIN_BOUNTY_BIAS) > 1e-9
+        ? computeRowStats({ ...row, bountyEvBias: MIN_BOUNTY_BIAS }, model)
+        : nextStats;
     return {
       stats: nextStats,
-      committedBountyShare: nextCommittedBountyShare,
-      defaultBountyShare: nextDefaultBountyShare,
-      minBountyShare: minShare,
-      maxBountyShare: maxShare,
+      committedBountyShare: clampUnit(nextStats.bountyShare),
+      defaultBountyShare: clampUnit(baseStats.bountyShare),
+      minBountyShare: clampUnit(lowKoStats.bountyShare),
+      maxBountyShare: clampUnit(highKoStats.bountyShare),
     };
   }, [row, model, committedBias]);
 
@@ -912,48 +920,41 @@ function clampBountyBias(v: number): number {
   return Math.max(MIN_BOUNTY_BIAS, Math.min(MAX_BOUNTY_BIAS, v));
 }
 
-function bountyShareFromBias(defaultShare: number, bias: number): number {
+function bountyShareFromBias(
+  defaultShare: number,
+  minShare: number,
+  maxShare: number,
+  bias: number,
+): number {
   const anchor = clampUnit(defaultShare);
+  const low = clampUnit(minShare);
+  const high = clampUnit(maxShare);
   const clamped = clampBountyBias(bias);
   return clampUnit(
     clamped >= 0
-      ? anchor * (1 - clamped)
-      : anchor + -clamped * (1 - anchor),
+      ? anchor + (low - anchor) * (clamped / MAX_BOUNTY_BIAS)
+      : anchor + (high - anchor) * (-clamped / -MIN_BOUNTY_BIAS),
   );
 }
 
-function inferDefaultBountyShare(currentShare: number, bias: number): number {
-  const share = clampUnit(currentShare);
-  const clamped = clampBountyBias(bias);
-  if (Math.abs(clamped) < 1e-9) return share;
-  if (clamped >= 0) {
-    return clampUnit(share / Math.max(1e-9, 1 - clamped));
-  }
-  const k = -clamped;
-  return clampUnit((share - k) / Math.max(1e-9, 1 - k));
-}
-
-function getBountyShareRange(defaultShare: number): {
-  minShare: number;
-  maxShare: number;
-} {
-  const anchor = clampUnit(defaultShare);
-  return {
-    minShare: clampUnit(anchor * (1 - MAX_BOUNTY_BIAS)),
-    maxShare: clampUnit(anchor + -MIN_BOUNTY_BIAS * (1 - anchor)),
-  };
-}
-
-function biasFromBountyShare(targetShare: number, defaultShare: number): number {
+function biasFromBountyShare(
+  targetShare: number,
+  defaultShare: number,
+  minShare: number,
+  maxShare: number,
+): number {
   const share = clampUnit(targetShare);
   const anchor = clampUnit(defaultShare);
   if (Math.abs(share - anchor) < 1e-9) return 0;
   if (share < anchor) {
-    if (anchor <= 1e-9) return 0;
-    return clampBountyBias(1 - share / anchor);
+    const span = anchor - clampUnit(minShare);
+    if (span <= 1e-9) return 0;
+    return clampBountyBias((anchor - share) / span * MAX_BOUNTY_BIAS);
   }
+  const span = clampUnit(maxShare) - anchor;
+  if (span <= 1e-9) return 0;
   return clampBountyBias(
-    -(share - anchor) / Math.max(1e-9, 1 - anchor),
+    -((share - anchor) / span) * -MIN_BOUNTY_BIAS,
   );
 }
 
@@ -1009,9 +1010,14 @@ function BountyShareSlider({
   const commit = (rawShare: number) => {
     const nextShare = Math.max(lo, Math.min(hi, rawShare));
     const nextBias = snapBountyBias(
-      biasFromBountyShare(nextShare, defaultShare),
+      biasFromBountyShare(nextShare, defaultShare, minShare, maxShare),
     );
-    const snappedShare = bountyShareFromBias(defaultShare, nextBias);
+    const snappedShare = bountyShareFromBias(
+      defaultShare,
+      minShare,
+      maxShare,
+      nextBias,
+    );
     if (Math.abs(nextBias - committedBias) < 1e-9) {
       setDraft(null);
       return;
@@ -1228,7 +1234,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   // split between cash and bounty channels while keeping total ROI intact.
   const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
   const totalWinningsEV = entryCost * (1 + row.roi);
-  const bountyMean =
+  let bountyMean =
     bountyFraction > 0
       ? bias >= 0
         ? defaultBountyMean * (1 - bias)
@@ -1274,6 +1280,15 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const prizeByPlace = new Float64Array(N);
   for (let i = 0; i < Math.min(payouts.length, N); i++) {
     prizeByPlace[i] = payouts[i] * prizePool;
+  }
+
+  if (
+    bountyFraction > 0 &&
+    ((row.itmRate != null && row.itmRate > 0) || !isAlphaAdjustable(model))
+  ) {
+    let cashEVActual = 0;
+    for (let i = 0; i < N; i++) cashEVActual += pmf[i] * prizeByPlace[i];
+    bountyMean = Math.max(0, totalWinningsEV - cashEVActual);
   }
 
   const bountyByPlace = new Float64Array(N);

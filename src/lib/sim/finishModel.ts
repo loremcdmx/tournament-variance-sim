@@ -41,8 +41,8 @@ export function finishModelSupportsTargetRoi(id: FinishModelId): boolean {
  * `Σ pmf × payouts × pool ≈ targetWinnings`. False for fixed-shape models
  * (uniform / empirical / all realdata-*) and for models where the caller
  * has pinned α explicitly — in both cases, cash EV does not adapt to
- * external targets and the bounty budget must be closed via
- * `calibrateBountyBudget` to keep the total-EV ROI contract honest.
+ * external targets and the bounty budget must be closed via a residual
+ * reconcile to keep the total-EV ROI contract honest.
  */
 export function isAlphaAdjustable(model: FinishModelConfig): boolean {
   if (model.alpha !== undefined) return false;

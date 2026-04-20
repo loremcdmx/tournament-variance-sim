@@ -3,6 +3,15 @@
 Only user-facing changes are listed here. Small refactors, bench refreshes,
 internal scripts, and other low-signal maintenance are intentionally omitted.
 
+## Unreleased
+
+- Removed the unused ICM controls and engine path.
+- Reworked the EV-source slider into a KO-share control: it now reports how
+  much gross EV comes from knockouts instead of implying a place-vs-KO toggle.
+- Fixed fixed-ITM Battle Royale KO-share edges so total ROI stays pinned: low
+  KO share shifts EV into deeper finishes, while high KO share increases
+  expected KO count without inflating the average Battle Royale envelope.
+
 ## v0.7.1 — 2026-04-18
 
 - Advanced mode now includes a separate cash-game variance simulator with mixed

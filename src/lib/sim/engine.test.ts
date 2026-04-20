@@ -697,6 +697,16 @@ describe("bountyEvBias", () => {
     finishModel: { id: "power-law" } as { id: FinishModelId },
   });
 
+  const pmfFromAlias = (prob: Float64Array, alias: Int32Array): number[] => {
+    const n = prob.length;
+    const pmf = Array.from({ length: n }, () => 0);
+    for (let i = 0; i < n; i++) {
+      pmf[i] += prob[i] / n;
+      pmf[alias[i]] += (1 - prob[i]) / n;
+    }
+    return pmf;
+  };
+
   it("undefined bias matches bias=0 byte-for-byte (default preserved)", () => {
     const unset = runSimulation(pkoInput());
     const zero = runSimulation(pkoInput(0));
@@ -766,8 +776,86 @@ describe("bountyEvBias", () => {
     );
   });
 
+  it("fixed-ITM Battle Royale keeps total EV on target at KO-share edges", () => {
+    const targetWinnings = 10 * 1.08 * (1 + 0.12);
+    const compileRoyale = (itmRate: number, bias: number) =>
+      compileSchedule({
+        schedule: [
+          {
+            id: `mbr-${itmRate}-${bias}`,
+            label: "mbr",
+            players: 18,
+            buyIn: 10,
+            rake: 0.08,
+            roi: 0.12,
+            gameType: "mystery-royale",
+            payoutStructure: "battle-royale",
+            bountyFraction: 0.5,
+            mysteryBountyVariance: 1.8,
+            itmRate,
+            count: 1,
+            bountyEvBias: bias,
+          },
+        ],
+        scheduleRepeats: 1,
+        samples: 1,
+        bankroll: 100,
+        seed: 7,
+        finishModel: { id: "power-law" },
+      }).flat[0];
+
+    for (const itmRate of [0.16, 0.25, 0.5]) {
+      for (const bias of [-0.25, 0, 0.25]) {
+        expect(compileRoyale(itmRate, bias).analyticMeanSingle).toBeCloseTo(
+          targetWinnings,
+          10,
+        );
+      }
+    }
+  });
+
+  it("fixed-ITM Battle Royale trades first-place frequency for KO count", () => {
+    const compileRoyale = (bias: number) =>
+      compileSchedule({
+        schedule: [
+          {
+            id: `mbr-fixed-${bias}`,
+            label: "mbr",
+            players: 18,
+            buyIn: 10,
+            rake: 0.08,
+            roi: 0.12,
+            gameType: "mystery-royale",
+            payoutStructure: "battle-royale",
+            bountyFraction: 0.5,
+            mysteryBountyVariance: 1.8,
+            itmRate: 0.16,
+            count: 1,
+            bountyEvBias: bias,
+          },
+        ],
+        scheduleRepeats: 1,
+        samples: 1,
+        bankroll: 100,
+        seed: 7,
+        finishModel: { id: "power-law" },
+      }).flat[0];
+
+    const lowKo = compileRoyale(0.25);
+    const balanced = compileRoyale(0);
+    const koHeavy = compileRoyale(-0.25);
+    const lowKoPmf = pmfFromAlias(lowKo.aliasProb, lowKo.aliasIdx);
+    const balancedPmf = pmfFromAlias(balanced.aliasProb, balanced.aliasIdx);
+    const koHeavyPmf = pmfFromAlias(koHeavy.aliasProb, koHeavy.aliasIdx);
+
+    expect(lowKoPmf[0]).toBeGreaterThan(balancedPmf[0]);
+    expect(koHeavyPmf[0]).toBeLessThan(balancedPmf[0]);
+    expect(lowKo.bountyKmean![0]).toBeLessThan(balanced.bountyKmean![0]);
+    expect(koHeavy.bountyKmean![0]).toBeGreaterThan(balanced.bountyKmean![0]);
+  });
+
   // Fixed-shape models can't move cashEV to cancel the heuristic's
-  // bountyMean error, so without the `calibrateBountyBudget` reconcile
+  // bountyMean error, so without the residual bounty-budget reconcile
   // total EV would drift away from the ROI contract even at bias=0. With
   // the reconcile in place, bias=0 should land on the target within SE.
   it("realdata PKO + bountyFraction>0 stays on ROI target at bias=0", () => {

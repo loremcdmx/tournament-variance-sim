@@ -22,7 +22,6 @@ import {
   buildBinaryItmAssets,
   buildFinishPMF,
   calibrateAlpha,
-  calibrateBountyBudget,
   calibrateShelledItm,
   isAlphaAdjustable,
   itmProbability,
@@ -473,14 +472,12 @@ function compileSingleEntry(
   const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
   let bountyMean = 0;
   // EV-bias: user-tunable shift of the expected-winnings split between
-  // the cash and bounty channels. For α-adjustable models α recomputes
-  // cashEV against `targetRegular = total − bountyMean`, so total ROI is
-  // preserved exactly; for fixed-shape models cashEV is frozen by the
-  // embedded shape, so the split shifts but total drifts with |bias|.
-  // Clamped to ±0.25 — empirically at ±0.28 cash / ±0.33 bounty
-  // calibrateAlpha's α search starts bottoming out against its [αmin,
-  // αmax] envelope, which leaves total EV short of the ROI contract even
-  // for α-adjustable models.
+  // the cash and bounty channels. The requested bountyMean drives the finish
+  // shape; constrained models then close the actual KO budget as the residual
+  // after cash EV so total ROI stays pinned even when α hits a boundary.
+  // Clamped to ±0.25 — past that, α-adjustable models also start bottoming
+  // out against their search envelope and the slider stops adding useful
+  // behavioral range.
   const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
   const totalWinningsEV = entryCostSingle * (1 + row.roi);
   if (bountyFraction > 0) {
@@ -489,8 +486,8 @@ function compileSingleEntry(
     // (no rake on bounty pool). Total edge = entryCost · roi distributes
     // proportionally over cash + bounty, so lift = (1+rake)(1+roi). Capped
     // at 3× for sanity. This is a *heuristic* anchor used to drive the pmf
-    // build; for fixed-shape models we replace it with the principled
-    // `calibrateBountyBudget` value after the pmf is known.
+    // build; for constrained models we replace it with the actual residual
+    // after the pmf is known.
     const bountyLift = Math.max(0.1, Math.min(3, (1 + row.rake) * (1 + row.roi)));
     const defaultBountyMean = bountyPerSeat * bountyLift;
     bountyMean = applyBountyBias(defaultBountyMean, totalWinningsEV, bias);
@@ -583,27 +580,19 @@ function compileSingleEntry(
     }
   }
 
-  // ---- bounty reconcile (fixed-shape models) -----------------------------
-  // For α-adjustable models the heuristic (1+rake)(1+ROI) lift used above
-  // is structurally equivalent to `totalWinningsEV − cashEV` because α was
-  // solved to make `cashEV = targetRegular`. For fixed-shape models
-  // (uniform / empirical / realdata-*) α is pinned at 0 and the pmf
-  // ignores the ROI target, so `cashEV_shape + defaultBountyMean` does
-  // not equal `totalWinningsEV` — the total-EV ROI contract breaks. Here
-  // we overwrite `bountyMean` with the budget residual `total − cashEV`
-  // so that `E[W] = E[cash] + bountyMean = totalWinningsEV` regardless of
-  // the pmf shape. Bias is re-applied around the principled anchor; the
-  // split still shifts with user intent, only the anchor moves from the
-  // heuristic to the observed cashEV.
-  if (bountyFraction > 0 && !isAlphaAdjustable(model)) {
-    const budget = calibrateBountyBudget(
-      pmf,
-      payouts,
-      prizePool,
-      totalWinningsEV,
-    );
-    const principledAnchor = budget.feasible ? budget.bountyMean : 0;
-    bountyMean = applyBountyBias(principledAnchor, totalWinningsEV, bias);
+  // ---- bounty reconcile (constrained finish models) ----------------------
+  // With fixed ITM/shells or reference-shape models the finish solver can hit
+  // an α boundary before `targetRegular` is reached. The slider still changes
+  // the requested split and therefore the solved finish shape, but the actual
+  // KO budget must be the residual after that shape's cash EV. Otherwise total
+  // ROI drifts at the slider edges.
+  if (
+    bountyFraction > 0 &&
+    ((row.itmRate != null && row.itmRate > 0) || !isAlphaAdjustable(model))
+  ) {
+    let cashEV = 0;
+    for (let i = 0; i < N; i++) cashEV += pmf[i] * prizeByPlace[i];
+    bountyMean = Math.max(0, totalWinningsEV - cashEV);
   }
 
   // ---- "sit through pay jumps" transform --------------------------------

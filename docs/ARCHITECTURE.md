@@ -44,6 +44,12 @@ This document describes the data flow, module boundaries, and invariants of the 
    - For each row, picks the effective field size (or enumerates variants if `fieldVariability` is set).
    - Calls `buildFinishPMF(N, model, α)` with a starting α, then `calibrateAlpha()` which binary-searches α so that the *realized* ROI (Σ pmf × payout − cost) matches `row.roi`. This is the honest calibration.
    - For the PrimeDope compare run, uses `calibrateShelledItm` + `pdCurves` to pin ITM rate and solve for α/shape.
+   - For bounty rows, applies the requested KO EV share as a finish-shape
+     target and then closes constrained rows (`itmRate`, shells, fixed-shape
+     models) by setting the actual bounty budget to `targetTotal - cashEV`.
+     This keeps total ROI pinned even when α hits a boundary. Battle Royale
+     keeps its published average envelope size fixed and scales expected KO
+     counts instead.
    - Builds alias tables for fast weighted sampling.
    - Returns `CompiledEntry[]` — flat, shard-independent, serializable.
 
@@ -82,6 +88,21 @@ for sample s in [sStart, sEnd):
 ```
 
 The payout/bounty tables are computed once in `compileSchedule()` and reused for every sample. That's the whole point of the build step — pay the finish-model + α-calibration cost once per row, not N × samples times.
+
+### KO EV share
+
+For PKO, Mystery, and Battle Royale rows, `row.bountyEvBias` moves the
+requested split between cash EV and KO EV while keeping the row's total
+winnings target anchored to `singleCost * (1 + roi)`. α-adjustable rows can
+usually hit the requested cash target directly. Fixed-ITM/shelled rows and
+fixed-shape models may hit an α boundary first, so `compileSchedule()` treats
+the requested split as a shape request and then reconciles the actual bounty
+budget as `targetTotal - cashEV`.
+
+Battle Royale has one extra invariant: the GG-style tier table fixes the
+average dollars per envelope. The engine therefore scales `bountyKmean`
+(expected envelope-dropping KOs), not the average envelope size, when the KO
+share changes.
 
 ### PKO heat
 
