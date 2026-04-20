@@ -545,8 +545,7 @@ const ScheduleRow = memo(function ScheduleRow({
   const hasAdv =
     (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
     (r.maxEntries ?? 1) > 1 ||
-    (r.bountyFraction ?? 0) > 0 ||
-    !!r.icmFinalTable;
+    (r.bountyFraction ?? 0) > 0;
   const gt = inferGameType(r);
 
   // The payout dropdown would otherwise re-run STRUCTURES.map+filter (14×3)
@@ -1007,37 +1006,6 @@ function AdvancedRowPanel({
           />
         </div>
       )}
-
-      {/* ICM FT */}
-      <div className="flex flex-col gap-1.5">
-        <SectionLabel hint={t("row.icmHint")}>
-          {t("row.icmFT")}
-        </SectionLabel>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-[color:var(--color-fg-muted)]">
-            <input
-              type="checkbox"
-              checked={row.icmFinalTable ?? false}
-              onChange={(e) => onChange({ icmFinalTable: e.target.checked })}
-              className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
-            />
-            on
-          </label>
-          {row.icmFinalTable && (
-            <FieldSmall label={t("row.ftSize")}>
-              <NumInputBox
-                value={row.icmFinalTableSize ?? 9}
-                min={2}
-                max={50}
-                step={1}
-                onChange={(v) =>
-                  onChange({ icmFinalTableSize: Math.floor(v) })
-                }
-              />
-            </FieldSmall>
-          )}
-        </div>
-      </div>
 
       {/* Sit-through-pay-jumps play style */}
       <div className="flex flex-col gap-1.5">

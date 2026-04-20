@@ -278,7 +278,6 @@ export const DICT = {
     en: "Pin the in-the-money rate at a constant value regardless of ROI. All skill concentrates WITHIN the cashed band — a grinder doesn't cash more often than a no-skill player, they just run deeper when they do. Empty = auto (classic α-calibration, ITM rate scales with ROI). Typical: 15–18 % for a solid grinder.",
     ru: "Фиксирует частоту попадания в призовые независимо от ROI. Скилл весь уходит ВНУТРЬ призовой зоны — гриндер попадает в деньги не чаще нулевого игрока, но бежит глубже. Пусто = авто (классическая α-калибровка, ITM растёт с ROI). Типично: 15–18 % для крепкого гриндера.",
   },
-  "row.icmFT": { en: "ICM FT", ru: "ICM ФТ" },
   "row.unnamed": { en: "unnamed", ru: "без названия" },
   "row.noGuarantee": { en: "no guarantee", ru: "без гарантии" },
   "row.advanced": { en: "Advanced", ru: "Доп. параметры" },
@@ -289,7 +288,6 @@ export const DICT = {
   "row.max": { en: "Max", ru: "Макс" },
   "row.buckets": { en: "Variants", ru: "Вариантов" },
   "row.customPct": { en: "Custom payouts (%)", ru: "Свои выплаты (%)" },
-  "row.ftSize": { en: "FT size", ru: "Размер ФТ" },
   "row.guaranteeHint": {
     en: "Overlay = max(0, guarantee − field × buy-in). Adds money to the prize pool without inflating entry cost.",
     ru: "Оверлей = max(0, гарантия − поле × бай-ин). Добавляет деньги в призовой, не увеличивая цену входа.",
@@ -309,10 +307,6 @@ export const DICT = {
   "row.bountyHint": {
     en: "KO bounty as % of the buy-in. That chunk of every entry goes into the bounty pool instead of the regular prize pool, paid out as knockouts.",
     ru: "Баунти за вылет как % от бай-ина. Эта доля каждого входа уходит в баунти-пул вместо обычного призового и выдаётся за нокауты.",
-  },
-  "row.icmHint": {
-    en: "Flattens the top of the prize ladder the way real final-table deals do — 1st gets less, min-FT gets more. Total money unchanged.",
-    ru: "Сглаживает верх призовой сетки так, как это делают реальные дилы на ФТ — первому меньше, мин-ФТ больше. Сумма выплат не меняется.",
   },
   "row.sitThrough": {
     en: "Sit through pay jumps",

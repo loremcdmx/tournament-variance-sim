@@ -4116,7 +4116,6 @@ function SettingsDumpCard({
     ["assumed ROI", `${(r.roi * 100).toFixed(1)}%`],
     ["lateRegMult", `${r.lateRegMultiplier ?? 1}`],
     ["maxEntries", `${r.maxEntries ?? 1}`],
-    ["icmFinalTable", r.icmFinalTable ? "yes" : "no"],
     ["—", "—"],
     ["finishModel", settings.finishModelId],
     ["α (override)", settings.alphaOverride == null ? "auto" : settings.alphaOverride.toFixed(3)],

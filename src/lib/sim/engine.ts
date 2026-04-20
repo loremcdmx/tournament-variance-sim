@@ -27,7 +27,6 @@ import {
   isAlphaAdjustable,
   itmProbability,
 } from "./finishModel";
-import { applyICMToPayoutTable } from "./icm";
 import { makeBrTierSampler } from "./brBountyTiers";
 import { normalizeBrMrConsistency } from "./gameType";
 import { mulberry32, mixSeed } from "./rng";
@@ -509,17 +508,11 @@ function compileSingleEntry(
   const effectivePayoutStructure = forcePrimedopePayouts
     ? "mtt-primedope"
     : row.payoutStructure;
-  let payouts = getPayoutTable(
+  const payouts = getPayoutTable(
     effectivePayoutStructure,
     N,
     row.customPayouts,
   );
-
-  // ---- ICM final-table reweight ------------------------------------------
-  if (row.icmFinalTable) {
-    const ftSize = Math.max(2, Math.floor(row.icmFinalTableSize ?? 9));
-    payouts = applyICMToPayoutTable(payouts, ftSize, 0.4);
-  }
 
   const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
 
@@ -876,7 +869,7 @@ function compileSingleEntry(
 
   // ---- pmf integrity check ------------------------------------------------
   // Downstream hot-loop assumes pmf is a proper distribution. Catch bugs in
-  // finishModel / sit-through / ICM / custom-payout code paths before they
+  // finishModel / sit-through / custom-payout code paths before they
   // leak into sampling.
   if (process.env.NODE_ENV !== "production") {
     let pmfSum = 0;

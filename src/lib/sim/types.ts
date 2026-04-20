@@ -161,7 +161,7 @@ export interface TournamentRow {
    */
   count: number;
 
-  // -------- re-entry / knockout / ICM extensions --------
+  // -------- re-entry / knockout extensions --------
 
   /**
    * Maximum total entries per player in this MTT. `1` = freezeout (default).
@@ -185,17 +185,6 @@ export interface TournamentRow {
    * prize pool and pays back a bounty-EV lump sum at calibration time.
    */
   bountyFraction?: number;
-
-  /**
-   * ICM final table flag. When true, the top `icmFinalTableSize` places
-   * (default 9) have their raw $-payouts re-weighted through a
-   * Malmuth-Harville ICM approximation before the finish sampler uses
-   * them. This pulls EV out of 1st and into the bottom-of-FT places to
-   * reflect real-world deals, matching observed payout reality on high-
-   * stakes streams.
-   */
-  icmFinalTable?: boolean;
-  icmFinalTableSize?: number;
 
   /**
    * "Sit through pay jumps" play style — the player refuses to fold their

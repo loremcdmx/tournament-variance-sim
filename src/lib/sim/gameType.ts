@@ -1,6 +1,6 @@
 /**
  * Game-type presets for tournament rows. `inferGameType` reads a row's
- * current flags (re-entry, bounty, ICM) and picks the closest canonical
+ * current flags (re-entry, bounty) and picks the closest canonical
  * preset; `applyGameType` flips the flags to match a chosen preset.
  * Pure data + small helpers — no side effects, no RNG.
  */

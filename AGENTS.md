@@ -27,7 +27,6 @@ If code and docs disagree, the code wins — fix the doc.
 - **`samplePaths.paths.length` ≠ `samples`.** Only the first ~1000 samples of shard 0 store hi-res trajectories (`wantHiResPaths` in `engine.ts`). Slider in `ResultsView` caps at `paths.length`.
 - **PrimeDope compare mode** uses a second calibration path (`calibrateShelledItm` + `pdCurves.ts`). Changes to the main calibration don't auto-propagate — check compare coverage when touching `finishModel.ts`.
 - **PKO heat** in the hot loop snaps a Gaussian per-tournament to one of `HEAT_BIN_COUNT` preconcentrated `bountyByPlace` tables. Mean bounty is preserved per bin; only σ shifts.
-- **ICM** capped to top-9 via Malmuth-Harville bitmask DP. Beyond that it's payoutByPlace only.
 - **Dev branch invariant:** `dev` is always ≥ `main`, never behind. Run `git log dev..main` before starting work; ship via `git merge --ff-only dev`.
 - **i18n is enforced by types.** Every user-visible string needs a key in `src/lib/i18n/dict.ts` with both `en` and `ru`. TS build fails on missing locale.
 - **No allocations in the hot loop.** `simulateShard` reuses preallocated typed arrays. `new Float64Array(n)` inside the inner loop is a bug.

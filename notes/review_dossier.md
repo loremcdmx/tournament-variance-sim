@@ -6,10 +6,10 @@
 
 ## 0. TL;DR (30 секунд)
 
-- **Наш движок делает строго больше, чем PD**: re-entries, ICM, stakung, bounties (flat + progressive), mystery bounty σ², tilt (fast + slow), drift AR(1), поле переменного размера, late reg, sit-through-pay-jumps, эмпирическая finish-PMF. PD ничего из этого не умеет.
+- **Наш движок делает строго больше, чем PD**: re-entries, stakung, bounties (flat + progressive), mystery bounty σ², tilt (fast + slow), drift AR(1), поле переменного размера, late reg, sit-through-pay-jumps, эмпирическая finish-PMF. PD ничего из этого не умеет.
 - **PD считает SD аналитически** (`Σ pmf·(prize−μ)²` → `×√N`), RoR — через Brownian first-passage с нормальным хвостом. **Мы считаем SD/RoR эмпирически** по пути каждой симуляции.
 - Разница, которая нас преследовала ($6237 vs $5789 при 100p/$50/10%/11%/1000t): была **целиком в форме выплатной сетки** — `mtt-standard` (ratio 1.35) против PD-шного `h[8]`. После добавления `mtt-primedope` мы попадаем в PD-band.
-- **Главные бутылочные горлышки у PD**: (1) ROI считается от `buyin+fee`, а не `buyin`; (2) ITM-rate формула `l = (s + (s+1)·p/n + 1)·h/j` — семантически странная; (3) RoR Гауссов → недооценивает хвост для скошенного MTT-PMF; (4) нет re-entries/ICM/bounties; (5) `Math.random()`, seed не экспортируется; (6) финишная PMF — бинарная ITM/bust, а не skill-weighted.
+- **Главные бутылочные горлышки у PD**: (1) ROI считается от `buyin+fee`, а не `buyin`; (2) ITM-rate формула `l = (s + (s+1)·p/n + 1)·h/j` — семантически странная; (3) RoR Гауссов → недооценивает хвост для скошенного MTT-PMF; (4) нет re-entries/bounties; (5) `Math.random()`, seed не экспортируется; (6) финишная PMF — бинарная ITM/bust, а не skill-weighted.
 - **Главные бутылочные горлышки у нас**: (1) skewness/kurtosis считаются как population moments (`/S`, а не `/(S−1)`), недооцениваем хвосты; (2) staking `costFactor < 0` при `sold × markup > 1` допустим без валидации; (3) Poisson Knuth ветка обрывается на λ=20 — тайтовая граница; (4) envelope-subsample детерминированный, но stride-based, не uniform random; (5) много виджетов без tooltip'ов и без явной семантики; (6) Sensitivity-chart без подписи оси X; (7) Verdict-card без RoR-callout'а, когда bankroll задан; (8) log-growth клампит ruin в `ln(1e−9)` асимметрично.
 
 ---
@@ -28,7 +28,7 @@
 | roi | `s` | fraction | 0 |
 | payout table | `c` | ref на `h[i]` | h[0] |
 
-Нет: re-entries, ICM, staking, bounties (любых), мистери, late reg, pay jumps, multi-tabling, drift, shock, tilt. Всё это **мы добавили сверху** — PD этого в принципе не знает.
+Нет: re-entries, staking, bounties (любых), мистери, late reg, pay jumps, multi-tabling, drift, shock, tilt. Всё это **мы добавили сверху** — PD этого в принципе не знает.
 
 ### 1.2. Выплатные таблицы — 32 `h[]` + 5 сателлитов
 
@@ -109,11 +109,10 @@ P(ruin | B) = Φ((−B − μN)/(σ√N)) + exp(−2μB/σ²) · Φ((−B + μN)
 ### 1.8. Что PD НЕ моделирует (белый список)
 
 1. Re-entries / rebuys
-2. ICM final table
-3. Staking / backing
-4. KO bounties (flat)
-5. Progressive KO
-6. Mystery bounties
+2. Staking / backing
+3. KO bounties (flat)
+4. Progressive KO
+5. Mystery bounties
 7. Late registration (field growth)
 8. Переменный размер поля
 9. Skill drift / shock / tilt
@@ -128,12 +127,12 @@ P(ruin | B) = Φ((−B − μN)/(σ√N)) + exp(−2μB/σ²) · Φ((−B + μN)
 
 ## 2. Как работает наш движок (детально)
 
-> Источники: `src/lib/sim/{engine,types,payouts,finishModel,icm,modelPresets,rng,worker,useSimulation}.ts`
+> Источники: `src/lib/sim/{engine,types,payouts,finishModel,modelPresets,rng,worker,useSimulation}.ts`
 
 ### 2.1. Пайплайн
 
 1. **compileSchedule** (`engine.ts:98–167`) — раскатывает `schedule` в `CompiledSchedule` (плоский список `CompiledEntry`), учитывает `calibrationMode`.
-2. **compileSingleEntry** (`engine.ts:169–520`) — на каждую строку: late reg × re-entry × rake → cost; bounty decomposition; payout select; ICM smoothing; finish PMF + alpha calibration; sit-through-pay-jumps transform; bounty distribution; staking.
+2. **compileSingleEntry** (`engine.ts:169–520`) — на каждую строку: late reg × re-entry × rake → cost; bounty decomposition; payout select; finish PMF + alpha calibration; sit-through-pay-jumps transform; bounty distribution; staking.
 3. **shard planning** (`useSimulation.ts:98–156`) — `samples` делятся на shards по числу воркеров, каждый shard = `[sStart, sEnd)`. Seed: `mixSeed(seed, s)` на каждый sample — **независимо от числа shard'ов**.
 4. **worker hot loop** (`engine.ts:1301–1542`) — на каждый `s` итерируется по всем турнирам `i`: draw ROI-δ → pick variant → sample finish → bounty + mystery log-normal → accumulate → drawdown tracking → checkpoint writes.
 5. **mergeShards** (`engine.ts:1580–1627`) — склейка буферов по возрастанию `sStart`.
@@ -146,7 +145,6 @@ P(ruin | B) = Φ((−B − μN)/(σ√N)) + exp(−2μB/σ²) · Φ((−B + μN)
 - **Rake cost**: `entryCostSingle = buyIn × (1 + rake)` (208). В PD-style mode rake игнорируется (110).
 - **Bounty decomposition**: `bountyPerSeat = buyIn × bountyFraction`, EV-лифт от скилла `bountyLift = clamp(1 + roi, 0.1, 3)`, pool уменьшается (233).
 - **Payout select**: `calibrationMode === "primedope-binary-itm"` → форсим `mtt-primedope` (243).
-- **ICM final table**: `applyICMToPayoutTable` с smoothing = 0.4 (254).
 - **Alpha calibration** (power-law / stretched-exp): binary search α так, чтобы `E[winnings] = targetRegular`. 50 итераций (171).
 - **Binary-ITM calibration**: двухбинный uniform — всё paid: `pmf[i] = l/paid`; всё bust: `pmf[i] = (1−l)/(N−paid)`. Реальная выплата сохраняется на paid местах.
 - **Sit-through-pay-jumps** (309–378): EV-preserving переворот — снимается `q × mass_bottom`, делится на top (аналитически `x = avgBottom/avgTop × massTop/removed`) и busts. EV = 0 точно, variance растёт.
@@ -230,8 +228,7 @@ checkpoint writes (K+1 logarithmically spaced)
 | P3 | Финиш внутри ITM — uniform, не skill-weighted | 1-е место = min-cash по вероятности; skill edge не виден | Power-law / stretched-exp / Plackett-Luce моделируют skill-градиент |
 | P4 | RoR — Gaussian first-passage | Недооценивает risk of ruin на скошенном MTT-PMF | Empirical RoR по фактическим просадкам (главный метрик) + Gaussian RoR для compat |
 | P5 | Нет re-entries | Cost / variance на всех re-entry турнирах неверны | Полноценное re-entry с `reentryRate` и `maxEntries` |
-| P6 | Нет ICM | Final table payouts завышены (они pay-outs, не chip-equities) | ICM smoothing (Malmuth-Harville-like) |
-| P7 | Нет bounties (KO / PKO / mystery) | Современные турниры — 30-60% bounty | Все три: flat, PKO (accumulating head), mystery σ² |
+| P6 | Нет bounties (KO / PKO / mystery) | Современные турниры — 30-60% bounty | Все три: flat, PKO (accumulating head), mystery σ² |
 | P8 | Нет staking | Игрок с маркапом — не он сам | Sold%/markup на уровне строки |
 | P9 | Нет variable field size / late reg | Вечерние турниры растут на 50-100%, PD берёт одно число | `fieldVariability` + `lateRegMultiplier` |
 | P10 | `Math.random()`, seed не управляется | Два запуска на одних настройках дают разные числа | `seed` в UI, детерминированность по seed + shard-независимость |
@@ -323,8 +320,7 @@ checkpoint writes (K+1 logarithmically spaced)
 - **T-US-10** ⬜ Bounty preservation: `bountyFraction = 0.5`, run vs `0` → mean должен быть тот же, σ разная.
 - **T-US-11** ⬜ Re-entry cost: `maxEntries = 3`, `reentryRate = 1.0` → cost должен быть `(1 + reentryExpected) × cost_single`. Hand-calc expected × checks empirical cost.
 - **T-US-12** ⬜ Staking PnL: `sold = 0.5`, `markup = 1` → mean и stdDev должны быть точно 0.5× от baseline. С `markup = 1.2` → mean должен сдвинуться на `+0.2 × 0.5 × cost` (игрок зарабатывает на маркапе).
-- **T-US-13** ⬜ ICM smoothing: Gini coefficient выплат должен уменьшиться после ICM. Easy regression.
-- **T-US-14** ⬜ Field variability: при `fieldVariability = {min: 90, max: 110, buckets: 5}` mean по schedule'у должен совпадать с average по всем variant'ам.
+- **T-US-13** ⬜ Field variability: при `fieldVariability = {min: 90, max: 110, buckets: 5}` mean по schedule'у должен совпадать с average по всем variant'ам.
 
 ### 6.3. Численная стабильность
 
@@ -405,9 +401,8 @@ checkpoint writes (K+1 logarithmically spaced)
 12. **[525–593] Field variability** — показать **preview**: «N будет равномерно в [{min}, {max}] с {buckets} корзинами» + мини-histogram.
 13. **[597–611] Late reg multiplier** — tooltip «×1.5 = к концу регистрации поле вырастет на 50%».
 14. **[614–637] Custom payouts** — после paste показать **stacked bar** отображая кривую + sum check.
-15. **[693–723] ICM final table** — warning если `size > 9`; tooltip: «Malmuth-Harville smoothing».
-16. **[725–753] Staking** — **показать net cost after staking**: `"You pay {$X}, cash in {$Y}"`; show «effective ROI» после маркапа.
-17. **[756–788] Sit-through-pay-jumps** — rename checkbox label с `"on"` на `"Play through bubble"` (или `"Не мин-кэшуем"`), slider label `"Aggression {N}% — 0 = всегда фолд, 100 = ни разу не сдаём"`, tooltip про EV-preservation.
+15. **[725–753] Staking** — **показать net cost after staking**: `"You pay {$X}, cash in {$Y}"`; show «effective ROI» после маркапа.
+16. **[756–788] Sit-through-pay-jumps** — rename checkbox label с `"on"` на `"Play through bubble"` (или `"Не мин-кэшуем"`), slider label `"Aggression {N}% — 0 = всегда фолд, 100 = ни разу не сдаём"`, tooltip про EV-preservation.
 18. **[791–811] Mystery bounty σ²** — rename label на `"Bounty unpredictability (σ²)"` + tooltip; **presets** `"Fixed"` (0), `"Normal MB"` (0.5), `"Wild MB"` (2); show example `"σ²=1 → ±30% разброс одного bounty"`.
 
 ### 8.3. Results View (`ResultsView.tsx`)

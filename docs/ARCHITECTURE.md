@@ -27,7 +27,6 @@ This document describes the data flow, module boundaries, and invariants of the 
 │  │  ─ src/lib/sim/finishModel.ts                        │    │
 │  │        pmf + α calibration                           │    │
 │  │  ─ src/lib/sim/payouts.ts                            │    │
-│  │  ─ src/lib/sim/icm.ts                                │    │
 │  │  ─ src/lib/sim/rng.ts                                │    │
 │  └──────────────────────────────────────────────────────┘    │
 │                                                              │
@@ -60,7 +59,7 @@ This document describes the data flow, module boundaries, and invariants of the 
 
 All in `src/lib/sim/types.ts`:
 
-- **`TournamentRow`** — one line in the schedule. Has buy-in, rake, field, ROI, payout structure, and optional bounty/mystery/ICM fields.
+- **`TournamentRow`** — one line in the schedule. Has buy-in, rake, field, ROI, payout structure, and optional bounty/mystery fields.
 - **`SimulationInput`** — `{schedule, scheduleRepeats, samples, bankroll, seed, finishModel, ...noise, ...tilt}`.
 - **`FinishModelConfig`** — `{id: "power-law"|"stretched-exp"|"empirical"|..., alpha?, beta?, empiricalBuckets?}`. Note: when `alpha` is set, calibration is skipped and the override is used as-is.
 - **`SimulationResult`** — `{samples, totalBuyIn, expectedProfit, finalProfits, rowProfits, histogram, samplePaths, envelopes, stats, decomposition, downswings, sensitivity, ...}`. This is what `ResultsView` consumes.
@@ -79,7 +78,6 @@ for sample s in [sStart, sEnd):
     for each bullet fired:
       draw finish place from alias table
       look up payoutByPlace[place]   (+ bountyByPlace if PKO)
-      apply per-place ICM reweight if row.icmEnabled and place ≤ 9
       profit += payout - singleCost
 ```
 
@@ -156,7 +154,6 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 - **Realized ROI in SE** — the α calibration produces a run whose mean ROI matches `row.roi` within a few standard errors.
 - **Row decomposition sums** — Σ rowMean ≈ totalMean, Σ rowVar ≈ totalVar (with cross-terms near zero because we fix row-independent seeds).
 - **Re-entry variance amplification** — 3 bullets should yield roughly √3× σ compared to 1 bullet on an uncorrelated draw.
-- **ICM flattening** — applying ICM reduces the top-1 payout share and the upside variance.
 - **Empirical histogram reproduction** — feeding a flat histogram gives uniform pmf; feeding a spike at position 1 makes the player always win.
 - **Payout normalization** — every `getPayoutTable()` result sums to 1 ± ε.
 

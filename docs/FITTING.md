@@ -56,7 +56,7 @@ absorbs any field dependence into C0.
 
 The α-calibrated finish model + payout table + re-entry loop produces
 σ\_ROI as an emergent property. There is no closed form — too many
-interacting non-linearities (ICM truncation, PKO heat bins, mystery
+interacting non-linearities (PKO heat bins, mystery
 bounty log-normal noise, min-cash plateau). So we sweep the engine over
 a grid, measure σ, and fit a simple surface to the measurements.
 

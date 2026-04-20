@@ -5,7 +5,7 @@
 >
 > Актуален на **2026-04-19** (v0.7.1, ветка `dev`).
 > Закрытые задачи см. в `git log`. История прогресса — в `CHANGELOG.md`.
-> Feature scope на 2026-04-13 расширен: re-entry / PKO / ICM / empirical model **IN SCOPE** (см. commit ec88189 и ранее).
+> Feature scope на 2026-04-13 расширен: re-entry / PKO / empirical model **IN SCOPE** (см. commit ec88189 и ранее).
 
 ---
 
@@ -104,9 +104,6 @@
 
 ### #120 · Mobile layout
 Нужен, но не раньше чем перестанут спорить математика и базовые desktop-баги. Mobile-layout правки на фоне открытых P0 — риск переделывать после.
-
-### #6 (audit) · ICM 9 → 12 мест
-Текущий лимит `ICM_MAX_PLAYERS = 9` в `icm.ts:25`. Не горит. Не тратить фокус пока P0 открыты.
 
 ---
 

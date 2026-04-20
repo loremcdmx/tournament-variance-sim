@@ -316,52 +316,6 @@ describe("engine", () => {
     expect(Math.abs(bounty.stats.mean - base.stats.mean)).toBeLessThan(6 * se);
   });
 
-  it("ICM FT flag flattens top payouts without changing schedule totals", () => {
-    const plain = runSimulation(
-      baseInput({
-        samples: 3000,
-        schedule: [
-          {
-            id: "r",
-            label: "plain",
-            players: 500,
-            buyIn: 10,
-            rake: 0.1,
-            roi: 0.2,
-            payoutStructure: "mtt-top-heavy",
-            count: 1,
-          },
-        ],
-      }),
-    );
-    const icm = runSimulation(
-      baseInput({
-        samples: 3000,
-        schedule: [
-          {
-            id: "r",
-            label: "icm",
-            players: 500,
-            buyIn: 10,
-            rake: 0.1,
-            roi: 0.2,
-            payoutStructure: "mtt-top-heavy",
-            count: 1,
-            icmFinalTable: true,
-            icmFinalTableSize: 9,
-          },
-        ],
-      }),
-    );
-    // Payout total unchanged → both runs should calibrate to the same EV.
-    const se =
-      plain.stats.stdDev / Math.sqrt(plain.samples) +
-      icm.stats.stdDev / Math.sqrt(icm.samples);
-    expect(Math.abs(plain.stats.mean - icm.stats.mean)).toBeLessThan(6 * se);
-    // But ICM *reduces* variance at the top (flatter top = less upside).
-    expect(icm.stats.stdDev).toBeLessThanOrEqual(plain.stats.stdDev * 1.02);
-  });
-
   it("empirical finish model reproduces a provided histogram", () => {
     // Histogram concentrated on the top 20 % of finishes (first 100 of 500).
     // After interp onto 500 places, virtually all probability mass sits on
