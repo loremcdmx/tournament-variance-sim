@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyBountyBias,
   buildFinishPMF,
@@ -509,6 +509,7 @@ function EvBreakdownRow({
     Math.max(0, (maxEvShare ? evShare / maxEvShare : evShare) * 100),
   );
   const bountyWidthPct = evWidthPct * Math.max(0, Math.min(1, bountyShareOfTier));
+  const fmtWidth = (pct: number) => `${Math.min(100, Math.max(0, pct)).toFixed(4)}%`;
   return (
     <div
       className="relative grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px] hover:bg-[color:var(--color-bg-elev)]/30"
@@ -517,32 +518,33 @@ function EvBreakdownRow({
     >
       <span
         className="h-2.5 w-2.5 rounded-sm"
-        style={{ background: color }}
+        style={{ backgroundColor: color }}
       />
       <span className={labelClass}>{label}</span>
       <div className="relative h-2 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
         <div
-          className="absolute inset-y-0 left-0 rounded-sm"
+          className="absolute inset-y-0 left-0 rounded-sm opacity-30"
           style={{
-            width: `${Math.min(100, Math.max(0, (maxEvShare ? eqShare / maxEvShare : eqShare) * 100))}%`,
-            background: color,
-            opacity: 0.3,
+            width: fmtWidth(
+              (maxEvShare ? eqShare / maxEvShare : eqShare) * 100,
+            ),
+            backgroundColor: color,
           }}
         />
         <div
           className="absolute inset-y-0 left-0 rounded-sm"
           style={{
-            width: `${evWidthPct}%`,
-            background: color,
+            width: fmtWidth(evWidthPct),
+            backgroundColor: color,
           }}
         />
         {bountyWidthPct > 0.5 && bountyColor && (
           <div
             className="absolute inset-y-0 rounded-sm"
             style={{
-              left: `${evWidthPct - bountyWidthPct}%`,
-              width: `${bountyWidthPct}%`,
-              background: bountyColor,
+              left: fmtWidth(evWidthPct - bountyWidthPct),
+              width: fmtWidth(bountyWidthPct),
+              backgroundColor: bountyColor,
             }}
           />
         )}
@@ -585,23 +587,38 @@ function TierHoverPopup({
         )}`
       : "—";
   const [side, setSide] = useState<"right" | "left">("right");
-  const measureRef = useCallback((el: HTMLDivElement | null) => {
-    const anchor = el?.parentElement;
-    if (!el || !anchor) return;
+  const popupRef = useRef<HTMLDivElement | null>(null);
 
-    const popupWidth = el.getBoundingClientRect().width;
-    const anchorRect = anchor.getBoundingClientRect();
-    const rightSpace = window.innerWidth - anchorRect.right - 8;
-    const leftSpace = anchorRect.left - 8;
-    const nextSide =
-      rightSpace >= popupWidth || rightSpace >= leftSpace ? "right" : "left";
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const el = popupRef.current;
+      if (!el) return;
 
-    setSide((prev) => (prev === nextSide ? prev : nextSide));
-  }, []);
+      const anchorRect = el.parentElement?.getBoundingClientRect();
+      const popupWidth = el.getBoundingClientRect().width;
+      if (!anchorRect || popupWidth <= 0) return;
+
+      const edgePad = 8;
+      const gap = 8;
+      const rightSpace = window.innerWidth - anchorRect.right - gap - edgePad;
+      const leftSpace = anchorRect.left - gap - edgePad;
+      const nextSide =
+        rightSpace >= popupWidth
+          ? "right"
+          : leftSpace >= popupWidth
+            ? "left"
+            : rightSpace >= leftSpace
+              ? "right"
+              : "left";
+
+      if (nextSide !== side) setSide(nextSide);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [label, posRangeLabel, side, tier.bountyEv, tier.cashEv, tier.field, tier.ev]);
 
   return (
     <div
-      ref={measureRef}
+      ref={popupRef}
       role="tooltip"
       className={`pointer-events-none absolute top-0 z-50 w-72 max-w-[85vw] rounded-md border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3 py-2.5 text-left text-[11px] leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] ${
         side === "right" ? "left-full ml-2" : "right-full mr-2"

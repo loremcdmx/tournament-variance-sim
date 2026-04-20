@@ -11,77 +11,25 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import {
+  FIT_RAKE_BY_FORMAT,
+  SIGMA_ROI_FREEZE,
+  SIGMA_ROI_MYSTERY,
+  SIGMA_ROI_MYSTERY_ROYALE,
+  SIGMA_ROI_PKO,
+  ciToZ,
+  sigmaForFit,
+  type RowFormat,
+  type SigmaRoiFit,
+} from "../src/lib/sim/convergenceMath";
 
-type SingleBetaCoef = {
-  kind: "single-beta";
-  C0: number;
-  C1: number;
-  beta: number;
-};
-type LogPoly2DCoef = {
-  kind: "log-poly-2d";
-  a0: number;
-  a1: number;
-  a2: number;
-  b1: number;
-  b2: number;
-  c: number;
-};
-type RuntimeCoef = SingleBetaCoef | LogPoly2DCoef;
+type Coef = SigmaRoiFit;
+type Fmt = RowFormat;
 
-const SIGMA_ROI_FREEZE: SingleBetaCoef = { kind: "single-beta", C0: 0.6564, C1: 0, beta: 0.3694 };
-const SIGMA_ROI_PKO: LogPoly2DCoef = {
-  kind: "log-poly-2d",
-  a0: 1.21374,
-  a1: -0.21789,
-  a2: 0.03473,
-  b1: 0.67318,
-  b2: -0.03445,
-  c: -0.05298,
-};
-const SIGMA_ROI_MYSTERY: LogPoly2DCoef = {
-  kind: "log-poly-2d",
-  a0: 2.33290,
-  a1: -0.27564,
-  a2: 0.02917,
-  b1: 1.14218,
-  b2: -0.09962,
-  c: -0.08406,
-};
-const SIGMA_ROI_MYSTERY_ROYALE: SingleBetaCoef = { kind: "single-beta", C0: 8.1534, C1: 7.9063, beta: 0 };
-const FIT_RAKE_BY_FORMAT = { freeze: 0.1, pko: 0.1, mystery: 0.1, "mystery-royale": 0.08 } as const;
-
-type Fmt = keyof typeof FIT_RAKE_BY_FORMAT;
-
-function evalSigma(coef: RuntimeCoef, afs: number, roi: number): number {
-  const f = Math.max(1, afs);
-  if (coef.kind === "log-poly-2d") {
-    const L = Math.log(f);
-    return Math.exp(
-      coef.a0 +
-        coef.a1 * L +
-        coef.a2 * L * L +
-        coef.b1 * roi +
-        coef.b2 * roi * roi +
-        coef.c * roi * L,
-    );
-  }
-  return Math.max(0, coef.C0 + coef.C1 * roi) * Math.pow(f, coef.beta);
-}
-
-function sigmaFor(coef: RuntimeCoef, afs: number, roi: number, rake: number, fitRake: number): number {
+function sigmaFor(coef: Coef, afs: number, roi: number, rake: number, fitRake: number): number {
   const rakeScale = (1 + fitRake) / (1 + rake);
-  return evalSigma(coef, afs, roi) * rakeScale;
+  return sigmaForFit(coef, afs, roi, rakeScale);
 }
-
-function inverseErf(x: number): number {
-  const a = 0.147;
-  const ln1 = Math.log(1 - x * x);
-  const t = 2 / (Math.PI * a) + ln1 / 2;
-  const sign = x >= 0 ? 1 : -1;
-  return sign * Math.sqrt(Math.sqrt(t * t - ln1 / a) - t);
-}
-const ciToZ = (ci: number) => Math.SQRT2 * inverseErf(Math.max(0, Math.min(0.999999, ci)));
 
 // ---------- Tab 1: FREEZE ---------------------------------------------------
 

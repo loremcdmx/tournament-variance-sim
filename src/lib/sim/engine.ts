@@ -228,6 +228,8 @@ interface CompiledEntry {
 interface CompiledSchedule {
   flat: CompiledEntry[];
   totalBuyIn: number;
+  /** Deterministic profit target from the schedule ROI plus deterministic RB. */
+  expectedProfit: number;
   tournamentsPerSample: number;
   /** flat.length / scheduleRepeats — used as session boundary in the hot loop. */
   tournamentsPerPass: number;
@@ -256,16 +258,14 @@ export function compileSchedule(
   // For each row, compile one or more variants depending on fieldVariability.
   // variants[r] is an array of { entry, weight } — weight is # of plays per
   // unit `count` consumed from this row.
-  // PD's "prize pool = buyin − rake for SD, = buyin for EV" inconsistency is
-  // applied whenever we're running under primedope-binary-itm calibration.
-  // That's how their closed-form σ is computed; matching it is the whole
-  // point of this compare mode.
   const primedopeCompare = calibrationMode === "primedope-binary-itm";
-  const primedopeStyleEV = primedopeCompare;
+  // Compare mode isolates PrimeDope's distribution assumptions. The EV target
+  // stays on our user-facing ROI basis (buy-in + rake), otherwise the right
+  // pane compares a different edge instead of a different variance model.
+  const primedopeStyleEV = false;
   // Three independent PD-flavour toggles, all default ON when compare mode
-  // is active — the PD pane then reproduces the live site to within ~0.2%
-  // SD. Flipping any of them off isolates that single PD quirk's
-  // contribution to σ. Validated by `scripts/pd_ui_parity.ts`.
+  // is active. Flipping any of them off isolates that single PD quirk's
+  // contribution to σ while keeping the schedule EV fixed.
   const forcePrimedopePayouts =
     primedopeCompare && input.usePrimedopePayouts !== false;
   const usePdFinishModel =
@@ -294,6 +294,7 @@ export function compileSchedule(
 
   const flat: CompiledEntry[] = [];
   let totalBuyIn = 0;
+  let expectedProfit = 0;
   let itmAcc = 0;
   // Build one "slot entry" per row. For rows with a single bucket this is
   // the compiled entry itself. For rows with fieldVariability it's a copy
@@ -324,6 +325,9 @@ export function compileSchedule(
       for (let k = 0; k < n; k++) {
         flat.push(entry);
         totalBuyIn += entry.costPerEntry;
+        expectedProfit +=
+          entry.costPerEntry * row.roi +
+          entry.rakebackBonusPerBullet * (1 + entry.reentryExpected);
         itmAcc += entry.itm;
         rowCounts[r] += 1;
         rowBuyIns[r] += entry.costPerEntry;
@@ -335,6 +339,7 @@ export function compileSchedule(
   return {
     flat,
     totalBuyIn,
+    expectedProfit,
     tournamentsPerSample: flat.length,
     tournamentsPerPass: Math.max(1, Math.floor(flat.length / reps)),
     rowCounts,
@@ -427,27 +432,24 @@ function compileSingleEntry(
       reentryExpected = (reRate * (1 - Math.pow(reRate, M))) / (1 - reRate);
     }
   }
-  // PrimeDope's site computes everything (cost, EV, ROI, SD) on the bare
-  // buy-in, ignoring rake entirely. When this run is in PrimeDope-display
-  // mode, drop rake from the cost basis too — otherwise the displayed mean
-  // would diverge from PrimeDope's by exactly the rake. Applies to BOTH
-  // the alpha and binary-ITM calibrations so the side-by-side comparison
-  // is on the same accounting basis.
+  // ROI in this app is always net of rake: profit / (buy-in + rake). Keep
+  // that cost basis in the PrimeDope comparison too so both panes compare the
+  // same edge. PrimeDope's rake quirk is modeled below through the prize-pool
+  // variance basis, not by silently changing the EV target.
   const entryCostSingle = primedopeStyleEV
     ? row.buyIn
     : row.buyIn * (1 + row.rake);
   const costPerEntry = entryCostSingle * (1 + reentryExpected);
   // Field-average extra entries inflate the prize pool too.
   const effectiveSeats = N * (1 + reentryExpected);
-  // Rake-SD coupling: in PD-binary-itm + primedopeStyleEV mode, we match
-  // PD's internal quirk of using the POST-RAKE pool as the variance
-  // driver while still computing EV against the pre-rake cost basis.
+  // Rake-SD coupling: in PD-binary-itm mode, we model PD's internal quirk
+  // of using the POST-RAKE pool as the variance driver while keeping the
+  // app's full-cost ROI target fixed.
   // (See notes/pokerdope_weaknesses.md §7.) The binary-ITM calibrator
   // will inflate l so the mean outcome still hits `targetRegular`, but
   // the tighter per-prize spread drops σ in proportion to rake.
   const poolBuyInBasis =
     calibrationMode === "primedope-binary-itm" &&
-    primedopeStyleEV &&
     pdFlags.usePdRakeMath
       ? // PD's rake-math quirk shrinks the pool by the full rake fraction.
         // At very high rake (e.g. $50+$50 satellite-style, rake=100%) that
@@ -1407,9 +1409,9 @@ export function buildResult(
   onBuildProgress?.(0.82, "envelopes");
 
   // Sample paths ------------------------------------------------------------
-  // Hi-res capture was populated during simulateShard: shard 0's first N
-  // samples are stored in hiResPaths, and the globally-extreme sample's path
-  // sits in hiResBestPath/hiResWorstPath. This replaces the old low-res
+  // Hi-res capture was populated during simulateShard: each shard stores a
+  // capped slice of its local samples, and mergeShards preserves their global
+  // sample ids beside the path buffers. This replaces the old low-res
   // pathMatrix slicing which produced smooth diagonals at K=80 checkpoints.
   const hiCheckpointIdx = shard.hiResCheckpointIdx;
   const xHi: number[] = new Array(hiCheckpointIdx.length);
@@ -1630,7 +1632,7 @@ export function buildResult(
     samples: S,
     tournamentsPerSample: N,
     totalBuyIn: compiled.totalBuyIn,
-    expectedProfit: mean,
+    expectedProfit: compiled.expectedProfit,
     calibrationMode,
     finalProfits,
     rowProfits,
@@ -1955,7 +1957,8 @@ export interface RawShard {
   /** Per-sample hi-res paths for the first `wantHiResPaths` samples of
    *  this shard. */
   hiResPaths: Float64Array[];
-  /** Global sample indices for `hiResPaths`, parallel to the paths array. */
+  /** Global sample ids parallel to `hiResPaths`, used by UI filters that need
+   *  to map visible paths back to per-sample result arrays. */
   hiResSampleIndices: Int32Array;
   /** Snapshot of the shard-local best-final-profit sample path. */
   hiResBestPath: Float64Array;
@@ -2081,7 +2084,6 @@ export function simulateShard(
   const hiResPaths: Float64Array[] = new Array(wantHiResPaths);
   for (let i = 0; i < wantHiResPaths; i++) hiResPaths[i] = new Float64Array(hiK1);
   const hiResSampleIndices = new Int32Array(wantHiResPaths);
-  for (let i = 0; i < wantHiResPaths; i++) hiResSampleIndices[i] = sStart + i;
   const hiResBestPath = new Float64Array(hiK1);
   const hiResWorstPath = new Float64Array(hiK1);
   const hiResScratch = new Float64Array(hiK1);
@@ -2463,6 +2465,7 @@ export function simulateShard(
     // records are rare (≈ O(log S)) so the per-sample cost is ~O(N/stride).
     if (localS < wantHiResPaths) {
       hiResPaths[localS].set(hiResScratch);
+      hiResSampleIndices[localS] = s;
     }
     if (profit > hiResBestFinal) {
       hiResBestFinal = profit;

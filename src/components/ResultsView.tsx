@@ -318,12 +318,13 @@ function TrajectoryPlot({
     (scaleKey: string, min: number | null, max: number | null) => {
       if (scaleKey !== "x") return;
       if (min == null || max == null || !Number.isFinite(min) || !Number.isFinite(max)) {
-        setXZoomed(false);
+        setXZoomed((prev) => (prev ? false : prev));
         return;
       }
       const span = Math.max(1, xMax - xMin);
       const eps = span * 1e-6;
-      setXZoomed(Math.abs(min - xMin) > eps || Math.abs(max - xMax) > eps);
+      const next = Math.abs(min - xMin) > eps || Math.abs(max - xMax) > eps;
+      setXZoomed((prev) => (prev === next ? prev : next));
     },
     [xMin, xMax],
   );
@@ -333,7 +334,9 @@ function TrajectoryPlot({
     plot.setScale("x", { min: xMin, max: xMax });
   }, [xMin, xMax]);
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setXZoomed(false));
+    const frame = requestAnimationFrame(() => {
+      setXZoomed((prev) => (prev ? false : prev));
+    });
     return () => cancelAnimationFrame(frame);
   }, [assets, xMin, xMax]);
 
@@ -540,6 +543,9 @@ function TrajectoryPlot({
         }
       }
     }
+    // For per-run hovering, trust the visual hit-test over the value-only
+    // nearest line. The flock paths are dense and checkpointed; using only the
+    // nearest x-index can miss the segment the cursor is actually sitting on.
     if (nearestPath && bestPathPxDist <= TRAJECTORY_PATH_HIT_PX) {
       nearest = nearestPath;
       nearestVal = nearestPathVal;
@@ -1840,6 +1846,7 @@ function ResultsViewImpl({
 
   const s = displayResultStats.stats;
   const pdStats = displayPdChartStats?.stats;
+  const pdExpectedProfit = displayPdChartStats?.expectedProfit;
   const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
   const roi = s.mean / displayResultStats.totalBuyIn;
   const modelPreset = modelPresetId
@@ -2230,8 +2237,12 @@ function ResultsViewImpl({
             .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
             .replace("{median}", money(s.median))}
           tone={displayResultStats.expectedProfit >= 0 ? "pos" : "neg"}
-          pdValue={pdStats ? money(pdStats.mean) : undefined}
-          pdDelta={pdStats ? pctDelta(s.mean, pdStats.mean) : null}
+          pdValue={pdExpectedProfit != null ? money(pdExpectedProfit) : undefined}
+          pdDelta={
+            pdExpectedProfit != null
+              ? pctDelta(displayResultStats.expectedProfit, pdExpectedProfit)
+              : null
+          }
           pdLabel={pdBadgeLabel}
         />
         <BigStat
@@ -2843,6 +2854,15 @@ const TrajectoryCard = memo(function TrajectoryCard({
   const { compactMoney } = useMoneyFmt();
   const { advanced } = useAdvancedMode();
   const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
+  const overlayLegendKey: DictKey = pdPkoFallback
+    ? "chart.legend.noKoOverlay"
+    : compareMode === "primedope"
+      ? "chart.legend.pdOverlay"
+      : "chart.legend.genericOverlay";
+  const overlayLegend =
+    overlayPd && !pdPresetFlip ? (
+      <OverlayLegendChip label={t(overlayLegendKey)} />
+    ) : null;
   const hasBounty = (schedule ?? []).some(
     (r) => (r.bountyFraction ?? 0) > 0,
   );
@@ -3052,6 +3072,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
                 ? t(oursCapKey)
                 : t("twin.runA.cap")
             }
+            action={overlayLegend}
           >
             <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} />
           </ChartPane>
@@ -4225,6 +4246,18 @@ function SettingsDumpCard({
   );
 }
 
+function OverlayLegendChip({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+      <span
+        className="inline-block h-[1px] w-6 border-t-2 border-dashed"
+        style={{ borderColor: "#60a5fa" }}
+      />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function ChartPane({
   label,
   sublabel,
@@ -4752,9 +4785,9 @@ function PrimedopeDiff({
   }[] = [
     {
       label: t("pd.row.ev"),
-      ours: money(ours.mean),
-      theirs: money(theirs.mean),
-      delta: diffMoney(ours.mean, theirs.mean),
+      ours: money(primary.expectedProfit),
+      theirs: money(other.expectedProfit),
+      delta: diffMoney(primary.expectedProfit, other.expectedProfit),
       highlight: true,
     },
     {

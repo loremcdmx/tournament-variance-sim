@@ -566,8 +566,8 @@ export const DICT = {
     ru: "разброс: {min} → {max}",
   },
   "stat.expectedProfit.tip": {
-    en: "Analytical EV (expected payout − buy-in × entries). Actual MC mean: {mean} · ROI {roi} · median {median}.",
-    ru: "Аналитическое EV (ожидаемая выплата − бай-ин × входы). Фактическое MC-среднее: {mean} · ROI {roi} · медиана {median}.",
+    en: "Analytical EV (expected payout − full entry cost × entries). Actual MC mean: {mean} · ROI {roi} · median {median}.",
+    ru: "Аналитическое EV (ожидаемая выплата − полная стоимость входов). Фактическое MC-среднее: {mean} · ROI {roi} · медиана {median}.",
   },
   "stat.probProfit.sub": {
     en: "{n} tourneys to reach ±5% ROI",
@@ -845,8 +845,8 @@ export const DICT = {
     ru: "Рейк-арифметика ПД",
   },
   "chart.trajectory.pdRakeMath.hint": {
-    en: "PD rake quirk (their §7): variance is driven by the POST-rake prize pool, while the EV formula pretends rake doesn't exist.\n\nExample — $100 + $9 rake, 1000 entrants, player ROI +20%:\n  Our EV per tourney = 0.20 × $100 = $20 (rake already paid out of pocket)\n  PD  EV             = 0.20 × $100 = $20 (same number)\n\nBut SD differs:\n  Our SD scales with the full $109 × 1000 pool (rake is a real cost)\n  PD  SD scales with $100 × 1000 pool only (post-rake)\n  → PD's SD comes out ≈8.3% lower on this row\n\nConsequence: crank rake up to $20 and PD's simulated SD keeps *dropping* while their EV stays flat — unphysical. We treat rake as a fixed cost that enters both EV and variance.\n\nUncheck to use the pre-rake pool in PD's pass; isolates how much of the gap comes from this coupling alone.",
-    ru: "Квирк рейка ПД (их §7): дисперсия считается от ПОСТ-рейкового призового пула, а формула EV делает вид, что рейка нет.\n\nПример — $100 + $9 рейк, 1000 участников, ROI игрока +20%:\n  Наш EV на турнир = 0.20 × $100 = $20 (рейк уже вычтен из кармана)\n  EV ПД            = 0.20 × $100 = $20 (та же цифра)\n\nНо SD разная:\n  Наша SD считается от полного пула $109 × 1000 (рейк — реальная стоимость)\n  SD ПД  считается только от $100 × 1000 (пост-рейк)\n  → SD ПД на этой строке выходит ≈8.3% ниже\n\nСледствие: подними рейк до $20 — у ПД симулированная SD будет *падать*, а EV держаться. Нефизично. Мы трактуем рейк как фиксированную стоимость, входящую и в EV, и в дисперсию.\n\nСнимите галку — использовать пре-рейковый пул в прогоне ПД; виден вклад именно этого сочленения в разрыв.",
+    en: "PD rake quirk (their §7): variance is driven by the POST-rake prize pool. In this comparison the EV target stays pinned to the same full-cost ROI as the left chart.\n\nExample — $100 + $9 rake, 1000 entrants, player ROI +20%:\n  EV target in both panes = 0.20 × $109 = $21.80\n\nBut SD differs:\n  Our SD scales with the full $109 × 1000 pool (rake is a real cost)\n  PD  SD scales with $100 × 1000 pool only (post-rake)\n  → PD's SD comes out ≈8.3% lower on this row\n\nConsequence: crank rake up to $20 and PD's simulated SD keeps dropping while EV stays pinned. This toggle isolates that coupling alone.\n\nUncheck to use the pre-rake pool in PD's pass.",
+    ru: "Квирк рейка ПД (их §7): дисперсия считается от ПОСТ-рейкового призового пула. В этом сравнении EV-таргет закреплён тем же ROI от полной стоимости, что и левый график.\n\nПример — $100 + $9 рейк, 1000 участников, ROI игрока +20%:\n  EV-таргет в обеих панелях = 0.20 × $109 = $21.80\n\nНо SD разная:\n  Наша SD считается от полного пула $109 × 1000 (рейк — реальная стоимость)\n  SD ПД  считается только от $100 × 1000 (пост-рейк)\n  → SD ПД на этой строке выходит ≈8.3% ниже\n\nСледствие: подними рейк до $20 — у ПД симулированная SD будет падать, а EV останется закреплённым. Эта галка изолирует только этот эффект.\n\nСнимите галку — использовать пре-рейковый пул в прогоне ПД.",
   },
   "chart.trajectory.sharedY": {
     en: "Both charts share the same Y-axis range so the visual difference in envelope width is directly comparable.",
@@ -926,12 +926,16 @@ export const DICT = {
     ru: "{pct} ранов не восстановились до конца расписания (не показано на графике)",
   },
   "chart.legend.pdOverlay": {
-    en: "Dashed line — PrimeDope distribution for comparison",
-    ru: "Пунктир — распределение PrimeDope для сравнения",
+    en: "Dashed: PrimeDope comparison",
+    ru: "Пунктир: PrimeDope-сравнение",
   },
   "chart.legend.noKoOverlay": {
-    en: "Dashed line — same schedule without bounties",
-    ru: "Пунктир — то же расписание без ноков",
+    en: "Dashed: same schedule without bounties",
+    ru: "Пунктир: то же расписание без нокаутов",
+  },
+  "chart.legend.genericOverlay": {
+    en: "Dashed: second chart overlaid",
+    ru: "Пунктир: второй график, наложенный на текущий",
   },
   "chart.traj.runStats": { en: "run stats", ru: "статы рана" },
   "chart.traj.abi": { en: "ABI", ru: "ABI" },
@@ -1089,6 +1093,10 @@ export const DICT = {
     en: "Room rake — fraction of buy-in taken per entry. σ fits were measured at rake = 10 %, so shifting this knob rescales σ by (1+0.10)/(1+rake). Higher rake compresses σ in ROI units (same $-variance spread over a bigger cost basis) and also scales the RB→ROI conversion, since RB is expressed as a fraction of rake.",
     ru: "Рейк — доля бай-ина, которую забирает рум с каждого входа. σ измерена при рейке 10 %, так что ползунок пересчитывает σ как (1+0,10)/(1+рейк). Рост рейка сжимает σ в ROI-единицах (та же $-дисперсия, но делится на больший бай-ин+рейк) и одновременно меняет перевод РБ в ROI, ведь РБ задаётся в % от рейка.",
   },
+  "chart.convergence.roi.invariant": {
+    en: "Hidden here: this fit is ROI-invariant, so moving ROI would not change the table.",
+    ru: "Скрыто здесь: этот fit не зависит от ROI, поэтому ползунок не менял бы таблицу.",
+  },
   "chart.convergence.rakeback": { en: "RB", ru: "РБ" },
   "chart.convergence.rakeback.title": {
     en: "Rakeback — % of paid rake credited back after every tournament. Added on top of the game ROI to get the total ROI the player sees: RB → ROI = rakeback × rake (e.g. 30 % RB at 10 % rake → +3 pp of ROI). σ is driven only by the game ROI above (rakeback contributes zero variance), so bumping RB raises total ROI without changing convergence.",
@@ -1143,8 +1151,8 @@ export const DICT = {
     ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",
   },
   "chart.convergence.assumptions": {
-    en: "Read a row as: «play this many tournaments and, with the chosen CI confidence, your observed ROI will land inside the target band around the true one». The Freeze / PKO / Mystery / Battle Royale / Mix toggle picks the format. PKO σ is the lowest — bounties spread 50 % of the pool per-knockout, flattening the top-heavy payout distribution. Mystery σ sits above PKO: bounty $ concentrates on ITM-only KOs (phase-split — pre-ITM plays as freeze, envelopes open at the bubble) with log-normal jackpot noise, so ROI-sensitivity is several times PKO's. Battle Royale cranks the envelope variance further (jackpot-tier right tail), roughly doubling Mystery's baseline σ at the AFS-18 lock. AFS pretends you're playing a different average field size, ROI a different true edge — freeze with the realdata finish is ~ROI-invariant, bounty formats grow σ with edge because deeper runs collect more bounty $. In Mix the three sliders set freeze / PKO / Mystery shares (Battle Royale is excluded from Mix because it's an 18-max structural format), σ²_mix = f_freeze·σ²_freeze + f_pko·σ²_pko + f_mystery·σ²_mystery. Independent-tournament assumption. The row σ is a closed-form approximation. Freeze, MBR, and PKO (post-refit 2026-04-20) render a ±band inside their validated training box (field 50–50 000, ROI −20..+80 % for PKO / Mystery, MBR strict at AFS=18). Outside the box, or whenever a Mystery row is present, the ±band is hidden — use the point as a ballpark and lean on a full run. Fits: freeze ≈ 0.656·field^0.369; PKO / Mystery use 2D log-poly log σ = a0 + a1·log field + a2·(log field)² + b1·ROI + b2·ROI² + c·ROI·log field (cuts single-β LOO residual by 60-70 %); Battle Royale at AFS=18 ≈ 8.15 + 7.91·ROI — engine sweep (18 fields × 7 ROIs for freeze, 11 ROIs otherwise; MBR fixed-AFS).",
-    ru: "Строка читается так: «при заданном числе турниров с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного». Переключатель Фриз / ПКО / Мистери / Батл Рояль / Микс задаёт формат. У ПКО σ самая низкая — баунти распределяют 50 % пула за каждый нокаут, выравнивая top-heavy-структуру выплат. У Мистери σ выше ПКО: баунти-деньги концентрируются только на ITM-нокаутах (фазовое разделение — до ITM игра как фриз, конверты открываются на баббле) плюс log-normal jackpot-шум, ROI-чувствительность в несколько раз выше ПКО. У Батл Рояль дисперсия конвертов ещё выше (jackpot-хвост), это примерно удваивает базовую σ Мистери на фиксированном AFS=18. AFS задаёт средний размер филда, ROI — истинный эдж: для фриза с realdata-финишем σ почти не зависит от ROI, у баунти-форматов σ растёт с эджем (глубже проход → больше баунти). В Миксе ползунок задаёт доли фриз / ПКО / Мистери, σ²_микс = f_фриз·σ²_фриз + f_пко·σ²_пко + f_мист·σ²_мист. Предполагается независимость турниров. σ в строке — closed-form-аппроксимация. Фриз, MBR и ПКО (после refit 2026-04-20) рисуют ±-полосу; у Мистери residual-хвост всё ещё широкий, полоса не показывается — считай точку ориентиром и полагайся на полный прогон. Фиты: фриз ≈ 0,656·field^0.369; ПКО / Мистери — 2D log-poly log σ = a0 + a1·log field + a2·(log field)² + b1·ROI + b2·ROI² + c·ROI·log field (срезает LOO residual single-β на 60-70 %); Батл Рояль при AFS=18 ≈ 8,15 + 7,91·ROI — свип движка (18 филдов × 7 ROI для фриза, 11 ROI для остальных; MBR с фиксированным AFS).",
+    en: "Read a row as: play this many tournaments and, with the chosen CI confidence, your observed ROI lands inside the target band around the true one. Freeze is ROI-invariant in this fit, so its ROI control is hidden. PKO, Mystery, and Battle Royale grow with ROI because better runs collect more bounty value. Mix combines Freeze / PKO / Mystery by variance share: σ²_mix = Σ w_format·σ²_format. Schedule mode ignores the global sliders and combines every schedule row at its own AFS, ROI, rake, and format. Freeze, Battle Royale, and PKO show a numeric range only inside their validated training boxes; Mystery and out-of-box points keep the point estimate as a ballpark and hide the range.",
+    ru: "Строка читается так: сыграй столько турниров, и с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного. Во фризе этот fit не зависит от ROI, поэтому ROI-контрол скрыт. В ПКО, Мистери и Battle Royale σ растёт с ROI: более глубокие проходы собирают больше баунти. Микс комбинирует Фриз / ПКО / Мистери по дисперсии: σ²_микс = Σ w_format·σ²_format. Режим Расписание игнорирует глобальные ползунки и считает каждую строку по её собственным AFS, ROI, рейку и формату. Фриз, Battle Royale и ПКО показывают числовой диапазон только внутри validated training box; для Мистери и точек вне box остаётся ориентир-точка, а диапазон скрыт.",
   },
   "chart.decomp": { en: "Per-row EV decomposition", ru: "Декомпозиция EV по строкам" },
   "chart.decomp.sub": {
@@ -1355,8 +1363,8 @@ export const DICT = {
     ru: "Первая реально рабочая версия симулятора: пресеты, стили траекторий, переключатель единиц и импорт/экспорт.",
   },
   "chart.convergence.help": {
-    en: "Simple idea: the fewer tournaments you've played, the more your observed ROI is just noise. This table tells you, for each target ROI band, how many tournaments you need to grind before the number on your dashboard means anything. «±2 %» doesn't say your ROI is exactly right — it says that with the chosen confidence level the truth lies within 2 pp of what you see. Wider band → fewer tournaments.\n\nThe format toggle picks Freeze / PKO / Mix. PKO σ is actually LOWER than freeze at the same field / ROI: half the prize pool is distributed per-knockout (bounties), which flattens the top-heavy finish-place payout curve, so tails are shorter and you converge ~2–3× faster on PKO than on an equivalent freeze. Mix blends them; the mix slider sets PKO share (rest = freeze), σ²_mix = p·σ²_pko + (1−p)·σ²_freeze.\n\nThe CI slider controls how strict «trust» is: 95 % is the classic «19 out of 20», 99 % stricter, 99.9 % paranoid. The second column expresses the same count in full fields of the selected AFS.\n\nThe AFS slider assumes a different average field size — bigger fields have heavier tails, same certainty takes more tourneys; freeze σ ∝ field^0.369, PKO σ ∝ field^0.276 (PKO tail grows slower because bounties dilute finish-place dependence).\n\nThe ROI slider assumes a different true edge. For freeze with the realdata finish σ is ~ROI-invariant (the empirical finish CDF is fixed; ROI only shifts the mean). For PKO σ ∝ (1 + 0.79·ROI) — higher edge = more deep runs = fatter bounty payouts = wider tail.\n\nCoefficients are fits to the engine across an 18-field × 7-ROI (freeze) / 11-ROI (PKO) sweep with 120 k samples per cell.",
-    ru: "Идея: чем меньше сыграно турниров, тем больше наблюдаемый ROI определяется шумом, а не скиллом. Таблица показывает, для каждой полосы точности, сколько турниров необходимо для статистически значимого результата.\n\n«±2 %» означает: с выбранным уровнем доверия истинный ROI лежит в пределах 2 пп от наблюдаемого. Шире полоса — меньше турниров требуется.\n\nПереключатель формата: Фриз / ПКО / Микс. σ в ПКО на самом деле НИЖЕ, чем во фризе при тех же филде/ROI: половина пула раздаётся за нокауты (баунти), что сглаживает top-heavy-структуру выплат за места — хвосты короче, ПКО сходится в ~2–3 раза быстрее эквивалентного фриза. Микс смешивает форматы; ползунок задаёт долю ПКО (остальное — фризы), σ²_микс = p·σ²_пко + (1−p)·σ²_фриз.\n\nCI — строгость доверительного интервала: 95 % = классический «19 из 20», 99 % — строже, 99,9 % — максимальная строгость. Вторая колонка выражает то же количество в «полных полях» выбранного AFS.\n\nAFS — средний размер поля. У больших филдов хвост тяжелее, та же точность требует больше турниров; фриз σ ∝ field^0.369, ПКО σ ∝ field^0.276 (в ПКО хвост растёт медленнее — баунти размывают зависимость от места).\n\nROI — истинный эдж. Для фриза с realdata-финишем σ почти не зависит от ROI (эмпирический финиш-CDF фиксирован, ROI лишь сдвигает среднее). Для ПКО σ ∝ (1 + 0,79·ROI) — выше эдж → чаще глубокие проходы → жирнее баунти → шире хвост.\n\nКоэффициенты — эмпирические фиты по свипу движка (18 филдов × 7 ROI для фриза / 11 ROI для ПКО, по 120 тыс сэмплов на ячейку).",
+    en: "Fewer tournaments means your observed ROI is mostly noise. The table says how many tournaments you need for each target ROI band at the selected confidence level.\n\nTabs: Freeze, PKO, Mystery, GG Battle Royal, Mix, and Schedule. Freeze is ROI-invariant in the current fit, so the ROI slider is hidden there. Bounty formats are ROI-sensitive. Mix blends Freeze / PKO / Mystery with σ²_mix = Σ w·σ². Schedule mode uses the real rows one by one instead of average sliders.\n\nAFS changes the average field size, CI changes how strict the interval is, rake rescales ROI-unit σ by cost basis. Numeric cells show point estimate · fit-drift range when that range is allowed; warning cells keep only the point estimate.",
+    ru: "Чем меньше сыграно турниров, тем сильнее наблюдаемый ROI состоит из шума. Таблица показывает, сколько турниров нужно для каждой полосы ROI при выбранной доверительности.\n\nВкладки: Фриз, ПКО, Мистери, GG Battle Royal, Микс и Расписание. Во Фризе текущий fit не зависит от ROI, поэтому ROI-ползунок скрыт. Баунти-форматы чувствительны к ROI. Микс смешивает Фриз / ПКО / Мистери через σ²_микс = Σ w·σ². Расписание считает реальные строки по одной, а не средние ползунки.\n\nAFS меняет средний размер поля, CI — строгость интервала, рейк пересчитывает σ в ROI-единицах через cost basis. Числа показываются как точка · диапазон drift-а fit-а, когда такой диапазон разрешён; при warning остаётся только точечная оценка.",
   },
   "chart.sensitivity.help": {
     en: "X = how wrong your ROI input is in percentage points (e.g. −2pp means real ROI is 2pp lower than configured). Y = expected profit at that real ROI. Use this to ask: 'if my edge is actually 1–2pp worse than I think, am I still profitable?' Slope shows how much each pp of ROI is worth in $. A steep curve means your bottom line is very sensitive to whether your ROI estimate is right.",
@@ -1428,12 +1436,12 @@ export const DICT = {
   "pd.row.ddWorst": { en: "Worst streak ever seen", ru: "Худший стрик за ран" },
   "pd.row.ev": { en: "Expected profit (EV)", ru: "Ожидаемый профит (EV)" },
   "pd.evDelta.title": {
-    en: "Our EV is correct — PrimeDope's is off by the rake",
-    ru: "Наш EV правильный — у PrimeDope он занижен на величину рейка",
+    en: "EV target is pinned in both panes",
+    ru: "EV-таргет одинаковый в обеих панелях",
   },
   "pd.evDelta.body": {
-    en: "PD computes EV as buyin × ROI, ignoring the fee you actually pay from your pocket. We compute it against (buyin + fee), the real cost basis. The dollar gap is exactly the rake PD quietly eats. See the 'PD's EV is off' weakness block below.",
-    ru: "PD считает EV как buyin × ROI, игнорируя фи. Мы считаем от полного коста (buyin + fee). Разница в долларах — ровно тот рейк, который PD не учитывает. Подробности в блоке «EV посчитан мимо кассы» ниже.",
+    en: "The comparison keeps the same schedule ROI and full-cost EV target on both sides. Differences below are variance / distribution effects, while the actual MC mean can still wander with finite samples.",
+    ru: "Сравнение держит один и тот же ROI расписания и EV от полной стоимости на обеих сторонах. Разницы ниже — это эффекты дисперсии и распределения, а фактическое MC-среднее всё ещё может гулять на конечном числе сэмплов.",
   },
 
   // Payout structure card

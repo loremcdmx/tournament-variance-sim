@@ -51,6 +51,12 @@ describe("engine", () => {
     expect(Math.abs(realized - 0.2)).toBeLessThan(3 * se);
   });
 
+  it("reports expectedProfit as the deterministic schedule EV target", () => {
+    const r = runSimulation(baseInput({ samples: 1 }));
+    expect(r.totalBuyIn).toBeCloseTo(10 * 1.1 * 200, 12);
+    expect(r.expectedProfit).toBeCloseTo(r.totalBuyIn * 0.2, 10);
+  });
+
   it("uniform model yields realized ROI ≈ -rake", () => {
     const r = runSimulation(
       baseInput({
@@ -175,11 +181,33 @@ describe("engine", () => {
     expect(r.comparison!.calibrationMode).toBe("primedope-binary-itm");
     // Same tournamentsPerSample — compile is deterministic re: schedule size.
     expect(r.comparison!.tournamentsPerSample).toBe(r.tournamentsPerSample);
+    // Same ROI target — the comparison changes distribution assumptions, not EV.
+    expect(r.comparison!.totalBuyIn).toBeCloseTo(r.totalBuyIn, 12);
+    expect(r.comparison!.expectedProfit).toBeCloseTo(r.expectedProfit, 12);
     // Both calibrations aim at the same expected ROI. Binary-ITM is "no skill"
     // (uniform 1/N finish) but keeps the real top-heavy payout curve, so it
     // should still produce meaningful drawdown — just driven by pure luck.
     expect(r.comparison!.stats.maxDrawdownMean).toBeGreaterThan(0);
     expect(Number.isFinite(r.comparison!.stats.stdDev)).toBe(true);
+  });
+
+  it("preserves global sample indices for merged hi-res paths", () => {
+    const input = baseInput({
+      samples: 4000,
+      scheduleRepeats: 1,
+    });
+    const compiled = compileSchedule(input);
+    const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+    const a = simulateShard(input, compiled, 0, 2000, grid);
+    const b = simulateShard(input, compiled, 2000, 4000, grid);
+    const merged = mergeShards([a, b], input.samples, grid.K + 1, input.schedule.length);
+    const result = buildResult(input, compiled, merged, "alpha", grid);
+
+    expect(result.samplePaths.paths).toHaveLength(1000);
+    expect(result.samplePaths.sampleIndices[0]).toBe(0);
+    expect(result.samplePaths.sampleIndices[499]).toBe(499);
+    expect(result.samplePaths.sampleIndices[500]).toBe(2000);
+    expect(result.samplePaths.sampleIndices[999]).toBe(2499);
   });
 
   it("re-entry row inflates cost and mean proportionally", () => {

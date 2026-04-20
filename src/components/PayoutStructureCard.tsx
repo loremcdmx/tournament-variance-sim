@@ -187,10 +187,10 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
           cashPoolDollars={cashPoolDollars}
           bountyPoolDollars={bountyPoolDollars}
           isBr={isBr}
+          locale={locale}
           cashLabel={t("payouts.pool.cash")}
           bountyLabel={t("payouts.pool.bounty")}
           noteKey={isBr ? "payouts.pool.noteBr" : "payouts.pool.note"}
-          locale={locale}
           t={t}
         />
       )}
@@ -245,10 +245,10 @@ function PoolSplit({
   cashPoolDollars,
   bountyPoolDollars,
   isBr,
+  locale,
   cashLabel,
   bountyLabel,
   noteKey,
-  locale,
   t,
 }: {
   cashPoolShare: number;
@@ -256,10 +256,10 @@ function PoolSplit({
   cashPoolDollars: number;
   bountyPoolDollars: number;
   isBr: boolean;
+  locale: Locale;
   cashLabel: string;
   bountyLabel: string;
   noteKey: DictKey;
-  locale: Locale;
   t: (key: DictKey) => string;
 }) {
   const fmtDollars = (v: number) => {

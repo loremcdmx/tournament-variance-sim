@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeExpectedRakebackCurve, reentryExpectedClient } from "./trajectoryTransforms";
-import type { TournamentRow } from "@/lib/sim/types";
+import {
+  computeExpectedRakebackCurve,
+  reentryExpectedClient,
+  stripJackpots,
+} from "./trajectoryTransforms";
+import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
 function makeRow(overrides: Partial<TournamentRow>): TournamentRow {
   return {
@@ -57,5 +61,48 @@ describe("computeExpectedRakebackCurve", () => {
       [0, 1],
     );
     expect(curve).toBeNull();
+  });
+});
+
+describe("stripJackpots", () => {
+  it("filters hi-res paths by their global sample indices", () => {
+    const keptPath = Float64Array.from([0, 10]);
+    const jackpotPath = Float64Array.from([0, 1000]);
+    const fallback = Float64Array.from([0, 1000]);
+    const result = {
+      finalProfits: Float64Array.from([0, 10, 20, 1000]),
+      jackpotMask: Uint8Array.from([0, 0, 0, 1]),
+      histogram: { binEdges: [0, 1000], counts: [4] },
+      samplePaths: {
+        x: [0, 1],
+        paths: [keptPath, jackpotPath],
+        best: jackpotPath,
+        worst: keptPath,
+        sampleIndices: [1, 3],
+      },
+      envelopes: {
+        x: [0, 1],
+        mean: fallback,
+        p05: fallback,
+        p95: fallback,
+        p15: fallback,
+        p85: fallback,
+        p025: fallback,
+        p975: fallback,
+        p0015: fallback,
+        p9985: fallback,
+        min: fallback,
+        max: fallback,
+      },
+    } as unknown as SimulationResult;
+
+    const stripped = stripJackpots(result);
+
+    expect(stripped.samplePaths.sampleIndices).toEqual([1]);
+    expect(stripped.samplePaths.paths).toHaveLength(1);
+    expect(stripped.samplePaths.paths[0]).toBe(keptPath);
+    expect(stripped.samplePaths.best).toBe(keptPath);
+    expect(stripped.samplePaths.worst).toBe(keptPath);
+    expect(Array.from(stripped.finalProfits)).toEqual([0, 10, 20]);
   });
 });
