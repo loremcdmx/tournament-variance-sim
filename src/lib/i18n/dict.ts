@@ -1612,17 +1612,16 @@ export const DICT = {
   "preview.evSplit.cash": { en: "cash", ru: "кеш" },
   "preview.evSplit.bounty": { en: "bounty", ru: "ноки" },
   "preview.evBias.label": {
-    en: "Where EV comes from — places or KOs",
-    ru: "Откуда берётся EV — занимаемые места или ноки",
+    en: "KOs as % of gross EV",
+    ru: "Какой % EV дают ноки",
   },
-  "preview.evBias.center": { en: "balanced", ru: "равномерно" },
   "preview.evBias.tip": {
-    en: "Total ROI = expected cash payouts + expected knockouts. The engine calibrates each pool independently: α shapes the finish PMF so Σ pmf·prize = cash target, then bounties scale so Σ pmf·bounty = bounty target. This slider moves the target between the two pools without changing their sum. Toward cash: cash target grows, α tightens toward top finishes, bounty EV shrinks. Toward bounty: cash target shrinks (α flattens), each KO pays more. ROI stays exactly on target either way.",
-    ru: "Суммарный ROI = ожидание от кэш-выплат + ожидание от ноков. Движок калибрует пулы независимо: α подгоняет PMF финишей так, чтобы Σ pmf·приз = цель по кэшу, затем ноки масштабируются так, чтобы Σ pmf·нок = цель по нокам. Слайдер переливает цель между пулами, не меняя их сумму. К кэшу: цель по кэшу растёт, α сдвигается к верхним местам, EV с ноков падает. К нокам: цель по кэшу падает (α размазывается), средний размер нока растёт. Общий ROI в любом случае остаётся ровно на цели.",
+    en: "Pick what share of gross EV should come from knockouts. Under the hood this is still the same cash-vs-bounty rebalance: total ROI stays fixed, while the engine shifts EV between the regular payout pool and the KO pool. Higher KO share means less cash EV and more knockout EV; lower KO share does the opposite. In Battle Royale, the published envelope table keeps average KO size fixed, so the shift increases expected KO count instead of inflating each envelope.",
+    ru: "Выбирает, какая доля брутто-EV должна приходить из ноков. Под капотом это тот же самый ребаланс между кеш-пулом и KO-пулом: общий ROI остаётся фиксированным, а движок перекладывает EV между выплатами за места и ноками. Больше доля ноков — меньше EV от мест и больше EV от KO-канала; меньше доля ноков — наоборот. В Battle Royale средний размер конверта фиксирован таблицей, поэтому сдвиг увеличивает ожидаемое число ноков, а не раздувает каждый отдельный нок.",
   },
   "preview.evBias.cash": { en: "cash", ru: "кэш" },
   "preview.evBias.bounty": { en: "KOs", ru: "ноки" },
-  "preview.evBias.reset": { en: "reset", ru: "сброс" },
+  "preview.evBias.reset": { en: "base", ru: "база" },
   "preview.evSplit.bountyRegular": {
     en: "bounty (regular)",
     ru: "ноки (обычные)",

@@ -249,6 +249,9 @@ export interface TournamentRow {
    *   s < 0    → toward bounty: bountyMean grows linearly toward
    *              `totalWinningsEV` (cash target shrinks, player profit
    *              comes more from KOs).
+   * In Battle Royale the published envelope table fixes mean $ per KO, so
+   * this bias is expressed by changing expected KO count rather than the
+   * average envelope size.
    * Clamped to ±0.25 at the engine — empirically, α calibration begins to
    * bottom out against its search envelope near ±0.3, which would leave
    * realized EV below the ROI contract. ±0.25 keeps the shift inside the

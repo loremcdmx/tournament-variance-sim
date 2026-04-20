@@ -69,6 +69,10 @@ const RAW_PROFILES: RawProfile[] = [
 ];
 
 export interface BrTierSampler {
+  /** Published mean envelope value for the snapped GG profile. In Battle
+   *  Royale this stays fixed when the bounty budget changes; only the
+   *  expected number of envelope drops should move. */
+  meanValue: number;
   /** Per-tier multipliers normalised so Σ probs[i] × ratios[i] = 1. Multiply
    *  `perKO` by `ratios[pick]` to realise a single envelope draw. */
   ratios: Float64Array;
@@ -151,5 +155,5 @@ export function makeBrTierSampler(buyIn: number): BrTierSampler {
   for (let i = 0; i < n; i++) ratios[i] = prof.values[i] / rawMean;
 
   const { aliasProb, aliasIdx } = buildVoseAlias(probs);
-  return { ratios, probs, aliasProb, aliasIdx };
+  return { meanValue: rawMean, ratios, probs, aliasProb, aliasIdx };
 }

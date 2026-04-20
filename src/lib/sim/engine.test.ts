@@ -542,7 +542,7 @@ describe("mystery-royale KO window", () => {
     return acc;
   };
 
-  it("uses a top-9 envelope window with harmonic KO means", () => {
+  it("uses a top-9 envelope window with harmonically-shaped KO counts", () => {
     const compiled = compileSchedule({
       schedule: [
         {
@@ -570,9 +570,10 @@ describe("mystery-royale KO window", () => {
     const kmean = entry.bountyKmean!;
     const bounty = entry.bountyByPlace!;
 
-    expect(kmean[0]).toBeCloseTo(harmonic(8), 12);
-    expect(kmean[1]).toBeCloseTo(harmonic(8) - 1, 12);
-    expect(kmean[7]).toBeCloseTo(1 / 8, 12);
+    const scale = kmean[7] / (1 / 8);
+    expect(kmean[0]).toBeCloseTo(harmonic(8) * scale, 12);
+    expect(kmean[1]).toBeCloseTo((harmonic(8) - 1) * scale, 12);
+    expect(kmean[7]).toBeCloseTo((1 / 8) * scale, 12);
     expect(kmean[8]).toBe(0);
     expect(kmean[17]).toBe(0);
     expect(bounty[8]).toBe(0);
@@ -722,6 +723,49 @@ describe("bountyEvBias", () => {
     expect(over.stats.stdDev).toBe(edge.stats.stdDev);
   });
 
+  it("battle-royale keeps average envelope size fixed and shifts KO count instead", () => {
+    const compileRoyale = (bias: number) =>
+      compileSchedule({
+        schedule: [
+          {
+            id: `mbr-${bias}`,
+            label: "mbr",
+            players: 18,
+            buyIn: 10,
+            rake: 0.08,
+            roi: 0.12,
+            gameType: "mystery-royale",
+            payoutStructure: "battle-royale",
+            bountyFraction: 0.5,
+            mysteryBountyVariance: 1.8,
+            count: 1,
+            bountyEvBias: bias,
+          },
+        ],
+        scheduleRepeats: 1,
+        samples: 1,
+        bankroll: 100,
+        seed: 7,
+        finishModel: { id: "power-law" },
+      }).flat[0];
+
+    const balanced = compileRoyale(0);
+    const koHeavy = compileRoyale(-0.25);
+    const place = 0;
+    const balancedPerKo =
+      balanced.bountyByPlace![place] / balanced.bountyKmean![place];
+    const koHeavyPerKo =
+      koHeavy.bountyByPlace![place] / koHeavy.bountyKmean![place];
+
+    expect(koHeavyPerKo).toBeCloseTo(balancedPerKo, 10);
+    expect(koHeavy.bountyKmean![place]).toBeGreaterThan(
+      balanced.bountyKmean![place],
+    );
+    expect(koHeavy.bountyByPlace![place]).toBeGreaterThan(
+      balanced.bountyByPlace![place],
+    );
+  });
+
   // Fixed-shape models can't move cashEV to cancel the heuristic's
   // bountyMean error, so without the `calibrateBountyBudget` reconcile
   // total EV would drift away from the ROI contract even at bias=0. With
@@ -868,10 +912,11 @@ describe("bounty conventions and conservation", () => {
     });
     const entry = compiled.flat[0];
     const kmean = entry.bountyKmean!;
-    // Σ kmean over all busts == (ft − 1) envelopes dropped across FT, no self-open.
-    // For ft=9, that's 8 total envelope-dropping busts distributed across places.
+    // KO counts are uniformly rescaled by the bounty budget, but the raw FT
+    // window still corresponds to 8 envelope-dropping busts (places 9..2).
     const sumKmean = kmean.reduce((a, v) => a + v, 0);
-    expect(sumKmean).toBeCloseTo(8, 10);
+    const scale = kmean[7] / (1 / 8);
+    expect(sumKmean / scale).toBeCloseTo(8, 10);
     // Winner (place 1) has bountyByPlace non-zero but their own envelope is
     // never drawn — winner accumulates envelopes from eliminating victims,
     // not from opening their own chest. Mirrored by bounty[8]=bounty[17]=0.

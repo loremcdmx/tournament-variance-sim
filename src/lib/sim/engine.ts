@@ -684,6 +684,8 @@ function compileSingleEntry(
   }
 
   const { prob: aliasProb, alias: aliasIdx } = buildAliasTable(pmf);
+  const brSampler =
+    row.payoutStructure === "battle-royale" ? makeBrTierSampler(row.buyIn) : null;
 
   // ---- bounty distribution across finish places -------------------------
   // Elimination-order model: the player finishing at 1-indexed place p was
@@ -697,11 +699,13 @@ function compileSingleEntry(
   //   the winner gets T(N−1) on top. Per-KO value grows across the run.
   //
   // - Mystery / Mystery-Royale: each bust inside the bounty window is an
-  //   iid draw from the mystery pool. Per-KO mean is constant; per-KO
-  //   variance comes from the envelope distribution (log-normal for
-  //   plain mystery, 10-tier GG table for BR). raw[i] is therefore just
-  //   the expected count of envelope-dropping busts — harmonic, restricted
-  //   to the window (victims finishing inside the bounty-paying tier).
+  //   iid draw from the mystery pool. Per-KO variance comes from the
+  //   envelope distribution (log-normal for plain mystery, 10-tier GG
+  //   table for BR). raw[i] is therefore just the expected count of
+  //   envelope-dropping busts — harmonic, restricted to the window
+  //   (victims finishing inside the bounty-paying tier). For Battle
+  //   Royale the published envelope table fixes the mean $ per KO, so
+  //   changing the bounty budget rescales KO counts, not envelope size.
   //
   // The final raw weights are normalized against the calibrated pmf so that
   // Σ pmf[i] · bountyByPlace[i] === bountyMean. This preserves ROI
@@ -800,10 +804,20 @@ function compileSingleEntry(
     }
 
     // Normalize so Σ pmf[i]·bountyByPlace[i] = bountyMean (ROI intact).
+    // BR is special: the GG tier table fixes mean $/envelope, so we scale
+    // expected KO counts (`bountyKmean`) to hit the budget and keep
+    // `bountyByPlace / bountyKmean` constant at the profile mean.
     let Z = 0;
     for (let i = 0; i < N; i++) Z += pmf[i] * raw[i];
     bountyByPlace = new Float64Array(N);
-    if (Z > 1e-12) {
+    if (brSampler !== null && Z > 1e-12 && brSampler.meanValue > 1e-12) {
+      const kScale = bountyMean / (brSampler.meanValue * Z);
+      for (let i = 0; i < N; i++) {
+        const lam = raw[i] * kScale;
+        bountyKmean[i] = lam;
+        bountyByPlace[i] = lam * brSampler.meanValue;
+      }
+    } else if (Z > 1e-12) {
       const scale = bountyMean / Z;
       for (let i = 0; i < N; i++) bountyByPlace[i] = raw[i] * scale;
     } else {
@@ -919,10 +933,6 @@ function compileSingleEntry(
   // restoring the heavy-tailed jackpot shape that ~1.8 log-variance can't
   // reach. Non-BR rows keep the log-normal path (fields smoothly varying
   // around `bountyMean` with the configured σ²).
-  const brSampler =
-    row.payoutStructure === "battle-royale" && bountyByPlace !== null
-      ? makeBrTierSampler(row.buyIn)
-      : null;
 
   return {
     rowIdx: idx,
@@ -948,9 +958,9 @@ function compileSingleEntry(
     sigmaSingleAnalytic,
     analyticMeanSingle: eX,
     heatBountyByPlace,
-    brTierRatios: brSampler?.ratios ?? null,
-    brTierAliasProb: brSampler?.aliasProb ?? null,
-    brTierAliasIdx: brSampler?.aliasIdx ?? null,
+    brTierRatios: bountyByPlace !== null ? brSampler?.ratios ?? null : null,
+    brTierAliasProb: bountyByPlace !== null ? brSampler?.aliasProb ?? null : null,
+    brTierAliasIdx: bountyByPlace !== null ? brSampler?.aliasIdx ?? null : null,
   };
 }
 

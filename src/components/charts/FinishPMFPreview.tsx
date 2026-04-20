@@ -103,9 +103,29 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   const t = useT();
   const { advanced } = useAdvancedMode();
 
-  const committedBias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
-
-  const stats = useMemo(() => computeRowStats(row, model), [row, model]);
+  const committedBias = clampBountyBias(row.bountyEvBias ?? 0);
+  const {
+    stats,
+    committedBountyShare,
+    defaultBountyShare,
+    minBountyShare,
+    maxBountyShare,
+  } = useMemo(() => {
+    const nextStats = computeRowStats(row, model);
+    const nextCommittedBountyShare = clampUnit(nextStats.bountyShare);
+    const nextDefaultBountyShare = inferDefaultBountyShare(
+      nextCommittedBountyShare,
+      committedBias,
+    );
+    const { minShare, maxShare } = getBountyShareRange(nextDefaultBountyShare);
+    return {
+      stats: nextStats,
+      committedBountyShare: nextCommittedBountyShare,
+      defaultBountyShare: nextDefaultBountyShare,
+      minBountyShare: minShare,
+      maxBountyShare: maxShare,
+    };
+  }, [row, model, committedBias]);
 
   const evTotal = stats.tiers.reduce((a, tier) => a + tier.ev, 0) || 1;
 
@@ -220,13 +240,16 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
           );
         })()}
         {(row.bountyFraction ?? 0) > 0 && onRowChange && (
-          <EvBiasSlider
+          <BountyShareSlider
             committedBias={committedBias}
+            committedShare={committedBountyShare}
+            defaultShare={defaultBountyShare}
+            minShare={minBountyShare}
+            maxShare={maxBountyShare}
             onCommit={(v) => onRowChange({ ...row, bountyEvBias: v })}
             title={t("preview.evBias.label")}
             cashLabel={t("preview.evBias.cash")}
             bountyLabel={t("preview.evBias.bounty")}
-            centerLabel={t("preview.evBias.center")}
             tip={t("preview.evBias.tip")}
             resetLabel={t("preview.evBias.reset")}
           />
@@ -874,26 +897,93 @@ function PreviewSplitStat({
   );
 }
 
-// Isolated slider so pointer-move re-renders don't cascade into the rest of
-// the preview. The draft lives inside this subcomponent; the parent only
-// hears about it on pointer-up / key-up / blur, which is when the expensive
-// calibrateAlpha path actually needs to run.
-function EvBiasSlider({
+const MIN_BOUNTY_BIAS = -0.25;
+const MAX_BOUNTY_BIAS = 0.25;
+const BOUNTY_BIAS_STEP = 0.0125;
+const BOUNTY_SHARE_STEP = 0.001;
+
+function clampUnit(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
+function clampBountyBias(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(MIN_BOUNTY_BIAS, Math.min(MAX_BOUNTY_BIAS, v));
+}
+
+function bountyShareFromBias(defaultShare: number, bias: number): number {
+  const anchor = clampUnit(defaultShare);
+  const clamped = clampBountyBias(bias);
+  return clampUnit(
+    clamped >= 0
+      ? anchor * (1 - clamped)
+      : anchor + -clamped * (1 - anchor),
+  );
+}
+
+function inferDefaultBountyShare(currentShare: number, bias: number): number {
+  const share = clampUnit(currentShare);
+  const clamped = clampBountyBias(bias);
+  if (Math.abs(clamped) < 1e-9) return share;
+  if (clamped >= 0) {
+    return clampUnit(share / Math.max(1e-9, 1 - clamped));
+  }
+  const k = -clamped;
+  return clampUnit((share - k) / Math.max(1e-9, 1 - k));
+}
+
+function getBountyShareRange(defaultShare: number): {
+  minShare: number;
+  maxShare: number;
+} {
+  const anchor = clampUnit(defaultShare);
+  return {
+    minShare: clampUnit(anchor * (1 - MAX_BOUNTY_BIAS)),
+    maxShare: clampUnit(anchor + -MIN_BOUNTY_BIAS * (1 - anchor)),
+  };
+}
+
+function biasFromBountyShare(targetShare: number, defaultShare: number): number {
+  const share = clampUnit(targetShare);
+  const anchor = clampUnit(defaultShare);
+  if (Math.abs(share - anchor) < 1e-9) return 0;
+  if (share < anchor) {
+    if (anchor <= 1e-9) return 0;
+    return clampBountyBias(1 - share / anchor);
+  }
+  return clampBountyBias(
+    -(share - anchor) / Math.max(1e-9, 1 - anchor),
+  );
+}
+
+function snapBountyBias(v: number): number {
+  const snapped = Math.round(clampBountyBias(v) / BOUNTY_BIAS_STEP) * BOUNTY_BIAS_STEP;
+  return clampBountyBias(Number(snapped.toFixed(4)));
+}
+
+function BountyShareSlider({
   committedBias,
+  committedShare,
+  defaultShare,
+  minShare,
+  maxShare,
   onCommit,
   title,
   cashLabel,
   bountyLabel,
-  centerLabel,
   tip,
   resetLabel,
 }: {
   committedBias: number;
+  committedShare: number;
+  defaultShare: number;
+  minShare: number;
+  maxShare: number;
   onCommit: (v: number) => void;
   title: string;
   cashLabel: string;
   bountyLabel: string;
-  centerLabel: string;
   tip: string;
   resetLabel: string;
 }) {
@@ -904,29 +994,31 @@ function EvBiasSlider({
   // (otherwise it would snap back to old committedBias for one paint
   // while waiting for row → stats → re-render to propagate).
   const effectiveDraft =
-    draft !== null && Math.abs(committedBias - draft) < 1e-9 ? null : draft;
-  const value = effectiveDraft ?? committedBias;
+    draft !== null && Math.abs(committedShare - draft) < 1e-6 ? null : draft;
+  const lo = Math.min(minShare, maxShare);
+  const hi = Math.max(minShare, maxShare);
+  const value = Math.max(lo, Math.min(hi, effectiveDraft ?? committedShare));
   // Pending = dragged value hasn't been reflected by committedBias yet.
   // Used to show an indeterminate progress pulse while computeRowStats
   // re-runs on the main thread (drag → commit → parent recalc → prop update).
   const pending = effectiveDraft !== null;
-  // Slider runs with the sign inverted (visual-left = cash, visual-right =
-  // bounty) so the label order and drag direction match. Engine semantics
-  // (positive bias → cash) are preserved; only the <input> sees the flipped
-  // value.
-  const sliderValue = -value;
-  const commit = (raw: number) => {
-    const v = -raw;
-    if (v === committedBias) {
+  const defaultMarkerPct =
+    hi - lo > 1e-9 ? ((defaultShare - lo) / (hi - lo)) * 100 : 50;
+  const bountyPct = clampUnit(value) * 100;
+  const cashPct = 100 - bountyPct;
+  const commit = (rawShare: number) => {
+    const nextShare = Math.max(lo, Math.min(hi, rawShare));
+    const nextBias = snapBountyBias(
+      biasFromBountyShare(nextShare, defaultShare),
+    );
+    const snappedShare = bountyShareFromBias(defaultShare, nextBias);
+    if (Math.abs(nextBias - committedBias) < 1e-9) {
       setDraft(null);
       return;
     }
-    setDraft(v);
-    onCommit(v);
+    setDraft(snappedShare);
+    onCommit(nextBias);
   };
-
-  const numberStr =
-    value === 0 ? "0" : value > 0 ? `+${value.toFixed(2)}` : value.toFixed(2);
 
   return (
     <div
@@ -939,64 +1031,74 @@ function EvBiasSlider({
         </span>
         <div className="flex items-center gap-1.5">
           <span className="rounded px-1 py-0.5 text-[11px] font-mono tabular-nums text-[color:var(--color-fg)]">
-            {numberStr}
+            {pct(value)}
           </span>
           <button
             type="button"
             onClick={() => {
               setDraft(null);
-              if (committedBias !== 0) onCommit(0);
+              if (Math.abs(committedBias) > 1e-9) onCommit(0);
             }}
-            disabled={value === 0}
+            disabled={Math.abs(committedBias) < 1e-9}
             className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
           >
             {resetLabel}
           </button>
         </div>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="text-[12px] font-semibold text-[color:var(--color-fg)]">
-          {cashLabel}
-        </span>
-        <div className="flex flex-1 flex-col">
-          <div className="relative">
-            <input
-              type="range"
-              min={-0.25}
-              max={0.25}
-              step={0.0125}
-              value={sliderValue}
-              onChange={(e) => setDraft(-Number(e.target.value))}
-              onPointerUp={(e) => commit(Number(e.currentTarget.value))}
-              onKeyUp={(e) => commit(Number(e.currentTarget.value))}
-              onBlur={(e) => commit(Number(e.currentTarget.value))}
-              className="relative z-10 block h-1 w-full cursor-pointer accent-[color:var(--color-accent)]"
-              aria-label={title}
-            />
-            <span
-              aria-hidden
-              className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-px -translate-x-1/2 -translate-y-1/2 bg-[color:var(--color-border-strong)]"
-            />
-          </div>
-          <span className="mt-1 self-center text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            {centerLabel}
-          </span>
+      <div className="flex flex-col gap-1.5">
+        <div className="relative">
+          <input
+            type="range"
+            min={lo}
+            max={hi}
+            step={BOUNTY_SHARE_STEP}
+            value={value}
+            onChange={(e) => setDraft(Number(e.target.value))}
+            onPointerUp={(e) => commit(Number(e.currentTarget.value))}
+            onKeyUp={(e) => commit(Number(e.currentTarget.value))}
+            onBlur={(e) => commit(Number(e.currentTarget.value))}
+            className="relative z-10 block h-1 w-full cursor-pointer accent-[color:var(--color-accent)]"
+            aria-label={title}
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 h-2.5 w-px -translate-x-1/2 -translate-y-1/2 bg-[color:var(--color-border-strong)]"
+            style={{ left: `${Math.max(0, Math.min(100, defaultMarkerPct))}%` }}
+          />
         </div>
-        <span className="text-[12px] font-semibold text-[color:var(--color-fg)]">
-          {bountyLabel}
-        </span>
+        <div className="flex items-center justify-between text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          <span>{pct(lo)}</span>
+          <span>{pct(hi)}</span>
+        </div>
       </div>
       <div
         aria-hidden
-        className="mt-1 h-0.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg-elev-2)]"
+        className="mt-1.5 relative h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg-elev-2)]"
       >
+        <div
+          className="absolute inset-y-0 left-0 bg-[color:var(--color-bg-elev)]/90"
+          style={{ width: `${cashPct}%` }}
+        />
+        <div
+          className="absolute inset-y-0 right-0 bg-[color:var(--color-accent)]/85"
+          style={{ width: `${bountyPct}%` }}
+        />
         <div
           className={
             pending
-              ? "h-full w-1/3 animate-[biasBar_900ms_linear_infinite] rounded-full bg-[color:var(--color-accent)]"
+              ? "absolute inset-y-0 w-1/3 animate-[biasBar_900ms_linear_infinite] rounded-full bg-white/35"
               : "h-full w-0"
           }
         />
+      </div>
+      <div className="mt-1 flex items-center justify-between text-[10px] font-medium text-[color:var(--color-fg-dim)]">
+        <span>
+          {cashLabel} {pct(1 - value)}
+        </span>
+        <span>
+          {bountyLabel} {pct(value)}
+        </span>
       </div>
     </div>
   );
@@ -1113,6 +1215,10 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
   const basePool = row.players * row.buyIn;
   const entryCost = row.buyIn * (1 + row.rake);
+  const brSampler =
+    row.payoutStructure === "battle-royale"
+      ? makeBrTierSampler(row.buyIn)
+      : null;
 
   const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
   const bountyPerSeat = row.buyIn * bountyFraction;
@@ -1181,11 +1287,15 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   if (bountyMean > 0 && N >= 2) {
     const raw = new Float64Array(N);
     const isMystery =
-      row.gameType === "mystery" || row.gameType === "mystery-royale";
+      row.gameType === "mystery" ||
+      row.gameType === "mystery-royale" ||
+      brSampler !== null;
 
     if (isMystery) {
       const ft =
-        row.gameType === "mystery-royale" ? Math.min(9, N) : paidCount;
+        row.gameType === "mystery-royale" || brSampler !== null
+          ? Math.min(9, N)
+          : paidCount;
       const mLo = Math.max(1, N - ft + 1);
       for (let i = 0; i < N; i++) {
         const p = i + 1;
@@ -1237,7 +1347,13 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
 
     let Z = 0;
     for (let i = 0; i < N; i++) Z += pmf[i] * raw[i];
-    if (Z > 1e-12) {
+    if (brSampler !== null && Z > 1e-12 && brSampler.meanValue > 1e-12) {
+      const kScale = bountyMean / (brSampler.meanValue * Z);
+      for (let i = 0; i < N; i++) {
+        bountyBustsAtPos[i] *= kScale;
+        bountyByPlace[i] = bountyBustsAtPos[i] * brSampler.meanValue;
+      }
+    } else if (Z > 1e-12) {
       const scale = bountyMean / Z;
       for (let i = 0; i < N; i++) bountyByPlace[i] = raw[i] * scale;
     }
@@ -1262,11 +1378,10 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   // E[Y]=1 → E[Y·1{Y>R}] = Φ((σ²/2 − ln R)/σ). PKO/freezeouts: thin tail, 0.
   let jackpotShareFrac = 0;
   if (bountyEv > 0) {
-    if (row.payoutStructure === "battle-royale") {
-      const { ratios, probs } = makeBrTierSampler(row.buyIn);
-      for (let i = 0; i < ratios.length; i++) {
-        if (ratios[i] >= JACKPOT_THRESHOLD) {
-          jackpotShareFrac += probs[i] * ratios[i];
+    if (brSampler !== null) {
+      for (let i = 0; i < brSampler.ratios.length; i++) {
+        if (brSampler.ratios[i] >= JACKPOT_THRESHOLD) {
+          jackpotShareFrac += brSampler.probs[i] * brSampler.ratios[i];
         }
       }
     } else if ((row.mysteryBountyVariance ?? 0) > 0) {
