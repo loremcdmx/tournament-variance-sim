@@ -83,7 +83,6 @@ src/
 │   ├── ScheduleEditor.tsx  # таблица турниров (add/remove/edit row, PKO/mystery поля)
 │   ├── ControlsPanel.tsx   # sidebar настроек прогона + кнопка Run
 │   ├── ResultsView.tsx     # композитный view результатов (все графики + таблицы)
-│   ├── ModelPresetSelector.tsx
 │   ├── charts/
 │   │   ├── UplotChart.tsx          # тонкий uPlot обёртчик с ResizeObserver
 │   │   ├── DistributionChart.tsx   # гистограмма финального P&L

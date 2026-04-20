@@ -221,19 +221,6 @@ export interface PresetFileFormat {
   patch: ModelPatch;
 }
 
-export function exportPresetToFile(name: string, patch: ModelPatch) {
-  const data: PresetFileFormat = { v: 1, type: "tvs-preset", name, patch };
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${name.replace(/[^a-z0-9_-]+/gi, "_")}.tvs-preset.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export function parsePresetFile(text: string): PresetFileFormat | null {
   try {
     const parsed = JSON.parse(text);

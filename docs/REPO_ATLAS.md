@@ -48,7 +48,7 @@ Top-level product UI.
 - `ScheduleEditor.tsx`: schedule table and advanced row controls.
 - `ControlsPanel.tsx`: run controls, ETA, progress bar, phase labels.
 - `ResultsView.tsx`: result composition and most product-side post-hoc views.
-- `ModelPresetSelector.tsx`, `PayoutStructureCard.tsx`: smaller surrounding UI.
+- `PayoutStructureCard.tsx`: surrounding schedule-summary UI.
 
 ### `src/components/charts/`
 
