@@ -1,0 +1,569 @@
+{
+  "generatedAt": "2026-04-20T12:35:02.376Z",
+  "criterion": "Pass if max absolute residual at 75k..200k is <= the runtime residual budget for each format.",
+  "meta": {
+    "N_TOURNEYS": 500,
+    "SAMPLES": 120000,
+    "BUY_IN": 50,
+    "RAKE": 0.1,
+    "SEED": 20260420,
+    "BOUNTY_FRACTION": 0.5,
+    "PKO_HEAD_VAR": 0.4,
+    "MYSTERY_LOG_VAR": 2,
+    "fields": [
+      75000,
+      100000,
+      150000,
+      200000
+    ],
+    "rois": [
+      -0.2,
+      0,
+      0.1,
+      0.4,
+      0.8
+    ],
+    "formats": [
+      "freeze",
+      "pko",
+      "mystery"
+    ],
+    "workerCount": 8
+  },
+  "summaries": {
+    "freeze": {
+      "count": 20,
+      "threshold": 0.06,
+      "meanSignedResid": -0.23230487423804455,
+      "rmsResid": 0.23804967165652144,
+      "p95AbsResid": 0.30065728031863687,
+      "maxAbsResid": 0.30065728031863687,
+      "passed": false,
+      "worstCell": {
+        "format": "freeze",
+        "field": 200000,
+        "roi": -0.2,
+        "sigmaMeasured": 85.24697847486291,
+        "sigmaFit": 59.61685377122925,
+        "resid": -0.30065728031863687
+      }
+    },
+    "pko": {
+      "count": 20,
+      "threshold": 0.12,
+      "meanSignedResid": 0.047095319266859795,
+      "rmsResid": 0.05255450802935538,
+      "p95AbsResid": 0.0725772457592518,
+      "maxAbsResid": 0.07405392074715851,
+      "passed": true,
+      "worstCell": {
+        "format": "pko",
+        "field": 150000,
+        "roi": 0,
+        "sigmaMeasured": 32.41852093789492,
+        "sigmaFit": 34.81923951816989,
+        "resid": 0.07405392074715851
+      }
+    },
+    "mystery": {
+      "count": 20,
+      "threshold": 0.17,
+      "meanSignedResid": -0.14261472228227404,
+      "rmsResid": 0.1468585310666649,
+      "p95AbsResid": 0.19715032524066636,
+      "maxAbsResid": 0.20153460825568237,
+      "passed": false,
+      "worstCell": {
+        "format": "mystery",
+        "field": 200000,
+        "roi": -0.2,
+        "sigmaMeasured": 33.52379724515025,
+        "sigmaFit": 26.76759190010597,
+        "resid": -0.20153460825568237
+      }
+    }
+  },
+  "cells": [
+    {
+      "format": "freeze",
+      "field": 75000,
+      "roi": -0.2,
+      "sigmaMeasured": 49.65167495306291,
+      "sigmaFit": 41.49695244293294,
+      "resid": -0.1642386186939082
+    },
+    {
+      "format": "freeze",
+      "field": 100000,
+      "roi": -0.2,
+      "sigmaMeasured": 58.03135036365165,
+      "sigmaFit": 46.14966707717483,
+      "resid": -0.2047459383939994
+    },
+    {
+      "format": "freeze",
+      "field": 150000,
+      "roi": -0.2,
+      "sigmaMeasured": 72.3997671461978,
+      "sigmaFit": 53.60640503873891,
+      "resid": -0.2595776595456337
+    },
+    {
+      "format": "freeze",
+      "field": 200000,
+      "roi": -0.2,
+      "sigmaMeasured": 85.24697847486291,
+      "sigmaFit": 59.61685377122925,
+      "resid": -0.30065728031863687
+    },
+    {
+      "format": "freeze",
+      "field": 75000,
+      "roi": 0,
+      "sigmaMeasured": 49.65167495306291,
+      "sigmaFit": 41.49695244293294,
+      "resid": -0.1642386186939082
+    },
+    {
+      "format": "freeze",
+      "field": 100000,
+      "roi": 0,
+      "sigmaMeasured": 58.03135036365165,
+      "sigmaFit": 46.14966707717483,
+      "resid": -0.2047459383939994
+    },
+    {
+      "format": "freeze",
+      "field": 150000,
+      "roi": 0,
+      "sigmaMeasured": 72.3997671461978,
+      "sigmaFit": 53.60640503873891,
+      "resid": -0.2595776595456337
+    },
+    {
+      "format": "freeze",
+      "field": 200000,
+      "roi": 0,
+      "sigmaMeasured": 85.24697847486291,
+      "sigmaFit": 59.61685377122925,
+      "resid": -0.30065728031863687
+    },
+    {
+      "format": "freeze",
+      "field": 75000,
+      "roi": 0.1,
+      "sigmaMeasured": 49.65167495306291,
+      "sigmaFit": 41.49695244293294,
+      "resid": -0.1642386186939082
+    },
+    {
+      "format": "freeze",
+      "field": 100000,
+      "roi": 0.1,
+      "sigmaMeasured": 58.03135036365165,
+      "sigmaFit": 46.14966707717483,
+      "resid": -0.2047459383939994
+    },
+    {
+      "format": "freeze",
+      "field": 150000,
+      "roi": 0.1,
+      "sigmaMeasured": 72.3997671461978,
+      "sigmaFit": 53.60640503873891,
+      "resid": -0.2595776595456337
+    },
+    {
+      "format": "freeze",
+      "field": 200000,
+      "roi": 0.1,
+      "sigmaMeasured": 85.24697847486291,
+      "sigmaFit": 59.61685377122925,
+      "resid": -0.30065728031863687
+    },
+    {
+      "format": "freeze",
+      "field": 75000,
+      "roi": 0.4,
+      "sigmaMeasured": 49.65167495306291,
+      "sigmaFit": 41.49695244293294,
+      "resid": -0.1642386186939082
+    },
+    {
+      "format": "freeze",
+      "field": 100000,
+      "roi": 0.4,
+      "sigmaMeasured": 58.03135036365165,
+      "sigmaFit": 46.14966707717483,
+      "resid": -0.2047459383939994
+    },
+    {
+      "format": "freeze",
+      "field": 150000,
+      "roi": 0.4,
+      "sigmaMeasured": 72.3997671461978,
+      "sigmaFit": 53.60640503873891,
+      "resid": -0.2595776595456337
+    },
+    {
+      "format": "freeze",
+      "field": 200000,
+      "roi": 0.4,
+      "sigmaMeasured": 85.24697847486291,
+      "sigmaFit": 59.61685377122925,
+      "resid": -0.30065728031863687
+    },
+    {
+      "format": "freeze",
+      "field": 75000,
+      "roi": 0.8,
+      "sigmaMeasured": 49.65167495306291,
+      "sigmaFit": 41.49695244293294,
+      "resid": -0.1642386186939082
+    },
+    {
+      "format": "freeze",
+      "field": 100000,
+      "roi": 0.8,
+      "sigmaMeasured": 58.03135036365165,
+      "sigmaFit": 46.14966707717483,
+      "resid": -0.2047459383939994
+    },
+    {
+      "format": "freeze",
+      "field": 150000,
+      "roi": 0.8,
+      "sigmaMeasured": 72.3997671461978,
+      "sigmaFit": 53.60640503873891,
+      "resid": -0.2595776595456337
+    },
+    {
+      "format": "freeze",
+      "field": 200000,
+      "roi": 0.8,
+      "sigmaMeasured": 85.24697847486291,
+      "sigmaFit": 59.61685377122925,
+      "resid": -0.30065728031863687
+    },
+    {
+      "format": "pko",
+      "field": 75000,
+      "roi": -0.2,
+      "sigmaMeasured": 21.40020200784294,
+      "sigmaFit": 22.805275136747277,
+      "resid": 0.06565700306891467
+    },
+    {
+      "format": "pko",
+      "field": 100000,
+      "roi": -0.2,
+      "sigmaMeasured": 25.142175459371945,
+      "sigmaFit": 26.964971263364674,
+      "resid": 0.07249952602304618
+    },
+    {
+      "format": "pko",
+      "field": 150000,
+      "roi": -0.2,
+      "sigmaMeasured": 32.41852093789492,
+      "sigmaFit": 34.482203840462894,
+      "resid": 0.06365752794587488
+    },
+    {
+      "format": "pko",
+      "field": 200000,
+      "roi": -0.2,
+      "sigmaMeasured": 39.35596700116979,
+      "sigmaFit": 41.340427300588004,
+      "resid": 0.05042336526400767
+    },
+    {
+      "format": "pko",
+      "field": 75000,
+      "roi": 0,
+      "sigmaMeasured": 21.964912153233236,
+      "sigmaFit": 23.197933370788302,
+      "resid": 0.0561359503262828
+    },
+    {
+      "format": "pko",
+      "field": 100000,
+      "roi": 0,
+      "sigmaMeasured": 25.707155326291282,
+      "sigmaFit": 27.345765891174626,
+      "resid": 0.0637414192307579
+    },
+    {
+      "format": "pko",
+      "field": 150000,
+      "roi": 0,
+      "sigmaMeasured": 32.41852093789492,
+      "sigmaFit": 34.81923951816989,
+      "resid": 0.07405392074715851
+    },
+    {
+      "format": "pko",
+      "field": 200000,
+      "roi": 0,
+      "sigmaMeasured": 39.35596700116979,
+      "sigmaFit": 41.6174414364134,
+      "resid": 0.0574620472462637
+    },
+    {
+      "format": "pko",
+      "field": 75000,
+      "roi": 0.1,
+      "sigmaMeasured": 22.251768511344043,
+      "sigmaFit": 23.372622443759568,
+      "resid": 0.050371453929340886
+    },
+    {
+      "format": "pko",
+      "field": 100000,
+      "roi": 0.1,
+      "sigmaMeasured": 25.99903801641363,
+      "sigmaFit": 27.509729050134233,
+      "resid": 0.05810565116935788
+    },
+    {
+      "format": "pko",
+      "field": 150000,
+      "roi": 0.1,
+      "sigmaMeasured": 32.59145316341873,
+      "sigmaFit": 34.952848254160294,
+      "resid": 0.07245442781888727
+    },
+    {
+      "format": "pko",
+      "field": 200000,
+      "roi": 0.1,
+      "sigmaMeasured": 39.35596700116979,
+      "sigmaFit": 41.71351061205441,
+      "resid": 0.05990307926659622
+    },
+    {
+      "format": "pko",
+      "field": 75000,
+      "roi": 0.4,
+      "sigmaMeasured": 23.12899941456887,
+      "sigmaFit": 23.806004478843107,
+      "resid": 0.029270832349444133
+    },
+    {
+      "format": "pko",
+      "field": 100000,
+      "roi": 0.4,
+      "sigmaMeasured": 26.889753467366937,
+      "sigmaFit": 27.891996626409615,
+      "resid": 0.037272307470538446
+    },
+    {
+      "format": "pko",
+      "field": 150000,
+      "roi": 0.4,
+      "sigmaMeasured": 33.47477550033352,
+      "sigmaFit": 35.2108953149143,
+      "resid": 0.05186352376174963
+    },
+    {
+      "format": "pko",
+      "field": 200000,
+      "roi": 0.4,
+      "sigmaMeasured": 39.71681568814968,
+      "sigmaFit": 41.82976858621677,
+      "resid": 0.053200460849068903
+    },
+    {
+      "format": "pko",
+      "field": 75000,
+      "roi": 0.8,
+      "sigmaMeasured": 24.33375446106493,
+      "sigmaFit": 24.162177079435903,
+      "resid": -0.007051003243398355
+    },
+    {
+      "format": "pko",
+      "field": 100000,
+      "roi": 0.8,
+      "sigmaMeasured": 28.10954183752346,
+      "sigmaFit": 28.13723735793235,
+      "resid": 0.0009852711427661867
+    },
+    {
+      "format": "pko",
+      "field": 150000,
+      "roi": 0.8,
+      "sigmaMeasured": 34.679871430066505,
+      "sigmaFit": 35.21658117070582,
+      "resid": 0.01547611679361661
+    },
+    {
+      "format": "pko",
+      "field": 200000,
+      "roi": 0.8,
+      "sigmaMeasured": 40.91034907115454,
+      "sigmaFit": 41.58224036000398,
+      "resid": 0.016423504176921844
+    },
+    {
+      "format": "mystery",
+      "field": 75000,
+      "roi": -0.2,
+      "sigmaMeasured": 19.904273886400915,
+      "sigmaFit": 17.648830592218697,
+      "resid": -0.11331452265250387
+    },
+    {
+      "format": "mystery",
+      "field": 100000,
+      "roi": -0.2,
+      "sigmaMeasured": 22.992896167628405,
+      "sigmaFit": 19.826529702448838,
+      "resid": -0.13771064080380968
+    },
+    {
+      "format": "mystery",
+      "field": 150000,
+      "roi": -0.2,
+      "sigmaMeasured": 28.49877436057452,
+      "sigmaFit": 23.55191544094901,
+      "resid": -0.1735814620318915
+    },
+    {
+      "format": "mystery",
+      "field": 200000,
+      "roi": -0.2,
+      "sigmaMeasured": 33.52379724515025,
+      "sigmaFit": 26.76759190010597,
+      "resid": -0.20153460825568237
+    },
+    {
+      "format": "mystery",
+      "field": 75000,
+      "roi": 0,
+      "sigmaMeasured": 20.31251385531179,
+      "sigmaFit": 18.437221591627754,
+      "resid": -0.09232201770012034
+    },
+    {
+      "format": "mystery",
+      "field": 100000,
+      "roi": 0,
+      "sigmaMeasured": 23.352592183934593,
+      "sigmaFit": 20.612267781218264,
+      "resid": -0.11734561975528926
+    },
+    {
+      "format": "mystery",
+      "field": 150000,
+      "roi": 0,
+      "sigmaMeasured": 28.761762514776617,
+      "sigmaFit": 24.318952142223274,
+      "resid": -0.15446933651130762
+    },
+    {
+      "format": "mystery",
+      "field": 200000,
+      "roi": 0,
+      "sigmaMeasured": 33.66680035003777,
+      "sigmaFit": 27.506001163700205,
+      "resid": -0.18299330860916374
+    },
+    {
+      "format": "mystery",
+      "field": 75000,
+      "roi": 0.1,
+      "sigmaMeasured": 20.570582046956105,
+      "sigmaFit": 18.788292526715235,
+      "resid": -0.08664263928810904
+    },
+    {
+      "format": "mystery",
+      "field": 100000,
+      "roi": 0.1,
+      "sigmaMeasured": 23.579398054746708,
+      "sigmaFit": 20.95402119524711,
+      "resid": -0.11134197969786984
+    },
+    {
+      "format": "mystery",
+      "field": 150000,
+      "roi": 0.1,
+      "sigmaMeasured": 28.932257369867976,
+      "sigmaFit": 24.638044649403017,
+      "resid": -0.14842300984565568
+    },
+    {
+      "format": "mystery",
+      "field": 200000,
+      "roi": 0.1,
+      "sigmaMeasured": 33.7919992958085,
+      "sigmaFit": 27.799603509351165,
+      "resid": -0.17733179188366704
+    },
+    {
+      "format": "mystery",
+      "field": 75000,
+      "roi": 0.4,
+      "sigmaMeasured": 21.544536007862124,
+      "sigmaFit": 19.64586237609117,
+      "resid": -0.08812784972849182
+    },
+    {
+      "format": "mystery",
+      "field": 100000,
+      "roi": 0.4,
+      "sigmaMeasured": 24.436828639611285,
+      "sigmaFit": 21.75206327095337,
+      "resid": -0.10986553976590883
+    },
+    {
+      "format": "mystery",
+      "field": 150000,
+      "roi": 0.4,
+      "sigmaMeasured": 29.59414748953447,
+      "sigmaFit": 25.31620755079111,
+      "resid": -0.14455357905667637
+    },
+    {
+      "format": "mystery",
+      "field": 200000,
+      "roi": 0.4,
+      "sigmaMeasured": 34.297923787880414,
+      "sigmaFit": 28.358307432190212,
+      "resid": -0.17317714017980987
+    },
+    {
+      "format": "mystery",
+      "field": 75000,
+      "roi": 0.8,
+      "sigmaMeasured": 23.25322904219421,
+      "sigmaFit": 20.2769255313237,
+      "resid": -0.12799527779431633
+    },
+    {
+      "format": "mystery",
+      "field": 100000,
+      "roi": 0.8,
+      "sigmaMeasured": 25.9539252482965,
+      "sigmaFit": 22.234661725308907,
+      "resid": -0.14330254431289574
+    },
+    {
+      "format": "mystery",
+      "field": 150000,
+      "roi": 0.8,
+      "sigmaMeasured": 30.80580049501731,
+      "sigmaFit": 25.52747289508153,
+      "resid": -0.17134200426927787
+    },
+    {
+      "format": "mystery",
+      "field": 200000,
+      "roi": 0.8,
+      "sigmaMeasured": 35.263831816614484,
+      "sigmaFit": 28.31969309520404,
+      "resid": -0.19691957350303393
+    }
+  ],
+  "passed": false
+}

@@ -30,6 +30,13 @@
 
 **Условие:** проверить, что 2D-формула `log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L` не расходится на extrapolation 50k→200k. `a2·L²` term может ускориться за training range'ом. Безопасный путь — мини-свип 4–6 новых полей (75k, 100k, 150k, 200k) × 5 ROIs на каждом формате (PKO, Mystery, Freeze), замерить σ, сравнить с предиктом. Если max |Δ/σ| < текущего LOO p95 — raise проходит без доработки коэффициентов. Если нет — перефитить на объединённом 50k+200k гриде.
 
+**Probe 2026-04-20:** `AFS_PROBE_WORKERS=8 npx tsx scripts/probe_afs_ceiling.ts` (120k samples, 500 tournaments/sample, fields 75k/100k/150k/200k × ROI −20/0/+10/+40/+80 %) записал `scripts/afs_ceiling_probe.json` и **не прошёл gate**:
+- Freeze: max |Δ/σ| 30.07 % vs runtime budget 6.00 %.
+- PKO: max |Δ/σ| 7.41 % vs runtime budget 12.00 % — проходит.
+- Mystery: max |Δ/σ| 20.15 % vs runtime budget 17.00 % — не проходит.
+
+**Решение:** `AFS_LOG_MAX` пока **не поднимать**. Следующий безопасный путь — 200k-перефит/новая runtime-форма для Freeze и Mystery либо per-format UI ceiling, где PKO может быть расширен отдельно без обещаний для freeze/mystery.
+
 **Риск при старте:** низкий. Формула не меняется, только слайдер-диапазон расширяется. Ошибка в extrapolation ударяет только по юзерам с полями > 50k (редкий случай).
 
 **Не стартовать:** если в ближайшую итерацию фич (Mystery 2D ещё уточняется после #119b data drop, или ABI baselines в #132 Phase 4) — раньше сделать это, потом раз rebuild'ом коэффициенты и ceiling прыгают вместе.

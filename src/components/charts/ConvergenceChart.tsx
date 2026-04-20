@@ -10,6 +10,15 @@ import {
   type ConvergenceRowFormat,
   type FitBoxSample,
 } from "@/lib/sim/convergencePolicy";
+import {
+  evalSigma,
+  SIGMA_ROI_FREEZE,
+  SIGMA_ROI_MYSTERY,
+  SIGMA_ROI_MYSTERY_ROYALE,
+  SIGMA_ROI_PKO,
+  sigmaRoiForRow,
+  type SigmaCoef,
+} from "@/lib/sim/convergenceFit";
 
 interface Props {
   schedule?: TournamentRow[];
@@ -95,86 +104,6 @@ function normalizeMix(m: MixTuple): MixTuple {
 // All canonical data in scripts/fit_beta_*.json. Refit tool:
 // scripts/refit_2d_logpoly.ts (no new measurements, pure OLS re-fit).
 
-type SigmaCoefSingleBeta = {
-  kind: "single-beta";
-  C0: number;
-  C1: number;
-  beta: number;
-  resid: number;
-};
-type SigmaCoefLogPoly2D = {
-  kind: "log-poly-2d";
-  a0: number;
-  a1: number;
-  a2: number;
-  b1: number;
-  b2: number;
-  c: number;
-  resid: number;
-};
-type SigmaCoef = SigmaCoefSingleBeta | SigmaCoefLogPoly2D;
-
-function evalSigma(coef: SigmaCoef, field: number, roi: number): number {
-  const f = Math.max(1, field);
-  if (coef.kind === "single-beta") {
-    return Math.max(0, coef.C0 + coef.C1 * roi) * Math.pow(f, coef.beta);
-  }
-  const L = Math.log(f);
-  return Math.exp(
-    coef.a0 +
-      coef.a1 * L +
-      coef.a2 * L * L +
-      coef.b1 * roi +
-      coef.b2 * roi * roi +
-      coef.c * roi * L,
-  );
-}
-
-const SIGMA_ROI_FREEZE: SigmaCoef = {
-  kind: "single-beta",
-  C0: 0.6564,
-  C1: 0,
-  beta: 0.3694,
-  resid: 0.06,
-};
-// PKO 2D log-poly refit 2026-04-20 from canonical scripts/fit_beta_pko.json
-// (11 ROIs × 18 fields × 120 k samples). In-sample R²=0.998; LOO xval:
-// mean |Δ/σ|=4.00 %, p95=11.72 %, max=15.15 %. Was single-β (12.7 % mean
-// xval) — see git history. Band re-enabled in convergencePolicy.ts.
-const SIGMA_ROI_PKO: SigmaCoef = {
-  kind: "log-poly-2d",
-  a0: 1.21374,
-  a1: -0.21789,
-  a2: 0.03473,
-  b1: 0.67318,
-  b2: -0.03445,
-  c: -0.05298,
-  resid: 0.12,
-};
-// Mystery 2D log-poly refit 2026-04-20 from canonical
-// scripts/fit_beta_mystery.json (11 ROIs × 18 fields × 120 k samples).
-// In-sample R²=0.981; LOO xval: mean |Δ/σ|=4.25 %, p95=16.97 %, max=30.61 %.
-// Was single-β (10.7 % mean, 39 % max xval). Band still hidden — p95
-// remains wide at grid edges (−20 % / +80 % ROI). Point estimate is the
-// quick ballpark; full run for the honest σ.
-const SIGMA_ROI_MYSTERY: SigmaCoef = {
-  kind: "log-poly-2d",
-  a0: 2.33290,
-  a1: -0.27564,
-  a2: 0.02917,
-  b1: 1.14218,
-  b2: -0.09962,
-  c: -0.08406,
-  resid: 0.17,
-};
-const SIGMA_ROI_MYSTERY_ROYALE: SigmaCoef = {
-  kind: "single-beta",
-  C0: 8.1534,
-  C1: 7.9063,
-  beta: 0,
-  resid: 0.02,
-};
-
 type ConvergenceFormat =
   | "freeze"
   | "pko"
@@ -187,42 +116,6 @@ type ConvergenceFormat =
 // same domain (a row's convergence-chart classification), re-exported here so
 // this file can keep using the short name without touching every reference.
 type RowFormat = ConvergenceRowFormat;
-
-const SIGMA_COEF_BY_FORMAT: Record<RowFormat, SigmaCoef> = {
-  freeze: SIGMA_ROI_FREEZE,
-  pko: SIGMA_ROI_PKO,
-  mystery: SIGMA_ROI_MYSTERY,
-  "mystery-royale": SIGMA_ROI_MYSTERY_ROYALE,
-};
-
-const FIT_RAKE_BY_FORMAT: Record<RowFormat, number> = {
-  freeze: 0.10,
-  pko: 0.10,
-  mystery: 0.10,
-  "mystery-royale": 0.08,
-};
-
-function sigmaRoiForRow(
-  row: TournamentRow,
-  rakeScaleOverride?: number,
-): { sigma: number; sigmaLo: number; sigmaHi: number; format: RowFormat } {
-  const fmt = inferRowFormat(row);
-  const coef = SIGMA_COEF_BY_FORMAT[fmt];
-  const afs = Math.max(1, row.players);
-  const roi = row.roi;
-  // Per-row rake rescale: row's own rake vs the fit baseline for its format.
-  // Callers can override (e.g. UI rake slider takes over the per-row rake).
-  const rakeScale =
-    rakeScaleOverride ??
-    (1 + FIT_RAKE_BY_FORMAT[fmt]) / (1 + (row.rake ?? 0));
-  const sigma = evalSigma(coef, afs, roi) * rakeScale;
-  return {
-    sigma,
-    sigmaLo: sigma * (1 - coef.resid),
-    sigmaHi: sigma * (1 + coef.resid),
-    format: fmt,
-  };
-}
 
 function posToAfs(pos: number): number {
   return Math.exp(AFS_LOG_MIN + (AFS_LOG_MAX - AFS_LOG_MIN) * pos);

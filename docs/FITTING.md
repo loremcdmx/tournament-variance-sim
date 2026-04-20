@@ -91,6 +91,19 @@ Two producers — pick the right one for what you're doing:
 
 ### Diagnostic 200k-AFS probe (NOT promoted automatically)
 
+For the narrow "can we raise the convergence widget AFS ceiling from 50k
+to 200k?" gate, run the mini-sweep first:
+
+```bash
+npx tsx scripts/probe_afs_ceiling.ts
+```
+
+It measures only fields 75k/100k/150k/200k × five ROIs across
+Freeze/PKO/Mystery and writes `scripts/afs_ceiling_probe.json`. The pass
+criterion is per-format `max |Δ/σ| <= runtime resid`. Last 2026-04-20 run:
+PKO passed, Freeze and Mystery failed, so `AFS_LOG_MAX` must stay at 50k
+until those fits are extended or the UI gains per-format ceilings.
+
 `scripts/fit_sigma_parallel.ts` runs freeze/PKO/mystery out to AFS 200k
 and emits `*_200k_probe.json` files. It exists to **diagnose** how the
 current power-law fit extrapolates beyond the 50k AFS used for the

@@ -5,6 +5,7 @@ import {
   isInsideFitBox,
   type FitBoxSample,
 } from "./convergencePolicy";
+import { SIGMA_ROI_FREEZE } from "./convergenceFit";
 import type { TournamentRow } from "./types";
 
 // Minimal row builder — only the fields inferRowFormat reads.
@@ -319,30 +320,15 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
   });
 });
 
-// Canary: if SIGMA_ROI_FREEZE ever gains a non-zero C1 (i.e. freeze σ_ROI
+// Canary: if SIGMA_ROI_FREEZE ever gains a non-zero C1 (i.e. freeze sigma_ROI
 // starts depending on ROI), isInsideFitBox must learn a freeze ROI range.
-// This test imports the real constant from ConvergenceChart and fails the
-// moment the contract shifts — drift becomes impossible to miss.
+// This imports the real runtime constant and fails the moment the contract
+// shifts, making drift impossible to miss.
 describe("freeze ROI-invariant contract (canary)", () => {
-  it("SIGMA_ROI_FREEZE.C1 must stay 0 — or policy needs a ROI range for freeze", async () => {
-    // Dynamic import to avoid bundling the whole chart module at test
-    // collection time; read the raw source line.
-    const fs = await import("node:fs");
-    const src = fs.readFileSync(
-      "src/components/charts/ConvergenceChart.tsx",
-      "utf-8",
-    );
-    // Match the literal constant definition to avoid a brittle eval.
-    // `[^}]*` matches newlines naturally (negated-class), so no /s flag
-    // is needed — keeps the test compatible with ES2017 target.
-    const freezeBlock = src.match(
-      /SIGMA_ROI_FREEZE[^}]*kind:\s*"single-beta",[^}]*C1:\s*([-0-9.]+)/,
-    );
-    expect(
-      freezeBlock,
-      "SIGMA_ROI_FREEZE block not found — did the shape change?",
-    ).not.toBeNull();
-    const c1 = Number(freezeBlock![1]);
-    expect(c1).toBe(0);
+  it("SIGMA_ROI_FREEZE.C1 must stay 0 — or policy needs a ROI range for freeze", () => {
+    expect(SIGMA_ROI_FREEZE.kind).toBe("single-beta");
+    if (SIGMA_ROI_FREEZE.kind === "single-beta") {
+      expect(SIGMA_ROI_FREEZE.C1).toBe(0);
+    }
   });
 });
