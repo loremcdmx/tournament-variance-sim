@@ -1,15 +1,13 @@
 /**
- * PKO counterpart of `fit_beta.ts`. Same log-log fit of
+ * PKO σ_ROI sweep and log-log fit:
  *
  *   σ_ROI(field, roi) ≈ C(roi) · field^β
  *
- * but with a PKO schedule: `mtt-gg-bounty` payout (matches the one real
- * GG PKO sample we have on 1st/min/paid% anchors), `bountyFraction=0.5`,
- * default `pkoHeadVar=0.4`, and the `pko-realdata-linear` finish model
- * (empirical 1.72M-finish histogram).
- *
- * Bigger sweep than fit_beta.ts: 120 k samples (vs 60 k) so tail-driven
- * σ estimates on small fields settle within the grid-search noise.
+ * PKO schedule: `mtt-gg-bounty` payout (matches the one real GG PKO sample
+ * we have on 1st/min/paid% anchors), `bountyFraction=0.5`, default
+ * `pkoHeadVar=0.4`, and the `pko-realdata-linear` finish model (empirical
+ * 1.72M-finish histogram). Runs 120 k samples per grid point so tail-driven
+ * σ estimates on small fields settle within grid-search noise.
  *
  *   npx tsx scripts/fit_beta_pko.ts
  */
