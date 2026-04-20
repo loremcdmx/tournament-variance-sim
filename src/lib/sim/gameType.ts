@@ -17,18 +17,27 @@ export const GAME_TYPE_ORDER: GameType[] = [
  * Infer a row's game type from its underlying fields. Used for legacy
  * rows (no explicit `gameType`) and for presets imported before this
  * attribute existed. The inference is deterministic:
- *   - bountyFraction > 0 + mysteryBountyVariance ≥ 1.4 → mystery-royale
- *   - bountyFraction > 0 + mysteryBountyVariance >  0  → mystery
- *   - bountyFraction > 0                               → pko
- *   - maxEntries > 1                                   → freezeout-reentry
- *   - else                                             → freezeout
+ *   - explicit `gameType` wins
+ *   - `payoutStructure === "battle-royale"`     → mystery-royale
+ *   - `payoutStructure === "mtt-gg-mystery"`    → mystery
+ *   - `payoutStructure === "mtt-gg-bounty"`     → pko
+ *   - bountyFraction > 0 + mystery variance > 0 → mystery
+ *   - bountyFraction > 0                         → pko
+ *   - maxEntries > 1                             → freezeout-reentry
+ *   - else                                       → freezeout
+ *
+ * Mystery-royale is never inferred from variance alone: regular Mystery uses
+ * σ²=2.0, so the old `mysteryBountyVariance >= 1.4` heuristic misrouted plain
+ * Mystery rows into Battle Royale.
  */
 export function inferGameType(row: TournamentRow): GameType {
   if (row.gameType) return row.gameType;
+  if (row.payoutStructure === "battle-royale") return "mystery-royale";
+  if (row.payoutStructure === "mtt-gg-mystery") return "mystery";
+  if (row.payoutStructure === "mtt-gg-bounty") return "pko";
   const bounty = row.bountyFraction ?? 0;
   if (bounty > 0) {
     const v = row.mysteryBountyVariance ?? 0;
-    if (v >= 1.4) return "mystery-royale";
     if (v > 0) return "mystery";
     return "pko";
   }
