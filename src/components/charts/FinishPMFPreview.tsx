@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import {
   applyBountyBias,
   buildFinishPMF,
@@ -585,12 +585,20 @@ function TierHoverPopup({
         )}`
       : "—";
   const [side, setSide] = useState<"right" | "left">("right");
-  const measureRef = (el: HTMLDivElement | null) => {
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.right > window.innerWidth - 8) setSide("left");
-    else if (rect.left < 8) setSide("right");
-  };
+  const measureRef = useCallback((el: HTMLDivElement | null) => {
+    const anchor = el?.parentElement;
+    if (!el || !anchor) return;
+
+    const popupWidth = el.getBoundingClientRect().width;
+    const anchorRect = anchor.getBoundingClientRect();
+    const rightSpace = window.innerWidth - anchorRect.right - 8;
+    const leftSpace = anchorRect.left - 8;
+    const nextSide =
+      rightSpace >= popupWidth || rightSpace >= leftSpace ? "right" : "left";
+
+    setSide((prev) => (prev === nextSide ? prev : nextSide));
+  }, []);
+
   return (
     <div
       ref={measureRef}
