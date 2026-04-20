@@ -558,7 +558,7 @@ function Field({
   hint?: React.ReactNode;
 }) {
   // h-full + mt-auto pushes the input to the bottom of the grid cell so
-  // wrapping labels (e.g. "Сколько сессий сыграем") don't shove their
+  // wrapping labels (e.g. "Турниров в сэмпле") don't shove their
   // input down and break horizontal alignment with neighbouring fields.
   return (
     <label className="flex h-full flex-col gap-1.5">

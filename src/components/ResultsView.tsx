@@ -1926,7 +1926,7 @@ function ResultsViewImpl({
   const trajectoryToolbar = useMemo(
     () => (
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
             {t("lineStyle.label")}
           </div>
@@ -1942,7 +1942,7 @@ function ResultsViewImpl({
           />
           <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {advanced && (
             <>
               <TrimPctSlider
@@ -3405,7 +3405,7 @@ function RunModeSlider({
   const modes: RunMode[] = ["worst", "random", "best"];
   return (
     <div
-      className="ml-2 inline-flex overflow-hidden rounded-md border border-[color:var(--color-border)]"
+      className="inline-flex max-w-full overflow-hidden rounded-md border border-[color:var(--color-border)]"
       role="radiogroup"
       aria-label={t("runs.mode.title")}
       title={t("runs.mode.title")}
@@ -3544,7 +3544,10 @@ function LineStyleCustomizer({
       <summary className="cursor-pointer select-none rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)]">
         {t("lineStyle.customize")}
       </summary>
-      <div className="absolute left-0 top-full z-10 mt-1 w-[22rem] rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg">
+      <div
+        className="absolute left-0 top-full z-10 mt-1 hidden rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg group-open:block"
+        style={{ width: "min(22rem, calc(100vw - 4rem))" }}
+      >
         <div className="flex flex-col gap-2">
           {CUSTOMIZER_KEYS.map((k) => {
             const base = preset[k];
@@ -3564,7 +3567,7 @@ function LineStyleCustomizer({
                   aria-label={t(labelKey(k))}
                 />
                 <span
-                  className="min-w-[8rem] flex-1 truncate text-[color:var(--color-fg-dim)]"
+                  className="min-w-0 flex-1 truncate text-[color:var(--color-fg-dim)] sm:min-w-[8rem]"
                   title={t(labelKey(k))}
                 >
                   {t(labelKey(k))}
@@ -3583,7 +3586,7 @@ function LineStyleCustomizer({
                   value={width}
                   disabled={!enabled}
                   onChange={(e) => setKey(k, { width: Number(e.target.value) })}
-                  className="flex-1 disabled:opacity-40"
+                  className="min-w-0 flex-1 disabled:opacity-40"
                   aria-label={t("lineStyle.width")}
                 />
                 <span className="w-6 text-right tabular-nums text-[color:var(--color-fg-dim)]">
@@ -3733,7 +3736,9 @@ function RefLineCustomizer({
       <summary className="cursor-pointer select-none rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)]">
         {t("refLines.label")}
       </summary>
-      <div className="absolute left-0 top-full z-10 mt-1 w-80 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg">
+      <div
+        className="absolute left-0 top-full z-10 mt-1 hidden w-[15rem] rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 shadow-lg group-open:block sm:w-80"
+      >
         <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
           <span>{t("refLines.title")}</span>
           <button
@@ -5136,7 +5141,7 @@ function StatGroup({
         </span>
         <div className="h-px flex-1 bg-[color:var(--color-border)]" />
       </div>
-      <div className="grid grid-cols-[repeat(2,minmax(min-content,1fr))] gap-3 sm:grid-cols-[repeat(3,minmax(min-content,1fr))] lg:grid-cols-[repeat(5,minmax(min-content,1fr))]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))] md:grid-cols-[repeat(3,minmax(0,1fr))] lg:grid-cols-[repeat(5,minmax(0,1fr))]">
         {children}
       </div>
     </div>
