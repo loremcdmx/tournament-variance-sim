@@ -333,10 +333,6 @@ export const DICT = {
     en: "Tournaments per sample",
     ru: "Турниров в сэмпле",
   },
-  "controls.scheduleRepeatsComputed": {
-    en: "schedule repeats",
-    ru: "повторы расписания",
-  },
   "controls.samples": { en: "Simulations", ru: "Симуляций" },
   "controls.bankroll": { en: "Bankroll", ru: "Банкролл" },
   "controls.pdStyleEV.label": {

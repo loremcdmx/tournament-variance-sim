@@ -264,18 +264,13 @@ export const ControlsPanel = memo(function ControlsPanel({
       {/* Run controls: target tournaments per sample, samples */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
-          <>
-            <NumInput
-              value={totalTournaments}
-              min={scheduleTournaments}
-              max={maxTournamentsPerSample}
-              step={scheduleTournaments}
-              onChange={setTournamentTarget}
-            />
-            <div className="mt-1 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
-              {t("controls.scheduleRepeatsComputed")}: {formatCount(value.scheduleRepeats)}
-            </div>
-          </>
+          <NumInput
+            value={totalTournaments}
+            min={scheduleTournaments}
+            max={maxTournamentsPerSample}
+            step={scheduleTournaments}
+            onChange={setTournamentTarget}
+          />
         </Field>
         <Field label={t("controls.samples")} hint={t("help.samples")}>
           <NumInput
