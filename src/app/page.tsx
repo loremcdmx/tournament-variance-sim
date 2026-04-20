@@ -41,6 +41,7 @@ const scenarioDerived = new Map(
     return [s.id, { total, range }] as const;
   }),
 );
+const APP_VERSION = "v0.7.3";
 import type {
   SimulationInput,
   SimulationResult,
@@ -631,7 +632,7 @@ export default function Home() {
               }}
               className="hidden cursor-pointer rounded-sm border border-[color:var(--color-accent)]/40 px-1.5 py-0.5 font-mono text-[9px] font-bold tabular-nums text-[color:var(--color-accent)]/70 transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] sm:inline"
             >
-              v0.7a
+              {APP_VERSION}
             </a>
           </div>
           <CornerToggles />
@@ -1078,6 +1079,11 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v073.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v073.koAudit")}</li>
+              <li>{t("changelog.v073.evCard")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07a.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v07a.cash")}</li>

@@ -1278,6 +1278,15 @@ export const DICT = {
     ru: "Импортировано {n} {_preset}.",
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
+  "changelog.v073.title": { en: "v0.7.3 — 2026-04-20", ru: "v0.7.3 — 2026-04-20" },
+  "changelog.v073.koAudit": {
+    en: "KO-share control is easier to audit: neutral midpoint, bounded numeric EV entry, and cash / regular KO / jackpot percentages in gross EV.",
+    ru: "Контрол доли ноков проще проверять: нейтральный центр, ограниченный числовой ввод %EV и проценты кеша / обычных ноков / джекпота в брутто EV.",
+  },
+  "changelog.v073.evCard": {
+    en: "Microscope EV and EV-profit readouts were combined into one cleaner expected-return card.",
+    ru: "EV и EV-профит в микроскопе объединены в одну более чистую карточку ожидаемого возврата.",
+  },
   "changelog.v07a.title": { en: "v0.7.1 — 2026-04-18", ru: "v0.7.1 — 2026-04-18" },
   "changelog.v07a.cash": {
     en: "Advanced mode now has a separate cash-game variance simulator with mixed limits and parallel workers.",
