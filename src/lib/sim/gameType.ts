@@ -68,13 +68,40 @@ export function inferGameType(row: TournamentRow): GameType {
  * `payoutStructure === "battle-royale"` gates the discrete envelope-tier
  * sampler. Legacy rows (pre-gameType column, manual JSON edits, old
  * localStorage) can drift — silently fix at compile boundary so both hot-loop
- * branches see consistent state. Returns the row unchanged if already in sync.
+ * branches see consistent state.
+ *
+ * Precedence (matches `inferGameType` and `convergencePolicy.inferRowFormat`):
+ * **explicit `gameType` wins**. A row with an explicit non-MBR `gameType`
+ * plus a drifted `payoutStructure="battle-royale"` gets the payout corrected
+ * to its format's engine default — we do NOT upgrade the user's explicit
+ * Mystery/PKO/etc. into MBR. Only when `gameType` is absent (legacy rows,
+ * old localStorage) does `payoutStructure="battle-royale"` upgrade the row
+ * to MBR. Returns the row unchanged if already in sync or nothing to fix.
  */
 export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
   const isBR = row.payoutStructure === "battle-royale";
   const isMR = row.gameType === "mystery-royale";
-  if (isBR && !isMR) return { ...row, gameType: "mystery-royale" };
+  // gameType === "mystery-royale" is authoritative — correct drifted payout.
   if (isMR && !isBR) return { ...row, payoutStructure: "battle-royale" };
+  // Explicit non-MBR gameType + BR payout → user wanted non-MBR; correct the
+  // drifted payout to its format's engine default. `gameType === "mystery"`
+  // maps to "mtt-gg-mystery" (engine's non-BR mystery path); PKO / freezeouts
+  // use "mtt-gg-bounty" / "mtt-standard" per applyGameType defaults.
+  if (isBR && row.gameType && !isMR) {
+    const payout =
+      row.gameType === "mystery"
+        ? "mtt-gg-mystery"
+        : row.gameType === "pko"
+          ? "mtt-gg-bounty"
+          : "mtt-standard";
+    return { ...row, payoutStructure: payout };
+  }
+  // Legacy: no explicit gameType + BR payout → upgrade to MBR. This is the
+  // only case where payoutStructure drives gameType (backwards-compat for
+  // rows saved before the `gameType` column existed).
+  if (isBR && !row.gameType) {
+    return { ...row, gameType: "mystery-royale" };
+  }
   return row;
 }
 
