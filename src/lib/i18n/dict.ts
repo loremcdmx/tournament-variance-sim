@@ -644,7 +644,11 @@ export const DICT = {
     en: "Share of samples that finished the distance below their own peak — never climbed back from the deepest drawdown.",
     ru: "Доля сэмплов, закончивших дистанцию ниже своего пика — со дна так и не поднялись.",
   },
-  "stat.cashlessMean": { en: "No-ITM streak (avg)", ru: "Средняя серия без ITM" },
+  "stat.cashlessMean": { en: "Avg max no-ITM streak", ru: "Средняя макс. серия без ITM" },
+  "stat.cashlessMean.tip": {
+    en: "Average of each sample's longest no-ITM stretch. This is the local cold-streak metric to compare with table feel, not the full-sample peak-to-trough drawdown.",
+    ru: "Среднее по самым длинным сериям без ITM в каждом сэмпле. Это локальный холодный стрик для сравнения с ощущением поля, а не полная просадка от пика до дна.",
+  },
   "stat.cashlessWorst": { en: "Max no-ITM streak", ru: "Макс. серия без ITM" },
   "stat.cashlessWorst.tip": {
     en: "Longest run of tourneys with zero ITM — worst case across samples. The cold streak that tests nerves.",
@@ -1759,9 +1763,9 @@ export const DICT = {
   "preview.barEvLabel": { en: "share of EV", ru: "доля EV" },
   "preview.barFieldLabel": { en: "share of finishes", ru: "доля финишей" },
   "preview.tierWinner": { en: "1st place", ru: "1-е место" },
-  "preview.tierTop3": { en: "Top 3", ru: "Топ 3" },
-  "preview.tierFt": { en: "Final table", ru: "Финалка" },
-  "preview.tierTop27": { en: "Top 27", ru: "Топ 27" },
+  "preview.tierTop3": { en: "2nd-3rd", ru: "2-3 места" },
+  "preview.tierFt": { en: "4th-9th", ru: "4-9 места" },
+  "preview.tierTop27": { en: "10th-27th", ru: "10-27 места" },
   "preview.tierRestItm": { en: "Rest of cashes", ru: "Остальные кеши" },
   "preview.tierOotm": { en: "Not ITM", ru: "Не ITM" },
   "preview.halfMass": {

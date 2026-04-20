@@ -307,8 +307,10 @@ function TrajectoryPlot({
   const { compactMoney } = useMoneyFmt();
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const [plotReadyNonce, setPlotReadyNonce] = useState(0);
   const handlePlotReady = useCallback((plot: uPlot | null) => {
     plotRef.current = plot;
+    if (plot) setPlotReadyNonce((n) => n + 1);
   }, []);
   const xs = assets.data[0] as ArrayLike<number>;
   const xMin = Number(xs[0] ?? 0);
@@ -428,11 +430,31 @@ function TrajectoryPlot({
   // (near-invisible). Stroke + lineWidth are applied at draw time by uPlot,
   // so mutating `plot.series[i].stroke` and `.width` before the batch-close
   // redraw is enough to restyle without rebuilding the chart.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const plot = plotRef.current;
     if (!plot) return;
     const vis = assets.visibility;
     const { includeBest, includeWorst, isPathVisible, isBandVisible } = visibilityGate;
+    if (plot.series.length !== assets.data.length) {
+      // During an options rebuild React can briefly run this parent layout
+      // effect against the previous uPlot instance. Wait for UplotChart's
+      // onReady callback to hand us the matching instance instead.
+      return;
+    }
+    const plotData = plot.data as AlignedData | undefined;
+    const plotDataInSync =
+      plotData?.length === assets.data.length &&
+      assets.data.every((seriesData, idx) => {
+        const currentData = plotData[idx] as ArrayLike<unknown> | undefined;
+        return (
+          currentData != null &&
+          seriesData != null &&
+          currentData.length === seriesData.length
+        );
+      });
+    if (!plotDataInSync) {
+      plot.setData(assets.data);
+    }
 
     let visiblePathCount = 0;
     for (let r = 0; r < vis.pathSeriesIdx.length; r++) {
@@ -445,6 +467,11 @@ function TrajectoryPlot({
     const [baseR, baseG, baseB] = parseRgb(baseStyle.stroke);
     const baseAlpha =
       Number(baseStyle.stroke.match(/rgba?\([^)]*?,([^,)]+)\)/i)?.[1] ?? 0.4);
+
+    const safeSetSeries = (idx: number, show: boolean) => {
+      if (!Number.isInteger(idx) || idx <= 0 || idx >= plot.series.length) return;
+      plot.setSeries(idx, { show }, false);
+    };
 
     plot.batch(() => {
       // uPlot wraps `series[i].stroke` in fnOrSelf at init, so after init
@@ -467,26 +494,26 @@ function TrajectoryPlot({
             s.width = width;
           }
         }
-        plot.setSeries(sIdx, { show: visible }, false);
+        safeSetSeries(sIdx, visible);
       }
       for (const { idx, percentile } of vis.bands) {
-        plot.setSeries(idx, { show: isBandVisible(percentile) }, false);
+        safeSetSeries(idx, isBandVisible(percentile));
       }
       for (const sIdx of vis.bestSeriesIdxs) {
-        plot.setSeries(sIdx, { show: includeBest }, false);
+        safeSetSeries(sIdx, includeBest);
       }
       for (const sIdx of vis.worstSeriesIdxs) {
-        plot.setSeries(sIdx, { show: includeWorst }, false);
+        safeSetSeries(sIdx, includeWorst);
       }
       for (const sIdx of vis.overlayBestSeriesIdxs) {
-        plot.setSeries(sIdx, { show: includeBest }, false);
+        safeSetSeries(sIdx, includeBest);
       }
       for (const sIdx of vis.overlayWorstSeriesIdxs) {
-        plot.setSeries(sIdx, { show: includeWorst }, false);
+        safeSetSeries(sIdx, includeWorst);
       }
     });
     plot.redraw(false);
-  }, [assets, visibilityGate]);
+  }, [assets, visibilityGate, plotReadyNonce]);
 
   const idx = cursor?.idx;
   const tournaments = idx != null ? Math.round(xs[idx] ?? 0) : 0;
@@ -702,6 +729,11 @@ function TrajectoryPlot({
     const xArr = assets.data[0] as ArrayLike<number>;
     if (!dataArr || !xArr) return;
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.clip();
+
     const strokeSegment = (
       startIdx: number,
       endIdx: number,
@@ -757,6 +789,7 @@ function TrajectoryPlot({
         }
       }
     }
+    ctx.restore();
   }, [focusedSeriesIdx, focusedStatsSeriesIdx, assets.data, focusedPathStats, deferredFocusedIdx]);
 
   const kindLabel = (line: TrajectoryLineMeta): string => {
@@ -1168,26 +1201,32 @@ function buildTrajectoryAssets(
 
   {
     const p0015Idx = pushSeries(r.envelopes.p0015, {
+      show: false,
       stroke: preset.bandExtreme.stroke,
       width: preset.bandExtreme.width,
     });
     const p9985Idx = pushSeries(r.envelopes.p9985, {
+      show: false,
       stroke: preset.bandExtreme.stroke,
       width: preset.bandExtreme.width,
     });
     const p025Idx = pushSeries(r.envelopes.p025, {
+      show: false,
       stroke: preset.bandWide.stroke,
       width: preset.bandWide.width,
     });
     const p975Idx = pushSeries(r.envelopes.p975, {
+      show: false,
       stroke: preset.bandWide.stroke,
       width: preset.bandWide.width,
     });
     const p15Idx = pushSeries(r.envelopes.p15, {
+      show: false,
       stroke: preset.bandNarrow.stroke,
       width: preset.bandNarrow.width,
     });
     const p85Idx = pushSeries(r.envelopes.p85, {
+      show: false,
       stroke: preset.bandNarrow.stroke,
       width: preset.bandNarrow.width,
     });
@@ -1218,7 +1257,7 @@ function buildTrajectoryAssets(
     const alpha = Math.min(0.95, basePathAlpha * boost);
     const width = pathStyle.width * boost;
     const stroke = `rgba(${pathR},${pathG},${pathB},${alpha.toFixed(3)})`;
-    const idx = pushSeries(r.samplePaths.paths[runIdx], { stroke, width });
+    const idx = pushSeries(r.samplePaths.paths[runIdx], { show: false, stroke, width });
     pathSeriesIdx.push(idx);
     pathProfitQuantile.push(profitQuantile[runIdx]);
     pathPolarityList.push(pol);
@@ -1245,25 +1284,25 @@ function buildTrajectoryAssets(
   const aggDash: number[] = [10, 5];
   if (extremeStyles.realBest.enabled) {
     const stroke = realStroke("realBest");
-    const idx = pushSeries(r.samplePaths.best, { stroke, width: realWidth });
+    const idx = pushSeries(r.samplePaths.best, { show: false, stroke, width: realWidth });
     bestSeriesIdxs.push(idx);
     mainLines.push({ label: "Real best run", color: stroke, seriesIdx: idx, kind: "best", variant: "real" });
   }
   if (extremeStyles.aggBest.enabled) {
     const stroke = aggStroke("aggBest");
-    const idx = pushSeries(r.envelopes.max, { stroke, width: aggWidth, dash: aggDash });
+    const idx = pushSeries(r.envelopes.max, { show: false, stroke, width: aggWidth, dash: aggDash });
     bestSeriesIdxs.push(idx);
     mainLines.push({ label: "Aggregated best", color: stroke, seriesIdx: idx, kind: "best", variant: "agg" });
   }
   if (extremeStyles.realWorst.enabled) {
     const stroke = realStroke("realWorst");
-    const idx = pushSeries(r.samplePaths.worst, { stroke, width: realWidth });
+    const idx = pushSeries(r.samplePaths.worst, { show: false, stroke, width: realWidth });
     worstSeriesIdxs.push(idx);
     mainLines.push({ label: "Real worst run", color: stroke, seriesIdx: idx, kind: "worst", variant: "real" });
   }
   if (extremeStyles.aggWorst.enabled) {
     const stroke = aggStroke("aggWorst");
-    const idx = pushSeries(r.envelopes.min, { stroke, width: aggWidth, dash: aggDash });
+    const idx = pushSeries(r.envelopes.min, { show: false, stroke, width: aggWidth, dash: aggDash });
     worstSeriesIdxs.push(idx);
     mainLines.push({ label: "Aggregated worst", color: stroke, seriesIdx: idx, kind: "worst", variant: "agg" });
   }
@@ -1432,7 +1471,7 @@ function buildTrajectoryAssets(
       const stroke = variant === "real" ? "#3b82f6" : "#93c5fd";
       const width = variant === "real" ? 2.25 : 2;
       const dash = variant === "real" ? [12, 7] : [18, 9];
-      const idx = pushSeries(resample(src), { stroke, width, dash, label });
+      const idx = pushSeries(resample(src), { show: false, stroke, width, dash, label });
       mainLines.push({ label, color: stroke, seriesIdx: idx, kind, variant });
       return idx;
     };
@@ -1716,8 +1755,21 @@ function ResultsViewImpl({
       ) ?? false,
     [schedule],
   );
-  const [hideJackpots, setHideJackpots] = useState<boolean>(false);
+  const hideJackpotsTouchedRef = useRef(false);
+  const [hideJackpots, setHideJackpotsState] = useState<boolean>(true);
   const deferredHideJackpots = useDeferredValue(hideJackpots);
+  const setHideJackpots = useCallback((next: boolean) => {
+    hideJackpotsTouchedRef.current = true;
+    setHideJackpotsState(next);
+  }, []);
+  useEffect(() => {
+    if (hasMysteryRow && !hideJackpotsTouchedRef.current) {
+      // Mystery/BR tails are real data, but one early jackpot can make the
+      // default fan unreadable. Keep the raw run available behind the checkbox.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes the default with the detected schedule format until the user touches it.
+      setHideJackpotsState(true);
+    }
+  }, [hasMysteryRow]);
   // rbFrac change resets each region toggle back to default. Users can flip
   // individual regions after; a new rbFrac (e.g. rakeback % edit in controls)
   // wipes those overrides. Four sets in one pass — React batches them.
@@ -2370,6 +2422,23 @@ function ResultsViewImpl({
           label={t("stat.avgBEStreak")}
           value={`${Math.round(s.breakevenStreakMean)} ${tourneysWord}`}
           tip={t("stat.avgBEStreak.tip")}
+        />
+        <MiniStat
+          suit="diamond"
+          label={t("stat.cashlessMean")}
+          value={`${Math.round(s.longestCashlessMean)} ${tourneysWord}`}
+          tip={t("stat.cashlessMean.tip")}
+          pdValue={
+            pdStats
+              ? `${Math.round(pdStats.longestCashlessMean)} ${tourneysWord}`
+              : undefined
+          }
+          pdDelta={
+            pdStats
+              ? pctDelta(s.longestCashlessMean, pdStats.longestCashlessMean)
+              : null
+          }
+          pdLabel={pdBadgeLabel}
         />
         <MiniStat
           suit="heart"

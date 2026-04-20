@@ -391,6 +391,12 @@ input[type="number"] {
 .uplot .u-axis {
   color: var(--color-fg-dim);
 }
+.uplot-host {
+  overflow: hidden;
+}
+.uplot .u-over {
+  overflow: hidden;
+}
 
 /* Tabular numerals for stat cards */
 .tabular {

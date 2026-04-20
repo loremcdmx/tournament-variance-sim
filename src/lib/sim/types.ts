@@ -123,9 +123,12 @@ export interface TournamentRow {
    * band only (power-law / linear-skill / etc. applied to paid places only,
    * non-paid places get uniform mass). Matches the empirical fact that
    * grinders don't actually cash much more often than no-skill players —
-   * their edge shows up in running deeper when they do cash. Undefined = old
-   * α-calibration behaviour where ITM rate is a free parameter that scales
-   * with ROI. Ignored in primedope-binary-itm mode.
+   * their edge shows up in running deeper when they do cash. When the cash
+   * target is at least breakeven, the fixed-ITM solver also keeps P(1st)
+   * from falling below the no-skill equilibrium 1 / field size; bounty rows
+   * reconcile any impossible cash/KO split through residual bounty EV.
+   * Undefined = old α-calibration behaviour where ITM rate is a free
+   * parameter that scales with ROI. Ignored in primedope-binary-itm mode.
    */
   itmRate?: number;
 

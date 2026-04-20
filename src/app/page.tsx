@@ -22,6 +22,10 @@ import { ConvergenceChart } from "@/components/charts/ConvergenceChart";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
+import {
+  countScheduleTournaments,
+  redistributeScheduleCounts,
+} from "@/lib/sim/scheduleTarget";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
@@ -166,6 +170,7 @@ export default function Home() {
     estimateMs,
     availableRuns,
     activeRunIdx,
+    activeSeed,
     selectRun,
     backgroundStatus,
     runPdOnly,
@@ -223,7 +228,7 @@ export default function Home() {
       scheduleRepeats: c.scheduleRepeats,
       samples: c.samples,
       bankroll: c.bankroll,
-      seed: Math.floor(Math.random() * 2 ** 30),
+      seed: c.seed >>> 0,
       finishModel: {
         id: c.finishModelId,
         alpha: c.alphaOverride ?? undefined,
@@ -378,8 +383,19 @@ export default function Home() {
     },
     [interruptBackground],
   );
+  const handleTournamentTargetChange = useCallback(
+    (target: number) => {
+      interruptBackground();
+      setSchedule((prev) => redistributeScheduleCounts(prev, target));
+      setControls((prev) =>
+        prev.scheduleRepeats === 1 ? prev : { ...prev, scheduleRepeats: 1 },
+      );
+      setActiveScenarioId(null);
+    },
+    [interruptBackground],
+  );
   const tournamentsPerSchedule = useMemo(
-    () => schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0),
+    () => countScheduleTournaments(schedule),
     [schedule],
   );
   const tournamentsPerSession = useMemo(
@@ -897,6 +913,7 @@ export default function Home() {
             <ControlsPanel
               value={controls}
               onChange={handleControlsChange}
+              onTournamentTargetChange={handleTournamentTargetChange}
               onRun={onRun}
               onCancel={cancel}
               running={running}
@@ -905,6 +922,7 @@ export default function Home() {
               estimatedMs={estimatedMs}
               tournamentsPerSchedule={tournamentsPerSchedule}
               tournamentsPerSession={tournamentsPerSession}
+              activeSeed={activeSeed}
               doneSummary={doneSummary}
             />
             <PayoutStructureCard schedule={deferredSchedule} />

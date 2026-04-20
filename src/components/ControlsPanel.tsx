@@ -86,6 +86,7 @@ interface DoneSummary {
 interface Props {
   value: ControlsState;
   onChange: (next: ControlsState) => void;
+  onTournamentTargetChange: (target: number) => void;
   onRun: () => void;
   onCancel: () => void;
   running: boolean;
@@ -103,6 +104,8 @@ interface Props {
   tournamentsPerSchedule: number;
   /** Actual tournaments per sample after rounding to full schedule repeats. */
   tournamentsPerSession: number;
+  /** Actual seed for the currently displayed cached run. */
+  activeSeed?: number | null;
   /** When a run has just finished, a compact snapshot to display under the
    * run button so the user sees *something* happened without scrolling to
    * the full results section below. Null while running or before first run. */
@@ -140,6 +143,7 @@ function formatRoughDuration(ms: number): string {
 export const ControlsPanel = memo(function ControlsPanel({
   value,
   onChange,
+  onTournamentTargetChange,
   onRun,
   onCancel,
   running,
@@ -148,6 +152,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   estimatedMs,
   tournamentsPerSchedule,
   tournamentsPerSession,
+  activeSeed,
   doneSummary,
 }: Props) {
   const t = useT();
@@ -200,14 +205,13 @@ export const ControlsPanel = memo(function ControlsPanel({
   const scheduleTournaments = Math.max(1, Math.round(tournamentsPerSchedule));
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const maxTournamentsPerSample = scheduleTournaments * 100_000;
-  const seedLabel = `0x${(value.seed >>> 0).toString(16).padStart(8, "0")}`;
+  const shownSeed = activeSeed ?? value.seed;
+  const seedLabel = `0x${(shownSeed >>> 0).toString(16).padStart(8, "0")}`;
   const showSeedLabel = running || !!doneSummary;
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
   const setTournamentTarget = (target: number) => {
-    const roundedTarget = Math.max(scheduleTournaments, Math.floor(target));
-    const repeats = Math.max(1, Math.ceil(roundedTarget / scheduleTournaments));
-    set("scheduleRepeats", repeats);
+    onTournamentTargetChange(Math.max(1, Math.floor(target)));
   };
 
   const handleEmpiricalPaste = (raw: string) => {
@@ -266,9 +270,9 @@ export const ControlsPanel = memo(function ControlsPanel({
         <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
           <NumInput
             value={totalTournaments}
-            min={scheduleTournaments}
+            min={1}
             max={maxTournamentsPerSample}
-            step={scheduleTournaments}
+            step={1}
             onChange={setTournamentTarget}
           />
         </Field>

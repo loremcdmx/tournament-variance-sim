@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import uPlot, { type Options, type AlignedData } from "uplot";
 import "uplot/dist/uPlot.min.css";
 
@@ -69,8 +69,12 @@ export function UplotChart({
     onDoubleClickRef.current = onDoubleClick;
   }, [onDoubleClick]);
 
+  useLayoutEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
   // Plot lifecycle — recreated only on options/height change.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!hostRef.current) return;
     const host = hostRef.current;
     const width = host.clientWidth || 600;
@@ -142,13 +146,15 @@ export function UplotChart({
     };
   }, [options, height]);
 
-  // Data-only fast path — no rebuild, no series re-layout.
-  useEffect(() => {
-    dataRef.current = data;
+  // Data-only fast path — no rebuild, no series re-layout. This must run in
+  // the layout phase: parent chart effects may call imperative uPlot APIs in
+  // their own layout effects, and those APIs assume `series` and `data` are
+  // already in lockstep.
+  useLayoutEffect(() => {
     const plot = plotRef.current;
     if (!plot) return;
     plot.setData(data);
   }, [data]);
 
-  return <div ref={hostRef} className="relative w-full" />;
+  return <div ref={hostRef} className="uplot-host relative w-full" />;
 }

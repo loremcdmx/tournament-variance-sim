@@ -27,9 +27,10 @@ export interface ScheduleFeasibility {
 /**
  * Replicates engine.ts compileSingleEntry's calibration pre-step closely
  * enough to decide feasibility of the fixed-ITM shelled solver for each
- * row. Only rows that actually use itmRate + shell locks can be infeasible;
- * everything else is trivially OK (the α solver clamps silently and PD-
- * binary-itm is always feasible by construction).
+ * row. Fixed-ITM rows can be infeasible when explicit shell locks or the
+ * solver's equilibrium first-place floor leave no alpha room to hit the
+ * requested cash target; everything else is trivially OK (the α solver
+ * clamps silently and PD-binary-itm is always feasible by construction).
  *
  * NOTE: this mirrors engine-side math, not sim-side. If engine.ts changes
  * its targetRegular formula (bounty lift, rake convention, overlay), update
@@ -43,12 +44,6 @@ export function validateSchedule(
   schedule.forEach((rawRow, idx) => {
     const row = normalizeBrMrConsistency(rawRow);
     if (row.itmRate == null || row.itmRate <= 0) return;
-    if (!row.finishBuckets) return;
-    const hasLock =
-      row.finishBuckets.first != null ||
-      row.finishBuckets.top3 != null ||
-      row.finishBuckets.ft != null;
-    if (!hasLock) return;
 
     const lateRegMult = Math.max(1, row.lateRegMultiplier ?? 1);
     const N = Math.max(2, Math.floor(row.players * lateRegMult));

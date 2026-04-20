@@ -290,6 +290,55 @@ describe("calibrateShelledItm", () => {
     expect(r.feasible).toBe(true);
   });
 
+  it("keeps first place at least equilibrium for high-ITM Battle Royale regs", () => {
+    const brN = 18;
+    const brPaid = 3;
+    const buyIn = 25 / 1.08;
+    const entryCost = buyIn * 1.08;
+    const brPool = brN * buyIn * 0.5;
+    const brCurve = getPayoutTable("battle-royale", brN).slice(0, brPaid);
+    const targetRegular = entryCost * 1.03 * 0.5;
+    const r = calibrateShelledItm(
+      brN,
+      brPaid,
+      brCurve,
+      brPool,
+      targetRegular,
+      0.24,
+      undefined,
+      { id: "power-law" },
+    );
+    let paidMass = 0;
+    for (let i = 0; i < brPaid; i++) paidMass += r.pmf[i];
+
+    expect(r.pmf[0]).toBeCloseTo(1 / brN, 10);
+    expect(paidMass).toBeCloseTo(0.24, 10);
+    expect(r.currentWinnings).toBeGreaterThan(targetRegular);
+    expect(r.feasible).toBe(false);
+  });
+
+  it("lets explicit first-place locks override the equilibrium floor", () => {
+    const brN = 18;
+    const brPaid = 3;
+    const buyIn = 25 / 1.08;
+    const entryCost = buyIn * 1.08;
+    const brPool = brN * buyIn * 0.5;
+    const brCurve = getPayoutTable("battle-royale", brN).slice(0, brPaid);
+    const targetRegular = entryCost * 1.03 * 0.5;
+    const r = calibrateShelledItm(
+      brN,
+      brPaid,
+      brCurve,
+      brPool,
+      targetRegular,
+      0.24,
+      { first: 0.01 },
+      { id: "power-law" },
+    );
+
+    expect(r.pmf[0]).toBeCloseTo(0.01, 10);
+  });
+
   it("flags infeasible when locks are too small to hit target", () => {
     // Lock top-9 at 0.5% total — paid band mass below any α can reach target.
     const target = 16.5;

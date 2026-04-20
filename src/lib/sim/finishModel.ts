@@ -399,6 +399,11 @@ export function calibrateShelledItm(
   const ftEnd = Math.min(9, paid);
   // Cumulative locks (monotone clamp). All are bounded to [0, itmRate].
   const locks = shellLocks ?? {};
+  let equilibriumWinnings = 0;
+  for (let i = 0; i < paid; i++) {
+    equilibriumWinnings += (1 / N) * payouts[i] * prizePool;
+  }
+  const equilibriumFirst = 1 / N;
   const cumFirst =
     locks.first != null
       ? Math.max(0, Math.min(clampedItm, locks.first))
@@ -543,6 +548,25 @@ export function calibrateShelledItm(
     top3: sumRange(0, Math.min(3, paid)),
     ft: sumRange(0, ftEnd),
   };
+
+  if (
+    locks.first == null &&
+    paid > 1 &&
+    clampedItm >= equilibriumFirst &&
+    targetWinnings >= equilibriumWinnings - 1e-9 &&
+    shells.first < equilibriumFirst - 1e-10
+  ) {
+    return calibrateShelledItm(
+      N,
+      paidCount,
+      payouts,
+      prizePool,
+      targetWinnings,
+      itmRate,
+      { ...locks, first: equilibriumFirst },
+      model,
+    );
+  }
 
   return { alpha, pmf, currentWinnings, feasible, supportsTargetRoi: true, shells };
 }

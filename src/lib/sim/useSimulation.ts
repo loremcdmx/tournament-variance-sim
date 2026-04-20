@@ -157,6 +157,7 @@ export function useSimulation() {
   }>({ version: 0, key: "", runs: [], baseInput: null });
   const [availableRuns, setAvailableRuns] = useState(0);
   const [activeRunIdx, setActiveRunIdx] = useState(0);
+  const [activeSeed, setActiveSeed] = useState<number | null>(null);
   const [backgroundStatus, setBackgroundStatus] = useState<BackgroundStatus>(
     "idle",
   );
@@ -695,6 +696,7 @@ export function useSimulation() {
       batchRef.current.baseInput = input;
       setAvailableRuns(0);
       setActiveRunIdx(0);
+      setActiveSeed(input.seed >>> 0);
       setBackgroundStatus("idle");
       pdJobIdRef.current++;
       setPdStatus("idle");
@@ -721,6 +723,7 @@ export function useSimulation() {
         batchRef.current.runs.push({ seed: input.seed, result: merged });
         setAvailableRuns(1);
         setActiveRunIdx(0);
+        setActiveSeed(input.seed >>> 0);
         setResult(merged);
         setProgress(1);
         setStage(null);
@@ -839,6 +842,7 @@ export function useSimulation() {
     const runs = batchRef.current.runs;
     if (idx < 0 || idx >= runs.length) return;
     setActiveRunIdx(idx);
+    setActiveSeed(runs[idx].seed >>> 0);
     setResult(runs[idx].result);
   }, []);
 
@@ -855,6 +859,7 @@ export function useSimulation() {
     estimateMs,
     availableRuns,
     activeRunIdx,
+    activeSeed,
     selectRun,
     backgroundStatus,
     runPdOnly,
