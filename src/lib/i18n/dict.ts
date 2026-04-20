@@ -335,7 +335,7 @@ export const DICT = {
   },
   "controls.scheduleRepeatsComputed": {
     en: "schedule repeats",
-    ru: "повторов расписания",
+    ru: "повторы расписания",
   },
   "controls.samples": { en: "Simulations", ru: "Симуляций" },
   "controls.bankroll": { en: "Bankroll", ru: "Банкролл" },

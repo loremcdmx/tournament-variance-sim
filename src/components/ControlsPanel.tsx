@@ -273,7 +273,7 @@ export const ControlsPanel = memo(function ControlsPanel({
               onChange={setTournamentTarget}
             />
             <div className="mt-1 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
-              ≈ {formatCount(value.scheduleRepeats)} {t("controls.scheduleRepeatsComputed")}
+              {t("controls.scheduleRepeatsComputed")}: {formatCount(value.scheduleRepeats)}
             </div>
           </>
         </Field>
