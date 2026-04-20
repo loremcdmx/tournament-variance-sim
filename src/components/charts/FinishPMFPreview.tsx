@@ -2,6 +2,7 @@
 
 import { memo, useMemo, useState } from "react";
 import {
+  applyBountyBias,
   buildFinishPMF,
   calibrateAlpha,
   calibrateShelledItm,
@@ -1236,10 +1237,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const totalWinningsEV = entryCost * (1 + row.roi);
   let bountyMean =
     bountyFraction > 0
-      ? bias >= 0
-        ? defaultBountyMean * (1 - bias)
-        : defaultBountyMean +
-          -bias * Math.max(0, totalWinningsEV - defaultBountyMean)
+      ? applyBountyBias(defaultBountyMean, totalWinningsEV, bias)
       : 0;
   const prizePool = basePool * (1 - bountyFraction);
 

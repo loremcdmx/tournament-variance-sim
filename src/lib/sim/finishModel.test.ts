@@ -3,7 +3,6 @@ import {
   buildFinishPMF,
   expectedWinnings,
   calibrateAlpha,
-  calibrateBountyBudget,
   calibrateShelledItm,
   buildCDF,
   sampleFromCDF,
@@ -106,53 +105,6 @@ describe("expectedWinnings × calibrateAlpha", () => {
       const alpha = calibrateAlpha(N, payouts, pool, 22, roi, { id: "uniform" });
       expect(alpha).toBe(0);
     }
-  });
-});
-
-describe("calibrateBountyBudget", () => {
-  const N = 500;
-  const cost = 22;
-  const pool = N * 20;
-  const payouts = getPayoutTable("mtt-standard", N);
-
-  it("closes the ROI contract when added back to cash EV", () => {
-    const pmf = buildFinishPMF(N, { id: "power-law" }, 1.2);
-    const target = cost * (1 + 0.3);
-    const r = calibrateBountyBudget(pmf, payouts, pool, target);
-    expect(r.cashEV + r.bountyMean).toBeCloseTo(target, 9);
-  });
-
-  it("reports feasible when cash EV is below target", () => {
-    // Uniform pmf against a skill-like ROI → cashEV ≪ target.
-    const pmf = buildFinishPMF(N, { id: "uniform" }, 0);
-    const target = cost * (1 + 0.5);
-    const r = calibrateBountyBudget(pmf, payouts, pool, target);
-    expect(r.feasible).toBe(true);
-    expect(r.bountyMean).toBeGreaterThan(0);
-  });
-
-  it("reports infeasible when cash EV overshoots target", () => {
-    // Highly concentrated pmf beats a near-zero target.
-    const pmf = buildFinishPMF(N, { id: "power-law" }, 5);
-    const r = calibrateBountyBudget(pmf, payouts, pool, 0);
-    expect(r.feasible).toBe(false);
-    expect(r.bountyMean).toBeLessThan(0);
-  });
-
-  it("bountyMean is monotone decreasing in cash EV for fixed target", () => {
-    const target = cost * (1 + 0.2);
-    const pmfFlat = buildFinishPMF(N, { id: "power-law" }, 0.2);
-    const pmfSteep = buildFinishPMF(N, { id: "power-law" }, 2);
-    const flat = calibrateBountyBudget(pmfFlat, payouts, pool, target);
-    const steep = calibrateBountyBudget(pmfSteep, payouts, pool, target);
-    expect(steep.cashEV).toBeGreaterThan(flat.cashEV);
-    expect(steep.bountyMean).toBeLessThan(flat.bountyMean);
-  });
-
-  it("cashEV equals direct expectedWinnings", () => {
-    const pmf = buildFinishPMF(N, { id: "power-law" }, 1);
-    const r = calibrateBountyBudget(pmf, payouts, pool, 0);
-    expect(r.cashEV).toBeCloseTo(expectedWinnings(pmf, payouts, pool), 9);
   });
 });
 
@@ -298,9 +250,6 @@ describe("buildBinaryItmAssets (PrimeDope two-bin uniform)", () => {
     expect(itmProbability(itmLift, paid500)).toBeGreaterThan(paid500 / 500);
   });
 });
-
-// Keep dummy import alive for tooling
-void expectedWinnings;
 
 describe("itmProbability", () => {
   it("matches analytical pmf sum on paid places", () => {

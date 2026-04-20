@@ -3,7 +3,7 @@
 > **Single source of truth.** Все активные и закрытые задачи живут здесь.
 > Memory-файлы содержат только указатель на этот документ — не дублировать статус.
 >
-> Актуален на **2026-04-19** (v0.7.1, ветка `dev`).
+> Актуален на **2026-04-20** (v0.7.2, ветка `main`).
 > Закрытые задачи см. в `git log`. История прогресса — в `CHANGELOG.md`.
 > Feature scope на 2026-04-13 расширен: re-entry / PKO / empirical model **IN SCOPE** (см. commit ec88189 и ранее).
 
@@ -38,7 +38,7 @@
 
 **Условие:** #121b закрыт (коммиты 9d66e47, 754d0de) — можно стартовать.
 
-### #109 · Масштабный σ-sweep по всем форматам — **IN PROGRESS 2026-04-19**
+### #109 · Масштабный σ-sweep по всем форматам — **IN PROGRESS 2026-04-20**
 Прогнать large-scale fit по freeze/pko/mystery/mystery-royale на полной ROI × AFS матрице. Recal `SIGMA_ROI_*`. Ресурсы: ~4ч (12 workers × 7950X), автономный запуск.
 
 **Статус:** часть 1 (script) закрыта коммитами `76640be` + `befaa1c` — `FIELDS` расширен до 200 000 + к каждому JSON добавлен `logPolyPooled` (log-polynomial `log σ = a + b₁·log field + b₂·(log field)²`) поверх single-β формы. Фоновый прогон запущен 2026-04-19.
@@ -49,21 +49,21 @@
 3. Обновить `resid` per-format на основании нового cross-validation bench'а.
 4. Один атомарный коммит: «coefficient refresh + AFS ceiling raise».
 
-### #132 · Compare-dropdown + recalc-кнопка под PKO EV-slider — **P2**
+### #132 · Compare-dropdown + recalc-кнопка под KO-share slider — **P2**
 Сейчас правый график в compare-mode зашит в `compareWithPrimedope` / cashless twin-pool — булевые тумблеры. Нужно вытащить в dropdown «с чем сравниваем» с опциями:
 - PD (Shelled ITM) — existing twin-pass, instant
 - MTT без ноков — existing cashless pool, instant
-- MTT с взвешенным KO/cash распределением (текущий slider) — **requires recalc**
+- MTT с текущим KO-share профилем (`row.bountyEvBias`) — **requires recalc**
 - MTT низкий / средний / высокий ABI — pre-baked baseline schedules ($3.30 / $22 / $215 reg, PP ITM 15%), off-main воркер + localStorage кэш
 
-**Recalc-кнопка** появляется при движении PKO EV-slider'а: жмём → генерируем mutated `SimulationInput` с целевым KO/cash share (скаляр на все `pkoBountyRatio` в schedule, buy-in preserved) и гоним отдельный pass. Прогресс-бар во втором графике под время recalc'а.
+**Recalc-кнопка** появляется при изменении KO-share slider'а: жмём → генерируем mutated `SimulationInput` с целевым `bountyEvBias` / KO-share профилем, buy-in и payout сохраняются, затем гоним отдельный pass. Прогресс-бар во втором графике под время recalc'а.
 
 **i18n:** переписать все легенды/тултипы, где сейчас «сравнение с ПД» / «сравнение с расписанием без ноков» под выбранный dropdown-режим.
 
 **Design-вопросы до имплементации:**
 1. ABI-baselines: $3.30 / $22 / $215 reg-schedule — ок или есть свой эталон?
-2. KO-shift mechanics: скалировать per-row `pkoBountyRatio` в target или через новое поле в `SimulationInput`?
-3. Recalc-кнопка — под PKO-слайдером или глобальная «пересчитать правый график»?
+2. KO-shift mechanics: хранить сценарий как per-row `bountyEvBias` или добавить глобальное поле в `SimulationInput`?
+3. Recalc-кнопка — под KO-share слайдером или глобальная «пересчитать правый график»?
 
 ---
 
@@ -258,14 +258,19 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 
 ## ✅ Закрыто (архив последней волны)
 
-Раскрывать по требованию — детали в `git log`. Ниже — что закрыто за текущую волну (2026-04-19 / 2026-04-18) + старые pre-MVP.
+Раскрывать по требованию — детали в `git log`. Ниже — что закрыто за текущую волну (2026-04-20 / 2026-04-19 / 2026-04-18) + старые pre-MVP.
+
+**Shipped 2026-04-20:**
+- ✅ **#136** ICM removed — unused ICM controls, engine path, types, docs, and tests removed from the product surface.
+- ✅ **#137** KO-share slider + Battle Royale EV guard — EV-source slider now reports KO share of gross EV; fixed-ITM / shelled Battle Royale rows keep total ROI pinned at KO-share edges, while BR average envelope size remains fixed and only expected KO count moves.
+- ✅ **#138** dead bounty-budget helper cleanup — stale `calibrateBountyBudget` export and tests removed after the engine moved to direct residual reconcile; `npx knip` clean.
 
 **Shipped 2026-04-19:**
 - ✅ **#75** strip personal/brand mentions — коммит `350e4b9` (LoremCDMX / bitB Staking / «1.5k-player fund» → нейтральные формулировки; преcет `loremcdmx` → `steady-reg`)
 - ✅ **#76** MBR-in-mix baseline fix — коммит `ecfb4d7` (`mysteryRoyaleShare > 0` + mixed schedule теперь дефолтится на "exact", 3-way mix-tuple глушил σ MBR)
 - ✅ **#77** σ fit uncertainty band — коммит `7d181bd` (k теперь показывает `±X%` suffix + `[k_lo..k_hi]` в tooltip; `resid` пер-формату пропагируется через `sigmaRoiForRow`/`exactBreakdown`)
 - ✅ **#78 (part 1)** fit script extended — коммиты `76640be` + `befaa1c` (FIELDS до 200k, log-polynomial pooled fit в каждый JSON, FITTING.md обновлён). Recal коэффициентов — отдельно после окончания фонового sweep-а.
-- ✅ **#121b** calibration decomposition — коммиты `9d66e47` (предикат `isAlphaAdjustable` + helper `applyBountyBias`) + `754d0de` (`calibrateBountyBudget` подключён в `engine.ts` после pmf build). Для α-adjustable моделей поведение численно идентично; для fixed-shape (uniform / empirical / realdata-*) bountyMean реанкорится к `total − cashEV`, восстанавливая total-EV ROI контракт на bias=0. SIGMA_ROI recal не нужен.
+- ✅ **#121b** calibration decomposition — коммиты `9d66e47` (предикат `isAlphaAdjustable` + helper `applyBountyBias`) + `754d0de` (первый residual bounty reconcile после pmf build). Для α-adjustable моделей поведение численно идентично; для fixed-shape (uniform / empirical / realdata-*) bountyMean реанкорится к `total − cashEV`, восстанавливая total-EV ROI контракт на bias=0. SIGMA_ROI recal не нужен.
 - ✅ **#133** progress-bar visual lag — коммит `c315c74` (`transition-[width] duration-300 → duration-100` в `ControlsPanel.tsx`). Полоса теперь держится в пределах кадра от числа в кнопке.
 - ✅ **#134** status-line под progress bar — коммит `c315c74` (`BuildStage` enum в `engine.ts` → worker postMessage → `ProgressStage` в `useSimulation` → ControlsPanel рендерит `controls.stage.*` i18n-label под баром).
 - ✅ **#135** language-switcher лаг — коммит `73362a0` (`setLocale` обёрнут в `startTransition` в `LocaleProvider.tsx`; клик свитчера красится немедленно).
@@ -294,12 +299,13 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 
 ## 🧹 Tech debt / cleanup
 
-### Dead code — статус после knip-прохода 2026-04-19
+### Dead code — статус после knip-прохода 2026-04-20
 - ✅ Удалено: `SensitivityChart.tsx`, `charts/common.ts` (unused)
 - ✅ Удалено: `calibrateFixedItm`, `translate`, `LOCATIVE`, `OVERRIDABLE_LINE_KEYS`, `isOptionalLine`, `loadPdOverlayStyle`/`savePdOverlayStyle`/`DEFAULT_PD_OVERLAY_STYLE`/`PdOverlayStyle`
 - ✅ Удалено: `rowItmTarget`, `findScenario`, `getStandardPreset`, `fmtCoef`, `targetBandsLabel`, `fitRows` (2026-04-18 pre-prod sweep)
+- ✅ Удалено: `calibrateBountyBudget` / `BountyBudgetResult` после перехода engine на прямой residual reconcile
 - ✅ Создан `knip.json` с конфигом для `scripts/` + tailwind/postcss ignore
-- ✅ `npx knip` clean (0 issues на 2026-04-19) — открытый пункт «22 unused types» разрешён предыдущими волнами очистки.
+- ✅ `npx knip` clean (0 issues на 2026-04-20) — открытый пункт «22 unused types» разрешён предыдущими волнами очистки.
 
 ### Knip false-positive profile
 Next.js + worker-pool + dev-only scripts дают систематические false positives в knip:
@@ -330,7 +336,7 @@ Next.js + worker-pool + dev-only scripts дают систематические
 | `docs/FITTING.md` | Как запускать σ-sweep, интерпретировать `{C0, C1, β}` |
 | `CONTRIBUTING.md` | Dev setup, branching, commit style, testing rules |
 | `AGENTS.md` | Post-compression re-entry point + sharp edges |
-| `CHANGELOG.md` | Релиз-история (последний: v0.7.1) |
+| `CHANGELOG.md` | Релиз-история (последний: v0.7.2) |
 
 ---
 

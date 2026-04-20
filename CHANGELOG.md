@@ -3,7 +3,7 @@
 Only user-facing changes are listed here. Small refactors, bench refreshes,
 internal scripts, and other low-signal maintenance are intentionally omitted.
 
-## Unreleased
+## v0.7.2 — 2026-04-20
 
 - Removed the unused ICM controls and engine path.
 - Reworked the EV-source slider into a KO-share control: it now reports how
