@@ -50,6 +50,7 @@ import type {
 import {
   addUserPreset,
   buildShareUrl,
+  isValidUserPreset,
   loadFromUrlHash,
   loadLocal,
   loadUserPresets,
@@ -579,16 +580,21 @@ export default function Home() {
       const existing = loadUserPresets();
       const byId = new Map(existing.map((p) => [p.id, p]));
       for (const p of incoming) {
-        if (!p || typeof p !== "object" || !p.id || !p.state) continue;
+        if (!isValidUserPreset(p)) continue;
         byId.set(p.id, p);
       }
       const merged = Array.from(byId.values());
+      const importedCount = incoming.filter(isValidUserPreset).length;
+      if (importedCount === 0) {
+        window.alert(t("presets.importError"));
+        return;
+      }
       saveUserPresets(merged);
-      setUserPresets(merged);
+      setUserPresets(loadUserPresets());
       window.alert(
         t("presets.importDone")
-          .replace("{n}", String(incoming.length))
-          .replace("{_preset}", plural(locale, incoming.length, WORDS.preset)),
+          .replace("{n}", String(importedCount))
+          .replace("{_preset}", plural(locale, importedCount, WORDS.preset)),
       );
     } catch {
       window.alert(t("presets.importError"));

@@ -10,10 +10,41 @@ import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from
 import type { TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object";
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+function isTournamentRowLike(v: unknown): v is TournamentRow {
+  if (!isRecord(v)) return false;
+  return (
+    typeof v.id === "string" &&
+    isFiniteNumber(v.players) &&
+    isFiniteNumber(v.buyIn) &&
+    isFiniteNumber(v.rake) &&
+    isFiniteNumber(v.roi) &&
+    typeof v.payoutStructure === "string" &&
+    isFiniteNumber(v.count)
+  );
+}
+
+function isPersistedState(v: unknown): v is PersistedState {
+  if (!isRecord(v)) return false;
+  if (v.v !== 1) return false;
+  if (!Array.isArray(v.schedule) || !v.schedule.every(isTournamentRowLike)) {
+    return false;
+  }
+  if (!isRecord(v.controls)) return false;
+  return true;
+}
+
 // Warn dev if a loaded row has BR/mystery-royale flags out of sync — the
 // compile boundary will fix it silently, but surfacing here helps catch
 // bad imports or stale JSON before engine behavior depends on the fix.
-function warnOnBrMrDrift(schedule: TournamentRow[] | undefined, source: string) {
+function warnOnBrMrDrift(schedule: readonly TournamentRow[] | undefined, source: string) {
   if (!schedule) return;
   for (const r of schedule) {
     const isBR = r.payoutStructure === "battle-royale";
@@ -43,9 +74,9 @@ export function decodeState(encoded: string): PersistedState | null {
     const json = decompressFromEncodedURIComponent(encoded);
     if (!json) return null;
     const parsed = JSON.parse(json);
-    if (parsed && typeof parsed === "object" && parsed.v === 1) {
+    if (isPersistedState(parsed)) {
       warnOnBrMrDrift(parsed.schedule, "decodeState");
-      return parsed as PersistedState;
+      return parsed;
     }
     return null;
   } catch {
@@ -66,9 +97,9 @@ export function loadLocal(): PersistedState | null {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && parsed.v === 1) {
+    if (isPersistedState(parsed)) {
       warnOnBrMrDrift(parsed.schedule, "loadLocal");
-      return parsed as PersistedState;
+      return parsed;
     }
     return null;
   } catch {
@@ -93,18 +124,13 @@ export interface UserPreset {
 
 const PRESETS_KEY = "tvs:user-presets";
 
-function isValidUserPreset(v: unknown): v is UserPreset {
+export function isValidUserPreset(v: unknown): v is UserPreset {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
   if (typeof o.id !== "string") return false;
   if (typeof o.name !== "string") return false;
   if (typeof o.createdAt !== "number") return false;
-  const s = o.state as Record<string, unknown> | undefined;
-  if (!s || typeof s !== "object") return false;
-  if (s.v !== 1) return false;
-  if (!Array.isArray(s.schedule)) return false;
-  if (!s.controls || typeof s.controls !== "object") return false;
-  return true;
+  return isPersistedState(o.state);
 }
 
 export function loadUserPresets(): UserPreset[] {
@@ -125,7 +151,7 @@ export function loadUserPresets(): UserPreset[] {
 
 export function saveUserPresets(presets: UserPreset[]) {
   try {
-    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets.filter(isValidUserPreset)));
   } catch {
     // ignore quota
   }
