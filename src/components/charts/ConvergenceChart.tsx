@@ -6,7 +6,9 @@ import type { DictKey } from "@/lib/i18n/dict";
 import type { TournamentRow } from "@/lib/sim/types";
 import {
   getConvergenceBandPolicy,
+  inferRowFormat,
   type ConvergenceRowFormat,
+  type FitBoxSample,
 } from "@/lib/sim/convergencePolicy";
 
 interface Props {
@@ -46,76 +48,127 @@ function normalizeMix(m: MixTuple): MixTuple {
   return [m[0] / s, m[1] / s, m[2] / s];
 }
 
-// σ_ROI(field, roi) = (C0 + C1·roi) · field^β — pooled log-log fit across
-// an 18-point field sweep (50..50 000), 500 tourneys × 120 k samples.
-// Freeze/PKO/Mystery fit at rake 10 %; Mystery Battle Royale at rake 8 %
-// (GGPoker's real-world rake since March 2024). The widget's rake-rescale
-// factor (1+FIT_RAKE_format)/(1+rake) converts to user-picked rake at render.
+// Per-format σ_ROI surface fits. Two families:
 //
-// Freeze: mtt-standard payout + freeze-realdata-linear finish, 7 ROIs (−20 %..+80 %).
-// σ_ROI is flat across ROI here (C1 ≈ 0) because the realdata-linear finish CDF
-// is fixed empirically — ROI only shifts the mean, not the shape.
-// PKO: mtt-gg-bounty payout + pko-realdata-linear finish, bountyFraction=0.5,
-// pkoHeadVar=0.4, 11 ROIs (−20 %..+80 %, densified at 5/15/25/30 %). The bounty
-// channel amplifies deep runs so C grows meaningfully with ROI.
-// Mystery: mtt-gg-bounty payout + mystery-realdata-linear finish (freeze non-cash
-// + PKO cash), bountyFraction=0.5, mysteryBountyVariance=0.8 (log-normal jackpot
-// noise), pkoHeadVar=0.4. Bounty $ concentrates on ITM-only finishes — the pre-
-// ITM phase is freeze-like, phase 2 (post-ITM) activates envelope KOs. 11 ROIs.
-// C1 ≈ 2× PKO because the ITM-concentrated bounty amplifies ROI shifts harder.
-// Battle Royale: same finish model, mysteryBountyVariance=1.8 (jackpot tail).
-// Higher log-variance both lifts C0 (~27 %) and amplifies C1 further — deep runs
-// carry even more skew, so ROI-sensitivity is ~3× PKO's, ~1.5× Mystery's.
-// Fit at rake 8 %; coefficients = 1.01852 × old rake-10 values, confirming
-// σ_profit rake-invariance within fit noise (β unchanged).
-// All fits produced by scripts/fit_sigma_parallel.ts.
-// `resid` is a per-format relative σ uncertainty applied only when the ±band
-// is actually rendered — i.e. for freeze-only, MBR-only, or freeze+MBR
-// schedules. See src/lib/sim/convergencePolicy.ts for the gate. The PKO and
-// Mystery values carried below are placeholders that noticeably understate
-// observed drift at the edges of their fit boxes, which is exactly why the
-// policy hides the band for any schedule containing those formats until a
-// data-driven residual model replaces them. k ∝ σ², so ±ε on σ → ±2ε on k.
-const SIGMA_ROI_FREEZE = {
+//   single-β:    σ = (C0 + C1·roi) · field^β
+//   log-poly-2d: log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L
+//                        (L = log field, R = roi)
+//
+// Single-β is the legacy form — three parameters, cheap, fits Freeze and MBR
+// well within their measured ranges. PKO and Mystery have real curvature in
+// both log-field and ROI that single-β cannot capture: on production 11×18
+// sweeps (120k samples, seed-fixed) single-β leaves LOO xval mean |Δ/σ| of
+// 12.7 % (PKO) and 10.7 % (Mystery) with p95 residual ≥ 24 %. A 200k-field
+// probe sweep (2026-04-20) confirmed the form — not the range — is the
+// bottleneck. 2D log-poly closes the gap: mean 4 %, p95 12 % (PKO) / 17 %
+// (Mystery) on the same grid. Bandwidth-hiding policy in
+// src/lib/sim/convergencePolicy.ts now only hides for Mystery — PKO's
+// new residual is tight enough to show the numeric ±band honestly.
+// k ∝ σ², so ±ε on σ → ±2ε on k.
+//
+// Fit inputs:
+//   Freeze — mtt-standard + freeze-realdata-linear, 7 ROIs (−20 %..+80 %),
+//     18 fields (50..50 000), rake 10 %. C1 ≈ 0 because the realdata-linear
+//     CDF is empirically pinned, ROI only shifts mean not shape.
+//   PKO — mtt-gg-bounty + pko-realdata-linear, bountyFraction=0.5,
+//     pkoHeadVar=0.4, 11 ROIs (−20 %..+80 %, densified 5/15/25/30 %),
+//     18 fields, rake 10 %. Bounty channel amplifies deep runs.
+//   Mystery — mtt-gg-mystery + mystery-realdata-linear, bountyFraction=0.5,
+//     mysteryBountyVariance=2.0 (post-#71 jackpot tail calibration),
+//     pkoHeadVar=0.4, 11 ROIs, 18 fields, rake 10 %. Mystery σ(field) isn't
+//     cleanly power-law: the top-9 harmonic envelope saturates σ at small
+//     fields, then σ grows log-linearly past field ≈ 1000. Quadratic-in-L
+//     term captures that bend.
+//   Mystery Battle Royale — AFS-locked at 18 in the UI (see #93), so
+//     field-sweep is degenerate. fit_br_fixed18.ts measures σ across 11
+//     ROIs at AFS=18, linear-fits C(roi); β=0 bakes 18^β into C coefficients.
+//     Rake 8 % (GGPoker's real-world rate since March 2024).
+//
+// Rake-rescale: fits are at format-specific FIT_RAKE (see FIT_RAKE_BY_FORMAT
+// below). σ_profit is rake-invariant, σ_ROI = σ_profit / cost where
+// cost = buyIn·(1+rake), so rescale by (1+FIT_RAKE)/(1+rake).
+//
+// Residuals: resid = LOO p95 |Δ/σ| from refit_2d_logpoly.ts
+// (PKO/Mystery) or held-out xval (Freeze/MBR). k = ⌈(z·σ/target)²⌉, so
+// a k±band of ±2ε comes from σ±ε.
+//
+// All canonical data in scripts/fit_beta_*.json. Refit tool:
+// scripts/refit_2d_logpoly.ts (no new measurements, pure OLS re-fit).
+
+type SigmaCoefSingleBeta = {
+  kind: "single-beta";
+  C0: number;
+  C1: number;
+  beta: number;
+  resid: number;
+};
+type SigmaCoefLogPoly2D = {
+  kind: "log-poly-2d";
+  a0: number;
+  a1: number;
+  a2: number;
+  b1: number;
+  b2: number;
+  c: number;
+  resid: number;
+};
+type SigmaCoef = SigmaCoefSingleBeta | SigmaCoefLogPoly2D;
+
+function evalSigma(coef: SigmaCoef, field: number, roi: number): number {
+  const f = Math.max(1, field);
+  if (coef.kind === "single-beta") {
+    return Math.max(0, coef.C0 + coef.C1 * roi) * Math.pow(f, coef.beta);
+  }
+  const L = Math.log(f);
+  return Math.exp(
+    coef.a0 +
+      coef.a1 * L +
+      coef.a2 * L * L +
+      coef.b1 * roi +
+      coef.b2 * roi * roi +
+      coef.c * roi * L,
+  );
+}
+
+const SIGMA_ROI_FREEZE: SigmaCoef = {
+  kind: "single-beta",
   C0: 0.6564,
   C1: 0,
   beta: 0.3694,
   resid: 0.06,
 };
-const SIGMA_ROI_PKO = {
-  C0: 0.6265,
-  C1: 0.4961,
-  beta: 0.2763,
-  resid: 0.08,
+// PKO 2D log-poly refit 2026-04-20 from canonical scripts/fit_beta_pko.json
+// (11 ROIs × 18 fields × 120 k samples). In-sample R²=0.998; LOO xval:
+// mean |Δ/σ|=4.00 %, p95=11.72 %, max=15.15 %. Was single-β (12.7 % mean
+// xval) — see git history. Band re-enabled in convergencePolicy.ts.
+const SIGMA_ROI_PKO: SigmaCoef = {
+  kind: "log-poly-2d",
+  a0: 1.21374,
+  a1: -0.21789,
+  a2: 0.03473,
+  b1: 0.67318,
+  b2: -0.03445,
+  c: -0.05298,
+  resid: 0.12,
 };
-// Mystery coefficients refit 2026-04-18 after adbf278 restricted the mystery
-// envelope harmonic window to top-9 FT. Probe showed non-uniform drift
-// (-5.7% to +17.4% across field×ROI) → full resweep.
-// Fit: 11 ROIs × 18 fields at buy-in $50, rake 10%, mtt-gg-mystery payout,
-// mysteryBountyVariance=2.0 (#71 jackpot tail). R²=0.996 on linear C(roi),
-// but per-ROI field-fits only reach R²=0.80-0.87 — σ(field) isn't cleanly
-// power-law: at small fields the top-9 harmonic envelope saturates σ near
-// ~5.6, then σ grows log-linearly past field≈1000. Global β=0.1325 averages
-// this. Cross-validation on 10 held-out (field,roi) pairs (xval_mystery.ts):
-// mean |Δ/σ|=17.6%, max 26.6% at extremes. The σ point-estimate is still the
-// best quick estimate we have for Mystery, but the ±band is suppressed in
-// the widget (convergencePolicy.ts) until a data-driven residual model lands.
-const SIGMA_ROI_MYSTERY = {
-  C0: 2.5164,
-  C1: 3.7097,
-  beta: 0.1325,
-  resid: 0.18,
+// Mystery 2D log-poly refit 2026-04-20 from canonical
+// scripts/fit_beta_mystery.json (11 ROIs × 18 fields × 120 k samples).
+// In-sample R²=0.981; LOO xval: mean |Δ/σ|=4.25 %, p95=16.97 %, max=30.61 %.
+// Was single-β (10.7 % mean, 39 % max xval). Band still hidden — p95
+// remains wide at grid edges (−20 % / +80 % ROI). Point estimate is the
+// quick ballpark; full run for the honest σ.
+const SIGMA_ROI_MYSTERY: SigmaCoef = {
+  kind: "log-poly-2d",
+  a0: 2.33290,
+  a1: -0.27564,
+  a2: 0.02917,
+  b1: 1.14218,
+  b2: -0.09962,
+  c: -0.08406,
+  resid: 0.17,
 };
-// Battle Royale is fixed AFS=18 in the UI (see BR_FIXED_AFS + #93), so the
-// field-sweep β is degenerate. `fit_br_fixed18.ts` measures σ_ROI across 11
-// ROIs at a single AFS=18 and linear-fits C(roi). β=0 bakes 18^β into the
-// C coefficients. Refit 2026-04-18 after adbf278 restricted the mystery
-// envelope harmonic window to top-9 FT — bounty mass concentrates on fewer
-// finishers, inflating σ_ROI by ~16% across the ROI band. Cross-validated
-// on 10 held-out ROIs in [-15%, 60%]: max residual 0.07% of σ, mean
-// |resid/SE|=0.16 (noise-indistinguishable). Quadratic term has curvature
-// 0.048 — negligible over the UI's ±10% band. Linear is optimal.
-const SIGMA_ROI_MYSTERY_ROYALE = {
+const SIGMA_ROI_MYSTERY_ROYALE: SigmaCoef = {
+  kind: "single-beta",
   C0: 8.1534,
   C1: 7.9063,
   beta: 0,
@@ -130,21 +183,12 @@ type ConvergenceFormat =
   | "mix"
   | "exact";
 
-type RowFormat = "freeze" | "pko" | "mystery" | "mystery-royale";
+// RowFormat is an alias for the policy's ConvergenceRowFormat — they're the
+// same domain (a row's convergence-chart classification), re-exported here so
+// this file can keep using the short name without touching every reference.
+type RowFormat = ConvergenceRowFormat;
 
-function inferRowFormat(row: TournamentRow): RowFormat {
-  const b = row.bountyFraction ?? 0;
-  const m = row.mysteryBountyVariance ?? 0;
-  if (b > 0 && m >= 1.4) return "mystery-royale";
-  if (b > 0 && m > 0) return "mystery";
-  if (b > 0) return "pko";
-  return "freeze";
-}
-
-const SIGMA_COEF_BY_FORMAT: Record<
-  RowFormat,
-  typeof SIGMA_ROI_FREEZE
-> = {
+const SIGMA_COEF_BY_FORMAT: Record<RowFormat, SigmaCoef> = {
   freeze: SIGMA_ROI_FREEZE,
   pko: SIGMA_ROI_PKO,
   mystery: SIGMA_ROI_MYSTERY,
@@ -171,10 +215,7 @@ function sigmaRoiForRow(
   const rakeScale =
     rakeScaleOverride ??
     (1 + FIT_RAKE_BY_FORMAT[fmt]) / (1 + (row.rake ?? 0));
-  const sigma =
-    Math.max(0, coef.C0 + coef.C1 * roi) *
-    Math.pow(afs, coef.beta) *
-    rakeScale;
+  const sigma = evalSigma(coef, afs, roi) * rakeScale;
   return {
     sigma,
     sigmaLo: sigma * (1 - coef.resid),
@@ -499,21 +540,18 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     // this file. Entirely analytic — doesn't depend on any simulation run,
     // so this widget is usable before the user clicks "go".
     //
-    //   σ_ROI(afs, roi) = (C0 + C1·roi) · afs^β           (per format)
-    //   σ²_eff          = p·σ²_pko + (1−p)·σ²_freeze      (mix)
-    //   k               = ⌈(z · σ_eff / target)²⌉
-    //   fields          = k / afs
-    // rake-rescale: fits baseline = FIT_RAKE (10%). σ_profit ≈ rake-invariant,
-    // but σ_ROI = σ_profit / cost where cost = buyIn·(1+rake), so scale by
-    // (1+FIT_RAKE)/(1+rake). At rake=0 this lifts σ by 10%; at rake=20% it
-    // drops σ by ~8%. Same factor applies to every format.
+    //   freeze / MBR: σ_ROI = (C0 + C1·roi) · field^β
+    //   PKO / Mystery: log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L
+    //   σ²_eff = f_freeze·σ²_freeze + f_pko·σ²_pko + f_mystery·σ²_mystery  (mix)
+    //   k      = ⌈(z · σ_eff / target)²⌉
+    //   fields = k / afs
+    // rake-rescale: fits baseline = FIT_RAKE (10 %, or 8 % for MBR).
+    // σ_profit ≈ rake-invariant, but σ_ROI = σ_profit / cost where
+    // cost = buyIn·(1+rake), so scale by (1+FIT_RAKE)/(1+rake). At rake=0
+    // this lifts σ by 10 %; at rake=20 % it drops σ by ~8 %.
     const rakeScale = (1 + FIT_RAKE) / (1 + rakePct / 100);
-    type CoefT = typeof SIGMA_ROI_FREEZE;
-    const sigmaFor = (coef: CoefT): { s: number; lo: number; hi: number } => {
-      const s =
-        Math.max(0, coef.C0 + coef.C1 * gameRoi) *
-        Math.pow(Math.max(1, afs), coef.beta) *
-        rakeScale;
+    const sigmaFor = (coef: SigmaCoef): { s: number; lo: number; hi: number } => {
+      const s = evalSigma(coef, afs, gameRoi) * rakeScale;
       return { s, lo: s * (1 - coef.resid), hi: s * (1 + coef.resid) };
     };
     const f = sigmaFor(SIGMA_ROI_FREEZE);
@@ -582,9 +620,19 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     FIT_RAKE,
   ]);
 
-  const effectiveFormats = useMemo<readonly ConvergenceRowFormat[]>(() => {
+  // Enriched samples for the band policy — policy needs (format, field, roi)
+  // per sample to judge both Mystery presence AND training-box validity.
+  // Exact mode: one sample per schedule row (its own field + ROI).
+  // Averaged/mix mode: samples sit at the slider position (effectiveAfs,
+  // effectiveRoi); single-format → one sample; mix → one per active format
+  // weight > 0, all at the same slider point.
+  const fitBoxSamples = useMemo<readonly FitBoxSample[]>(() => {
     if (effectiveMode === "exact" && schedule) {
-      return schedule.map(inferRowFormat);
+      return schedule.map((row) => ({
+        format: inferRowFormat(row),
+        field: Math.max(1, row.players),
+        roi: row.roi,
+      }));
     }
     if (
       format === "freeze" ||
@@ -592,18 +640,23 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       format === "mystery" ||
       format === "mystery-royale"
     ) {
-      return [format];
+      return [
+        { format, field: effectiveAfs, roi: effectiveRoi },
+      ];
     }
     const [fFreeze, fPko, fMystery] = mix;
-    const list: ConvergenceRowFormat[] = [];
-    if (fFreeze > 0) list.push("freeze");
-    if (fPko > 0) list.push("pko");
-    if (fMystery > 0) list.push("mystery");
+    const list: FitBoxSample[] = [];
+    if (fFreeze > 0)
+      list.push({ format: "freeze", field: effectiveAfs, roi: effectiveRoi });
+    if (fPko > 0)
+      list.push({ format: "pko", field: effectiveAfs, roi: effectiveRoi });
+    if (fMystery > 0)
+      list.push({ format: "mystery", field: effectiveAfs, roi: effectiveRoi });
     return list;
-  }, [effectiveMode, schedule, format, mix]);
+  }, [effectiveMode, schedule, format, mix, effectiveAfs, effectiveRoi]);
   const bandPolicy = useMemo(
-    () => getConvergenceBandPolicy(effectiveFormats),
-    [effectiveFormats],
+    () => getConvergenceBandPolicy(fitBoxSamples),
+    [fitBoxSamples],
   );
   const showBand = bandPolicy.kind === "numeric";
 
@@ -889,7 +942,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       </div>
       {bandPolicy.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
-          {t("chart.convergence.bandWarning.pkoMystery")}
+          {t(
+            bandPolicy.reason === "contains-mystery"
+              ? "chart.convergence.bandWarning.mystery"
+              : "chart.convergence.bandWarning.outsideFitBox",
+          )}
         </div>
       )}
       <table className="w-full table-fixed border-collapse text-[12px] tabular-nums">

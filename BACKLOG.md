@@ -25,45 +25,59 @@
 
 Всё, что сейчас можно брать. Порядок = приоритет (сначала математика, потом полиш).
 
-### #7 (audit) · PKO/Mystery within-place bounty variance — **P0**
-Канал within-place bounty variance **уже существует**:
-- PKO: `pkoHeadVar` в `applyGameType` (`gameType.ts:95`), default 0.4, разгоняет голову через heat-bin preconcentration.
-- Mystery/BR: per-draw envelope lottery в hot loop (`engine.ts:~901`), σ² = `mysteryBountyVariance` либо discrete tiers.
+### #109b · AFS ceiling raise до 200k — **P2 follow-up**
+Сам 2D log-poly refit закрыт (см. #109a ниже в «Shipped 2026-04-20»). Остаётся только поднять `AFS_LOG_MAX` с `log(50_000)` до `log(200_000)` в `ConvergenceChart.tsx`.
 
-**Audit-задачи:**
-1. Verify calibration: не отменяет ли `calibrateAlpha` часть variance? (`scripts/xval_mystery.ts` показал mean |Δ/σ|=17.6% — часть residual возможно из-за этого)
-2. Decide target metric: σ_final, или tail-CDF, или moments? Сейчас fit использует σ только.
-3. Удалить / исправить stale claims в comments («variance is zero», если где-то осталось).
-4. Если audit покажет реальный under-shoot >5% на PKO специфично — тогда новый канал, но с measurement-first.
+**Условие:** проверить, что 2D-формула `log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L` не расходится на extrapolation 50k→200k. `a2·L²` term может ускориться за training range'ом. Безопасный путь — мини-свип 4–6 новых полей (75k, 100k, 150k, 200k) × 5 ROIs на каждом формате (PKO, Mystery, Freeze), замерить σ, сравнить с предиктом. Если max |Δ/σ| < текущего LOO p95 — raise проходит без доработки коэффициентов. Если нет — перефитить на объединённом 50k+200k гриде.
 
-**Условие:** #121b закрыт (коммиты 9d66e47, 754d0de) — можно стартовать.
+**Риск при старте:** низкий. Формула не меняется, только слайдер-диапазон расширяется. Ошибка в extrapolation ударяет только по юзерам с полями > 50k (редкий случай).
 
-### #109 · Масштабный σ-sweep по всем форматам — **IN PROGRESS 2026-04-20**
-Прогнать large-scale fit по freeze/pko/mystery/mystery-royale на полной ROI × AFS матрице. Recal `SIGMA_ROI_*`. Ресурсы: ~4ч (12 workers × 7950X), автономный запуск.
+**Не стартовать:** если в ближайшую итерацию фич (Mystery 2D ещё уточняется после #119b data drop, или ABI baselines в #132 Phase 4) — раньше сделать это, потом раз rebuild'ом коэффициенты и ceiling прыгают вместе.
 
-**Статус:** часть 1 (script) закрыта коммитами `76640be` + `befaa1c` — `FIELDS` расширен до 200 000 + к каждому JSON добавлен `logPolyPooled` (log-polynomial `log σ = a + b₁·log field + b₂·(log field)²`) поверх single-β формы. Фоновый прогон запущен 2026-04-19.
+### #132 · Compare-dropdown + recalc-кнопка — **P2** (design frozen 2026-04-19, revised после code audit)
 
-**Следующая стадия (после окончания sweep-а):**
-1. Разобрать output JSON-ы, подставить новые `{C0, C1, β}` + `logPolyPooled` (если материально лучше) в `SIGMA_ROI_*` константы в `ConvergenceChart.tsx`.
-2. Поднять `AFS_LOG_MAX` с `log(50_000)` до `log(200_000)`.
-3. Обновить `resid` per-format на основании нового cross-validation bench'а.
-4. Один атомарный коммит: «coefficient refresh + AFS ceiling raise».
+**Актуальное состояние кода (важно для планирования):**
+- `compareMode: "random" | "primedope"` — **уже dropdown** в [ControlsPanel.tsx:290-301](src/components/ControlsPanel.tsx:290), два value. Не boolean, как ошибочно говорила прежняя версия задачи.
+- `compareWithPrimedope: boolean` — **UI toggle отсутствует**. Захардкожено `true` во всех presets ([page.tsx:84](src/app/page.tsx:84), `src/lib/scenarios.ts`, `src/lib/sim/modelPresets.ts`). De facto мёртвое поле — просто всегда-on переключатель twin-pass'а.
+- Реальные 3 режима, которые dispatch рендерит в [useSimulation.ts:580-653](src/lib/sim/useSimulation.ts:580):
+  1. `compareMode="random"` → second pass = тот же α, другой seed (seed-sensitivity). В существующем design'е #132 **пропущен** — нужно явно решить.
+  2. `compareMode="primedope"` без PKO → second pass = PD binary-ITM (= «PrimeDope shell»).
+  3. `compareMode="primedope"` с PKO → second pass = α на schedule с stripped bounties (`pdPkoFallback`). Сейчас implicit, не выбор пользователя.
 
-### #132 · Compare-dropdown + recalc-кнопка под KO-share slider — **P2**
-Сейчас правый график в compare-mode зашит в `compareWithPrimedope` / cashless twin-pool — булевые тумблеры. Нужно вытащить в dropdown «с чем сравниваем» с опциями:
-- PD (Shelled ITM) — existing twin-pass, instant
-- MTT без ноков — existing cashless pool, instant
-- MTT с текущим KO-share профилем (`row.bountyEvBias`) — **requires recalc**
-- MTT низкий / средний / высокий ABI — pre-baked baseline schedules ($3.30 / $22 / $215 reg, PP ITM 15%), off-main воркер + localStorage кэш
+**Целевая таксономия `compareSource` (UI-facing labels):**
 
-**Recalc-кнопка** появляется при изменении KO-share slider'а: жмём → генерируем mutated `SimulationInput` с целевым `bountyEvBias` / KO-share профилем, buy-in и payout сохраняются, затем гоним отдельный pass. Прогресс-бар во втором графике под время recalc'а.
+| `compareSource` (internal)       | UI label              | Pass                                                                           |
+|----------------------------------|-----------------------|--------------------------------------------------------------------------------|
+| `random-seed`                    | Random seed sensitivity | same model, different seed — existing `compareMode="random"`, instant        |
+| `pd-shell`                       | PrimeDope shell       | PD binary-ITM — existing `compareMode="primedope"` без PKO, instant           |
+| `no-knockouts`                   | No knockouts          | same schedule, bounties stripped — existing `pdPkoFallback`, instant          |
+| `same-schedule-neutral-ko`       | Neutral KO share      | same schedule, `bountyEvBias=0` на всех KO/Mystery rows — **requires recalc** |
+| `abi-baseline-330` / `-22` / `-215` | $3.30 / $22 / $215 baseline | pre-baked reg-schedules (PP ITM 15%, `bountyEvBias=0`) — **requires recalc** |
 
-**i18n:** переписать все легенды/тултипы, где сейчас «сравнение с ПД» / «сравнение с расписанием без ноков» под выбранный dropdown-режим.
+7 режимов всего (3 существующих + 4 новых). «No knockouts» сейчас автоматический fallback — в новом API становится explicit выбор (auto-switch `pd-shell`→`no-knockouts` при PKO schedule можно сохранить как UX affordance, но пользователь должен видеть реально активный режим).
 
-**Design-вопросы до имплементации:**
-1. ABI-baselines: $3.30 / $22 / $215 reg-schedule — ок или есть свой эталон?
-2. KO-shift mechanics: хранить сценарий как per-row `bountyEvBias` или добавить глобальное поле в `SimulationInput`?
-3. Recalc-кнопка — под KO-share слайдером или глобальная «пересчитать правый график»?
+**Семантика Neutral KO share:** primary = текущее расписание как есть, включая user-выставленный KO-tilt; compare = тот же schedule с `bountyEvBias=0`. Показывает эффект KO-tilt'а относительно нейтрального baseline.
+
+**Design decisions (frozen):**
+- **ABI-baselines:** `$3.30 / $22 / $215` reg-schedules, PP ITM 15%, `bountyEvBias=0`.
+- **KO-shift mechanics:** per-row `bountyEvBias` остаётся (глобальное поле загрубит mixed schedule).
+- **Recalc-кнопка:** рядом с dropdown в правой панели, не под KO-slider. Dirty-state появляется при изменении inputs, влияющих на current compare-pass. Опции `random-seed` / `pd-shell` / `no-knockouts` — инстантные, кнопка для них не активна.
+- **Variant A для `same-schedule-neutral-ko`:** primary держит user's current KO-tilt, compare — обнулённый bias.
+- **`compareWithPrimedope` boolean:** удалить как мёртвое поле в рамках Phase 1 (твердо `true` при наличии twin-pass'а, gate переезжает в `compareSource != null`).
+
+**i18n:** все compare-related легенды / tooltip'ы / captions чарта — source-aware copy. Ключи `controls.compareMode`, `controls.compareMode.random`, `controls.compareMode.primedope`, `twin.runA.cap`, `twin.runB.cap`, `chart.overlay.freezeouts` — либо переименовываем под `compareSource`, либо заводим новый namespace и постепенно срезаем старые. Решение — в Phase 5.
+
+**Phased rollout (каждая фаза — отдельный коммит / PR):**
+
+1. **Phase 1 — types + dispatch, без нового поведения.** Ввести `compareSource` union с тремя existing-маппированными values (`random-seed`, `pd-shell`, `no-knockouts`). Dispatch в `useSimulation.buildPasses` переезжает на `compareSource`. `compareMode` помечается deprecated (compat-shim: `"random"` → `random-seed`, `"primedope"` + hasPko → `no-knockouts`, `"primedope"` без PKO → `pd-shell`). Удалить `compareWithPrimedope` или оставить только как internal twin-gate. UI ещё старый. `tsc` + `vitest` + `eslint` зелёные.
+2. **Phase 2 — dropdown расширяется до 3 explicit значений.** `ControlsPanel.tsx` dropdown получает 3 option'а напрямую по `compareSource`. `pdPkoFallback` auto-switch сохранить как visual hint («при PKO в schedule `pd-shell` автоматически рендерится как `no-knockouts`») — или убрать, решить в фазе. Deprecated `compareMode` убираем из `SimulationInput`. Маленький ревьюабельный PR.
+3. **Phase 3 — `same-schedule-neutral-ko` + recalc.** 4-й dropdown option. Mutation pass (`bountyEvBias=0` на всех rows), dirty-state, recalc-кнопка рядом с dropdown. **Cache key:** `(compareSource, schedule-hash, seed, samples, scheduleRepeats, finishModelId, modelPresetId)`. Stale без этого — лёгкий баг.
+4. **Phase 4 — ABI baselines + cache.** `src/lib/compareBaselines.ts` с тремя расписаниями — сначала без localStorage; вторым коммитом внутри фазы добавить localStorage (если код не распухает).
+5. **Phase 5 — copy/i18n + browser smoke.** Пройти все подписи compare-related, заменить на source-aware. Browser smoke-test: все 7 опций dropdown'а / dirty-state / recalc / смена KO-slider / reload с localStorage.
+
+**Не стартовать рефактор сразу по всем 7 режимам** — Phase 1+2 доказывают, что новая модель состояния легла, и только после этого recalc-pass.
+
+**Ownership note:** Phase 1–2 ведёт user. Claude не трогает `useSimulation.ts`, `ResultsView.tsx`, `dict.ts`, `ControlsPanel.tsx` и compare-related код без явного вызова. `BACKLOG.md` правит кто-то один за раз.
 
 ---
 
@@ -264,6 +278,23 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 - ✅ **#136** ICM removed — unused ICM controls, engine path, types, docs, and tests removed from the product surface.
 - ✅ **#137** KO-share slider + Battle Royale EV guard — EV-source slider now reports KO share of gross EV; fixed-ITM / shelled Battle Royale rows keep total ROI pinned at KO-share edges, while BR average envelope size remains fixed and only expected KO count moves.
 - ✅ **#138** dead bounty-budget helper cleanup — stale `calibrateBountyBudget` export and tests removed after the engine moved to direct residual reconcile; `npx knip` clean.
+- ✅ **#109a** PKO/Mystery 2D log-poly refit — заменили single-β `σ = (C0+C1·ROI)·field^β` на 2D log-poly `log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L` (L=log field, R=roi) для PKO и Mystery. Freeze и MBR остаются на single-β (их фит был корректен в пределах fit-box'а). Данные — canonical `scripts/fit_beta_{pko,mystery}.json` (11 ROIs × 18 fields × 120k samples, без нового свипа). Refit tool: `scripts/refit_2d_logpoly.ts`. Результаты LOO xval (production grid):
+  - **PKO:** mean |Δ/σ| 12.7 % → **4.0 %**, p95 25.6 % → **11.7 %**, max 31.1 % → 15.1 %. R² 0.91 → 0.998.
+  - **Mystery:** mean |Δ/σ| 10.7 % → **4.25 %**, p95 24.0 % → **17.0 %**, max 39.0 % → 30.6 %. R² 0.79 → 0.98.
+
+  **convergencePolicy:** PKO убран из warning-списка, для PKO / freeze / MBR теперь рендерится numeric ±band **внутри validated training box** (freeze & PKO / Mystery field 50–50 000, PKO / Mystery ROI −0.20..+0.80, MBR field строго 18 и ROI ±0.10). За training box'ом — warning `outside-fit-box` (точка показывается как ориентир, полоса скрыта). Mystery остался в warning всегда — p95 17 % всё ещё великоват для честной полосы даже внутри box'а; приоритет reason'ов `contains-mystery > outside-fit-box` закреплён тестом. Новый pure helper `isInsideFitBox` в `convergencePolicy.ts`, `inferRowFormat` переехал туда же с корректным порядком precedence (gameType → payoutStructure → variance; `m >= 1.4 → MBR` эвристика удалена, поскольку `applyGameType("mystery")` теперь выставляет variance=2.0 и эвристика мисклассифицировала plain Mystery как MBR).
+
+  **200k sweep findings (предтеча):** `scripts/fit_sigma_parallel.ts` (probe mode) c `logPolyPooled` на 200k fields показал, что проблема — в ФОРМЕ, а не в range'е. `logPolyPooled` как pooled-через-центрирование фит не evaluable at arbitrary (field, roi); настоящий runtime-usable 2D poly добавляет ROI-квадратичный и cross-interaction term, закрывая gap при тех же 18 training fields. Full 200k sweep не требовался для текущего промоушна (зарезервирован на #109b AFS ceiling raise).
+
+  **Scope held:** Freeze / MBR коэффициенты не трогали (fit уже tight: freeze resid 6 %, MBR resid 2 %, LOO max < 1 %). AFS slider diapason (`AFS_LOG_MAX`) остался 50k — его расширение отдельная follow-up задача #109b с валидацией extrapolation.
+
+- ✅ **#7** PKO/Mystery within-place bounty variance audit — закрыт как audit-only, кода не трогали. Findings:
+  1. **Нет прямой cancellation:** `calibrateAlpha` двигает только E[W], канальные σ² (`pkoHeadVar`, `mysteryBountyVariance`) в hot loop ([engine.ts:2332](src/lib/sim/engine.ts:2332)) работают отдельно.
+  2. **Косвенный multiplier-эффект есть, но это by-design:** для fixed-shape / itmRate-locked / bountyEvBias≠0 residual reconcile на [engine.ts:589-596](src/lib/sim/engine.ts:589) делает `bountyMean = max(0, totalEV − cashEV)`. σ_dollar ∝ bountyMean, так что при высоком cashEV bounty variance сжимается вместе с bountyMean. Бюджет замкнут, total-ROI контракт соблюдён. Означает, что `mysteryBountyVariance` в этих режимах ведёт себя как коэффициент на `bountyMean²`, а не автономная ручка на абс. σ — это корректно, но стоит держать в голове при чтении fit residuals.
+  3. **xval residual 17.6% — не cancellation, а predictor form.** σ-ROI в fixed-shape mystery имеет форму `[(1+ROI) − cashEV/entryCost]·√(exp(var)−1)·f(field)`, где f(field) — не чистый степенной закон (paidCount/N, head-concentration, Poisson kill-count дают разные скейлинги). Линейный-в-ROI × power-в-field предиктор `(C0+C1·ROI)·field^β` оставляет ~10-20% systematic residual. Решается улучшением формы предиктора (log-poly, в процессе через #109), не новым variance каналом.
+  4. **Stale "variance is zero" claims** — проверено 6 хитов в repo, все корректные (rakeback, pure mean shifts). Нечего чистить.
+  5. **Target metric:** сейчас fit использует σ only. Рекомендация — расширить `scripts/fit_sigma_parallel.ts` репортом skew/kurt как diagnostic columns (дёшево, один лишний pass). Полный tail-CDF fit — только когда появится user-facing метрика типа "P(downswing > X BB)"; сейчас не требуется.
+  6. **Новый канал не открывать** — под-условие "real under-shoot >5% specifically on PKO" не выполнено (предиктор-форм эффект объясняет residual на всех форматах, не PKO-специфично). Measurement-first контракт выдержан.
 
 **Shipped 2026-04-19:**
 - ✅ **#75** strip personal/brand mentions — коммит `350e4b9` (LoremCDMX / bitB Staking / «1.5k-player fund» → нейтральные формулировки; преcет `loremcdmx` → `steady-reg`)

@@ -1,90 +1,348 @@
 import { describe, it, expect } from "vitest";
 import {
   getConvergenceBandPolicy,
-  type ConvergenceRowFormat,
+  inferRowFormat,
+  isInsideFitBox,
+  type FitBoxSample,
 } from "./convergencePolicy";
+import type { TournamentRow } from "./types";
 
-describe("getConvergenceBandPolicy", () => {
-  it("pure freeze → numeric", () => {
-    expect(getConvergenceBandPolicy(["freeze"])).toEqual({ kind: "numeric" });
-    expect(getConvergenceBandPolicy(["freeze", "freeze", "freeze"])).toEqual({
-      kind: "numeric",
-    });
-  });
+// Minimal row builder — only the fields inferRowFormat reads.
+function row(patch: Partial<TournamentRow> = {}): TournamentRow {
+  return {
+    id: "t",
+    players: 1000,
+    buyIn: 10,
+    rake: 0.1,
+    roi: 0.1,
+    payoutStructure: "mtt-standard",
+    count: 100,
+    ...patch,
+  };
+}
 
-  it("pure MBR → numeric", () => {
-    expect(getConvergenceBandPolicy(["mystery-royale"])).toEqual({
-      kind: "numeric",
-    });
-  });
+function s(
+  format: FitBoxSample["format"],
+  field: number,
+  roi: number,
+): FitBoxSample {
+  return { format, field, roi };
+}
 
-  it("freeze + MBR mix → numeric", () => {
+describe("inferRowFormat — precedence", () => {
+  it("explicit gameType wins over everything else", () => {
+    // gameType:"mystery" with MBR variance and BR payout → still mystery.
     expect(
-      getConvergenceBandPolicy(["freeze", "mystery-royale", "freeze"]),
-    ).toEqual({ kind: "numeric" });
-  });
+      inferRowFormat(
+        row({
+          gameType: "mystery",
+          mysteryBountyVariance: 2.0,
+          payoutStructure: "battle-royale",
+          bountyFraction: 0.5,
+        }),
+      ),
+    ).toBe("mystery");
 
-  it("single PKO row → warning", () => {
-    expect(getConvergenceBandPolicy(["pko"])).toEqual({
-      kind: "warning",
-      reason: "contains-pko-or-mystery",
-    });
-  });
-
-  it("single Mystery row → warning", () => {
-    expect(getConvergenceBandPolicy(["mystery"])).toEqual({
-      kind: "warning",
-      reason: "contains-pko-or-mystery",
-    });
-  });
-
-  it("freeze + one PKO row → warning (no share threshold)", () => {
+    // gameType:"mystery-royale" with m=0 and no bounty → still MBR.
     expect(
-      getConvergenceBandPolicy([
-        "freeze",
-        "freeze",
-        "freeze",
-        "freeze",
-        "pko",
-      ]),
-    ).toEqual({ kind: "warning", reason: "contains-pko-or-mystery" });
-  });
+      inferRowFormat(row({ gameType: "mystery-royale" })),
+    ).toBe("mystery-royale");
 
-  it("MBR + PKO → warning", () => {
-    expect(getConvergenceBandPolicy(["mystery-royale", "pko"])).toEqual({
-      kind: "warning",
-      reason: "contains-pko-or-mystery",
-    });
-  });
-
-  it("freeze + Mystery → warning", () => {
-    expect(getConvergenceBandPolicy(["freeze", "mystery"])).toEqual({
-      kind: "warning",
-      reason: "contains-pko-or-mystery",
-    });
-  });
-
-  it("PKO + Mystery + freeze → warning", () => {
+    // gameType:"pko" with mystery payout → still pko.
     expect(
-      getConvergenceBandPolicy(["pko", "mystery", "freeze"]),
-    ).toEqual({ kind: "warning", reason: "contains-pko-or-mystery" });
+      inferRowFormat(
+        row({ gameType: "pko", payoutStructure: "mtt-gg-mystery" }),
+      ),
+    ).toBe("pko");
+
+    expect(inferRowFormat(row({ gameType: "freezeout" }))).toBe("freeze");
+    expect(
+      inferRowFormat(row({ gameType: "freezeout-reentry" })),
+    ).toBe("freeze");
   });
 
-  it("empty schedule → numeric (no disqualifying rows)", () => {
+  it("payoutStructure is the legacy signal when gameType is absent", () => {
+    expect(
+      inferRowFormat(row({ payoutStructure: "battle-royale" })),
+    ).toBe("mystery-royale");
+    expect(
+      inferRowFormat(row({ payoutStructure: "mtt-gg-mystery" })),
+    ).toBe("mystery");
+    expect(
+      inferRowFormat(
+        row({ payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5 }),
+      ),
+    ).toBe("pko");
+  });
+
+  it("explicit gameType:'mystery' + mysteryBountyVariance=2.0 → mystery (not MBR)", () => {
+    // Regression: this exact row shape was pre-existing in the product
+    // (applyGameType('mystery') sets variance to 2.0). Pre-refactor the
+    // classifier used an `m >= 1.4 → mystery-royale` threshold and
+    // misrouted these rows to MBR. gameType must override.
+    const r = row({
+      gameType: "mystery",
+      mysteryBountyVariance: 2.0,
+      bountyFraction: 0.5,
+      payoutStructure: "mtt-gg-mystery",
+    });
+    expect(inferRowFormat(r)).toBe("mystery");
+  });
+
+  it("variance alone does NOT imply MBR (no m >= 1.4 heuristic)", () => {
+    // Untagged row (no gameType, no format-specific payoutStructure) with
+    // bounty + high variance → mystery, not MBR. MBR can only be signaled
+    // by explicit gameType or payoutStructure='battle-royale'.
+    const r = row({
+      bountyFraction: 0.5,
+      mysteryBountyVariance: 2.0,
+      payoutStructure: "mtt-standard",
+    });
+    expect(inferRowFormat(r)).toBe("mystery");
+  });
+
+  it("structural fallback: bounty + mystery variance → mystery", () => {
+    expect(
+      inferRowFormat(
+        row({ bountyFraction: 0.5, mysteryBountyVariance: 0.8 }),
+      ),
+    ).toBe("mystery");
+  });
+
+  it("structural fallback: bounty without variance → pko", () => {
+    expect(inferRowFormat(row({ bountyFraction: 0.5 }))).toBe("pko");
+  });
+
+  it("structural fallback: mtt-gg-bounty payout → pko even without bountyFraction", () => {
+    expect(
+      inferRowFormat(row({ payoutStructure: "mtt-gg-bounty" })),
+    ).toBe("pko");
+  });
+
+  it("untagged row with no bounty signal → freeze", () => {
+    expect(inferRowFormat(row())).toBe("freeze");
+  });
+});
+
+describe("isInsideFitBox — per-format training boxes", () => {
+  describe("freeze — field [50, 50_000], ROI unrestricted", () => {
+    it("inside field bounds", () => {
+      expect(isInsideFitBox(s("freeze", 50, 0))).toBe(true);
+      expect(isInsideFitBox(s("freeze", 50_000, 0))).toBe(true);
+      expect(isInsideFitBox(s("freeze", 1000, 0.5))).toBe(true);
+    });
+    it("outside field bounds", () => {
+      expect(isInsideFitBox(s("freeze", 49, 0))).toBe(false);
+      expect(isInsideFitBox(s("freeze", 50_001, 0))).toBe(false);
+      expect(isInsideFitBox(s("freeze", 1_000_000, 0))).toBe(false);
+    });
+    it("ROI is unrestricted because freeze fit is ROI-invariant (C1=0)", () => {
+      // Canary contract: if SIGMA_ROI_FREEZE.C1 ever becomes non-zero, the
+      // freeze fit stops being ROI-invariant and this policy needs a ROI
+      // range. We don't import the constant here (keeps policy pure), so
+      // the canary test in the block below pins the contract by reading
+      // ConvergenceChart.
+      expect(isInsideFitBox(s("freeze", 1000, -0.99))).toBe(true);
+      expect(isInsideFitBox(s("freeze", 1000, 10.0))).toBe(true);
+    });
+  });
+
+  describe("pko — field [50, 50_000], ROI [−0.20, +0.80]", () => {
+    it("inside box", () => {
+      expect(isInsideFitBox(s("pko", 1000, 0.1))).toBe(true);
+      expect(isInsideFitBox(s("pko", 50, -0.20))).toBe(true);
+      expect(isInsideFitBox(s("pko", 50_000, 0.80))).toBe(true);
+    });
+    it("field out of box", () => {
+      expect(isInsideFitBox(s("pko", 49, 0.1))).toBe(false);
+      expect(isInsideFitBox(s("pko", 200_000, 0.1))).toBe(false);
+    });
+    it("ROI out of box (the P1 #2 gap from audit)", () => {
+      expect(isInsideFitBox(s("pko", 1000, -0.30))).toBe(false);
+      expect(isInsideFitBox(s("pko", 1000, 1.00))).toBe(false);
+      expect(isInsideFitBox(s("pko", 1000, -0.21))).toBe(false);
+      expect(isInsideFitBox(s("pko", 1000, 0.81))).toBe(false);
+    });
+  });
+
+  describe("mystery — field [50, 50_000], ROI [−0.20, +0.80]", () => {
+    it("inside box", () => {
+      expect(isInsideFitBox(s("mystery", 1000, 0.1))).toBe(true);
+    });
+    it("outside box", () => {
+      expect(isInsideFitBox(s("mystery", 60_000, 0.1))).toBe(false);
+      expect(isInsideFitBox(s("mystery", 1000, 0.90))).toBe(false);
+    });
+  });
+
+  describe("mystery-royale — field === 18 strict, ROI [−0.10, +0.10]", () => {
+    it("at AFS=18 inside ROI range", () => {
+      expect(isInsideFitBox(s("mystery-royale", 18, 0))).toBe(true);
+      expect(isInsideFitBox(s("mystery-royale", 18, -0.10))).toBe(true);
+      expect(isInsideFitBox(s("mystery-royale", 18, 0.10))).toBe(true);
+    });
+    it("any field !== 18 → outside", () => {
+      expect(isInsideFitBox(s("mystery-royale", 17, 0))).toBe(false);
+      expect(isInsideFitBox(s("mystery-royale", 19, 0))).toBe(false);
+      expect(isInsideFitBox(s("mystery-royale", 500, 0))).toBe(false);
+    });
+    it("ROI outside UI band → outside", () => {
+      expect(isInsideFitBox(s("mystery-royale", 18, -0.15))).toBe(false);
+      expect(isInsideFitBox(s("mystery-royale", 18, 0.15))).toBe(false);
+    });
+  });
+});
+
+describe("getConvergenceBandPolicy — overall verdict", () => {
+  it("empty sample list → numeric (no disqualifying rows)", () => {
     expect(getConvergenceBandPolicy([])).toEqual({ kind: "numeric" });
   });
 
-  it("is order-independent", () => {
-    const cases: ConvergenceRowFormat[][] = [
-      ["pko", "freeze"],
-      ["freeze", "pko"],
-      ["mystery-royale", "pko", "freeze"],
+  it("single freeze / pko / MBR in-box → numeric", () => {
+    expect(getConvergenceBandPolicy([s("freeze", 1000, 0.1)])).toEqual({
+      kind: "numeric",
+    });
+    expect(getConvergenceBandPolicy([s("pko", 1000, 0.1)])).toEqual({
+      kind: "numeric",
+    });
+    expect(getConvergenceBandPolicy([s("mystery-royale", 18, 0)])).toEqual({
+      kind: "numeric",
+    });
+  });
+
+  it("freeze + PKO + MBR all in-box → numeric", () => {
+    expect(
+      getConvergenceBandPolicy([
+        s("freeze", 1000, 0.1),
+        s("pko", 5000, 0.2),
+        s("mystery-royale", 18, 0.05),
+      ]),
+    ).toEqual({ kind: "numeric" });
+  });
+
+  it("single Mystery in-box → warning contains-mystery", () => {
+    expect(getConvergenceBandPolicy([s("mystery", 1000, 0.1)])).toEqual({
+      kind: "warning",
+      reason: "contains-mystery",
+    });
+  });
+
+  it("freeze + one Mystery row → warning contains-mystery (no share threshold)", () => {
+    expect(
+      getConvergenceBandPolicy([
+        s("freeze", 1000, 0.1),
+        s("freeze", 1000, 0.1),
+        s("freeze", 1000, 0.1),
+        s("freeze", 1000, 0.1),
+        s("mystery", 1000, 0.1),
+      ]),
+    ).toEqual({ kind: "warning", reason: "contains-mystery" });
+  });
+
+  it("PKO out of ROI box (validated audit case) → warning outside-fit-box", () => {
+    expect(getConvergenceBandPolicy([s("pko", 1000, -0.30)])).toEqual({
+      kind: "warning",
+      reason: "outside-fit-box",
+    });
+    expect(getConvergenceBandPolicy([s("pko", 1000, 1.0)])).toEqual({
+      kind: "warning",
+      reason: "outside-fit-box",
+    });
+  });
+
+  it("exact PKO row field > 50_000 → warning outside-fit-box", () => {
+    expect(
+      getConvergenceBandPolicy([
+        s("freeze", 2000, 0.1),
+        s("pko", 100_000, 0.1),
+      ]),
+    ).toEqual({ kind: "warning", reason: "outside-fit-box" });
+  });
+
+  it("exact MBR row with players !== 18 → warning outside-fit-box", () => {
+    expect(
+      getConvergenceBandPolicy([s("mystery-royale", 500, 0.05)]),
+    ).toEqual({ kind: "warning", reason: "outside-fit-box" });
+  });
+
+  it("freeze extreme ROI is still numeric (fit is ROI-invariant)", () => {
+    expect(getConvergenceBandPolicy([s("freeze", 1000, 5)])).toEqual({
+      kind: "numeric",
+    });
+  });
+
+  it("priority: Mystery + outside-box → contains-mystery (not outside-fit-box)", () => {
+    // Locks the precedence agreed in the 2026-04-20 audit: Mystery presence
+    // wins because it's strictly more informative — the band would be
+    // hidden regardless of box validity. If the reason flipped to
+    // outside-fit-box silently, the user would read "oh, just move the
+    // slider back inside", but they can't — Mystery stays tainted.
+    expect(
+      getConvergenceBandPolicy([s("mystery", 200_000, 2.0)]),
+    ).toEqual({ kind: "warning", reason: "contains-mystery" });
+    // Same with a mix: Mystery out-of-box + PKO in-box still Mystery.
+    expect(
+      getConvergenceBandPolicy([
+        s("pko", 1000, 0.1),
+        s("mystery", 200_000, 2.0),
+      ]),
+    ).toEqual({ kind: "warning", reason: "contains-mystery" });
+  });
+
+  it("multiple out-of-box samples, no Mystery → single outside-fit-box", () => {
+    expect(
+      getConvergenceBandPolicy([
+        s("pko", 200_000, 0.1),
+        s("mystery-royale", 500, 0.05),
+      ]),
+    ).toEqual({ kind: "warning", reason: "outside-fit-box" });
+  });
+
+  it("is order-independent on Mystery presence", () => {
+    const samples: FitBoxSample[] = [
+      s("freeze", 1000, 0.1),
+      s("mystery", 1000, 0.1),
+      s("pko", 1000, 0.1),
     ];
-    for (const c of cases) {
-      expect(getConvergenceBandPolicy(c)).toEqual({
+    for (const permute of [
+      [0, 1, 2],
+      [2, 1, 0],
+      [1, 0, 2],
+      [1, 2, 0],
+    ]) {
+      const permuted = permute.map((i) => samples[i]);
+      expect(getConvergenceBandPolicy(permuted)).toEqual({
         kind: "warning",
-        reason: "contains-pko-or-mystery",
+        reason: "contains-mystery",
       });
     }
+  });
+});
+
+// Canary: if SIGMA_ROI_FREEZE ever gains a non-zero C1 (i.e. freeze σ_ROI
+// starts depending on ROI), isInsideFitBox must learn a freeze ROI range.
+// This test imports the real constant from ConvergenceChart and fails the
+// moment the contract shifts — drift becomes impossible to miss.
+describe("freeze ROI-invariant contract (canary)", () => {
+  it("SIGMA_ROI_FREEZE.C1 must stay 0 — or policy needs a ROI range for freeze", async () => {
+    // Dynamic import to avoid bundling the whole chart module at test
+    // collection time; read the raw source line.
+    const fs = await import("node:fs");
+    const src = fs.readFileSync(
+      "src/components/charts/ConvergenceChart.tsx",
+      "utf-8",
+    );
+    // Match the literal constant definition to avoid a brittle eval.
+    // `[^}]*` matches newlines naturally (negated-class), so no /s flag
+    // is needed — keeps the test compatible with ES2017 target.
+    const freezeBlock = src.match(
+      /SIGMA_ROI_FREEZE[^}]*kind:\s*"single-beta",[^}]*C1:\s*([-0-9.]+)/,
+    );
+    expect(
+      freezeBlock,
+      "SIGMA_ROI_FREEZE block not found — did the shape change?",
+    ).not.toBeNull();
+    const c1 = Number(freezeBlock![1]);
+    expect(c1).toBe(0);
   });
 });
