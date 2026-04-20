@@ -68,6 +68,7 @@ import {
   shiftResultByRakeback,
   stripJackpots,
 } from "@/lib/results/trajectoryTransforms";
+import { visualDistanceToSeries } from "@/lib/results/trajectoryHitTest";
 import type { ControlsState } from "./ControlsPanel";
 import { UplotChart, type CursorInfo } from "./charts/UplotChart";
 import { DistributionChart } from "./charts/DistributionChart";
@@ -951,82 +952,6 @@ function parseRgb(css: string): [number, number, number] {
 }
 
 const TRAJECTORY_PATH_HIT_PX = 18;
-
-function pointToSegmentDistancePx(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-): number {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  if (len2 <= 0) return Math.hypot(px - ax, py - ay);
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-function cursorValToPos(cursor: CursorInfo, value: number, scale: "x" | "y"): number {
-  const min = scale === "x" ? cursor.xMin : cursor.yMin;
-  const max = scale === "x" ? cursor.xMax : cursor.yMax;
-  const size = scale === "x" ? cursor.plotWidth : cursor.plotHeight;
-  const span = max - min;
-  if (!Number.isFinite(value) || !Number.isFinite(span) || span === 0) {
-    return NaN;
-  }
-  const t = (value - min) / span;
-  return scale === "x" ? t * size : (1 - t) * size;
-}
-
-function visualDistanceToSeries(
-  cursor: CursorInfo,
-  xArr: ArrayLike<number>,
-  yArr: ArrayLike<number>,
-  centerIdx: number,
-): number {
-  const len = Math.min(xArr.length, yArr.length);
-  if (len <= 0) return Infinity;
-  const lo = Math.max(0, centerIdx - 2);
-  const hi = Math.min(len - 1, centerIdx + 2);
-  let best = Infinity;
-  for (let i = lo; i < hi; i++) {
-    const x0 = xArr[i];
-    const y0 = yArr[i];
-    const x1 = xArr[i + 1];
-    const y1 = yArr[i + 1];
-    if (
-      x0 == null ||
-      y0 == null ||
-      x1 == null ||
-      y1 == null ||
-      !Number.isFinite(y0) ||
-      !Number.isFinite(y1)
-    ) {
-      continue;
-    }
-    const d = pointToSegmentDistancePx(
-      cursor.left,
-      cursor.top,
-      cursorValToPos(cursor, x0, "x"),
-      cursorValToPos(cursor, y0, "y"),
-      cursorValToPos(cursor, x1, "x"),
-      cursorValToPos(cursor, y1, "y"),
-    );
-    if (Number.isFinite(d) && d < best) best = d;
-  }
-  if (best < Infinity) return best;
-
-  const idx = Math.max(0, Math.min(len - 1, centerIdx));
-  const x = xArr[idx];
-  const y = yArr[idx];
-  if (x == null || y == null || !Number.isFinite(y)) return Infinity;
-  return Math.hypot(
-    cursor.left - cursorValToPos(cursor, x, "x"),
-    cursor.top - cursorValToPos(cursor, y, "y"),
-  );
-}
 
 /** Per-run path color + width scaled to the number of visible runs.
  *  Few runs → brighter, thicker, visually distinct. Many runs → faint,

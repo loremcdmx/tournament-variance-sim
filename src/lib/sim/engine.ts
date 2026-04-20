@@ -1407,9 +1407,9 @@ export function buildResult(
   onBuildProgress?.(0.82, "envelopes");
 
   // Sample paths ------------------------------------------------------------
-  // Hi-res capture was populated during simulateShard: shard 0's first N
-  // samples are stored in hiResPaths, and the globally-extreme sample's path
-  // sits in hiResBestPath/hiResWorstPath. This replaces the old low-res
+  // Hi-res capture was populated during simulateShard: each shard stores a
+  // capped slice of its local samples, and mergeShards preserves their global
+  // sample ids beside the path buffers. This replaces the old low-res
   // pathMatrix slicing which produced smooth diagonals at K=80 checkpoints.
   const hiCheckpointIdx = shard.hiResCheckpointIdx;
   const xHi: number[] = new Array(hiCheckpointIdx.length);
@@ -1417,10 +1417,7 @@ export function buildResult(
   const paths = shard.hiResPaths;
   const best = shard.hiResBestPath;
   const worst = shard.hiResWorstPath;
-  // sampleIndices are informational only — the leading-shard hi-res paths
-  // correspond to samples [0 .. paths.length-1].
-  const chosen: number[] = new Array(paths.length);
-  for (let i = 0; i < paths.length; i++) chosen[i] = i;
+  const chosen = Array.from(shard.hiResSampleIndices);
 
   // Drawdown + breakeven
   let ddMean = 0;
@@ -1956,8 +1953,11 @@ export interface RawShard {
    *  in this shard. */
   hiResCheckpointIdx: Int32Array;
   /** Per-sample hi-res paths for the first `wantHiResPaths` samples of
-   *  shard 0 only. Empty for non-leading shards. */
+   *  this shard. */
   hiResPaths: Float64Array[];
+  /** Global sample ids parallel to `hiResPaths`, used by UI filters that need
+   *  to map visible paths back to per-sample result arrays. */
+  hiResSampleIndices: Int32Array;
   /** Snapshot of the shard-local best-final-profit sample path. */
   hiResBestPath: Float64Array;
   hiResWorstPath: Float64Array;
@@ -2081,6 +2081,7 @@ export function simulateShard(
   );
   const hiResPaths: Float64Array[] = new Array(wantHiResPaths);
   for (let i = 0; i < wantHiResPaths; i++) hiResPaths[i] = new Float64Array(hiK1);
+  const hiResSampleIndices = new Int32Array(wantHiResPaths);
   const hiResBestPath = new Float64Array(hiK1);
   const hiResWorstPath = new Float64Array(hiK1);
   const hiResScratch = new Float64Array(hiK1);
@@ -2462,6 +2463,7 @@ export function simulateShard(
     // records are rare (≈ O(log S)) so the per-sample cost is ~O(N/stride).
     if (localS < wantHiResPaths) {
       hiResPaths[localS].set(hiResScratch);
+      hiResSampleIndices[localS] = s;
     }
     if (profit > hiResBestFinal) {
       hiResBestFinal = profit;
@@ -2577,6 +2579,7 @@ export function simulateShard(
     ruinedCount,
     hiResCheckpointIdx: hiCheckpointIdx,
     hiResPaths,
+    hiResSampleIndices,
     hiResBestPath,
     hiResWorstPath,
     hiResBestFinal,
@@ -2649,8 +2652,12 @@ export function mergeShards(
   const leading = sorted[0];
   const hiResCheckpointIdx = leading.hiResCheckpointIdx;
   const hiResPaths: Float64Array[] = [];
+  const hiResSampleIndices: number[] = [];
   for (const sh of sorted) {
-    for (const p of sh.hiResPaths) hiResPaths.push(p);
+    for (let i = 0; i < sh.hiResPaths.length; i++) {
+      hiResPaths.push(sh.hiResPaths[i]);
+      hiResSampleIndices.push(sh.hiResSampleIndices[i]);
+    }
   }
   let bestShard = leading;
   let worstShard = leading;
@@ -2691,6 +2698,7 @@ export function mergeShards(
     ruinedCount,
     hiResCheckpointIdx,
     hiResPaths,
+    hiResSampleIndices: Int32Array.from(hiResSampleIndices),
     hiResBestPath: bestShard.hiResBestPath,
     hiResWorstPath: worstShard.hiResWorstPath,
     hiResBestFinal: bestShard.hiResBestFinal,

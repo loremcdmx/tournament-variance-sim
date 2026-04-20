@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { runSimulation, compileSchedule } from "./engine";
+import {
+  buildResult,
+  compileSchedule,
+  makeCheckpointGrid,
+  mergeShards,
+  runSimulation,
+  simulateShard,
+} from "./engine";
 import type { SimulationInput, FinishModelId, PayoutStructureId } from "./types";
 
 function baseInput(overrides: Partial<SimulationInput> = {}): SimulationInput {
@@ -173,6 +180,25 @@ describe("engine", () => {
     // should still produce meaningful drawdown — just driven by pure luck.
     expect(r.comparison!.stats.maxDrawdownMean).toBeGreaterThan(0);
     expect(Number.isFinite(r.comparison!.stats.stdDev)).toBe(true);
+  });
+
+  it("preserves global sample indices for merged hi-res paths", () => {
+    const input = baseInput({
+      samples: 4000,
+      scheduleRepeats: 1,
+    });
+    const compiled = compileSchedule(input);
+    const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+    const a = simulateShard(input, compiled, 0, 2000, grid);
+    const b = simulateShard(input, compiled, 2000, 4000, grid);
+    const merged = mergeShards([a, b], input.samples, grid.K + 1, input.schedule.length);
+    const result = buildResult(input, compiled, merged, "alpha", grid);
+
+    expect(result.samplePaths.paths).toHaveLength(1000);
+    expect(result.samplePaths.sampleIndices[0]).toBe(0);
+    expect(result.samplePaths.sampleIndices[499]).toBe(499);
+    expect(result.samplePaths.sampleIndices[500]).toBe(2000);
+    expect(result.samplePaths.sampleIndices[999]).toBe(2499);
   });
 
   it("re-entry row inflates cost and mean proportionally", () => {
