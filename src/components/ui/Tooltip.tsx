@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   content: React.ReactNode;
@@ -33,17 +34,20 @@ function renderTooltipBody(content: React.ReactNode): React.ReactNode {
   // width/max-width constraints and letting text escape the container.
   // Keep everything as <span> with explicit block display.
   return (
-    <span className="flex flex-col gap-2">
+    <span className="flex flex-col gap-2 whitespace-normal break-words normal-case tracking-normal [overflow-wrap:anywhere]">
       {paragraphs.map((p, i) => {
         const m = p.match(LABEL_RE);
         if (m) {
           const rest = p.slice(m[0].length);
           return (
-            <span key={i} className="block leading-relaxed">
+            <span
+              key={i}
+              className="block whitespace-normal break-words leading-relaxed [overflow-wrap:anywhere]"
+            >
               <span className="mr-1 font-semibold uppercase tracking-wider text-[10px] text-[color:var(--color-accent)]">
                 {m[1]}
               </span>
-              <span className="text-[color:var(--color-fg-muted)]">
+              <span className="whitespace-normal break-words text-[color:var(--color-fg-muted)] [overflow-wrap:anywhere]">
                 {renderInline(rest)}
               </span>
             </span>
@@ -54,8 +58,8 @@ function renderTooltipBody(content: React.ReactNode): React.ReactNode {
             key={i}
             className={
               i === 0
-                ? "block leading-relaxed text-[color:var(--color-fg)]"
-                : "block leading-relaxed text-[color:var(--color-fg-muted)]"
+                ? "block whitespace-normal break-words leading-relaxed text-[color:var(--color-fg)] [overflow-wrap:anywhere]"
+                : "block whitespace-normal break-words leading-relaxed text-[color:var(--color-fg-muted)] [overflow-wrap:anywhere]"
             }
           >
             {renderInline(p)}
@@ -92,7 +96,7 @@ function highlightTokens(line: string): React.ReactNode {
     parts.push(
       <code
         key={`t${i++}`}
-        className="rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-1 py-px font-mono text-[10.5px] text-[color:var(--color-fg)]"
+        className="inline-block max-w-full whitespace-normal break-words rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-1 py-px font-mono text-[10.5px] text-[color:var(--color-fg)] [overflow-wrap:anywhere]"
       >
         {clean}
       </code>,
@@ -105,23 +109,94 @@ function highlightTokens(line: string): React.ReactNode {
 
 export function Tooltip({ content, children }: Props) {
   const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ left: number; top: number } | null>(
+    null,
+  );
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const tooltipRef = useRef<HTMLSpanElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const measure = () => {
+      const trigger = triggerRef.current;
+      const tooltip = tooltipRef.current;
+      if (!trigger || !tooltip) return;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const margin = 8;
+      const maxLeft = Math.max(
+        margin,
+        window.innerWidth - margin - tooltipRect.width,
+      );
+      const centeredLeft =
+        triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2;
+      const left = Math.min(Math.max(margin, centeredLeft), maxLeft);
+      const topAbove = triggerRect.top - tooltipRect.height - 8;
+      const topBelow = triggerRect.bottom + 8;
+      const maxTop = Math.max(
+        margin,
+        window.innerHeight - margin - tooltipRect.height,
+      );
+      const top =
+        topAbove >= margin
+          ? topAbove
+          : Math.min(Math.max(margin, topBelow), maxTop);
+
+      setCoords((current) =>
+        current &&
+        Math.abs(current.left - left) < 0.5 &&
+        Math.abs(current.top - top) < 0.5
+          ? current
+          : { left, top },
+      );
+    };
+
+    const frame = window.requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open]);
+
+  const close = () => {
+    setOpen(false);
+    setCoords(null);
+  };
+
   return (
     <span
+      ref={triggerRef}
       className="relative inline-flex"
       onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseLeave={close}
       onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
+      onBlur={close}
     >
       {children}
-      {open && (
-        <span
-          role="tooltip"
-          className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-80 max-w-[85vw] -translate-x-1/2 border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3.5 py-3 text-left text-[11.5px] font-normal leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)]"
-        >
-          {renderTooltipBody(content)}
-        </span>
-      )}
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <span
+            ref={tooltipRef}
+            role="tooltip"
+            className="pointer-events-none fixed z-50 max-h-[min(60vh,28rem)] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto whitespace-normal break-words border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3.5 py-3 text-left text-[11.5px] font-normal normal-case leading-relaxed tracking-normal text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] [overflow-wrap:anywhere]"
+            style={{
+              left: coords?.left ?? 0,
+              top: coords?.top ?? 0,
+              visibility: coords ? "visible" : "hidden",
+              overflowWrap: "anywhere",
+              whiteSpace: "normal",
+            }}
+          >
+            {renderTooltipBody(content)}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }
