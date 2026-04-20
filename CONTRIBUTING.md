@@ -2,7 +2,7 @@
 
 Thanks for forking. This file covers the dev workflow, what gets tested, and the conventions that keep the codebase tractable.
 
-For the architecture map (what each file does, how the engine is wired) read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first — this doc assumes you already know the layout.
+For the architecture map (what each file does, how the engine is wired) read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first — this doc assumes you already know the layout. Then use [`docs/REPO_ATLAS.md`](docs/REPO_ATLAS.md) for a shorter "where does this change belong?" map and [`scripts/README.md`](scripts/README.md) before running offline tooling.
 
 ## Dev setup
 
@@ -23,11 +23,17 @@ npm run build       # prod build (catches real Next.js errors)
 
 Before a PR: run **all four** — test, typecheck, lint, build. Any one failing blocks the merge.
 
+CI runs the same four commands from `.github/workflows/ci.yml`. If the team
+starts relying on an extra local check, add it to CI as well so the canonical
+green state stays the same locally and remotely.
+
 ## Branching
 
 - `main` — prod. Vercel auto-deploys from here.
 - `dev` — integration branch for batched work. `dev` must always be ahead of or equal to `main`; never behind. Before starting work, run `git log dev..main` and verify it's empty.
 - Feature branches off `dev` are fine but not required for small fixes.
+- Dirty exploratory work belongs on `wip/*`, not on `dev`. Keep one clean
+  integration worktree that can always run all four gates end-to-end.
 
 To ship: merge `dev` into `main` as a fast-forward (`git merge --ff-only dev`) and push. If `--ff-only` fails, something landed on `main` out-of-band — investigate before force-anything.
 
