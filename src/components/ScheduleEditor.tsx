@@ -374,8 +374,8 @@ export const ScheduleEditor = memo(function ScheduleEditor({
         disabled={disabled}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] text-sm">
+      <div className="schedule-table-scroll overflow-x-auto">
+        <table className="dense-control-table w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-left text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               <Th> </Th>

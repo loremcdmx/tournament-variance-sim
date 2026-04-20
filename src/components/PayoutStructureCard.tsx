@@ -5,8 +5,8 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { Card } from "./ui/Section";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { TournamentRow } from "@/lib/sim/types";
-import { useT } from "@/lib/i18n/LocaleProvider";
-import type { DictKey } from "@/lib/i18n/dict";
+import { useLocale } from "@/lib/i18n/LocaleProvider";
+import type { DictKey, Locale } from "@/lib/i18n/dict";
 
 interface Props {
   schedule: TournamentRow[];
@@ -65,10 +65,18 @@ function placeLabel(n: number): string {
   return `${n}th`;
 }
 
+function localeTag(locale: Locale): "ru-RU" | "en-US" {
+  return locale === "ru" ? "ru-RU" : "en-US";
+}
+
+function formatInteger(n: number, locale: Locale): string {
+  return n.toLocaleString(localeTag(locale), { maximumFractionDigits: 0 });
+}
+
 export const PayoutStructureCard = memo(function PayoutStructureCard({
   schedule,
 }: Props) {
-  const t = useT();
+  const { locale, t } = useLocale();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [palette, setPalette] = useState<PaletteId>(() => {
     if (typeof window === "undefined") return "medal";
@@ -128,7 +136,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
   const isBr = row.payoutStructure === "battle-royale";
 
   return (
-    <Card className="flex h-full flex-col p-5">
+    <Card className="data-surface-card flex h-full flex-col p-5">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <div className="text-sm font-semibold text-[color:var(--color-fg)]">
@@ -136,8 +144,8 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
           </div>
           <div className="text-[11px] text-[color:var(--color-fg-dim)]">
             {t("payouts.subtitle")
-              .replace("{paid}", paid.toLocaleString())
-              .replace("{total}", row.players.toLocaleString())
+              .replace("{paid}", formatInteger(paid, locale))
+              .replace("{total}", formatInteger(row.players, locale))
               .replace("{pct}", (totalPaidPct * 100).toFixed(1))
               .replace("{min}", minCashBuyIns)}
           </div>
@@ -182,6 +190,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
           cashLabel={t("payouts.pool.cash")}
           bountyLabel={t("payouts.pool.bounty")}
           noteKey={isBr ? "payouts.pool.noteBr" : "payouts.pool.note"}
+          locale={locale}
           t={t}
         />
       )}
@@ -239,6 +248,7 @@ function PoolSplit({
   cashLabel,
   bountyLabel,
   noteKey,
+  locale,
   t,
 }: {
   cashPoolShare: number;
@@ -249,10 +259,11 @@ function PoolSplit({
   cashLabel: string;
   bountyLabel: string;
   noteKey: DictKey;
+  locale: Locale;
   t: (key: DictKey) => string;
 }) {
   const fmtDollars = (v: number) => {
-    if (v >= 1000) return `$${Math.round(v).toLocaleString()}`;
+    if (v >= 1000) return `$${formatInteger(Math.round(v), locale)}`;
     if (v >= 100) return `$${v.toFixed(0)}`;
     if (v >= 1) return `$${v.toFixed(2)}`;
     return `$${v.toFixed(3)}`;

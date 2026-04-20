@@ -21,22 +21,6 @@ export const metadata: Metadata = {
   description: "Monte Carlo variance simulator for MTT / SNG schedules",
 };
 
-// Before-hydration inline script: read the persisted theme from localStorage
-// and set the `data-theme` attr *before* React paints, so first paint matches
-// the user's preference and we don't flash the default dark on light users.
-const themeInitScript = `
-try {
-  var t = localStorage.getItem('tvs:theme');
-  if (t === 'light' || t === 'dark') {
-    document.documentElement.setAttribute('data-theme', t);
-  } else {
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }
-} catch (e) {
-  document.documentElement.setAttribute('data-theme', 'dark');
-}
-`;
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -46,18 +30,16 @@ export default function RootLayout({
     <html
       lang="en"
       data-theme="dark"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-      </head>
       <body className="min-h-full">
         <ThemeProvider>
           <LocaleProvider>
             <AdvancedModeProvider>{children}</AdvancedModeProvider>
           </LocaleProvider>
         </ThemeProvider>
-        <Analytics />
+        {process.env.VERCEL ? <Analytics /> : null}
       </body>
     </html>
   );

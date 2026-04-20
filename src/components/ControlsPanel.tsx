@@ -451,7 +451,7 @@ export const ControlsPanel = memo(function ControlsPanel({
             <button
               type="button"
               onClick={onRun}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
+              className="primary-run-button inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path d="M6 4l14 8-14 8V4z" fill="currentColor" />

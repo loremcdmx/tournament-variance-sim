@@ -13,7 +13,6 @@ import {
 import { CashApp } from "@/components/CashApp";
 import { ScheduleEditor } from "@/components/ScheduleEditor";
 import { ControlsPanel, type ControlsState } from "@/components/ControlsPanel";
-import { ModelPresetSelector } from "@/components/ModelPresetSelector";
 import { ResultsView } from "@/components/ResultsView";
 import { PayoutStructureCard } from "@/components/PayoutStructureCard";
 import { Section, Card } from "@/components/ui/Section";
@@ -378,11 +377,6 @@ export default function Home() {
     },
     [interruptBackground],
   );
-  const handleModelPresetChange = useCallback((c: ControlsState) => {
-    setControls(c);
-    setActiveScenarioId(null);
-  }, []);
-
   const tournamentsPerSession = useMemo(
     () =>
       schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0) *
@@ -862,33 +856,23 @@ export default function Home() {
         suit="spade"
         title={t("section.schedule.title")}
       >
-        <div className="mb-3 grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
-          <div className="flex min-w-0 items-center justify-center">
-            <div className="w-full max-w-sm">
-              <ModelPresetSelector
-                value={controls}
-                onChange={handleModelPresetChange}
-              />
-            </div>
-          </div>
-          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
-            <GlobalItmControl
-              value={controls}
-              onChange={handleControlsChange}
-              disabled={running}
-            />
-            <GlobalRakebackControl
-              value={controls}
-              onChange={handleControlsChange}
-              disabled={running}
-            />
-            <BankrollControl
-              value={controls}
-              onChange={handleControlsChange}
-              disabled={running}
-              abi={abi}
-            />
-          </div>
+        <div className="mb-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
+          <GlobalItmControl
+            value={controls}
+            onChange={handleControlsChange}
+            disabled={running}
+          />
+          <GlobalRakebackControl
+            value={controls}
+            onChange={handleControlsChange}
+            disabled={running}
+          />
+          <BankrollControl
+            value={controls}
+            onChange={handleControlsChange}
+            disabled={running}
+            abi={abi}
+          />
         </div>
         <ScheduleEditor
           schedule={schedule}
@@ -904,7 +888,7 @@ export default function Home() {
         suit="diamond"
         title={t("section.controls.title")}
       >
-        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(420px,0.95fr)]">
           <div className="flex min-w-0 flex-col gap-4">
             <ControlsPanel
               value={controls}
@@ -921,7 +905,7 @@ export default function Home() {
             <PayoutStructureCard schedule={deferredSchedule} />
           </div>
           {previewRow && (
-            <Card className="p-5">
+            <Card className="data-surface-card p-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="text-base font-bold uppercase tracking-wide text-[color:var(--color-fg)]">
                   <span className="mr-2 text-sm" style={{ color: "var(--color-diamond)" }}>🔬</span>
