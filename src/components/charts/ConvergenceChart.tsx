@@ -7,7 +7,6 @@ import type { TournamentRow } from "@/lib/sim/types";
 import {
   getConvergenceBandPolicy,
   inferRowFormat,
-  type ConvergenceRowFormat,
   type FitBoxSample,
 } from "@/lib/sim/convergencePolicy";
 import {
@@ -111,11 +110,6 @@ type ConvergenceFormat =
   | "mystery-royale"
   | "mix"
   | "exact";
-
-// RowFormat is an alias for the policy's ConvergenceRowFormat — they're the
-// same domain (a row's convergence-chart classification), re-exported here so
-// this file can keep using the short name without touching every reference.
-type RowFormat = ConvergenceRowFormat;
 
 function posToAfs(pos: number): number {
   return Math.exp(AFS_LOG_MIN + (AFS_LOG_MAX - AFS_LOG_MIN) * pos);
