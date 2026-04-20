@@ -1621,7 +1621,7 @@ export const DICT = {
   },
   "preview.evBias.cash": { en: "cash", ru: "кэш" },
   "preview.evBias.bounty": { en: "KOs", ru: "ноки" },
-  "preview.evBias.reset": { en: "base", ru: "база" },
+  "preview.evBias.reset": { en: "reset", ru: "сброс" },
   "preview.evSplit.bountyRegular": {
     en: "bounty (regular)",
     ru: "ноки (обычные)",

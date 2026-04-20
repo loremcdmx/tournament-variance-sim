@@ -3,6 +3,14 @@
 Only user-facing changes are listed here. Small refactors, bench refreshes,
 internal scripts, and other low-signal maintenance are intentionally omitted.
 
+## v0.7.3 — 2026-04-20
+
+- Made the KO-share control easier to audit: the midpoint now resets to the
+  neutral cash-vs-KO balance, numeric entry is bounded to the valid EV range,
+  and gross EV cards show cash / regular KO / jackpot percentages.
+- Combined the microscope EV and EV-profit readouts into one cleaner expected
+  return card.
+
 ## v0.7.2 — 2026-04-20
 
 - Removed the unused ICM controls and engine path.
