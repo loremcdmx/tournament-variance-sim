@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { TournamentRow } from "./types";
 import {
+  AFS_MAX,
+  AFS_MIN,
+  afsToPos,
   buildExactBreakdown,
   ciToZ,
   computeConvergenceRows,
   formatPointRange,
   isRoiControlActive,
+  posToAfs,
+  roiControlBoundsForFormat,
   type MixTuple,
 } from "./convergenceMath";
 
@@ -30,6 +35,32 @@ function kFor(input: {
 }
 
 describe("convergence math", () => {
+  it("maps AFS slider endpoints exactly to the validated field box", () => {
+    expect(posToAfs(0)).toBe(AFS_MIN);
+    expect(posToAfs(1)).toBe(AFS_MAX);
+    expect(posToAfs(afsToPos(AFS_MIN))).toBe(AFS_MIN);
+    expect(posToAfs(afsToPos(AFS_MAX))).toBe(AFS_MAX);
+  });
+
+  it("uses validated ROI boxes for bounty format controls", () => {
+    expect(roiControlBoundsForFormat("pko")).toEqual({
+      min: -0.2,
+      max: 0.8,
+    });
+    expect(roiControlBoundsForFormat("mystery")).toEqual({
+      min: -0.2,
+      max: 0.8,
+    });
+    expect(roiControlBoundsForFormat("mix")).toEqual({
+      min: -0.2,
+      max: 0.8,
+    });
+    expect(roiControlBoundsForFormat("mystery-royale")).toEqual({
+      min: -0.1,
+      max: 0.1,
+    });
+  });
+
   it("hides ROI control when the selected fit is ROI-invariant", () => {
     expect(isRoiControlActive("freeze", "avg", [1, 0, 0])).toBe(false);
     expect(isRoiControlActive("mix", "avg", [1, 0, 0])).toBe(false);

@@ -9,6 +9,12 @@ import {
   type SigmaCoef,
 } from "./convergenceFit";
 import {
+  CONVERGENCE_FIELD_MAX,
+  CONVERGENCE_FIELD_MIN,
+  CONVERGENCE_KO_ROI_MAX,
+  CONVERGENCE_KO_ROI_MIN,
+  CONVERGENCE_MBR_ROI_MAX,
+  CONVERGENCE_MBR_ROI_MIN,
   inferRowFormat,
   type ConvergenceRowFormat,
 } from "./convergencePolicy";
@@ -74,15 +80,19 @@ export const TARGETS = [
   0.5, 0.3, 0.2, 0.1, 0.05, 0.025, 0.01, 0.005, 0.001,
 ];
 
-// Log-scaled AFS slider range: ~50 .. ~50 000 players.
-export const AFS_LOG_MIN = Math.log(50);
-export const AFS_LOG_MAX = Math.log(50_000);
+// Log-scaled AFS slider range: 50 .. 50 000 players.
+export const AFS_MIN = CONVERGENCE_FIELD_MIN;
+export const AFS_MAX = CONVERGENCE_FIELD_MAX;
+export const AFS_LOG_MIN = Math.log(AFS_MIN);
+export const AFS_LOG_MAX = Math.log(AFS_MAX);
 
 // Linear ROI slider range in ROI units (not percent).
 export const ROI_MIN_DEFAULT = -0.30;
 export const ROI_MAX_DEFAULT = 1.00;
-export const ROI_MIN_MBR = -0.10;
-export const ROI_MAX_MBR = 0.10;
+export const ROI_MIN_KO = CONVERGENCE_KO_ROI_MIN;
+export const ROI_MAX_KO = CONVERGENCE_KO_ROI_MAX;
+export const ROI_MIN_MBR = CONVERGENCE_MBR_ROI_MIN;
+export const ROI_MAX_MBR = CONVERGENCE_MBR_ROI_MAX;
 
 export function normalizeMix(m: MixTuple): MixTuple {
   const s = m[0] + m[1] + m[2];
@@ -100,7 +110,10 @@ export function sigmaForFit(
 }
 
 export function posToAfs(pos: number): number {
-  return Math.exp(AFS_LOG_MIN + (AFS_LOG_MAX - AFS_LOG_MIN) * pos);
+  const clamped = Math.max(0, Math.min(1, pos));
+  if (clamped <= 0) return AFS_MIN;
+  if (clamped >= 1) return AFS_MAX;
+  return Math.exp(AFS_LOG_MIN + (AFS_LOG_MAX - AFS_LOG_MIN) * clamped);
 }
 
 export function afsToPos(afs: number): number {
@@ -109,6 +122,18 @@ export function afsToPos(afs: number): number {
     Math.min(AFS_LOG_MAX, Math.log(Math.max(1, afs))),
   );
   return (clamped - AFS_LOG_MIN) / (AFS_LOG_MAX - AFS_LOG_MIN);
+}
+
+export function roiControlBoundsForFormat(
+  format: ConvergenceFormat,
+): { min: number; max: number } {
+  if (format === "mystery-royale") {
+    return { min: ROI_MIN_MBR, max: ROI_MAX_MBR };
+  }
+  if (format === "pko" || format === "mystery" || format === "mix") {
+    return { min: ROI_MIN_KO, max: ROI_MAX_KO };
+  }
+  return { min: ROI_MIN_DEFAULT, max: ROI_MAX_DEFAULT };
 }
 
 export function fmtAfs(

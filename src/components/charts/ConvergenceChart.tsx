@@ -10,6 +10,8 @@ import {
   type FitBoxSample,
 } from "@/lib/sim/convergencePolicy";
 import {
+  AFS_MAX,
+  AFS_MIN,
   afsToPos,
   buildExactBreakdown,
   ciToZ,
@@ -19,10 +21,7 @@ import {
   isRoiControlActive,
   normalizeMix,
   posToAfs,
-  ROI_MAX_DEFAULT,
-  ROI_MAX_MBR,
-  ROI_MIN_DEFAULT,
-  ROI_MIN_MBR,
+  roiControlBoundsForFormat,
   type ConvergenceFormat,
   type MixTuple,
 } from "@/lib/sim/convergenceMath";
@@ -190,14 +189,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     rawFormat === "exact" && !hasSchedule ? "mix" : rawFormat;
   const effectiveMode: "avg" | "exact" = format === "exact" ? "exact" : "avg";
 
-  // Format-dependent ROI bounds. MBR clips to ±5 % (reg band); others keep
-  // the default wide range. effectiveRoi is clamped on read so user's
-  // preferred ROI is preserved across format switches — swapping back to
-  // a wider format restores the original value.
-  const roiMin =
-    format === "mystery-royale" ? ROI_MIN_MBR : ROI_MIN_DEFAULT;
-  const roiMax =
-    format === "mystery-royale" ? ROI_MAX_MBR : ROI_MAX_DEFAULT;
+  // Format-dependent ROI bounds. Bounty formats are clipped to their validated
+  // training boxes, so regular UI controls cannot land on a point where the
+  // range band must be hidden as extrapolation. effectiveRoi is clamped on read
+  // so the user's preferred ROI is preserved across format switches.
+  const { min: roiMin, max: roiMax } = roiControlBoundsForFormat(format);
   const effectiveRoi = Math.max(
     roiMin,
     Math.min(roiMax, roiOverride ?? baselineRoi),
@@ -256,7 +252,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     setAfsDraft(null);
     const n = Number(raw);
     if (Number.isFinite(n) && n > 0) {
-      setAfsPosOverride(afsToPos(n));
+      const clamped = Math.max(AFS_MIN, Math.min(AFS_MAX, n));
+      setAfsPosOverride(afsToPos(clamped));
     }
   };
 
@@ -481,14 +478,18 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           max={1}
           step={0.001}
           value={afsPos}
-          onChange={(e) => setAfsPosOverride(Number(e.target.value))}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            setAfsPosOverride(Math.max(0, Math.min(1, next)));
+          }}
           disabled={afsLocked}
           className="flex-1 accent-emerald-400 disabled:cursor-not-allowed"
           aria-label="AFS"
         />
         <input
           type="number"
-          min={1}
+          min={afsLocked ? BR_FIXED_AFS : AFS_MIN}
+          max={afsLocked ? BR_FIXED_AFS : AFS_MAX}
           step={1}
           value={afsLocked ? String(BR_FIXED_AFS) : afsInput}
           onFocus={(e) => setAfsDraft(e.currentTarget.value)}
@@ -666,11 +667,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       </div>
       {bandPolicy.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
-          {t(
-            bandPolicy.reason === "contains-mystery"
-              ? "chart.convergence.bandWarning.mystery"
-              : "chart.convergence.bandWarning.outsideFitBox",
-          )}
+          {t("chart.convergence.bandWarning.outsideFitBox")}
         </div>
       )}
       <div className="overflow-x-auto">
