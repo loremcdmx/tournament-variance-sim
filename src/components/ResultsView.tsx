@@ -68,8 +68,9 @@ import {
   shiftResultByRakeback,
   stripJackpots,
 } from "@/lib/results/trajectoryTransforms";
+import { visualDistanceToSeries } from "@/lib/results/trajectoryHitTest";
 import type { ControlsState } from "./ControlsPanel";
-import { UplotChart } from "./charts/UplotChart";
+import { UplotChart, type CursorInfo } from "./charts/UplotChart";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
 import { DecompositionChart } from "./charts/DecompositionChart";
@@ -304,12 +305,7 @@ function TrajectoryPlot({
 }) {
   const t = useT();
   const { compactMoney } = useMoneyFmt();
-  const [cursor, setCursor] = useState<{
-    idx: number;
-    left: number;
-    top: number;
-    valY: number;
-  } | null>(null);
+  const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const plotRef = useRef<uPlot | null>(null);
   const handlePlotReady = useCallback((plot: uPlot | null) => {
     plotRef.current = plot;
@@ -377,6 +373,47 @@ function TrajectoryPlot({
     };
     return { showBands, includeBest, includeWorst, isPathVisible, isBandVisible };
   }, [assets, visibleRuns, trimTopPct, trimBotPct]);
+  const legendItems = useMemo(() => {
+    const ev = assets.mainLines.find((line) => line.label === "EV");
+    const band = assets.mainLines.find((line) => line.kind === "band");
+    const best = assets.mainLines.find((line) => line.kind === "best" && line.variant === "real")
+      ?? assets.mainLines.find((line) => line.kind === "best");
+    const overlay = assets.overlayLabel
+      ? assets.mainLines.find((line) => line.label.startsWith(assets.overlayLabel ?? ""))
+      : null;
+
+    return [
+      ev && {
+        key: "ev",
+        label: t("chart.traj.legend.ev"),
+        color: ev.color,
+        dash: true,
+      },
+      visibleRuns > 0 && {
+        key: "runs",
+        label: fmt(t("chart.traj.legend.runs"), {
+          n: Math.min(visibleRuns, assets.visibility.pathSeriesIdx.length).toLocaleString(),
+        }),
+        color: assets.visibility.pathBasePreset.stroke,
+      },
+      visibilityGate.showBands && band && {
+        key: "bands",
+        label: t("chart.traj.legend.bands"),
+        color: band.color,
+      },
+      visibilityGate.includeBest && best && {
+        key: "extremes",
+        label: t("chart.traj.legend.extremes"),
+        color: best.color,
+      },
+      overlay && {
+        key: "overlay",
+        label: fmt(t("chart.traj.legend.overlay"), { label: assets.overlayLabel ?? "" }),
+        color: overlay.color,
+        dash: true,
+      },
+    ].filter(Boolean) as Array<{ key: string; label: string; color: string; dash?: boolean }>;
+  }, [assets, t, visibleRuns, visibilityGate]);
 
   // Imperative visibility layer: instead of rebuilding the uPlot instance
   // on every slider tick, flip `show` on the pre-built path/band/best/worst
@@ -455,9 +492,10 @@ function TrajectoryPlot({
   let nearest: TrajectoryLineMeta | null = null;
   let nearestVal = 0;
   let nearestPath: TrajectoryLineMeta | null = null;
+  let nearestPathVal = 0;
   if (cursor && idx != null) {
     let bestDist = Infinity;
-    let bestPathDist = Infinity;
+    let bestPathPxDist = Infinity;
     for (const line of assets.mainLines) {
       if (line.kind === "path") {
         if (!isPathVisible(line.rank ?? 0)) continue;
@@ -472,30 +510,53 @@ function TrajectoryPlot({
       } else if (line.kind === "worst") {
         if (!includeWorst) continue;
       }
-      const arr = assets.data[line.seriesIdx] as ArrayLike<number> | undefined;
+      const arr = assets.data[line.seriesIdx] as ArrayLike<number | null> | undefined;
       if (!arr) continue;
       const v = arr[idx];
-      if (v == null || !Number.isFinite(v)) continue;
-      const d = Math.abs(v - cursor.valY);
-      if (d < bestDist) {
-        bestDist = d;
-        nearest = line;
-        nearestVal = v;
+      const hasVisibleValue = v != null && Number.isFinite(v);
+      const tooltipValue = hasVisibleValue ? Number(v) : cursor.valY;
+      if (hasVisibleValue) {
+        const d = Math.abs(v - cursor.valY);
+        if (d < bestDist) {
+          bestDist = d;
+          nearest = line;
+          nearestVal = tooltipValue;
+        }
       }
       const isHighlightable =
         line.kind === "path" ||
-        (line.kind === "best" && line.variant === "real") ||
-        (line.kind === "worst" && line.variant === "real");
-      if (isHighlightable && d < bestPathDist) {
-        bestPathDist = d;
-        nearestPath = line;
+        line.kind === "best" ||
+        line.kind === "worst";
+      if (isHighlightable) {
+        const pxDist = visualDistanceToSeries(
+          cursor,
+          assets.data[0] as ArrayLike<number>,
+          arr,
+        );
+        if (pxDist < bestPathPxDist) {
+          bestPathPxDist = pxDist;
+          nearestPath = line;
+          nearestPathVal = tooltipValue;
+        }
       }
+    }
+    if (nearestPath && bestPathPxDist <= TRAJECTORY_PATH_HIT_PX) {
+      nearest = nearestPath;
+      nearestVal = nearestPathVal;
+    } else {
+      nearestPath = null;
     }
   }
 
   // Draw a bright highlight line on top of the focused path using a canvas
   // that sits inside uPlot's .over element for perfect alignment.
-  const focusedSeriesIdx = nearestPath?.seriesIdx ?? null;
+  const focusedLine = nearestPath;
+  const focusedSeriesIdx = focusedLine?.seriesIdx ?? null;
+  const focusedStatsSeriesIdx =
+    focusedLine &&
+    (focusedLine.kind === "path" || focusedLine.variant === "real")
+      ? focusedLine.seriesIdx
+      : null;
   const hlCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const cumBuyIn = tournaments * assets.buyInPerTourney;
@@ -503,7 +564,7 @@ function TrajectoryPlot({
 
   // Defer the series index used for O(N) path stats so it doesn't
   // recompute synchronously on every mousemove over the chart.
-  const deferredFocusedIdx = useDeferredValue(focusedSeriesIdx);
+  const deferredFocusedIdx = useDeferredValue(focusedStatsSeriesIdx);
   // Compute on-the-fly run stats from the focused path for the detail strip.
   // Uses samplePaths.x to convert checkpoint indices to tournament counts.
   const focusedPathStats = useMemo(() => {
@@ -662,11 +723,11 @@ function TrajectoryPlot({
     strokeSegment(0, xArr.length - 1, "rgba(253,230,138,0.9)", 2.5);
 
     // Stats-driven highlights. Only when mouse is actually focusing a path
-    // (deferredFocusedIdx matches focusedSeriesIdx) to avoid flicker during
-    // fast scrubs across different paths.
+    // (deferredFocusedIdx matches focusedStatsSeriesIdx) to avoid flicker
+    // during fast scrubs across different paths.
     if (
       focusedPathStats &&
-      deferredFocusedIdx === focusedSeriesIdx
+      deferredFocusedIdx === focusedStatsSeriesIdx
     ) {
       const { ddStartIdx, ddEndIdx, ddPeakValue } = focusedPathStats;
 
@@ -690,7 +751,7 @@ function TrajectoryPlot({
         }
       }
     }
-  }, [focusedSeriesIdx, assets.data, focusedPathStats, deferredFocusedIdx]);
+  }, [focusedSeriesIdx, focusedStatsSeriesIdx, assets.data, focusedPathStats, deferredFocusedIdx]);
 
   const kindLabel = (line: TrajectoryLineMeta): string => {
     switch (line.kind) {
@@ -726,6 +787,62 @@ function TrajectoryPlot({
 
   return (
     <div className="relative w-full">
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {legendItems.map((item) => (
+              <span
+                key={item.key}
+                className="inline-flex max-w-full items-center gap-1.5 rounded border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/55 px-2 py-1 text-[10px] font-medium text-[color:var(--color-fg-muted)]"
+              >
+                <span
+                  className={`inline-block h-0 w-5 border-t-2 ${item.dash ? "border-dashed" : ""}`}
+                  style={{ borderColor: item.color }}
+                  aria-hidden
+                />
+                <span className="truncate">{item.label}</span>
+              </span>
+            ))}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[color:var(--color-fg-dim)]">
+            <span>{t("chart.traj.zoomHint")}</span>
+            {visibleRuns > 0 && (
+              <>
+                <span className="text-[color:var(--color-border-strong)]">/</span>
+                <span className="inline-flex items-center gap-1">
+                  <span
+                    className="inline-block h-1.5 w-1.5 rounded-full"
+                    style={{
+                      background: "rgba(248,113,113,1)",
+                      boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
+                    }}
+                    aria-hidden
+                  />
+                  {t("chart.traj.hoverHint.peak")}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span
+                    className="inline-block h-[3px] w-3 rounded-sm"
+                    style={{ background: "rgba(248,113,113,0.95)" }}
+                    aria-hidden
+                  />
+                  {t("chart.traj.hoverHint.maxDd")}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+        {xZoomed && (
+          <button
+            type="button"
+            onClick={resetZoom}
+            className="shrink-0 rounded border border-[color:var(--color-accent)]/50 bg-[color:var(--color-bg)]/85 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] shadow-sm transition hover:bg-[color:var(--color-accent)] hover:text-black"
+            title={t("chart.traj.resetZoom")}
+          >
+            {t("chart.traj.resetZoom")}
+          </button>
+        )}
+      </div>
       <UplotChart
         data={assets.data}
         options={assets.opts}
@@ -735,43 +852,6 @@ function TrajectoryPlot({
         onScaleChange={handleScaleChange}
         onDoubleClick={resetZoom}
       />
-      <div className="absolute right-2 top-2 z-10 flex flex-wrap items-center justify-end gap-2">
-        <div className="pointer-events-none rounded border border-[color:var(--color-border)]/50 bg-[color:var(--color-bg)]/65 px-2 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-muted)] backdrop-blur">
-          {t("chart.traj.zoomHint")}
-        </div>
-        {xZoomed && (
-          <button
-            type="button"
-            onClick={resetZoom}
-            className="rounded border border-[color:var(--color-accent)]/50 bg-[color:var(--color-bg)]/85 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] shadow-sm backdrop-blur transition hover:bg-[color:var(--color-accent)] hover:text-black"
-            title={t("chart.traj.resetZoom")}
-          >
-            {t("chart.traj.resetZoom")}
-          </button>
-        )}
-        {visibleRuns > 0 && (
-          <div className="pointer-events-none flex items-center gap-2 rounded border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/70 px-2 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)] backdrop-blur">
-            <span>{t("chart.traj.hoverHint.lead")}</span>
-            <span className="flex items-center gap-1">
-              <span
-                className="inline-block h-1.5 w-1.5 rounded-full"
-                style={{
-                  background: "rgba(248,113,113,1)",
-                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
-                }}
-              />
-              <span>{t("chart.traj.hoverHint.peak")}</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <span
-                className="inline-block h-[3px] w-3 rounded-sm"
-                style={{ background: "rgba(248,113,113,0.95)" }}
-              />
-              <span>{t("chart.traj.hoverHint.maxDd")}</span>
-            </span>
-          </div>
-        )}
-      </div>
       {cursor && idx != null && nearest && (
         <div
           className="pointer-events-none z-10 mt-2 min-w-[220px] overflow-hidden rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 text-[11px] shadow-xl backdrop-blur"
@@ -933,6 +1013,8 @@ function parseRgb(css: string): [number, number, number] {
   return [200, 200, 200];
 }
 
+const TRAJECTORY_PATH_HIT_PX = 20;
+
 /** Per-run path color + width scaled to the number of visible runs.
  *  Few runs → brighter, thicker, visually distinct. Many runs → faint,
  *  thinner, so the envelope underneath still reads through the crowd. */
@@ -996,6 +1078,7 @@ function buildTrajectoryAssets(
   buyInPerTourney: number;
   mainLines: TrajectoryLineMeta[];
   visibility: TrajectoryVisibilityMap;
+  overlayLabel: string | null;
 } {
   const x = r.samplePaths.x;
   // Lockstep builders: every series push is mirrored by a uplot series push,
@@ -1379,6 +1462,7 @@ function buildTrajectoryAssets(
     refStartIdx,
     buyInPerTourney,
     mainLines,
+    overlayLabel: overlay ? overlayLabel : null,
     visibility: {
       pathSeriesIdx,
       pathProfitQuantile,
@@ -1410,14 +1494,14 @@ function buildTrajectoryAssets(
       },
       axes: [
         {
-          stroke: "#8a8a95",
-          grid: { stroke: "rgba(128,128,128,0.15)" },
-          ticks: { stroke: "rgba(128,128,128,0.2)" },
+          stroke: "#94a3b8",
+          grid: { stroke: "rgba(148,163,184,0.13)", width: 1 },
+          ticks: { stroke: "rgba(148,163,184,0.24)" },
         },
         {
-          stroke: "#8a8a95",
-          grid: { stroke: "rgba(128,128,128,0.15)" },
-          ticks: { stroke: "rgba(128,128,128,0.2)" },
+          stroke: "#94a3b8",
+          grid: { stroke: "rgba(148,163,184,0.16)", width: 1 },
+          ticks: { stroke: "rgba(148,163,184,0.26)" },
           size: 72,
           values: (_u, splits) => splits.map(axisFmt),
         },

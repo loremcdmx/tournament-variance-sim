@@ -1035,8 +1035,28 @@ export const DICT = {
     ru: "примерно самый неудачный из каждых N ранов",
   },
   "chart.traj.zoomHint": {
-    en: "drag to zoom x · double-click to reset",
-    ru: "drag = зум по X · двойной клик = сброс",
+    en: "drag across X to zoom · double-click resets",
+    ru: "протяни по X для зума · двойной клик сбрасывает",
+  },
+  "chart.traj.legend.ev": {
+    en: "EV",
+    ru: "EV",
+  },
+  "chart.traj.legend.runs": {
+    en: "{n} runs",
+    ru: "{n} ранов",
+  },
+  "chart.traj.legend.bands": {
+    en: "70 / 95 / 99.7% bands",
+    ru: "полосы 70 / 95 / 99.7%",
+  },
+  "chart.traj.legend.extremes": {
+    en: "best / worst",
+    ru: "лучший / худший",
+  },
+  "chart.traj.legend.overlay": {
+    en: "dashed: {label}",
+    ru: "пунктир: {label}",
   },
   "chart.traj.resetZoom": {
     en: "reset zoom",
