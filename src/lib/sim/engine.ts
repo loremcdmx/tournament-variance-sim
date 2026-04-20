@@ -26,6 +26,11 @@ import {
   isAlphaAdjustable,
   itmProbability,
 } from "./finishModel";
+import {
+  battleRoyaleCashProfitShare,
+  clampBountyMean,
+  isBattleRoyaleRow,
+} from "./bountySplit";
 import { makeBrTierSampler } from "./brBountyTiers";
 import { normalizeBrMrConsistency } from "./gameType";
 import { mulberry32, mixSeed } from "./rng";
@@ -482,6 +487,7 @@ function compileSingleEntry(
   // behavioral range.
   const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
   const totalWinningsEV = entryCostSingle * (1 + row.roi);
+  const isBattleRoyale = isBattleRoyaleRow(row);
   if (bountyFraction > 0) {
     const bountyPerSeat = row.buyIn * bountyFraction;
     // Skill lift on bounty collection — equilibrium haul is bountyPerSeat
@@ -515,10 +521,100 @@ function compileSingleEntry(
 
   const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
 
+  const buildPrizeByPlace = (
+    binaryItmPrizeOverride: Float64Array | null,
+  ): Float64Array => {
+    const out = new Float64Array(N);
+    if (binaryItmPrizeOverride) {
+      out.set(binaryItmPrizeOverride);
+    } else {
+      for (let i = 0; i < Math.min(payouts.length, N); i++) {
+        out[i] = payouts[i] * prizePool;
+      }
+    }
+    return out;
+  };
+
+  const cashEVFor = (
+    candidatePmf: Float64Array,
+    candidatePrizeByPlace: Float64Array,
+  ): number => {
+    let cashEV = 0;
+    for (let i = 0; i < N; i++) cashEV += candidatePmf[i] * candidatePrizeByPlace[i];
+    return cashEV;
+  };
+
+  const solveFinish = (
+    regularTarget: number,
+  ): {
+    alpha: number;
+    pmf: Float64Array;
+    prizeByPlace: Float64Array;
+  } => {
+    let solvedPmf: Float64Array;
+    let solvedAlpha = 0;
+    let binaryItmPrizeOverride: Float64Array | null = null;
+    const solvedEffectiveROI = regularTarget / entryCostSingle - 1;
+
+    if (calibrationMode === "primedope-binary-itm" && pdFlags.usePdFinishModel) {
+      const assets = buildBinaryItmAssets(
+        N,
+        paidCount,
+        payouts,
+        prizePool,
+        regularTarget,
+      );
+      solvedPmf = assets.pmf;
+      binaryItmPrizeOverride = assets.prizeByPlace;
+    } else if (row.itmRate != null && row.itmRate > 0) {
+      const fi = calibrateShelledItm(
+        N,
+        paidCount,
+        payouts,
+        prizePool,
+        regularTarget,
+        row.itmRate,
+        row.finishBuckets,
+        model,
+      );
+      solvedAlpha = fi.alpha;
+      solvedPmf = fi.pmf;
+    } else {
+      solvedAlpha = calibrateAlpha(
+        N,
+        payouts,
+        prizePool,
+        entryCostSingle,
+        solvedEffectiveROI,
+        model,
+      );
+      solvedPmf = buildFinishPMF(N, model, solvedAlpha);
+    }
+
+    return {
+      alpha: solvedAlpha,
+      pmf: solvedPmf,
+      prizeByPlace: buildPrizeByPlace(binaryItmPrizeOverride),
+    };
+  };
+
+  if (bountyFraction > 0 && isBattleRoyale) {
+    // BR uses a fixed 50/50 cash/KO pool, but fixed-ITM settings can make
+    // the cash baseline higher than the raw pool share before any ROI is
+    // added. Split the incremental ROI profit from that breakeven baseline;
+    // otherwise every ROI/RB preset click becomes residual KO EV.
+    const neutralBountyMean = entryCostSingle * bountyFraction;
+    const neutralTargetRegular = Math.max(0.01, entryCostSingle - neutralBountyMean);
+    const neutral = solveFinish(neutralTargetRegular);
+    const neutralCashEV = cashEVFor(neutral.pmf, neutral.prizeByPlace);
+    const desiredCashEV = Math.max(
+      0.01,
+      neutralCashEV + entryCostSingle * row.roi * battleRoyaleCashProfitShare(bias),
+    );
+    bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
+  }
+
   // ---- finish distribution -----------------------------------------------
-  let pmf: Float64Array;
-  let alpha = 0;
-  let binaryItmPrizeOverride: Float64Array | null = null;
   // The player's expected total winnings target is `cost × (1+ROI)`. A
   // bounty lump contributes bountyEV directly; the regular prize pool must
   // therefore hit `targetTotal − bountyEV` on its own. We translate that
@@ -531,6 +627,9 @@ function compileSingleEntry(
   //   E[prize per bullet] + E[bounty per bullet] − singleCost = singleCost × ROI
   //   → E[prize per bullet] = singleCost × (1 + ROI) − bountyMean
   const targetRegular = Math.max(0.01, entryCostSingle * (1 + row.roi) - bountyMean);
+  let pmf: Float64Array;
+  let alpha = 0;
+  let binaryItmPrizeOverride: Float64Array | null = null;
   const effectiveROI = targetRegular / entryCostSingle - 1;
   if (calibrationMode === "primedope-binary-itm" && pdFlags.usePdFinishModel) {
     // entryCostSingle has already dropped rake when pdDisplayMode is on, so

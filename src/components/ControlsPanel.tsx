@@ -339,6 +339,9 @@ export const ControlsPanel = memo(function ControlsPanel({
             <option value="pko-realdata-step">PKO / real-data — step</option>
             <option value="pko-realdata-linear">PKO / real-data — linear</option>
             <option value="pko-realdata-tilt">PKO / real-data — tilt (α)</option>
+            <option value="mystery-realdata-step">Mystery / real-data — step</option>
+            <option value="mystery-realdata-linear">Mystery / real-data — linear</option>
+            <option value="mystery-realdata-tilt">Mystery / real-data — tilt (α)</option>
             <option value="powerlaw-realdata-influenced">Power-law — real-data α</option>
           </select>
           {!finishModelSupportsTargetRoi(value.finishModelId) && (

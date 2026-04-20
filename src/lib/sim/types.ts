@@ -254,7 +254,10 @@ export interface TournamentRow {
    *              comes more from KOs).
    * In Battle Royale the published envelope table fixes mean $ per KO, so
    * this bias is expressed by changing expected KO count rather than the
-   * average envelope size.
+   * average envelope size. Battle Royale also treats ROI as incremental
+   * profit: at s = 0, positive ROI above the breakeven finish baseline is
+   * split 50/50 between cash and KOs; s > 0 moves that incremental profit
+   * toward cash, s < 0 toward KOs.
    * Clamped to ±0.25 at the engine — empirically, α calibration begins to
    * bottom out against its search envelope near ±0.3, which would leave
    * realized EV below the ROI contract. ±0.25 keeps the shift inside the

@@ -6,6 +6,11 @@
  * thread before the worker dispatch.
  */
 import { applyBountyBias, calibrateShelledItm } from "./finishModel";
+import {
+  battleRoyaleCashProfitShare,
+  clampBountyMean,
+  isBattleRoyaleRow,
+} from "./bountySplit";
 import { normalizeBrMrConsistency } from "./gameType";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
@@ -71,6 +76,7 @@ export function validateSchedule(
     const entryCost = row.buyIn * (1 + row.rake);
     const totalWinningsEV = entryCost * (1 + row.roi);
     const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
+    const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
     let bountyMean = 0;
     let prizePool = basePool + overlay;
     if (bountyFraction > 0) {
@@ -80,9 +86,30 @@ export function validateSchedule(
         Math.min(3, (1 + row.rake) * (1 + row.roi)),
       );
       const defaultBountyMean = bountyPerSeat * bountyLift;
-      const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
       bountyMean = applyBountyBias(defaultBountyMean, totalWinningsEV, bias);
       prizePool = prizePool * (1 - bountyFraction);
+    }
+
+    if (bountyFraction > 0 && isBattleRoyaleRow(row)) {
+      // Mirror engine.ts: BR ROI presets add profit above the breakeven
+      // fixed-ITM baseline, then split that profit between cash and KOs.
+      const neutralBountyMean = entryCost * bountyFraction;
+      const neutralTargetRegular = Math.max(0.01, entryCost - neutralBountyMean);
+      const neutral = calibrateShelledItm(
+        N,
+        paidCount,
+        payouts,
+        prizePool,
+        neutralTargetRegular,
+        row.itmRate,
+        row.finishBuckets,
+        model,
+      );
+      const desiredCashEV = Math.max(
+        0.01,
+        neutral.currentWinnings + entryCost * row.roi * battleRoyaleCashProfitShare(bias),
+      );
+      bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
     }
     const targetRegular = Math.max(0.01, totalWinningsEV - bountyMean);
 

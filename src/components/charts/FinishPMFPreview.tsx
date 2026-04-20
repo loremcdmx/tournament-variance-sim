@@ -8,6 +8,11 @@ import {
   calibrateShelledItm,
   isAlphaAdjustable,
 } from "@/lib/sim/finishModel";
+import {
+  battleRoyaleCashProfitShare,
+  clampBountyMean,
+  isBattleRoyaleRow,
+} from "@/lib/sim/bountySplit";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
@@ -1478,10 +1483,56 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
       ? applyBountyBias(defaultBountyMean, totalWinningsEV, bias)
       : 0;
   const prizePool = basePool * (1 - bountyFraction);
+  const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
+
+  const cashEVForTargetRegular = (regularTarget: number): number => {
+    let targetPmf: Float64Array;
+    if (row.itmRate != null && row.itmRate > 0) {
+      targetPmf = calibrateShelledItm(
+        N,
+        paidCount,
+        payouts,
+        prizePool,
+        regularTarget,
+        row.itmRate,
+        row.finishBuckets,
+        model,
+      ).pmf;
+    } else {
+      const targetEffectiveROI = regularTarget / entryCost - 1;
+      const targetAlpha = calibrateAlpha(
+        N,
+        payouts,
+        prizePool,
+        entryCost,
+        targetEffectiveROI,
+        model,
+      );
+      targetPmf = buildFinishPMF(N, model, targetAlpha);
+    }
+
+    let cashEV = 0;
+    for (let i = 0; i < Math.min(payouts.length, N); i++) {
+      cashEV += targetPmf[i] * payouts[i] * prizePool;
+    }
+    return cashEV;
+  };
+
+  if (bountyFraction > 0 && isBattleRoyaleRow(row)) {
+    // Same BR rule as the engine: split incremental ROI profit from the
+    // breakeven finish baseline, not gross EV from zero.
+    const neutralBountyMean = entryCost * bountyFraction;
+    const neutralTargetRegular = Math.max(0.01, entryCost - neutralBountyMean);
+    const neutralCashEV = cashEVForTargetRegular(neutralTargetRegular);
+    const desiredCashEV = Math.max(
+      0.01,
+      neutralCashEV + entryCost * row.roi * battleRoyaleCashProfitShare(bias),
+    );
+    bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
+  }
 
   const targetRegular = Math.max(0.01, entryCost * (1 + row.roi) - bountyMean);
   const effectiveROI = targetRegular / entryCost - 1;
-  const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
   let alpha: number;
   let pmf: Float64Array;
   let feasible = true;

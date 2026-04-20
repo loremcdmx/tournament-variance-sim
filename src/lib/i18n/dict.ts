@@ -308,6 +308,42 @@ export const DICT = {
     en: "KO bounty as % of the buy-in. That chunk of every entry goes into the bounty pool instead of the regular prize pool, paid out as knockouts.",
     ru: "Баунти за вылет как % от бай-ина. Эта доля каждого входа уходит в баунти-пул вместо обычного призового и выдаётся за нокауты.",
   },
+  "row.brRoi.current": {
+    en: "incl. RB {reported} · RB {rb}",
+    ru: "с RB {reported} · RB {rb}",
+  },
+  "row.brRoi.title": {
+    en: "Battle Royale regs often quote ROI with rakeback included. The row ROI field is pre-rakeback because global rakeback is added separately. With {rbPct} rakeback this adds {rbRoi}; current row {field} becomes {reported} reported ROI.",
+    ru: "Реги Battle Royale часто называют ROI уже с рейкбеком. Поле ROI в строке хранит покерный ROI до рейкбека, потому что глобальный рейкбек добавляется отдельно. При RB {rbPct} это даёт {rbRoi}; текущие {field} в строке превращаются в {reported} reported ROI.",
+  },
+  "row.brRoi.short": {
+    en: "incl. RB",
+    ru: "с RB",
+  },
+  "row.brRoi.rbLine": {
+    en: "RB {rb}",
+    ru: "RB {rb}",
+  },
+  "row.brRoi.applyPreset": {
+    en: "set reported ROI incl. RB",
+    ru: "выбрать ROI с RB",
+  },
+  "row.brRoi.preset.low": {
+    en: "{reported} total -> {field} field",
+    ru: "{reported} итого -> {field} в поле",
+  },
+  "row.brRoi.preset.goodLow": {
+    en: "{reported} good reg -> {field} field",
+    ru: "{reported} хор. рег -> {field} в поле",
+  },
+  "row.brRoi.preset.goodHigh": {
+    en: "{reported} good reg -> {field} field",
+    ru: "{reported} хор. рег -> {field} в поле",
+  },
+  "row.brRoi.preset.top": {
+    en: "{reported} top reg -> {field} field",
+    ru: "{reported} топ -> {field} в поле",
+  },
   "row.sitThrough": {
     en: "Sit through pay jumps",
     ru: "Играем мимо лесенки",
@@ -1287,6 +1323,14 @@ export const DICT = {
     en: "Microscope EV and EV-profit readouts were combined into one cleaner expected-return card.",
     ru: "EV и EV-профит в микроскопе объединены в одну более чистую карточку ожидаемого возврата.",
   },
+  "changelog.v073.brRoi": {
+    en: "Battle Royale ROI helper now converts reported ROI with rakeback into the pre-rakeback row ROI used by the simulator.",
+    ru: "Для Battle Royale добавлен помощник ROI: reported ROI с рейкбеком переводится в ROI строки до рейкбека, который использует симулятор.",
+  },
+  "changelog.v073.brRoiSplit": {
+    en: "Battle Royale ROI presets split added ROI profit 50/50 between cash and KOs at the slider midpoint, then let the KO-share slider move that split.",
+    ru: "ROI-пресеты Battle Royale в центре слайдера делят добавленный ROI-профит 50/50 между кешем и ноками, а затем слайдер доли ноков двигает этот сплит.",
+  },
   "changelog.v07a.title": { en: "v0.7.1 — 2026-04-18", ru: "v0.7.1 — 2026-04-18" },
   "changelog.v07a.cash": {
     en: "Advanced mode now has a separate cash-game variance simulator with mixed limits and parallel workers.",
@@ -1800,6 +1844,14 @@ export const DICT = {
     en: "Global rakeback — % of paid rake credited back after every entry. Added deterministically to each bullet's profit ((rb%/100) × row.rake × row.buyIn), so re-entries also earn rakeback. Pure mean shift: trajectories lift, σ and convergence are untouched.",
     ru: "Глобальный рейкбек — % от уплаченного рейка, возвращаемый после каждого входа. Прибавляется детерминированно к профиту каждого bullet-а ((rb%/100) × рейк × бай-ин), так что ре-энтри тоже даёт рейкбек. Чистый сдвиг среднего: график поднимается, σ и сходимость не меняются.",
   },
+  "controls.rakeback.avgBr": {
+    en: "40% BR ref",
+    ru: "40% BR",
+  },
+  "controls.rakeback.avgBrTitle": {
+    en: "Set the rough Battle Royale regulars reference: 40% of paid rake returned as rakeback.",
+    ru: "Поставить примерный ориентир регов Battle Royale: 40% уплаченного рейка возвращается рейкбеком.",
+  },
   "preview.footnote": {
     en: "If the top (EV) bar is much wider than the bottom (finishes) bar in the same colour, that slice of finishes carries way more money than its share of the field — and that's exactly where your variance lives.",
     ru: "Если верхний (EV) бар в каком-то цвете сильно шире нижнего (финиши) — этот кусок финишей приносит непропорционально больше денег. Именно там сконцентрирована дисперсия.",
@@ -1928,8 +1980,8 @@ export const DICT = {
     ru: "Рейк в % от бай-ина — доля рума. 5% мажоры, 7% хайстейкс, 10% мягкие регуляры, 12% микро. Чистый минус к ROI. Конвенция: % от чистого бай-ина (до «+»), а не от полного тикета. Рум, говорящий «8% рейк на $10», имеет в виду $0.80 фи — у нас это отображается как 8.7% ($0.80 ÷ $9.20 чистыми).",
   },
   "help.row.roi": {
-    en: "Target ROI as a %, net of rake: profit ÷ (buy-in × (1+rake)). +20 means +$1.20 average return per $1 of total ticket cost. Engine binary-searches α so the finish model hits exactly this. Heads-up: Sharkscope reports ROI over buy-in without rake, so its number is always higher than ours at the same skill — a 10% Sharkscope ROI on a 10%-rake tourney is ≈0% here (you're just paying back the rake). Subtract your rake% to convert Sharkscope → this field.",
-    ru: "Целевой ROI в %, считается от полной стоимости входа: прибыль ÷ (бай-ин × (1+рейк)). +20 = +$1.20 средний возврат на каждый $1 билета (с рейком). Движок подбирает α бинарным поиском, чтобы модель финишей давала ровно это. Внимание: Sharkscope считает ROI от бай-ина БЕЗ рейка, поэтому его число всегда выше нашего при том же скилле — 10% ROI на Sharkscope для турнира с 10% рейка = ≈0% здесь (вся прибыль отъедается рейком). Чтобы перевести: вычти свой рейк% из числа на Sharkscope.",
+    en: "Target poker ROI before global rakeback, as a % of full ticket cost: profit ÷ (buy-in × (1+rake)). Global rakeback is added separately as a deterministic shift. For Battle Royale rows only, the small RB helper converts a reported ROI with rakeback into this pre-rakeback field.",
+    ru: "Целевой покерный ROI до глобального рейкбека, считается от полной стоимости входа: прибыль ÷ (бай-ин × (1+рейк)). Глобальный рейкбек добавляется отдельно детерминированным сдвигом. Только у строк Battle Royale маленький RB-помощник переводит reported ROI с рейкбеком в это поле до рейкбека.",
   },
   "help.row.payouts": {
     en: "Shape of the prize ladder. Standard ~15% ITM, Flat ~20% (shallower top), Top-heavy ~12% (steeper), plus real captured curves (PokerStars / GG / Sunday Million / Bounty Builder). WTA = 100% to 1st. Custom = your own %.",

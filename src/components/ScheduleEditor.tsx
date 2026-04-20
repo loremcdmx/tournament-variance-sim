@@ -21,6 +21,11 @@ import {
   applyGameType,
   GAME_TYPE_ORDER,
 } from "@/lib/sim/gameType";
+import {
+  preRakebackRoiFromReportedRoi,
+  rakebackRoiContribution,
+  reportedRoiFromPreRakebackRoi,
+} from "@/lib/sim/rakebackMath";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
@@ -113,6 +118,8 @@ interface Props {
   /** When set, rows with no explicit itmRate inherit this default (shown
    *  as the placeholder on the per-row input). Pass null to disable. */
   globalItmPct?: number | null;
+  /** Global rakeback %, used only for Battle Royale ROI helper copy. */
+  globalRakebackPct?: number;
   /** Optional extras rendered in the toolbar row (right of Add / Import). */
   toolbarExtras?: React.ReactNode;
 }
@@ -277,6 +284,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   onChange,
   disabled,
   globalItmPct = null,
+  globalRakebackPct = 0,
   toolbarExtras,
 }: Props) {
   const t = useT();
@@ -399,6 +407,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
                 advanced={advanced}
                 isOpen={advanced && expanded.has(r.id)}
                 globalItmPct={globalItmPct}
+                globalRakebackPct={globalRakebackPct}
                 canRemove={canRemove}
                 update={update}
                 remove={remove}
@@ -520,6 +529,7 @@ interface ScheduleRowProps {
   advanced: boolean;
   isOpen: boolean;
   globalItmPct: number | null;
+  globalRakebackPct: number;
   canRemove: boolean;
   update: (id: string, patch: Partial<TournamentRow>) => void;
   remove: (id: string) => void;
@@ -534,6 +544,7 @@ const ScheduleRow = memo(function ScheduleRow({
   advanced,
   isOpen,
   globalItmPct,
+  globalRakebackPct,
   canRemove,
   update,
   remove,
@@ -675,14 +686,23 @@ const ScheduleRow = memo(function ScheduleRow({
             onChange={(buyIn, rake) => update(r.id, { buyIn, rake })}
           />
         </Td>
-        <Td align="right">
-          <NumInput
-            value={+(r.roi * 100).toFixed(2)}
-            onChange={(v) => update(r.id, { roi: v / 100 })}
-            min={-99}
-            max={10_000}
-            step={1}
-          />
+        <Td align="right" className={gt === "mystery-royale" ? "min-w-[132px]" : ""}>
+          <div className="flex flex-col items-center gap-1">
+            <NumInput
+              value={+(r.roi * 100).toFixed(2)}
+              onChange={(v) => update(r.id, { roi: v / 100 })}
+              min={-99}
+              max={10_000}
+              step={1}
+            />
+            {gt === "mystery-royale" && (
+              <BrReportedRoiControl
+                row={r}
+                globalRakebackPct={globalRakebackPct}
+                onApply={(roi) => update(r.id, { roi, bountyEvBias: 0 })}
+              />
+            )}
+          </div>
         </Td>
         <Td align="right">
           <input
@@ -1280,6 +1300,86 @@ function brPresetMatch(
     }
   }
   return best;
+}
+
+const BR_REPORTED_ROI_PRESETS = [
+  { id: "low", reportedRoi: 0.03, labelKey: "row.brRoi.preset.low" },
+  { id: "goodLow", reportedRoi: 0.05, labelKey: "row.brRoi.preset.goodLow" },
+  { id: "goodHigh", reportedRoi: 0.07, labelKey: "row.brRoi.preset.goodHigh" },
+  { id: "top", reportedRoi: 0.1, labelKey: "row.brRoi.preset.top" },
+] as const;
+
+function formatPct(v: number, digits = 1): string {
+  const pct = v * 100;
+  const sign = pct > 0 ? "+" : "";
+  return `${sign}${pct.toFixed(digits)}%`;
+}
+
+function roundRoiToWholePct(roi: number): number {
+  return Math.round(roi * 100) / 100;
+}
+
+function BrReportedRoiControl({
+  row,
+  globalRakebackPct,
+  onApply,
+}: {
+  row: TournamentRow;
+  globalRakebackPct: number;
+  onApply: (preRakebackRoi: number) => void;
+}) {
+  const t = useT();
+  const rbPct = Math.max(0, globalRakebackPct);
+  const rbRoi = rakebackRoiContribution(row.rake, rbPct);
+  const reportedRoi = reportedRoiFromPreRakebackRoi(row.roi, row.rake, rbPct);
+  const title = t("row.brRoi.title")
+    .replace("{rbPct}", `${rbPct.toFixed(0)}%`)
+    .replace("{rbRoi}", formatPct(rbRoi))
+    .replace("{reported}", formatPct(reportedRoi))
+    .replace("{field}", formatPct(row.roi));
+  return (
+    <div
+      className="w-28 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1"
+      title={title}
+    >
+      <div
+        className="flex items-center justify-between gap-1 text-[9px] font-medium uppercase leading-none tracking-[0.08em] text-[color:var(--color-fg-dim)]"
+      >
+        <span>{t("row.brRoi.short")}</span>
+        <span className="tabular-nums text-[color:var(--color-fg-muted)]">
+          {formatPct(reportedRoi)}
+        </span>
+      </div>
+      <div className="mt-1 grid grid-cols-4 gap-0.5">
+        {BR_REPORTED_ROI_PRESETS.map((p) => {
+          const fieldRoi = preRakebackRoiFromReportedRoi(
+            p.reportedRoi,
+            row.rake,
+            rbPct,
+          );
+          const roundedFieldRoi = roundRoiToWholePct(fieldRoi);
+          const optionTitle = t(p.labelKey)
+            .replace("{reported}", formatPct(p.reportedRoi))
+            .replace("{field}", formatPct(roundedFieldRoi));
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onApply(roundedFieldRoi)}
+              className="h-5 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)] text-[9px] font-semibold tabular-nums text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] focus:border-[color:var(--color-accent)] focus:outline-none"
+              title={optionTitle}
+              aria-label={optionTitle}
+            >
+              {(p.reportedRoi * 100).toFixed(0)}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-1 truncate text-center text-[8px] uppercase leading-none tracking-[0.08em] text-[color:var(--color-fg-dim)]">
+        {t("row.brRoi.rbLine").replace("{rb}", formatPct(rbRoi))}
+      </div>
+    </div>
+  );
 }
 
 function BrPresetSelect({

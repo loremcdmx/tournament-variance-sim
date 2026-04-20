@@ -416,6 +416,10 @@ export default function Home() {
     () => (controls.itmGlobalEnabled ? controls.itmGlobalPct : null),
     [controls.itmGlobalEnabled, controls.itmGlobalPct],
   );
+  const hasBattleRoyaleRows = useMemo(
+    () => schedule.some((r) => r.gameType === "mystery-royale" || r.payoutStructure === "battle-royale"),
+    [schedule],
+  );
   const scheduleToolbarExtras = useMemo(
     () => (
       <>
@@ -886,6 +890,7 @@ export default function Home() {
             value={controls}
             onChange={handleControlsChange}
             disabled={running}
+            showBattleRoyalePreset={hasBattleRoyaleRows}
           />
           <BankrollControl
             value={controls}
@@ -899,6 +904,7 @@ export default function Home() {
           onChange={handleScheduleChange}
           disabled={running}
           globalItmPct={scheduleGlobalItmPct}
+          globalRakebackPct={controls.rakebackPct}
           toolbarExtras={scheduleToolbarExtras}
         />
       </Section>
@@ -1101,6 +1107,8 @@ export default function Home() {
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v073.koAudit")}</li>
               <li>{t("changelog.v073.evCard")}</li>
+              <li>{t("changelog.v073.brRoi")}</li>
+              <li>{t("changelog.v073.brRoiSplit")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07a.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
@@ -1214,10 +1222,12 @@ const GlobalRakebackControl = memo(function GlobalRakebackControl({
   value,
   onChange,
   disabled,
+  showBattleRoyalePreset,
 }: {
   value: ControlsState;
   onChange: (next: ControlsState) => void;
   disabled?: boolean;
+  showBattleRoyalePreset: boolean;
 }) {
   const t = useT();
   return (
@@ -1248,6 +1258,17 @@ const GlobalRakebackControl = memo(function GlobalRakebackControl({
         />
         <span className="text-[11px] text-[color:var(--color-fg-dim)]">%</span>
       </div>
+      {showBattleRoyalePreset && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange({ ...value, rakebackPct: 40 })}
+          title={t("controls.rakeback.avgBrTitle")}
+          className="rounded-md border border-[color:var(--color-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-40"
+        >
+          {t("controls.rakeback.avgBr")}
+        </button>
+      )}
     </div>
   );
 });

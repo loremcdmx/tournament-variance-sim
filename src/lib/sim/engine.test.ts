@@ -762,6 +762,22 @@ describe("bountyEvBias", () => {
     return pmf;
   };
 
+  const cashBountyEV = (compiled: {
+    aliasProb: Float64Array;
+    aliasIdx: Int32Array;
+    prizeByPlace: Float64Array;
+    bountyByPlace: Float64Array | null;
+  }): { cash: number; bounty: number } => {
+    const pmf = pmfFromAlias(compiled.aliasProb, compiled.aliasIdx);
+    let cash = 0;
+    let bounty = 0;
+    for (let i = 0; i < pmf.length; i++) {
+      cash += pmf[i] * compiled.prizeByPlace[i];
+      bounty += pmf[i] * (compiled.bountyByPlace?.[i] ?? 0);
+    }
+    return { cash, bounty };
+  };
+
   it("undefined bias matches bias=0 byte-for-byte (default preserved)", () => {
     const unset = runSimulation(pkoInput());
     const zero = runSimulation(pkoInput(0));
@@ -867,6 +883,49 @@ describe("bountyEvBias", () => {
         );
       }
     }
+  });
+
+  it("fixed-ITM Battle Royale splits added ROI profit 50/50 at center", () => {
+    const compileRoyale = (roi: number, bias = 0) =>
+      compileSchedule({
+        schedule: [
+          {
+            id: `mbr-profit-${roi}-${bias}`,
+            label: "mbr",
+            players: 18,
+            buyIn: 25 / 1.08,
+            rake: 0.08,
+            roi,
+            gameType: "mystery-royale",
+            payoutStructure: "battle-royale",
+            bountyFraction: 0.5,
+            mysteryBountyVariance: 1.8,
+            itmRate: 0.24,
+            count: 1,
+            bountyEvBias: bias,
+          },
+        ],
+        scheduleRepeats: 1,
+        samples: 1,
+        bankroll: 100,
+        seed: 7,
+        finishModel: { id: "power-law" },
+      }).flat[0];
+
+    const breakeven = cashBountyEV(compileRoyale(0));
+    const plusFour = cashBountyEV(compileRoyale(0.04));
+    const profitLift = 25 * 0.04;
+
+    expect(plusFour.cash - breakeven.cash).toBeCloseTo(profitLift * 0.5, 10);
+    expect(plusFour.bounty - breakeven.bounty).toBeCloseTo(profitLift * 0.5, 10);
+
+    const cashHeavy = cashBountyEV(compileRoyale(0.04, 0.25));
+    const koHeavy = cashBountyEV(compileRoyale(0.04, -0.25));
+
+    expect(cashHeavy.cash - breakeven.cash).toBeCloseTo(profitLift * 0.75, 10);
+    expect(cashHeavy.bounty - breakeven.bounty).toBeCloseTo(profitLift * 0.25, 10);
+    expect(koHeavy.cash - breakeven.cash).toBeCloseTo(profitLift * 0.25, 10);
+    expect(koHeavy.bounty - breakeven.bounty).toBeCloseTo(profitLift * 0.75, 10);
   });
 
   it("fixed-ITM Battle Royale trades first-place frequency for KO count", () => {

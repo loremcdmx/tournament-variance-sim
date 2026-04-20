@@ -8,6 +8,9 @@ internal scripts, and other low-signal maintenance are intentionally omitted.
 - Made the KO-share control easier to audit: the midpoint now resets to the
   neutral cash-vs-KO balance, numeric entry is bounded to the valid EV range,
   and gross EV cards show cash / regular KO / jackpot percentages.
+- Battle Royale ROI-with-rakeback presets now split added ROI profit from the
+  breakeven finish baseline between cash and KOs before the KO-share slider
+  moves it either way.
 - Combined the microscope EV and EV-profit readouts into one cleaner expected
   return card.
 
