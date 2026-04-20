@@ -1417,10 +1417,7 @@ export function buildResult(
   const paths = shard.hiResPaths;
   const best = shard.hiResBestPath;
   const worst = shard.hiResWorstPath;
-  // sampleIndices are informational only — the leading-shard hi-res paths
-  // correspond to samples [0 .. paths.length-1].
-  const chosen: number[] = new Array(paths.length);
-  for (let i = 0; i < paths.length; i++) chosen[i] = i;
+  const chosen: number[] = Array.from(shard.hiResSampleIndices);
 
   // Drawdown + breakeven
   let ddMean = 0;
@@ -1956,8 +1953,10 @@ export interface RawShard {
    *  in this shard. */
   hiResCheckpointIdx: Int32Array;
   /** Per-sample hi-res paths for the first `wantHiResPaths` samples of
-   *  shard 0 only. Empty for non-leading shards. */
+   *  this shard. */
   hiResPaths: Float64Array[];
+  /** Global sample indices for `hiResPaths`, parallel to the paths array. */
+  hiResSampleIndices: Int32Array;
   /** Snapshot of the shard-local best-final-profit sample path. */
   hiResBestPath: Float64Array;
   hiResWorstPath: Float64Array;
@@ -2081,6 +2080,8 @@ export function simulateShard(
   );
   const hiResPaths: Float64Array[] = new Array(wantHiResPaths);
   for (let i = 0; i < wantHiResPaths; i++) hiResPaths[i] = new Float64Array(hiK1);
+  const hiResSampleIndices = new Int32Array(wantHiResPaths);
+  for (let i = 0; i < wantHiResPaths; i++) hiResSampleIndices[i] = sStart + i;
   const hiResBestPath = new Float64Array(hiK1);
   const hiResWorstPath = new Float64Array(hiK1);
   const hiResScratch = new Float64Array(hiK1);
@@ -2577,6 +2578,7 @@ export function simulateShard(
     ruinedCount,
     hiResCheckpointIdx: hiCheckpointIdx,
     hiResPaths,
+    hiResSampleIndices,
     hiResBestPath,
     hiResWorstPath,
     hiResBestFinal,
@@ -2649,8 +2651,12 @@ export function mergeShards(
   const leading = sorted[0];
   const hiResCheckpointIdx = leading.hiResCheckpointIdx;
   const hiResPaths: Float64Array[] = [];
+  const hiResSampleIndices: number[] = [];
   for (const sh of sorted) {
-    for (const p of sh.hiResPaths) hiResPaths.push(p);
+    for (let i = 0; i < sh.hiResPaths.length; i++) {
+      hiResPaths.push(sh.hiResPaths[i]);
+      hiResSampleIndices.push(sh.hiResSampleIndices[i]);
+    }
   }
   let bestShard = leading;
   let worstShard = leading;
@@ -2691,6 +2697,7 @@ export function mergeShards(
     ruinedCount,
     hiResCheckpointIdx,
     hiResPaths,
+    hiResSampleIndices: Int32Array.from(hiResSampleIndices),
     hiResBestPath: bestShard.hiResBestPath,
     hiResWorstPath: worstShard.hiResWorstPath,
     hiResBestFinal: bestShard.hiResBestFinal,

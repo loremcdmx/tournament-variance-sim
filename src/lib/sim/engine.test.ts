@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { runSimulation, compileSchedule } from "./engine";
+import {
+  buildResult,
+  compileSchedule,
+  makeCheckpointGrid,
+  mergeShards,
+  runSimulation,
+  simulateShard,
+} from "./engine";
 import type { SimulationInput, FinishModelId, PayoutStructureId } from "./types";
 
 function baseInput(overrides: Partial<SimulationInput> = {}): SimulationInput {
@@ -671,6 +678,26 @@ describe("jackpotMask", () => {
     let hits = 0;
     for (let i = 0; i < r.jackpotMask.length; i++) hits += r.jackpotMask[i];
     expect(hits).toBeGreaterThan(0);
+  });
+
+  it("keeps global sample indices for merged hi-res paths", () => {
+    const input = baseInput({
+      scheduleRepeats: 1,
+      samples: 2000,
+    });
+    const compiled = compileSchedule(input, "alpha");
+    const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+    const a = simulateShard(input, compiled, 0, 1000, grid);
+    const b = simulateShard(input, compiled, 1000, 2000, grid);
+
+    expect(a.hiResPaths.length).toBeLessThan(1000);
+    expect(b.hiResPaths.length).toBeLessThan(1000);
+
+    const merged = mergeShards([a, b], input.samples, grid.K + 1, input.schedule.length);
+    const result = buildResult(input, compiled, merged, "alpha", grid);
+
+    expect(result.samplePaths.sampleIndices[0]).toBe(0);
+    expect(result.samplePaths.sampleIndices[a.hiResPaths.length]).toBe(1000);
   });
 });
 

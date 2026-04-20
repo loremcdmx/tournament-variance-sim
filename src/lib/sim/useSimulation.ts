@@ -413,6 +413,7 @@ export function useSimulation() {
             out.push(sh.rowProfits.buffer);
             out.push(sh.jackpotMask.buffer);
             out.push(sh.hiResCheckpointIdx.buffer);
+            out.push(sh.hiResSampleIndices.buffer);
             out.push(sh.hiResBestPath.buffer);
             out.push(sh.hiResWorstPath.buffer);
             for (const p of sh.hiResPaths) out.push(p.buffer);

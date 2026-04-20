@@ -141,6 +141,7 @@ function collectShardTransfers(shard: RawShard): Transferable[] {
     shard.rowProfits.buffer,
     shard.jackpotMask.buffer,
     shard.hiResCheckpointIdx.buffer,
+    shard.hiResSampleIndices.buffer,
     shard.hiResBestPath.buffer,
     shard.hiResWorstPath.buffer,
   ];
