@@ -11,29 +11,25 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import {
+  FIT_RAKE_BY_FORMAT,
+  SIGMA_ROI_FREEZE,
+  SIGMA_ROI_MYSTERY,
+  SIGMA_ROI_MYSTERY_ROYALE,
+  SIGMA_ROI_PKO,
+  ciToZ,
+  sigmaForFit,
+  type RowFormat,
+  type SigmaRoiFit,
+} from "../src/lib/sim/convergenceMath";
 
-const SIGMA_ROI_FREEZE = { C0: 0.6564, C1: 0, beta: 0.3694 };
-const SIGMA_ROI_PKO = { C0: 0.6265, C1: 0.4961, beta: 0.2763 };
-const SIGMA_ROI_MYSTERY = { C0: 2.5164, C1: 3.7097, beta: 0.1325 };
-const SIGMA_ROI_MYSTERY_ROYALE = { C0: 8.1534, C1: 7.9063, beta: 0 };
-const FIT_RAKE_BY_FORMAT = { freeze: 0.1, pko: 0.1, mystery: 0.1, "mystery-royale": 0.08 } as const;
-
-type Coef = typeof SIGMA_ROI_FREEZE;
-type Fmt = keyof typeof FIT_RAKE_BY_FORMAT;
+type Coef = SigmaRoiFit;
+type Fmt = RowFormat;
 
 function sigmaFor(coef: Coef, afs: number, roi: number, rake: number, fitRake: number): number {
   const rakeScale = (1 + fitRake) / (1 + rake);
-  return Math.max(0, coef.C0 + coef.C1 * roi) * Math.pow(Math.max(1, afs), coef.beta) * rakeScale;
+  return sigmaForFit(coef, afs, roi, rakeScale);
 }
-
-function inverseErf(x: number): number {
-  const a = 0.147;
-  const ln1 = Math.log(1 - x * x);
-  const t = 2 / (Math.PI * a) + ln1 / 2;
-  const sign = x >= 0 ? 1 : -1;
-  return sign * Math.sqrt(Math.sqrt(t * t - ln1 / a) - t);
-}
-const ciToZ = (ci: number) => Math.SQRT2 * inverseErf(Math.max(0, Math.min(0.999999, ci)));
 
 // ---------- Tab 1: FREEZE ---------------------------------------------------
 

@@ -9,6 +9,12 @@ export interface CursorInfo {
   left: number;
   top: number;
   valY: number;
+  plotWidth: number;
+  plotHeight: number;
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
 }
 
 interface Props {
@@ -86,7 +92,18 @@ export function UplotChart({
             }
             const tp = top ?? 0;
             const valY = u.posToVal(tp, "y");
-            cb({ idx, left, top: tp, valY });
+            cb({
+              idx,
+              left,
+              top: tp,
+              valY,
+              plotWidth: u.over.clientWidth,
+              plotHeight: u.over.clientHeight,
+              xMin: Number(u.scales.x.min ?? 0),
+              xMax: Number(u.scales.x.max ?? 1),
+              yMin: Number(u.scales.y.min ?? 0),
+              yMax: Number(u.scales.y.max ?? 1),
+            });
           },
         ],
         setScale: [

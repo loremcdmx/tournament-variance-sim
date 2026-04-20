@@ -5,8 +5,9 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { Card } from "./ui/Section";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { TournamentRow } from "@/lib/sim/types";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
+import type { Locale } from "@/lib/i18n/dict";
 
 interface Props {
   schedule: TournamentRow[];
@@ -65,10 +66,18 @@ function placeLabel(n: number): string {
   return `${n}th`;
 }
 
+function localeTag(locale: Locale): string {
+  return locale === "ru" ? "ru-RU" : "en-US";
+}
+
+function formatCount(n: number, locale: Locale): string {
+  return Math.round(n).toLocaleString(localeTag(locale));
+}
+
 export const PayoutStructureCard = memo(function PayoutStructureCard({
   schedule,
 }: Props) {
-  const t = useT();
+  const { locale, t } = useLocale();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [palette, setPalette] = useState<PaletteId>(() => {
     if (typeof window === "undefined") return "medal";
@@ -136,8 +145,8 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
           </div>
           <div className="text-[11px] text-[color:var(--color-fg-dim)]">
             {t("payouts.subtitle")
-              .replace("{paid}", paid.toLocaleString())
-              .replace("{total}", row.players.toLocaleString())
+              .replace("{paid}", formatCount(paid, locale))
+              .replace("{total}", formatCount(row.players, locale))
               .replace("{pct}", (totalPaidPct * 100).toFixed(1))
               .replace("{min}", minCashBuyIns)}
           </div>
@@ -179,6 +188,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
           cashPoolDollars={cashPoolDollars}
           bountyPoolDollars={bountyPoolDollars}
           isBr={isBr}
+          locale={locale}
           cashLabel={t("payouts.pool.cash")}
           bountyLabel={t("payouts.pool.bounty")}
           noteKey={isBr ? "payouts.pool.noteBr" : "payouts.pool.note"}
@@ -236,6 +246,7 @@ function PoolSplit({
   cashPoolDollars,
   bountyPoolDollars,
   isBr,
+  locale,
   cashLabel,
   bountyLabel,
   noteKey,
@@ -246,13 +257,14 @@ function PoolSplit({
   cashPoolDollars: number;
   bountyPoolDollars: number;
   isBr: boolean;
+  locale: Locale;
   cashLabel: string;
   bountyLabel: string;
   noteKey: DictKey;
   t: (key: DictKey) => string;
 }) {
   const fmtDollars = (v: number) => {
-    if (v >= 1000) return `$${Math.round(v).toLocaleString()}`;
+    if (v >= 1000) return `$${formatCount(v, locale)}`;
     if (v >= 100) return `$${v.toFixed(0)}`;
     if (v >= 1) return `$${v.toFixed(2)}`;
     return `$${v.toFixed(3)}`;

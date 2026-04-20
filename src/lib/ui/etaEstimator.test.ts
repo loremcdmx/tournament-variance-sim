@@ -5,6 +5,7 @@ import {
   TAIL_CUTOFF_MS,
   TAU_MID_MS,
   TAU_TAIL_MS,
+  TAU_UP_MS,
   computeRemainingMs,
 } from "./etaEstimator";
 
@@ -75,20 +76,27 @@ describe("computeRemainingMs", () => {
     expect(out).toBe(0);
   });
 
-  it("ticks down monotonically by wall-clock dt when raw rises", () => {
-    // Projection jitters up, but the display must not jump backwards.
-    // prev=1000 ms, raw should be higher → emit prev - dt = 984.
+  it("allows a too-low bootstrap estimate to recover upward slowly", () => {
+    // Projection proves the first ETA was too small. Move upward, but damp it
+    // enough that small progress jitter doesn't make the label jump around.
+    const prevSmoothedMs = 1000;
+    const dtMs = 100;
     const out = computeRemainingMs({
-      elapsedMs: 0, // forced high projection
+      elapsedMs: 500,
       progress: 0.1,
       estimatedMs: 5000,
-      prevSmoothedMs: 1000,
-      dtMs: 16,
+      prevSmoothedMs,
+      dtMs,
     });
-    expect(out).toBe(984);
+    const raw = 4500;
+    const alpha = 1 - Math.exp(-dtMs / TAU_UP_MS);
+    const expected = alpha * raw + (1 - alpha) * prevSmoothedMs;
+    expect(out).toBeCloseTo(expected, 6);
+    expect(out!).toBeGreaterThan(prevSmoothedMs);
+    expect(out!).toBeLessThan(raw);
   });
 
-  it("never emits below zero when counting down with large dt", () => {
+  it("does not keep counting down when raw climbs with large dt", () => {
     const out = computeRemainingMs({
       elapsedMs: 0,
       progress: 0.1,
@@ -96,7 +104,8 @@ describe("computeRemainingMs", () => {
       prevSmoothedMs: 20,
       dtMs: 500,
     });
-    expect(out).toBe(0);
+    expect(out).toBeGreaterThan(20);
+    expect(out).toBeLessThan(5000);
   });
 
   it("uses the mid-run τ when prev is above the tail cutoff", () => {
@@ -146,8 +155,9 @@ describe("computeRemainingMs", () => {
     );
   });
 
-  it("never reinflates above prev when raw climbs (monotonic)", () => {
-    // Simulate 20 steps of climbing raw → smoothed must be non-increasing.
+  it("keeps upward recovery smooth when raw climbs", () => {
+    // Simulate 20 steps of climbing raw → smoothed should rise, but stay well
+    // below the raw projection because upward corrections are damped.
     let prev: number | null = 3000;
     const history: number[] = [prev];
     for (let i = 0; i < 20; i++) {
@@ -159,17 +169,19 @@ describe("computeRemainingMs", () => {
         dtMs: 16,
       });
       expect(next).not.toBeNull();
-      expect(next!).toBeLessThanOrEqual(prev!);
+      expect(next!).toBeGreaterThanOrEqual(prev!);
+      expect(next!).toBeLessThan(10_000 + i * 500);
       prev = next;
       history.push(next!);
     }
-    // Total drop should be 20 · 16 = 320 ms (pure dt countdown).
-    expect(history[0] - history[history.length - 1]).toBeCloseTo(320, 6);
+    expect(history[history.length - 1]).toBeGreaterThan(history[0]);
+    expect(history[history.length - 1]).toBeLessThan(6000);
   });
 
   it("keeps TAIL_CUTOFF, TAU_TAIL, and TAU_MID in the expected ordering", () => {
     // Sanity on the constants so a future tweak is forced through the test.
     expect(TAU_TAIL_MS).toBeLessThan(TAU_MID_MS);
+    expect(TAU_MID_MS).toBeLessThan(TAU_UP_MS);
     expect(TAIL_CUTOFF_MS).toBeGreaterThan(0);
     expect(PROJECTION_MIN_PROGRESS).toBeGreaterThan(0);
     expect(PROJECTION_MIN_PROGRESS).toBeLessThan(

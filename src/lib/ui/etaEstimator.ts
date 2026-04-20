@@ -8,10 +8,10 @@
  * Weight ramps from 0 at `progress≈0` to 1 at `progress≥0.5`, so the
  * bootstrap carries the first half-second before projection stabilises.
  *
- * Countdown uses a one-sided exponential smoother: `raw` only pulls the
- * display *down*; if the new raw estimate is larger, the display still
- * ticks down by wall-clock `dt`. Keeps the ETA monotonic so users don't
- * see it jump back up mid-run.
+ * Countdown uses an asymmetric exponential smoother: downward corrections
+ * move quickly, upward corrections move slowly. A too-low bootstrap hint
+ * must be allowed to recover once shard progress proves the run is longer;
+ * otherwise the UI looks hard-capped at the initial guess.
  *
  * Near the tail (`prev < 1500ms`) we cut the smoothing time constant
  * from 400→150 so the last second tracks reality — otherwise the bar
@@ -20,6 +20,7 @@
 
 export const TAU_MID_MS = 400;
 export const TAU_TAIL_MS = 150;
+export const TAU_UP_MS = 1800;
 export const TAIL_CUTOFF_MS = 1500;
 /** `progress` must cross this before we trust the projection at all. */
 export const PROJECTION_MIN_PROGRESS = 0.03;
@@ -67,5 +68,6 @@ export function computeRemainingMs(step: RemainingMsStep): number | null {
     const alpha = 1 - Math.exp(-dtMs / tau);
     return alpha * raw + (1 - alpha) * prevSmoothedMs;
   }
-  return Math.max(0, prevSmoothedMs - dtMs);
+  const alpha = 1 - Math.exp(-dtMs / TAU_UP_MS);
+  return alpha * raw + (1 - alpha) * prevSmoothedMs;
 }

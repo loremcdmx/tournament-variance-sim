@@ -69,7 +69,7 @@ import {
   stripJackpots,
 } from "@/lib/results/trajectoryTransforms";
 import type { ControlsState } from "./ControlsPanel";
-import { UplotChart } from "./charts/UplotChart";
+import { UplotChart, type CursorInfo } from "./charts/UplotChart";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
 import { DecompositionChart } from "./charts/DecompositionChart";
@@ -304,12 +304,7 @@ function TrajectoryPlot({
 }) {
   const t = useT();
   const { compactMoney } = useMoneyFmt();
-  const [cursor, setCursor] = useState<{
-    idx: number;
-    left: number;
-    top: number;
-    valY: number;
-  } | null>(null);
+  const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const plotRef = useRef<uPlot | null>(null);
   const handlePlotReady = useCallback((plot: uPlot | null) => {
     plotRef.current = plot;
@@ -322,12 +317,13 @@ function TrajectoryPlot({
     (scaleKey: string, min: number | null, max: number | null) => {
       if (scaleKey !== "x") return;
       if (min == null || max == null || !Number.isFinite(min) || !Number.isFinite(max)) {
-        setXZoomed(false);
+        setXZoomed((prev) => (prev ? false : prev));
         return;
       }
       const span = Math.max(1, xMax - xMin);
       const eps = span * 1e-6;
-      setXZoomed(Math.abs(min - xMin) > eps || Math.abs(max - xMax) > eps);
+      const next = Math.abs(min - xMin) > eps || Math.abs(max - xMax) > eps;
+      setXZoomed((prev) => (prev === next ? prev : next));
     },
     [xMin, xMax],
   );
@@ -337,7 +333,9 @@ function TrajectoryPlot({
     plot.setScale("x", { min: xMin, max: xMax });
   }, [xMin, xMax]);
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setXZoomed(false));
+    const frame = requestAnimationFrame(() => {
+      setXZoomed((prev) => (prev ? false : prev));
+    });
     return () => cancelAnimationFrame(frame);
   }, [assets, xMin, xMax]);
 
@@ -455,9 +453,10 @@ function TrajectoryPlot({
   let nearest: TrajectoryLineMeta | null = null;
   let nearestVal = 0;
   let nearestPath: TrajectoryLineMeta | null = null;
+  let nearestPathVal = 0;
   if (cursor && idx != null) {
     let bestDist = Infinity;
-    let bestPathDist = Infinity;
+    let bestPathPxDist = Infinity;
     for (const line of assets.mainLines) {
       if (line.kind === "path") {
         if (!isPathVisible(line.rank ?? 0)) continue;
@@ -486,10 +485,28 @@ function TrajectoryPlot({
         line.kind === "path" ||
         (line.kind === "best" && line.variant === "real") ||
         (line.kind === "worst" && line.variant === "real");
-      if (isHighlightable && d < bestPathDist) {
-        bestPathDist = d;
-        nearestPath = line;
+      if (isHighlightable) {
+        const pxDist = visualDistanceToSeries(
+          cursor,
+          assets.data[0] as ArrayLike<number>,
+          arr,
+          idx,
+        );
+        if (pxDist < bestPathPxDist) {
+          bestPathPxDist = pxDist;
+          nearestPath = line;
+          nearestPathVal = v;
+        }
       }
+    }
+    // For per-run hovering, trust the visual hit-test over the value-only
+    // nearest line. The flock paths are dense and checkpointed; using only the
+    // nearest x-index can miss the segment the cursor is actually sitting on.
+    if (nearestPath && bestPathPxDist <= TRAJECTORY_PATH_HIT_PX) {
+      nearest = nearestPath;
+      nearestVal = nearestPathVal;
+    } else {
+      nearestPath = null;
     }
   }
 
@@ -931,6 +948,84 @@ function parseRgb(css: string): [number, number, number] {
     return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
   }
   return [200, 200, 200];
+}
+
+const TRAJECTORY_PATH_HIT_PX = 18;
+
+function pointToSegmentDistancePx(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 0) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function cursorValToPos(cursor: CursorInfo, value: number, scale: "x" | "y"): number {
+  const min = scale === "x" ? cursor.xMin : cursor.yMin;
+  const max = scale === "x" ? cursor.xMax : cursor.yMax;
+  const size = scale === "x" ? cursor.plotWidth : cursor.plotHeight;
+  const span = max - min;
+  if (!Number.isFinite(value) || !Number.isFinite(span) || span === 0) {
+    return NaN;
+  }
+  const t = (value - min) / span;
+  return scale === "x" ? t * size : (1 - t) * size;
+}
+
+function visualDistanceToSeries(
+  cursor: CursorInfo,
+  xArr: ArrayLike<number>,
+  yArr: ArrayLike<number>,
+  centerIdx: number,
+): number {
+  const len = Math.min(xArr.length, yArr.length);
+  if (len <= 0) return Infinity;
+  const lo = Math.max(0, centerIdx - 2);
+  const hi = Math.min(len - 1, centerIdx + 2);
+  let best = Infinity;
+  for (let i = lo; i < hi; i++) {
+    const x0 = xArr[i];
+    const y0 = yArr[i];
+    const x1 = xArr[i + 1];
+    const y1 = yArr[i + 1];
+    if (
+      x0 == null ||
+      y0 == null ||
+      x1 == null ||
+      y1 == null ||
+      !Number.isFinite(y0) ||
+      !Number.isFinite(y1)
+    ) {
+      continue;
+    }
+    const d = pointToSegmentDistancePx(
+      cursor.left,
+      cursor.top,
+      cursorValToPos(cursor, x0, "x"),
+      cursorValToPos(cursor, y0, "y"),
+      cursorValToPos(cursor, x1, "x"),
+      cursorValToPos(cursor, y1, "y"),
+    );
+    if (Number.isFinite(d) && d < best) best = d;
+  }
+  if (best < Infinity) return best;
+
+  const idx = Math.max(0, Math.min(len - 1, centerIdx));
+  const x = xArr[idx];
+  const y = yArr[idx];
+  if (x == null || y == null || !Number.isFinite(y)) return Infinity;
+  return Math.hypot(
+    cursor.left - cursorValToPos(cursor, x, "x"),
+    cursor.top - cursorValToPos(cursor, y, "y"),
+  );
 }
 
 /** Per-run path color + width scaled to the number of visible runs.
@@ -2759,6 +2854,15 @@ const TrajectoryCard = memo(function TrajectoryCard({
   const { compactMoney } = useMoneyFmt();
   const { advanced } = useAdvancedMode();
   const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
+  const overlayLegendKey: DictKey = pdPkoFallback
+    ? "chart.legend.noKoOverlay"
+    : compareMode === "primedope"
+      ? "chart.legend.pdOverlay"
+      : "chart.legend.genericOverlay";
+  const overlayLegend =
+    overlayPd && !pdPresetFlip ? (
+      <OverlayLegendChip label={t(overlayLegendKey)} />
+    ) : null;
   const hasBounty = (schedule ?? []).some(
     (r) => (r.bountyFraction ?? 0) > 0,
   );
@@ -2968,6 +3072,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
                 ? t(oursCapKey)
                 : t("twin.runA.cap")
             }
+            action={overlayLegend}
           >
             <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} />
           </ChartPane>
@@ -4138,6 +4243,18 @@ function SettingsDumpCard({
         ))}
       </div>
     </Card>
+  );
+}
+
+function OverlayLegendChip({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+      <span
+        className="inline-block h-[1px] w-6 border-t-2 border-dashed"
+        style={{ borderColor: "#60a5fa" }}
+      />
+      <span>{label}</span>
+    </div>
   );
 }
 
