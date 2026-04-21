@@ -7,7 +7,7 @@
  * is a boundary where defensive parsing is intentional.
  */
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
-import type { TournamentRow } from "./sim/types";
+import type { GameType, PayoutStructureId, TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -81,6 +81,30 @@ const VALID_FINISH_MODEL_IDS = new Set<ControlsState["finishModelId"]>([
   "mystery-realdata-linear",
   "mystery-realdata-tilt",
   "powerlaw-realdata-influenced",
+]);
+const VALID_GAME_TYPES = new Set<GameType>([
+  "freezeout",
+  "freezeout-reentry",
+  "pko",
+  "mystery",
+  "mystery-royale",
+]);
+const VALID_PAYOUT_STRUCTURE_IDS = new Set<PayoutStructureId>([
+  "mtt-standard",
+  "mtt-primedope",
+  "mtt-flat",
+  "mtt-top-heavy",
+  "battle-royale",
+  "mtt-pokerstars",
+  "mtt-gg",
+  "mtt-sunday-million",
+  "mtt-gg-bounty",
+  "mtt-gg-mystery",
+  "satellite-ticket",
+  "sng-50-30-20",
+  "sng-65-35",
+  "winner-takes-all",
+  "custom",
 ]);
 const VALID_COMPARE_MODES = new Set<ControlsState["compareMode"]>([
   "random",
@@ -162,6 +186,32 @@ function isValidCompareMode(
     typeof value === "string" &&
     VALID_COMPARE_MODES.has(value as ControlsState["compareMode"])
   );
+}
+
+function isValidGameType(value: unknown): value is GameType {
+  return typeof value === "string" && VALID_GAME_TYPES.has(value as GameType);
+}
+
+function isValidPayoutStructureId(value: unknown): value is PayoutStructureId {
+  return (
+    typeof value === "string" &&
+    VALID_PAYOUT_STRUCTURE_IDS.has(value as PayoutStructureId)
+  );
+}
+
+function defaultPayoutStructureForGameType(
+  gameType: TournamentRow["gameType"],
+): Exclude<PayoutStructureId, "custom"> {
+  switch (gameType) {
+    case "mystery-royale":
+      return "battle-royale";
+    case "mystery":
+      return "mtt-gg-mystery";
+    case "pko":
+      return "mtt-gg-bounty";
+    default:
+      return "mtt-standard";
+  }
 }
 
 function normalizeEmpiricalBuckets(value: unknown): number[] | undefined {
@@ -360,6 +410,10 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
 function normalizePersistedState(state: PersistedState): PersistedState {
   let changed = false;
   const schedule = state.schedule.map((row) => {
+    const nextGameType = isValidGameType(row.gameType) ? row.gameType : undefined;
+    const nextPayoutStructure = isValidPayoutStructureId(row.payoutStructure)
+      ? row.payoutStructure
+      : defaultPayoutStructureForGameType(nextGameType);
     const nextPlayers = clampPersistedPlayers(row.players);
     const nextBuyIn = Math.max(PERSISTED_ROW_BUYIN_MIN, row.buyIn);
     const nextRake = clampPersistedRake(row.rake);
@@ -420,12 +474,17 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       row.finishBuckets,
       nextItmRate,
     );
-    const nextCustom = normalizePersistedCustomPayouts(row);
+    const nextCustom = normalizePersistedCustomPayouts({
+      ...row,
+      gameType: nextGameType,
+      payoutStructure: nextPayoutStructure,
+    });
     const nextFieldVariability = normalizePersistedFieldVariability(
       row.fieldVariability,
     );
     const nextCount = clampPersistedCount(row.count);
     if (
+      nextGameType === row.gameType &&
       nextPlayers === row.players &&
       nextBuyIn === row.buyIn &&
       nextRake === row.rake &&
@@ -451,6 +510,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     changed = true;
     return {
       ...row,
+      gameType: nextGameType,
       players: nextPlayers,
       buyIn: nextBuyIn,
       rake: nextRake,

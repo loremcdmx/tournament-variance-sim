@@ -134,6 +134,45 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.customPayouts).toBeUndefined();
   });
 
+  it("drops invalid persisted gameType so legacy payoutStructure can keep the row on its intended format", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            players: 18,
+            payoutStructure: "battle-royale",
+            gameType: "oops",
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.gameType).toBeUndefined();
+    expect(state?.schedule[0]?.payoutStructure).toBe("battle-royale");
+  });
+
+  it("repairs invalid persisted payoutStructure from a valid explicit gameType", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            gameType: "mystery",
+            payoutStructure: "oops",
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.gameType).toBe("mystery");
+    expect(state?.schedule[0]?.payoutStructure).toBe("mtt-gg-mystery");
+  });
+
   it("drops zero-sum persisted custom payout arrays instead of simulating a no-prize tournament", () => {
     const state = decodeState(
       encoded({
