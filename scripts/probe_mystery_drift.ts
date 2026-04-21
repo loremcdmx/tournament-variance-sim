@@ -3,7 +3,7 @@
  *
  * fit_beta_mystery.json (Apr 17 19:36) was fit on a pre-adbf278 engine.
  * adbf278 restricted the mystery harmonic KO window to top-9 FT — the same
- * change that drove BR σ_ROI up ~16% (see xval_br.ts). Since Mystery shares
+ * change that previously forced a BR convergence revalidation. Since Mystery shares
  * the `isMystery` branch in engine.ts, the same shift should apply — but
  * Mystery uses σ² = 2.0 log-normal (not BR tier-draw) so magnitude may differ.
  *

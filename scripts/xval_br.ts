@@ -1,14 +1,18 @@
 /**
- * Cross-validate BR σ_ROI fit on INDEPENDENT ROI points.
+ * Cross-validate the shipped BR helper band on independent ROI points.
  *
- * fit_br_fixed18.ts trains on 11 ROIs and reports R². R² on training data
- * can look perfect even if the model misses a systematic non-linearity.
- * This script measures σ_ROI on 10 held-out ROI points and compares
- * against the linear predictor C0 + C1·roi + residuals.
+ * The BR widget now centers on a runtime single-row compile and uses a small
+ * symmetric helper band around that point. This script checks whether the
+ * shipped helper stays inside its advertised residual band against independent
+ * simulation data inside the actual BR UI box (AFS=18, ROI ±10%).
  *
  *   npx tsx scripts/xval_br.ts
  */
 
+import {
+  SIGMA_ROI_MYSTERY_ROYALE,
+  evalSigma,
+} from "../src/lib/sim/convergenceFit";
 import { runSimulation } from "../src/lib/sim/engine";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
@@ -20,13 +24,9 @@ const AFS = 18;
 // Different seed from training run (20260417) — independence of samples.
 const SEED = 20260418;
 
-// Held-out ROIs that don't appear in fit_br_fixed18.ts training set.
-// Dense around the real-world band (-5%..+15%) where BR regs actually live.
-const HELD_OUT = [-0.15, -0.05, 0.02, 0.07, 0.12, 0.18, 0.22, 0.35, 0.5, 0.6];
-
-// Freshly-fitted coefficients (fit_beta_mystery_royale.json, 2026-04-18).
-const C0 = 8.1534;
-const C1 = 7.9063;
+// Held-out ROI points inside the actual BR widget box, but not on the helper's
+// fit points.
+const HELD_OUT = [-0.08, -0.03, 0.02, 0.07];
 
 function buildInput(roi: number): SimulationInput {
   const row: TournamentRow = {
@@ -69,10 +69,15 @@ async function main() {
   console.log(
     `xval_br: ${HELD_OUT.length} held-out ROIs @ AFS=${AFS}, N=${N_TOURNEYS}, samples=${SAMPLES}, seed=${SEED}`,
   );
-  console.log(`  predictor: σ = ${C0} + ${C1} × roi`);
+  console.log(
+    `  helper: σ = ${SIGMA_ROI_MYSTERY_ROYALE.C0.toFixed(5)} + ${SIGMA_ROI_MYSTERY_ROYALE.C1.toFixed(5)} × roi`,
+  );
+  console.log(
+    `  advertised residual band: ±${(SIGMA_ROI_MYSTERY_ROYALE.resid * 100).toFixed(1)}%`,
+  );
   console.log("");
   console.log(
-    "  roi      σ(actual)  σ(SE)    σ(pred)    Δ        Δ/σ(SE)  Δ/σ(%)",
+    "  roi      σ(sim)     σ(SE)    σ(helper)  Δ        Δ/σ(SE)  Δ/σ(%)",
   );
   console.log(
     "  -------  ---------  -------  ---------  -------  -------  -------",
@@ -88,7 +93,7 @@ async function main() {
   }> = [];
   for (const roi of HELD_OUT) {
     const { sigma, sigmaSE } = measure(roi);
-    const pred = C0 + C1 * roi;
+    const pred = evalSigma(SIGMA_ROI_MYSTERY_ROYALE, AFS, roi);
     const resid = sigma - pred;
     const residStd = resid / sigmaSE;
     const residPct = (resid / sigma) * 100;
@@ -113,16 +118,25 @@ async function main() {
   console.log(`    RMSE             = ${rmseResid.toFixed(4)}`);
   console.log(`    mean |resid/SE|  = ${meanAbsResidSE.toFixed(2)}  (SE-normalized; <2 = noise-indistinguishable)`);
   console.log(`    max |resid/σ|    = ${maxAbsResidPct.toFixed(2)}%`);
+  console.log(
+    `    band limit       = ${(SIGMA_ROI_MYSTERY_ROYALE.resid * 100).toFixed(2)}%`,
+  );
 
-  // Try quadratic fit on held-out: σ = a + b·roi + c·roi²
+  // Show whether a hidden curvature term is material even inside the UI box.
   const xs = rows.map((r) => r.roi);
   const ys = rows.map((r) => r.sigma);
   const { a, b, c, r2 } = quadFit(xs, ys);
   console.log("");
-  console.log("  Quadratic fit on held-out only (independent data):");
+  console.log("  Quadratic fit on held-out only:");
   console.log(`    σ = ${a.toFixed(4)} + ${b.toFixed(4)}·roi + ${c.toFixed(4)}·roi²`);
-  console.log(`    R² = ${r2.toFixed(6)}  (linear training R² was 0.99999)`);
-  console.log(`    curvature term |c·(roi_max)²| = ${Math.abs(c * 0.6 * 0.6).toFixed(4)} at roi=60%`);
+  console.log(`    R² = ${r2.toFixed(6)}`);
+  console.log(`    curvature term |c·(roi_max)²| = ${Math.abs(c * 0.07 * 0.07).toFixed(4)} at roi=7%`);
+  console.log("");
+  if (maxAbsResidPct <= SIGMA_ROI_MYSTERY_ROYALE.resid * 100 + 1e-9) {
+    console.log("  → VERDICT: inside the BR UI box the shipped helper stays within the advertised band.");
+  } else {
+    console.log("  → VERDICT: helper drift exceeds the advertised BR band; do not ship without widening or re-fitting.");
+  }
 
   console.log("");
   console.log(`  total: ${((Date.now() - t0) / 1000).toFixed(1)}s`);

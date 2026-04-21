@@ -14,6 +14,7 @@ import path from "node:path";
 import {
   FIT_RAKE_BY_FORMAT,
   SIGMA_ROI_MYSTERY,
+  SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
   buildExactBreakdown,
   ciToZ,
@@ -125,6 +126,23 @@ const sMbrHiRoi = battleRoyaleSigma(0.1, 0.08);
 console.log(`σ@-10% = ${sMbrLoRoi.toFixed(3)}  σ@+10% = ${sMbrHiRoi.toFixed(3)}`);
 if (sMbrHiRoi <= sMbrLoRoi) throw new Error("mystery-royale runtime σ should grow with ROI");
 console.log("  ✓ runtime σ monotone↑ in ROI");
+
+const sMbrFit = sigmaFor(
+  SIGMA_ROI_MYSTERY_ROYALE,
+  18,
+  0.05,
+  0.08,
+  FIT_RAKE_BY_FORMAT["mystery-royale"],
+);
+const sMbrRuntime = battleRoyaleSigma(0.05, 0.08);
+const sMbrFitErr = Math.abs(sMbrFit - sMbrRuntime) / sMbrRuntime;
+console.log(
+  `runtime-centered BR helper @ roi=5%: fit=${sMbrFit.toFixed(3)} runtime=${sMbrRuntime.toFixed(3)} err=${(sMbrFitErr * 100).toFixed(2)}%`,
+);
+if (sMbrFitErr > SIGMA_ROI_MYSTERY_ROYALE.resid + 1e-9) {
+  throw new Error("mystery-royale helper drift exceeds the validated BR residual band");
+}
+console.log("  ✓ helper stays inside the validated BR runtime residual band");
 
 const sMbrRakeMatch = battleRoyaleSigma(0, 0.08);
 const sMbrRakeLow = battleRoyaleSigma(0, 0.0);

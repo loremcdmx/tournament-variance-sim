@@ -1,45 +1,33 @@
 {
   "meta": {
-    "N": 500,
-    "samples": 200000,
     "buyIn": 50,
     "rake": 0.08,
     "bountyFraction": 0.5,
     "pkoHeadVar": 0,
     "payout": "battle-royale",
-    "finishModel": "mystery-realdata-linear",
+    "finishModel": "powerlaw-realdata-influenced",
     "fixedAfs": 18,
-    "note": "BR AFS locked at 18 in UI; β=0. σ_ROI = C0 + C1·roi (evaluated at AFS=18)."
+    "roiMin": -0.1,
+    "roiMax": 0.1,
+    "note": "BR runtime helper line for the validated UI box. Point estimate in the widget comes from runtime single-row compile; xval_br.ts validates the ±resid band against independent simulations."
   },
   "rois": [
-    -0.2,
     -0.1,
+    -0.05,
     0,
     0.05,
-    0.1,
-    0.15,
-    0.2,
-    0.25,
-    0.3,
-    0.4,
-    0.8
+    0.1
   ],
   "sigmas": [
-    6.580315879665834,
-    7.365505590511154,
-    8.152789909736427,
-    8.54703672972778,
-    8.941615581175787,
-    9.3364843671979,
-    9.731607794785582,
-    10.126956057933969,
-    10.522503814317075,
-    11.314114103803206,
-    14.485354517163747
+    5.168849880133399,
+    5.331893406894969,
+    5.489975426237153,
+    5.64347374724194,
+    5.79272051659617
   ],
   "cRoiLinear": {
-    "C0": 8.153359685943416,
-    "C1": 7.906321949046608,
-    "r2": 0.9999963105122281
+    "C0": 5.485382595420726,
+    "C1": 3.1186432265450263,
+    "r2": 0.9996957284665745
   }
 }

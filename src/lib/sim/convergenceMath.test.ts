@@ -13,7 +13,7 @@ import {
   roiControlBoundsForFormat,
   type MixTuple,
 } from "./convergenceMath";
-import { sigmaRoiForRow } from "./convergenceFit";
+import { SIGMA_ROI_MYSTERY_ROYALE, sigmaRoiForRow } from "./convergenceFit";
 
 const z95 = ciToZ(0.95);
 const targetRow = 3; // +/-10%
@@ -191,34 +191,31 @@ describe("convergence math", () => {
     );
   });
 
-  it("battle royale averaged mode can use runtime sigma instead of the stale fit band center", () => {
-    const runtime = buildExactBreakdown([
-      {
-        id: "br",
-        label: "BR",
-        players: 18,
-        buyIn: 50,
-        rake: 0.08,
-        roi: 0.05,
-        payoutStructure: "battle-royale",
-        gameType: "mystery-royale",
-        bountyFraction: 0.5,
-        mysteryBountyVariance: 1.8,
-        pkoHeadVar: 0,
-        itmRate: 0.18,
-        count: 1,
-      },
-    ]);
+  it("battle royale averaged mode keeps the runtime point and can show a validated runtime-centered band", () => {
+    const row: TournamentRow = {
+      id: "br",
+      label: "BR",
+      players: 18,
+      buyIn: 50,
+      rake: 0.08,
+      roi: 0.05,
+      payoutStructure: "battle-royale",
+      gameType: "mystery-royale",
+      bountyFraction: 0.5,
+      mysteryBountyVariance: 1.8,
+      pkoHeadVar: 0,
+      itmRate: 0.18,
+      count: 1,
+    };
+    const runtime = buildExactBreakdown([row]);
     expect(runtime).not.toBeNull();
 
-    const fitRows = computeConvergenceRows({
-      afs: 18,
-      z: z95,
-      roi: 0.05,
-      mix: [1, 0, 0],
-      format: "mystery-royale",
-      rakePct: 8,
-    });
+    const fitSigma = sigmaRoiForRow(row).sigma;
+    expect(
+      Math.abs(fitSigma - runtime!.sigmaEff) / runtime!.sigmaEff,
+    ).toBeLessThanOrEqual(SIGMA_ROI_MYSTERY_ROYALE.resid);
+
+    const resid = SIGMA_ROI_MYSTERY_ROYALE.resid;
     const runtimeRows = computeConvergenceRows({
       afs: 18,
       z: z95,
@@ -229,16 +226,19 @@ describe("convergence math", () => {
       sigmaOverrides: {
         "mystery-royale": {
           s: runtime!.sigmaEff,
-          lo: runtime!.sigmaEff,
-          hi: runtime!.sigmaEff,
+          lo: runtime!.sigmaEff * (1 - resid),
+          hi: runtime!.sigmaEff * (1 + resid),
         },
       },
     });
 
     const expectedK = Math.ceil(Math.pow((z95 * runtime!.sigmaEff) / 0.1, 2));
     expect(runtimeRows[targetRow].tourneys).toBe(expectedK);
-    expect(fitRows[targetRow].tourneys).toBeGreaterThan(
-      runtimeRows[targetRow].tourneys * 1.5,
+    expect(runtimeRows[targetRow].tourneysLo).toBeLessThan(
+      runtimeRows[targetRow].tourneys,
+    );
+    expect(runtimeRows[targetRow].tourneysHi).toBeGreaterThan(
+      runtimeRows[targetRow].tourneys,
     );
   });
 

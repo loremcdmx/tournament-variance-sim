@@ -62,14 +62,18 @@ export const SIGMA_ROI_MYSTERY: SigmaCoef = {
 };
 
 export const SIGMA_ROI_MYSTERY_ROYALE: SigmaCoef = {
-  // Legacy averaged BR fit retained for diagnostics and generic helpers.
-  // The user-facing averaged BR tab now uses a runtime point estimate and
-  // hides the numeric band until a new residual policy is validated.
+  // BR is locked to AFS=18 in the widget, so the user-facing tab centers on
+  // the runtime single-row compile rather than this helper. These coefficients
+  // are still kept in sync with the current runtime line inside the full BR UI
+  // box (ROI ±10%, rake 8%) for diagnostics and generic helpers. Independent
+  // hold-out sim checks across the BR UI box stayed within roughly 10% of
+  // sigma, so the chart uses a conservative symmetric ±10% band around the
+  // runtime point rather than pretending the runtime helper is tighter.
   kind: "single-beta",
-  C0: 8.1534,
-  C1: 7.9063,
+  C0: 5.48538,
+  C1: 3.11864,
   beta: 0,
-  resid: 0.02,
+  resid: 0.10,
 };
 
 export const SIGMA_COEF_BY_FORMAT: Record<

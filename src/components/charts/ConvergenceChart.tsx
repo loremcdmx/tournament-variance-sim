@@ -22,6 +22,7 @@ import {
   normalizeMix,
   posToAfs,
   roiControlBoundsForFormat,
+  SIGMA_ROI_MYSTERY_ROYALE,
   type ConvergenceFormat,
   type MixTuple,
   type SigmaBand,
@@ -402,10 +403,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       { finishModel },
     );
     if (!syntheticBattleRoyale) return null;
+    const resid = SIGMA_ROI_MYSTERY_ROYALE.resid;
     return {
       s: syntheticBattleRoyale.sigmaEff,
-      lo: syntheticBattleRoyale.sigmaEff,
-      hi: syntheticBattleRoyale.sigmaEff,
+      lo: syntheticBattleRoyale.sigmaEff * (1 - resid),
+      hi: syntheticBattleRoyale.sigmaEff * (1 + resid),
     };
   }, [effectiveMode, format, rakePct, effectiveRoi, finishModel]);
   const sigmaOverrides = useMemo<
@@ -864,9 +866,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           {t(
             bandPolicy.reason === "contains-mystery"
               ? "chart.convergence.bandWarning.containsMystery"
-              : bandPolicy.reason === "contains-mystery-royale"
-                ? "chart.convergence.bandWarning.containsMysteryRoyale"
-                : "chart.convergence.bandWarning.outsideFitBox",
+              : "chart.convergence.bandWarning.outsideFitBox",
           )}
         </div>
       )}

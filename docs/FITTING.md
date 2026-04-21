@@ -33,14 +33,14 @@ where L = log(field), R = roi
 
 Current production fits (raw grid data in `scripts/fit_beta_*.json`,
 runtime constants in `SIGMA_ROI_{FREEZE,PKO,MYSTERY,MYSTERY_ROYALE}`
-near the top of `src/components/charts/ConvergenceChart.tsx`):
+near the top of `src/lib/sim/convergenceFit.ts`):
 
 | Format                      | Runtime form  | Coefficients |
 | --------------------------- | ------------- | ------------ |
 | freezeout (realdata-linear) | single-β      | C0=0.6564, C1=0, β=0.3694 |
 | PKO                         | 2D log-poly   | a0=1.21374, a1=-0.21789, a2=0.03473, b1=0.67318, b2=-0.03445, c=-0.05298 |
 | Mystery Bounty              | 2D log-poly   | a0=2.33290, a1=-0.27564, a2=0.02917, b1=1.14218, b2=-0.09962, c=-0.08406 |
-| Mystery Battle Royale       | fixed-AFS linear | C0=8.1534, C1=7.9063, β=0 |
+| Mystery Battle Royale       | fixed-AFS runtime-helper line | C0=5.48538, C1=3.11864, β=0, resid=10% |
 | mix freeze/PKO              | exact σ² composition | no promoted `{C,β}` |
 
 The mix row is effective-only: σ²\_mix = p·σ²\_PKO + (1−p)·σ²\_freeze
@@ -54,7 +54,10 @@ exponent, `C0` is the edge-free intercept, and `C1` is how much a +1.0
 ROI edge inflates σ. In the 2D log-poly form, inspect the residual report
 instead of trying to interpret one coefficient in isolation. Mystery
 Royale's β is 0 by construction since the AFS slider is locked at 18 in
-the UI, so `fit_br_fixed18.ts` absorbs any field dependence into C0.
+the UI. The shipped BR tab now centers on a runtime single-row compile;
+the stored `{C0, C1}` line is just a compact helper for that runtime
+center inside the validated BR box (ROI ±10%), and `xval_br.ts` is the
+independent sim check for the advertised residual band.
 
 ## Why a fit and not a formula?
 
@@ -73,13 +76,18 @@ Two producers — pick the right one for what you're doing:
 
 ### Canonical (promoted to UI coefficients)
 
-- **`scripts/fit_br_fixed18.ts`** — Mystery Battle Royale at fixed AFS=18
-  (MBR is AFS-locked in the UI, so a field-sweep is meaningless for it).
-  Writes `scripts/fit_beta_mystery_royale.json`.
+- **`scripts/fit_br_fixed18.ts`** — rebuilds the BR runtime helper line at
+  fixed AFS=18 inside the actual UI ROI box (±10%). Writes
+  `scripts/fit_beta_mystery_royale.json`.
+- **`scripts/xval_br.ts`** — independent sim validation for the shipped BR
+  helper band. Run this together with the fit script before promoting BR
+  changes; `fit_drift_report.ts` only tells you whether the helper reproduces
+  its own artifact, not whether the runtime-centered BR band is honest against
+  simulation.
 - **Freeze / PKO / Mystery canonical fits** — production artifacts
   `scripts/fit_beta_freeze_realdata.json`, `scripts/fit_beta_pko.json`,
   `scripts/fit_beta_mystery.json`. These back the `SIGMA_ROI_*`
-  constants in `ConvergenceChart.tsx`. They are updated manually after
+  constants in `src/lib/sim/convergenceFit.ts`. They are updated manually after
   a drift-report review (see below) — no single script re-writes them
   end-to-end today.
 - **`scripts/fit_beta_pko_core.json`** — *not* an independent UI
@@ -237,7 +245,7 @@ and confirming that user-zone residuals don't regress. A fit with better
 global R² but worse residuals inside `field ∈ [500, 10k], roi ∈ [−10 %, +30 %]`
 is a net loss for the UI.
 
-1. Open `src/components/charts/ConvergenceChart.tsx`.
+1. Open `src/lib/sim/convergenceFit.ts`.
 2. Find the coefficient constants near the top of the file:
    `SIGMA_ROI_FREEZE`, `SIGMA_ROI_PKO`, `SIGMA_ROI_MYSTERY`,
    `SIGMA_ROI_MYSTERY_ROYALE`. Each is a `SigmaCoef` literal with
@@ -246,7 +254,9 @@ is a net loss for the UI.
    `globalBeta`. For PKO / Mystery, paste the 2D coefficients from
    `scripts/refit_2d_logpoly.ts`. For MBR, use
    `fit_beta_mystery_royale.json` (produced by
-   `scripts/fit_br_fixed18.ts`); its β is 0 by construction.
+   `scripts/fit_br_fixed18.ts`); its β is 0 by construction and its
+   `resid` must be backed by `scripts/xval_br.ts`, not only by
+   `fit_drift_report.ts`.
 4. Verify: `npx tsc --noEmit && npm test && npm run build`. The widget
    recomputes σ on every ROI/field scrub, so a broken constant shows up
    instantly as `NaN` or a visually flat curve.

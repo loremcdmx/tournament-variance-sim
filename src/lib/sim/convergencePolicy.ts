@@ -9,11 +9,11 @@
  * 2D fit is good on the canonical grid overall, off-grid drift is still too
  * wide in low-field / edge-ROI corners, so numeric bands are only allowed in
  * a narrower revalidated safe box. In-box-but-outside-safe-box Mystery reports
- * `contains-mystery`. Battle Royale is also point-only for now: the averaged
- * tab uses a runtime single-row estimate, but its old residual policy is no
- * longer trusted, so in-box MBR reports `contains-mystery-royale`. The point
- * estimate is still shown as a ballpark; only the numeric ±band is
- * suppressed.
+ * `contains-mystery`. Battle Royale is narrower but simpler: its whole UI box
+ * is already the validated box (`field === 18`, ROI ±10%), and the chart now
+ * uses a runtime single-row point estimate with a separately revalidated
+ * runtime-vs-sim residual band there. So in-box MBR can keep the numeric
+ * ±band; only extrapolation outside that box is suppressed.
  */
 
 import type { TournamentRow } from "./types";
@@ -28,10 +28,7 @@ export type ConvergenceBandPolicy =
   | { kind: "numeric" }
   | {
       kind: "warning";
-      reason:
-        | "contains-mystery"
-        | "contains-mystery-royale"
-        | "outside-fit-box";
+      reason: "contains-mystery" | "outside-fit-box";
     };
 
 export interface FitBoxSample {
@@ -195,11 +192,6 @@ export function getConvergenceBandPolicy(
   for (const s of samples) {
     if (s.format === "mystery" && !isInsideMysteryNumericBox(s)) {
       return { kind: "warning", reason: "contains-mystery" };
-    }
-  }
-  for (const s of samples) {
-    if (s.format === "mystery-royale") {
-      return { kind: "warning", reason: "contains-mystery-royale" };
     }
   }
   return { kind: "numeric" };

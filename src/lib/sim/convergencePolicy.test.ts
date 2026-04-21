@@ -290,10 +290,9 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     });
   });
 
-  it("single MBR in-box → warning contains-mystery-royale", () => {
+  it("single MBR in-box → numeric", () => {
     expect(getConvergenceBandPolicy([s("mystery-royale", 18, 0)])).toEqual({
-      kind: "warning",
-      reason: "contains-mystery-royale",
+      kind: "numeric",
     });
   });
 
@@ -310,7 +309,7 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     });
   });
 
-  it("freeze + PKO + Mystery-safe + MBR all in-box → warning contains-mystery-royale", () => {
+  it("freeze + PKO + Mystery-safe + MBR all in-box → numeric", () => {
     expect(
       getConvergenceBandPolicy([
         s("freeze", 1000, 0.1),
@@ -318,7 +317,7 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
         s("mystery", 8000, 0.15),
         s("mystery-royale", 18, 0.05),
       ]),
-    ).toEqual({ kind: "warning", reason: "contains-mystery-royale" });
+    ).toEqual({ kind: "numeric" });
   });
 
   it("freeze + one Mystery-safe row in-box → numeric", () => {
@@ -369,13 +368,13 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     ).toEqual({ kind: "warning", reason: "outside-fit-box" });
   });
 
-  it("MBR in-box keeps point-only policy even when mixed with in-box PKO", () => {
+  it("MBR in-box stays numeric when mixed with in-box PKO", () => {
     expect(
       getConvergenceBandPolicy([
         s("pko", 1000, 0.1),
         s("mystery-royale", 18, 0.05),
       ]),
-    ).toEqual({ kind: "warning", reason: "contains-mystery-royale" });
+    ).toEqual({ kind: "numeric" });
   });
 
   it("freeze extreme ROI is still numeric (fit is ROI-invariant)", () => {
@@ -396,7 +395,7 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     ).toEqual({ kind: "warning", reason: "outside-fit-box" });
   });
 
-  it("Mystery outside the safe box still outranks MBR point-only in mixed samples", () => {
+  it("Mystery outside the safe box still outranks in-box MBR in mixed samples", () => {
     expect(
       getConvergenceBandPolicy([
         s("mystery-royale", 18, 0.05),

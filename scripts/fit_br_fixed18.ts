@@ -1,31 +1,28 @@
 /**
- * Refit σ_ROI coefficients for mystery-royale at the locked AFS = 18.
+ * Refit the BR runtime helper line at the locked AFS = 18.
  *
- * Background: post-#92 the BR bounty draw is a discrete 10-tier
- * envelope distribution (not log-normal σ²=1.8). AFS is also locked to
- * 18 in the UI (#76/#93), so the field-sweep in `fit_sigma_parallel.ts`
- * only needs a single point per ROI. We fit σ(roi) = C0 + C1·roi with
- * β = 0 baked in — 18^β is absorbed into the C coefficients.
+ * The shipped BR convergence tab now centers on a runtime single-row compile,
+ * not on the old wide sim-fit line. This script rebuilds the compact helper
+ * line that tracks that runtime center inside the only user-visible BR box:
+ * AFS fixed at 18, ROI in [-10%, +10%].
+ *
+ * β stays 0 by construction because the BR widget never varies field size.
+ * Independent sim validation of the helper band lives in xval_br.ts.
  *
  *   npx tsx scripts/fit_br_fixed18.ts
  */
 
 import { promises as fs } from "node:fs";
-import { runSimulation } from "../src/lib/sim/engine";
-import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
+import { buildExactBreakdown } from "../src/lib/sim/convergenceMath";
+import type { TournamentRow } from "../src/lib/sim/types";
 
-const N_TOURNEYS = 500;
-const SAMPLES = 200_000;
 const BUY_IN = 50;
 const RAKE = 0.08; // GG Mystery Battle Royale real rake
-const SEED = 20260417;
 const AFS = 18;
 
-const ROIS = [
-  -0.2, -0.1, 0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.8,
-];
+const ROIS = [-0.1, -0.05, 0, 0.05, 0.1];
 
-function buildInput(roi: number): SimulationInput {
+function measure(roi: number): number {
   const row: TournamentRow = {
     id: "br-fit",
     label: `br-roi${roi}`,
@@ -39,23 +36,15 @@ function buildInput(roi: number): SimulationInput {
     mysteryBountyVariance: 1.8,
     pkoHeadVar: 0,
     itmRate: 0.18,
-    count: N_TOURNEYS,
+    count: 1,
   };
-  return {
-    schedule: [row],
-    scheduleRepeats: 1,
-    samples: SAMPLES,
-    bankroll: 0,
-    seed: SEED,
-    finishModel: { id: "mystery-realdata-linear" },
-  };
-}
-
-function measure(roi: number): number {
-  const r = runSimulation(buildInput(roi));
-  const N = r.tournamentsPerSample;
-  const abi = r.totalBuyIn / N;
-  return (r.stats.stdDev / Math.sqrt(N)) / abi;
+  const exact = buildExactBreakdown([row], {
+    finishModel: { id: "powerlaw-realdata-influenced" },
+  });
+  if (!exact) {
+    throw new Error(`failed to compile BR runtime row for roi=${roi}`);
+  }
+  return exact.sigmaEff;
 }
 
 function linFit(xv: number[], yv: number[]) {
@@ -83,8 +72,7 @@ function linFit(xv: number[], yv: number[]) {
 async function main() {
   const t0 = Date.now();
   console.log(
-    `fit_br_fixed18: ${ROIS.length} ROIs @ AFS=${AFS}, ` +
-      `N=${N_TOURNEYS}, samples=${SAMPLES}, rake=${RAKE}`,
+    `fit_br_fixed18: ${ROIS.length} runtime ROI points @ AFS=${AFS}, rake=${RAKE}`,
   );
   const measurements: Array<{ roi: number; sigmaRoi: number }> = [];
   for (const roi of ROIS) {
@@ -107,16 +95,16 @@ async function main() {
     JSON.stringify(
       {
         meta: {
-          N: N_TOURNEYS,
-          samples: SAMPLES,
           buyIn: BUY_IN,
           rake: RAKE,
           bountyFraction: 0.5,
           pkoHeadVar: 0,
           payout: "battle-royale",
-          finishModel: "mystery-realdata-linear",
+          finishModel: "powerlaw-realdata-influenced",
           fixedAfs: AFS,
-          note: "BR AFS locked at 18 in UI; β=0. σ_ROI = C0 + C1·roi (evaluated at AFS=18).",
+          roiMin: -0.1,
+          roiMax: 0.1,
+          note: "BR runtime helper line for the validated UI box. Point estimate in the widget comes from runtime single-row compile; xval_br.ts validates the ±resid band against independent simulations.",
         },
         rois: xs,
         sigmas: ys,

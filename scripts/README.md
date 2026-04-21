@@ -12,12 +12,17 @@ product workflow.
 Use these when changing coefficients that feed the shipped UI:
 
 - `fit_br_fixed18.ts`
+- `xval_br.ts`
 - `fit_sigma_parallel.ts`
 - `fit_drift_report.ts`
 - `fit_beta_freeze_realdata.json`
 - `fit_beta_pko.json`
 - `fit_beta_mystery.json`
 - `fit_beta_mystery_royale.json`
+
+For BR specifically, `fit_br_fixed18.ts` rebuilds the runtime helper line for
+the validated UI box, while `xval_br.ts` is the independent sim check for the
+advertised residual band around that runtime center.
 
 Read [`docs/FITTING.md`](../docs/FITTING.md) first. Promotion without a drift
 report is not considered complete.
