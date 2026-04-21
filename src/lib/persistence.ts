@@ -68,6 +68,21 @@ const PERSISTED_ROW_PLAYERS_MIN = 2;
 const PERSISTED_ROW_PLAYERS_MAX = 1_000_000;
 const PERSISTED_ROW_RAKE_MIN = 0;
 const PERSISTED_ROW_RAKE_MAX = 1;
+const PERSISTED_ROW_ITM_RATE_MIN = 0;
+const PERSISTED_ROW_ITM_RATE_MAX = 1;
+const PERSISTED_ROW_MAX_ENTRIES_MIN = 1;
+const PERSISTED_ROW_MAX_ENTRIES_MAX = 100;
+const PERSISTED_ROW_REENTRY_RATE_MIN = 0;
+const PERSISTED_ROW_REENTRY_RATE_MAX = 1;
+const PERSISTED_ROW_BOUNTY_MIN = 0;
+const PERSISTED_ROW_BOUNTY_MAX = 0.9;
+const PERSISTED_ROW_PAY_JUMP_MIN = 0;
+const PERSISTED_ROW_PAY_JUMP_MAX = 1;
+const PERSISTED_ROW_MYSTERY_VARIANCE_MIN = 0;
+const PERSISTED_ROW_MYSTERY_VARIANCE_MAX = 3;
+const PERSISTED_ROW_PKO_HEAD_VAR_MIN = 0;
+const PERSISTED_ROW_PKO_HEAT_MIN = 0;
+const PERSISTED_ROW_PKO_HEAT_MAX = 3;
 const PERSISTED_FIELD_VARIABILITY_BUCKETS_MAX = 20;
 const PERSISTED_ROW_COUNT_MAX = 100_000;
 const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
@@ -85,6 +100,24 @@ function clampPersistedPlayers(players: number): number {
 
 function clampPersistedRake(rake: number): number {
   return Math.min(PERSISTED_ROW_RAKE_MAX, Math.max(PERSISTED_ROW_RAKE_MIN, rake));
+}
+
+function clampPersistedOptionalNumber(
+  value: unknown,
+  min: number,
+  max: number,
+): number | undefined {
+  if (!isFiniteNumber(value)) return undefined;
+  return Math.min(max, Math.max(min, value));
+}
+
+function clampPersistedOptionalInt(
+  value: unknown,
+  min: number,
+  max: number,
+): number | undefined {
+  if (!isFiniteNumber(value)) return undefined;
+  return clampPersistedInt(value, min, max);
 }
 
 function normalizePersistedCustomPayouts(
@@ -181,6 +214,46 @@ function normalizePersistedState(state: PersistedState): PersistedState {
   const schedule = state.schedule.map((row) => {
     const nextPlayers = clampPersistedPlayers(row.players);
     const nextRake = clampPersistedRake(row.rake);
+    const nextItmRate = clampPersistedOptionalNumber(
+      row.itmRate,
+      PERSISTED_ROW_ITM_RATE_MIN,
+      PERSISTED_ROW_ITM_RATE_MAX,
+    );
+    const nextMaxEntries = clampPersistedOptionalInt(
+      row.maxEntries,
+      PERSISTED_ROW_MAX_ENTRIES_MIN,
+      PERSISTED_ROW_MAX_ENTRIES_MAX,
+    );
+    const nextReentryRate = clampPersistedOptionalNumber(
+      row.reentryRate,
+      PERSISTED_ROW_REENTRY_RATE_MIN,
+      PERSISTED_ROW_REENTRY_RATE_MAX,
+    );
+    const nextBountyFraction = clampPersistedOptionalNumber(
+      row.bountyFraction,
+      PERSISTED_ROW_BOUNTY_MIN,
+      PERSISTED_ROW_BOUNTY_MAX,
+    );
+    const nextPayJumpAggression = clampPersistedOptionalNumber(
+      row.payJumpAggression,
+      PERSISTED_ROW_PAY_JUMP_MIN,
+      PERSISTED_ROW_PAY_JUMP_MAX,
+    );
+    const nextMysteryBountyVariance = clampPersistedOptionalNumber(
+      row.mysteryBountyVariance,
+      PERSISTED_ROW_MYSTERY_VARIANCE_MIN,
+      PERSISTED_ROW_MYSTERY_VARIANCE_MAX,
+    );
+    const nextPkoHeadVar = clampPersistedOptionalNumber(
+      row.pkoHeadVar,
+      PERSISTED_ROW_PKO_HEAD_VAR_MIN,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const nextPkoHeat = clampPersistedOptionalNumber(
+      row.pkoHeat,
+      PERSISTED_ROW_PKO_HEAT_MIN,
+      PERSISTED_ROW_PKO_HEAT_MAX,
+    );
     const nextCustom = normalizePersistedCustomPayouts(row);
     const nextFieldVariability = normalizePersistedFieldVariability(
       row.fieldVariability,
@@ -189,6 +262,14 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     if (
       nextPlayers === row.players &&
       nextRake === row.rake &&
+      nextItmRate === row.itmRate &&
+      nextMaxEntries === row.maxEntries &&
+      nextReentryRate === row.reentryRate &&
+      nextBountyFraction === row.bountyFraction &&
+      nextPayJumpAggression === row.payJumpAggression &&
+      nextMysteryBountyVariance === row.mysteryBountyVariance &&
+      nextPkoHeadVar === row.pkoHeadVar &&
+      nextPkoHeat === row.pkoHeat &&
       nextCustom.payoutStructure === row.payoutStructure &&
       nextCustom.customPayouts === row.customPayouts &&
       nextCount === row.count &&
@@ -201,6 +282,14 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       ...row,
       players: nextPlayers,
       rake: nextRake,
+      itmRate: nextItmRate,
+      maxEntries: nextMaxEntries,
+      reentryRate: nextReentryRate,
+      bountyFraction: nextBountyFraction,
+      payJumpAggression: nextPayJumpAggression,
+      mysteryBountyVariance: nextMysteryBountyVariance,
+      pkoHeadVar: nextPkoHeadVar,
+      pkoHeat: nextPkoHeat,
       payoutStructure: nextCustom.payoutStructure,
       customPayouts: nextCustom.customPayouts,
       fieldVariability: nextFieldVariability,

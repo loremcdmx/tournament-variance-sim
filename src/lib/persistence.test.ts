@@ -121,6 +121,39 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.customPayouts).toBeUndefined();
   });
 
+  it("clamps persisted row knobs back into the engine/UI contract before hydration", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            itmRate: 5,
+            maxEntries: 0,
+            reentryRate: 2,
+            bountyFraction: 5,
+            payJumpAggression: -1,
+            mysteryBountyVariance: -3,
+            pkoHeadVar: -4,
+            pkoHeat: 10,
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]).toMatchObject({
+      itmRate: 1,
+      maxEntries: 1,
+      reentryRate: 1,
+      bountyFraction: 0.9,
+      payJumpAggression: 0,
+      mysteryBountyVariance: 0,
+      pkoHeadVar: 0,
+      pkoHeat: 3,
+    });
+  });
+
   it("clamps persisted field-variability ranges and bucket counts back to editor limits", () => {
     const state = decodeState(
       encoded({
