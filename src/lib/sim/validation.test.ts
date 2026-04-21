@@ -101,6 +101,51 @@ describe("validateSchedule", () => {
     expect(res.issues[0].rowIdx).toBe(1);
   });
 
+  it("flags non-ITM adjustable bounty rows when compile-time EV saturates below target", () => {
+    const r = row({
+      payoutStructure: "mtt-gg-bounty",
+      gameType: "pko",
+      players: 100,
+      bountyFraction: 0.5,
+      roi: 10,
+    });
+    const res = validateSchedule([r], baseModel);
+
+    expect(res.ok).toBe(false);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0].currentEv).toBeLessThan(res.issues[0].targetEv);
+  });
+
+  it("does not over-block adjustable bounty rows that still hit target EV analytically", () => {
+    const r = row({
+      payoutStructure: "mtt-gg-bounty",
+      gameType: "pko",
+      players: 1000,
+      bountyFraction: 0.5,
+      roi: 10,
+    });
+
+    expect(validateSchedule([r], baseModel).ok).toBe(true);
+  });
+
+  it("flags mystery-royale rows when extreme ROI exceeds the feasible cash+bounty envelope", () => {
+    const r = row({
+      players: 18,
+      buyIn: 10 / 1.08,
+      rake: 0.08,
+      payoutStructure: "battle-royale",
+      gameType: "mystery-royale",
+      bountyFraction: 0.5,
+      mysteryBountyVariance: 1.8,
+      roi: 5,
+    });
+    const res = validateSchedule([r], baseModel);
+
+    expect(res.ok).toBe(false);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0].currentEv).toBeLessThan(res.issues[0].targetEv);
+  });
+
   it("allows fixed-ITM bounty rows when residual bounty EV closes total ROI", () => {
     // The shelled cash side cannot hit targetRegular here: first-place mass is
     // already too valuable. Engine compile then reconciles the actual bounty

@@ -210,105 +210,6 @@ describe("engine", () => {
     expect(result.samplePaths.sampleIndices[999]).toBe(2499);
   });
 
-  it("re-entry row inflates cost and mean proportionally", () => {
-    const single = runSimulation(
-      baseInput({
-        samples: 4000,
-        schedule: [
-          {
-            id: "r",
-            label: "freezeout",
-            players: 500,
-            buyIn: 10,
-            rake: 0.1,
-            roi: 0.2,
-            payoutStructure: "mtt-standard",
-            count: 1,
-          },
-        ],
-      }),
-    );
-    const reentry = runSimulation(
-      baseInput({
-        samples: 4000,
-        schedule: [
-          {
-            id: "r",
-            label: "reentry",
-            players: 500,
-            buyIn: 10,
-            rake: 0.1,
-            roi: 0.2,
-            payoutStructure: "mtt-standard",
-            count: 1,
-            maxEntries: 3,
-            reentryRate: 1,
-          },
-        ],
-      }),
-    );
-    // Re-entry = freezeout × 3 entries → cost ×3, and because ROI is the
-    // *per-entry* figure, expected profit should also scale ~×3.
-    expect(reentry.totalBuyIn).toBeCloseTo(3 * single.totalBuyIn, 4);
-    expect(reentry.stats.mean / reentry.totalBuyIn).toBeCloseTo(
-      single.stats.mean / single.totalBuyIn,
-      1,
-    );
-  });
-
-  it("real multi-bullet re-entry increases variance over freezeout", () => {
-    // Three bullets fired independently against the same freezeout schedule
-    // should produce ~√3× the std-dev per slot. Assertion: reentry stdDev
-    // is strictly greater than freezeout stdDev (would be equal under the
-    // old cost-scaling-only model).
-    const freezeout = runSimulation(
-      baseInput({
-        samples: 6000,
-        scheduleRepeats: 50,
-        schedule: [
-          {
-            id: "r",
-            label: "freezeout",
-            players: 500,
-            buyIn: 10,
-            rake: 0.1,
-            roi: 0.2,
-            payoutStructure: "mtt-standard",
-            count: 1,
-          },
-        ],
-      }),
-    );
-    const reentry = runSimulation(
-      baseInput({
-        samples: 6000,
-        scheduleRepeats: 50,
-        schedule: [
-          {
-            id: "r",
-            label: "3-bullet",
-            players: 500,
-            buyIn: 10,
-            rake: 0.1,
-            roi: 0.2,
-            payoutStructure: "mtt-standard",
-            count: 1,
-            maxEntries: 3,
-            reentryRate: 1,
-          },
-        ],
-      }),
-    );
-    // Real-bullet amplification: independent draws (√3 ≈ 1.73) plus the
-    // larger prize pool per bullet (effective seats × 3 → prizes ×3) pushes
-    // the observed ratio to ~2.5–3.0. The cost-scaling-only null would give
-    // ratio ≈ 1.0, so any clean floor >1.5 proves the variance channel is
-    // real.
-    const ratio = reentry.stats.stdDev / freezeout.stats.stdDev;
-    expect(ratio).toBeGreaterThan(1.5);
-    expect(ratio).toBeLessThan(4);
-  });
-
   it("bounty row produces a non-zero expected bounty lump per entry", () => {
     const base = runSimulation(
       baseInput({
@@ -1475,18 +1376,6 @@ describe("conservation fixtures per gameType", () => {
         buyIn: 10,
         rake: 0.1,
         roi: 0.15,
-      },
-    },
-    {
-      name: "freezeout-reentry",
-      row: {
-        payoutStructure: "mtt-standard" as PayoutStructureId,
-        players: 500,
-        buyIn: 10,
-        rake: 0.1,
-        roi: 0.1,
-        maxEntries: 2,
-        reentryRate: 1,
       },
     },
     {

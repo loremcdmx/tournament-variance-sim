@@ -30,6 +30,7 @@ import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { SCENARIOS } from "@/lib/scenarios";
 
 const scenarioDerived = new Map(
@@ -150,6 +151,7 @@ export default function Home() {
   );
   // Advanced mode off → force MTT view regardless of persisted state.
   const activeMode: "mtt" | "cash" = advanced ? mode : "mtt";
+  const activeCompareSlot = advanced ? compareSlot : null;
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
   const abi = useMemo(() => {
     const totalCount = schedule.reduce((a, r) => a + Math.max(0, r.count), 0);
@@ -697,7 +699,7 @@ export default function Home() {
           <CornerToggles />
         </div>
 
-        {compareSlot && (
+        {activeCompareSlot && (
           <div className="flex justify-end">
             <span className="inline-flex items-center gap-1.5 border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)]">
               <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--color-accent)]" />
@@ -988,7 +990,7 @@ export default function Home() {
                   >
                     {schedule.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.label || r.id}
+                        {getTournamentRowDisplayLabel(r, t)}
                       </option>
                     ))}
                   </select>
@@ -1078,36 +1080,40 @@ export default function Home() {
 
       {result && (
         <>
-          <Card className="flex flex-wrap items-center gap-3 p-3">
-            <div className="text-xs uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-              {t("slot.title")}
-            </div>
-            <div className="flex-1 text-sm text-[color:var(--color-fg-muted)]">
-              {compareSlot
-                ? `${t("slot.saved")} · ${compareSlot.state.schedule.length} ${t("slot.rows")} · ${compareSlot.state.controls.samples.toLocaleString()} ${t("app.samples")} · ${t("slot.mean")} ${compareSlot.result ? `$${compareSlot.result.stats.mean.toFixed(0)}` : "—"}`
-                : t("slot.empty")}
-            </div>
-            <div className="flex gap-2">
-              <TextBtn onClick={onSaveSlot}>{t("slot.saveCurrent")}</TextBtn>
-              {compareSlot && (
-                <>
-                  <TextBtn onClick={onLoadSlot}>{t("slot.load")}</TextBtn>
-                  <TextBtn onClick={onClearSlot}>{t("slot.clear")}</TextBtn>
-                </>
-              )}
-            </div>
-          </Card>
+          {advanced && (
+            <Card className="flex flex-wrap items-center gap-3 p-3">
+              <div className="text-xs uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                {t("slot.title")}
+              </div>
+              <div className="flex-1 text-sm text-[color:var(--color-fg-muted)]">
+                {compareSlot
+                  ? `${t("slot.saved")} · ${compareSlot.state.schedule.length} ${t("slot.rows")} · ${compareSlot.state.controls.samples.toLocaleString()} ${t("app.samples")} · ${t("slot.mean")} ${compareSlot.result ? `$${compareSlot.result.stats.mean.toFixed(0)}` : "—"}`
+                  : t("slot.empty")}
+              </div>
+              <div className="flex gap-2">
+                <TextBtn onClick={onSaveSlot}>{t("slot.saveCurrent")}</TextBtn>
+                {compareSlot && (
+                  <>
+                    <TextBtn onClick={onLoadSlot}>{t("slot.load")}</TextBtn>
+                    <TextBtn onClick={onClearSlot}>{t("slot.clear")}</TextBtn>
+                  </>
+                )}
+              </div>
+            </Card>
+          )}
 
           <Section
             number="03"
             suit="club"
             title={t("section.results.title")}
-            subtitle={`${result.samples.toLocaleString()} ${t("section.results.subtitle")}`}
+            subtitle={t("section.results.subtitle")
+              .replace("{samples}", result.samples.toLocaleString(locale === "ru" ? "ru-RU" : "en-US"))
+              .replace("{tourneys}", tournamentsPerSession.toLocaleString(locale === "ru" ? "ru-RU" : "en-US"))}
             anchorId="results-top"
           >
             <ResultsView
               result={result}
-              compareResult={compareSlot?.result ?? null}
+              compareResult={activeCompareSlot?.result ?? null}
               bankroll={deferredControls.bankroll}
               schedule={deferredSchedule}
               scheduleRepeats={deferredScheduleRepeats}

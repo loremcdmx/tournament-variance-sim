@@ -206,23 +206,22 @@ export const DICT = {
     ru: "Обобщённые пресеты",
   },
   "row.count": {
-    en: "Entries",
-    ru: "Количество входов",
+    en: "Tournaments",
+    ru: "Турниры",
   },
   "help.count": {
-    en: "How many bullets you play in one session. This is NOT re-entries — re-entry rate is configured separately in advanced row options.",
-    ru: "Сколько пуль играешь за одну сессию. Это НЕ ре-энтри — процент перезаходов настраивается отдельно в дополнительных полях строки.",
+    en: "How many tournaments from this row you play in one schedule pass. Fractions are allowed and rounded stochastically.",
+    ru: "Сколько турниров из этой строки ты играешь за один проход расписания. Дробные значения допустимы и округляются стохастически.",
   },
   "row.guarantee": { en: "Guarantee $", ru: "Гарантия $" },
   "row.addRow": { en: "+ Add row", ru: "+ Добавить" },
-  "row.cloneAsReentry": {
-    en: "Clone as re-entry (ROI −5pp)",
-    ru: "Клон как ре-ентри (ROI −5pp)",
-  },
   "row.delete": { en: "Delete", ru: "Удалить" },
   "row.gameType": { en: "Game type", ru: "Тип игры" },
   "row.gameType.freezeout": { en: "Freezeout", ru: "Фризаут" },
-  "row.gameType.freezeoutReentry": { en: "Freezeout + re-entry", ru: "Фриз + ре-энтри" },
+  "row.gameType.freezeoutReentry": {
+    en: "Freezeout / Re-entry",
+    ru: "Фризаут / реэнтри",
+  },
   "row.gameType.pko": { en: "PKO", ru: "PKO" },
   "row.gameType.mystery": { en: "Mystery", ru: "Мистери" },
   "row.gameType.mysteryRoyale": {
@@ -230,11 +229,9 @@ export const DICT = {
     ru: "GG Battle Royal",
   },
   "row.gameTypeHint": {
-    en: "Top-level format switch. Toggles which fields apply: re-entry for freezeout+re-entry; bounty% for PKO/mystery; lognormal σ² for mystery variants (mystery ≈ 0.8, royale ≈ 1.8). Existing bounty% is preserved when switching between bounty types.",
-    ru: "Основной переключатель формата. Включает нужные поля: ре-энтри для фриза с реентри; баунти% для PKO/мистери; лог-нормальную σ² для мистери (мистери ≈ 0.8, рояль ≈ 1.8). При переключении между баунти-форматами баунти% сохраняется.",
+    en: "Top-level format switch. Chooses which bounty fields apply: none for freezeouts, bounty% for PKO and Mystery, and mystery-variance controls for mystery variants. Existing bounty% is preserved when switching between bounty types.",
+    ru: "Основной переключатель формата. Определяет, какие баунти-поля применяются: ничего для фризов, баунти% для PKO и Mystery и настройки дисперсии мистери для мистери-форматов. При переключении между баунти-форматами баунти% сохраняется.",
   },
-  "row.reentry": { en: "Re-entries", ru: "Ре-энтри" },
-  "row.reentryRate": { en: "Re-entry rate", ru: "Доля ре-энтри" },
   "row.bounty": { en: "Bounty %", ru: "Баунти %" },
   "shape.title": { en: "Finish shape", ru: "Форма распределения" },
   "shape.itmLabel": { en: "ITM rate %", ru: "ITM-ставка %" },
@@ -300,10 +297,6 @@ export const DICT = {
     en: "Comma, space or newline separated percentages — will be normalized to sum to 100 %. Paid places = length of list.",
     ru: "Проценты через запятую, пробел или перевод строки — нормализуются до 100 %. Призовых мест = длина списка.",
   },
-  "row.reentryHint": {
-    en: "Max bullets per player. 1 = freezeout. After busting, a player reenters with the given probability until the cap — each reentry pays buy-in + rake and grows the prize pool.",
-    ru: "Сколько пуль максимум на одного игрока. 1 = фризаут. После вылета игрок реэнтрится с заданной вероятностью до кэпа — каждая пуля платит бай-ин и рейк и раздувает призовой.",
-  },
   "row.bountyHint": {
     en: "KO bounty as % of the buy-in. That chunk of every entry goes into the bounty pool instead of the regular prize pool, paid out as knockouts.",
     ru: "Баунти за вылет как % от бай-ина. Эта доля каждого входа уходит в баунти-пул вместо обычного призового и выдаётся за нокауты.",
@@ -358,12 +351,6 @@ export const DICT = {
     en: "Per-KO lognormal variance on the bounty value. 0 = flat bounties. 0.5–1 = moderate mystery skew. 1.5+ = GG-style jackpot distribution (occasional huge, mostly tiny). Mean is preserved, only variance is reshaped.",
     ru: "Дисперсия лог-нормального разброса на ценность одной выбитой головы. 0 = плоские баунти. 0.5–1 = умеренный mystery-скью. 1.5+ = как у GG (редкие крупные, в основном мелкие). Среднее сохраняется — меняется только дисперсия.",
   },
-  "row.lateReg": { en: "Late-reg ×", ru: "Late-reg ×" },
-  "row.lateRegHint": {
-    en: "Real field at reg-close ÷ the field size you set. 1.3 = by late-reg close the field is 30% bigger than you thought you were playing. Scales prize pool and paid seats, adds variance. PrimeDope can't model this at all.",
-    ru: "Во сколько раз поле на закрытии регистрации больше заявленного. 1.3 = к закрытию поле раздулось на 30% относительно начального значения. Масштабирует призовой и число призовых, добавляет дисперсию. PrimeDope этого не учитывает.",
-  },
-
   // Controls panel
   "controls.scheduleRepeats": {
     en: "Tournaments per sample",
@@ -844,6 +831,14 @@ export const DICT = {
     en: "Show the trajectory with rakeback applied (all sampled runs, EV, percentile bands and best/worst shift up by the deterministic RB curve). Uncheck to see the game-only view — exposes drawdowns, bust probability, and time-above-zero as they'd be without the RB cushion.",
     ru: "Показывать траекторию с учётом рейкбэка (все семплированные раны, EV, перцентильные полосы и best/worst сдвигаются вверх на детерминированную кривую РБ). Отключи — увидишь чистый game-only: стрики, вероятность разорения и время под нулём без РБ-подушки.",
   },
+  "chart.rakeback.profitOnly.title": {
+    en: "Shift only the quantities that move exactly under the deterministic rakeback curve. Drawdown, streak, and ruin stats stay on the engine's full-sample output.",
+    ru: "Сдвигать только те величины, которые точно меняются от детерминированной кривой рейкбэка. Просадки, стрики и риск разорения остаются по full-sample расчёту движка.",
+  },
+  "chart.rakeback.fullSampleNote": {
+    en: "Drawdown, streak, and ruin stats stay on the full-sample engine output.",
+    ru: "Просадки, стрики и риск разорения остаются по full-sample расчёту движка.",
+  },
   "chart.trajectory.overlay": {
     en: "Overlay PrimeDope on the left",
     ru: "Наложить PrimeDope слева",
@@ -1187,24 +1182,24 @@ export const DICT = {
     ru: "Веса в Миксе — это доли турниров в синтетическом миксе, а не доли долларового риска.",
   },
   "chart.convergence.bandWarning.containsMystery": {
-    en: "Mystery still uses a point estimate here, but its current runtime fit carries too much residual drift for an honest numeric ± band. The point stays as a ballpark; the range is hidden until the Mystery policy is revalidated.",
-    ru: "Для Mystery точка пока остаётся ориентиром, но текущий runtime-fit даёт слишком большой residual drift для честной числовой ± полосы. Поэтому точку оставили, а диапазон скрыли до новой валидации политики Mystery.",
+    en: "Mystery keeps a numeric ± band only inside the revalidated safe box (AFS 500–10k, ROI −10..+30%). Outside that pocket the point estimate stays as a ballpark, but the range is hidden because off-grid drift is still too large.",
+    ru: "Для Mystery числовая ± полоса показывается только внутри перевалидированного safe-box'а (AFS 500–10k, ROI −10..+30%). Вне этого кармана точка остаётся ориентиром, но диапазон скрыт: off-grid drift там всё ещё слишком велик.",
   },
   "chart.convergence.bandWarning.containsMysteryRoyale": {
     en: "Battle Royale uses a runtime point estimate here, but its old averaged residual band is no longer trusted. The point stays; the numeric ± range is hidden until the BR policy is revalidated.",
     ru: "Для Battle Royale здесь используется runtime точечная оценка, но старая averaged residual-полоса больше не считается надёжной. Точку оставили, а числовой ± диапазон скрыли до новой валидации BR-политики.",
   },
   "chart.convergence.bandWarning.outsideFitBox": {
-    en: "Current AFS / ROI sits outside the validated training box for this format (freeze & PKO / Mystery field 50–50 000, PKO / Mystery ROI −20..+80 %, MBR field fixed at 18 with ROI ±10 %). The point estimate is still a ballpark, but the ± band is extrapolation territory so it's suppressed.",
-    ru: "Текущий AFS / ROI выходит за пределы validated training box для этого формата (фриз и ПКО / Мистери поле 50–50 000, ПКО / Мистери ROI −20..+80 %, MBR поле строго 18 и ROI ±10 %). Точка всё ещё ориентир, но ± полоса была бы экстраполяцией — её скрыли.",
+    en: "Current AFS / ROI sits outside the validated training box for this format (freeze & PKO / Mystery field 50–50 000, PKO / Mystery ROI −20..+80 %, MBR field fixed at 18 with ROI ±10 %). The point estimate is still a ballpark, but the ± band would be extrapolation territory so it's suppressed.",
+    ru: "Текущий AFS / ROI выходит за пределы validated training box для этого формата (фриз и ПКО / Мистери поле 50–50 000, ПКО / Мистери ROI −20..+80 %, MBR поле строго 18 и ROI ±10 %). Точка всё ещё ориентир, но ± полоса здесь уже была бы экстраполяцией, поэтому её скрыли.",
   },
   "chart.convergence.rbHint": {
     en: "RB shifts total ROI upward but doesn't add variance — the k / fields above are driven by game σ only, independent of RB%.",
     ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",
   },
   "chart.convergence.assumptions": {
-    en: "Read a row as: play this many tournaments and, with the chosen CI confidence, your observed ROI lands inside the target band around the true one. Freeze now reacts to ROI through the runtime single-row model. PKO, Mystery, and Battle Royale also grow with ROI because better runs collect more bounty value. Mix combines Freeze / PKO / Mystery by user-set tournament weights: σ²_mix = Σ w_format·σ²_format. Schedule mode ignores the global AFS / ROI / rake sliders, compiles each row with its own field, field variability, payout shape, rake, and bounty structure, then aggregates schedule-level dollar variance. Averaged PKO keeps its numeric residual band only inside the validated box; Freeze, Battle Royale, and Schedule are now point-first runtime estimates, and Mystery keeps only the point estimate until its policy is revalidated.",
-    ru: "Строка читается так: сыграй столько турниров, и с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного. Фриз теперь реагирует на ROI через runtime single-row модель. В ПКО, Мистери и Battle Royale σ тоже растёт с ROI, потому что более глубокие проходы собирают больше баунти. Микс комбинирует Фриз / ПКО / Мистери по заданным весам турниров: σ²_микс = Σ w_format·σ²_format. Режим Расписание игнорирует глобальные ползунки AFS / ROI / рейка, компилирует каждую строку со своим полем, field variability, payout-shape, рейком и bounty-структурой, а потом агрегирует schedule-level долларовую дисперсию. В усреднённом ПКО числовая residual-полоса остаётся только внутри validated box; Фриз, Battle Royale и Расписание теперь point-first runtime-оценки, а для Mystery пока сохраняется только точка до новой валидации политики.",
+    en: "Read a row as: play this many tournaments and, with the chosen CI confidence, your observed ROI lands inside the target band around the true one. Freeze now reacts to ROI through the runtime single-row model. PKO, Mystery, and Battle Royale also grow with ROI because better runs collect more bounty value. Mix combines Freeze / PKO / Mystery by user-set tournament weights: σ²_mix = Σ w_format·σ²_format. Schedule mode ignores the global AFS / ROI / rake sliders, compiles each row with its own field, field variability, payout shape, rake, and bounty structure, then aggregates schedule-level dollar variance. Averaged PKO keeps its numeric residual band inside the validated box; Mystery keeps it only inside its narrower revalidated safe box (AFS 500–10k, ROI −10..+30%); Freeze, Battle Royale, and Schedule are point-first runtime estimates.",
+    ru: "Строка читается так: сыграй столько турниров, и с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного. Фриз теперь реагирует на ROI через runtime single-row модель. В ПКО, Мистери и Battle Royale σ тоже растёт с ROI, потому что более глубокие проходы собирают больше баунти. Микс комбинирует Фриз / ПКО / Мистери по заданным весам турниров: σ²_микс = Σ w_format·σ²_format. Режим Расписание игнорирует глобальные ползунки AFS / ROI / рейка, компилирует каждую строку со своим полем, field variability, payout-shape, рейком и bounty-структурой, а потом агрегирует schedule-level долларовую дисперсию. В усреднённом ПКО числовая residual-полоса остаётся внутри validated box; у Mystery она показывается только внутри более узкого revalidated safe-box'а (AFS 500–10k, ROI −10..+30%); Фриз, Battle Royale и Расписание теперь point-first runtime-оценки.",
   },
   "chart.decomp": { en: "Per-row EV decomposition", ru: "Декомпозиция EV по строкам" },
   "chart.decomp.sub": {
@@ -1445,8 +1440,8 @@ export const DICT = {
     ru: "Первая реально рабочая версия симулятора: пресеты, стили траекторий, переключатель единиц и импорт/экспорт.",
   },
   "chart.convergence.help": {
-    en: "Fewer tournaments means your observed ROI is mostly noise. The table says how many tournaments you need for each target ROI band at the selected confidence level.\n\nTabs: Freeze, PKO, Mystery, GG Battle Royal, Mix, and Schedule. Freeze and Battle Royale use runtime single-row estimates, so they keep the point estimate first. PKO and Mystery use promoted format fits. Mix blends Freeze / PKO / Mystery with σ²_mix = Σ w·σ². Schedule mode uses the real rows one by one instead of average sliders.\n\nAFS changes the average field size, CI changes how strict the interval is, rake rescales ROI-unit σ by cost basis. Numeric cells show point estimate · fit-drift range when that range is allowed; warning cells keep only the point estimate.",
-    ru: "Чем меньше сыграно турниров, тем сильнее наблюдаемый ROI состоит из шума. Таблица показывает, сколько турниров нужно для каждой полосы ROI при выбранной доверительности.\n\nВкладки: Фриз, ПКО, Мистери, GG Battle Royal, Микс и Расписание. Фриз и Battle Royale используют runtime single-row оценки, поэтому там приоритет у точечной оценки. ПКО и Мистери используют промоутнутые format-fits. Микс смешивает Фриз / ПКО / Мистери через σ²_микс = Σ w·σ². Расписание считает реальные строки по одной, а не средние ползунки.\n\nAFS меняет средний размер поля, CI — строгость интервала, рейк пересчитывает σ в ROI-единицах через cost basis. Числа показываются как точка · диапазон drift-а fit-а, когда такой диапазон разрешён; при warning остаётся только точечная оценка.",
+    en: "Fewer tournaments means your observed ROI is mostly noise. The table says how many tournaments you need for each target ROI band at the selected confidence level.\n\nTabs: Freeze, PKO, Mystery, GG Battle Royal, Mix, and Schedule. Freeze and Battle Royale use runtime single-row estimates, so they keep the point estimate first. PKO and Mystery use promoted format fits. Mix blends Freeze / PKO / Mystery with σ²_mix = Σ w·σ². Schedule mode uses the real rows one by one instead of average sliders.\n\nAFS changes the average field size, CI changes how strict the interval is, rake rescales ROI-unit σ by cost basis. Numeric cells show point estimate · fit-drift range when that range is allowed. Mystery now allows that range only inside its revalidated safe box (AFS 500–10k, ROI −10..+30%); warning cells keep only the point estimate.",
+    ru: "Чем меньше сыграно турниров, тем сильнее наблюдаемый ROI состоит из шума. Таблица показывает, сколько турниров нужно для каждой полосы ROI при выбранной доверительности.\n\nВкладки: Фриз, ПКО, Мистери, GG Battle Royal, Микс и Расписание. Фриз и Battle Royale используют runtime single-row оценки, поэтому там приоритет у точечной оценки. ПКО и Мистери используют промоутнутые format-fits. Микс смешивает Фриз / ПКО / Мистери через σ²_микс = Σ w·σ². Расписание считает реальные строки по одной, а не средние ползунки.\n\nAFS меняет средний размер поля, CI — строгость интервала, рейк пересчитывает σ в ROI-единицах через cost basis. Числа показываются как точка · диапазон drift-а fit-а, когда такой диапазон разрешён. Для Mystery этот диапазон теперь разрешён только внутри revalidated safe-box'а (AFS 500–10k, ROI −10..+30%); при warning остаётся только точечная оценка.",
   },
   "chart.sensitivity.help": {
     en: "X = how wrong your ROI input is in percentage points (e.g. −2pp means real ROI is 2pp lower than configured). Y = expected profit at that real ROI. Use this to ask: 'if my edge is actually 1–2pp worse than I think, am I still profitable?' Slope shows how much each pp of ROI is worth in $. A steep curve means your bottom line is very sensitive to whether your ROI estimate is right.",
@@ -1722,7 +1717,7 @@ export const DICT = {
     ru: "PrimeDope моделирует скилл как плоский лифт по призовым: каждое призовое место получает одинаковый повышенный шанс k/N. Это математически чистенько, но неверно — настоящие скилл-игроки чаще заходят глубоко, а не на мин-кеше. Наша α-калибровка натягивает параметрическую модель (power-law / stretched-exp / линейная) так, чтобы кеши смещались к верху — это воспроизводит наблюдение Muchomota (2024), что реальный ITM на ~3 пп ниже, чем у PrimeDope при 20% ROI. Это бьёт и по стрикам — плоский ITM занижает свинги.",
   },
   // Preview
-  "preview.title": { en: "Single tournament breakdown", ru: "Разбор одного турнира" },
+  "preview.title": { en: "Single-tournament EV", ru: "ЕВ одного турнира" },
   "preview.eyebrow": { en: "Single tournament", ru: "Один турнир" },
   "preview.youPay": { en: "Buy-in", ru: "Баин" },
   "preview.avgReturn": { en: "EV profit", ru: "EV профит" },
@@ -1798,6 +1793,7 @@ export const DICT = {
     en: "Row",
     ru: "Строка",
   },
+  "preview.statField": { en: "Field", ru: "Поле" },
   "preview.statItm": { en: "ITM", ru: "ITM" },
   "preview.statTop1": { en: "EV from top 1%", ru: "EV из топ-1%" },
   "preview.statTop1Hint": {
@@ -1881,8 +1877,8 @@ export const DICT = {
     ru: "Рейкбек %",
   },
   "controls.rakeback.title": {
-    en: "Global rakeback — % of paid rake credited back after every entry. Added deterministically to each bullet's profit ((rb%/100) × row.rake × row.buyIn), so re-entries also earn rakeback. Pure mean shift: trajectories lift, σ and convergence are untouched.",
-    ru: "Глобальный рейкбек — % от уплаченного рейка, возвращаемый после каждого входа. Прибавляется детерминированно к профиту каждого bullet-а ((rb%/100) × рейк × бай-ин), так что ре-энтри тоже даёт рейкбек. Чистый сдвиг среднего: график поднимается, σ и сходимость не меняются.",
+    en: "Global rakeback — % of paid rake credited back after every tournament entry. Added deterministically to profit as ((rb%/100) × row.rake × row.buyIn). Pure mean shift: trajectories lift, σ and convergence are untouched.",
+    ru: "Глобальный рейкбек — % от уплаченного рейка, возвращаемый после каждого входа в турнир. Прибавляется к профиту детерминированно: ((rb%/100) × рейк × бай-ин). Это чистый сдвиг среднего: график поднимается, а σ и сходимость не меняются.",
   },
   "controls.rakeback.avgBr": {
     en: "40% BR ref",
@@ -2028,8 +2024,8 @@ export const DICT = {
     ru: "Форма призовой сетки. Standard ~15% ITM, Flat ~20% (плоский топ), Top-heavy ~12% (крутой), плюс реальные кривые (PokerStars / GG / Sunday Million / Bounty Builder). WTA = 100% победителю. Custom = свои %.",
   },
   "help.row.count": {
-    en: "Bullets of this tourney per session. NOT re-entries — re-entry rate is a separate advanced field (rebuys inside the same tourney). Fractions allowed, stochastically rounded.",
-    ru: "Сколько пуль этого турнира за сессию. Это НЕ ре-энтри — ре-энтри настраивается отдельно (перезаходы внутри того же турнира). Дроби допустимы, округляем стохастически.",
+    en: "How many tournaments from this row you play in one schedule pass. Fractions are allowed and rounded stochastically.",
+    ru: "Сколько турниров из этой строки ты играешь за один проход расписания. Дробные значения допустимы и округляются стохастически.",
   },
 
   "emp.title": { en: "Empirical PMF source", ru: "Источник эмпирической PMF" },
@@ -2049,7 +2045,7 @@ export const DICT = {
   "cash.section.results.title": { en: "Cash results", ru: "Результаты кэша" },
   "cash.group.session": { en: "Session", ru: "Сессия" },
   "cash.group.rake": { en: "Rakeback", ru: "Рейкбек" },
-  "cash.group.hourly": { en: "Hourly lens", ru: "Почасовка" },
+  "cash.group.hourly": { en: "Volume lens", ru: "Темп / $ в час" },
   "cash.group.stakes": { en: "Stake mix", ru: "Микс лимитов" },
   "cash.stakes.toggle.hint": {
     en: "Mix several stakes or rooms. Each row has its own winrate, SD, bbSize, rake.",
@@ -2063,6 +2059,14 @@ export const DICT = {
   "cash.stakes.row.pvi": { en: "PVI", ru: "PVI" },
   "cash.stakes.add": { en: "+ Add row", ru: "+ Добавить строку" },
   "cash.stakes.remove": { en: "Remove", ru: "Удалить" },
+  "cash.stakes.share.ok": {
+    en: "Current row-share sum: {sum}.",
+    ru: "Текущая сумма долей: {sum}.",
+  },
+  "cash.stakes.share.renorm": {
+    en: "Current row-share sum: {sum}. The engine renormalizes it to 1.00 before the run.",
+    ru: "Текущая сумма долей: {sum}. Перед запуском движок перенормирует её к 1.00.",
+  },
   "cash.stakes.refBbHint": {
     en: "Top-level BB size is the reference denomination for bankroll. Rows with larger BB scale up proportionally.",
     ru: "Верхний BB — это базовая валюта банкролла. Строки с большим BB скейлятся вверх пропорционально.",
@@ -2093,8 +2097,53 @@ export const DICT = {
     en: "Hands / hour",
     ru: "Раздач в час",
   },
+  "cash.hours.hint": {
+    en: "Only translates EV into $/hour. It does not change swings, drawdowns, or the trajectory shape.",
+    ru: "Только переводит EV в $/час. На свинги, просадки и форму траектории это не влияет.",
+  },
+  "cash.group.riskLine": { en: "Risk line", ru: "Линия риска" },
+  "cash.risk.threshold.label": {
+    en: "Threshold (BB)",
+    ru: "Порог (BB)",
+  },
+  "cash.risk.hint": {
+    en: "Used by the odds card and the touch-risk pill. It marks the bankroll depth that counts as properly underwater for this plan.",
+    ru: "Используется в карточке шансов и в risk-плашке. Это глубина банкролла, с которой для этого плана начинается уже настоящая подводная зона.",
+  },
   "cash.run": { en: "Run simulation", ru: "Запустить симуляцию" },
   "cash.running": { en: "Running…", ru: "Считаем…" },
+  "cash.hero.expected": { en: "Expected EV", ru: "Ожидаемый EV" },
+  "cash.hero.expected.subHourly": {
+    en: "{hourly} at {hands} hands/hour",
+    ru: "{hourly} при темпе {hands} раздач/час",
+  },
+  "cash.hero.expected.subDistance": {
+    en: "Pure expectation over the chosen distance.",
+    ru: "Чистое ожидание на выбранной дистанции.",
+  },
+  "cash.hero.typical": { en: "Typical finish", ru: "Типичный финал" },
+  "cash.hero.typical.subRange": {
+    en: "Middle 90%: {lo} to {hi}",
+    ru: "Средние 90%: от {lo} до {hi}",
+  },
+  "cash.hero.finishUp": { en: "Finish up", ru: "Финиш в плюс" },
+  "cash.hero.finishUp.subLoss": {
+    en: "Finish below zero: {pct}",
+    ru: "Финиш ниже нуля: {pct}",
+  },
+  "cash.hero.drawdown": { en: "P95 drawdown", ru: "P95 просадки" },
+  "cash.hero.drawdown.subMedian": {
+    en: "Median drawdown: {value}",
+    ru: "Медианная просадка: {value}",
+  },
+  "cash.hero.breakeven": {
+    en: "Median breakeven stretch",
+    ru: "Медианная полоса в ноль",
+  },
+  "cash.hero.breakeven.subRecovery": {
+    en: "Recovery p90: {recovery} · unrecovered: {share}",
+    ru: "Восстановление p90: {recovery} · не отмазались: {share}",
+  },
   "cash.stats.expectedEvBb": { en: "Expected EV (BB)", ru: "Ожидаемый EV (BB)" },
   "cash.stats.meanFinalBb": {
     en: "Mean final (BB)",
@@ -2119,15 +2168,150 @@ export const DICT = {
     en: "RB earned (BB)",
     ru: "Рейкбек получен (BB)",
   },
+  "cash.axis.bb": { en: "BB", ru: "BB" },
+  "cash.axis.usd": { en: "$", ru: "$" },
+  "cash.axis.hands": { en: "hands", ru: "раздачи" },
+  "cash.axis.count": { en: "count", ru: "частота" },
+  "cash.axis.share": { en: "% of paths", ru: "% траекторий" },
+  "cash.axis.samples": { en: "samples", ru: "сэмплы" },
+  "cash.axis.winrate": { en: "bb/100", ru: "bb/100" },
+  "cash.unit.bb": { en: "BB", ru: "BB" },
+  "cash.unit.usd": { en: "$", ru: "$" },
+  "cash.toolbar.runs": { en: "Runs", ru: "Раны" },
+  "cash.toolbar.units": { en: "Units", ru: "Единицы" },
   "cash.chart.trajectory.title": {
     en: "Bankroll trajectory",
     ru: "Траектория банкролла",
+  },
+  "cash.chart.trajectory.note": {
+    en: "Thin lines are individual runs. Colored rails show where the bulk of honest sessions usually lives. The dashed line marks {threshold}.",
+    ru: "Тонкие линии — отдельные раны. Цветные рельсы показывают, где обычно живёт основная масса честных сессий. Пунктиром отмечен порог {threshold}.",
   },
   "cash.chart.final.title": {
     en: "Final bankroll distribution",
     ru: "Распределение финального BR",
   },
   "cash.chart.drawdown.title": { en: "Max drawdown", ru: "Max просадка" },
+  "cash.chart.odds.title": {
+    en: "Odds over distance",
+    ru: "Шансы по дистанции",
+  },
+  "cash.chart.odds.note": {
+    en: "The pills show the odds at the end of the chosen distance. The lines show how often you are above zero or already below {threshold} earlier along the way.",
+    ru: "Плашки показывают шансы к концу выбранной дистанции. Линии показывают, как часто ты уже выше нуля или уже ниже {threshold} по дороге.",
+  },
+  "cash.chart.breakeven.title": {
+    en: "Longest breakeven stretch",
+    ru: "Самая длинная безоткатная полоса",
+  },
+  "cash.chart.breakeven.note": {
+    en: "Longest stretch spent below the previous bankroll peak. X-axis is hands, not BB.",
+    ru: "Самая длинная серия ниже предыдущего пика банкролла. По оси X здесь раздачи, а не BB.",
+  },
+  "cash.chart.recovery.title": {
+    en: "Recovery time after deepest drawdown",
+    ru: "Время восстановления после самой глубокой просадки",
+  },
+  "cash.chart.recovery.note": {
+    en: "How long it takes to climb back from the deepest drawdown to breakeven. Only recovered paths are shown; unrecovered share stays in the risk panel.",
+    ru: "Сколько раздач нужно, чтобы вернуться из самой глубокой просадки к breakeven. Здесь только восстановившиеся траектории; доля невосстановившихся остаётся в блоке рисков.",
+  },
+  "cash.chart.convergence.title": {
+    en: "Monte Carlo convergence",
+    ru: "Сходимость Monte Carlo",
+  },
+  "cash.chart.convergence.note": {
+    en: "Running mean winrate as simulations accumulate. Thin rails show the current 95% confidence band of the estimate.",
+    ru: "Бегущее среднее winrate по мере накопления симуляций. Тонкие границы показывают текущий 95% доверительный коридор оценки.",
+  },
+  "cash.section.streaks.title": {
+    en: "How the pain usually looks",
+    ru: "Как обычно выглядит боль",
+  },
+  "cash.section.streaks.note": {
+    en: "Cash is rarely about one brutal point. It is more often long stretches spent below the previous peak and the time needed to climb back.",
+    ru: "В кэше боль чаще не в одной точке, а в длинных кусках ниже прошлого пика и во времени, нужном чтобы отмазаться.",
+  },
+  "cash.section.mix.title": {
+    en: "Where the mix comes from",
+    ru: "Из чего собирается микс",
+  },
+  "cash.section.mix.note": {
+    en: "Built from the same exact row hand budget the engine used. Helps you see which rows bring the hands, the swing, the rake, and the rakeback.",
+    ru: "Собрано из того же точного бюджета раздач по строкам, который использовал движок. Видно, какие строки приносят объём, swing, рейк и рейкбек.",
+  },
+  "cash.mix.metric.hands": {
+    en: "Hands",
+    ru: "Доля раздач",
+  },
+  "cash.mix.metric.swing": {
+    en: "Swing share",
+    ru: "Доля свинга",
+  },
+  "cash.mix.metric.rake": {
+    en: "Rake paid",
+    ru: "Уплаченный рейк",
+  },
+  "cash.mix.metric.rb": {
+    en: "RB earned",
+    ru: "RB получен",
+  },
+  "cash.mix.expectedEv": {
+    en: "Expected EV",
+    ru: "Ожидаемый EV",
+  },
+  "cash.mix.rowFallback": {
+    en: "Row {index}",
+    ru: "Строка {index}",
+  },
+  "cash.section.economics.title": {
+    en: "Economics",
+    ru: "Экономика",
+  },
+  "cash.section.economics.note": {
+    en: "Useful for rake and RB sanity-checks. These numbers shift expectation more than they change the feel of the graph.",
+    ru: "Полезно для sanity-check по рейку и рейкбеку. Эти цифры сильнее двигают ожидание, чем ощущение самого графика.",
+  },
+  "cash.section.diagnostics.title": {
+    en: "Simulation diagnostics",
+    ru: "Диагностика симуляции",
+  },
+  "cash.section.diagnostics.note": {
+    en: "This block is about Monte Carlo noise, not about your real cash-game risk. Keep it below the main story.",
+    ru: "Этот блок про шум Монте-Карло, а не про твой реальный кэш-риск. Держим его ниже главной истории.",
+  },
+  "cash.summary.p05": { en: "P05", ru: "P05" },
+  "cash.summary.median": { en: "Median", ru: "Медиана" },
+  "cash.summary.p95": { en: "P95", ru: "P95" },
+  "cash.summary.recoveryMedian": {
+    en: "Median recovery",
+    ru: "Медиана восстановления",
+  },
+  "cash.summary.recoveryP90": {
+    en: "Recovery p90",
+    ru: "Восстановление p90",
+  },
+  "cash.summary.unrecovered": { en: "Unrecovered", ru: "Не отмазались" },
+  "cash.summary.oddsUp": {
+    en: "Above 0 BB",
+    ru: "Выше 0 BB",
+  },
+  "cash.summary.oddsBelowThresholdNow": {
+    en: "Now ≤ {threshold}",
+    ru: "Сейчас ≤ {threshold}",
+  },
+  "cash.summary.probBelowThresholdEver": {
+    en: "Ever ≤ {threshold}",
+    ru: "Хотя бы раз ≤ {threshold}",
+  },
+  "cash.summary.oddsSub100Now": {
+    en: "≤ −100 BB now",
+    ru: "Сейчас ≤ −100 BB",
+  },
+  "cash.summary.probSub100": {
+    en: "Ever ≤ −100 BB",
+    ru: "Хотя бы раз ≤ −100 BB",
+  },
   "cash.empty": {
     en: "Press Run to simulate the cash session.",
     ru: "Нажми «Запустить», чтобы посчитать кэш-сессию.",

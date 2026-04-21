@@ -26,6 +26,7 @@ import {
   rakebackRoiContribution,
   reportedRoiFromPreRakebackRoi,
 } from "@/lib/sim/rakebackMath";
+import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
@@ -89,13 +90,13 @@ const STRUCTURES: {
   },
   {
     id: "mtt-gg",
-    short: "CoinPoker Mini CoinMasters (2026)",
+    short: "Mini CoinMasters (2026)",
     full: "CoinPoker Mini CoinMasters · calibrated to 2026-04-14 sample",
     real: true,
   },
   {
     id: "mtt-gg-bounty",
-    short: "CoinPoker Mini CoinHunter PKO (2026)",
+    short: "Mini CoinHunter PKO (2026)",
     full: "CoinPoker Mini CoinHunter PKO · calibrated to 2026-04-14 sample",
     real: true,
   },
@@ -168,19 +169,6 @@ const PAYOUT_COMPAT: Partial<Record<PayoutStructureId, CompatRange>> = {
 // user-entered splits are arbitrary by design.
 const PAYOUT_GAMETYPE_ALLOW: Partial<Record<GameType, PayoutStructureId[]>> = {
   freezeout: [
-    "mtt-standard",
-    "mtt-primedope",
-    "mtt-flat",
-    "mtt-top-heavy",
-    "mtt-pokerstars",
-    "mtt-gg",
-    "mtt-sunday-million",
-    "satellite-ticket",
-    "sng-50-30-20",
-    "sng-65-35",
-    "winner-takes-all",
-  ],
-  "freezeout-reentry": [
     "mtt-standard",
     "mtt-primedope",
     "mtt-flat",
@@ -373,25 +361,6 @@ export const ScheduleEditor = memo(function ScheduleEditor({
     next.splice(idx + 1, 0, copy);
     onChangeRef.current(next);
   }, []);
-  const cloneAsReentry = useCallback((id: string) => {
-    // A late re-entry is just another entry with lower skill edge (player
-    // arrives short / plays a bigger field). Clone the row, drop ROI by
-    // 5pp, and tag the label. User can tune further if needed.
-    const sched = scheduleRef.current;
-    const row = sched.find((r) => r.id === id);
-    if (!row) return;
-    const baseLabel = row.label || "";
-    const copy = {
-      ...row,
-      id: crypto.randomUUID(),
-      roi: row.roi - 0.05,
-      label: baseLabel ? `${baseLabel} (re-entry)` : "(re-entry)",
-    };
-    const idx = sched.findIndex((r) => r.id === id);
-    const next = [...sched];
-    next.splice(idx + 1, 0, copy);
-    onChangeRef.current(next);
-  }, []);
   const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -424,7 +393,19 @@ export const ScheduleEditor = memo(function ScheduleEditor({
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
       <div className="schedule-table-scroll overflow-x-auto">
-        <table className="dense-control-table w-full min-w-[820px] text-sm">
+        <table className="dense-control-table w-full min-w-[760px] table-fixed text-sm min-[1024px]:min-w-0">
+          <colgroup>
+            <col className="w-8" />
+            <col />
+            <col className="w-[8.5rem]" />
+            <col className="w-[5rem]" />
+            <col className="w-[5.75rem]" />
+            <col className="w-[4.75rem]" />
+            <col className="w-[5.25rem]" />
+            <col className="w-[12rem]" />
+            <col className="w-[5rem]" />
+            <col className="w-14" />
+          </colgroup>
           <thead>
             <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-left text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               <Th> </Th>
@@ -453,7 +434,6 @@ export const ScheduleEditor = memo(function ScheduleEditor({
                 update={update}
                 remove={remove}
                 duplicate={duplicate}
-                cloneAsReentry={cloneAsReentry}
                 toggleExpand={toggleExpand}
               />
             ))}
@@ -575,7 +555,6 @@ interface ScheduleRowProps {
   update: (id: string, patch: Partial<TournamentRow>) => void;
   remove: (id: string) => void;
   duplicate: (id: string) => void;
-  cloneAsReentry: (id: string) => void;
   toggleExpand: (id: string) => void;
 }
 
@@ -590,13 +569,11 @@ const ScheduleRow = memo(function ScheduleRow({
   update,
   remove,
   duplicate,
-  cloneAsReentry,
   toggleExpand,
 }: ScheduleRowProps) {
   const t = useT();
   const hasAdv =
     (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
-    (r.maxEntries ?? 1) > 1 ||
     (r.bountyFraction ?? 0) > 0;
   const gt = inferGameType(r);
 
@@ -685,16 +662,16 @@ const ScheduleRow = memo(function ScheduleRow({
             )}
           </button>
         </Td>
-        <Td className="w-full">
+        <Td className="min-w-0">
           <TextInput
             value={r.label ?? ""}
             onChange={(v) => update(r.id, { label: v })}
-            placeholder={t("row.unnamed")}
-            className="w-full min-w-[120px]"
+            placeholder={getTournamentRowDisplayLabel(r, t)}
+            className="w-full min-w-0"
           />
         </Td>
-        <Td>
-          <div className="flex items-center gap-1">
+        <Td className="min-w-0">
+          <div className="flex items-center justify-center gap-1">
             <GameTypeSelect
               value={gt}
               onChange={(next) =>
@@ -771,10 +748,10 @@ const ScheduleRow = memo(function ScheduleRow({
               if (!Number.isFinite(v) || v < 0 || v > 100) return;
               update(r.id, { itmRate: v / 100 });
             }}
-            className="h-8 w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-8 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:cursor-not-allowed disabled:opacity-50"
           />
         </Td>
-        <Td>
+        <Td className="min-w-0">
           <select
             value={r.payoutStructure}
             title={current?.s.full ?? ""}
@@ -783,7 +760,7 @@ const ScheduleRow = memo(function ScheduleRow({
               update(r.id, { payoutStructure: next });
             }}
             className={
-              "h-8 w-full rounded-md border px-2.5 text-xs outline-none transition-colors focus:border-[color:var(--color-accent)] " +
+              "h-8 w-full min-w-0 rounded-md border px-2 text-[11px] outline-none transition-colors focus:border-[color:var(--color-accent)] " +
               (currentDisabled
                 ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
                 : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
@@ -793,7 +770,7 @@ const ScheduleRow = memo(function ScheduleRow({
               <optgroup label={`— ${t("row.payoutGroup.real2026")} —`}>
                 {dropdownData.availableReal.map(({ s }) => (
                   <option key={s.id} value={s.id} title={s.full}>
-                    ★ {s.short}
+                    {s.short}
                   </option>
                 ))}
               </optgroup>
@@ -865,20 +842,6 @@ const ScheduleRow = memo(function ScheduleRow({
               </svg>
             </IconBtn>
             <IconBtn
-              onClick={() => cloneAsReentry(r.id)}
-              label={t("row.cloneAsReentry")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M4 12a8 8 0 0 1 14-5.3L20 4v6h-6l2.3-2.3A6 6 0 1 0 18 12"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </IconBtn>
-            <IconBtn
               onClick={() => remove(r.id)}
               disabled={!canRemove}
               label={t("row.delete")}
@@ -935,7 +898,6 @@ function AdvancedRowPanel({
   const t = useT();
   const fv: FieldVariability = row.fieldVariability ?? { kind: "fixed" };
   const gt = inferGameType(row);
-  const showReentry = gt === "freezeout-reentry";
   const showBounty = gt === "pko" || gt === "mystery" || gt === "mystery-royale";
   const showMysteryVar = gt === "mystery";
   return (
@@ -1011,35 +973,6 @@ function AdvancedRowPanel({
           </div>
         )}
       </div>
-
-      {/* Re-entry */}
-      {showReentry && (
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel hint={t("row.reentryHint")}>
-            {t("row.reentry")}
-          </SectionLabel>
-          <div className="grid grid-cols-2 gap-2">
-            <FieldSmall label={t("row.reentry")}>
-              <NumInputBox
-                value={row.maxEntries ?? 1}
-                min={1}
-                max={100}
-                step={1}
-                onChange={(v) => onChange({ maxEntries: Math.floor(v) })}
-              />
-            </FieldSmall>
-            <FieldSmall label={t("row.reentryRate")}>
-              <NumInputBox
-                value={+((row.reentryRate ?? ((row.maxEntries ?? 1) > 1 ? 1 : 0)) * 100).toFixed(0)}
-                min={0}
-                max={100}
-                step={10}
-                onChange={(v) => onChange({ reentryRate: v / 100 })}
-              />
-            </FieldSmall>
-          </div>
-        </div>
-      )}
 
       {/* Bounty / PKO */}
       {showBounty && (
@@ -1323,7 +1256,8 @@ function Th({
   return (
     <th
       className={
-        "whitespace-nowrap px-2 py-2.5 font-medium first:pl-4 last:pr-4 " + (align === "right" ? "text-right" : "")
+        "whitespace-nowrap px-1.5 py-2.5 font-medium first:pl-4 last:pr-4 " +
+        (align === "right" ? "text-right" : "")
       }
     >
       <span
@@ -1350,7 +1284,7 @@ function Td({
   return (
     <td
       className={
-        "px-2 py-2 align-middle first:pl-4 last:pr-4 " +
+        "px-1.5 py-2 align-middle first:pl-4 last:pr-4 " +
         (align === "right" ? "text-right " : "") +
         className
       }
@@ -1363,7 +1297,7 @@ function Td({
 // Shared input chrome for the schedule table — always-visible border + fill
 // so fields read as "editable" at a glance, accent focus ring for the hit.
 const INPUT_BASE =
-  "h-8 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2.5 text-sm text-[color:var(--color-fg)] outline-none transition-colors placeholder:text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]";
+  "h-8 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-[13px] text-[color:var(--color-fg)] outline-none transition-colors placeholder:text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]";
 
 function TextInput({
   value,
@@ -1573,7 +1507,7 @@ function GameTypeSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as GameType)}
-      className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+      className="h-8 w-full min-w-0 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[12px] text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
     >
       {GAME_TYPE_ORDER.map((g) => (
         <option key={g} value={g}>
@@ -1624,7 +1558,7 @@ function BuyInInput({
       title="50+5 = $50 buy-in + $5 rake (or just a number)"
       className={
         INPUT_BASE +
-        " w-24 text-center tabular-nums " +
+        " w-full text-center tabular-nums " +
         (invalid ? "!border-[color:var(--color-danger)]/70" : "")
       }
     />
@@ -1713,7 +1647,7 @@ function NumInput({
       }}
       className={
         INPUT_BASE +
-        " w-20 text-center tabular-nums " +
+        " w-full text-center tabular-nums " +
         (invalid ? "!border-rose-500/70 ring-1 ring-rose-500/30" : "")
       }
     />
@@ -1741,7 +1675,7 @@ function IconBtn({
       title={label}
       aria-label={label}
       className={
-        "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-border)] hover:bg-[color:var(--color-fg)]/5 disabled:cursor-not-allowed disabled:opacity-20 " +
+        "inline-flex h-[26px] w-[26px] items-center justify-center rounded-md border border-transparent text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-border)] hover:bg-[color:var(--color-fg)]/5 disabled:cursor-not-allowed disabled:opacity-20 " +
         (danger ? "hover:text-[color:var(--color-danger)]" : "hover:text-[color:var(--color-fg)]")
       }
     >

@@ -768,4 +768,3 @@ export interface SimulationResult {
     sigmaPerTournamentEmpirical: number;
   };
 }
-

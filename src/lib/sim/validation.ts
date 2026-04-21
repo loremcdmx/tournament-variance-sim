@@ -5,7 +5,12 @@
  * UI as structured warnings rather than silent clamps. Runs on the main
  * thread before the worker dispatch.
  */
-import { applyBountyBias, calibrateShelledItm } from "./finishModel";
+import {
+  applyBountyBias,
+  calibrateShelledItm,
+  isAlphaAdjustable,
+} from "./finishModel";
+import { buildScheduleAnalyticBreakdown } from "./engine";
 import {
   clampBountyMean,
   isBattleRoyaleRow,
@@ -51,7 +56,28 @@ export function validateSchedule(
   const issues: RowFeasibilityIssue[] = [];
   schedule.forEach((rawRow, idx) => {
     const row = normalizeBrMrConsistency(rawRow);
-    if (row.itmRate == null || row.itmRate <= 0) return;
+    if (row.itmRate == null || row.itmRate <= 0) {
+      if (!isAlphaAdjustable(model)) return;
+      const analytic = buildScheduleAnalyticBreakdown({
+        schedule: [{ ...row, count: 1 }],
+        finishModel: model,
+      });
+      const meanSingle = analytic?.perRow[0]?.meanSingle;
+      const targetEv = row.buyIn * (1 + row.rake) * (1 + row.roi);
+      if (meanSingle == null || !Number.isFinite(meanSingle)) return;
+      const gap = meanSingle - targetEv;
+      const relGap = Math.abs(gap) / Math.max(1e-9, targetEv);
+      if (Math.abs(gap) <= 1e-3 || relGap <= 1e-3) return;
+      issues.push({
+        rowId: row.id,
+        rowIdx: idx,
+        label: row.label || `#${idx + 1}`,
+        targetEv,
+        currentEv: meanSingle,
+        gap,
+      });
+      return;
+    }
 
     const lateRegMult = Math.max(1, row.lateRegMultiplier ?? 1);
     const N = Math.max(2, Math.floor(row.players * lateRegMult));

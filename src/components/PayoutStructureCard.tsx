@@ -7,13 +7,14 @@ import { getPayoutTable } from "@/lib/sim/payouts";
 import type { TournamentRow } from "@/lib/sim/types";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey, Locale } from "@/lib/i18n/dict";
+import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 
 interface Props {
   schedule: TournamentRow[];
 }
 
 const TOP_ROWS = 9;
-const PLACE_COL_CLASS = "w-14";
+const PLACE_COL_CLASS = "w-20";
 const VALUE_COL_CLASS = "w-28";
 
 type PaletteId = "accent" | "medal" | "heat" | "ocean" | "mono";
@@ -172,7 +173,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
             >
               {schedule.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.label || r.id}
+                  {getTournamentRowDisplayLabel(r, t)}
                 </option>
               ))}
             </select>
@@ -354,7 +355,7 @@ function PayoutBar({
       <div
         className={`${PLACE_COL_CLASS} shrink-0 text-right font-mono tabular-nums ${
           muted ? "text-[color:var(--color-fg-dim)]" : "text-[color:var(--color-fg-muted)]"
-        }`}
+        } whitespace-nowrap`}
       >
         {place}
       </div>

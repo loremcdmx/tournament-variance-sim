@@ -8,6 +8,7 @@ import type { GameType, TournamentRow } from "./types";
 
 export const GAME_TYPE_ORDER: GameType[] = [
   "freezeout",
+  "freezeout-reentry",
   "pko",
   "mystery",
   "mystery-royale",
@@ -56,7 +57,6 @@ export function inferGameType(row: TournamentRow): GameType {
  *   - Mystery: 50 % bounty, σ² = 0.8 (moderate right tail).
  *   - Mystery royale: 50 % bounty, σ² = 1.8 (jackpot-tier tail).
  *   - Freezeout-reentry: maxEntries=2, reentryRate=1 (always re-enter).
- *
  * Existing values that the new format *still uses* are preserved when
  * possible (e.g. switching between mystery ↔ mystery-royale keeps the
  * current bountyFraction), so the user's manual tweaks survive.

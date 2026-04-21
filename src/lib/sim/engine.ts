@@ -255,6 +255,7 @@ export interface ScheduleAnalyticRow {
   rowIdx: number;
   count: number;
   countShare: number;
+  meanSingle: number;
   totalCost: number;
   costShare: number;
   varianceDollar: number;
@@ -544,6 +545,7 @@ export function buildScheduleAnalyticBreakdown(input: {
         rowIdx,
         count: 0,
         countShare: 0,
+        meanSingle: 0,
         totalCost: 0,
         costShare: 0,
         varianceDollar: 0,
@@ -562,6 +564,7 @@ export function buildScheduleAnalyticBreakdown(input: {
       rowIdx,
       count,
       countShare: count / compiled.tournamentsPerPass,
+      meanSingle: m.meanDollar,
       totalCost: compiled.rowBuyIns[rowIdx],
       costShare: compiled.rowBuyIns[rowIdx] / compiled.totalBuyIn,
       varianceDollar: varianceSingle * count,
@@ -655,7 +658,6 @@ function compileSingleEntry(
   // widens the finish-position shape. Defaults to 1 (no late reg).
   const lateRegMult = Math.max(1, row.lateRegMultiplier ?? 1);
   const N = Math.max(1, Math.floor(players * lateRegMult));
-
   // ---- re-entry accounting ------------------------------------------------
   // Expected number of *extra* entries per seat (beyond the first) under
   // geometric re-entry with cap (maxEntries-1). Contributes to cost and to
@@ -667,7 +669,6 @@ function compileSingleEntry(
     if (reRate === 1) {
       reentryExpected = maxEntries - 1;
     } else {
-      // Σ_{k=1}^{M-1} p^k = p(1 − p^(M−1)) / (1 − p)
       const M = maxEntries - 1;
       reentryExpected = (reRate * (1 - Math.pow(reRate, M))) / (1 - reRate);
     }
@@ -680,7 +681,6 @@ function compileSingleEntry(
     ? row.buyIn
     : row.buyIn * (1 + row.rake);
   const costPerEntry = entryCostSingle * (1 + reentryExpected);
-  // Field-average extra entries inflate the prize pool too.
   const effectiveSeats = N * (1 + reentryExpected);
   // Rake-SD coupling: in PD-binary-itm mode, we model PD's internal quirk
   // of using the POST-RAKE pool as the variance driver while keeping the
