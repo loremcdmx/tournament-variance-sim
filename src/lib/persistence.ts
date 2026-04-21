@@ -235,11 +235,12 @@ function normalizePersistedCustomPayouts(
   row: TournamentRow,
   players: number,
 ): Pick<TournamentRow, "payoutStructure" | "customPayouts"> {
+  if (row.payoutStructure !== "custom") {
+    return { payoutStructure: row.payoutStructure, customPayouts: undefined };
+  }
   const raw = row.customPayouts;
   if (!Array.isArray(raw)) {
-    return row.payoutStructure === "custom"
-      ? { payoutStructure: "mtt-standard", customPayouts: undefined }
-      : { payoutStructure: row.payoutStructure, customPayouts: undefined };
+    return { payoutStructure: "mtt-standard", customPayouts: undefined };
   }
   const trimmed = raw.slice(0, Math.max(1, Math.floor(players)));
   if (
@@ -247,9 +248,7 @@ function normalizePersistedCustomPayouts(
     !trimmed.every((value) => isFiniteNumber(value) && value >= 0) ||
     !(trimmed.reduce((sum, value) => sum + value, 0) > 0)
   ) {
-    return row.payoutStructure === "custom"
-      ? { payoutStructure: "mtt-standard", customPayouts: undefined }
-      : { payoutStructure: row.payoutStructure, customPayouts: undefined };
+    return { payoutStructure: "mtt-standard", customPayouts: undefined };
   }
   return {
     payoutStructure: row.payoutStructure,

@@ -211,6 +211,26 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.customPayouts).toEqual([50, 30, 20]);
   });
 
+  it("drops hidden custom payout arrays on non-custom rows before they can skew paid-place logic", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            players: 100,
+            payoutStructure: "mtt-primedope",
+            customPayouts: [50, 30, 20],
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.payoutStructure).toBe("mtt-primedope");
+    expect(state?.schedule[0]?.customPayouts).toBeUndefined();
+  });
+
   it("drops hidden bounty and re-entry knobs when persisted gameType is explicit freezeout", () => {
     const state = decodeState(
       encoded({
