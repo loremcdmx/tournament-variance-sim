@@ -99,6 +99,22 @@ describe("persistence validation", () => {
     expect(state?.schedule[1]?.roi).toBe(-0.99);
   });
 
+  it("raises non-positive persisted buy-ins to a minimal positive ticket", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          { ...row, id: "neg", buyIn: -5 },
+          { ...row, id: "zero", buyIn: 0 },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.buyIn).toBe(0.01);
+    expect(state?.schedule[1]?.buyIn).toBe(0.01);
+  });
+
   it("drops malformed persisted custom payout arrays instead of keeping a fake zero-payout custom row", () => {
     const state = decodeState(
       encoded({

@@ -89,6 +89,7 @@ const VALID_COMPARE_MODES = new Set<ControlsState["compareMode"]>([
 const MAX_EMPIRICAL_BUCKETS = 100_000;
 const PERSISTED_ROW_PLAYERS_MIN = 2;
 const PERSISTED_ROW_PLAYERS_MAX = 1_000_000;
+const PERSISTED_ROW_BUYIN_MIN = 0.01;
 const PERSISTED_ROW_RAKE_MIN = 0;
 const PERSISTED_ROW_RAKE_MAX = 1;
 const PERSISTED_ROW_ROI_MIN = -0.99;
@@ -340,6 +341,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
   let changed = false;
   const schedule = state.schedule.map((row) => {
     const nextPlayers = clampPersistedPlayers(row.players);
+    const nextBuyIn = Math.max(PERSISTED_ROW_BUYIN_MIN, row.buyIn);
     const nextRake = clampPersistedRake(row.rake);
     const nextRoi = Math.min(
       PERSISTED_ROW_ROI_MAX,
@@ -401,6 +403,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     const nextCount = clampPersistedCount(row.count);
     if (
       nextPlayers === row.players &&
+      nextBuyIn === row.buyIn &&
       nextRake === row.rake &&
       nextRoi === row.roi &&
       nextLateRegMultiplier === row.lateRegMultiplier &&
@@ -424,6 +427,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     return {
       ...row,
       players: nextPlayers,
+      buyIn: nextBuyIn,
       rake: nextRake,
       roi: nextRoi,
       lateRegMultiplier: nextLateRegMultiplier,
