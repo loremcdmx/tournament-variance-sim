@@ -78,6 +78,11 @@ export interface CashInput {
     handsPerHour: number;
   };
 
+  /** User-facing risk lens in BB for odds / threshold-crossing summaries. */
+  riskBlock?: {
+    thresholdBb: number;
+  };
+
   /** PRNG base seed. */
   baseSeed: number;
 
@@ -104,7 +109,7 @@ export interface CashSamplePaths {
   paths: Float64Array[];
   /** Path indices in the [0, nSimulations) space. */
   sampleIndices: number[];
-  /** Pointwise best / worst across all paths. */
+  /** Pointwise best / worst across the stored hi-res path bundle. */
   best: Float64Array;
   worst: Float64Array;
 }
@@ -120,6 +125,22 @@ export interface CashEnvelopes {
   p975: Float64Array;
   min: Float64Array;
   max: Float64Array;
+}
+
+export interface CashMixBreakdownRow {
+  label?: string;
+  wrBb100: number;
+  sdBb100: number;
+  bbSize: number;
+  hands: number;
+  handShare: number;
+  expectedEvBb: number;
+  varianceBb2: number;
+  varianceShare: number;
+  rakePaidBb: number;
+  rakeShare: number;
+  rbEarnedBb: number;
+  rbShare: number;
 }
 
 /**
@@ -148,6 +169,21 @@ export interface CashResult {
   longestBreakevenHistogram: { binEdges: number[]; counts: number[] };
   /** Time from deepest drawdown back to recovery (hands); unrecovered tracked separately. */
   recoveryHistogram: { binEdges: number[]; counts: number[] };
+  /** Row-level decomposition of the active stake mix. Absent in single-stake mode. */
+  mixBreakdown?: {
+    rows: CashMixBreakdownRow[];
+    totalVarianceBb2: number;
+  };
+  /** User-facing odds over distance at the same checkpoint grid as `envelopes`. */
+  oddsOverDistance: {
+    x: Int32Array;
+    /** Positive BB threshold tracked by the risk lens. */
+    thresholdBb: number;
+    /** P(bankroll > 0) at each checkpoint. */
+    profitShare: Float64Array;
+    /** P(bankroll <= -thresholdBb) at each checkpoint. */
+    belowThresholdNowShare: Float64Array;
+  };
   /** Convergence of sample-mean winrate as the MC progresses. */
   convergence: {
     x: Int32Array;
@@ -163,12 +199,26 @@ export interface CashResult {
     /** Realized from sample. */
     meanFinalBb: number;
     meanFinalUsd: number;
+    /** Distribution landmarks for final BR. */
+    finalBbMedian: number;
+    finalBbP05: number;
+    finalBbP95: number;
     /** Realized SD of final BR. */
     sdFinalBb: number;
+    /** P(final > 0). */
+    probProfit: number;
     /** P(final < 0). */
     probLoss: number;
-    /** Share of paths whose running minimum touched `<= -100 BB`. */
-    probSub100Bb: number;
+    /** Share of paths whose running minimum touched `<= -thresholdBb`. */
+    probBelowThresholdEver: number;
+    /** Distribution landmarks for max drawdown. */
+    maxDrawdownMedian: number;
+    maxDrawdownP95: number;
+    /** Typical longest below-peak stretch, in hands. */
+    longestBreakevenMedian: number;
+    /** Recovery stats over recovered paths only; NaN when none recovered. */
+    recoveryMedian: number;
+    recoveryP90: number;
     /** Fraction of samples that never recovered after their deepest drawdown. */
     recoveryUnrecoveredShare: number;
 

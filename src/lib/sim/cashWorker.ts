@@ -45,8 +45,9 @@ function collectShardTransfers(shard: CashShard): Transferable[] {
     shard.maxDrawdownBb.buffer,
     shard.longestBreakevenHands.buffer,
     shard.recoveryHands.buffer,
-    shard.hitSub100.buffer,
+    shard.hitBelowThreshold.buffer,
     shard.envMatrix.buffer,
+    shard.hiResSampleIndices.buffer,
     shard.hiResBestPath.buffer,
     shard.hiResWorstPath.buffer,
   ];

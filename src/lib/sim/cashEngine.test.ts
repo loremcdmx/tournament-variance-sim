@@ -6,6 +6,7 @@ import {
   makeCashEnvGrid,
   makeCashHiResGrid,
 } from "./cashEngine";
+import { normalizeCashInput, serializeCashInput } from "./cashInput";
 import type { CashInput } from "./cashTypes";
 
 function baseInput(overrides: Partial<CashInput> = {}): CashInput {
@@ -59,6 +60,21 @@ describe("cashEngine — determinism contract", () => {
     const whole = buildCashResult(input, [monolith], envGrid);
     expect(Array.from(merged.finalBb)).toEqual(Array.from(whole.finalBb));
     expect(merged.stats.meanFinalBb).toBe(whole.stats.meanFinalBb);
+  });
+
+  it("sharding preserves the hi-res sample-path union instead of truncating to shard 0", () => {
+    const input = baseInput({ hands: 1_000, nSimulations: 100 });
+    const envGrid = makeCashEnvGrid(input.hands);
+    const hiGrid = makeCashHiResGrid(input.hands);
+    const monolith = simulateCash(input);
+    const s1 = simulateCashShard(input, 0, 9, envGrid, hiGrid);
+    const s2 = simulateCashShard(input, 9, 30, envGrid, hiGrid);
+    const s3 = simulateCashShard(input, 30, 100, envGrid, hiGrid);
+    const merged = buildCashResult(input, [s1, s2, s3], envGrid);
+
+    expect(merged.samplePaths.paths).toHaveLength(monolith.samplePaths.paths.length);
+    expect(merged.samplePaths.sampleIndices).toEqual(monolith.samplePaths.sampleIndices);
+    expect(merged.samplePaths.sampleIndices.at(-1)).toBe(99);
   });
 });
 
@@ -183,6 +199,35 @@ describe("cashEngine — rakeback", () => {
 });
 
 describe("cashEngine — output shape", () => {
+  it("keeps summary stats finite for absurd persisted rake and hourly inputs", () => {
+    const r = simulateCash(
+      baseInput({
+        wrBb100: 1000,
+        sdBb100: 100,
+        hands: 1000,
+        nSimulations: 100,
+        bbSize: 1_000_000,
+        rake: {
+          enabled: true,
+          contributedRakeBb100: 1e308,
+          advertisedRbPct: 100,
+          pvi: 1,
+        },
+        hoursBlock: { handsPerHour: 1e308 },
+      }),
+    );
+
+    expect(
+      [
+        r.stats.expectedEvBb,
+        r.stats.meanFinalBb,
+        r.stats.meanRakePaidBb,
+        r.stats.meanRbEarnedBb,
+        r.stats.hourlyEvUsd,
+      ].every((value) => Number.isFinite(value ?? 0)),
+    ).toBe(true);
+  });
+
   it("exposes envelopes with p05/p95 bracketing the mean", () => {
     const r = simulateCash(
       baseInput({
@@ -223,12 +268,65 @@ describe("cashEngine — output shape", () => {
     expect(r.stats.hourlyEvUsd).toBeCloseTo(50, 6);
   });
 
-  it("probSub100Bb tracks path minimum, not just the final bankroll", () => {
+  it("exposes useful summary quantiles for deterministic paths", () => {
+    const r = simulateCash(
+      baseInput({
+        wrBb100: 100,
+        sdBb100: 0,
+        hands: 5,
+        nSimulations: 8,
+      }),
+    );
+
+    expect(r.stats.finalBbMedian).toBeCloseTo(5, 9);
+    expect(r.stats.finalBbP05).toBeCloseTo(5, 9);
+    expect(r.stats.finalBbP95).toBeCloseTo(5, 9);
+    expect(r.stats.maxDrawdownMedian).toBeCloseTo(0, 9);
+    expect(r.stats.maxDrawdownP95).toBeCloseTo(0, 9);
+    expect(r.stats.longestBreakevenMedian).toBeCloseTo(0, 9);
+    expect(r.stats.recoveryMedian).toBeCloseTo(0, 9);
+    expect(r.stats.recoveryP90).toBeCloseTo(0, 9);
+    expect(r.stats.probProfit).toBeCloseTo(1, 9);
+    expect(r.stats.probLoss).toBeCloseTo(0, 9);
+  });
+
+  it("tracks user-facing odds over distance on the envelope checkpoints", () => {
+    const r = simulateCash(
+      baseInput({
+        wrBb100: 5,
+        sdBb100: 100,
+        hands: 5_000,
+        nSimulations: 256,
+        riskBlock: { thresholdBb: 120 },
+      }),
+    );
+
+    expect(r.oddsOverDistance.x[0]).toBe(0);
+    expect(r.oddsOverDistance.thresholdBb).toBe(120);
+    expect(r.oddsOverDistance.profitShare[0]).toBeCloseTo(0, 9);
+    expect(r.oddsOverDistance.belowThresholdNowShare[0]).toBeCloseTo(0, 9);
+
+    const last = r.oddsOverDistance.profitShare.length - 1;
+    const finalBelowThresholdNow =
+      Array.from(r.finalBb).filter((v) => v <= -120).length / r.samples;
+
+    expect(r.oddsOverDistance.profitShare[last]).toBeCloseTo(
+      r.stats.probProfit,
+      12,
+    );
+    expect(r.oddsOverDistance.belowThresholdNowShare[last]).toBeCloseTo(
+      finalBelowThresholdNow,
+      12,
+    );
+  });
+
+  it("risk threshold tracks path minimum, not just the final bankroll", () => {
     const r = simulateCash(
       baseInput({
         hands: 200,
         nSimulations: 1,
         bbSize: 1,
+        riskBlock: { thresholdBb: 150 },
         stakes: [
           {
             wrBb100: -200,
@@ -248,7 +346,74 @@ describe("cashEngine — output shape", () => {
       }),
     );
     expect(r.stats.meanFinalBb).toBeCloseTo(0, 9);
-    expect(r.stats.probSub100Bb).toBe(1);
+    expect(r.stats.probBelowThresholdEver).toBe(1);
+    expect(r.oddsOverDistance.belowThresholdNowShare.at(-1)).toBe(0);
+  });
+
+  it("risk threshold actually changes the tracked danger line", () => {
+    const safe = simulateCash(
+      baseInput({
+        hands: 200,
+        nSimulations: 1,
+        bbSize: 1,
+        riskBlock: { thresholdBb: 250 },
+        stakes: [
+          {
+            wrBb100: -200,
+            sdBb100: 0,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+          {
+            wrBb100: 200,
+            sdBb100: 0,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+        ],
+      }),
+    );
+
+    expect(safe.stats.probBelowThresholdEver).toBe(0);
+    expect(safe.oddsOverDistance.belowThresholdNowShare.at(-1)).toBe(0);
+  });
+
+  it("longest breakeven counts only hands spent below the previous peak", () => {
+    const up = simulateCash(
+      baseInput({
+        wrBb100: 100,
+        sdBb100: 0,
+        hands: 5,
+        nSimulations: 1,
+      }),
+    );
+    const flat = simulateCash(
+      baseInput({
+        wrBb100: 0,
+        sdBb100: 0,
+        hands: 5,
+        nSimulations: 1,
+      }),
+    );
+    const down = simulateCash(
+      baseInput({
+        wrBb100: -100,
+        sdBb100: 0,
+        hands: 5,
+        nSimulations: 1,
+      }),
+    );
+
+    expect(
+      up.longestBreakevenHistogram.counts.reduce((a, b) => a + b, 0),
+    ).toBe(0);
+    expect(
+      flat.longestBreakevenHistogram.counts.reduce((a, b) => a + b, 0),
+    ).toBe(0);
+    expect(down.longestBreakevenHistogram.binEdges.at(-1)).toBe(5);
+    expect(down.longestBreakevenHistogram.counts.at(-1)).toBe(1);
   });
 });
 
@@ -403,5 +568,241 @@ describe("cashEngine — mix of stakes", () => {
     );
     // 50% × 10 + 50% × 0 = 5 bb/100 → 200 bb over 4000 hands.
     expect(r.stats.expectedEvBb).toBeCloseTo(200, 6);
+  });
+
+  it("all-zero hand shares fall back to an equal split instead of row-0 takeover", () => {
+    const r = simulateCash(
+      baseInput({
+        hands: 100,
+        nSimulations: 1,
+        stakes: [
+          {
+            wrBb100: 100,
+            sdBb100: 0,
+            bbSize: 1,
+            handShare: 0,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+          {
+            wrBb100: 0,
+            sdBb100: 0,
+            bbSize: 1,
+            handShare: 0,
+            rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+          },
+        ],
+      }),
+    );
+
+    expect(r.stats.expectedEvBb).toBeCloseTo(50, 9);
+    expect(r.stats.meanFinalBb).toBeCloseTo(50, 9);
+  });
+
+  it("allocates row hand budgets exactly even when rows outnumber hands", () => {
+    const r = simulateCash(
+      baseInput({
+        hands: 3,
+        nSimulations: 1,
+        stakes: [1, 2, 3, 4, 5].map((wr) => ({
+          wrBb100: wr * 100,
+          sdBb100: 0,
+          bbSize: 1,
+          handShare: 1,
+          rake: {
+            enabled: false,
+            contributedRakeBb100: 0,
+            advertisedRbPct: 0,
+            pvi: 1,
+          },
+        })),
+      }),
+    );
+
+    expect(r.stats.expectedEvBb).toBeCloseTo(r.stats.meanFinalBb, 9);
+  });
+
+  it("mix rake totals follow the exact allocated hand budget", () => {
+    const r = simulateCash(
+      baseInput({
+        hands: 3,
+        nSimulations: 1,
+        stakes: Array.from({ length: 5 }, () => ({
+          wrBb100: 0,
+          sdBb100: 0,
+          bbSize: 1,
+          handShare: 1,
+          rake: {
+            enabled: true,
+            contributedRakeBb100: 100,
+            advertisedRbPct: 50,
+            pvi: 1,
+          },
+        })),
+      }),
+    );
+
+    expect(r.stats.meanRakePaidBb).toBeCloseTo(3, 9);
+    expect(r.stats.meanRbEarnedBb).toBeCloseTo(1.5, 9);
+  });
+
+  it("emits a row-level mix breakdown from the exact compiled hand budget", () => {
+    const r = simulateCash(
+      baseInput({
+        hands: 400,
+        nSimulations: 1,
+        bbSize: 1,
+        stakes: [
+          {
+            label: "Reg tables",
+            wrBb100: 10,
+            sdBb100: 50,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: {
+              enabled: true,
+              contributedRakeBb100: 10,
+              advertisedRbPct: 50,
+              pvi: 1,
+            },
+          },
+          {
+            label: "Shot",
+            wrBb100: 0,
+            sdBb100: 100,
+            bbSize: 1,
+            handShare: 0.5,
+            rake: {
+              enabled: true,
+              contributedRakeBb100: 30,
+              advertisedRbPct: 50,
+              pvi: 1,
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(r.mixBreakdown?.rows).toHaveLength(2);
+    expect(r.mixBreakdown?.rows[0]).toMatchObject({
+      label: "Reg tables",
+      hands: 200,
+      handShare: 0.5,
+      varianceShare: 0.2,
+      rakePaidBb: 20,
+      rakeShare: 0.25,
+      rbEarnedBb: 10,
+      rbShare: 0.25,
+    });
+    expect(r.mixBreakdown?.rows[1]).toMatchObject({
+      label: "Shot",
+      hands: 200,
+      handShare: 0.5,
+      varianceShare: 0.8,
+      rakePaidBb: 60,
+      rakeShare: 0.75,
+      rbEarnedBb: 30,
+      rbShare: 0.75,
+    });
+    expect(r.mixBreakdown?.rows[0]?.expectedEvBb).toBeCloseTo(30, 9);
+    expect(r.mixBreakdown?.rows[1]?.expectedEvBb).toBeCloseTo(30, 9);
+    expect(r.mixBreakdown?.totalVarianceBb2).toBeCloseTo(25_000, 9);
+  });
+});
+
+describe("cashInput normalization", () => {
+  it("keeps an explicit hourly toggle-off instead of silently restoring the default lens", () => {
+    const normalized = normalizeCashInput({
+      ...baseInput(),
+      hoursBlock: undefined,
+    });
+
+    expect(normalized.hoursBlock).toBeUndefined();
+  });
+
+  it("round-trips a disabled hourly lens through persisted JSON", () => {
+    const saved = JSON.stringify(
+      serializeCashInput(baseInput({ hoursBlock: undefined })),
+    );
+    const hydrated = normalizeCashInput(JSON.parse(saved));
+
+    expect(hydrated.hoursBlock).toBeUndefined();
+  });
+
+  it("deep-merges partial persisted cash input without dropping nested defaults", () => {
+    const hydrated = normalizeCashInput({
+      rake: { enabled: true },
+      hoursBlock: {},
+      riskBlock: {},
+      stakes: [{ rake: { enabled: true } }],
+    });
+
+    expect(hydrated.rake).toMatchObject({
+      enabled: true,
+      contributedRakeBb100: 8,
+      advertisedRbPct: 30,
+      pvi: 1,
+    });
+    expect(hydrated.hoursBlock?.handsPerHour).toBe(500);
+    expect(hydrated.riskBlock?.thresholdBb).toBe(100);
+    expect(hydrated.stakes?.[0]).toMatchObject({
+      wrBb100: 5,
+      sdBb100: 100,
+      bbSize: 1,
+      handShare: 1,
+    });
+    expect(hydrated.stakes?.[0]?.rake).toMatchObject({
+      enabled: true,
+      contributedRakeBb100: 8,
+      advertisedRbPct: 30,
+      pvi: 1,
+    });
+  });
+
+  it("clamps crashy cash inputs back into a finite engine contract", () => {
+    const normalized = normalizeCashInput({
+      hands: 0,
+      nSimulations: 0,
+      sdBb100: -10,
+      bbSize: 0,
+      rake: {
+        enabled: true,
+        contributedRakeBb100: -5,
+        advertisedRbPct: 500,
+        pvi: 0,
+      },
+      hoursBlock: { handsPerHour: 0 },
+      riskBlock: { thresholdBb: 0 },
+      stakes: [
+        {
+          wrBb100: 10,
+          sdBb100: -1,
+          bbSize: -1,
+          handShare: -5,
+          rake: {
+            enabled: true,
+            contributedRakeBb100: -1,
+            advertisedRbPct: 999,
+            pvi: 0,
+          },
+        },
+      ],
+    });
+
+    expect(normalized.hands).toBe(1);
+    expect(normalized.nSimulations).toBe(1);
+    expect(normalized.sdBb100).toBe(0);
+    expect(normalized.bbSize).toBe(0.01);
+    expect(normalized.rake).toMatchObject({
+      contributedRakeBb100: 0,
+      advertisedRbPct: 100,
+      pvi: 0.05,
+    });
+    expect(normalized.hoursBlock?.handsPerHour).toBe(1);
+    expect(normalized.riskBlock?.thresholdBb).toBe(1);
+    expect(normalized.stakes?.[0]).toMatchObject({
+      sdBb100: 0,
+      bbSize: 0.01,
+      handShare: 1,
+    });
   });
 });

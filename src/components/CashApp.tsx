@@ -6,11 +6,30 @@ import { UplotChart } from "@/components/charts/UplotChart";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import {
+  commitNumFieldDraft,
+  formatNumFieldValue,
+  parseNumFieldDraft,
+} from "@/components/cashNumberField";
+import {
   buildCashResult,
   makeCashEnvGrid,
   makeCashHiResGrid,
   type CashShard,
 } from "@/lib/sim/cashEngine";
+import {
+  type CashInputDraft,
+  DEFAULT_CASH_INPUT,
+  MAX_ABS_WR_BB100,
+  MAX_BB_SIZE,
+  MAX_HANDS,
+  MAX_HANDS_PER_HOUR,
+  MAX_RAKE_CONTRIB_BB100,
+  MAX_SD_BB100,
+  MAX_TOTAL_SIM_HANDS,
+  normalizeCashInput,
+  normalizeCashInputForUi,
+  serializeCashInput,
+} from "@/lib/sim/cashInput";
 import type {
   CashShardRequest,
   CashShardResultMsg,
@@ -24,36 +43,19 @@ import type {
 
 const STORAGE_KEY = "tvs:cash-input";
 
-const DEFAULT_INPUT: CashInput = {
-  type: "cash",
-  wrBb100: 5,
-  sdBb100: 100,
-  hands: 100_000,
-  nSimulations: 2000,
-  bbSize: 1,
-  rake: {
-    enabled: false,
-    contributedRakeBb100: 8,
-    advertisedRbPct: 30,
-    pvi: 1,
-  },
-  hoursBlock: { handsPerHour: 500 },
-  baseSeed: 42,
-};
-
 function loadInput(): CashInput {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_INPUT;
-    const parsed = JSON.parse(raw) as Partial<CashInput>;
-    return { ...DEFAULT_INPUT, ...parsed, type: "cash" };
+    if (!raw) return DEFAULT_CASH_INPUT;
+    const parsed = JSON.parse(raw) as CashInputDraft;
+    return normalizeCashInputForUi(parsed);
   } catch {
-    return DEFAULT_INPUT;
+    return DEFAULT_CASH_INPUT;
   }
 }
 function saveInput(next: CashInput): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeCashInput(next)));
   } catch {
     // localStorage full / unavailable — silently drop; UI still works.
   }
@@ -65,7 +67,7 @@ export const CashApp = memo(function CashApp() {
     STORAGE_KEY,
     loadInput,
     saveInput,
-    DEFAULT_INPUT,
+    DEFAULT_CASH_INPUT,
   );
   const [result, setResult] = useState<CashResult | null>(null);
   const [running, setRunning] = useState(false);
@@ -89,7 +91,8 @@ export const CashApp = memo(function CashApp() {
 
   const runSim = () => {
     if (running) return;
-    const snapshot = input;
+    const snapshot = normalizeCashInput(input);
+    setInput(snapshot);
     const jobId = ++jobIdRef.current;
     setRunning(true);
     setProgress(0);
@@ -203,9 +206,29 @@ export const CashApp = memo(function CashApp() {
   const patch = (p: Partial<CashInput>) => setInput({ ...input, ...p });
   const patchRake = (p: Partial<CashInput["rake"]>) =>
     setInput({ ...input, rake: { ...input.rake, ...p } });
+  const patchRisk = (p: Partial<NonNullable<CashInput["riskBlock"]>>) =>
+    setInput({
+      ...input,
+      riskBlock: { thresholdBb: input.riskBlock?.thresholdBb ?? 100, ...p },
+    });
 
   const mixEnabled = !!input.stakes && input.stakes.length > 0;
   const stakes = input.stakes ?? [];
+  const maxHandsForSimulations = Math.max(
+    1_000,
+    Math.min(
+      MAX_HANDS,
+      Math.floor(MAX_TOTAL_SIM_HANDS / Math.max(1, input.nSimulations)),
+    ),
+  );
+  const maxSimulationsForHands = Math.max(
+    100,
+    Math.min(20_000, Math.floor(MAX_TOTAL_SIM_HANDS / Math.max(1, input.hands))),
+  );
+  const stakeShareSum = stakes.reduce((acc, row) => acc + row.handShare, 0);
+  const stakeShareLabel = stakeShareSum.toFixed(2);
+  const mixSharesNeedRenorm =
+    mixEnabled && Math.abs(stakeShareSum - 1) > 1e-9;
   const patchStake = (idx: number, p: Partial<CashStakeRow>) => {
     const next = stakes.map((r, i) => (i === idx ? { ...r, ...p } : r));
     setInput({ ...input, stakes: next });
@@ -266,8 +289,8 @@ export const CashApp = memo(function CashApp() {
   return (
     <>
       <Section number="01" suit="spade" title={t("cash.section.inputs.title")}>
-        <Card className="flex flex-col gap-6 p-6">
-          <InputGroup title={t("cash.group.session")}>
+        <Card className="data-surface-card flex flex-col gap-6 p-6">
+          <InputGroup title={t("cash.group.session")} accent="spade">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {!mixEnabled && (
                 <>
@@ -275,6 +298,8 @@ export const CashApp = memo(function CashApp() {
                     label={t("cash.wrBb100.label")}
                     value={input.wrBb100}
                     step={0.5}
+                    min={-MAX_ABS_WR_BB100}
+                    max={MAX_ABS_WR_BB100}
                     onChange={(v) => patch({ wrBb100: v })}
                   />
                   <NumField
@@ -282,6 +307,7 @@ export const CashApp = memo(function CashApp() {
                     value={input.sdBb100}
                     step={5}
                     min={1}
+                    max={MAX_SD_BB100}
                     onChange={(v) => patch({ sdBb100: v })}
                   />
                 </>
@@ -291,6 +317,7 @@ export const CashApp = memo(function CashApp() {
                 value={input.hands}
                 step={10_000}
                 min={1000}
+                max={maxHandsForSimulations}
                 onChange={(v) => patch({ hands: Math.floor(v) })}
               />
               <NumField
@@ -298,7 +325,7 @@ export const CashApp = memo(function CashApp() {
                 value={input.nSimulations}
                 step={500}
                 min={100}
-                max={20_000}
+                max={maxSimulationsForHands}
                 onChange={(v) => patch({ nSimulations: Math.floor(v) })}
               />
               <NumField
@@ -306,6 +333,7 @@ export const CashApp = memo(function CashApp() {
                 value={input.bbSize}
                 step={0.25}
                 min={0.01}
+                max={MAX_BB_SIZE}
                 hint={mixEnabled ? t("cash.stakes.refBbHint") : undefined}
                 onChange={(v) => patch({ bbSize: v })}
               />
@@ -316,12 +344,82 @@ export const CashApp = memo(function CashApp() {
                 onChange={(v) => patch({ baseSeed: Math.floor(v) })}
               />
             </div>
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <div className="flex flex-col gap-3 rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/38 p-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
+                      {t("cash.group.hourly")}
+                    </span>
+                    <p className="max-w-2xl text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+                      {t("cash.hours.hint")}
+                    </p>
+                  </div>
+                  <ToggleSwitch
+                    checked={!!input.hoursBlock}
+                    tone="club"
+                    onChange={(checked) =>
+                      setInput({
+                        ...input,
+                        hoursBlock: checked
+                          ? { handsPerHour: input.hoursBlock?.handsPerHour ?? 500 }
+                          : undefined,
+                      })
+                    }
+                  />
+                </div>
+                {input.hoursBlock && (
+                  <div className="max-w-xs">
+                    <NumField
+                      label={t("cash.hours.handsPerHour.label")}
+                      value={input.hoursBlock.handsPerHour}
+                      step={50}
+                      min={50}
+                      max={MAX_HANDS_PER_HOUR}
+                      onChange={(v) =>
+                        setInput({
+                          ...input,
+                          hoursBlock: { handsPerHour: Math.floor(v) },
+                        })
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-sm border border-[color:var(--color-heart)]/32 bg-[color:var(--color-heart)]/6 p-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
+                    {t("cash.group.riskLine")}
+                  </span>
+                  <p className="max-w-2xl text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+                    {t("cash.risk.hint")}
+                  </p>
+                </div>
+                <div className="max-w-xs">
+                  <NumField
+                    label={t("cash.risk.threshold.label")}
+                    value={input.riskBlock?.thresholdBb ?? 100}
+                    step={10}
+                    min={10}
+                    onChange={(v) =>
+                      patchRisk({ thresholdBb: Math.max(1, v) })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
           </InputGroup>
 
           <InputGroup
             title={t("cash.group.stakes")}
+            accent="diamond"
             toggle={
-              <ToggleSwitch checked={mixEnabled} onChange={enableMix} />
+              <ToggleSwitch
+                checked={mixEnabled}
+                onChange={enableMix}
+                tone="diamond"
+              />
             }
           >
             {!mixEnabled && (
@@ -342,10 +440,27 @@ export const CashApp = memo(function CashApp() {
                     t={t}
                   />
                 ))}
+                <p
+                  className={`rounded-sm border px-3 py-2 text-[11px] leading-relaxed ${
+                    mixSharesNeedRenorm
+                      ? "border-[color:var(--color-heart)]/45 bg-[color:var(--color-heart)]/10 text-[color:var(--color-fg-muted)]"
+                      : "border-[color:var(--color-club)]/45 bg-[color:var(--color-club)]/10 text-[color:var(--color-fg-muted)]"
+                  }`}
+                >
+                  {mixSharesNeedRenorm
+                    ? t("cash.stakes.share.renorm").replace(
+                        "{sum}",
+                        stakeShareLabel,
+                      )
+                    : t("cash.stakes.share.ok").replace(
+                        "{sum}",
+                        stakeShareLabel,
+                      )}
+                </p>
                 <button
                   type="button"
                   onClick={addStake}
-                  className="self-start border border-[color:var(--color-border)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
+                  className="self-start rounded-sm border border-[color:var(--color-diamond)]/50 bg-[color:var(--color-diamond)]/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-diamond)] transition-colors hover:bg-[color:var(--color-diamond)]/16 hover:text-[color:var(--color-fg)]"
                 >
                   {t("cash.stakes.add")}
                 </button>
@@ -356,16 +471,18 @@ export const CashApp = memo(function CashApp() {
           {!mixEnabled && (
             <InputGroup
               title={t("cash.group.rake")}
+              accent="heart"
               toggle={
                 <ToggleSwitch
                   checked={input.rake.enabled}
                   onChange={(checked) => patchRake({ enabled: checked })}
+                  tone="heart"
                 />
               }
             >
               <div
                 className={`grid grid-cols-1 gap-4 sm:grid-cols-3 ${
-                  input.rake.enabled ? "" : "pointer-events-none opacity-40"
+                  input.rake.enabled ? "" : "pointer-events-none opacity-70"
                 }`}
               >
                 <NumField
@@ -373,6 +490,7 @@ export const CashApp = memo(function CashApp() {
                   value={input.rake.contributedRakeBb100}
                   step={0.5}
                   min={0}
+                  max={MAX_RAKE_CONTRIB_BB100}
                   disabled={!input.rake.enabled}
                   onChange={(v) => patchRake({ contributedRakeBb100: v })}
                 />
@@ -399,44 +517,10 @@ export const CashApp = memo(function CashApp() {
             </InputGroup>
           )}
 
-          <InputGroup
-            title={t("cash.group.hourly")}
-            toggle={
-              <ToggleSwitch
-                checked={!!input.hoursBlock}
-                onChange={(checked) =>
-                  setInput({
-                    ...input,
-                    hoursBlock: checked
-                      ? { handsPerHour: input.hoursBlock?.handsPerHour ?? 500 }
-                      : undefined,
-                  })
-                }
-              />
-            }
-          >
-            {input.hoursBlock && (
-              <div className="max-w-xs">
-                <NumField
-                  label={t("cash.hours.handsPerHour.label")}
-                  value={input.hoursBlock.handsPerHour}
-                  step={50}
-                  min={50}
-                  onChange={(v) =>
-                    setInput({
-                      ...input,
-                      hoursBlock: { handsPerHour: Math.floor(v) },
-                    })
-                  }
-                />
-              </div>
-            )}
-          </InputGroup>
-
-          <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
+          <div className="mt-5 flex flex-col items-stretch gap-3 border-t border-[color:var(--color-border)]/70 pt-4 sm:flex-row sm:items-center sm:justify-end">
             {running && (
-              <div className="flex flex-1 items-center gap-3">
-                <div className="h-1.5 flex-1 overflow-hidden rounded bg-[color:var(--color-bg-elev-2)]">
+              <div className="flex flex-1 items-center gap-3 rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/36 px-3 py-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded bg-[color:var(--color-bg-elev-2)]/90">
                   <div
                     className="h-full bg-[color:var(--color-accent)] transition-[width] duration-100"
                     style={{ width: `${Math.round(progress * 100)}%` }}
@@ -448,7 +532,7 @@ export const CashApp = memo(function CashApp() {
                 <button
                   type="button"
                   onClick={cancelSim}
-                  className="border border-[color:var(--color-border)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
+                  className="rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
                 >
                   ×
                 </button>
@@ -458,7 +542,7 @@ export const CashApp = memo(function CashApp() {
               type="button"
               onClick={runSim}
               disabled={running}
-              className="border border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/10 px-5 py-2 text-sm font-bold uppercase tracking-wider text-[color:var(--color-accent)] transition-colors hover:bg-[color:var(--color-accent)]/20 disabled:opacity-50"
+              className="rounded-sm border border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/14 px-5 py-2.5 text-sm font-bold uppercase tracking-[0.12em] text-[color:var(--color-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:bg-[color:var(--color-accent)]/22 disabled:opacity-50"
             >
               {running ? t("cash.running") : t("cash.run")}
             </button>
@@ -472,9 +556,11 @@ export const CashApp = memo(function CashApp() {
         title={t("cash.section.results.title")}
       >
         {!result && (
-          <p className="text-sm text-[color:var(--color-fg-muted)]">
-            {t("cash.empty")}
-          </p>
+          <Card className="data-surface-card border-dashed p-5">
+            <p className="max-w-xl text-sm leading-relaxed text-[color:var(--color-fg-muted)]">
+              {t("cash.empty")}
+            </p>
+          </Card>
         )}
         {result && <CashResultsView result={result} />}
       </Section>
@@ -482,82 +568,495 @@ export const CashApp = memo(function CashApp() {
   );
 });
 
+type CashMoneyUnit = "bb" | "usd";
+
 function CashResultsView({ result }: { result: CashResult }) {
   const t = useT();
   const s = result.stats;
-  const fmtBb = (v: number) =>
-    v.toLocaleString(undefined, { maximumFractionDigits: 1 });
-  const fmtUsd = (v: number) =>
-    "$" + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  const fmtPct = (v: number) => (v * 100).toFixed(1) + "%";
   const bb = result.echoInput.bbSize;
+  const riskThresholdBb = result.oddsOverDistance.thresholdBb;
+  const mixBreakdown = result.mixBreakdown;
+  const [moneyUnit, setMoneyUnit] = useState<CashMoneyUnit>("bb");
+  const maxVisibleRuns = Math.max(1, Math.min(36, result.samplePaths.paths.length));
+  const [visibleRuns, setVisibleRuns] = useState(() =>
+    Math.min(12, maxVisibleRuns),
+  );
+  const clampedVisibleRuns = Math.max(
+    0,
+    Math.min(visibleRuns, maxVisibleRuns),
+  );
 
-  const expected: StatRow[] = [
+  const fmtPct = (v: number) => formatCashPct(v);
+  const fmtMoney = (vBb: number) => formatCashMoney(vBb, moneyUnit, bb);
+  const fmtHands = (v: number) =>
+    Number.isFinite(v) ? `${Math.round(v).toLocaleString()} ${t("cash.axis.hands")}` : "—";
+  const moneyAxisLabel =
+    moneyUnit === "usd" ? t("cash.axis.usd") : t("cash.axis.bb");
+
+  const finalHistogram = useMemo(
+    () => scaleMoneyHistogram(result.histogram, moneyUnit, bb),
+    [result.histogram, moneyUnit, bb],
+  );
+  const drawdownHistogram = useMemo(
+    () => scaleMoneyHistogram(result.drawdownHistogram, moneyUnit, bb),
+    [result.drawdownHistogram, moneyUnit, bb],
+  );
+  const oddsEndIdx = Math.max(0, result.oddsOverDistance.x.length - 1);
+  const oddsEndProfit = result.oddsOverDistance.profitShare[oddsEndIdx] ?? 0;
+  const oddsEndBelowThresholdNow =
+    result.oddsOverDistance.belowThresholdNowShare[oddsEndIdx] ?? 0;
+  const riskThresholdLabel = formatRiskThresholdBb(riskThresholdBb);
+
+  const heroStats: HeroStat[] = [
     {
-      label: t("cash.stats.expectedEvBb"),
-      value: `${fmtBb(s.expectedEvBb)} (${fmtUsd(s.expectedEvUsd)})`,
+      accent: "diamond",
+      label: t("cash.hero.expected"),
+      value: fmtMoney(s.expectedEvBb),
+      sub:
+        s.hourlyEvUsd !== undefined
+          ? t("cash.hero.expected.subHourly")
+              .replace("{hourly}", formatUsdRate(s.hourlyEvUsd))
+              .replace(
+                "{hands}",
+                result.echoInput.hoursBlock?.handsPerHour.toLocaleString() ?? "—",
+              )
+          : t("cash.hero.expected.subDistance"),
+      tone: "pos",
     },
+    {
+      accent: "spade",
+      label: t("cash.hero.typical"),
+      value: fmtMoney(s.finalBbMedian),
+      sub: t("cash.hero.typical.subRange")
+        .replace("{lo}", fmtMoney(s.finalBbP05))
+        .replace("{hi}", fmtMoney(s.finalBbP95)),
+    },
+    {
+      accent: "club",
+      label: t("cash.hero.finishUp"),
+      value: fmtPct(s.probProfit),
+      sub: t("cash.hero.finishUp.subLoss").replace(
+        "{pct}",
+        fmtPct(s.probLoss),
+      ),
+      tone: s.probProfit >= 0.5 ? "pos" : "neg",
+    },
+    {
+      accent: "heart",
+      label: t("cash.hero.drawdown"),
+      value: fmtMoney(s.maxDrawdownP95),
+      sub: t("cash.hero.drawdown.subMedian").replace(
+        "{value}",
+        fmtMoney(s.maxDrawdownMedian),
+      ),
+      tone: "neg",
+    },
+    {
+      accent: "spade",
+      label: t("cash.hero.breakeven"),
+      value: fmtHands(s.longestBreakevenMedian),
+      sub: t("cash.hero.breakeven.subRecovery")
+        .replace("{recovery}", fmtHands(s.recoveryP90))
+        .replace("{share}", fmtPct(s.recoveryUnrecoveredShare)),
+    },
+  ];
+
+  const finalSummary: SummaryStat[] = [
+    {
+      accent: "diamond",
+      label: t("cash.summary.p05"),
+      value: fmtMoney(s.finalBbP05),
+    },
+    {
+      accent: "diamond",
+      label: t("cash.summary.median"),
+      value: fmtMoney(s.finalBbMedian),
+    },
+    {
+      accent: "diamond",
+      label: t("cash.summary.p95"),
+      value: fmtMoney(s.finalBbP95),
+    },
+  ];
+
+  const drawdownSummary: SummaryStat[] = [
+    {
+      accent: "heart",
+      label: t("cash.summary.median"),
+      value: fmtMoney(s.maxDrawdownMedian),
+    },
+    {
+      accent: "heart",
+      label: t("cash.summary.p95"),
+      value: fmtMoney(s.maxDrawdownP95),
+      tone: "neg",
+    },
+    {
+      accent: "club",
+      label: t("cash.summary.probBelowThresholdEver").replace(
+        "{threshold}",
+        riskThresholdLabel,
+      ),
+      value: fmtPct(s.probBelowThresholdEver),
+      tone: s.probBelowThresholdEver > 0.05 ? "neg" : undefined,
+    },
+  ];
+
+  const streakSummary: SummaryStat[] = [
+    {
+      accent: "spade",
+      label: t("cash.summary.median"),
+      value: fmtHands(s.longestBreakevenMedian),
+    },
+    {
+      accent: "heart",
+      label: t("cash.summary.recoveryMedian"),
+      value: fmtHands(s.recoveryMedian),
+    },
+    {
+      accent: "heart",
+      label: t("cash.summary.unrecovered"),
+      value: fmtPct(s.recoveryUnrecoveredShare),
+      tone: s.recoveryUnrecoveredShare > 0.05 ? "neg" : undefined,
+    },
+  ];
+
+  const oddsSummary: SummaryStat[] = [
+    {
+      accent: "club",
+      label: t("cash.summary.oddsUp"),
+      value: fmtPct(oddsEndProfit),
+      tone: oddsEndProfit >= 0.5 ? "pos" : undefined,
+    },
+    {
+      accent: "heart",
+      label: t("cash.summary.oddsBelowThresholdNow").replace(
+        "{threshold}",
+        riskThresholdLabel,
+      ),
+      value: fmtPct(oddsEndBelowThresholdNow),
+      tone: oddsEndBelowThresholdNow > 0.05 ? "neg" : undefined,
+    },
+  ];
+
+  const economics: StatRow[] = [
+    { label: t("cash.stats.meanRakePaidBb"), value: fmtMoney(s.meanRakePaidBb) },
+    { label: t("cash.stats.meanRbEarnedBb"), value: fmtMoney(s.meanRbEarnedBb) },
   ];
   if (s.hourlyEvUsd !== undefined) {
-    expected.push({
+    economics.push({
       label: t("cash.stats.hourlyEvUsd"),
-      value: fmtUsd(s.hourlyEvUsd) + "/h",
+      value: formatUsdRate(s.hourlyEvUsd),
     });
   }
-  const realized: StatRow[] = [
-    {
-      label: t("cash.stats.meanFinalBb"),
-      value: `${fmtBb(s.meanFinalBb)} (${fmtUsd(s.meanFinalUsd)})`,
-    },
-    { label: t("cash.stats.sdFinalBb"), value: fmtBb(s.sdFinalBb) },
-  ];
-  const risk: StatRow[] = [
-    { label: t("cash.stats.probLoss"), value: fmtPct(s.probLoss) },
-    { label: t("cash.stats.probSub100Bb"), value: fmtPct(s.probSub100Bb) },
-    {
-      label: t("cash.stats.recoveryUnrecoveredShare"),
-      value: fmtPct(s.recoveryUnrecoveredShare),
-    },
-  ];
-  const economics: StatRow[] = [
-    { label: t("cash.stats.meanRakePaidBb"), value: fmtBb(s.meanRakePaidBb) },
-    { label: t("cash.stats.meanRbEarnedBb"), value: fmtBb(s.meanRbEarnedBb) },
-  ];
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="p-5">
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <StatGroup title={t("cash.group.stats.expected")} rows={expected} accent="heart" />
-          <StatGroup title={t("cash.group.stats.realized")} rows={realized} accent="spade" />
-          <StatGroup title={t("cash.group.stats.risk")} rows={risk} accent="club" />
-          <StatGroup title={t("cash.group.stats.economics")} rows={economics} accent="diamond" />
+      <HeroGrid items={heroStats} />
+
+      <Card className="data-surface-card p-4">
+        <ChartTitle
+          suit="heart"
+          title={t("cash.chart.trajectory.title")}
+          note={t("cash.chart.trajectory.note").replace(
+            "{threshold}",
+            formatRiskThreshold(riskThresholdBb, moneyUnit, bb),
+          )}
+        />
+        <TrajectoryToolbar
+          visibleRuns={clampedVisibleRuns}
+          maxVisibleRuns={maxVisibleRuns}
+          onVisibleRunsChange={setVisibleRuns}
+          moneyUnit={moneyUnit}
+          onMoneyUnitChange={setMoneyUnit}
+          riskThresholdBb={riskThresholdBb}
+          bbSize={bb}
+        />
+        <TrajectoryChart
+          result={result}
+          bbSize={bb}
+          visibleRuns={clampedVisibleRuns}
+          moneyUnit={moneyUnit}
+          riskThresholdBb={riskThresholdBb}
+        />
+      </Card>
+
+      {mixBreakdown && mixBreakdown.rows.length > 1 && (
+        <MixBreakdownCard
+          breakdown={mixBreakdown}
+          moneyUnit={moneyUnit}
+          bbSize={bb}
+        />
+      )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="data-surface-card p-4">
+          <ChartTitle suit="diamond" title={t("cash.chart.final.title")} />
+          <SummaryStrip items={finalSummary} />
+          <HistogramChart
+            hist={finalHistogram}
+            xLabel={moneyAxisLabel}
+            yLabel={t("cash.axis.count")}
+            tone="diamond"
+          />
+        </Card>
+        <Card className="data-surface-card p-4">
+          <ChartTitle suit="club" title={t("cash.chart.drawdown.title")} />
+          <SummaryStrip items={drawdownSummary} />
+          <HistogramChart
+            hist={drawdownHistogram}
+            xLabel={moneyAxisLabel}
+            yLabel={t("cash.axis.count")}
+            tone="club"
+          />
+        </Card>
+      </div>
+
+      <Card className="data-surface-card p-4">
+        <ChartTitle
+          suit="spade"
+          title={t("cash.section.streaks.title")}
+          note={t("cash.section.streaks.note")}
+        />
+        <SummaryStrip items={streakSummary} />
+        <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="flex flex-col gap-3">
+            <MiniChartTitle
+              suit="spade"
+              title={t("cash.chart.breakeven.title")}
+              note={t("cash.chart.breakeven.note")}
+            />
+            <HistogramChart
+              hist={result.longestBreakevenHistogram}
+              xLabel={t("cash.axis.hands")}
+              yLabel={t("cash.axis.count")}
+              tone="spade"
+            />
+          </div>
+          <div className="flex flex-col gap-3">
+            <MiniChartTitle
+              suit="heart"
+              title={t("cash.chart.recovery.title")}
+              note={t("cash.chart.recovery.note")}
+            />
+            <HistogramChart
+              hist={result.recoveryHistogram}
+              xLabel={t("cash.axis.hands")}
+              yLabel={t("cash.axis.count")}
+              tone="heart"
+            />
+          </div>
         </div>
       </Card>
 
-      <Card className="p-4">
-        <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[color:var(--color-fg)]">
-          <span className="mr-2 text-[color:var(--color-heart)]">♥</span>
-          {t("cash.chart.trajectory.title")}
-        </h3>
-        <TrajectoryChart result={result} bbSize={bb} />
-      </Card>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <Card className="data-surface-card p-4">
+          <ChartTitle
+            suit="club"
+            title={t("cash.chart.odds.title")}
+            note={t("cash.chart.odds.note").replace(
+              "{threshold}",
+              riskThresholdLabel,
+            )}
+          />
+          <SummaryStrip items={oddsSummary} />
+          <CashOddsChart result={result} />
+        </Card>
+        <Card className="data-surface-card p-4">
+          <ChartTitle
+            suit="diamond"
+            title={t("cash.section.economics.title")}
+            note={t("cash.section.economics.note")}
+          />
+          <DetailList rows={economics} accent="diamond" />
+        </Card>
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="p-4">
-          <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[color:var(--color-fg)]">
-            <span className="mr-2 text-[color:var(--color-diamond)]">♦</span>
-            {t("cash.chart.final.title")}
-          </h3>
-          <HistogramChart hist={result.histogram} />
-        </Card>
-        <Card className="p-4">
-          <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[color:var(--color-fg)]">
-            <span className="mr-2 text-[color:var(--color-club)]">♣</span>
-            {t("cash.chart.drawdown.title")}
-          </h3>
-          <HistogramChart hist={result.drawdownHistogram} />
-        </Card>
+      <DiagnosticsDisclosure result={result} />
+    </div>
+  );
+}
+
+function MixBreakdownCard({
+  breakdown,
+  moneyUnit,
+  bbSize,
+}: {
+  breakdown: NonNullable<CashResult["mixBreakdown"]>;
+  moneyUnit: CashMoneyUnit;
+  bbSize: number;
+}) {
+  const t = useT();
+  return (
+    <Card className="data-surface-card p-4">
+      <ChartTitle
+        suit="diamond"
+        title={t("cash.section.mix.title")}
+        note={t("cash.section.mix.note")}
+      />
+      <div className="flex flex-col gap-3">
+        {breakdown.rows.map((row, index) => (
+          <MixBreakdownRowCard
+            key={`${row.label ?? "row"}-${index}`}
+            row={row}
+            index={index}
+            moneyUnit={moneyUnit}
+            bbSize={bbSize}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function MixBreakdownRowCard({
+  row,
+  index,
+  moneyUnit,
+  bbSize,
+}: {
+  row: NonNullable<CashResult["mixBreakdown"]>["rows"][number];
+  index: number;
+  moneyUnit: CashMoneyUnit;
+  bbSize: number;
+}) {
+  const t = useT();
+  const rowLabel =
+    row.label?.trim() ||
+    t("cash.mix.rowFallback").replace("{index}", String(index + 1));
+  const evTone =
+    row.expectedEvBb < -1e-9
+      ? "text-[color:var(--color-heart)]"
+      : row.expectedEvBb > 1e-9
+        ? "text-[color:var(--color-club)]"
+        : "text-[color:var(--color-fg)]";
+
+  return (
+    <div className="rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/42 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="truncate text-sm font-semibold text-[color:var(--color-fg)]">
+              {rowLabel}
+            </span>
+            <MixTag accent="diamond">
+              {formatCashPct(row.handShare)}
+            </MixTag>
+            <MixTag accent="spade">{formatUsdBbSize(row.bbSize)}</MixTag>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <MixTag accent="diamond">
+              {row.hands.toLocaleString()} {t("cash.axis.hands")}
+            </MixTag>
+            <MixTag accent="club">
+              {t("cash.wrBb100.label")}: {formatSignedBb100(row.wrBb100)}
+            </MixTag>
+            <MixTag accent="heart">
+              {t("cash.sdBb100.label")}: {formatUnsignedBb100(row.sdBb100)}
+            </MixTag>
+          </div>
+        </div>
+        <div className="flex min-w-[10rem] flex-col gap-1 rounded-sm border border-[color:var(--color-border)]/65 bg-[color:var(--color-bg)]/55 px-3 py-2">
+          <span className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
+            {t("cash.mix.expectedEv")}
+          </span>
+          <span className={`font-mono text-[18px] font-semibold tabular-nums ${evTone}`}>
+            {formatCashMoney(row.expectedEvBb, moneyUnit, bbSize)}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <MixMetricBar
+          accent="diamond"
+          label={t("cash.mix.metric.hands")}
+          share={row.handShare}
+          detail={`${formatCashPct(row.handShare)} · ${row.hands.toLocaleString()} ${t("cash.axis.hands")}`}
+        />
+        <MixMetricBar
+          accent="heart"
+          label={t("cash.mix.metric.swing")}
+          share={row.varianceShare}
+          detail={formatCashPct(row.varianceShare)}
+        />
+        <MixMetricBar
+          accent="spade"
+          label={t("cash.mix.metric.rake")}
+          share={row.rakeShare}
+          detail={`${formatCashPct(row.rakeShare)} · ${formatCashMoney(
+            row.rakePaidBb,
+            moneyUnit,
+            bbSize,
+          )}`}
+        />
+        <MixMetricBar
+          accent="club"
+          label={t("cash.mix.metric.rb")}
+          share={row.rbShare}
+          detail={`${formatCashPct(row.rbShare)} · ${formatCashMoney(
+            row.rbEarnedBb,
+            moneyUnit,
+            bbSize,
+          )}`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TrajectoryToolbar({
+  visibleRuns,
+  maxVisibleRuns,
+  onVisibleRunsChange,
+  moneyUnit,
+  onMoneyUnitChange,
+  riskThresholdBb,
+  bbSize,
+}: {
+  visibleRuns: number;
+  maxVisibleRuns: number;
+  onVisibleRunsChange: (next: number) => void;
+  moneyUnit: CashMoneyUnit;
+  onMoneyUnitChange: (next: CashMoneyUnit) => void;
+  riskThresholdBb: number;
+  bbSize: number;
+}) {
+  const t = useT();
+  return (
+    <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/42 px-3 py-2">
+        <span className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
+          {t("cash.toolbar.runs")}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={maxVisibleRuns}
+          step={1}
+          value={visibleRuns}
+          onChange={(e) => onVisibleRunsChange(Number(e.target.value))}
+          className="h-1.5 w-32 cursor-pointer accent-[color:var(--color-accent)]"
+          aria-label={t("cash.toolbar.runs")}
+        />
+        <span className="min-w-[4.5rem] rounded-sm border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/55 px-2 py-1 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
+          {visibleRuns}/{maxVisibleRuns}
+        </span>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/42 px-3 py-2">
+        <span className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
+          {t("cash.toolbar.units")}
+        </span>
+        <UnitToggle
+          value={moneyUnit}
+          onChange={onMoneyUnitChange}
+          options={[
+            { value: "bb", label: t("cash.unit.bb") },
+            { value: "usd", label: t("cash.unit.usd") },
+          ]}
+        />
+        <span className="rounded-sm border border-[color:var(--color-heart)]/35 bg-[color:var(--color-heart)]/10 px-2 py-1 font-mono text-[11px] tabular-nums text-[color:var(--color-heart)]">
+          {formatRiskThreshold(riskThresholdBb, moneyUnit, bbSize)}
+        </span>
       </div>
     </div>
   );
@@ -566,28 +1065,31 @@ function CashResultsView({ result }: { result: CashResult }) {
 function TrajectoryChart({
   result,
   bbSize,
+  visibleRuns,
+  moneyUnit,
+  riskThresholdBb,
 }: {
   result: CashResult;
   bbSize: number;
+  visibleRuns: number;
+  moneyUnit: CashMoneyUnit;
+  riskThresholdBb: number;
 }) {
-  // X axis is hands (envelope grid). Y axis in BB; no USD lens applied here
-  // for clarity — bbSize shows up in the stats panel.
-  void bbSize;
+  const t = useT();
 
   const data = useMemo(() => {
     const env = result.envelopes;
     const x = Array.from(env.x, (h) => h);
-    const p05 = Array.from(env.p05);
-    const p95 = Array.from(env.p95);
-    const p15 = Array.from(env.p15);
-    const p85 = Array.from(env.p85);
-    const mean = Array.from(env.mean);
-    // Up to N hi-res sample paths layered underneath the envelopes.
-    const HI_PATH_SHOW = 30;
-    const paths = result.samplePaths.paths.slice(0, HI_PATH_SHOW);
-    // Pad hi-res paths to env x-axis length by sampling nearest index. The
-    // two grids have different K but both cover [0, hands], so we align by
-    // hand value rather than index.
+    const convert = (v: number) => convertCashMoney(v, moneyUnit, bbSize);
+    const p05 = Array.from(env.p05, convert);
+    const p95 = Array.from(env.p95, convert);
+    const p15 = Array.from(env.p15, convert);
+    const p85 = Array.from(env.p85, convert);
+    const mean = Array.from(env.mean, convert);
+    const riskLine = new Array<number>(x.length).fill(
+      convert(-riskThresholdBb),
+    );
+    const paths = result.samplePaths.paths.slice(0, visibleRuns);
     const hiX = result.samplePaths.x;
     const aligned: number[][] = paths.map((p) => {
       const out = new Array<number>(x.length);
@@ -595,90 +1097,138 @@ function TrajectoryChart({
       for (let i = 0; i < x.length; i++) {
         const target = env.x[i];
         while (j + 1 < hiX.length && hiX[j + 1] <= target) j++;
-        out[i] = p[j];
+        out[i] = convert(p[j]);
       }
       return out;
     });
-    return [x, p05, p15, mean, p85, p95, ...aligned] as Array<
+    return [x, p05, p15, mean, p85, p95, riskLine, ...aligned] as Array<
       (number | null)[]
     >;
-  }, [result]);
+  }, [result, visibleRuns, moneyUnit, bbSize, riskThresholdBb]);
 
   const series = useMemo(() => {
-    const HI_PATH_SHOW = 30;
-    const pathCount = Math.min(HI_PATH_SHOW, result.samplePaths.paths.length);
-    // points.show: false kills the per-sample dot markers uPlot draws by
-    // default at every x. With 30 hi-res paths layered behind envelopes the
-    // chart turns into a noise field without this.
+    const pathCount = Math.min(visibleRuns, result.samplePaths.paths.length);
     const noPoints = { show: false as const };
     const s: NonNullable<Parameters<typeof UplotChart>[0]["options"]>["series"] =
       [
         {},
         {
-          stroke: "rgba(255,80,80,0.55)",
-          width: 1,
+          stroke: "#ff7f73",
+          width: 1.25,
           label: "p05",
           points: noPoints,
         },
         {
-          stroke: "rgba(255,170,80,0.5)",
-          width: 1,
+          stroke: "#ffb35d",
+          width: 1.25,
           label: "p15",
           points: noPoints,
         },
         {
-          stroke: "var(--color-accent)",
-          width: 2.2,
+          stroke: "#f2cf45",
+          width: 2.35,
           label: "mean",
           points: noPoints,
         },
         {
-          stroke: "rgba(80,200,130,0.5)",
-          width: 1,
+          stroke: "#79cf96",
+          width: 1.25,
           label: "p85",
           points: noPoints,
         },
         {
-          stroke: "rgba(80,180,255,0.55)",
-          width: 1,
+          stroke: "#6db7ff",
+          width: 1.25,
           label: "p95",
+          points: noPoints,
+        },
+        {
+          stroke: "rgba(255,145,118,0.9)",
+          width: 1.4,
+          dash: [6, 5],
+          label: "risk",
           points: noPoints,
         },
       ];
     for (let i = 0; i < pathCount; i++) {
       s.push({
-        stroke: "rgba(150,150,170,0.14)",
+        stroke: "rgba(178,186,202,0.18)",
         width: 0.8,
         label: `r${i}`,
         points: noPoints,
       });
     }
     return s;
-  }, [result]);
+  }, [result, visibleRuns]);
 
   return (
-    <UplotChart
-      data={data as unknown as Parameters<typeof UplotChart>[0]["data"]}
-      options={{
-        series,
-        cursor: { show: true, points: { show: false } },
-        legend: { show: false },
-        scales: { x: { time: false } },
-        axes: [
-          { label: "hands" },
-          { label: "BB", size: 55 },
-        ],
-      }}
-      height={320}
-    />
+    <CashChartFrame>
+      <UplotChart
+        data={data as unknown as Parameters<typeof UplotChart>[0]["data"]}
+        options={{
+          series,
+          cursor: { show: true, points: { show: false } },
+          legend: { show: false },
+          scales: { x: { time: false } },
+          axes: cashAxes(
+            t("cash.axis.hands"),
+            moneyUnit === "usd" ? t("cash.axis.usd") : t("cash.axis.bb"),
+          ),
+        }}
+        height={340}
+      />
+    </CashChartFrame>
+  );
+}
+
+function MiniChartTitle({
+  suit,
+  title,
+  note,
+}: {
+  suit: SuitAccent;
+  title: string;
+  note?: string;
+}) {
+  const meta = CASH_ACCENT_META[suit];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-flex h-5 w-5 items-center justify-center rounded-sm border text-[10px]"
+          style={{
+            color: meta.colorVar,
+            borderColor: meta.badgeBorder,
+            background: meta.badgeBg,
+          }}
+        >
+          {meta.glyph}
+        </span>
+        <h4 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg)]">
+          {title}
+        </h4>
+      </div>
+      {note && (
+        <p className="text-[10.5px] leading-relaxed text-[color:var(--color-fg-muted)]">
+          {note}
+        </p>
+      )}
+    </div>
   );
 }
 
 function HistogramChart({
   hist,
+  xLabel,
+  yLabel,
+  tone,
 }: {
   hist: { binEdges: number[]; counts: number[] };
+  xLabel: string;
+  yLabel: string;
+  tone: SuitAccent;
 }) {
+  const palette = CASH_ACCENT_META[tone];
   const data = useMemo(() => {
     const xs: number[] = [];
     const ys: number[] = [];
@@ -690,28 +1240,190 @@ function HistogramChart({
   }, [hist]);
 
   return (
-    <UplotChart
-      data={data}
-      options={{
-        series: [
-          {},
-          {
-            stroke: "var(--color-accent)",
-            fill: "color-mix(in srgb, var(--color-accent) 25%, transparent)",
-            width: 1.5,
-            points: { show: false },
+    <CashChartFrame>
+      <UplotChart
+        data={data}
+        options={{
+          series: [
+            {},
+            {
+              stroke: palette.chartStroke,
+              fill: palette.chartFill,
+              width: 2,
+              points: { show: false },
+            },
+          ],
+          cursor: { show: true, points: { show: false } },
+          legend: { show: false },
+          scales: {
+            x: { time: false },
+            y: { range: (_u, _min, max) => [0, max * 1.05] },
           },
-        ],
-        cursor: { show: true, points: { show: false } },
-        legend: { show: false },
-        scales: {
-          x: { time: false },
-          y: { range: (_u, _min, max) => [0, max * 1.05] },
-        },
-        axes: [{ label: "BB" }, { label: "count", size: 55 }],
-      }}
-      height={220}
-    />
+          axes: cashAxes(xLabel, yLabel),
+        }}
+        height={220}
+      />
+    </CashChartFrame>
+  );
+}
+
+function CashOddsChart({ result }: { result: CashResult }) {
+  const t = useT();
+  const data = useMemo(
+    () =>
+      [
+        Array.from(result.oddsOverDistance.x),
+        Array.from(result.oddsOverDistance.profitShare),
+        Array.from(result.oddsOverDistance.belowThresholdNowShare),
+      ] as Parameters<typeof UplotChart>[0]["data"],
+    [result],
+  );
+
+  return (
+    <CashChartFrame>
+      <UplotChart
+        data={data}
+        options={{
+          series: [
+            {},
+            {
+              stroke: CASH_ACCENT_META.club.chartStroke,
+              width: 2.35,
+              points: { show: false },
+            },
+            {
+              stroke: CASH_ACCENT_META.heart.chartStroke,
+              width: 2.35,
+              points: { show: false },
+            },
+          ],
+          cursor: { show: true, points: { show: false } },
+          legend: { show: false },
+          scales: {
+            x: { time: false },
+            y: { range: () => [0, 1] },
+          },
+          axes: cashPctAxes(t("cash.axis.hands"), t("cash.axis.share")),
+        }}
+        height={240}
+      />
+    </CashChartFrame>
+  );
+}
+
+function CashConvergenceChart({ result }: { result: CashResult }) {
+  const t = useT();
+  const data = useMemo(
+    () =>
+      [
+        Array.from(result.convergence.x),
+        Array.from(result.convergence.seLo),
+        Array.from(result.convergence.mean),
+        Array.from(result.convergence.seHi),
+      ] as Parameters<typeof UplotChart>[0]["data"],
+    [result],
+  );
+
+  return (
+    <CashChartFrame>
+      <UplotChart
+        data={data}
+        options={{
+          series: [
+            {},
+            {
+              stroke: "rgba(118,176,255,0.7)",
+              width: 1.25,
+              points: { show: false },
+            },
+            {
+              stroke: "#9cc3ff",
+              width: 2.35,
+              points: { show: false },
+            },
+            {
+              stroke: "rgba(118,176,255,0.7)",
+              width: 1.25,
+              points: { show: false },
+            },
+          ],
+          cursor: { show: true, points: { show: false } },
+          legend: { show: false },
+          scales: { x: { time: false } },
+          axes: cashAxes(t("cash.axis.samples"), t("cash.axis.winrate")),
+        }}
+        height={220}
+      />
+    </CashChartFrame>
+  );
+}
+
+function DiagnosticsDisclosure({ result }: { result: CashResult }) {
+  const t = useT();
+  return (
+    <details className="data-surface-card rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg-elev)]/68">
+      <summary className="cursor-pointer list-none px-4 py-4 [&::-webkit-details-marker]:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <ChartTitle
+            suit="spade"
+            title={t("cash.section.diagnostics.title")}
+            note={t("cash.section.diagnostics.note")}
+          />
+          <span className="mt-0.5 text-[11px] text-[color:var(--color-fg-dim)]">
+            ▾
+          </span>
+        </div>
+      </summary>
+      <div className="px-4 pb-4">
+        <MiniChartTitle
+          suit="spade"
+          title={t("cash.chart.convergence.title")}
+          note={t("cash.chart.convergence.note")}
+        />
+        <div className="mt-3">
+          <CashConvergenceChart result={result} />
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function ChartTitle({
+  suit,
+  title,
+  note,
+}: {
+  suit: SuitAccent;
+  title: string;
+  note?: string;
+}) {
+  const accent = CASH_ACCENT_META[suit];
+  return (
+    <div className="mb-3 flex flex-col gap-2">
+      <div className="flex items-center gap-2.5">
+        <span
+          className="inline-flex h-6 w-6 items-center justify-center rounded-sm border text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+          style={{
+            color: accent.colorVar,
+            borderColor: accent.badgeBorder,
+            background: accent.badgeBg,
+          }}
+        >
+          {accent.glyph}
+        </span>
+        <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--color-fg)]">
+          <span className="mr-2 hidden text-[color:var(--color-fg-dim)] sm:inline">
+            {accent.glyph}
+          </span>
+          {title}
+        </h3>
+      </div>
+      {note && (
+        <p className="max-w-3xl text-[11.5px] leading-relaxed text-[color:var(--color-fg-muted)]">
+          {note}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -736,28 +1448,56 @@ function NumField({
   hint,
   onChange,
 }: NumFieldProps) {
+  const [draft, setDraft] = useState(() => formatNumFieldValue(value));
+  const [editing, setEditing] = useState(false);
+
+  const commitDraft = (raw: string) => {
+    const next = commitNumFieldDraft(raw, value, min, max);
+    onChange(next);
+    setDraft(formatNumFieldValue(next));
+  };
+
   return (
     <label
-      className={`flex flex-col gap-1 ${disabled ? "opacity-50" : ""}`}
+      className={`flex flex-col gap-1 ${disabled ? "opacity-75" : ""}`}
     >
-      <span className="eyebrow text-[10px] text-[color:var(--color-fg-dim)]">
+      <span className="eyebrow text-[10px] text-[color:var(--color-fg-muted)]">
         {label}
       </span>
       <input
         type="number"
-        value={Number.isFinite(value) ? value : ""}
+        value={editing ? draft : formatNumFieldValue(value)}
         step={step}
         min={min}
         max={max}
         disabled={disabled}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value);
-          if (Number.isFinite(v)) onChange(v);
+        onFocus={(e) => {
+          setEditing(true);
+          setDraft(e.currentTarget.value);
         }}
-        className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1.5 font-mono text-sm tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none disabled:cursor-not-allowed"
+        onChange={(e) => {
+          const raw = e.target.value;
+          setDraft(raw);
+          const parsed = parseNumFieldDraft(raw, min, max);
+          if (parsed !== null) onChange(parsed);
+        }}
+        onBlur={(e) => {
+          commitDraft(e.target.value);
+          setEditing(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          } else if (e.key === "Escape") {
+            setDraft(formatNumFieldValue(value));
+            setEditing(false);
+            e.currentTarget.blur();
+          }
+        }}
+        className="h-10 rounded-sm border border-[color:var(--color-border)]/85 bg-[color:var(--color-bg)]/65 px-3 py-1.5 font-mono text-sm tabular-nums text-[color:var(--color-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] focus:outline-none disabled:cursor-not-allowed disabled:border-[color:var(--color-border)]/80 disabled:bg-[color:var(--color-bg)]/55 disabled:text-[color:var(--color-fg-dim)] disabled:opacity-100"
       />
       {hint && (
-        <span className="text-[10px] text-[color:var(--color-fg-dim)]">
+        <span className="text-[10px] leading-relaxed text-[color:var(--color-fg-muted)]">
           {hint}
         </span>
       )}
@@ -767,22 +1507,45 @@ function NumField({
 
 function InputGroup({
   title,
+  accent,
   toggle,
   children,
 }: {
   title: string;
+  accent?: SuitAccent;
   toggle?: ReactNode;
   children: ReactNode;
 }) {
+  const meta = accent ? CASH_ACCENT_META[accent] : null;
   return (
-    <section className="flex flex-col gap-3">
-      <header className="flex items-center justify-between gap-3 border-b border-[color:var(--color-border)] pb-2">
-        <h3 className="eyebrow text-[11px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
+    <section
+      className="flex flex-col gap-3 rounded-sm border p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+      style={{
+        borderColor: meta?.panelBorder ?? "color-mix(in oklab, var(--color-border), transparent 10%)",
+        background:
+          meta?.panelBg ??
+          "linear-gradient(180deg, color-mix(in oklab, var(--color-bg), white 1%) 0%, color-mix(in oklab, var(--color-bg), black 2%) 100%)",
+      }}
+    >
+      <header
+        className="flex items-center justify-between gap-3 border-b pb-2.5"
+        style={{
+          borderColor: meta?.badgeBorder ?? "color-mix(in oklab, var(--color-border), transparent 10%)",
+        }}
+      >
+        <h3
+          className="inline-flex items-center rounded-sm border px-2.5 py-1 eyebrow text-[11px] tracking-[0.14em]"
+          style={{
+            borderColor: meta?.badgeBorder ?? "color-mix(in oklab, var(--color-border), transparent 10%)",
+            background: meta?.badgeBg ?? "color-mix(in oklab, var(--color-bg), transparent 94%)",
+            color: meta?.colorVar ?? "var(--color-fg-muted)",
+          }}
+        >
           {title}
         </h3>
         {toggle}
       </header>
-      {children}
+      <div className="flex flex-col gap-3">{children}</div>
     </section>
   );
 }
@@ -790,28 +1553,36 @@ function InputGroup({
 function ToggleSwitch({
   checked,
   onChange,
+  tone = "diamond",
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
+  tone?: SuitAccent;
 }) {
+  const meta = CASH_ACCENT_META[tone];
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 flex-none items-center rounded-full border transition-colors ${
-        checked
-          ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/25"
-          : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]"
-      }`}
+      className="relative inline-flex h-6 w-10 flex-none items-center rounded-full border shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors"
+      style={{
+        borderColor: checked
+          ? meta.badgeBorder
+          : "color-mix(in oklab, var(--color-border), transparent 10%)",
+        background: checked
+          ? meta.badgeBg
+          : "color-mix(in oklab, var(--color-bg), white 4%)",
+      }}
     >
       <span
-        className={`inline-block h-3.5 w-3.5 transform rounded-full transition-transform ${
+        className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform ${
           checked
-            ? "translate-x-[18px] bg-[color:var(--color-accent)]"
-            : "translate-x-[2px] bg-[color:var(--color-fg-muted)]"
+            ? "translate-x-[18px]"
+            : "translate-x-[3px] bg-[color:var(--color-fg-muted)]"
         }`}
+        style={checked ? { background: meta.colorVar } : undefined}
       />
     </button>
   );
@@ -833,20 +1604,20 @@ function StakeRowEditor({
   t: ReturnType<typeof useT>;
 }) {
   return (
-    <div className="flex flex-col gap-3 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/40 p-3">
+    <div className="flex flex-col gap-3 rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/40 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
       <div className="flex items-center gap-3">
         <input
           type="text"
           value={row.label ?? ""}
           onChange={(e) => onPatch({ label: e.target.value })}
           placeholder={t("cash.stakes.row.label")}
-          className="flex-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1.5 font-mono text-sm text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+          className="h-10 flex-1 rounded-sm border border-[color:var(--color-border)]/85 bg-[color:var(--color-bg)]/65 px-3 py-1.5 font-mono text-sm text-[color:var(--color-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] focus:outline-none"
         />
         {canRemove && (
           <button
             type="button"
             onClick={onRemove}
-            className="border border-[color:var(--color-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-heart)] hover:text-[color:var(--color-heart)]"
+            className="rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-heart)] hover:text-[color:var(--color-heart)]"
           >
             {t("cash.stakes.remove")}
           </button>
@@ -857,6 +1628,8 @@ function StakeRowEditor({
           label={t("cash.wrBb100.label")}
           value={row.wrBb100}
           step={0.5}
+          min={-MAX_ABS_WR_BB100}
+          max={MAX_ABS_WR_BB100}
           onChange={(v) => onPatch({ wrBb100: v })}
         />
         <NumField
@@ -864,6 +1637,7 @@ function StakeRowEditor({
           value={row.sdBb100}
           step={5}
           min={1}
+          max={MAX_SD_BB100}
           onChange={(v) => onPatch({ sdBb100: v })}
         />
         <NumField
@@ -871,6 +1645,7 @@ function StakeRowEditor({
           value={row.bbSize}
           step={0.25}
           min={0.01}
+          max={MAX_BB_SIZE}
           onChange={(v) => onPatch({ bbSize: v })}
         />
         <NumField
@@ -886,6 +1661,7 @@ function StakeRowEditor({
           value={row.rake.contributedRakeBb100}
           step={0.5}
           min={0}
+          max={MAX_RAKE_CONTRIB_BB100}
           disabled={!row.rake.enabled}
           onChange={(v) => onPatchRake({ contributedRakeBb100: v })}
         />
@@ -924,33 +1700,276 @@ function StakeRowEditor({
   );
 }
 
+type ValueTone = "pos" | "neg";
+
 type StatRow = { label: string; value: string };
+type HeroStat = {
+  accent: SuitAccent;
+  label: string;
+  value: string;
+  sub: string;
+  tone?: ValueTone;
+};
+type SummaryStat = {
+  accent: SuitAccent;
+  label: string;
+  value: string;
+  tone?: ValueTone;
+};
 
 type SuitAccent = "spade" | "heart" | "diamond" | "club";
 
-function StatGroup({
-  title,
+const CASH_ACCENT_META: Record<
+  SuitAccent,
+  {
+    glyph: string;
+    colorVar: string;
+    chartStroke: string;
+    chartFill: string;
+    panelBorder: string;
+    panelBg: string;
+    badgeBg: string;
+    badgeBorder: string;
+  }
+> = {
+  spade: {
+    glyph: "♠",
+    colorVar: "var(--color-spade)",
+    chartStroke: "#83b7ff",
+    chartFill: "rgba(131,183,255,0.24)",
+    panelBorder:
+      "color-mix(in oklab, var(--color-rival), var(--color-border) 56%)",
+    panelBg:
+      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-rival) 8%) 0%, color-mix(in oklab, var(--color-bg-elev), black 8%) 100%)",
+    badgeBg: "color-mix(in oklab, var(--color-rival), transparent 88%)",
+    badgeBorder:
+      "color-mix(in oklab, var(--color-rival), var(--color-border) 42%)",
+  },
+  heart: {
+    glyph: "♥",
+    colorVar: "var(--color-heart)",
+    chartStroke: "#ff9176",
+    chartFill: "rgba(255,145,118,0.23)",
+    panelBorder:
+      "color-mix(in oklab, var(--color-heart), var(--color-border) 56%)",
+    panelBg:
+      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-heart) 8%) 0%, color-mix(in oklab, var(--color-bg-elev), black 8%) 100%)",
+    badgeBg: "color-mix(in oklab, var(--color-heart), transparent 88%)",
+    badgeBorder:
+      "color-mix(in oklab, var(--color-heart), var(--color-border) 42%)",
+  },
+  diamond: {
+    glyph: "♦",
+    colorVar: "var(--color-diamond)",
+    chartStroke: "#f2cf45",
+    chartFill: "rgba(242,207,69,0.24)",
+    panelBorder:
+      "color-mix(in oklab, var(--color-diamond), var(--color-border) 52%)",
+    panelBg:
+      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-diamond) 8%) 0%, color-mix(in oklab, var(--color-bg-elev), black 8%) 100%)",
+    badgeBg: "color-mix(in oklab, var(--color-diamond), transparent 87%)",
+    badgeBorder:
+      "color-mix(in oklab, var(--color-diamond), var(--color-border) 40%)",
+  },
+  club: {
+    glyph: "♣",
+    colorVar: "var(--color-club)",
+    chartStroke: "#7ccd96",
+    chartFill: "rgba(124,205,150,0.23)",
+    panelBorder:
+      "color-mix(in oklab, var(--color-club), var(--color-border) 54%)",
+    panelBg:
+      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-club) 8%) 0%, color-mix(in oklab, var(--color-bg-elev), black 8%) 100%)",
+    badgeBg: "color-mix(in oklab, var(--color-club), transparent 88%)",
+    badgeBorder:
+      "color-mix(in oklab, var(--color-club), var(--color-border) 42%)",
+  },
+};
+
+function cashAxes(
+  xLabel: string,
+  yLabel: string,
+  ySize: number = 55,
+): NonNullable<Parameters<typeof UplotChart>[0]["options"]>["axes"] {
+  return [
+    {
+      label: xLabel,
+      stroke: "#a4afc2",
+      grid: { stroke: "rgba(148,163,184,0.1)", width: 1 },
+      ticks: { stroke: "rgba(148,163,184,0.22)" },
+    },
+    {
+      label: yLabel,
+      size: ySize,
+      stroke: "#aeb8cb",
+      grid: { stroke: "rgba(148,163,184,0.14)", width: 1 },
+      ticks: { stroke: "rgba(148,163,184,0.26)" },
+    },
+  ];
+}
+
+function cashPctAxes(
+  xLabel: string,
+  yLabel: string,
+): NonNullable<Parameters<typeof UplotChart>[0]["options"]>["axes"] {
+  return [
+    {
+      label: xLabel,
+      stroke: "#a4afc2",
+      grid: { stroke: "rgba(148,163,184,0.1)", width: 1 },
+      ticks: { stroke: "rgba(148,163,184,0.22)" },
+    },
+    {
+      label: yLabel,
+      size: 64,
+      stroke: "#aeb8cb",
+      grid: { stroke: "rgba(148,163,184,0.14)", width: 1 },
+      ticks: { stroke: "rgba(148,163,184,0.26)" },
+      values: (_u, splits) => splits.map((value) => `${Math.round(value * 100)}%`),
+    },
+  ];
+}
+
+function CashChartFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/42 px-2 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] sm:px-3">
+      {children}
+    </div>
+  );
+}
+
+function HeroGrid({
+  items,
+}: {
+  items: HeroStat[];
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+      {items.map((item) => (
+        <HeroCard key={item.label} {...item} />
+      ))}
+    </div>
+  );
+}
+
+function HeroCard({
+  accent,
+  label,
+  value,
+  sub,
+  tone,
+}: HeroStat) {
+  const meta = CASH_ACCENT_META[accent];
+  const toneClass =
+    tone === "neg"
+      ? "text-[color:var(--color-heart)]"
+      : tone === "pos"
+        ? "text-[color:var(--color-club)]"
+        : "text-[color:var(--color-fg)]";
+  return (
+    <div
+      className="data-surface-card flex h-full flex-col gap-3 rounded-sm border p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+      style={{
+        borderColor: meta.panelBorder,
+        background: meta.panelBg,
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-flex h-5 w-5 items-center justify-center rounded-sm border text-[10px]"
+          style={{
+            color: meta.colorVar,
+            borderColor: meta.badgeBorder,
+            background: meta.badgeBg,
+          }}
+        >
+          {meta.glyph}
+        </span>
+        <span className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
+          {label}
+        </span>
+      </div>
+      <div className={`font-mono text-[26px] font-semibold leading-none ${toneClass}`}>
+        {value}
+      </div>
+      <p className="text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+        {sub}
+      </p>
+    </div>
+  );
+}
+
+function SummaryStrip({
+  items,
+}: {
+  items: SummaryStat[];
+}) {
+  return (
+    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      {items.map((item) => (
+        <SummaryPill key={item.label} {...item} />
+      ))}
+    </div>
+  );
+}
+
+function SummaryPill({
+  accent,
+  label,
+  value,
+  tone,
+}: SummaryStat) {
+  const meta = CASH_ACCENT_META[accent];
+  const toneClass =
+    tone === "neg"
+      ? "text-[color:var(--color-heart)]"
+      : tone === "pos"
+        ? "text-[color:var(--color-club)]"
+        : "text-[color:var(--color-fg)]";
+  return (
+    <div
+      className="flex items-center justify-between gap-3 rounded-sm border px-3 py-2.5"
+      style={{
+        borderColor: meta.badgeBorder,
+        background: meta.badgeBg,
+      }}
+    >
+      <span className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
+        {label}
+      </span>
+      <span className={`font-mono text-[13px] font-semibold tabular-nums ${toneClass}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function DetailList({
   rows,
   accent,
 }: {
-  title: string;
   rows: StatRow[];
   accent: SuitAccent;
 }) {
-  const glyph = accent === "spade" ? "♠" : accent === "heart" ? "♥" : accent === "diamond" ? "♦" : "♣";
+  const meta = CASH_ACCENT_META[accent];
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 border-b border-[color:var(--color-border)] pb-1.5">
-        <span className={`text-[color:var(--color-${accent})]`}>{glyph}</span>
-        <h4 className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
-          {title}
-        </h4>
-      </div>
-      <dl className="flex flex-col gap-2">
+    <div
+      className="flex h-full flex-col gap-3 rounded-sm border p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+      style={{
+        borderColor: meta.panelBorder,
+        background: meta.panelBg,
+      }}
+    >
+      <dl className="flex flex-col gap-2.5">
         {rows.map((r) => (
-          <div key={r.label} className="flex items-baseline justify-between gap-3">
-            <dt className="text-[11px] text-[color:var(--color-fg-dim)]">{r.label}</dt>
-            <dd className="font-mono text-sm tabular-nums text-[color:var(--color-fg)]">
+          <div
+            key={r.label}
+            className="flex items-start justify-between gap-4 border-b border-[color:var(--color-border)]/35 pb-2 last:border-b-0 last:pb-0"
+          >
+            <dt className="max-w-[58%] text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+              {r.label}
+            </dt>
+            <dd className="text-right font-mono text-[15px] font-semibold tabular-nums leading-none text-[color:var(--color-fg)]">
               {r.value}
             </dd>
           </div>
@@ -958,4 +1977,198 @@ function StatGroup({
       </dl>
     </div>
   );
+}
+
+function MixTag({
+  accent,
+  children,
+}: {
+  accent: SuitAccent;
+  children: ReactNode;
+}) {
+  const meta = CASH_ACCENT_META[accent];
+  return (
+    <span
+      className="rounded-sm border px-2 py-1 font-mono text-[10px] tabular-nums"
+      style={{
+        borderColor: meta.badgeBorder,
+        background: meta.badgeBg,
+        color: meta.colorVar,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function MixMetricBar({
+  accent,
+  label,
+  share,
+  detail,
+}: {
+  accent: SuitAccent;
+  label: string;
+  share: number;
+  detail: string;
+}) {
+  const meta = CASH_ACCENT_META[accent];
+  const clampedShare = Math.max(0, Math.min(share, 1));
+  return (
+    <div className="flex flex-col gap-1.5 rounded-sm border border-[color:var(--color-border)]/65 bg-[color:var(--color-bg)]/55 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
+          {label}
+        </span>
+        <span className="font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
+          {detail}
+        </span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-[color:var(--color-bg-elev-2)]/90">
+        <div
+          className="h-full rounded-full transition-[width] duration-200"
+          style={{
+            width: `${clampedShare * 100}%`,
+            background: meta.chartStroke,
+            boxShadow: `0 0 0 1px ${meta.badgeBorder} inset`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function UnitToggle<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T;
+  onChange: (next: T) => void;
+  options: { value: T; label: string }[];
+}) {
+  return (
+    <div className="flex items-center rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/55 p-1">
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+              active
+                ? "bg-[color:var(--color-accent)]/18 text-[color:var(--color-accent)]"
+                : "text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function convertCashMoney(
+  valueBb: number,
+  unit: CashMoneyUnit,
+  bbSize: number,
+): number {
+  return unit === "usd" ? valueBb * bbSize : valueBb;
+}
+
+function formatCashMoney(
+  valueBb: number,
+  unit: CashMoneyUnit,
+  bbSize: number,
+): string {
+  const value = convertCashMoney(valueBb, unit, bbSize);
+  const abs = Math.abs(value);
+  const digits = unit === "usd" ? (abs >= 100 ? 0 : abs >= 10 ? 1 : 2) : 1;
+  const formatted = abs.toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  });
+  if (unit === "usd") return `${value < 0 ? "-" : ""}$${formatted}`;
+  return `${value < 0 ? "-" : ""}${formatted} BB`;
+}
+
+function formatUsdRate(value: number): string {
+  const abs = Math.abs(value);
+  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+  const formatted = abs.toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  });
+  return `${value < 0 ? "-" : ""}$${formatted}/h`;
+}
+
+function formatCashPct(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatSignedBb100(value: number): string {
+  const abs = Math.abs(value);
+  const digits = abs >= 100 || Number.isInteger(abs) ? 0 : 1;
+  const formatted = abs.toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  });
+  return `${value < 0 ? "-" : "+"}${formatted}`;
+}
+
+function formatUnsignedBb100(value: number): string {
+  const abs = Math.abs(value);
+  const digits = abs >= 100 || Number.isInteger(abs) ? 0 : 1;
+  return abs.toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  });
+}
+
+function formatUsdBbSize(value: number): string {
+  const digits = value >= 10 ? 0 : value >= 1 ? 2 : 3;
+  const formatted = value.toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits >= 2 ? 2 : 0,
+  });
+  return `$${formatted} BB`;
+}
+
+function formatRiskThresholdBb(value: number): string {
+  const abs = Math.abs(value);
+  const digits = abs >= 100 || Number.isInteger(abs) ? 0 : 1;
+  const formatted = abs.toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  });
+  return `−${formatted} BB`;
+}
+
+function formatRiskThreshold(
+  valueBb: number,
+  unit: CashMoneyUnit,
+  bbSize: number,
+): string {
+  if (unit === "bb") return formatRiskThresholdBb(valueBb);
+  const abs = Math.abs(valueBb * bbSize);
+  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+  const formatted = abs.toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  });
+  return `−$${formatted}`;
+}
+
+function scaleMoneyHistogram(
+  hist: { binEdges: number[]; counts: number[] },
+  unit: CashMoneyUnit,
+  bbSize: number,
+): { binEdges: number[]; counts: number[] } {
+  if (unit === "bb") return hist;
+  return {
+    binEdges: hist.binEdges.map((edge) => edge * bbSize),
+    counts: hist.counts,
+  };
 }

@@ -30,6 +30,7 @@ import type {
   CashEnvelopes,
   CashStakeRow,
 } from "./cashTypes";
+import { normalizeCashInput } from "./cashInput";
 
 /**
  * Per-row compiled rates in reference-bb per hand. Ref bb = `input.bbSize`.
@@ -37,6 +38,10 @@ import type {
  * normalization and rounding.
  */
 interface CompiledRow {
+  label?: string;
+  bbSize: number;
+  wrBb100: number;
+  sdBb100: number;
   rowHands: number;
   driftPerHand: number;
   sdPerHand: number;
@@ -65,6 +70,52 @@ interface CompiledStakeSchedule {
 
 const MIX_BLOCK_HANDS = 100;
 
+function allocateRowHands(
+  totalHands: number,
+  rowsSource: readonly CashStakeRow[],
+): Int32Array {
+  const weights = rowsSource.map((row) => Math.max(0, row.handShare));
+  const weightSum = weights.reduce((acc, weight) => acc + weight, 0);
+  const out = new Int32Array(rowsSource.length);
+  if (totalHands <= 0) return out;
+  if (weightSum <= 0) {
+    const base = Math.floor(totalHands / Math.max(1, rowsSource.length));
+    const remaining = totalHands - base * rowsSource.length;
+    for (let i = 0; i < rowsSource.length; i++) {
+      out[i] = base + (i < remaining ? 1 : 0);
+    }
+    return out;
+  }
+
+  const exact = new Array<number>(rowsSource.length);
+  const floorSum = { value: 0 };
+  for (let i = 0; i < rowsSource.length; i++) {
+    const share = weights[i] / weightSum;
+    const target = share * totalHands;
+    const base = Math.floor(target);
+    exact[i] = target;
+    out[i] = base;
+    floorSum.value += base;
+  }
+
+  let remaining = totalHands - floorSum.value;
+  const order = exact
+    .map((target, i) => ({
+      i,
+      frac: target - out[i],
+      target,
+    }))
+    .sort(
+      (a, b) =>
+        b.frac - a.frac || b.target - a.target || a.i - b.i,
+    );
+
+  for (let k = 0; k < order.length && remaining > 0; k++, remaining--) {
+    out[order[k].i] += 1;
+  }
+  return out;
+}
+
 /**
  * Compile the row economics first, then build a deterministic interleaved
  * schedule of short blocks when more than one row is active. Legacy
@@ -86,19 +137,12 @@ function compileStakeSchedule(input: CashInput): CompiledStakeSchedule {
           },
         ];
 
-  const shareSum = rowsSource.reduce((a, r) => a + Math.max(0, r.handShare), 0);
-  const shareNorm = shareSum > 0 ? shareSum : 1;
+  const allocatedHands = allocateRowHands(input.hands, rowsSource);
 
   const compiledRows: CompiledRow[] = [];
-  let cursor = 0;
   for (let r = 0; r < rowsSource.length; r++) {
     const row = rowsSource[r];
-    const share = Math.max(0, row.handShare) / shareNorm;
-    const isLast = r === rowsSource.length - 1;
-    const rowHands = isLast
-      ? input.hands - cursor
-      : Math.round(share * input.hands);
-    cursor += rowHands;
+    const rowHands = allocatedHands[r];
     if (rowHands <= 0) continue;
 
     // Rescale each bb-denominated quantity to the reference-bb currency.
@@ -117,6 +161,10 @@ function compileStakeSchedule(input: CashInput): CompiledStakeSchedule {
     const totalRbRefBb = (rbRateBb100 * rowHands) / 100;
 
     compiledRows.push({
+      ...(row.label ? { label: row.label } : {}),
+      bbSize: row.bbSize,
+      wrBb100: row.wrBb100,
+      sdBb100: row.sdBb100,
       rowHands,
       driftPerHand,
       sdPerHand,
@@ -140,6 +188,10 @@ function compileStakeSchedule(input: CashInput): CompiledStakeSchedule {
       ? rakeBbRef * (fallback.rake.advertisedRbPct / 100) * fallback.rake.pvi
       : 0;
     compiledRows.push({
+      ...(fallback.label ? { label: fallback.label } : {}),
+      bbSize: fallback.bbSize,
+      wrBb100: fallback.wrBb100,
+      sdBb100: fallback.sdBb100,
       rowHands: input.hands,
       driftPerHand: wrBbRef / 100,
       sdPerHand: sdBbRef / 10,
@@ -231,21 +283,23 @@ export interface CashShard {
   longestBreakevenHands: Int32Array;
   /** Hands from deepest drawdown to recovery; -1 if never recovered. */
   recoveryHands: Int32Array;
-  /** 1 if the running minimum touched <= -100 BB at any point. */
-  hitSub100: Uint8Array;
+  /** 1 if the running minimum touched <= -thresholdBb at any point. */
+  hitBelowThreshold: Uint8Array;
   /** Envelope grid: column-major (K1 columns × shardS rows). BR at checkpoint j of sample s = envMatrix[j*shardS + s]. */
   envMatrix: Float64Array;
   /** Hi-res grid positions in hands space, length K_HI + 1. */
   hiCheckpointIdx: Int32Array;
-  /** Full trajectories for up to HI_RES_PATH_CAP samples of the leading shard. */
+  /** Full trajectories for this shard's overlap with the global hi-res prefix. */
   hiResPaths: Float64Array[];
-  /** Pointwise best / worst on the hi-res grid, tracked across the shard. */
+  /** Global sample ids parallel to `hiResPaths`. */
+  hiResSampleIndices: Int32Array;
+  /** Best / worst final-bankroll sample among this shard's stored hi-res paths. */
   hiResBestPath: Float64Array;
   hiResWorstPath: Float64Array;
   /** Sample index that owns hiResBestPath / hiResWorstPath (global). */
   hiResBestSample: number;
   hiResWorstSample: number;
-  /** Final-BR value of the current best / worst sample — used to merge shards. */
+  /** Final-BR value of the current best / worst stored sample. */
   hiResBestFinal: number;
   hiResWorstFinal: number;
 }
@@ -312,15 +366,19 @@ export function simulateCashShard(
   const maxDrawdownBb = new Float64Array(shardS);
   const longestBreakevenHands = new Int32Array(shardS);
   const recoveryHands = new Int32Array(shardS);
-  const hitSub100 = new Uint8Array(shardS);
+  const hitBelowThreshold = new Uint8Array(shardS);
+  const thresholdBb = Math.max(1, input.riskBlock?.thresholdBb ?? 100);
   // Column-major: envMatrix[j*shardS + s] — keeps each envelope column
   // contiguous for the later sort pass.
   const envMatrix = new Float64Array(envK1 * shardS);
 
-  const storeHi = sStart === 0;
-  const hiCount = storeHi ? Math.min(HI_RES_PATH_CAP, shardS) : 0;
+  const hiPrefixStart = Math.max(0, sStart);
+  const hiPrefixEnd = Math.min(HI_RES_PATH_CAP, sEnd);
+  const hiCount = Math.max(0, hiPrefixEnd - hiPrefixStart);
   const hiResPaths: Float64Array[] = new Array(hiCount);
+  const hiResSampleIndices = new Int32Array(hiCount);
   for (let i = 0; i < hiCount; i++) hiResPaths[i] = new Float64Array(hiK1);
+  for (let i = 0; i < hiCount; i++) hiResSampleIndices[i] = hiPrefixStart + i;
   const hiResBestPath = new Float64Array(hiK1);
   const hiResWorstPath = new Float64Array(hiK1);
   let hiResBestSample = -1;
@@ -340,8 +398,8 @@ export function simulateCashShard(
     let deepestDdHand = -1;
     let peakAtDeepest = 0;
     let recoveryHand = -1;
-    let peakHand = 0;
     let longestBreakeven = 0;
+    let belowPeakRun = 0;
 
     // Envelope column index pointer: envIdx[nextEnv] is the next hand at
     // which we record the envelope checkpoint.
@@ -351,7 +409,8 @@ export function simulateCashShard(
       nextEnv = 1;
     }
     let nextHi = 0;
-    const hiPath = localS < hiCount ? hiResPaths[localS] : null;
+    const hiSlot = s >= hiPrefixStart && s < hiPrefixEnd ? s - hiPrefixStart : -1;
+    const hiPath = hiSlot >= 0 ? hiResPaths[hiSlot] : null;
     if (hiPath && hiIdx[0] === 0) {
       hiPath[0] = 0;
       nextHi = 1;
@@ -384,7 +443,7 @@ export function simulateCashShard(
         haveCachedZ = true;
       }
       br += curDrift + curSd * z;
-      if (br <= -100) hitSub100[localS] = 1;
+      if (br <= -thresholdBb) hitBelowThreshold[localS] = 1;
       const handIdx = i + 1;
       while (handIdx >= curSegEnd && segIx < segEndArr.length - 1) {
         segIx++;
@@ -395,11 +454,14 @@ export function simulateCashShard(
       }
 
       // Peak / drawdown / breakeven bookkeeping.
-      if (br >= peak) {
-        const streak = handIdx - peakHand;
-        if (streak > longestBreakeven) longestBreakeven = streak;
+      if (br > peak) {
         peak = br;
-        peakHand = handIdx;
+        belowPeakRun = 0;
+      } else if (br < peak) {
+        belowPeakRun += 1;
+        if (belowPeakRun > longestBreakeven) longestBreakeven = belowPeakRun;
+      } else {
+        belowPeakRun = 0;
       }
       const dd = peak - br;
       if (dd > maxDd) {
@@ -428,12 +490,6 @@ export function simulateCashShard(
         nextHi++;
       }
     }
-
-    // Final breakeven stretch: if we ended below peak, the trailing stretch
-    // from peakHand to H may be the longest.
-    const trailing = H - peakHand;
-    if (trailing > longestBreakeven) longestBreakeven = trailing;
-
     finalBb[localS] = br;
     maxDrawdownBb[localS] = maxDd;
     longestBreakevenHands[localS] = longestBreakeven;
@@ -442,20 +498,16 @@ export function simulateCashShard(
 
     // Track best / worst by final BR across the shard so downstream
     // merging just compares two finals.
-    if (storeHi) {
+    if (hiPath) {
       if (br > hiResBestFinal) {
         hiResBestFinal = br;
         hiResBestSample = s;
-        // Replay the checkpoint values from hiPath if we captured it,
-        // otherwise we need to re-run — but we only track best/worst among
-        // the first HI_RES_PATH_CAP samples where hiPath is available, so
-        // this branch never triggers outside that window.
-        if (hiPath) hiResBestPath.set(hiPath);
+        hiResBestPath.set(hiPath);
       }
       if (br < hiResWorstFinal) {
         hiResWorstFinal = br;
         hiResWorstSample = s;
-        if (hiPath) hiResWorstPath.set(hiPath);
+        hiResWorstPath.set(hiPath);
       }
     }
   }
@@ -467,10 +519,11 @@ export function simulateCashShard(
     maxDrawdownBb,
     longestBreakevenHands,
     recoveryHands,
-    hitSub100,
+    hitBelowThreshold,
     envMatrix,
     hiCheckpointIdx: hiIdx,
     hiResPaths,
+    hiResSampleIndices,
     hiResBestPath,
     hiResWorstPath,
     hiResBestSample,
@@ -502,7 +555,8 @@ export function buildCashResult(
   const recovery = new Int32Array(S);
   // Row-major env matrix for merged samples: envAll[j*S + s].
   const envAll = new Float64Array(envK1 * S);
-  let sub100 = 0;
+  const thresholdBb = Math.max(1, input.riskBlock?.thresholdBb ?? 100);
+  let belowThresholdEver = 0;
 
   let cursor = 0;
   for (const sh of sorted) {
@@ -511,7 +565,7 @@ export function buildCashResult(
     maxDd.set(sh.maxDrawdownBb, cursor);
     longestBe.set(sh.longestBreakevenHands, cursor);
     recovery.set(sh.recoveryHands, cursor);
-    for (let k = 0; k < n; k++) sub100 += sh.hitSub100[k];
+    for (let k = 0; k < n; k++) belowThresholdEver += sh.hitBelowThreshold[k];
     for (let j = 0; j < envK1; j++) {
       // Copy env column j from shard into [cursor..cursor+n).
       const dstBase = j * S + cursor;
@@ -536,15 +590,23 @@ export function buildCashResult(
   const p975 = new Float64Array(envK1);
   const envMin = new Float64Array(envK1);
   const envMax = new Float64Array(envK1);
+  const profitShare = new Float64Array(envK1);
+  const belowThresholdNowShare = new Float64Array(envK1);
   const col = new Float64Array(S);
   for (let j = 0; j < envK1; j++) {
     let acc = 0;
+    let profitCount = 0;
+    let belowThresholdNowCount = 0;
     for (let s = 0; s < S; s++) {
       const v = envAll[j * S + s];
       col[s] = v;
       acc += v;
+      if (v > 0) profitCount++;
+      if (v <= -thresholdBb) belowThresholdNowCount++;
     }
     mean_[j] = acc / S;
+    profitShare[j] = profitCount / S;
+    belowThresholdNowShare[j] = belowThresholdNowCount / S;
     col.sort();
     envMin[j] = col[0];
     envMax[j] = col[S - 1];
@@ -558,16 +620,20 @@ export function buildCashResult(
     p975[j] = col[qIdx(0.975)];
   }
 
-  // Hi-res paths / best / worst: take from the leading shard (sStart=0).
+  // Hi-res paths: concatenate each shard's overlap with the global hi-res
+  // prefix so the displayed path budget is invariant to shard size.
   const leading = sorted[0];
   const hiIdx = leading.hiCheckpointIdx;
   const xHi = new Int32Array(hiIdx);
-  const paths = leading.hiResPaths;
-  const sampleIndices: number[] = new Array(paths.length);
-  for (let i = 0; i < paths.length; i++) sampleIndices[i] = i;
-  // Pointwise best / worst across leading-shard hi-res paths. Cheap: re-scan
-  // the hi-res bundle rather than relying on the shard's final-BR winner,
-  // because pointwise extremes can cross samples along the trajectory.
+  const paths: Float64Array[] = [];
+  const sampleIndices: number[] = [];
+  for (const sh of sorted) {
+    for (let i = 0; i < sh.hiResPaths.length; i++) {
+      paths.push(sh.hiResPaths[i]);
+      sampleIndices.push(sh.hiResSampleIndices[i]);
+    }
+  }
+  // Pointwise best / worst across the stored hi-res bundle.
   const hiLen = hiIdx.length;
   const best = new Float64Array(hiLen);
   const worst = new Float64Array(hiLen);
@@ -607,10 +673,12 @@ export function buildCashResult(
 
   // Stats --------------------------------------------------------------------
   let sumFinal = 0;
+  let profitCount = 0;
   let lossCount = 0;
   for (let s = 0; s < S; s++) {
     const v = finalBb[s];
     sumFinal += v;
+    if (v > 0) profitCount++;
     if (v < 0) lossCount++;
   }
   const meanFinalBb = sumFinal / S;
@@ -620,6 +688,12 @@ export function buildCashResult(
     varAcc += d * d;
   }
   const sdFinalBb = Math.sqrt(varAcc / Math.max(1, S - 1));
+  const finalSorted = new Float64Array(finalBb);
+  finalSorted.sort();
+  const maxDdSorted = new Float64Array(maxDd);
+  maxDdSorted.sort();
+  const longestBeSorted = new Int32Array(longestBe);
+  longestBeSorted.sort();
 
   // Unrecovered share.
   let unrecovered = 0;
@@ -633,16 +707,43 @@ export function buildCashResult(
   let totalRake = 0;
   let totalRb = 0;
   let expectedEvBb = 0;
+  let totalVarianceBb2 = 0;
   for (const row of rows) {
     totalRake += row.totalRakeRefBb;
     totalRb += row.totalRbRefBb;
     expectedEvBb += (row.driftPerHand + row.rbPerHand) * row.rowHands;
+    totalVarianceBb2 += row.rowHands * row.sdPerHand * row.sdPerHand;
   }
   const expectedEvUsd = expectedEvBb * input.bbSize;
   const meanFinalUsd = meanFinalBb * input.bbSize;
   const hourlyEvUsd = input.hoursBlock
     ? (expectedEvUsd / input.hands) * input.hoursBlock.handsPerHour
     : undefined;
+  const mixBreakdown =
+    input.stakes && input.stakes.length > 1
+      ? {
+          rows: rows.map((row) => {
+            const varianceBb2 = row.rowHands * row.sdPerHand * row.sdPerHand;
+            return {
+              ...(row.label ? { label: row.label } : {}),
+              wrBb100: row.wrBb100,
+              sdBb100: row.sdBb100,
+              bbSize: row.bbSize,
+              hands: row.rowHands,
+              handShare: input.hands > 0 ? row.rowHands / input.hands : 0,
+              expectedEvBb: (row.driftPerHand + row.rbPerHand) * row.rowHands,
+              varianceBb2,
+              varianceShare:
+                totalVarianceBb2 > 0 ? varianceBb2 / totalVarianceBb2 : 0,
+              rakePaidBb: row.totalRakeRefBb,
+              rakeShare: totalRake > 0 ? row.totalRakeRefBb / totalRake : 0,
+              rbEarnedBb: row.totalRbRefBb,
+              rbShare: totalRb > 0 ? row.totalRbRefBb / totalRb : 0,
+            };
+          }),
+          totalVarianceBb2,
+        }
+      : undefined;
 
   // Histograms.
   const histogram = histogramOf(finalBb, 60, false, false);
@@ -655,6 +756,7 @@ export function buildCashResult(
   }
   const recoveryArr = new Float64Array(recovered.length);
   for (let i = 0; i < recovered.length; i++) recoveryArr[i] = recovered[i];
+  if (recoveryArr.length > 1) recoveryArr.sort();
   const recoveryHistogram =
     recoveryArr.length > 0
       ? histogramOf(recoveryArr, 40, true, true)
@@ -701,6 +803,13 @@ export function buildCashResult(
     drawdownHistogram,
     longestBreakevenHistogram,
     recoveryHistogram,
+    ...(mixBreakdown ? { mixBreakdown } : {}),
+    oddsOverDistance: {
+      x: envGrid.checkpointIdx,
+      thresholdBb,
+      profitShare,
+      belowThresholdNowShare,
+    },
     convergence: {
       x: convX,
       mean: convMean,
@@ -712,9 +821,20 @@ export function buildCashResult(
       expectedEvUsd,
       meanFinalBb,
       meanFinalUsd,
+      finalBbMedian: quantileOfSorted(finalSorted, 0.5),
+      finalBbP05: quantileOfSorted(finalSorted, 0.05),
+      finalBbP95: quantileOfSorted(finalSorted, 0.95),
       sdFinalBb,
+      probProfit: profitCount / S,
       probLoss: lossCount / S,
-      probSub100Bb: sub100 / S,
+      probBelowThresholdEver: belowThresholdEver / S,
+      maxDrawdownMedian: quantileOfSorted(maxDdSorted, 0.5),
+      maxDrawdownP95: quantileOfSorted(maxDdSorted, 0.95),
+      longestBreakevenMedian: quantileOfSorted(longestBeSorted, 0.5),
+      recoveryMedian:
+        recoveryArr.length > 0 ? quantileOfSorted(recoveryArr, 0.5) : Number.NaN,
+      recoveryP90:
+        recoveryArr.length > 0 ? quantileOfSorted(recoveryArr, 0.9) : Number.NaN,
       recoveryUnrecoveredShare,
       meanRakePaidBb: totalRake,
       meanRbEarnedBb: totalRb,
@@ -729,16 +849,17 @@ export function buildCashResult(
  * `simulateCashShard` + `buildCashResult` directly. Tests use this.
  */
 export function simulateCash(input: CashInput): CashResult {
-  const envGrid = makeCashEnvGrid(input.hands);
-  const hiResGrid = makeCashHiResGrid(input.hands);
+  const normalized = normalizeCashInput(input);
+  const envGrid = makeCashEnvGrid(normalized.hands);
+  const hiResGrid = makeCashHiResGrid(normalized.hands);
   const shard = simulateCashShard(
-    input,
+    normalized,
     0,
-    input.nSimulations,
+    normalized.nSimulations,
     envGrid,
     hiResGrid,
   );
-  return buildCashResult(input, [shard], envGrid);
+  return buildCashResult(normalized, [shard], envGrid);
 }
 
 // ---------------------------------------------------------------------------
@@ -817,4 +938,14 @@ function histogramOfInt(
     counts[b]++;
   }
   return { binEdges, counts };
+}
+
+function quantileOfSorted(
+  sorted: ArrayLike<number>,
+  p: number,
+): number {
+  const n = sorted.length;
+  if (n === 0) return Number.NaN;
+  const idx = Math.min(n - 1, Math.max(0, Math.floor(p * (n - 1))));
+  return sorted[idx];
 }
