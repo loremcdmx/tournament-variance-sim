@@ -910,7 +910,7 @@ function AdvancedRowPanel({
   const gt = inferGameType(row);
   const showReentry = gt === "freezeout-reentry";
   const showBounty = gt === "pko" || gt === "mystery" || gt === "mystery-royale";
-  const showMysteryVar = gt === "mystery" || gt === "mystery-royale";
+  const showMysteryVar = gt === "mystery";
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
       {/* Field variability */}

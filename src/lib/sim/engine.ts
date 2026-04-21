@@ -33,7 +33,7 @@ import {
 } from "./bountySplit";
 import { buildBattleRoyaleWinnerFirstPmf } from "./battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "./brBountyTiers";
-import { normalizeBrMrConsistency } from "./gameType";
+import { inferGameType, normalizeBrMrConsistency } from "./gameType";
 import { mulberry32, mixSeed } from "./rng";
 import type {
   CalibrationMode,
@@ -1035,10 +1035,11 @@ function compileSingleEntry(
 
   // Combined per-KO log-variance: mystery bounty noise + PKO head-size noise.
   // Both are independent log-normal sources, so variances add in log-space.
-  // Default pkoHeadVar to 0.4 when bountyFraction > 0 and not explicitly set,
-  // so all PKO rows get head-size variance even without applyGameType.
+  // Default pkoHeadVar to 0.4 only for rows that structurally infer as PKO;
+  // Mystery / BR rows should not inherit the PKO head-size channel.
+  const inferredGameType = inferGameType(row);
   const effectivePkoHeadVar =
-    row.pkoHeadVar ?? (bountyMean > 0 ? 0.4 : 0);
+    row.pkoHeadVar ?? (inferredGameType === "pko" ? 0.4 : 0);
   const perKoLogVar =
     Math.max(0, row.mysteryBountyVariance ?? 0) +
     Math.max(0, effectivePkoHeadVar);

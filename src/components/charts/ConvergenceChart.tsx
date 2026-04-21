@@ -667,7 +667,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       </div>
       {bandPolicy.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
-          {t("chart.convergence.bandWarning.outsideFitBox")}
+          {t(
+            bandPolicy.reason === "contains-mystery"
+              ? "chart.convergence.bandWarning.containsMystery"
+              : "chart.convergence.bandWarning.outsideFitBox",
+          )}
         </div>
       )}
       <div className="overflow-x-auto">

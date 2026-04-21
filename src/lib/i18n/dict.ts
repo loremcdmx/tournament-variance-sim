@@ -1178,6 +1178,10 @@ export const DICT = {
     en: "Load a schedule to see per-row σ breakdown.",
     ru: "Загрузите расписание, чтобы увидеть разбивку σ по рядам.",
   },
+  "chart.convergence.bandWarning.containsMystery": {
+    en: "Mystery still uses a point estimate here, but its current runtime fit carries too much residual drift for an honest numeric ± band. The point stays as a ballpark; the range is hidden until the Mystery policy is revalidated.",
+    ru: "Для Mystery точка пока остаётся ориентиром, но текущий runtime-fit даёт слишком большой residual drift для честной числовой ± полосы. Поэтому точку оставили, а диапазон скрыли до новой валидации политики Mystery.",
+  },
   "chart.convergence.bandWarning.outsideFitBox": {
     en: "Current AFS / ROI sits outside the validated training box for this format (freeze & PKO / Mystery field 50–50 000, PKO / Mystery ROI −20..+80 %, MBR field fixed at 18 with ROI ±10 %). The point estimate is still a ballpark, but the ± band is extrapolation territory so it's suppressed.",
     ru: "Текущий AFS / ROI выходит за пределы validated training box для этого формата (фриз и ПКО / Мистери поле 50–50 000, ПКО / Мистери ROI −20..+80 %, MBR поле строго 18 и ROI ±10 %). Точка всё ещё ориентир, но ± полоса была бы экстраполяцией — её скрыли.",

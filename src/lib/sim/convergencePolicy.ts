@@ -5,8 +5,11 @@
  * The fits are only validated inside an explicit training box per format.
  * Anything outside (e.g. ROI=−30 % for PKO/Mystery, field > 50 000 for
  * non-MBR, field !== 18 for MBR) is extrapolation and not band-worthy —
- * policy reports `outside-fit-box`. The point estimate is still shown as a
- * ballpark; only the numeric ±band is suppressed.
+ * policy reports `outside-fit-box`. Mystery is stricter: its current 2D fit
+ * still carries p95 residuals that are too wide for an honest numeric band,
+ * so any schedule containing Mystery reports `contains-mystery` even inside
+ * the validated box. The point estimate is still shown as a ballpark; only
+ * the numeric ±band is suppressed.
  */
 
 import type { TournamentRow } from "./types";
@@ -21,7 +24,7 @@ export type ConvergenceBandPolicy =
   | { kind: "numeric" }
   | {
       kind: "warning";
-      reason: "outside-fit-box";
+      reason: "contains-mystery" | "outside-fit-box";
     };
 
 export interface FitBoxSample {
@@ -146,6 +149,11 @@ export function isInsideFitBox(sample: FitBoxSample): boolean {
 export function getConvergenceBandPolicy(
   samples: readonly FitBoxSample[],
 ): ConvergenceBandPolicy {
+  for (const s of samples) {
+    if (s.format === "mystery") {
+      return { kind: "warning", reason: "contains-mystery" };
+    }
+  }
   for (const s of samples) {
     if (!isInsideFitBox(s)) {
       return { kind: "warning", reason: "outside-fit-box" };
