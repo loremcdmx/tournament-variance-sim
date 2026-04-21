@@ -179,6 +179,7 @@ export default function Home() {
     pdResultOverride,
   } = useSimulation();
   const lastRunInputRef = useRef<SimulationInput | null>(null);
+  const pendingInterruptRef = useRef<number | null>(null);
 
   useEffect(() => {
     const fromUrl = loadFromUrlHash();
@@ -221,6 +222,22 @@ export default function Home() {
     }, 200);
     return () => window.clearTimeout(timeoutId);
   }, [schedule, controls, hydrated]);
+
+  const clearPendingInterrupt = useCallback(() => {
+    if (pendingInterruptRef.current == null) return;
+    window.clearTimeout(pendingInterruptRef.current);
+    pendingInterruptRef.current = null;
+  }, []);
+
+  const queueInterruptBackground = useCallback(() => {
+    clearPendingInterrupt();
+    pendingInterruptRef.current = window.setTimeout(() => {
+      pendingInterruptRef.current = null;
+      interruptBackground();
+    }, 120);
+  }, [clearPendingInterrupt, interruptBackground]);
+
+  useEffect(() => clearPendingInterrupt, [clearPendingInterrupt]);
 
   const buildInput = useCallback(
     (s: TournamentRow[], c: ControlsState): SimulationInput => ({
@@ -302,6 +319,7 @@ export default function Home() {
   );
 
   const onRun = useCallback(() => {
+    clearPendingInterrupt();
     const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
     if (!liveFeasibility.ok) return;
     const freshSeed =
@@ -313,34 +331,37 @@ export default function Home() {
     const input = buildInput(effectiveSchedule, nextControls);
     lastRunInputRef.current = input;
     run(input);
-  }, [effectiveSchedule, previewModel, controls, run, buildInput]);
+  }, [clearPendingInterrupt, effectiveSchedule, previewModel, controls, run, buildInput]);
 
   const onUsePdPayoutsChange = useCallback(
     (v: boolean) => {
+      clearPendingInterrupt();
       setControls((c) => ({ ...c, usePrimedopePayouts: v }));
       const base = lastRunInputRef.current;
       if (!base) return;
       runPdOnly({ ...base, usePrimedopePayouts: v });
     },
-    [runPdOnly],
+    [clearPendingInterrupt, runPdOnly],
   );
   const onUsePdFinishModelChange = useCallback(
     (v: boolean) => {
+      clearPendingInterrupt();
       setControls((c) => ({ ...c, usePrimedopeFinishModel: v }));
       const base = lastRunInputRef.current;
       if (!base) return;
       runPdOnly({ ...base, usePrimedopeFinishModel: v });
     },
-    [runPdOnly],
+    [clearPendingInterrupt, runPdOnly],
   );
   const onUsePdRakeMathChange = useCallback(
     (v: boolean) => {
+      clearPendingInterrupt();
       setControls((c) => ({ ...c, usePrimedopeRakeMath: v }));
       const base = lastRunInputRef.current;
       if (!base) return;
       runPdOnly({ ...base, usePrimedopeRakeMath: v });
     },
-    [runPdOnly],
+    [clearPendingInterrupt, runPdOnly],
   );
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -358,10 +379,11 @@ export default function Home() {
   const loadScenario = useCallback((id: string) => {
     const s = SCENARIOS.find((x) => x.id === id);
     if (!s) return;
+    queueInterruptBackground();
     setSchedule(s.schedule);
     setControls({ ...initialControls, ...s.controls });
     setActiveScenarioId(id);
-  }, []);
+  }, [queueInterruptBackground]);
 
   // Stable callbacks for ScheduleEditor / ControlsPanel / sub-controls. Without
   // these the inline arrow handlers below force a fresh reference on every
@@ -369,30 +391,30 @@ export default function Home() {
   // children then re-render anyway — memo broken.
   const handleScheduleChange = useCallback(
     (s: TournamentRow[]) => {
-      interruptBackground();
+      queueInterruptBackground();
       setSchedule(s);
       setActiveScenarioId(null);
     },
-    [interruptBackground],
+    [queueInterruptBackground],
   );
   const handleControlsChange = useCallback(
     (c: ControlsState) => {
-      interruptBackground();
+      queueInterruptBackground();
       setControls(c);
       setActiveScenarioId(null);
     },
-    [interruptBackground],
+    [queueInterruptBackground],
   );
   const handleTournamentTargetChange = useCallback(
     (target: number) => {
-      interruptBackground();
+      queueInterruptBackground();
       setSchedule((prev) => redistributeScheduleCounts(prev, target));
       setControls((prev) =>
         prev.scheduleRepeats === 1 ? prev : { ...prev, scheduleRepeats: 1 },
       );
       setActiveScenarioId(null);
     },
-    [interruptBackground],
+    [queueInterruptBackground],
   );
   const tournamentsPerSchedule = useMemo(
     () => countScheduleTournaments(schedule),
@@ -486,12 +508,12 @@ export default function Home() {
   const onPreviewRowChange = useCallback(
     (updates: Partial<TournamentRow>) => {
       if (!previewRowId_) return;
-      interruptBackground();
+      queueInterruptBackground();
       setSchedule((prev) =>
         prev.map((r) => (r.id === previewRowId_ ? { ...r, ...updates } : r)),
       );
     },
-    [previewRowId_, interruptBackground],
+    [previewRowId_, queueInterruptBackground],
   );
   const fixRowPreset = useCallback(
     (rowId: string) => {
@@ -528,6 +550,7 @@ export default function Home() {
 
   const onLoadSlot = () => {
     if (!compareSlot) return;
+    queueInterruptBackground();
     setSchedule(compareSlot.state.schedule);
     setControls({ ...initialControls, ...compareSlot.state.controls });
   };
@@ -542,6 +565,7 @@ export default function Home() {
   };
 
   const onLoadUserPreset = (p: UserPreset) => {
+    queueInterruptBackground();
     setSchedule(p.state.schedule);
     setControls({ ...initialControls, ...p.state.controls });
     setActiveScenarioId(p.id);

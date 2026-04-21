@@ -1,4 +1,5 @@
 import { buildFreezeCashPMF } from "./freezeShape";
+import { applyItmTopHeavyToFreeBand, clampItmTopHeavyBias } from "./itmTopHeavy";
 import { buildMysteryCashPMF } from "./mysteryShape";
 import { buildPkoCashPMF } from "./pkoShape";
 import type { FinishModelConfig, FinishModelId } from "./types";
@@ -326,10 +327,12 @@ export function calibrateShelledItm(
   itmRate: number,
   shellLocks: { first?: number; top3?: number; ft?: number } | undefined,
   model: FinishModelConfig,
+  itmTopHeavyBias = 0,
 ): ShelledCalibrationResult {
   const pmf = new Float64Array(N);
   const paid = Math.max(0, Math.min(paidCount, N));
   const clampedItm = Math.max(0, Math.min(1, itmRate));
+  const clampedTopHeavyBias = clampItmTopHeavyBias(itmTopHeavyBias);
 
   const emptyShells = { first: 0, top3: 0, ft: 0 };
 
@@ -481,12 +484,15 @@ export function calibrateShelledItm(
     // honouring the locks.
     const freeEw = (alphaVal: number): number => {
       const band = buildFinishPMF(paid, model, alphaVal);
-      let sFree = 0;
-      for (const idx of freeIndices) sFree += band[idx];
+      const { adjusted, freeSum: sFree } = applyItmTopHeavyToFreeBand(
+        band,
+        freeIndices,
+        clampedTopHeavyBias,
+      );
       if (sFree <= 0) return 0;
       let ew = 0;
       for (const idx of freeIndices) {
-        const m = (band[idx] / sFree) * freeMassTotal;
+        const m = (adjusted[idx] / sFree) * freeMassTotal;
         ew += m * payouts[idx] * prizePool;
       }
       return ew;
@@ -516,12 +522,15 @@ export function calibrateShelledItm(
 
     // Assemble final PMF.
     const band = buildFinishPMF(paid, model, alpha);
-    let sFree = 0;
-    for (const idx of freeIndices) sFree += band[idx];
+    const { adjusted, freeSum: sFree } = applyItmTopHeavyToFreeBand(
+      band,
+      freeIndices,
+      clampedTopHeavyBias,
+    );
     for (let i = 0; i < paid; i++) pmf[i] = perPlaceLocked[i];
     if (sFree > 0) {
       for (const idx of freeIndices) {
-        pmf[idx] += (band[idx] / sFree) * freeMassTotal;
+        pmf[idx] += (adjusted[idx] / sFree) * freeMassTotal;
       }
     }
   }
@@ -565,6 +574,7 @@ export function calibrateShelledItm(
       itmRate,
       { ...locks, first: equilibriumFirst },
       model,
+      itmTopHeavyBias,
     );
   }
 

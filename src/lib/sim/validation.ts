@@ -7,11 +7,13 @@
  */
 import { applyBountyBias, calibrateShelledItm } from "./finishModel";
 import {
-  battleRoyaleCashProfitShare,
   clampBountyMean,
   isBattleRoyaleRow,
 } from "./bountySplit";
-import { buildBattleRoyaleWinnerFirstPmf } from "./battleRoyaleWinnerFirst";
+import {
+  buildBattleRoyaleCashTargetPmf,
+  resolveBattleRoyaleCashTarget,
+} from "./battleRoyaleWinnerFirst";
 import { normalizeBrMrConsistency } from "./gameType";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
@@ -80,7 +82,7 @@ export function validateSchedule(
     const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
     let bountyMean = 0;
     let prizePool = basePool + overlay;
-    let battleRoyaleNeutral: {
+    let battleRoyaleCenter: {
       pmf: Float64Array;
       cashEV: number;
     } | null = null;
@@ -95,9 +97,14 @@ export function validateSchedule(
       prizePool = prizePool * (1 - bountyFraction);
     }
 
-    if (bountyFraction > 0 && isBattleRoyaleRow(row)) {
-      // Mirror engine.ts: BR ROI presets add profit above the breakeven
-      // fixed-ITM baseline, then split that profit between cash and KOs.
+    if (
+      bountyFraction > 0 &&
+      isBattleRoyaleRow(row) &&
+      row.itmRate != null &&
+      row.itmRate > 0
+    ) {
+      // Mirror engine.ts: BR fixed-ITM exposes the full feasible cash/KO EV
+      // interval around a true 50/50 gross-EV midpoint.
       const neutralBountyMean = entryCost * bountyFraction;
       const neutralTargetRegular = Math.max(0.01, entryCost - neutralBountyMean);
       const neutral = calibrateShelledItm(
@@ -109,29 +116,47 @@ export function validateSchedule(
         row.itmRate,
         row.finishBuckets,
         model,
+        row.itmTopHeavyBias ?? 0,
       );
-      battleRoyaleNeutral = {
-        pmf: neutral.pmf,
-        cashEV: neutral.currentWinnings,
-      };
-      const desiredCashEV = Math.max(
-        0.01,
-        neutral.currentWinnings + entryCost * row.roi * battleRoyaleCashProfitShare(bias),
-      );
+      const centerCashTarget = Math.max(0.01, totalWinningsEV * 0.5);
+      const resolvedCash = resolveBattleRoyaleCashTarget({
+        N,
+        payouts,
+        prizePool,
+        itmRate: row.itmRate,
+        centerCashTarget,
+        bias,
+        neutralPmf: neutral.pmf,
+        neutralWinnings: neutral.currentWinnings,
+        finishBuckets: row.finishBuckets,
+        preferTopHeavy: row.roi > 0,
+        topHeavyBias: row.itmTopHeavyBias ?? 0,
+      });
+      if (resolvedCash) {
+        battleRoyaleCenter = {
+          pmf: resolvedCash.centerPmf,
+          cashEV: resolvedCash.centerCashEV,
+        };
+      }
+      const desiredCashEV = resolvedCash
+        ? resolvedCash.desiredCashEV
+        : centerCashTarget;
       bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
     }
     const targetRegular = Math.max(0.01, totalWinningsEV - bountyMean);
 
-    const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleNeutral
-      ? buildBattleRoyaleWinnerFirstPmf({
+    const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleCenter
+      ? buildBattleRoyaleCashTargetPmf({
           N,
           payouts,
           prizePool,
           itmRate: row.itmRate,
           targetWinnings: targetRegular,
-          neutralPmf: battleRoyaleNeutral.pmf,
-          neutralWinnings: battleRoyaleNeutral.cashEV,
+          anchorPmf: battleRoyaleCenter.pmf,
+          anchorWinnings: battleRoyaleCenter.cashEV,
           finishBuckets: row.finishBuckets,
+          preferTopHeavy: row.roi > 0,
+          topHeavyBias: row.itmTopHeavyBias ?? 0,
         })
       : null;
     const r = winnerFirst ?? calibrateShelledItm(
@@ -143,6 +168,7 @@ export function validateSchedule(
       row.itmRate,
       row.finishBuckets,
       model,
+      row.itmTopHeavyBias ?? 0,
     );
     const residualCanCloseTotal =
       bountyFraction > 0 && r.currentWinnings <= totalWinningsEV + 1e-3;

@@ -265,6 +265,21 @@ export interface TournamentRow {
    * Only meaningful for rows with `bountyFraction > 0` — ignored otherwise.
    */
   bountyEvBias?: number;
+
+  /**
+   * Fixed-ITM placement bias inside the paid band, clamped to [-1, +1].
+   * Default 0 = keep the model's current placement shape. Positive values
+   * make finishes more top-heavy inside ITM; negative values flatten the
+   * paid band toward lower cashes. Total EV is still solved exactly:
+   *
+   * - in standard fixed-ITM rows, the free paid places are multiplicatively
+   *   tilted by this bias before α closes the target cash EV;
+   * - in Battle Royale, the bias walks the feasible 1st/2nd/3rd line while
+   *   keeping the chosen cash EV target fixed.
+   *
+   * Ignored when fixed-ITM mode is off (`itmRate` unset/zero).
+   */
+  itmTopHeavyBias?: number;
 }
 
 /**

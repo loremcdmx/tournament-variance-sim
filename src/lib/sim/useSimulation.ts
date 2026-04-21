@@ -766,8 +766,14 @@ export function useSimulation() {
       const bgController = new AbortController();
       bgAbortRef.current = bgController;
       for (let i = 1; i < MAX_CACHED_RUNS; i++) {
-        if (batchRef.current.version !== myVersion) return;
-        if (bgController.signal.aborted) return;
+        if (batchRef.current.version !== myVersion) {
+          if (bgAbortRef.current === bgController) bgAbortRef.current = null;
+          return;
+        }
+        if (bgController.signal.aborted) {
+          if (bgAbortRef.current === bgController) bgAbortRef.current = null;
+          return;
+        }
         const siblingSeed = deriveSiblingSeed(input.seed, i);
         const siblingInput: SimulationInput = { ...input, seed: siblingSeed };
         const siblingPasses = buildPasses(siblingInput);
@@ -779,19 +785,27 @@ export function useSimulation() {
             () => {},
             bgController.signal,
           );
-          if (batchRef.current.version !== myVersion) return;
-          if (jobIdRef.current !== bgJobId) return;
+          if (batchRef.current.version !== myVersion) {
+            if (bgAbortRef.current === bgController) bgAbortRef.current = null;
+            return;
+          }
+          if (jobIdRef.current !== bgJobId) {
+            if (bgAbortRef.current === bgController) bgAbortRef.current = null;
+            return;
+          }
           const merged = mergePasses(siblingPasses, bgOut);
           batchRef.current.runs.push({ seed: siblingSeed, result: merged });
           setAvailableRuns(batchRef.current.runs.length);
         } catch {
           // Background errors (including aborts) are silent — the foreground
           // result is still valid, and the next run resets the batch.
+          if (bgAbortRef.current === bgController) bgAbortRef.current = null;
           setBackgroundStatus("idle");
           return;
         }
       }
       if (batchRef.current.version === myVersion) {
+        if (bgAbortRef.current === bgController) bgAbortRef.current = null;
         setBackgroundStatus("full");
       }
     },

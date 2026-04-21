@@ -1724,6 +1724,16 @@ export const DICT = {
   "preview.evBias.cash": { en: "cash", ru: "кэш" },
   "preview.evBias.bounty": { en: "KOs", ru: "ноки" },
   "preview.evBias.reset": { en: "reset", ru: "сброс" },
+  "preview.topHeavyBias.label": {
+    en: "ITM top-heaviness",
+    ru: "% топ-хеви ITM",
+  },
+  "preview.topHeavyBias.tip": {
+    en: "Changes how finishes are distributed inside the paid band without changing total EV. Left flattens the ITM distribution toward lower cashes; right pushes more mass upward. In fixed-ITM freezeouts this multiplicatively tilts the free paid places before α closes EV; in Battle Royale it walks the feasible 1st/2nd/3rd line while keeping the chosen cash EV fixed.",
+    ru: "Меняет, как распределяются места внутри призовой зоны, не меняя общий EV. Влево — ITM становится ровнее и ближе к нижним кешам; вправо — больше массы уходит вверх. Во фризах с фиксированным ITM это мультипликативно наклоняет свободные платные места перед тем, как α закрывает EV; в Battle Royale двигает точку по допустимой линии 1/2/3 места, сохраняя выбранный cash EV.",
+  },
+  "preview.topHeavyBias.flat": { en: "flatter", ru: "ровнее" },
+  "preview.topHeavyBias.heavy": { en: "top-heavy", ru: "топ-хеви" },
   "preview.evSplit.bountyRegular": {
     en: "bounty (regular)",
     ru: "ноки (обычные)",
@@ -1822,6 +1832,7 @@ export const DICT = {
   "preview.tierWinner": { en: "1st place", ru: "1-е место" },
   "preview.tierTop3": { en: "2nd-3rd", ru: "2-3 места" },
   "preview.tierFt": { en: "4th-9th", ru: "4-9 места" },
+  "preview.tierFtNonCash": { en: "5th-9th", ru: "5-9 места" },
   "preview.tierTop27": { en: "10th-27th", ru: "10-27 места" },
   "preview.tierRestItm": { en: "Rest of cashes", ru: "Остальные кеши" },
   "preview.tierOotm": { en: "Not ITM", ru: "Не ITM" },

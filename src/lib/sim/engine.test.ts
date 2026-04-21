@@ -885,7 +885,7 @@ describe("bountyEvBias", () => {
     }
   });
 
-  it("fixed-ITM Battle Royale splits added ROI profit 50/50 at center", () => {
+  it("fixed-ITM Battle Royale keeps the slider center at a true 50/50 gross-EV split", () => {
     const compileRoyale = (roi: number, bias = 0) =>
       compileSchedule({
         schedule: [
@@ -916,16 +916,62 @@ describe("bountyEvBias", () => {
     const plusFour = cashBountyEV(compileRoyale(0.04));
     const profitLift = 25 * 0.04;
 
+    expect(breakeven.cash).toBeCloseTo(breakeven.bounty, 10);
+    expect(plusFour.cash).toBeCloseTo(plusFour.bounty, 10);
     expect(plusFour.cash - breakeven.cash).toBeCloseTo(profitLift * 0.5, 10);
     expect(plusFour.bounty - breakeven.bounty).toBeCloseTo(profitLift * 0.5, 10);
 
     const cashHeavy = cashBountyEV(compileRoyale(0.04, 0.25));
     const koHeavy = cashBountyEV(compileRoyale(0.04, -0.25));
 
-    expect(cashHeavy.cash - breakeven.cash).toBeCloseTo(profitLift * 0.75, 10);
-    expect(cashHeavy.bounty - breakeven.bounty).toBeCloseTo(profitLift * 0.25, 10);
-    expect(koHeavy.cash - breakeven.cash).toBeCloseTo(profitLift * 0.25, 10);
-    expect(koHeavy.bounty - breakeven.bounty).toBeCloseTo(profitLift * 0.75, 10);
+    expect(cashHeavy.cash).toBeGreaterThan(plusFour.cash);
+    expect(cashHeavy.bounty).toBeLessThan(plusFour.bounty);
+    expect(koHeavy.cash).toBeLessThan(plusFour.cash);
+    expect(koHeavy.bounty).toBeGreaterThan(plusFour.bounty);
+    expect(cashHeavy.cash + cashHeavy.bounty).toBeCloseTo(
+      plusFour.cash + plusFour.bounty,
+      10,
+    );
+    expect(koHeavy.cash + koHeavy.bounty).toBeCloseTo(
+      plusFour.cash + plusFour.bounty,
+      10,
+    );
+    expect(cashHeavy.cash - breakeven.cash).toBeGreaterThan(profitLift * 0.75);
+    expect(koHeavy.bounty - breakeven.bounty).toBeGreaterThan(profitLift * 0.75);
+  });
+
+  it("fixed-ITM Battle Royale can push KO share well below 50% when first place still has headroom", () => {
+    const compiled = compileSchedule({
+      schedule: [
+        {
+          id: "mbr-low-roi-wide-range",
+          label: "mbr",
+          players: 18,
+          buyIn: 10 / 1.08,
+          rake: 0.08,
+          roi: 0.02,
+          gameType: "mystery-royale",
+          payoutStructure: "battle-royale",
+          bountyFraction: 0.5,
+          mysteryBountyVariance: 1.8,
+          itmRate: 0.2,
+          count: 1,
+          bountyEvBias: 0.25,
+        },
+      ],
+      scheduleRepeats: 1,
+      samples: 1,
+      bankroll: 100,
+      seed: 7,
+      finishModel: { id: "power-law" },
+    }).flat[0];
+
+    const ev = cashBountyEV(compiled);
+    const koShare = ev.bounty / (ev.cash + ev.bounty);
+    const pmf = pmfFromAlias(compiled.aliasProb, compiled.aliasIdx);
+
+    expect(koShare).toBeLessThan(0.4);
+    expect(pmf[0]).toBeGreaterThan(1 / 18);
   });
 
   it("fixed-ITM Battle Royale trades first-place frequency for KO count", () => {
@@ -968,7 +1014,7 @@ describe("bountyEvBias", () => {
     expect(koHeavy.bountyKmean![0]).toBeGreaterThan(balanced.bountyKmean![0]);
   });
 
-  it("fixed-ITM Battle Royale grows first place before pushing extra ROI into the rest of top-3", () => {
+  it("fixed-ITM Battle Royale routes extra ROI into first place before inflating lower cash spots", () => {
     const compileRoyale = (roi: number) =>
       compileSchedule({
         schedule: [
@@ -1001,8 +1047,9 @@ describe("bountyEvBias", () => {
     const highPmf = pmfFromAlias(high.aliasProb, high.aliasIdx);
 
     expect(highPmf[0]).toBeGreaterThan(lowPmf[0]);
-    expect(highPmf[1]).toBeCloseTo(lowPmf[1], 10);
+    expect(highPmf[1]).toBeLessThanOrEqual(lowPmf[1] + 1e-12);
     expect(highPmf[2]).toBeLessThan(lowPmf[2]);
+    expect(highPmf[1] + highPmf[2]).toBeLessThan(lowPmf[1] + lowPmf[2]);
   });
 
   // Fixed-shape models can't move cashEV to cancel the heuristic's
@@ -1036,6 +1083,106 @@ describe("bountyEvBias", () => {
     const perTournProfit = r.stats.mean / r.tournamentsPerSample;
     const se = r.stats.stdDev / Math.sqrt(r.samples) / r.tournamentsPerSample;
     expect(Math.abs(perTournProfit - targetProfit)).toBeLessThan(5 * se);
+  });
+});
+
+describe("itmTopHeavyBias", () => {
+  const pmfFromAlias = (prob: Float64Array, alias: Int32Array): number[] => {
+    const n = prob.length;
+    const pmf = Array.from({ length: n }, () => 0);
+    for (let i = 0; i < n; i++) {
+      pmf[i] += prob[i] / n;
+      pmf[alias[i]] += (1 - prob[i]) / n;
+    }
+    return pmf;
+  };
+
+  it("keeps EV on target while tilting fixed-ITM freezeout finishes inside the paid band", () => {
+    const compileFreeze = (itmTopHeavyBias: number) =>
+      compileSchedule({
+        schedule: [
+          {
+            id: `freeze-itm-bias-${itmTopHeavyBias}`,
+            label: "freeze",
+            players: 500,
+            buyIn: 10,
+            rake: 0.1,
+            roi: 0.08,
+            payoutStructure: "mtt-standard",
+            itmRate: 0.16,
+            itmTopHeavyBias,
+            count: 1,
+          },
+        ],
+        scheduleRepeats: 1,
+        samples: 1,
+        bankroll: 100,
+        seed: 7,
+        finishModel: { id: "power-law" },
+      }).flat[0];
+
+    const targetWinnings = 10 * 1.1 * 1.08;
+    const flat = compileFreeze(-1);
+    const neutral = compileFreeze(0);
+    const heavy = compileFreeze(1);
+    const flatPmf = pmfFromAlias(flat.aliasProb, flat.aliasIdx);
+    const neutralPmf = pmfFromAlias(neutral.aliasProb, neutral.aliasIdx);
+    const heavyPmf = pmfFromAlias(heavy.aliasProb, heavy.aliasIdx);
+
+    expect(flat.analyticMeanSingle).toBeCloseTo(targetWinnings, 10);
+    expect(neutral.analyticMeanSingle).toBeCloseTo(targetWinnings, 10);
+    expect(heavy.analyticMeanSingle).toBeCloseTo(targetWinnings, 10);
+    expect(heavyPmf[0]).toBeGreaterThan(neutralPmf[0]);
+    expect(neutralPmf[0]).toBeGreaterThan(flatPmf[0]);
+  });
+
+  it("keeps BR EV on target while moving top-3 occupancy along the feasible cash line", () => {
+    const compileRoyale = (itmTopHeavyBias: number) =>
+      compileSchedule({
+        schedule: [
+          {
+            id: `mbr-itm-bias-${itmTopHeavyBias}`,
+            label: "mbr",
+            players: 18,
+            buyIn: 25 / 1.08,
+            rake: 0.08,
+            roi: 0.03,
+            gameType: "mystery-royale",
+            payoutStructure: "battle-royale",
+            bountyFraction: 0.5,
+            mysteryBountyVariance: 1.8,
+            itmRate: 0.24,
+            itmTopHeavyBias,
+            count: 1,
+            bountyEvBias: 0,
+          },
+        ],
+        scheduleRepeats: 1,
+        samples: 1,
+        bankroll: 100,
+        seed: 7,
+        finishModel: { id: "power-law" },
+      }).flat[0];
+
+    const targetWinnings = 25 * 1.03;
+    const flat = compileRoyale(-1);
+    const neutral = compileRoyale(0);
+    const heavy = compileRoyale(1);
+    const flatPmf = pmfFromAlias(flat.aliasProb, flat.aliasIdx);
+    const neutralPmf = pmfFromAlias(neutral.aliasProb, neutral.aliasIdx);
+    const heavyPmf = pmfFromAlias(heavy.aliasProb, heavy.aliasIdx);
+
+    expect(flat.analyticMeanSingle).toBeCloseTo(targetWinnings, 10);
+    expect(neutral.analyticMeanSingle).toBeCloseTo(targetWinnings, 10);
+    expect(heavy.analyticMeanSingle).toBeCloseTo(targetWinnings, 10);
+    expect(heavyPmf[0]).toBeGreaterThanOrEqual(neutralPmf[0] - 1e-12);
+    expect(neutralPmf[0]).toBeGreaterThan(flatPmf[0]);
+    expect(heavyPmf[1] + heavyPmf[2]).toBeLessThanOrEqual(
+      neutralPmf[1] + neutralPmf[2] + 1e-12,
+    );
+    expect(neutralPmf[1] + neutralPmf[2]).toBeLessThan(
+      flatPmf[1] + flatPmf[2],
+    );
   });
 });
 

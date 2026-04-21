@@ -27,11 +27,13 @@ import {
   itmProbability,
 } from "./finishModel";
 import {
-  battleRoyaleCashProfitShare,
   clampBountyMean,
   isBattleRoyaleRow,
 } from "./bountySplit";
-import { buildBattleRoyaleWinnerFirstPmf } from "./battleRoyaleWinnerFirst";
+import {
+  buildBattleRoyaleCashTargetPmf,
+  resolveBattleRoyaleCashTarget,
+} from "./battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "./brBountyTiers";
 import { normalizeBrMrConsistency } from "./gameType";
 import { mulberry32, mixSeed } from "./rng";
@@ -489,7 +491,7 @@ function compileSingleEntry(
   const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
   const totalWinningsEV = entryCostSingle * (1 + row.roi);
   const isBattleRoyale = isBattleRoyaleRow(row);
-  let battleRoyaleNeutral: {
+  let battleRoyaleCenter: {
     pmf: Float64Array;
     cashEV: number;
   } | null = null;
@@ -581,6 +583,7 @@ function compileSingleEntry(
         row.itmRate,
         row.finishBuckets,
         model,
+        row.itmTopHeavyBias ?? 0,
       );
       solvedAlpha = fi.alpha;
       solvedPmf = fi.pmf;
@@ -603,23 +606,38 @@ function compileSingleEntry(
     };
   };
 
-  if (bountyFraction > 0 && isBattleRoyale) {
-    // BR uses a fixed 50/50 cash/KO pool, but fixed-ITM settings can make
-    // the cash baseline higher than the raw pool share before any ROI is
-    // added. Split the incremental ROI profit from that breakeven baseline;
-    // otherwise every ROI/RB preset click becomes residual KO EV.
+  if (bountyFraction > 0 && isBattleRoyale && row.itmRate != null && row.itmRate > 0) {
+    // BR fixed-ITM exposes the full feasible cash/KO EV interval around a
+    // true 50/50 gross-EV midpoint. The slider center should read as
+    // "half the expected return comes from cash, half from KOs", regardless
+    // of what the fixed-ITM baseline shape looks like.
     const neutralBountyMean = entryCostSingle * bountyFraction;
     const neutralTargetRegular = Math.max(0.01, entryCostSingle - neutralBountyMean);
     const neutral = solveFinish(neutralTargetRegular);
     const neutralCashEV = cashEVFor(neutral.pmf, neutral.prizeByPlace);
-    battleRoyaleNeutral = {
-      pmf: neutral.pmf,
-      cashEV: neutralCashEV,
-    };
-    const desiredCashEV = Math.max(
-      0.01,
-      neutralCashEV + entryCostSingle * row.roi * battleRoyaleCashProfitShare(bias),
-    );
+    const centerCashTarget = Math.max(0.01, totalWinningsEV * 0.5);
+    const resolvedCash = resolveBattleRoyaleCashTarget({
+      N,
+      payouts,
+      prizePool,
+      itmRate: row.itmRate ?? 0,
+      centerCashTarget,
+      bias,
+      neutralPmf: neutral.pmf,
+      neutralWinnings: neutralCashEV,
+      finishBuckets: row.finishBuckets,
+      preferTopHeavy: row.roi > 0,
+      topHeavyBias: row.itmTopHeavyBias ?? 0,
+    });
+    if (resolvedCash) {
+      battleRoyaleCenter = {
+        pmf: resolvedCash.centerPmf,
+        cashEV: resolvedCash.centerCashEV,
+      };
+    }
+    const desiredCashEV = resolvedCash
+      ? resolvedCash.desiredCashEV
+      : centerCashTarget;
     bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
   }
 
@@ -658,16 +676,18 @@ function compileSingleEntry(
     // pins top-shell masses (P(1st), P(top-3), P(FT)). Skill concentrates
     // only within the cashed band; locked shells stay fixed, free band
     // α-calibrates so total E[W] still hits target.
-    const winnerFirst = isBattleRoyale && battleRoyaleNeutral
-      ? buildBattleRoyaleWinnerFirstPmf({
+    const winnerFirst = isBattleRoyale && battleRoyaleCenter
+      ? buildBattleRoyaleCashTargetPmf({
           N,
           payouts,
           prizePool,
           itmRate: row.itmRate,
           targetWinnings: targetRegular,
-          neutralPmf: battleRoyaleNeutral.pmf,
-          neutralWinnings: battleRoyaleNeutral.cashEV,
+          anchorPmf: battleRoyaleCenter.pmf,
+          anchorWinnings: battleRoyaleCenter.cashEV,
           finishBuckets: row.finishBuckets,
+          preferTopHeavy: row.roi > 0,
+          topHeavyBias: row.itmTopHeavyBias ?? 0,
         })
       : null;
     if (winnerFirst) {
@@ -682,6 +702,7 @@ function compileSingleEntry(
         row.itmRate,
         row.finishBuckets,
         model,
+        row.itmTopHeavyBias ?? 0,
       );
       alpha = fi.alpha;
       pmf = fi.pmf;

@@ -9,11 +9,19 @@ import {
   isAlphaAdjustable,
 } from "@/lib/sim/finishModel";
 import {
-  battleRoyaleCashProfitShare,
   clampBountyMean,
   isBattleRoyaleRow,
 } from "@/lib/sim/bountySplit";
-import { buildBattleRoyaleWinnerFirstPmf } from "@/lib/sim/battleRoyaleWinnerFirst";
+import {
+  buildBattleRoyaleCashTargetPmf,
+  resolveBattleRoyaleCashTarget,
+} from "@/lib/sim/battleRoyaleWinnerFirst";
+import {
+  clampItmTopHeavyBias,
+  ITM_TOP_HEAVY_BIAS_STEP,
+  MAX_ITM_TOP_HEAVY_BIAS,
+  MIN_ITM_TOP_HEAVY_BIAS,
+} from "@/lib/sim/itmTopHeavy";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
@@ -38,6 +46,7 @@ type TierKey =
   | "winner"
   | "top3"
   | "ft"
+  | "ftNonCash"
   | "top27"
   | "restItm"
   | "firstMincash"
@@ -48,6 +57,7 @@ type TierLabelKey =
   | "preview.tierWinner"
   | "preview.tierTop3"
   | "preview.tierFt"
+  | "preview.tierFtNonCash"
   | "preview.tierTop27"
   | "preview.tierRestItm"
   | "preview.probFirstCash"
@@ -122,6 +132,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     rake,
     roi,
     itmRate,
+    itmTopHeavyBias,
     finishBuckets,
     payoutStructure,
     customPayouts,
@@ -138,6 +149,9 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   } = row;
 
   const committedBias = clampBountyBias(row.bountyEvBias ?? 0);
+  const committedItmTopHeavyBias = clampItmTopHeavyBias(
+    row.itmTopHeavyBias ?? 0,
+  );
   const stats = useMemo(() => computeRowStats(row, model), [row, model]);
   const committedBountyShare = clampUnit(stats.bountyShare);
   const shareProbeBaseRow = useMemo<TournamentRow>(
@@ -153,6 +167,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       rake,
       roi,
       itmRate,
+      itmTopHeavyBias,
       finishBuckets,
       payoutStructure,
       customPayouts,
@@ -180,6 +195,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       rake,
       roi,
       itmRate,
+      itmTopHeavyBias,
       finishBuckets,
       payoutStructure,
       customPayouts,
@@ -366,6 +382,17 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             resetLabel={t("preview.evBias.reset")}
           />
         )}
+        {stats.shellMode && stats.paidCount > 1 && onRowChange && (
+          <TopHeavyPlacementSlider
+            committedBias={committedItmTopHeavyBias}
+            onCommit={(v) => onRowChange({ itmTopHeavyBias: v })}
+            title={t("preview.topHeavyBias.label")}
+            lowLabel={t("preview.topHeavyBias.flat")}
+            highLabel={t("preview.topHeavyBias.heavy")}
+            tip={t("preview.topHeavyBias.tip")}
+            resetLabel={t("preview.evBias.reset")}
+          />
+        )}
       </div>
 
       {/* Tier-by-tier breakdown + discrete position rows. Shared grid
@@ -402,7 +429,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             for (const tier of stats.tiers) {
               const evShare = tier.ev / evTotal;
               const fieldShare = tier.field;
-              if (evShare <= 0.0005 && fieldShare <= 0.0005) continue;
               const bountyShareOfTier =
                 tier.ev > 1e-9 ? tier.bountyEv / tier.ev : 0;
               rows.push(
@@ -1375,6 +1401,260 @@ function BountyShareSlider({
   );
 }
 
+function topHeavyPctInputValue(v: number): string {
+  const clamped = Math.max(0, Math.min(100, v));
+  if (Math.abs(clamped - Math.round(clamped)) < 0.005) {
+    return Math.round(clamped).toString();
+  }
+  return clamped.toFixed(1);
+}
+
+function biasToTopHeavyPercent(bias: number): number {
+  const clamped = clampItmTopHeavyBias(bias);
+  const axisRange = MAX_ITM_TOP_HEAVY_BIAS - MIN_ITM_TOP_HEAVY_BIAS;
+  return ((clamped - MIN_ITM_TOP_HEAVY_BIAS) / axisRange) * 100;
+}
+
+function topHeavyPercentToBias(percent: number): number {
+  const clamped = Math.max(0, Math.min(100, percent));
+  const axisRange = MAX_ITM_TOP_HEAVY_BIAS - MIN_ITM_TOP_HEAVY_BIAS;
+  return clampItmTopHeavyBias(
+    MIN_ITM_TOP_HEAVY_BIAS + (clamped / 100) * axisRange,
+  );
+}
+
+function snapItmTopHeavyBias(v: number): number {
+  const snapped =
+    Math.round(clampItmTopHeavyBias(v) / ITM_TOP_HEAVY_BIAS_STEP) *
+    ITM_TOP_HEAVY_BIAS_STEP;
+  return clampItmTopHeavyBias(Number(snapped.toFixed(4)));
+}
+
+function TopHeavyPlacementSlider({
+  committedBias,
+  onCommit,
+  title,
+  lowLabel,
+  highLabel,
+  tip,
+  resetLabel,
+}: {
+  committedBias: number;
+  onCommit: (v: number) => void;
+  title: string;
+  lowLabel: string;
+  highLabel: string;
+  tip: string;
+  resetLabel: string;
+}) {
+  const [draftBias, setDraftBias] = useState<number | null>(null);
+  const [manualText, setManualText] = useState<string | null>(null);
+  const submittedBiasRef = useRef<number | null>(null);
+  const sliderFrameRef = useRef<number | null>(null);
+  const pendingSliderBiasRef = useRef<number | null>(null);
+  const axisMin = MIN_ITM_TOP_HEAVY_BIAS;
+  const axisMax = MAX_ITM_TOP_HEAVY_BIAS;
+  const axisRange = axisMax - axisMin;
+  const hasActiveDraft =
+    draftBias !== null && Math.abs(committedBias - draftBias) > 1e-9;
+  const effectiveBias = hasActiveDraft ? draftBias! : committedBias;
+  const pending = hasActiveDraft;
+  const valuePct = ((effectiveBias - axisMin) / axisRange) * 100;
+  const centerPct = 50;
+  const tiltLeft = Math.min(centerPct, valuePct);
+  const tiltWidth = Math.abs(valuePct - centerPct);
+  const manualValue =
+    manualText ?? topHeavyPctInputValue(biasToTopHeavyPercent(effectiveBias));
+
+  useEffect(() => {
+    return () => {
+      if (sliderFrameRef.current !== null) {
+        cancelAnimationFrame(sliderFrameRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleSliderDraft = (rawBias: number) => {
+    const nextBias = snapItmTopHeavyBias(rawBias);
+    pendingSliderBiasRef.current = nextBias;
+    if (sliderFrameRef.current !== null) return;
+    sliderFrameRef.current = requestAnimationFrame(() => {
+      sliderFrameRef.current = null;
+      const pendingBias = pendingSliderBiasRef.current;
+      if (pendingBias === null) return;
+      setDraftBias(pendingBias);
+    });
+  };
+
+  const commitBias = (rawBias: number) => {
+    const nextBias = snapItmTopHeavyBias(rawBias);
+    const submittedBias = submittedBiasRef.current;
+    if (
+      Math.abs(nextBias - committedBias) < 1e-9 ||
+      (submittedBias !== null && Math.abs(nextBias - submittedBias) < 1e-9)
+    ) {
+      setDraftBias(nextBias);
+      setManualText(null);
+      return;
+    }
+    submittedBiasRef.current = nextBias;
+    setDraftBias(nextBias);
+    setManualText(null);
+    onCommit(nextBias);
+  };
+
+  const parseManualPercent = (raw: string): number | null => {
+    const normalized = raw.trim().replace(",", ".");
+    if (normalized === "") return null;
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed;
+  };
+
+  const manualParsedPercent =
+    manualText !== null ? parseManualPercent(manualText) : null;
+  const manualOutOfRange =
+    manualParsedPercent !== null &&
+    (manualParsedPercent < 0 || manualParsedPercent > 100);
+
+  const updateManualPercent = (raw: string) => {
+    setManualText(raw);
+    const nextPercent = parseManualPercent(raw);
+    if (nextPercent == null) return;
+    setDraftBias(snapItmTopHeavyBias(topHeavyPercentToBias(nextPercent)));
+  };
+
+  const commitManualPercent = () => {
+    const nextPercent = parseManualPercent(manualValue);
+    if (nextPercent == null) {
+      setManualText(null);
+      setDraftBias(null);
+      return;
+    }
+    commitBias(topHeavyPercentToBias(nextPercent));
+  };
+
+  return (
+    <div
+      className="mt-3 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 p-2.5"
+      title={tip}
+      aria-busy={pending}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--color-fg)]">
+          {title}
+        </span>
+        <div className="flex items-center gap-1">
+          <label
+            className={`flex items-center rounded-md border bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 ${
+              manualOutOfRange
+                ? "border-[color:var(--color-danger)]"
+                : "border-[color:var(--color-border)]"
+            }`}
+          >
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={manualValue}
+              onChange={(e) => updateManualPercent(e.target.value)}
+              onBlur={commitManualPercent}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitManualPercent();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setManualText(null);
+                  setDraftBias(null);
+                }
+              }}
+              aria-label={title}
+              className="w-14 bg-transparent text-right font-mono text-[11px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none"
+            />
+            <span className="pl-0.5 font-mono text-[10px] font-semibold text-[color:var(--color-fg-dim)]">
+              %
+            </span>
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              submittedBiasRef.current = 0;
+              setDraftBias(0);
+              setManualText(null);
+              if (Math.abs(committedBias) > 1e-9) onCommit(0);
+            }}
+            disabled={Math.abs(committedBias) < 1e-9}
+            className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
+          >
+            {resetLabel}
+          </button>
+        </div>
+      </div>
+      <div className="mt-2.5 flex flex-col gap-1.5">
+        <div className="relative h-7">
+          <div
+            aria-hidden
+            className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]"
+          >
+            <div
+              className="absolute inset-y-0 left-0 bg-[color:var(--color-bg-elev)]"
+              style={{ width: `${centerPct}%` }}
+            />
+            <div
+              className="absolute inset-y-0 right-0 bg-[color:var(--color-accent)]/25"
+              style={{ width: `${100 - centerPct}%` }}
+            />
+            <div
+              className="absolute inset-y-0 rounded-full bg-[color:var(--color-accent)]/85"
+              style={{ left: `${tiltLeft}%`, width: `${tiltWidth}%` }}
+            />
+          </div>
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 h-4 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color:var(--color-border-strong)]"
+            style={{ left: `${centerPct}%` }}
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[color:var(--color-bg)] bg-[color:var(--color-accent)] shadow-sm"
+            style={{ left: `${valuePct}%` }}
+          />
+          <input
+            type="range"
+            min={axisMin}
+            max={axisMax}
+            step={ITM_TOP_HEAVY_BIAS_STEP}
+            value={effectiveBias}
+            onChange={(e) => {
+              setManualText(null);
+              scheduleSliderDraft(Number(e.target.value));
+            }}
+            onPointerUp={(e) => commitBias(Number(e.currentTarget.value))}
+            onKeyUp={(e) => commitBias(Number(e.currentTarget.value))}
+            onBlur={(e) => commitBias(Number(e.currentTarget.value))}
+            className="absolute inset-0 z-10 block h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+            aria-label={title}
+          />
+        </div>
+        <div className="grid grid-cols-3 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+          <span>0%</span>
+          <span className="text-center text-[color:var(--color-fg)]">50%</span>
+          <span className="text-right">100%</span>
+        </div>
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium text-[color:var(--color-fg-dim)]">
+        <span>{lowLabel}</span>
+        <span className={pending ? "text-[color:var(--color-fg)]" : undefined}>
+          {topHeavyPctInputValue(biasToTopHeavyPercent(effectiveBias))}%
+        </span>
+        <span className="text-right">{highLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 interface RowStats {
   alpha: number;
   cost: number;
@@ -1520,6 +1800,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
         row.itmRate,
         row.finishBuckets,
         model,
+        row.itmTopHeavyBias ?? 0,
       ).pmf;
     } else {
       const targetEffectiveROI = regularTarget / entryCost - 1;
@@ -1545,18 +1826,45 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     pmf: Float64Array;
     cashEV: number;
   } | null = null;
+  let battleRoyaleCenter: {
+    pmf: Float64Array;
+    cashEV: number;
+  } | null = null;
 
-  if (bountyFraction > 0 && isBattleRoyaleRow(row)) {
-    // Same BR rule as the engine: split incremental ROI profit from the
-    // breakeven finish baseline, not gross EV from zero.
+  if (
+    bountyFraction > 0 &&
+    isBattleRoyaleRow(row) &&
+    row.itmRate != null &&
+    row.itmRate > 0
+  ) {
+    // Same BR rule as the engine: bias walks the real feasible cash/KO EV
+    // interval around a true 50/50 gross-EV midpoint.
     const neutralBountyMean = entryCost * bountyFraction;
     const neutralTargetRegular = Math.max(0.01, entryCost - neutralBountyMean);
     battleRoyaleNeutral = solveCashTarget(neutralTargetRegular);
-    const neutralCashEV = battleRoyaleNeutral.cashEV;
-    const desiredCashEV = Math.max(
-      0.01,
-      neutralCashEV + entryCost * row.roi * battleRoyaleCashProfitShare(bias),
-    );
+    const centerCashTarget = Math.max(0.01, totalWinningsEV * 0.5);
+    const resolvedCash = resolveBattleRoyaleCashTarget({
+      N,
+      payouts,
+      prizePool,
+      itmRate: row.itmRate ?? 0,
+      centerCashTarget,
+      bias,
+      neutralPmf: battleRoyaleNeutral.pmf,
+      neutralWinnings: battleRoyaleNeutral.cashEV,
+      finishBuckets: row.finishBuckets,
+      preferTopHeavy: row.roi > 0,
+      topHeavyBias: row.itmTopHeavyBias ?? 0,
+    });
+    if (resolvedCash) {
+      battleRoyaleCenter = {
+        pmf: resolvedCash.centerPmf,
+        cashEV: resolvedCash.centerCashEV,
+      };
+    }
+    const desiredCashEV = resolvedCash
+      ? resolvedCash.desiredCashEV
+      : centerCashTarget;
     bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
   }
 
@@ -1567,16 +1875,18 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   let feasible = true;
   let currentWinningsFromSolver: number | null = null;
   if (row.itmRate != null && row.itmRate > 0) {
-    const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleNeutral
-      ? buildBattleRoyaleWinnerFirstPmf({
+    const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleCenter
+      ? buildBattleRoyaleCashTargetPmf({
           N,
           payouts,
           prizePool,
           itmRate: row.itmRate,
           targetWinnings: targetRegular,
-          neutralPmf: battleRoyaleNeutral.pmf,
-          neutralWinnings: battleRoyaleNeutral.cashEV,
+          anchorPmf: battleRoyaleCenter.pmf,
+          anchorWinnings: battleRoyaleCenter.cashEV,
           finishBuckets: row.finishBuckets,
+          preferTopHeavy: row.roi > 0,
+          topHeavyBias: row.itmTopHeavyBias ?? 0,
         })
       : null;
     if (winnerFirst) {
@@ -1594,6 +1904,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
         row.itmRate,
         row.finishBuckets,
         model,
+        row.itmTopHeavyBias ?? 0,
       );
       alpha = fi.alpha;
       pmf = fi.pmf;
@@ -1767,7 +2078,8 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   for (let i = 0; i < halfMassK; i++) halfMassField += pmf[i];
 
   // Final-table stats (top 9 by tournament convention, or fewer if paidCount < 9).
-  const ftEnd = Math.min(9, paidCount);
+  const isBattleRoyale = isBattleRoyaleRow(row);
+  const ftEnd = isBattleRoyale ? Math.min(9, N) : Math.min(9, paidCount);
   let ftField = 0;
   let ftEvSum = 0;
   for (let i = 0; i < ftEnd; i++) {
@@ -1797,44 +2109,63 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     color: "#fb923c",
     hi: Math.min(3, paidCount),
   });
-  cuts.push({
-    key: "ft",
-    labelKey: "preview.tierFt",
-    color: "#a855f7",
-    hi: Math.min(ftEnd, paidCount),
-  });
-  if (N >= 100) {
+  if (isBattleRoyale) {
+    if (paidCount < N) {
+      cuts.push({
+        key: "bubble",
+        labelKey: "preview.probBubble",
+        color: "#475569",
+        hi: Math.min(paidCount + 1, N),
+      });
+    }
+    if (ftEnd > paidCount + 1) {
+      cuts.push({
+        key: "ftNonCash",
+        labelKey: "preview.tierFtNonCash",
+        color: "#a855f7",
+        hi: ftEnd,
+      });
+    }
+  } else {
     cuts.push({
-      key: "top27",
-      labelKey: "preview.tierTop27",
-      color: "#c026d3",
-      hi: Math.min(27, paidCount),
-    });
-  }
-  // 5%–ITM: everything from the last cumulative cut above down to the
-  // ITM edge, merged into one bar. Replaces the old top-10% + restItM
-  // pair so the user sees one clean range instead of two.
-  if (paidCount >= 2) {
-    cuts.push({
-      key: "restItm",
-      labelKey: "preview.tierRestItm",
+      key: "ft",
+      labelKey: "preview.tierFt",
       color: "#a855f7",
-      hi: paidCount - 1,
+      hi: Math.min(ftEnd, paidCount),
     });
-    cuts.push({
-      key: "firstMincash",
-      labelKey: "preview.probFirstCash",
-      color: "#94a3b8",
-      hi: paidCount,
-    });
-  }
-  if (paidCount < N) {
-    cuts.push({
-      key: "bubble",
-      labelKey: "preview.probBubble",
-      color: "#475569",
-      hi: paidCount + 1,
-    });
+    if (N >= 100) {
+      cuts.push({
+        key: "top27",
+        labelKey: "preview.tierTop27",
+        color: "#c026d3",
+        hi: Math.min(27, paidCount),
+      });
+    }
+    // 5%–ITM: everything from the last cumulative cut above down to the
+    // ITM edge, merged into one bar. Replaces the old top-10% + restItM
+    // pair so the user sees one clean range instead of two.
+    if (paidCount >= 2) {
+      cuts.push({
+        key: "restItm",
+        labelKey: "preview.tierRestItm",
+        color: "#a855f7",
+        hi: paidCount - 1,
+      });
+      cuts.push({
+        key: "firstMincash",
+        labelKey: "preview.probFirstCash",
+        color: "#94a3b8",
+        hi: paidCount,
+      });
+    }
+    if (paidCount < N) {
+      cuts.push({
+        key: "bubble",
+        labelKey: "preview.probBubble",
+        color: "#475569",
+        hi: paidCount + 1,
+      });
+    }
   }
   cuts.push({
     key: "ootm",
