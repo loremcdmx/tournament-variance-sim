@@ -64,6 +64,22 @@ export interface PersistedState {
 }
 
 const LS_KEY = "tvs:state";
+const PERSISTED_ROW_COUNT_MAX = 100_000;
+
+function clampPersistedCount(count: number): number {
+  return Math.min(PERSISTED_ROW_COUNT_MAX, Math.max(1, count));
+}
+
+function normalizePersistedState(state: PersistedState): PersistedState {
+  let changed = false;
+  const schedule = state.schedule.map((row) => {
+    const nextCount = clampPersistedCount(row.count);
+    if (nextCount === row.count) return row;
+    changed = true;
+    return { ...row, count: nextCount };
+  });
+  return changed ? { ...state, schedule } : state;
+}
 
 export function encodeState(state: PersistedState): string {
   return compressToEncodedURIComponent(JSON.stringify(state));
@@ -76,7 +92,7 @@ export function decodeState(encoded: string): PersistedState | null {
     const parsed = JSON.parse(json);
     if (isPersistedState(parsed)) {
       warnOnBrMrDrift(parsed.schedule, "decodeState");
-      return parsed;
+      return normalizePersistedState(parsed);
     }
     return null;
   } catch {
@@ -99,7 +115,7 @@ export function loadLocal(): PersistedState | null {
     const parsed = JSON.parse(raw);
     if (isPersistedState(parsed)) {
       warnOnBrMrDrift(parsed.schedule, "loadLocal");
-      return parsed;
+      return normalizePersistedState(parsed);
     }
     return null;
   } catch {
@@ -140,10 +156,11 @@ export function loadUserPresets(): UserPreset[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const safe = parsed.filter(isValidUserPreset);
-    for (const p of safe) {
-      warnOnBrMrDrift(p.state.schedule, `preset "${p.name}"`);
-    }
-    return safe;
+    return safe.map((preset) => {
+      warnOnBrMrDrift(preset.state.schedule, `preset "${preset.name}"`);
+      const state = normalizePersistedState(preset.state);
+      return state === preset.state ? preset : { ...preset, state };
+    });
   } catch {
     return [];
   }

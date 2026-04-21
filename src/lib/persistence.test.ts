@@ -42,6 +42,18 @@ describe("persistence validation", () => {
     expect(decodeState(encoded({ v: 1, schedule: [row], controls: null }))).toBeNull();
   });
 
+  it("clamps oversized persisted row counts back to the editor max", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [{ ...row, count: 1_000_000_000 }],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.count).toBe(100_000);
+  });
+
   it("ignores malformed localStorage state", () => {
     vi.stubGlobal("localStorage", {
       getItem: () => JSON.stringify({ v: 1, schedule: null, controls: {} }),
@@ -80,6 +92,30 @@ describe("persistence validation", () => {
     saveUserPresets([good, bad]);
 
     expect(loadUserPresets()).toEqual([good]);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("normalizes oversized row counts inside saved user presets", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () =>
+        JSON.stringify([
+          {
+            id: "big",
+            name: "Big",
+            createdAt: 1,
+            state: {
+              v: 1,
+              schedule: [{ ...row, count: 1_000_000_000 }],
+              controls,
+            },
+          },
+        ]),
+    });
+
+    const presets = loadUserPresets();
+    expect(presets).toHaveLength(1);
+    expect(presets[0]?.state.schedule[0]?.count).toBe(100_000);
 
     vi.unstubAllGlobals();
   });
