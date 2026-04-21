@@ -154,6 +154,59 @@ describe("persistence validation", () => {
     });
   });
 
+  it("clamps persisted late-reg multiplier so compiled field stays inside the field-size cap", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            players: 2,
+            lateRegMultiplier: 1_000_000_000,
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.lateRegMultiplier).toBe(500_000);
+  });
+
+  it("drops malformed persisted finish-bucket locks instead of hydrating impossible shell constraints", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            itmRate: 0.16,
+            finishBuckets: { first: 5, top3: 0.1 },
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.finishBuckets).toBeUndefined();
+  });
+
+  it("drops stale persisted finish-bucket locks when itmRate is absent", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            finishBuckets: { first: 0.01 },
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.finishBuckets).toBeUndefined();
+  });
+
   it("clamps persisted field-variability ranges and bucket counts back to editor limits", () => {
     const state = decodeState(
       encoded({

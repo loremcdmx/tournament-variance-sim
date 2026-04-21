@@ -194,6 +194,39 @@ function normalizePersistedCustomPayouts(
   return { payoutStructure: row.payoutStructure, customPayouts: raw };
 }
 
+function normalizePersistedFinishBuckets(
+  finishBuckets: TournamentRow["finishBuckets"],
+  itmRate: number | undefined,
+): TournamentRow["finishBuckets"] | undefined {
+  if (!finishBuckets || typeof finishBuckets !== "object" || itmRate == null) {
+    return undefined;
+  }
+  const cap = Math.max(0, Math.min(1, itmRate));
+  const normalizeLock = (value: unknown): number | undefined | null => {
+    if (value == null) return undefined;
+    if (!isFiniteNumber(value) || value < 0 || value > cap) return null;
+    return value;
+  };
+  const first = normalizeLock(finishBuckets.first);
+  const top3 = normalizeLock(finishBuckets.top3);
+  const ft = normalizeLock(finishBuckets.ft);
+  if (first === null || top3 === null || ft === null) {
+    return undefined;
+  }
+  if (
+    (first != null && top3 != null && top3 < first) ||
+    (top3 != null && ft != null && ft < top3) ||
+    (first != null && ft != null && top3 == null && ft < first)
+  ) {
+    return undefined;
+  }
+  const cleaned: NonNullable<TournamentRow["finishBuckets"]> = {};
+  if (first != null) cleaned.first = first;
+  if (top3 != null) cleaned.top3 = top3;
+  if (ft != null) cleaned.ft = ft;
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
 function normalizePersistedFieldVariability(
   fieldVariability: TournamentRow["fieldVariability"],
 ): TournamentRow["fieldVariability"] | undefined {
@@ -306,6 +339,11 @@ function normalizePersistedState(state: PersistedState): PersistedState {
   const schedule = state.schedule.map((row) => {
     const nextPlayers = clampPersistedPlayers(row.players);
     const nextRake = clampPersistedRake(row.rake);
+    const nextLateRegMultiplier = clampPersistedOptionalNumber(
+      row.lateRegMultiplier,
+      1,
+      PERSISTED_ROW_PLAYERS_MAX / Math.max(PERSISTED_ROW_PLAYERS_MIN, nextPlayers),
+    );
     const nextItmRate = clampPersistedOptionalNumber(
       row.itmRate,
       PERSISTED_ROW_ITM_RATE_MIN,
@@ -346,6 +384,10 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       PERSISTED_ROW_PKO_HEAT_MIN,
       PERSISTED_ROW_PKO_HEAT_MAX,
     );
+    const nextFinishBuckets = normalizePersistedFinishBuckets(
+      row.finishBuckets,
+      nextItmRate,
+    );
     const nextCustom = normalizePersistedCustomPayouts(row);
     const nextFieldVariability = normalizePersistedFieldVariability(
       row.fieldVariability,
@@ -354,6 +396,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     if (
       nextPlayers === row.players &&
       nextRake === row.rake &&
+      nextLateRegMultiplier === row.lateRegMultiplier &&
       nextItmRate === row.itmRate &&
       nextMaxEntries === row.maxEntries &&
       nextReentryRate === row.reentryRate &&
@@ -362,6 +405,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       nextMysteryBountyVariance === row.mysteryBountyVariance &&
       nextPkoHeadVar === row.pkoHeadVar &&
       nextPkoHeat === row.pkoHeat &&
+      nextFinishBuckets === row.finishBuckets &&
       nextCustom.payoutStructure === row.payoutStructure &&
       nextCustom.customPayouts === row.customPayouts &&
       nextCount === row.count &&
@@ -374,6 +418,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       ...row,
       players: nextPlayers,
       rake: nextRake,
+      lateRegMultiplier: nextLateRegMultiplier,
       itmRate: nextItmRate,
       maxEntries: nextMaxEntries,
       reentryRate: nextReentryRate,
@@ -382,6 +427,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       mysteryBountyVariance: nextMysteryBountyVariance,
       pkoHeadVar: nextPkoHeadVar,
       pkoHeat: nextPkoHeat,
+      finishBuckets: nextFinishBuckets,
       payoutStructure: nextCustom.payoutStructure,
       customPayouts: nextCustom.customPayouts,
       fieldVariability: nextFieldVariability,
