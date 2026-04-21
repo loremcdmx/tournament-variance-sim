@@ -87,6 +87,14 @@ describe("payout tables", () => {
       expect(table[i]).toBeCloseTo(table[0], 12);
     }
   });
+
+  it("drops impossible custom payout tail beyond the field size", () => {
+    const table = getPayoutTable("custom", 3, [50, 30, 20, 10]);
+
+    expect(table).toEqual([0.5, 0.3, 0.2]);
+    expect(table).toHaveLength(3);
+    expect(table.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 12);
+  });
 });
 
 describe("parsePayoutString", () => {

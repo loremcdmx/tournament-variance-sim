@@ -83,7 +83,14 @@ export function getPayoutTable(
     }
 
     case "custom":
-      if (custom && custom.length > 0) return normalize(custom.slice());
+      if (custom && custom.length > 0) {
+        // A payout table cannot pay more places than exist in the field.
+        // Legacy share/localStorage payloads can still carry longer arrays;
+        // trim the impossible tail so the runtime doesn't silently drop part
+        // of the prize pool by normalizing over unreachable extra places.
+        const paid = Math.max(1, Math.min(Math.floor(players), custom.length));
+        return normalize(custom.slice(0, paid));
+      }
       return normalizedGeometric(Math.max(1, Math.floor(players * 0.15)), 1.35);
 
     case "mtt-standard":

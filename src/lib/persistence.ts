@@ -237,6 +237,7 @@ function normalizeEmpiricalBuckets(value: unknown): number[] | undefined {
 
 function normalizePersistedCustomPayouts(
   row: TournamentRow,
+  players: number,
 ): Pick<TournamentRow, "payoutStructure" | "customPayouts"> {
   const raw = row.customPayouts;
   if (!Array.isArray(raw)) {
@@ -244,16 +245,20 @@ function normalizePersistedCustomPayouts(
       ? { payoutStructure: "mtt-standard", customPayouts: undefined }
       : { payoutStructure: row.payoutStructure, customPayouts: undefined };
   }
+  const trimmed = raw.slice(0, Math.max(1, Math.floor(players)));
   if (
-    raw.length === 0 ||
-    !raw.every((value) => isFiniteNumber(value) && value >= 0) ||
-    !(raw.reduce((sum, value) => sum + value, 0) > 0)
+    trimmed.length === 0 ||
+    !trimmed.every((value) => isFiniteNumber(value) && value >= 0) ||
+    !(trimmed.reduce((sum, value) => sum + value, 0) > 0)
   ) {
     return row.payoutStructure === "custom"
       ? { payoutStructure: "mtt-standard", customPayouts: undefined }
       : { payoutStructure: row.payoutStructure, customPayouts: undefined };
   }
-  return { payoutStructure: row.payoutStructure, customPayouts: raw };
+  return {
+    payoutStructure: row.payoutStructure,
+    customPayouts: trimmed.length === raw.length ? raw : trimmed,
+  };
 }
 
 function normalizePersistedFinishBuckets(
@@ -502,7 +507,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       ...row,
       gameType: nextGameType,
       payoutStructure: nextPayoutStructure,
-    });
+    }, nextPlayers);
     const nextFieldVariability = normalizePersistedFieldVariability(
       row.fieldVariability,
     );

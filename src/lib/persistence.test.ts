@@ -192,6 +192,25 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.customPayouts).toBeUndefined();
   });
 
+  it("trims persisted legacy custom payout tails that exceed the field size", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            players: 3,
+            payoutStructure: "custom",
+            customPayouts: [50, 30, 20, 10],
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.customPayouts).toEqual([50, 30, 20]);
+  });
+
   it("clamps persisted row knobs back into the engine/UI contract before hydration", () => {
     const state = decodeState(
       encoded({
