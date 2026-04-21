@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   applyBountyBias,
   buildFinishPMF,
@@ -25,8 +25,9 @@ import {
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
+import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 
@@ -119,6 +120,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   itmLocked,
 }: Props) {
   const t = useT();
+  const { locale } = useLocale();
   const { advanced } = useAdvancedMode();
   const {
     id,
@@ -127,7 +129,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     gameType,
     players,
     fieldVariability,
-    lateRegMultiplier,
     buyIn,
     rake,
     roi,
@@ -138,8 +139,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     customPayouts,
     guarantee,
     count,
-    maxEntries,
-    reentryRate,
     bountyFraction,
     sitThroughPayJumps,
     payJumpAggression,
@@ -162,7 +161,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       gameType,
       players,
       fieldVariability,
-      lateRegMultiplier,
       buyIn,
       rake,
       roi,
@@ -173,8 +171,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       customPayouts,
       guarantee,
       count,
-      maxEntries,
-      reentryRate,
       bountyFraction,
       sitThroughPayJumps,
       payJumpAggression,
@@ -190,7 +186,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       gameType,
       players,
       fieldVariability,
-      lateRegMultiplier,
       buyIn,
       rake,
       roi,
@@ -201,8 +196,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       customPayouts,
       guarantee,
       count,
-      maxEntries,
-      reentryRate,
       bountyFraction,
       sitThroughPayJumps,
       payJumpAggression,
@@ -250,56 +243,69 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   };
 
   const netProfitPerEntry = stats.evPerEntry - stats.cost;
+  const roiPerEntry = stats.cost > 1e-9 ? netProfitPerEntry / stats.cost : 0;
+  const rakeAmount = Math.max(0, stats.cost - row.buyIn);
+  const rakeFooter =
+    rakeAmount > 0.005
+      ? `${moneyFmt(row.buyIn)} + ${moneyFmt(rakeAmount)} ${t("chart.convergence.rake")}`
+      : moneyFmt(row.buyIn);
+  const quickRoi = `${roiPerEntry >= 0 ? "+" : ""}${(roiPerEntry * 100).toFixed(1)}%`;
+  const quickItm = `${(stats.itm * 100).toFixed(1)}%`;
+  const quickField = row.players.toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
+  const rowTitle = getTournamentRowDisplayLabel(row, t);
+  const bountyTag = stats.progressivePko
+    ? t("preview.statBountyPko")
+    : stats.bountyShare > 0
+      ? t("preview.statBountyFlat")
+      : "";
 
   return (
     <div className="flex flex-col gap-3.5">
       {/* Tournament identity */}
       <div className="text-sm font-semibold text-[color:var(--color-fg)]">
-        {row.label || t("row.unnamed")}
-        <span className="ml-1 font-normal tabular-nums text-[color:var(--color-fg-dim)]">
-          , α {stats.alpha.toFixed(2)}
-          {stats.progressivePko
-            ? ` · ${t("preview.statBountyPko")}`
-            : stats.bountyShare > 0
-              ? ` · ${t("preview.statBountyFlat")}`
-              : ""}
-        </span>
+        {rowTitle}
+        {bountyTag && (
+          <span className="ml-1 font-normal text-[color:var(--color-fg-dim)]">
+            · {bountyTag}
+          </span>
+        )}
       </div>
 
       {/* Buy-in and expected return */}
       <div className="group relative overflow-hidden rounded-md border border-[color:var(--color-border-strong)]/70 bg-[linear-gradient(135deg,var(--color-bg)_0%,var(--color-bg-elev)_60%,rgba(255,222,81,0.08)_100%)] p-3.5 shadow-[0_18px_40px_-32px_rgba(0,0,0,0.9)]">
         <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--color-accent)]/70 to-transparent" />
         <div className="relative grid grid-cols-1 items-stretch gap-2.5 sm:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-          <div className="rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/65 px-3 py-2.5 shadow-sm">
-            <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-              {t("preview.youPay")}
-            </div>
-            <div className="text-[24px] font-bold leading-none tabular-nums text-[color:var(--color-fg)]">
-              {moneyFmt(stats.cost)}
-            </div>
-          </div>
-          <div className="rounded-md border border-[color:var(--color-accent)]/35 bg-[color:var(--color-accent)]/10 px-3 py-2.5 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                  EV
-                </div>
-                <div className="text-[24px] font-bold leading-none tabular-nums text-[color:var(--color-fg)]">
-                  {moneyFmt(stats.evPerEntry)}
-                </div>
-              </div>
+          <PreviewHeroStat
+            label={t("preview.youPay")}
+            value={moneyFmt(stats.cost)}
+            footer={
+              <span className="rounded-md border border-[color:var(--color-border-strong)]/70 bg-[color:var(--color-bg-elev)]/90 px-2.5 py-1.5 font-mono text-[11px] font-medium tabular-nums text-[color:var(--color-fg)] opacity-80">
+                {rakeFooter}
+              </span>
+            }
+          />
+          <PreviewHeroStat
+            label="EV"
+            value={moneyFmt(stats.evPerEntry)}
+            accent
+            details={[
+              { label: t("row.roi"), value: quickRoi, tone: "accent" },
+              { label: t("preview.statItm"), value: quickItm },
+              { label: t("preview.statField"), value: quickField },
+            ]}
+            footer={
               <div
-                className={`rounded-md border px-2 py-1 text-right shadow-sm ${
+                className={`inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 shadow-sm ${
                   netProfitPerEntry >= 0
-                    ? "border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/10"
-                    : "border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/10"
+                    ? "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/14"
+                    : "border-[color:var(--color-danger)]/45 bg-[color:var(--color-danger)]/12"
                 }`}
               >
-                <div className="text-[8px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg)] opacity-70">
                   {t("preview.avgReturn")}
-                </div>
-                <div
-                  className={`font-mono text-[14px] font-bold leading-none tabular-nums ${
+                </span>
+                <span
+                  className={`font-mono text-[15px] font-bold leading-none tabular-nums ${
                     netProfitPerEntry >= 0
                       ? "text-[color:var(--color-accent)]"
                       : "text-[color:var(--color-danger)]"
@@ -307,10 +313,10 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                 >
                   {netProfitPerEntry >= 0 ? "+" : ""}
                   {moneyFmt(netProfitPerEntry)}
-                </div>
+                </span>
               </div>
-            </div>
-          </div>
+            }
+          />
         </div>
         {stats.bountyEvPerEntry > 0 && (() => {
           const jp = stats.jackpotBountyEvPerEntry;
@@ -491,6 +497,73 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   );
 });
 
+function PreviewHeroStat({
+  label,
+  value,
+  footer,
+  details,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  footer?: ReactNode;
+  details?: Array<{ label: string; value: string; tone?: "accent" | "default" }>;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={`flex h-full min-h-[7.25rem] flex-col justify-between rounded-md border px-3 py-3 shadow-sm ${
+        accent
+          ? "border-[color:var(--color-accent)]/35 bg-[color:var(--color-accent)]/10"
+          : "border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/65"
+      }`}
+    >
+      <div className="flex flex-col gap-2">
+        <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[color:var(--color-fg-dim)]">
+          {label}
+        </div>
+        <div className="font-mono text-[24px] font-bold leading-none tabular-nums text-[color:var(--color-fg)] sm:text-[26px]">
+          {value}
+        </div>
+        {details && details.length > 0 && (
+          <div
+            className={`grid gap-1.5 pt-1 ${
+              details.length >= 3 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"
+            }`}
+          >
+            {details.map((item) => (
+              <div
+                key={item.label}
+                className={`rounded-md border px-2.5 py-2 ${
+                  item.tone === "accent"
+                    ? "border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/12"
+                    : "border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/60"
+                }`}
+              >
+                <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                  {item.label}
+                </div>
+                <div
+                  className={`pt-1 font-mono text-[14px] font-semibold leading-none tabular-nums ${
+                    item.tone === "accent"
+                      ? "text-[color:var(--color-accent)]"
+                      : "text-[color:var(--color-fg)]"
+                  }`}
+                >
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="mt-3 flex min-h-[2.5rem] items-end">
+        {footer ?? <span className="block h-8" aria-hidden />}
+      </div>
+    </div>
+  );
+}
+
 interface TierBreakdown {
   tier: TierRow;
   hasBounty: boolean;
@@ -529,6 +602,8 @@ function EvBreakdownRow({
   breakdown?: TierBreakdown;
 }) {
   const [hover, setHover] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [canHover, setCanHover] = useState(false);
   const labelClass = "text-[color:var(--color-fg)]";
   const netClass =
     netDollars > 0
@@ -542,60 +617,101 @@ function EvBreakdownRow({
   );
   const bountyWidthPct = evWidthPct * Math.max(0, Math.min(1, bountyShareOfTier));
   const fmtWidth = (pct: number) => `${Math.min(100, Math.max(0, pct)).toFixed(4)}%`;
+  const showPopup = !!breakdown && (canHover ? hover : pinned);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const update = () => setCanHover(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
   return (
-    <div
-      className="relative grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px] hover:bg-[color:var(--color-bg-elev)]/30"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <span
-        className="h-2.5 w-2.5 rounded-sm"
-        style={{ backgroundColor: color }}
-      />
-      <span className={labelClass}>{label}</span>
-      <div className="relative h-2 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
-        <div
-          className="absolute inset-y-0 left-0 rounded-sm opacity-30"
-          style={{
-            width: fmtWidth(
-              (maxEvShare ? eqShare / maxEvShare : eqShare) * 100,
-            ),
-            backgroundColor: color,
-          }}
+    <div className="relative">
+      <div
+        className={`relative grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px] hover:bg-[color:var(--color-bg-elev)]/30 ${
+          breakdown ? "cursor-default sm:cursor-help" : ""
+        }`}
+        onMouseEnter={() => {
+          if (canHover) setHover(true);
+        }}
+        onMouseLeave={() => {
+          if (canHover) setHover(false);
+        }}
+        onClick={() => {
+          if (!breakdown || canHover) return;
+          setPinned((v) => !v);
+        }}
+        onKeyDown={(e) => {
+          if (!breakdown || canHover) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setPinned((v) => !v);
+          } else if (e.key === "Escape") {
+            setPinned(false);
+          }
+        }}
+        onBlur={(e) => {
+          if (canHover || !breakdown) return;
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setPinned(false);
+          }
+        }}
+        tabIndex={breakdown ? 0 : undefined}
+        role={breakdown ? "button" : undefined}
+        aria-expanded={breakdown ? showPopup : undefined}
+      >
+        <span
+          className="h-2.5 w-2.5 rounded-sm"
+          style={{ backgroundColor: color }}
         />
-        <div
-          className="absolute inset-y-0 left-0 rounded-sm"
-          style={{
-            width: fmtWidth(evWidthPct),
-            backgroundColor: color,
-          }}
-        />
-        {bountyWidthPct > 0.5 && bountyColor && (
+        <span className={labelClass}>{label}</span>
+        <div className="relative h-2 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
           <div
-            className="absolute inset-y-0 rounded-sm"
+            className="absolute inset-y-0 left-0 rounded-sm opacity-30"
             style={{
-              left: fmtWidth(evWidthPct - bountyWidthPct),
-              width: fmtWidth(bountyWidthPct),
-              backgroundColor: bountyColor,
+              width: fmtWidth(
+                (maxEvShare ? eqShare / maxEvShare : eqShare) * 100,
+              ),
+              backgroundColor: color,
             }}
           />
-        )}
+          <div
+            className="absolute inset-y-0 left-0 rounded-sm"
+            style={{
+              width: fmtWidth(evWidthPct),
+              backgroundColor: color,
+            }}
+          />
+          {bountyWidthPct > 0.5 && bountyColor && (
+            <div
+              className="absolute inset-y-0 rounded-sm"
+              style={{
+                left: fmtWidth(evWidthPct - bountyWidthPct),
+                width: fmtWidth(bountyWidthPct),
+                backgroundColor: bountyColor,
+              }}
+            />
+          )}
+        </div>
+        <span className="text-right font-mono tabular-nums text-[color:var(--color-fg)]">
+          {pct(evShare)}
+        </span>
+        <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+          {pct(fieldShare)}
+        </span>
+        <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+          {fmtEq(eqShare)}
+        </span>
+        <span
+          className={`text-right font-mono tabular-nums ${netClass}`}
+        >
+          {fmtSignedMoney(netDollars)}
+        </span>
       </div>
-      <span className="text-right font-mono tabular-nums text-[color:var(--color-fg)]">
-        {pct(evShare)}
-      </span>
-      <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
-        {pct(fieldShare)}
-      </span>
-      <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
-        {fmtEq(eqShare)}
-      </span>
-      <span
-        className={`text-right font-mono tabular-nums ${netClass}`}
-      >
-        {fmtSignedMoney(netDollars)}
-      </span>
-      {hover && breakdown && (
+      {showPopup && breakdown && (
         <TierHoverPopup label={label} breakdown={breakdown} />
       )}
     </div>
@@ -618,7 +734,9 @@ function TierHoverPopup({
           Math.round(1 / tier.field),
         )}`
       : "—";
-  const [side, setSide] = useState<"right" | "left">("right");
+  const [placement, setPlacement] = useState<"right" | "left" | "below">(
+    "right",
+  );
   const popupRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -634,29 +752,39 @@ function TierHoverPopup({
       const gap = 8;
       const rightSpace = window.innerWidth - anchorRect.right - gap - edgePad;
       const leftSpace = anchorRect.left - gap - edgePad;
-      const nextSide =
-        rightSpace >= popupWidth
-          ? "right"
-          : leftSpace >= popupWidth
-            ? "left"
-            : rightSpace >= leftSpace
-              ? "right"
-              : "left";
+      const nextPlacement =
+        window.innerWidth < 1100 || (rightSpace < popupWidth && leftSpace < popupWidth)
+          ? "below"
+          : rightSpace >= popupWidth
+            ? "right"
+            : "left";
 
-      if (nextSide !== side) setSide(nextSide);
+      if (nextPlacement !== placement) setPlacement(nextPlacement);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [label, posRangeLabel, side, tier.bountyEv, tier.cashEv, tier.field, tier.ev]);
+  }, [
+    label,
+    placement,
+    posRangeLabel,
+    tier.bountyEv,
+    tier.cashEv,
+    tier.field,
+    tier.ev,
+  ]);
 
   return (
     <div
       ref={popupRef}
       role="tooltip"
-      className={`pointer-events-none absolute top-0 z-50 w-72 max-w-[85vw] rounded-md border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3 py-2.5 text-left text-[11px] leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] ${
-        side === "right" ? "left-full ml-2" : "right-full mr-2"
+      className={`pointer-events-none z-50 rounded-md border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3 py-2.5 text-left text-[11px] leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] ${
+        placement === "below"
+          ? "relative mt-2 w-full max-w-full overflow-x-hidden"
+          : placement === "right"
+            ? "absolute left-full top-0 ml-2 w-72 max-w-[85vw]"
+            : "absolute right-full top-0 mr-2 w-72 max-w-[85vw]"
       }`}
     >
-      <div className="mb-2 flex items-baseline justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
         <div className="flex items-baseline gap-1.5">
           <span
             className="inline-block h-2 w-2 rounded-sm"
@@ -670,7 +798,7 @@ function TierHoverPopup({
           {t("preview.hover.places")} {posRangeLabel}
         </span>
       </div>
-      <div className="mb-2 flex items-baseline justify-between text-[10px]">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-[10px]">
         <span className="uppercase tracking-wider text-[color:var(--color-fg-dim)]">
           {t("preview.hover.hitRate")}
         </span>
@@ -1279,17 +1407,17 @@ function BountyShareSlider({
 
   return (
     <div
-      className="mt-3 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 p-2.5"
+      className="mt-3 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/75 p-3"
       title={tip}
       aria-busy={pending}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--color-fg)]">
+        <span className="text-[12px] font-semibold uppercase tracking-wide text-[color:var(--color-fg)]">
           {title}
         </span>
         <div className="flex items-center gap-1">
           <label
-            className={`flex items-center rounded-md border bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 ${
+            className={`flex items-center rounded-md border bg-[color:var(--color-bg-elev)] px-2 py-1 ${
               manualOutOfRange
                 ? "border-[color:var(--color-danger)]"
                 : "border-[color:var(--color-border)]"
@@ -1571,9 +1699,9 @@ function TopHeavyPlacementSlider({
                 }
               }}
               aria-label={title}
-              className="w-14 bg-transparent text-right font-mono text-[11px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none"
+              className="w-16 bg-transparent text-right font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none"
             />
-            <span className="pl-0.5 font-mono text-[10px] font-semibold text-[color:var(--color-fg-dim)]">
+            <span className="pl-1 font-mono text-[11px] font-semibold text-[color:var(--color-fg-dim)]">
               %
             </span>
           </label>
@@ -1586,17 +1714,17 @@ function TopHeavyPlacementSlider({
               if (Math.abs(committedBias) > 1e-9) onCommit(0);
             }}
             disabled={Math.abs(committedBias) < 1e-9}
-            className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
+            className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
           >
             {resetLabel}
           </button>
         </div>
       </div>
-      <div className="mt-2.5 flex flex-col gap-1.5">
-        <div className="relative h-7">
+      <div className="mt-3 flex flex-col gap-2">
+        <div className="relative h-8">
           <div
             aria-hidden
-            className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]"
+            className="absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]"
           >
             <div
               className="absolute inset-y-0 left-0 bg-[color:var(--color-bg-elev)]"
@@ -1613,12 +1741,12 @@ function TopHeavyPlacementSlider({
           </div>
           <span
             aria-hidden
-            className="pointer-events-none absolute top-1/2 h-4 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color:var(--color-border-strong)]"
+            className="pointer-events-none absolute top-1/2 h-5 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color:var(--color-border-strong)]"
             style={{ left: `${centerPct}%` }}
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[color:var(--color-bg)] bg-[color:var(--color-accent)] shadow-sm"
+            className="pointer-events-none absolute top-1/2 h-4.5 w-4.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[color:var(--color-bg)] bg-[color:var(--color-accent)] shadow-sm"
             style={{ left: `${valuePct}%` }}
           />
           <input
@@ -1638,13 +1766,13 @@ function TopHeavyPlacementSlider({
             aria-label={title}
           />
         </div>
-        <div className="grid grid-cols-3 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        <div className="grid grid-cols-3 text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-fg-dim)]">
           <span>0%</span>
           <span className="text-center text-[color:var(--color-fg)]">50%</span>
           <span className="text-right">100%</span>
         </div>
       </div>
-      <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium text-[color:var(--color-fg-dim)]">
+      <div className="mt-2 flex items-center justify-between gap-2 text-[11px] font-medium text-[color:var(--color-fg-dim)]">
         <span>{lowLabel}</span>
         <span className={pending ? "text-[color:var(--color-fg)]" : undefined}>
           {topHeavyPctInputValue(biasToTopHeavyPercent(effectiveBias))}%

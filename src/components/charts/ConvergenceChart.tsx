@@ -81,6 +81,7 @@ function RangeBandValue({
   showRange,
   title,
   accent = false,
+  align = "right",
 }: {
   pointLabel: string;
   loLabel: string;
@@ -88,10 +89,17 @@ function RangeBandValue({
   showRange: boolean;
   title?: string;
   accent?: boolean;
+  align?: "right" | "left";
 }) {
   if (!showRange) {
     return (
-      <span className={accent ? "text-[color:var(--color-accent)]" : undefined}>
+      <span
+        className={
+          accent
+            ? "inline-flex items-center rounded border border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/15 px-1 py-0.5 font-mono text-[10.5px] font-bold leading-none text-[color:var(--color-accent)]"
+            : "inline-flex items-center rounded border border-sky-300/45 bg-sky-300/15 px-1 py-0.5 font-mono text-[10.5px] font-bold leading-none text-sky-200"
+        }
+      >
         {pointLabel}
       </span>
     );
@@ -99,30 +107,30 @@ function RangeBandValue({
 
   return (
     <div
-      className="min-w-0 text-right"
+      className={`min-w-0 ${align === "left" ? "text-left" : "text-right"}`}
       title={title}
       aria-label={title}
     >
-      <div className="relative mx-1 mb-1.5 h-2" aria-hidden="true">
-        <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/55" />
-        <div className="absolute left-0 top-1/2 h-2 w-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/80" />
-        <div className="absolute right-0 top-1/2 h-2 w-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/80" />
-        <div className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_24%,transparent)]" />
+      <div className="relative mb-1.5 h-2 px-1.5" aria-hidden="true">
+        <div className="absolute inset-x-1.5 top-1/2 h-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/55" />
+        <div className="absolute left-1.5 top-1/2 h-2 w-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/80" />
+        <div className="absolute right-1.5 top-1/2 h-2 w-px -translate-y-1/2 bg-[color:var(--color-fg-dim)]/80" />
+        <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_24%,transparent)]" />
       </div>
-      <div className="grid min-w-0 grid-cols-[auto_auto_auto] items-center justify-between gap-2 font-mono tabular-nums">
-        <span className="whitespace-nowrap text-left text-[10px] leading-none text-[color:var(--color-fg-dim)]">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5 font-mono tabular-nums">
+        <span className="whitespace-nowrap text-left text-[9px] leading-none text-[color:var(--color-fg-dim)]">
           {loLabel}
         </span>
         <span
           className={
             accent
-              ? "rounded border border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/15 px-1.5 py-0.5 text-[11px] font-bold leading-none text-[color:var(--color-accent)]"
-              : "rounded border border-sky-300/45 bg-sky-300/15 px-1.5 py-0.5 text-[11px] font-bold leading-none text-sky-200"
+              ? "rounded border border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/15 px-1.5 py-0.5 text-[10.5px] font-bold leading-none text-[color:var(--color-accent)]"
+              : "rounded border border-sky-300/45 bg-sky-300/15 px-1.5 py-0.5 text-[10.5px] font-bold leading-none text-sky-200"
           }
         >
           {pointLabel}
         </span>
-        <span className="whitespace-nowrap text-right text-[10px] leading-none text-[color:var(--color-fg-dim)]">
+        <span className="whitespace-nowrap text-right text-[9px] leading-none text-[color:var(--color-fg-dim)]">
           {hiLabel}
         </span>
       </div>
@@ -466,8 +474,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
 
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
-    if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-    if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+    if (n >= 1e9) return `${(n / 1e9).toFixed(n >= 1e10 ? 1 : 2)}B`;
+    if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e8 ? 1 : 2)}M`;
     if (n >= 1e4) return `${(n / 1e3).toFixed(1)}k`;
     return Math.round(n).toLocaleString(numberLocale);
   };
@@ -492,6 +500,45 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     }
     return fmtAfs(row.afs, numberLocale);
   };
+  const displayRows = rows.map((row) => {
+    const showTourneysRange = showBand && row.tourneysLo !== row.tourneysHi;
+    const showFieldsRange = showBand && row.fieldsLo !== row.fieldsHi;
+    const tourneysPointLabel = fmtInt(row.tourneys);
+    const tourneysLoLabel = fmtInt(row.tourneysLo);
+    const tourneysHiLabel = fmtInt(row.tourneysHi);
+    const fieldsPointLabel = fmtField(row.fields);
+    const fieldsLoLabel = fmtField(row.fieldsLo);
+    const fieldsHiLabel = fmtField(row.fieldsHi);
+    const tourneysLabel = formatPointRange(
+      tourneysPointLabel,
+      tourneysLoLabel,
+      tourneysHiLabel,
+      showTourneysRange,
+    );
+    const fieldsLabel = formatPointRange(
+      fieldsPointLabel,
+      fieldsLoLabel,
+      fieldsHiLabel,
+      showFieldsRange,
+    );
+    const targetLabel = `±${(row.targetPct * 100).toFixed(
+      row.targetPct < 0.01 ? 1 : 0,
+    )}%`;
+    return {
+      ...row,
+      targetLabel,
+      showTourneysRange,
+      showFieldsRange,
+      tourneysPointLabel,
+      tourneysLoLabel,
+      tourneysHiLabel,
+      fieldsPointLabel,
+      fieldsLoLabel,
+      fieldsHiLabel,
+      tourneysLabel,
+      fieldsLabel,
+    };
+  });
 
   const FORMATS: { id: ConvergenceFormat; labelKey: DictKey }[] = [
     { id: "freeze", labelKey: "chart.convergence.format.freeze" },
@@ -505,14 +552,14 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     { id: "exact", labelKey: "chart.convergence.format.exact" },
   ];
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-hidden">
       <div
-        className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
+        className="mb-3 flex flex-col gap-2 text-[11px] text-[color:var(--color-fg-muted)] sm:flex-row sm:items-center sm:gap-3"
         title={
           effectiveMode === "exact" ? t("chart.convergence.mode.hint") : undefined
         }
       >
-        <div className="flex flex-1 gap-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 p-1">
+        <div className="grid flex-1 grid-cols-2 gap-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 p-1 min-[560px]:grid-cols-3 lg:grid-cols-6">
           {FORMATS.map((f) => {
             const active = format === f.id;
             const disabled = f.id === "exact" && !hasSchedule;
@@ -532,7 +579,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                   setRakeDraft(null);
                   setFormatOverride(f.id);
                 }}
-                className={`relative flex-1 whitespace-nowrap rounded-md border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`relative w-full whitespace-nowrap rounded-md border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
                   active
                     ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
                     : "border-transparent bg-transparent text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border)] hover:bg-[color:var(--color-bg)]/55 hover:text-[color:var(--color-fg)]"
@@ -565,7 +612,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             setRakeOverridePct(null);
             setRakeDraft(null);
           }}
-          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-2 py-1 text-[10px] uppercase tracking-[0.14em] hover:bg-[color:var(--color-bg-elev)]"
+          className="self-end rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-2 py-1 text-[10px] uppercase tracking-[0.14em] hover:bg-[color:var(--color-bg-elev)] sm:self-auto"
           title={`reset to ${baselineFormat}${baselineFormat === "mix" ? ` (${Math.round(baselineMix[0] * 100)}/${Math.round(baselineMix[1] * 100)}/${Math.round(baselineMix[2] * 100)} freeze/PKO/mystery)` : ""}`}
         >
           ↺
@@ -823,144 +870,217 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           )}
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] table-fixed border-collapse text-[12px] tabular-nums">
+      <div className="space-y-2 sm:hidden">
+        {displayRows.map((row) => (
+          <div
+            key={row.targetPct}
+            className="rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg-elev)]/35 px-3 py-2.5"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                {t("chart.convergence.col.target")}
+              </div>
+              <div className="rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/55 px-2 py-1 font-mono text-[12px] font-semibold text-[color:var(--color-fg)]">
+                {row.targetLabel}
+              </div>
+            </div>
+            <div className="mt-2 grid gap-2">
+              <div className="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/45 px-2.5 py-2">
+                <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                  {t("chart.convergence.col.tourneys")}
+                </div>
+                <RangeBandValue
+                  pointLabel={row.tourneysPointLabel}
+                  loLabel={row.tourneysLoLabel}
+                  hiLabel={row.tourneysHiLabel}
+                  showRange={row.showTourneysRange}
+                  title={row.showTourneysRange ? row.tourneysLabel : undefined}
+                  align="left"
+                />
+              </div>
+              <div className="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/45 px-2.5 py-2">
+                <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                  {t("chart.convergence.col.fields")}
+                </div>
+                <RangeBandValue
+                  pointLabel={row.fieldsPointLabel}
+                  loLabel={row.fieldsLoLabel}
+                  hiLabel={row.fieldsHiLabel}
+                  showRange={row.showFieldsRange}
+                  title={row.showFieldsRange ? row.fieldsLabel : undefined}
+                  accent
+                  align="left"
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto sm:block">
+        <table className="w-full min-w-[600px] table-fixed border-collapse text-[12px] tabular-nums">
           <colgroup>
-            <col className="w-[112px]" />
+            <col className="w-[104px]" />
             <col />
-            <col />
+            <col className="w-[168px]" />
           </colgroup>
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            <tr className="text-left text-[9px] uppercase tracking-[0.08em] text-[color:var(--color-fg-dim)]">
               <th className="py-1.5 pr-3 font-semibold whitespace-nowrap">
                 {t("chart.convergence.col.target")}
               </th>
-              <th className="py-1.5 px-3 text-right font-semibold whitespace-nowrap">
+              <th className="py-1.5 px-2.5 text-right font-semibold whitespace-nowrap">
                 {t("chart.convergence.col.tourneys")}
               </th>
-              <th className="py-1.5 pl-3 text-right font-semibold whitespace-nowrap">
+              <th className="py-1.5 pl-2.5 text-right font-semibold whitespace-nowrap">
                 {t("chart.convergence.col.fields")}
               </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-            const showTourneysRange =
-              showBand && row.tourneysLo !== row.tourneysHi;
-            const showFieldsRange =
-              showBand && row.fieldsLo !== row.fieldsHi;
-            const tourneysPointLabel = fmtInt(row.tourneys);
-            const tourneysLoLabel = fmtInt(row.tourneysLo);
-            const tourneysHiLabel = fmtInt(row.tourneysHi);
-            const fieldsPointLabel = fmtField(row.fields);
-            const fieldsLoLabel = fmtField(row.fieldsLo);
-            const fieldsHiLabel = fmtField(row.fieldsHi);
-            const tourneysLabel = formatPointRange(
-              tourneysPointLabel,
-              tourneysLoLabel,
-              tourneysHiLabel,
-              showTourneysRange,
-            );
-            const fieldsLabel = formatPointRange(
-              fieldsPointLabel,
-              fieldsLoLabel,
-              fieldsHiLabel,
-              showFieldsRange,
-            );
-            return (
+            {displayRows.map((row) => (
               <tr
                 key={row.targetPct}
                 className="border-t border-[color:var(--color-border)]/50 text-[color:var(--color-fg)]"
               >
                 <td className="py-1.5 pr-3 font-semibold">
-                  ±{(row.targetPct * 100).toFixed(row.targetPct < 0.01 ? 1 : 0)}%
+                  {row.targetLabel}
                 </td>
                 <td
-                  className="py-2 px-3 text-right align-middle"
-                  title={showTourneysRange ? tourneysLabel : undefined}
+                  className="py-2 px-2.5 text-right align-middle"
+                  title={row.showTourneysRange ? row.tourneysLabel : undefined}
                 >
                   <RangeBandValue
-                    pointLabel={tourneysPointLabel}
-                    loLabel={tourneysLoLabel}
-                    hiLabel={tourneysHiLabel}
-                    showRange={showTourneysRange}
-                    title={showTourneysRange ? tourneysLabel : undefined}
+                    pointLabel={row.tourneysPointLabel}
+                    loLabel={row.tourneysLoLabel}
+                    hiLabel={row.tourneysHiLabel}
+                    showRange={row.showTourneysRange}
+                    title={row.showTourneysRange ? row.tourneysLabel : undefined}
                   />
                 </td>
                 <td
-                  className="py-2 pl-3 text-right align-middle"
-                  title={showFieldsRange ? fieldsLabel : undefined}
+                  className="py-2 pl-2.5 text-right align-middle"
+                  title={row.showFieldsRange ? row.fieldsLabel : undefined}
                 >
                   <RangeBandValue
-                    pointLabel={fieldsPointLabel}
-                    loLabel={fieldsLoLabel}
-                    hiLabel={fieldsHiLabel}
-                    showRange={showFieldsRange}
-                    title={showFieldsRange ? fieldsLabel : undefined}
+                    pointLabel={row.fieldsPointLabel}
+                    loLabel={row.fieldsLoLabel}
+                    hiLabel={row.fieldsHiLabel}
+                    showRange={row.showFieldsRange}
+                    title={row.showFieldsRange ? row.fieldsLabel : undefined}
                     accent
                   />
                 </td>
               </tr>
-            );
-          })}
+            ))}
           </tbody>
         </table>
       </div>
       {effectiveMode === "exact" && exactBreakdown && (
-        <div className="mt-3 overflow-x-auto">
+        <div className="mt-3">
           <div className="mb-1 text-[11px] uppercase tracking-wider text-emerald-400/80">
             {t("chart.convergence.exact.breakdown")}
           </div>
-          <table className="w-full border-collapse text-[11px] tabular-nums">
-            <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                <th className="py-1 pr-2 font-semibold">
-                  {t("chart.convergence.exact.rowCol.row")}
-                </th>
-                <th className="py-1 px-2 text-right font-semibold">
-                  {t("chart.convergence.exact.rowCol.afs")}
-                </th>
-                <th className="py-1 px-2 text-right font-semibold">
-                  {t("chart.convergence.exact.rowCol.roi")}
-                </th>
-                <th className="py-1 px-2 text-right font-semibold">
-                  {t("chart.convergence.exact.rowCol.fmt")}
-                </th>
-                <th className="py-1 px-2 text-right font-semibold">
-                  {t("chart.convergence.exact.rowCol.share")}
-                </th>
-                <th className="py-1 pl-2 text-right font-semibold">
-                  {t("chart.convergence.exact.rowCol.varShare")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {exactBreakdown.perRow.map((r) => (
-                <tr
-                  key={r.index}
-                  className="border-t border-[color:var(--color-border)]/50 text-[color:var(--color-fg-muted)]"
-                >
-                  <td className="py-1 pr-2 truncate max-w-[160px]">{r.label}</td>
-                  <td className="py-1 px-2 text-right">{fmtExactField(r)}</td>
-                  <td className="py-1 px-2 text-right">
-                    {(r.roi * 100).toFixed(1)}%
-                  </td>
-                  <td className="py-1 px-2 text-right">
-                    {t(`chart.convergence.format.${r.format}` as DictKey)}
-                  </td>
-                  <td className="py-1 px-2 text-right">
-                    {(r.costShare * 100).toFixed(1)}%
-                  </td>
-                  <td className="py-1 pl-2 text-right text-emerald-300">
-                    {(r.varShare * 100).toFixed(1)}%
-                  </td>
+          <div className="space-y-2 sm:hidden">
+            {exactBreakdown.perRow.map((r) => (
+              <div
+                key={r.index}
+                className="rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg-elev)]/35 px-3 py-2.5"
+              >
+                <div className="truncate text-[12px] font-semibold text-[color:var(--color-fg)]">
+                  {r.label}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
+                  <div className="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/45 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+                      {t("chart.convergence.exact.rowCol.afs")}
+                    </div>
+                    <div className="mt-1 font-mono text-[color:var(--color-fg)]">
+                      {fmtExactField(r)}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/45 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+                      {t("chart.convergence.exact.rowCol.roi")}
+                    </div>
+                    <div className="mt-1 font-mono text-[color:var(--color-fg)]">
+                      {(r.roi * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/45 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+                      {t("chart.convergence.exact.rowCol.share")}
+                    </div>
+                    <div className="mt-1 font-mono text-[color:var(--color-fg)]">
+                      {(r.costShare * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-emerald-400/35 bg-emerald-400/10 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-emerald-200/80">
+                      {t("chart.convergence.exact.rowCol.varShare")}
+                    </div>
+                    <div className="mt-1 font-mono text-emerald-200">
+                      {(r.varShare * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2 text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+                  {t(`chart.convergence.format.${r.format}` as DictKey)}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full border-collapse text-[11px] tabular-nums">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                  <th className="py-1 pr-2 font-semibold">
+                    {t("chart.convergence.exact.rowCol.row")}
+                  </th>
+                  <th className="py-1 px-2 text-right font-semibold">
+                    {t("chart.convergence.exact.rowCol.afs")}
+                  </th>
+                  <th className="py-1 px-2 text-right font-semibold">
+                    {t("chart.convergence.exact.rowCol.roi")}
+                  </th>
+                  <th className="py-1 px-2 text-right font-semibold">
+                    {t("chart.convergence.exact.rowCol.fmt")}
+                  </th>
+                  <th className="py-1 px-2 text-right font-semibold">
+                    {t("chart.convergence.exact.rowCol.share")}
+                  </th>
+                  <th className="py-1 pl-2 text-right font-semibold">
+                    {t("chart.convergence.exact.rowCol.varShare")}
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {exactBreakdown.perRow.map((r) => (
+                  <tr
+                    key={r.index}
+                    className="border-t border-[color:var(--color-border)]/50 text-[color:var(--color-fg-muted)]"
+                  >
+                    <td className="max-w-[160px] truncate py-1 pr-2">{r.label}</td>
+                    <td className="py-1 px-2 text-right">{fmtExactField(r)}</td>
+                    <td className="py-1 px-2 text-right">
+                      {(r.roi * 100).toFixed(1)}%
+                    </td>
+                    <td className="py-1 px-2 text-right">
+                      {t(`chart.convergence.format.${r.format}` as DictKey)}
+                    </td>
+                    <td className="py-1 px-2 text-right">
+                      {(r.costShare * 100).toFixed(1)}%
+                    </td>
+                    <td className="py-1 pl-2 text-right text-emerald-300">
+                      {(r.varShare * 100).toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
-      <div className="mt-2 text-[10px] text-[color:var(--color-fg-dim)]">
+      <div className="mt-3 rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev)]/25 px-3 py-2.5 text-[11px] leading-relaxed text-[color:var(--color-fg-dim)] sm:mt-2 sm:border-transparent sm:bg-transparent sm:px-0 sm:py-0 sm:text-[10px] sm:leading-snug">
         {t("chart.convergence.assumptions")}
       </div>
     </div>

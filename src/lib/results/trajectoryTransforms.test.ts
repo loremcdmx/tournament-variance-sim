@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeExpectedRakebackCurve,
-  reentryExpectedClient,
+  shiftResultByRakeback,
   stripJackpots,
 } from "./trajectoryTransforms";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
@@ -19,27 +19,11 @@ function makeRow(overrides: Partial<TournamentRow>): TournamentRow {
   };
 }
 
-describe("reentryExpectedClient", () => {
-  it("matches the capped geometric closed form", () => {
-    expect(reentryExpectedClient(1, 0.5)).toBe(0);
-    expect(reentryExpectedClient(2, 0.5)).toBeCloseTo(0.5);
-    expect(reentryExpectedClient(4, 1)).toBe(3);
-    expect(reentryExpectedClient(4, 0)).toBe(0);
-  });
-});
-
 describe("computeExpectedRakebackCurve", () => {
   it("tracks heterogeneous schedules in engine order", () => {
     const schedule: TournamentRow[] = [
       makeRow({ id: "a", count: 1, buyIn: 100, rake: 0.1 }),
-      makeRow({
-        id: "b",
-        count: 2,
-        buyIn: 50,
-        rake: 0.1,
-        maxEntries: 2,
-        reentryRate: 0.5,
-      }),
+      makeRow({ id: "b", count: 2, buyIn: 50, rake: 0.1 }),
     ];
 
     const curve = computeExpectedRakebackCurve(
@@ -50,7 +34,7 @@ describe("computeExpectedRakebackCurve", () => {
     );
 
     expect(curve).not.toBeNull();
-    expect(Array.from(curve ?? [])).toEqual([0, 5, 8.75, 12.5, 17.5]);
+    expect(Array.from(curve ?? [])).toEqual([0, 5, 7.5, 10, 15]);
   });
 
   it("returns null when rakeback is disabled", () => {
@@ -104,5 +88,77 @@ describe("stripJackpots", () => {
     expect(stripped.samplePaths.best).toBe(keptPath);
     expect(stripped.samplePaths.worst).toBe(keptPath);
     expect(Array.from(stripped.finalProfits)).toEqual([0, 10, 20]);
+  });
+});
+
+describe("shiftResultByRakeback", () => {
+  it("shifts profit scalars without replacing full-sample streak statistics", () => {
+    const hist = { binEdges: [-10, 0, 10], counts: [1, 1] };
+    const basePath = Float64Array.from([0, 5, 10]);
+    const result = {
+      expectedProfit: 10,
+      histogram: hist,
+      drawdownHistogram: { binEdges: [0, 5, 10], counts: [2, 0] },
+      longestBreakevenHistogram: { binEdges: [0, 1], counts: [2] },
+      recoveryHistogram: { binEdges: [0, 1], counts: [2] },
+      stats: {
+        mean: 10,
+        median: 10,
+        min: -10,
+        max: 30,
+        p01: -10,
+        p05: -5,
+        p95: 25,
+        p99: 30,
+        probProfit: 0.5,
+        maxDrawdownMean: 99,
+        maxDrawdownMedian: 88,
+        maxDrawdownP95: 77,
+        maxDrawdownP99: 66,
+        maxDrawdownWorst: 55,
+        longestBreakevenMean: 44,
+        breakevenStreakMean: 33,
+        recoveryMedian: 22,
+        recoveryP90: 11,
+        recoveryUnrecoveredShare: 0.25,
+        var95: 5,
+        var99: 7,
+        cvar95: 9,
+        cvar99: 11,
+      },
+      samplePaths: {
+        x: [0, 1, 2],
+        paths: [basePath],
+        best: basePath,
+        worst: basePath,
+        sampleIndices: [0],
+      },
+      envelopes: {
+        x: [0, 1, 2],
+        mean: basePath,
+        p05: basePath,
+        p95: basePath,
+        p15: basePath,
+        p85: basePath,
+        p025: basePath,
+        p975: basePath,
+        p0015: basePath,
+        p9985: basePath,
+        min: basePath,
+        max: basePath,
+      },
+    } as unknown as SimulationResult;
+
+    const shifted = shiftResultByRakeback(result, Float64Array.from([0, 2, 4]), -1);
+
+    expect(shifted.expectedProfit).toBe(6);
+    expect(shifted.stats.mean).toBe(6);
+    expect(shifted.stats.probProfit).toBeCloseTo(0.3, 12);
+    expect(shifted.stats.maxDrawdownMean).toBe(result.stats.maxDrawdownMean);
+    expect(shifted.stats.longestBreakevenMean).toBe(
+      result.stats.longestBreakevenMean,
+    );
+    expect(shifted.drawdownHistogram).toBe(result.drawdownHistogram);
+    expect(Array.from(shifted.samplePaths.paths[0])).toEqual([0, 3, 6]);
   });
 });

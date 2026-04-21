@@ -278,25 +278,6 @@ describe("convergence math", () => {
     expect(exact!.perRow[1].costShare).toBeGreaterThan(0.98);
   });
 
-  it("late reg changes exact schedule sigma", () => {
-    const baseRow: TournamentRow = {
-      id: "freeze",
-      label: "Freeze",
-      players: 500,
-      buyIn: 10,
-      rake: 0.1,
-      roi: 0.1,
-      payoutStructure: "mtt-standard",
-      count: 100,
-    };
-    const base = buildExactBreakdown([baseRow]);
-    const late = buildExactBreakdown([{ ...baseRow, lateRegMultiplier: 2 }]);
-    expect(base).not.toBeNull();
-    expect(late).not.toBeNull();
-    expect(late!.sigmaEff).toBeGreaterThan(base!.sigmaEff);
-    expect(late!.perRow[0].afs).toBeGreaterThan(base!.perRow[0].afs);
-  });
-
   it("field variability changes exact schedule sigma", () => {
     const baseRow: TournamentRow = {
       id: "freeze",

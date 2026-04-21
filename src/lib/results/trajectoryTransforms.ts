@@ -151,9 +151,10 @@ export function shiftResultByRakeback(
   curve: Float64Array,
   sign: 1 | -1,
 ): SimulationResult {
-  const signedCurve = new Float64Array(curve.length);
-  for (let i = 0; i < curve.length; i++) signedCurve[i] = sign * curve[i];
-
+  // Only profit-path quantities that shift by the deterministic cumulative RB
+  // curve are updated here. Path-dependent streak / drawdown / ruin stats stay
+  // on the engine's full-sample output; recomputing them from stored hi-res
+  // paths would silently downsample to ~1000 runs.
   const shiftArr = (arr: Float64Array): Float64Array => {
     const out = new Float64Array(arr.length);
     const commonLength = Math.min(arr.length, curve.length);
@@ -181,17 +182,16 @@ export function shiftResultByRakeback(
   }
 
   const probProfit = Math.max(0, Math.min(1, 1 - cumBelow / totalCount));
-  const streakMerged = recomputeStreaksFromPaths(result, signedCurve);
 
   return {
-    ...streakMerged,
+    ...result,
     expectedProfit: result.expectedProfit + totalShift,
     histogram: {
       ...result.histogram,
       binEdges: shiftedHistEdges,
     },
     stats: {
-      ...streakMerged.stats,
+      ...result.stats,
       mean: result.stats.mean + totalShift,
       median: result.stats.median + totalShift,
       min: result.stats.min + totalShift,

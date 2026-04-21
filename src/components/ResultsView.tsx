@@ -65,7 +65,6 @@ import {
 } from "@/lib/results/satellite";
 import {
   computeExpectedRakebackCurve,
-  recomputeStreaksFromPaths,
   shiftResultByRakeback,
   stripJackpots,
 } from "@/lib/results/trajectoryTransforms";
@@ -1698,8 +1697,8 @@ function ResultsViewImpl({
   // stay as engine output since RB reshapes those nonlinearly.
   const rbFrac = Math.max(0, (settings?.rakebackPct ?? 0) / 100);
   // Rakeback %, schedule, and repeats all feed a chain of heavy post-hoc
-  // memos below (shiftResultByRakeback on full path matrices, plus
-  // aggregateStreaks over ~1000 hi-res paths — hundreds of ms on big runs).
+  // memos below (share-curve rebuild + shifted trajectory/distribution
+  // clones on the stored chart assets).
   // Typing in the rakeback field or clicking through the buy-in / format
   // dropdown would otherwise block the keystroke on that whole chain.
   // Defer the values so the input frame commits first; React then re-runs
@@ -1743,7 +1742,6 @@ function ResultsViewImpl({
   const [rbTraj, setRbTraj] = useState<boolean>(rbFrac > 0);
   const [rbStats, setRbStats] = useState<boolean>(rbFrac > 0);
   const [rbDist, setRbDist] = useState<boolean>(rbFrac > 0);
-  const [rbStreaks, setRbStreaks] = useState<boolean>(rbFrac > 0);
   // Mystery / mystery-royale jackpot runs are a handful of samples out of
   // hundreds of thousands, but their ratio ≥ 100× mean envelope blows up
   // the distribution x-axis and the trajectory y-axis. Toggle strips them
@@ -1782,11 +1780,10 @@ function ResultsViewImpl({
     setRbTraj(on);
     setRbStats(on);
     setRbDist(on);
-    setRbStreaks(on);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [rbFrac]);
-  // One shifted variant per base + one for each chart — re-used across regions
-  // via boolean picks below. Memoing by curve identity keeps the clone cheap.
+  // Build chart-facing variants separately from stats-facing variants so chart
+  // filters like "hide jackpots" never leak into the scalar stats panels.
   const resultForCharts = useMemo(
     () => (deferredHideJackpots ? stripJackpots(result) : result),
     [result, deferredHideJackpots],
@@ -1795,49 +1792,47 @@ function ResultsViewImpl({
     () => (deferredHideJackpots && pdChart ? stripJackpots(pdChart) : pdChart),
     [pdChart, deferredHideJackpots],
   );
-  const resultNoRb = useMemo(
+  const resultChartsNoRb = useMemo(
     () =>
       rakebackCurve
         ? shiftResultByRakeback(resultForCharts, rakebackCurve, -1)
         : resultForCharts,
     [resultForCharts, rakebackCurve],
   );
-  const pdChartNoRb = useMemo(
+  const pdChartChartsNoRb = useMemo(
     () =>
       pdChartForCharts && pdRakebackCurve
         ? shiftResultByRakeback(pdChartForCharts, pdRakebackCurve, -1)
         : pdChartForCharts,
     [pdChartForCharts, pdRakebackCurve],
   );
-  const pickResult = (on: boolean) => (on ? resultForCharts : resultNoRb);
-  const pickPd = (on: boolean) => (on ? pdChartForCharts : pdChartNoRb);
-  const displayResultTraj = pickResult(rbTraj);
-  const displayPdChartTraj = pickPd(rbTraj);
-  const displayResultStats = pickResult(rbStats);
-  const displayPdChartStats = pickPd(rbStats);
-  const displayResultDist = pickResult(rbDist);
-  const displayPdChartDist = pickPd(rbDist);
-  // Streak-widget RB toggle: engine histograms (K=240 strided chord algo
-  // over ALL samples) render visibly differently from pathStreaks output
-  // (stride-2 on ~1000 hi-res paths) *even when rbShift=0*, so toggling
-  // mixed the RB effect with an algorithm/sample-size mismatch → read as
-  // "no change". Force both branches through pathStreaks so the only
-  // difference is the rbShift.
-  const resultStreaksWithRb = useMemo(() => {
-    if (!rakebackCurve) return result;
-    return recomputeStreaksFromPaths(result, null);
-  }, [result, rakebackCurve]);
-  const displayResultStreaks = rbStreaks ? resultStreaksWithRb : resultNoRb;
-  // Parallel pdChart streak variant so the compare overlay in the streaks
-  // section follows the rbStreaks toggle like the main histograms do.
-  // Cashless is RB-independent by design (see `longestCashless*` note above)
-  // and keeps using raw `pdChart` at the render site.
-  const pdChartStreaksWithRb = useMemo(() => {
-    if (!pdChart) return null;
-    if (!pdRakebackCurve) return pdChart;
-    return recomputeStreaksFromPaths(pdChart, null);
-  }, [pdChart, pdRakebackCurve]);
-  const displayPdChartStreaks = rbStreaks ? pdChartStreaksWithRb : pdChartNoRb;
+  const resultStatsNoRb = useMemo(
+    () => (rakebackCurve ? shiftResultByRakeback(result, rakebackCurve, -1) : result),
+    [result, rakebackCurve],
+  );
+  const pdChartStatsNoRb = useMemo(
+    () =>
+      pdChart && pdRakebackCurve
+        ? shiftResultByRakeback(pdChart, pdRakebackCurve, -1)
+        : pdChart,
+    [pdChart, pdRakebackCurve],
+  );
+  const pickChartResult = (on: boolean) =>
+    on ? resultForCharts : resultChartsNoRb;
+  const pickChartPd = (on: boolean) =>
+    on ? pdChartForCharts : pdChartChartsNoRb;
+  const displayResultTraj = pickChartResult(rbTraj);
+  const displayPdChartTraj = pickChartPd(rbTraj);
+  const displayResultStats = rbStats ? result : resultStatsNoRb;
+  const displayPdChartStats = rbStats ? pdChart : pdChartStatsNoRb;
+  const displayResultDist = pickChartResult(rbDist);
+  const displayPdChartDist = pickChartPd(rbDist);
+  // Keep drawdown / streak / recovery views on the engine's full-sample
+  // output. Recomputing them from stored hi-res paths would silently switch
+  // the UI from "all samples" to "~1000 saved samples" and overstate
+  // precision.
+  const displayResultStreaks = result;
+  const displayPdChartStreaks = pdChart;
 
   // Freeze the profit-dist x domain across both RB states so toggling
   // rbDist translates the bars inside a stable axis instead of auto-rescaling.
@@ -1845,65 +1840,45 @@ function ResultsViewImpl({
     if (!rakebackCurve) return undefined;
     return mergedHistogramDomain(
       result.histogram,
-      resultNoRb.histogram,
+      resultChartsNoRb.histogram,
       pdChart?.histogram,
-      pdChartNoRb?.histogram,
-    );
-  }, [rakebackCurve, result, resultNoRb, pdChart, pdChartNoRb]);
-  // Keep streak histograms on a shared domain across RB on/off states.
-  // Otherwise auto-rescaling can visually hide the RB effect even when the
-  // underlying drawdown / recovery distribution really moved.
-  const streakDrawdownXDomain = useMemo<[number, number] | undefined>(() => {
-    if (!rakebackCurve) return undefined;
-    return mergedHistogramDomain(
-      resultStreaksWithRb.drawdownHistogram,
-      resultNoRb.drawdownHistogram,
-      pdChartStreaksWithRb?.drawdownHistogram,
-      pdChartNoRb?.drawdownHistogram,
+      pdChartChartsNoRb?.histogram,
     );
   }, [
     rakebackCurve,
-    resultStreaksWithRb,
-    resultNoRb,
-    pdChartStreaksWithRb,
-    pdChartNoRb,
+    result,
+    resultChartsNoRb,
+    pdChart,
+    pdChartChartsNoRb,
   ]);
+  const streakDrawdownXDomain = useMemo<[number, number] | undefined>(
+    () =>
+      mergedHistogramDomain(
+        displayResultStreaks.drawdownHistogram,
+        displayPdChartStreaks?.drawdownHistogram,
+      ),
+    [displayResultStreaks, displayPdChartStreaks],
+  );
   const streakBreakevenXDomain = useMemo<[number, number] | undefined>(() => {
-    if (!rakebackCurve) return undefined;
     return mergedHistogramDomain(
-      resultStreaksWithRb.longestBreakevenHistogram,
-      resultNoRb.longestBreakevenHistogram,
-      pdChartStreaksWithRb?.longestBreakevenHistogram,
-      pdChartNoRb?.longestBreakevenHistogram,
+      displayResultStreaks.longestBreakevenHistogram,
+      displayPdChartStreaks?.longestBreakevenHistogram,
     );
-  }, [
-    rakebackCurve,
-    resultStreaksWithRb,
-    resultNoRb,
-    pdChartStreaksWithRb,
-    pdChartNoRb,
-  ]);
+  }, [displayResultStreaks, displayPdChartStreaks]);
   const streakRecoveryXDomain = useMemo<[number, number] | undefined>(() => {
-    if (!rakebackCurve) return undefined;
     return mergedHistogramDomain(
-      resultStreaksWithRb.recoveryHistogram,
-      resultNoRb.recoveryHistogram,
-      pdChartStreaksWithRb?.recoveryHistogram,
-      pdChartNoRb?.recoveryHistogram,
+      displayResultStreaks.recoveryHistogram,
+      displayPdChartStreaks?.recoveryHistogram,
     );
-  }, [
-    rakebackCurve,
-    resultStreaksWithRb,
-    resultNoRb,
-    pdChartStreaksWithRb,
-    pdChartNoRb,
-  ]);
+  }, [displayResultStreaks, displayPdChartStreaks]);
 
-  const s = displayResultStats.stats;
-  const pdStats = displayPdChartStats?.stats;
+  const shiftedStats = displayResultStats.stats;
+  const shiftedPdStats = displayPdChartStats?.stats;
+  const s = result.stats;
+  const pdStats = pdChart?.stats;
   const pdExpectedProfit = displayPdChartStats?.expectedProfit;
   const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
-  const roi = s.mean / displayResultStats.totalBuyIn;
+  const roi = shiftedStats.mean / displayResultStats.totalBuyIn;
   const modelPreset = modelPresetId
     ? STANDARD_PRESETS.find((p) => p.id === modelPresetId)
     : undefined;
@@ -1980,9 +1955,9 @@ function ResultsViewImpl({
   // with memo(TrajectoryCard) this skips reconciliation for the whole card.
   const trajectoryToolbar = useMemo(
     () => (
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+      <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-[color:var(--color-border)]/80 bg-[color:var(--color-bg-elev)]/55 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+          <div className="rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/70 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[color:var(--color-fg-dim)]">
             {t("lineStyle.label")}
           </div>
           <LineStylePresetPicker
@@ -1997,7 +1972,7 @@ function ResultsViewImpl({
           />
           <RefLineCustomizer value={refLines} onChange={setRefLines} t={t} />
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-[color:var(--color-border)]/80 bg-[color:var(--color-bg-elev)]/55 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
           {advanced && (
             <>
               <TrimPctSlider
@@ -2012,7 +1987,7 @@ function ResultsViewImpl({
               />
             </>
           )}
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+          <div className="rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/70 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[color:var(--color-fg-dim)]">
             {t("runs.label")}
           </div>
           <input
@@ -2022,7 +1997,7 @@ function ResultsViewImpl({
             step={1}
             value={visibleRuns}
             onChange={(e) => setVisibleRuns(Number(e.target.value))}
-            className="h-1 w-28 cursor-pointer accent-[color:var(--color-accent)]"
+            className="h-1.5 w-28 cursor-pointer accent-[color:var(--color-accent)]"
             aria-label={t("runs.label")}
           />
           {advanced ? (
@@ -2038,7 +2013,7 @@ function ResultsViewImpl({
                   if (!Number.isFinite(raw)) return;
                   setVisibleRuns(Math.max(0, Math.min(maxRuns, Math.round(raw))));
                 }}
-                className="w-14 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+                className="w-14 rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/75 px-1 py-1 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
                 aria-label={t("runs.label")}
                 title={`max ${maxRuns} (captured paths)`}
               />
@@ -2047,7 +2022,7 @@ function ResultsViewImpl({
               </span>
             </>
           ) : (
-            <span className="min-w-[3.5rem] whitespace-nowrap text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
+            <span className="min-w-[4.5rem] rounded-sm border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/55 px-2 py-1 text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg-muted)]">
               {visibleRuns}/{maxRuns}
             </span>
           )}
@@ -2264,7 +2239,7 @@ function ResultsViewImpl({
         <div className="flex items-center justify-end -mb-1">
           <label
             className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
-            title={t("chart.trajectory.withRakeback.title")}
+            title={t("chart.rakeback.profitOnly.title")}
           >
             <input
               type="checkbox"
@@ -2278,6 +2253,11 @@ function ResultsViewImpl({
           </label>
         </div>
       )}
+      {rakebackCurve && (
+        <div className="-mt-1 mb-1 text-right text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("chart.rakeback.fullSampleNote")}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <BigStat
@@ -2285,12 +2265,12 @@ function ResultsViewImpl({
           label={t("stat.expectedProfit")}
           value={money(displayResultStats.expectedProfit)}
           sub={t("stat.expectedProfit.sub")
-            .replace("{min}", money(s.min))
-            .replace("{max}", money(s.max))}
+            .replace("{min}", money(shiftedStats.min))
+            .replace("{max}", money(shiftedStats.max))}
           tip={t("stat.expectedProfit.tip")
-            .replace("{mean}", money(s.mean))
+            .replace("{mean}", money(shiftedStats.mean))
             .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
-            .replace("{median}", money(s.median))}
+            .replace("{median}", money(shiftedStats.median))}
           tone={displayResultStats.expectedProfit >= 0 ? "pos" : "neg"}
           pdValue={pdExpectedProfit != null ? money(pdExpectedProfit) : undefined}
           pdDelta={
@@ -2303,14 +2283,18 @@ function ResultsViewImpl({
         <BigStat
           suit="spade"
           label={t("stat.probProfit")}
-          value={pct(s.probProfit)}
+          value={pct(shiftedStats.probProfit)}
           sub={t("stat.probProfit.sub").replace(
             "{n}",
-            intFmt(s.tournamentsFor95ROI),
+            intFmt(shiftedStats.tournamentsFor95ROI),
           )}
           tip={t("stat.tFor95.sub")}
-          pdValue={pdStats ? pct(pdStats.probProfit) : undefined}
-          pdDelta={pdStats ? pctDelta(s.probProfit, pdStats.probProfit) : null}
+          pdValue={shiftedPdStats ? pct(shiftedPdStats.probProfit) : undefined}
+          pdDelta={
+            shiftedPdStats
+              ? pctDelta(shiftedStats.probProfit, shiftedPdStats.probProfit)
+              : null
+          }
           pdLabel={pdBadgeLabel}
         />
         <BigStat
@@ -2522,22 +2506,23 @@ function ResultsViewImpl({
         <div className="flex items-center justify-end -mb-1">
           <label
             className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
-            title={t("chart.trajectory.withRakeback.title")}
+            title={t("chart.rakeback.profitOnly.title")}
           >
             <input
               type="checkbox"
               checked={rbDist}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setRbDist(checked);
-                setRbStreaks(checked);
-              }}
+              onChange={(e) => setRbDist(e.target.checked)}
               className="h-3.5 w-3.5 accent-lime-400"
             />
             <span className="uppercase tracking-wider text-lime-400/80">
               {t("chart.trajectory.withRakeback")}
             </span>
           </label>
+        </div>
+      )}
+      {rakebackCurve && (
+        <div className="-mt-3 mb-1 text-right text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("chart.rakeback.fullSampleNote")}
         </div>
       )}
 
@@ -3081,25 +3066,44 @@ const TrajectoryCard = memo(function TrajectoryCard({
     { key: "aggWorst", labelKey: "chart.traj.extreme.aggWorst" },
   ];
   const extremesToggles = (
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[color:var(--color-fg-muted)]">
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
       {extremeRows.map(({ key, labelKey }) => {
         const s = extremeStyles[key];
         const hex = /^#([0-9a-f]{3}){1,2}$/i.test(s.color) ? s.color : "#22c55e";
         return (
-          <label key={key} className="flex cursor-pointer items-center gap-1.5">
+          <label
+            key={key}
+            className="flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors"
+            style={{
+              borderColor: s.enabled
+                ? `${hex}66`
+                : "color-mix(in srgb, var(--color-border) 88%, transparent)",
+              backgroundColor: s.enabled
+                ? "color-mix(in srgb, var(--color-bg-elev) 82%, transparent)"
+                : "color-mix(in srgb, var(--color-bg) 62%, transparent)",
+              color: s.enabled
+                ? "var(--color-fg)"
+                : "var(--color-fg-muted)",
+            }}
+          >
             <input
               type="checkbox"
               checked={s.enabled}
               onChange={(e) => setExtremeKey(key, { enabled: e.target.checked })}
-              className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
+              className="h-3.5 w-3.5 rounded-sm accent-[color:var(--color-accent)]"
             />
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-sm border border-white/10"
+              style={{ backgroundColor: hex }}
+              aria-hidden
+            />
+            <span className="whitespace-nowrap">{t(labelKey)}</span>
             <DebouncedColorInput
               value={hex}
               disabled={!s.enabled}
               onChange={(v) => setExtremeKey(key, { color: v })}
               aria-label={t(labelKey)}
             />
-            <span>{t(labelKey)}</span>
           </label>
         );
       })}
@@ -3444,8 +3448,11 @@ function TrimPctSlider({
   onChange: (v: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-1" title={label}>
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+    <div
+      className="flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/55 px-2 py-1"
+      title={label}
+    >
+      <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[color:var(--color-fg-dim)]">
         {label}
       </span>
       <input
@@ -3455,10 +3462,10 @@ function TrimPctSlider({
         step={0.5}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 w-16 cursor-pointer accent-[color:var(--color-accent)]"
+        className="h-1.5 w-16 cursor-pointer accent-[color:var(--color-accent)]"
         aria-label={label}
       />
-      <span className="min-w-[2.25rem] whitespace-nowrap text-right font-mono text-[10px] tabular-nums text-[color:var(--color-fg-muted)]">
+      <span className="min-w-[2.5rem] whitespace-nowrap text-right font-mono text-[10px] tabular-nums text-[color:var(--color-fg-muted)]">
         {value.toFixed(1)}%
       </span>
     </div>
@@ -3477,7 +3484,7 @@ function RunModeSlider({
   const modes: RunMode[] = ["worst", "random", "best"];
   return (
     <div
-      className="inline-flex max-w-full overflow-hidden rounded-md border border-[color:var(--color-border)]"
+      className="inline-flex max-w-full overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 shadow-sm"
       role="radiogroup"
       aria-label={t("runs.mode.title")}
       title={t("runs.mode.title")}
@@ -3492,10 +3499,10 @@ function RunModeSlider({
             aria-checked={active}
             onClick={() => onChange(m)}
             className={
-              "px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors " +
+              "px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors " +
               (active
                 ? "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"
-                : "bg-[color:var(--color-bg-elev)] text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-bg-elev-2)] hover:text-[color:var(--color-fg)]") +
+                : "bg-transparent text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-bg-elev-2)] hover:text-[color:var(--color-fg)]") +
               (i > 0 ? " border-l border-[color:var(--color-border)]" : "")
             }
           >
@@ -3518,11 +3525,11 @@ function LineStylePresetPicker({
   const active = LINE_STYLE_PRESETS[value];
   const activeMeta = LINE_STYLE_PRESET_META[value];
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as LineStylePresetId)}
-        className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] outline-none hover:border-[color:var(--color-accent)] focus:border-[color:var(--color-accent)]"
+        className="min-w-[8.5rem] rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/85 px-3 py-1 text-[11px] font-semibold text-[color:var(--color-fg)] shadow-sm outline-none hover:border-[color:var(--color-accent)] focus:border-[color:var(--color-accent)]"
         title={t(activeMeta.descriptionKey)}
       >
         {LINE_STYLE_PRESET_ORDER.map((id) => (
@@ -3533,33 +3540,35 @@ function LineStylePresetPicker({
       </select>
       {/* Mini preview: mean stroke + dashed EV stroke so you can see the
           style without running a sim. */}
-      <svg
-        width="42"
-        height="14"
-        viewBox="0 0 42 14"
-        aria-hidden
-        className="shrink-0"
-      >
-        <line
-          x1="1"
-          y1="9"
-          x2="41"
-          y2="5"
-          stroke={active.mean.stroke}
-          strokeWidth={active.mean.width}
-          strokeLinecap="round"
-        />
-        <line
-          x1="1"
-          y1="11"
-          x2="41"
-          y2="8"
-          stroke={active.ev.stroke}
-          strokeWidth={active.ev.width}
-          strokeDasharray={active.ev.dash?.join(" ") ?? "0"}
-          strokeLinecap="round"
-        />
-      </svg>
+      <span className="inline-flex shrink-0 items-center rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/70 px-2 py-1 shadow-sm">
+        <svg
+          width="42"
+          height="14"
+          viewBox="0 0 42 14"
+          aria-hidden
+          className="shrink-0"
+        >
+          <line
+            x1="1"
+            y1="9"
+            x2="41"
+            y2="5"
+            stroke={active.mean.stroke}
+            strokeWidth={active.mean.width}
+            strokeLinecap="round"
+          />
+          <line
+            x1="1"
+            y1="11"
+            x2="41"
+            y2="8"
+            stroke={active.ev.stroke}
+            strokeWidth={active.ev.width}
+            strokeDasharray={active.ev.dash?.join(" ") ?? "0"}
+            strokeLinecap="round"
+          />
+        </svg>
+      </span>
     </div>
   );
 }
@@ -3613,7 +3622,7 @@ function LineStyleCustomizer({
 
   return (
     <details ref={detailsRef} className="group relative">
-      <summary className="cursor-pointer select-none rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)]">
+      <summary className="cursor-pointer select-none rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/85 px-3 py-1 text-[11px] font-semibold text-[color:var(--color-fg)] shadow-sm hover:border-[color:var(--color-accent)]">
         {t("lineStyle.customize")}
       </summary>
       <div
@@ -3805,7 +3814,7 @@ function RefLineCustomizer({
 
   return (
     <details ref={detailsRef} className="group relative">
-      <summary className="cursor-pointer select-none rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)]">
+      <summary className="cursor-pointer select-none rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/85 px-3 py-1 text-[11px] font-semibold text-[color:var(--color-fg)] shadow-sm hover:border-[color:var(--color-accent)]">
         {t("refLines.label")}
       </summary>
       <div
@@ -3921,7 +3930,7 @@ function UnitToggle({
     </button>
   );
   return (
-    <div className="inline-flex shrink-0 items-stretch overflow-hidden rounded border border-[color:var(--color-border)]">
+    <div className="inline-flex shrink-0 items-stretch overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 shadow-sm">
       {btn("money", t("unit.money"))}
       {btn("abi", t("unit.abi"))}
     </div>
@@ -4296,8 +4305,6 @@ function SettingsDumpCard({
     ["bountyFraction", `${((r.bountyFraction ?? 0) * 100).toFixed(0)}%`],
     ["payoutStructure", r.payoutStructure],
     ["assumed ROI", `${(r.roi * 100).toFixed(1)}%`],
-    ["lateRegMult", `${r.lateRegMultiplier ?? 1}`],
-    ["maxEntries", `${r.maxEntries ?? 1}`],
     ["—", "—"],
     ["finishModel", settings.finishModelId],
     ["α (override)", settings.alphaOverride == null ? "auto" : settings.alphaOverride.toFixed(3)],
@@ -4782,7 +4789,7 @@ function BigStat({
         ? "var(--color-danger)"
         : SUIT_COLOR[suit];
   return (
-    <div className="relative flex flex-col gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 px-4 py-4">
+    <div className="relative flex flex-col gap-1.5 overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
       <span
         className="absolute left-0 top-0 h-full w-[3px]"
         style={{ background: SUIT_COLOR[suit] }}
@@ -4801,16 +4808,12 @@ function BigStat({
         {tip && <InfoTooltip content={tip} />}
       </div>
       <div
-        className="font-mono text-[26px] font-bold leading-none tabular-nums"
+        className="font-mono text-[26px] font-bold leading-none tabular-nums sm:text-[28px]"
         style={{ color: toneColor }}
       >
         {value}
       </div>
-      {sub && (
-        <div className="text-[11px] text-[color:var(--color-fg-dim)]">
-          {sub}
-        </div>
-      )}
+      {sub && <StatSubline text={sub} />}
       {pdValue != null && (
         <PdCompareRow
           pdValue={pdValue}
@@ -4819,6 +4822,30 @@ function BigStat({
           pdLabel={pdLabel}
         />
       )}
+    </div>
+  );
+}
+
+function StatSubline({ text }: { text: string }) {
+  const colonIdx = text.indexOf(":");
+  const hasStructuredRange = colonIdx > 0 && text.includes("→");
+  if (hasStructuredRange) {
+    const label = text.slice(0, colonIdx).trim();
+    const value = text.slice(colonIdx + 1).trim();
+    return (
+      <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/45 px-2.5 py-1 text-[11px] text-[color:var(--color-fg-dim)]">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
+          {label}
+        </span>
+        <span className="truncate font-mono tabular-nums text-[color:var(--color-fg)]">
+          {value}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+      {text}
     </div>
   );
 }
@@ -5056,18 +5083,18 @@ function MiniStat({
         : "var(--color-fg)";
   return (
     <div
-      className="flex flex-col gap-0.5 border-l-2 border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/50 px-3 py-2.5"
+      className="flex flex-col gap-1.5 rounded-md border border-l-2 border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/55 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
       style={{ borderLeftColor: SUIT_COLOR[suit] }}
     >
       <div
-        className="eyebrow flex items-center gap-1 whitespace-nowrap"
+        className="eyebrow flex min-w-0 items-center gap-1"
         style={{ color: SUIT_COLOR[suit] }}
       >
         {label}
         {tip && <InfoTooltip content={tip} />}
       </div>
       <div
-        className="whitespace-nowrap font-mono text-[13px] font-semibold tabular-nums"
+        className="whitespace-nowrap font-mono text-[14px] font-semibold leading-none tabular-nums"
         style={{ color: toneColor }}
       >
         {value}
@@ -5125,21 +5152,36 @@ function PdCompareRow({
     const precisionPct = Math.max(1, Math.round(Math.abs(delta) * 100));
     return (
       <div
-        className="mt-1 flex items-center gap-1.5 rounded-sm border-l-2 px-2 py-1 font-mono text-[10px] tabular-nums"
+        className="mt-1.5 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
         style={{
-          borderLeftColor: "rgba(232,121,249,0.5)",
-          backgroundColor: "rgba(232,121,249,0.04)",
-          color: "var(--color-fg-dim)",
+          borderColor: "rgba(232,121,249,0.18)",
+          backgroundColor: "rgba(255,255,255,0.015)",
         }}
       >
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="rounded-sm px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.16em]"
+            style={{
+              color: "#f0abfc",
+              backgroundColor: "rgba(232,121,249,0.14)",
+            }}
+          >
+            {label}
+          </span>
+          <span className="truncate text-[color:var(--color-fg-dim)]">
+            {t("pd.match")}
+          </span>
+        </div>
         <span
-          className="text-[9px] font-bold uppercase tracking-[0.15em]"
-          style={{ color: "#e879f9" }}
+          className="shrink-0 rounded-sm border px-1.5 py-0.5 font-mono font-semibold tabular-nums"
+          style={{
+            color: "#f0abfc",
+            borderColor: "rgba(232,121,249,0.32)",
+            backgroundColor: "rgba(232,121,249,0.1)",
+          }}
         >
-          {label}
+          ±{precisionPct}%
         </span>
-        <span className="truncate">{t("pd.match")}</span>
-        <span className="shrink-0 opacity-70">· ±{precisionPct}%</span>
       </div>
     );
   }
@@ -5159,35 +5201,48 @@ function PdCompareRow({
       : sev === "mild"
         ? "var(--color-accent-strong)"
         : "rgba(232,121,249,0.75)";
-  const deltaWeight =
+  const deltaBorder =
     sev === "strong"
-      ? "font-bold"
+      ? "rgba(248,113,113,0.4)"
       : sev === "mild"
-        ? "font-semibold"
-        : "";
+        ? "rgba(251,191,36,0.4)"
+        : "rgba(232,121,249,0.35)";
+  const deltaBg =
+    sev === "strong"
+      ? "rgba(248,113,113,0.12)"
+      : sev === "mild"
+        ? "rgba(251,191,36,0.12)"
+        : "rgba(232,121,249,0.1)";
   return (
     <div
-      className="mt-1 flex items-center justify-between gap-2 rounded-sm border-l-2 px-2 py-1 font-mono text-[10px] tabular-nums"
+      className="mt-1.5 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
       style={{
-        borderLeftColor: "#e879f9",
-        backgroundColor: "rgba(232,121,249,0.06)",
+        borderColor: "rgba(232,121,249,0.18)",
+        backgroundColor: "rgba(255,255,255,0.015)",
       }}
     >
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-2">
         <span
-          className="text-[9px] font-bold uppercase tracking-[0.15em]"
-          style={{ color: "#e879f9" }}
+          className="rounded-sm px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.16em]"
+          style={{
+            color: "#f0abfc",
+            backgroundColor: "rgba(232,121,249,0.14)",
+          }}
         >
           {label}
         </span>
-        <span className="truncate text-[color:var(--color-fg)]">
+        <span className="truncate font-mono tabular-nums text-[color:var(--color-fg)]">
           {pdValue}
         </span>
       </div>
       {delta != null && (
         <span
-          className={`shrink-0 ${deltaWeight}`}
-          style={{ color: deltaColor }}
+          className="shrink-0 rounded-sm border px-1.5 py-0.5 font-mono font-semibold tabular-nums"
+          style={{
+            color: deltaColor,
+            borderColor: deltaBorder,
+            backgroundColor: deltaBg,
+          }}
           aria-label={`delta vs PD ${pctStr}`}
         >
           {pctStr}
@@ -5213,7 +5268,7 @@ function StatGroup({
         </span>
         <div className="h-px flex-1 bg-[color:var(--color-border)]" />
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))] md:grid-cols-[repeat(3,minmax(0,1fr))] lg:grid-cols-[repeat(5,minmax(0,1fr))]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))] md:grid-cols-[repeat(3,minmax(0,1fr))] xl:grid-cols-[repeat(4,minmax(0,1fr))] 2xl:grid-cols-[repeat(5,minmax(0,1fr))]">
         {children}
       </div>
     </div>
@@ -5270,7 +5325,7 @@ function DebouncedColorInput({
         }
         if (latestRef.current !== value) onChangeRef.current(latestRef.current);
       }}
-      className="h-5 w-6 cursor-pointer rounded border border-[color:var(--color-border)] bg-transparent p-0 disabled:opacity-40"
+      className="h-5 w-5 cursor-pointer rounded-[5px] border border-[color:var(--color-border)] bg-transparent p-0 shadow-sm disabled:opacity-40"
       {...rest}
     />
   );
