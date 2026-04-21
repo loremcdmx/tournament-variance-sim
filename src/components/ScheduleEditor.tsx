@@ -232,7 +232,7 @@ const PAYOUT_IDS: PayoutStructureId[] = [
   "winner-takes-all",
 ];
 
-function parseImportCSV(raw: string): {
+export function parseImportCSV(raw: string): {
   rows: TournamentRow[];
   errors: string[];
 } {
@@ -259,7 +259,15 @@ function parseImportCSV(raw: string): {
       return;
     }
     const roiPct = roiStr ? parseFloat(roiStr) : 0;
-    const count = countStr ? Math.max(1, Math.floor(parseFloat(countStr))) : 1;
+    let count = 1;
+    if (countStr) {
+      const parsedCount = parseFloat(countStr);
+      if (!Number.isFinite(parsedCount) || parsedCount < 1) {
+        errors.push(`line ${i + 1}: count must be >= 1`);
+        return;
+      }
+      count = Math.max(1, Math.floor(parsedCount));
+    }
     const payout = (
       payoutStr && PAYOUT_IDS.includes(payoutStr as PayoutStructureId)
         ? payoutStr
