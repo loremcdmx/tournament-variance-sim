@@ -232,6 +232,7 @@ const PAYOUT_IDS: PayoutStructureId[] = [
   "winner-takes-all",
 ];
 
+const IMPORT_PLAYERS_MAX = 1_000_000;
 const IMPORT_COUNT_MAX = 100_000;
 
 export function parseImportCSV(raw: string): {
@@ -251,8 +252,8 @@ export function parseImportCSV(raw: string): {
     }
     const [label, playersStr, buyInStr, roiStr, countStr, payoutStr] = cells;
     const players = parseInt(playersStr, 10);
-    if (!isFinite(players) || players < 2) {
-      errors.push(`line ${i + 1}: players must be ≥ 2`);
+    if (!isFinite(players) || players < 2 || players > IMPORT_PLAYERS_MAX) {
+      errors.push(`line ${i + 1}: players must be 2..${IMPORT_PLAYERS_MAX}`);
       return;
     }
     const parsed = parseBuyIn(buyInStr ?? "", 0.1);

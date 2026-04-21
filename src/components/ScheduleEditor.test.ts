@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { parseImportCSV } from "./ScheduleEditor";
 
 describe("parseImportCSV", () => {
+  it("rejects players above the editor max instead of importing giant fields", () => {
+    const parsed = parseImportCSV(
+      "Huge field, 20000000, 50+5, 10, 1, mtt-standard",
+    );
+
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.errors).toEqual(["line 1: players must be 2..1000000"]);
+  });
+
   it("rejects non-numeric count cells instead of importing NaN rows", () => {
     const parsed = parseImportCSV(
       "Bad count, 500, 50+5, 10, abc, mtt-standard",

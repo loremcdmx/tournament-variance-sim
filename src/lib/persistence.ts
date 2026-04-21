@@ -64,6 +64,8 @@ export interface PersistedState {
 }
 
 const LS_KEY = "tvs:state";
+const PERSISTED_ROW_PLAYERS_MIN = 2;
+const PERSISTED_ROW_PLAYERS_MAX = 1_000_000;
 const PERSISTED_ROW_COUNT_MAX = 100_000;
 const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
 const PERSISTED_SAMPLES_MIN = 100;
@@ -72,6 +74,10 @@ const PERSISTED_BANKROLL_MAX = 1_000_000_000;
 
 function clampPersistedCount(count: number): number {
   return Math.min(PERSISTED_ROW_COUNT_MAX, Math.max(1, count));
+}
+
+function clampPersistedPlayers(players: number): number {
+  return Math.min(PERSISTED_ROW_PLAYERS_MAX, Math.max(PERSISTED_ROW_PLAYERS_MIN, players));
 }
 
 function clampPersistedInt(value: number, min: number, max: number): number {
@@ -118,10 +124,11 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
 function normalizePersistedState(state: PersistedState): PersistedState {
   let changed = false;
   const schedule = state.schedule.map((row) => {
+    const nextPlayers = clampPersistedPlayers(row.players);
     const nextCount = clampPersistedCount(row.count);
-    if (nextCount === row.count) return row;
+    if (nextPlayers === row.players && nextCount === row.count) return row;
     changed = true;
-    return { ...row, count: nextCount };
+    return { ...row, players: nextPlayers, count: nextCount };
   });
   const controls = normalizePersistedControls(state.controls);
   if (controls !== state.controls) changed = true;

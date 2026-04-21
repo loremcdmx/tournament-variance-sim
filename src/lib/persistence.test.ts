@@ -55,6 +55,18 @@ describe("persistence validation", () => {
     expect(state?.controls.samples).toBe(1_000_000);
   });
 
+  it("clamps oversized persisted field sizes back to the editor max", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [{ ...row, players: 20_000_000 }],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.players).toBe(1_000_000);
+  });
+
   it("drops non-numeric persisted run controls so defaults can win on hydration", () => {
     const state = loadLocalFromPayload({
       v: 1,
@@ -129,6 +141,30 @@ describe("persistence validation", () => {
     const presets = loadUserPresets();
     expect(presets).toHaveLength(1);
     expect(presets[0]?.state.schedule[0]?.count).toBe(100_000);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("normalizes oversized field sizes inside saved user presets", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () =>
+        JSON.stringify([
+          {
+            id: "big-field",
+            name: "Big field",
+            createdAt: 1,
+            state: {
+              v: 1,
+              schedule: [{ ...row, players: 20_000_000 }],
+              controls,
+            },
+          },
+        ]),
+    });
+
+    const presets = loadUserPresets();
+    expect(presets).toHaveLength(1);
+    expect(presets[0]?.state.schedule[0]?.players).toBe(1_000_000);
 
     vi.unstubAllGlobals();
   });
