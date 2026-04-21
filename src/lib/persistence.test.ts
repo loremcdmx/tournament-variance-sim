@@ -83,6 +83,44 @@ describe("persistence validation", () => {
     expect(state?.schedule[1]?.rake).toBe(0);
   });
 
+  it("drops malformed persisted custom payout arrays instead of keeping a fake zero-payout custom row", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            payoutStructure: "custom",
+            customPayouts: ["oops"],
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.payoutStructure).toBe("mtt-standard");
+    expect(state?.schedule[0]?.customPayouts).toBeUndefined();
+  });
+
+  it("drops zero-sum persisted custom payout arrays instead of simulating a no-prize tournament", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            payoutStructure: "custom",
+            customPayouts: [0, 0, 0],
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.payoutStructure).toBe("mtt-standard");
+    expect(state?.schedule[0]?.customPayouts).toBeUndefined();
+  });
+
   it("clamps persisted field-variability ranges and bucket counts back to editor limits", () => {
     const state = decodeState(
       encoded({

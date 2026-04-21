@@ -87,6 +87,27 @@ function clampPersistedRake(rake: number): number {
   return Math.min(PERSISTED_ROW_RAKE_MAX, Math.max(PERSISTED_ROW_RAKE_MIN, rake));
 }
 
+function normalizePersistedCustomPayouts(
+  row: TournamentRow,
+): Pick<TournamentRow, "payoutStructure" | "customPayouts"> {
+  const raw = row.customPayouts;
+  if (!Array.isArray(raw)) {
+    return row.payoutStructure === "custom"
+      ? { payoutStructure: "mtt-standard", customPayouts: undefined }
+      : { payoutStructure: row.payoutStructure, customPayouts: undefined };
+  }
+  if (
+    raw.length === 0 ||
+    !raw.every((value) => isFiniteNumber(value) && value >= 0) ||
+    !(raw.reduce((sum, value) => sum + value, 0) > 0)
+  ) {
+    return row.payoutStructure === "custom"
+      ? { payoutStructure: "mtt-standard", customPayouts: undefined }
+      : { payoutStructure: row.payoutStructure, customPayouts: undefined };
+  }
+  return { payoutStructure: row.payoutStructure, customPayouts: raw };
+}
+
 function normalizePersistedFieldVariability(
   fieldVariability: TournamentRow["fieldVariability"],
 ): TournamentRow["fieldVariability"] | undefined {
@@ -160,6 +181,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
   const schedule = state.schedule.map((row) => {
     const nextPlayers = clampPersistedPlayers(row.players);
     const nextRake = clampPersistedRake(row.rake);
+    const nextCustom = normalizePersistedCustomPayouts(row);
     const nextFieldVariability = normalizePersistedFieldVariability(
       row.fieldVariability,
     );
@@ -167,6 +189,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     if (
       nextPlayers === row.players &&
       nextRake === row.rake &&
+      nextCustom.payoutStructure === row.payoutStructure &&
+      nextCustom.customPayouts === row.customPayouts &&
       nextCount === row.count &&
       nextFieldVariability === row.fieldVariability
     ) {
@@ -177,6 +201,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       ...row,
       players: nextPlayers,
       rake: nextRake,
+      payoutStructure: nextCustom.payoutStructure,
+      customPayouts: nextCustom.customPayouts,
       fieldVariability: nextFieldVariability,
       count: nextCount,
     };
