@@ -75,6 +75,7 @@ export interface ExactBreakdownRow {
 
 export interface ExactBreakdown {
   perRow: ExactBreakdownRow[];
+  avgField: number;
   sigmaEff: number;
   sigmaEffLo: number;
   sigmaEffHi: number;
@@ -84,6 +85,12 @@ export interface ExactBreakdownOptions {
   finishModel?: SimulationInput["finishModel"];
   calibrationMode?: CalibrationMode;
   rakebackFracOfRake?: number;
+}
+
+export interface SigmaBand {
+  s: number;
+  lo: number;
+  hi: number;
 }
 
 export const TARGETS = [
@@ -218,11 +225,19 @@ export function buildExactBreakdown(
     (a, r) => a + r.varContribution,
     0,
   );
+  const avgField =
+    analytic.tournamentsPerPass > 0
+      ? analytic.perRow.reduce(
+          (acc, row) => acc + row.fieldAvg * row.countShare,
+          0,
+        )
+      : 0;
   return {
     perRow: perRowWithoutShare.map((r) => ({
       ...r,
       varShare: totalVar > 0 ? r.varContribution / totalVar : 0,
     })),
+    avgField,
     sigmaEff: analytic.sigmaRoiPerTourney,
     sigmaEffLo: analytic.sigmaRoiPerTourney,
     sigmaEffHi: analytic.sigmaRoiPerTourney,
@@ -234,15 +249,9 @@ export function isRoiControlActive(
   mode: "avg" | "exact",
   mix: MixTuple,
 ): boolean {
-  if (mode === "exact") return false;
-  if (format === "pko" || format === "mystery" || format === "mystery-royale") {
-    return true;
-  }
-  if (format === "mix") {
-    const [, pkoShare, mysteryShare] = mix;
-    return pkoShare > 1e-9 || mysteryShare > 1e-9;
-  }
-  return false;
+  void format;
+  void mix;
+  return mode !== "exact";
 }
 
 export function computeConvergenceRows(input: {
@@ -253,22 +262,26 @@ export function computeConvergenceRows(input: {
   format: ConvergenceFormat;
   rakePct: number;
   exactBreakdown?: ExactBreakdown | null;
+  sigmaOverrides?: Partial<Record<RowFormat, SigmaBand>>;
 }): ConvergenceTableRow[] {
-  const { afs, z, roi, mix, format, rakePct, exactBreakdown } = input;
+  const { afs, z, roi, mix, format, rakePct, exactBreakdown, sigmaOverrides } =
+    input;
   const fitRake =
     format === "mystery-royale" ? FIT_RAKE_BY_FORMAT["mystery-royale"] : 0.10;
   const rakeScale = (1 + fitRake) / (1 + rakePct / 100);
-  const sigmaFor = (
+  const sigmaForFitBand = (
     coef: SigmaRoiFit,
-  ): { s: number; lo: number; hi: number } => {
+  ): SigmaBand => {
     const s = sigmaForFit(coef, afs, roi, rakeScale);
     return { s, lo: s * (1 - coef.resid), hi: s * (1 + coef.resid) };
   };
+  const sigmaFor = (rowFormat: RowFormat, coef: SigmaRoiFit): SigmaBand =>
+    sigmaOverrides?.[rowFormat] ?? sigmaForFitBand(coef);
 
-  const f = sigmaFor(SIGMA_ROI_FREEZE);
-  const p = sigmaFor(SIGMA_ROI_PKO);
-  const m = sigmaFor(SIGMA_ROI_MYSTERY);
-  const mr = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE);
+  const f = sigmaFor("freeze", SIGMA_ROI_FREEZE);
+  const p = sigmaFor("pko", SIGMA_ROI_PKO);
+  const m = sigmaFor("mystery", SIGMA_ROI_MYSTERY);
+  const mr = sigmaFor("mystery-royale", SIGMA_ROI_MYSTERY_ROYALE);
   const [fFreeze, fPko, fMystery] = mix;
   const pick = (key: "s" | "lo" | "hi"): number =>
     format === "exact" && exactBreakdown
@@ -294,11 +307,15 @@ export function computeConvergenceRows(input: {
   const sigmaRoi = pick("s");
   const sigmaRoiLo = pick("lo");
   const sigmaRoiHi = pick("hi");
+  const fieldBase =
+    format === "exact" && exactBreakdown
+      ? exactBreakdown.avgField
+      : afs;
   return TARGETS.map((target) => {
     const k = Math.ceil(Math.pow((z * sigmaRoi) / target, 2));
     const kLo = Math.ceil(Math.pow((z * sigmaRoiLo) / target, 2));
     const kHi = Math.ceil(Math.pow((z * sigmaRoiHi) / target, 2));
-    const invAfs = 1 / Math.max(1, afs);
+    const invAfs = 1 / Math.max(1, fieldBase);
     return {
       targetPct: target,
       tourneys: k,

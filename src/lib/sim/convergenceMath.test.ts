@@ -62,18 +62,18 @@ describe("convergence math", () => {
     });
   });
 
-  it("hides ROI control when the selected fit is ROI-invariant", () => {
-    expect(isRoiControlActive("freeze", "avg", [1, 0, 0])).toBe(false);
-    expect(isRoiControlActive("mix", "avg", [1, 0, 0])).toBe(false);
+  it("hides ROI control only in exact mode", () => {
     expect(isRoiControlActive("exact", "exact", [0, 1, 0])).toBe(false);
   });
 
-  it("keeps ROI control when bounty formats can move the table", () => {
+  it("keeps ROI control for every averaged mode, including freeze", () => {
+    expect(isRoiControlActive("freeze", "avg", [1, 0, 0])).toBe(true);
     expect(isRoiControlActive("pko", "avg", [0, 1, 0])).toBe(true);
     expect(isRoiControlActive("mystery", "avg", [0, 0, 1])).toBe(true);
     expect(isRoiControlActive("mystery-royale", "avg", [1, 0, 0])).toBe(
       true,
     );
+    expect(isRoiControlActive("mix", "avg", [1, 0, 0])).toBe(true);
     expect(isRoiControlActive("mix", "avg", [0.99, 0.01, 0])).toBe(true);
     expect(isRoiControlActive("mix", "avg", [0.99, 0, 0.01])).toBe(true);
   });
@@ -136,6 +136,58 @@ describe("convergence math", () => {
     expect(exactBreakdown).not.toBeNull();
     expect(kFor({ format: "exact", roi: -0.3, exactBreakdown })).toBe(
       kFor({ format: "exact", roi: 1.0, exactBreakdown }),
+    );
+  });
+
+  it("freeze averaged mode can use runtime sigma that reacts to ROI", () => {
+    const mkFreeze = (roi: number) =>
+      buildExactBreakdown([
+        {
+          id: "freeze",
+          label: "Freeze",
+          players: 1000,
+          buyIn: 10,
+          rake: 0.1,
+          roi,
+          payoutStructure: "mtt-standard",
+          gameType: "freezeout",
+          count: 1,
+        },
+      ]);
+    const low = mkFreeze(-0.2);
+    const high = mkFreeze(0.5);
+    expect(low).not.toBeNull();
+    expect(high).not.toBeNull();
+
+    const lowRows = computeConvergenceRows({
+      afs: 1000,
+      z: z95,
+      roi: -0.2,
+      mix: [1, 0, 0],
+      format: "freeze",
+      rakePct: 10,
+      sigmaOverrides: {
+        freeze: { s: low!.sigmaEff, lo: low!.sigmaEff, hi: low!.sigmaEff },
+      },
+    });
+    const highRows = computeConvergenceRows({
+      afs: 1000,
+      z: z95,
+      roi: 0.5,
+      mix: [1, 0, 0],
+      format: "freeze",
+      rakePct: 10,
+      sigmaOverrides: {
+        freeze: {
+          s: high!.sigmaEff,
+          lo: high!.sigmaEff,
+          hi: high!.sigmaEff,
+        },
+      },
+    });
+
+    expect(highRows[targetRow].tourneys).toBeGreaterThan(
+      lowRows[targetRow].tourneys,
     );
   });
 
@@ -238,6 +290,56 @@ describe("convergence math", () => {
     expect(standard).not.toBeNull();
     expect(topHeavy).not.toBeNull();
     expect(topHeavy!.sigmaEff).toBeGreaterThan(standard!.sigmaEff);
+  });
+
+  it("exact mode fields use the compiled schedule AFS, not the hidden slider AFS", () => {
+    const schedule: TournamentRow[] = [
+      {
+        id: "freeze-small",
+        label: "Small",
+        players: 500,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.1,
+        payoutStructure: "mtt-standard",
+        count: 50,
+      },
+      {
+        id: "freeze-big",
+        label: "Big",
+        players: 5000,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.1,
+        payoutStructure: "mtt-standard",
+        count: 50,
+      },
+    ];
+    const exact = buildExactBreakdown(schedule);
+    expect(exact).not.toBeNull();
+    expect(exact!.avgField).toBeCloseTo(2750, 6);
+
+    const rowAt50 = computeConvergenceRows({
+      afs: 50,
+      z: z95,
+      roi: 0.1,
+      mix: [1, 0, 0],
+      format: "exact",
+      rakePct: 10,
+      exactBreakdown: exact,
+    })[targetRow];
+    const rowAt50k = computeConvergenceRows({
+      afs: 50_000,
+      z: z95,
+      roi: 0.1,
+      mix: [1, 0, 0],
+      format: "exact",
+      rakePct: 10,
+      exactBreakdown: exact,
+    })[targetRow];
+
+    expect(rowAt50.fields).toBe(rowAt50k.fields);
+    expect(rowAt50.fields).toBeCloseTo(rowAt50.tourneys / exact!.avgField, 9);
   });
 
   it("formats point values with direct ranges, not +/- suffixes", () => {

@@ -104,8 +104,8 @@ export const DICT = {
   },
   "section.results.title": { en: "Results", ru: "Результаты" },
   "section.results.subtitle": {
-    en: "simulated runs · tournaments each",
-    ru: "симуляций · турниров в каждой",
+    en: "{samples} simulated runs, {tourneys} tournaments in each run",
+    ru: "{samples} симуляций по {tourneys} турниров в каждой симуляции",
   },
 
   // Demo scenarios
@@ -1118,8 +1118,8 @@ export const DICT = {
   },
   "chart.convergence": { en: "ROI convergence", ru: "Сходимость ROI" },
   "chart.convergence.sub": {
-    en: "How many tournaments you need to play before your observed ROI stops lying to you",
-    ru: "Сколько турниров необходимо для статистически значимого ROI",
+    en: "How much volume you need before your observed ROI usually sits near the true ROI",
+    ru: "Какой объём нужен, чтобы наблюдаемый ROI обычно держался рядом с истинным",
   },
   "chart.convergence.col.target": { en: "ROI range", ru: "Диапазон ROI" },
   "chart.convergence.col.tourneys": { en: "Tournaments", ru: "Турниров" },
@@ -1161,22 +1161,34 @@ export const DICT = {
     ru: "Расписание",
   },
   "chart.convergence.mode.hint": {
-    en: "Averaged: combines rows into one weighted σ_ROI at the mean AFS/ROI. Exact: compiles the real schedule and combines per-row dollar variance, late reg, field variability, payout shape, and bounty structure into one schedule-aware σ_ROI. Averaged smooths tail rows into the mean; exact follows the actual row physics.",
-    ru: "Усреднённо: сводит ряды в одну σ_ROI на среднем AFS/ROI. Точно: компилирует реальное расписание и собирает schedule-aware σ_ROI из долларовой дисперсии по строкам, late reg, field variability, payout-shape и bounty-структуры. Усреднение размазывает хвостовые ряды в средние; exact следует реальной физике строк.",
+    en: "Averaged: generic planning mode. Freeze uses a runtime standard-freeze row at the chosen AFS / ROI, while PKO, Mystery, and Battle Royale use promoted format fits. Mix weights are shares of tournaments in the synthetic mix. Schedule: compiles the real rows and aggregates per-row dollar variance, late reg, field variability, payout shape, rake, and bounty structure into one schedule-aware σ_ROI.",
+    ru: "Усреднённо: общий planning-режим. Для Фриза берётся runtime standard-freeze строка на выбранных AFS / ROI, а для ПКО, Мистери и Battle Royale используются промоутнутые format-fits. В Миксе веса означают долю турниров в синтетическом миксе. Расписание: компилирует реальные строки и агрегирует долларовую дисперсию по строкам, late reg, field variability, payout-shape, рейк и bounty-структуру в один schedule-aware σ_ROI.",
+  },
+  "chart.convergence.freeze.runtimeNote": {
+    en: "Freeze is runtime-driven here: ROI changes the point estimate through the actual single-row model instead of the old ROI-invariant fit.",
+    ru: "Здесь Фриз считается через runtime-модель: ROI меняет точечную оценку через реальную single-row модель, а не через старый ROI-invariant fit.",
   },
   "chart.convergence.exact.breakdown": {
     en: "Variance contribution per row",
     ru: "Вклад рядов в дисперсию",
   },
+  "chart.convergence.exact.pointOnly": {
+    en: "Schedule mode is point-only: CI still changes the confidence target, and 'AFS played' uses the compiled mean field of the schedule:",
+    ru: "Режим Расписание даёт точечную оценку: CI по-прежнему меняет доверительность, а «Сыграно AFS» считается по скомпилированному среднему полю расписания:",
+  },
   "chart.convergence.exact.rowCol.row": { en: "Row", ru: "Ряд" },
   "chart.convergence.exact.rowCol.afs": { en: "AFS", ru: "AFS" },
   "chart.convergence.exact.rowCol.roi": { en: "ROI", ru: "ROI" },
-  "chart.convergence.exact.rowCol.fmt": { en: "Fmt", ru: "Фмт" },
-  "chart.convergence.exact.rowCol.share": { en: "Cost %", ru: "Доля $-риска" },
+  "chart.convergence.exact.rowCol.fmt": { en: "Format", ru: "Формат" },
+  "chart.convergence.exact.rowCol.share": { en: "Spend %", ru: "Доля затрат" },
   "chart.convergence.exact.rowCol.varShare": { en: "σ² share", ru: "Доля σ²" },
   "chart.convergence.exact.empty": {
     en: "Load a schedule to see per-row σ breakdown.",
     ru: "Загрузите расписание, чтобы увидеть разбивку σ по рядам.",
+  },
+  "chart.convergence.mix.note": {
+    en: "Mix weights are shares of tournaments in the synthetic mix, not dollar-risk shares.",
+    ru: "Веса в Миксе — это доли турниров в синтетическом миксе, а не доли долларового риска.",
   },
   "chart.convergence.bandWarning.containsMystery": {
     en: "Mystery still uses a point estimate here, but its current runtime fit carries too much residual drift for an honest numeric ± band. The point stays as a ballpark; the range is hidden until the Mystery policy is revalidated.",
@@ -1191,8 +1203,8 @@ export const DICT = {
     ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",
   },
   "chart.convergence.assumptions": {
-    en: "Read a row as: play this many tournaments and, with the chosen CI confidence, your observed ROI lands inside the target band around the true one. Freeze is ROI-invariant in this fit, so its ROI control is hidden. PKO, Mystery, and Battle Royale grow with ROI because better runs collect more bounty value. Mix combines Freeze / PKO / Mystery by variance share: σ²_mix = Σ w_format·σ²_format. Schedule mode ignores the global sliders and compiles each schedule row with its own field, late reg, field variability, payout shape, rake, and bounty structure before aggregating schedule-level dollar variance. Freeze, PKO, and Battle Royale show a numeric range inside their validated training boxes; Mystery keeps the point estimate but hides the numeric band until its policy is revalidated.",
-    ru: "Строка читается так: сыграй столько турниров, и с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного. Во фризе этот fit не зависит от ROI, поэтому ROI-контрол скрыт. В ПКО, Мистери и Battle Royale σ растёт с ROI: более глубокие проходы собирают больше баунти. Микс комбинирует Фриз / ПКО / Мистери по дисперсии: σ²_микс = Σ w_format·σ²_format. Режим Расписание игнорирует глобальные ползунки и сначала компилирует каждую строку со своим полем, late reg, field variability, payout-shape, рейком и bounty-структурой, а потом агрегирует schedule-level долларовую дисперсию. Фриз, ПКО и Battle Royale показывают числовой диапазон внутри validated training box; для Mystery остаётся точка-ориентир, а числовая полоса скрыта до новой валидации политики.",
+    en: "Read a row as: play this many tournaments and, with the chosen CI confidence, your observed ROI lands inside the target band around the true one. Freeze now reacts to ROI through the runtime single-row model. PKO, Mystery, and Battle Royale also grow with ROI because better runs collect more bounty value. Mix combines Freeze / PKO / Mystery by user-set tournament weights: σ²_mix = Σ w_format·σ²_format. Schedule mode ignores the global AFS / ROI / rake sliders, compiles each row with its own field, late reg, field variability, payout shape, rake, and bounty structure, then aggregates schedule-level dollar variance. Averaged bounty tabs show a numeric residual band only inside their validated training boxes; Freeze and Schedule are point-first runtime estimates, and Mystery keeps only the point estimate until its policy is revalidated.",
+    ru: "Строка читается так: сыграй столько турниров, и с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного. Фриз теперь реагирует на ROI через runtime single-row модель. В ПКО, Мистери и Battle Royale σ тоже растёт с ROI, потому что более глубокие проходы собирают больше баунти. Микс комбинирует Фриз / ПКО / Мистери по заданным весам турниров: σ²_микс = Σ w_format·σ²_format. Режим Расписание игнорирует глобальные ползунки AFS / ROI / рейка, компилирует каждую строку со своим полем, late reg, field variability, payout-shape, рейком и bounty-структурой, а потом агрегирует schedule-level долларовую дисперсию. В усреднённых bounty-вкладках числовая residual-полоса показывается только внутри validated training box; Фриз и Расписание теперь point-first runtime-оценки, а для Mystery пока сохраняется только точка до новой валидации политики.",
   },
   "chart.decomp": { en: "Per-row EV decomposition", ru: "Декомпозиция EV по строкам" },
   "chart.decomp.sub": {

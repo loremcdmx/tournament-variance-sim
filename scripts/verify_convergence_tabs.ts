@@ -13,22 +13,38 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   FIT_RAKE_BY_FORMAT,
-  SIGMA_ROI_FREEZE,
   SIGMA_ROI_MYSTERY,
   SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
+  buildExactBreakdown,
   ciToZ,
   sigmaForFit,
-  type RowFormat,
   type SigmaRoiFit,
 } from "../src/lib/sim/convergenceMath";
 
 type Coef = SigmaRoiFit;
-type Fmt = RowFormat;
 
 function sigmaFor(coef: Coef, afs: number, roi: number, rake: number, fitRake: number): number {
   const rakeScale = (1 + fitRake) / (1 + rake);
   return sigmaForFit(coef, afs, roi, rakeScale);
+}
+
+function freezeSigma(afs: number, roi: number, rake: number): number {
+  const exact = buildExactBreakdown([
+    {
+      id: "freeze",
+      label: "Freeze",
+      players: Math.max(2, Math.round(afs)),
+      buyIn: 10,
+      rake,
+      roi,
+      payoutStructure: "mtt-standard",
+      gameType: "freezeout",
+      count: 1,
+    },
+  ]);
+  if (!exact) throw new Error("freeze exact breakdown failed");
+  return exact.sigmaEff;
 }
 
 // ---------- Tab 1: FREEZE ---------------------------------------------------
@@ -40,22 +56,22 @@ console.log(`z(95%) = ${z95.toFixed(4)}  (expected 1.9600)`);
 const afsGrid = [50, 100, 500, 1000, 5000, 10000, 50000];
 console.log("σ_freeze by AFS at roi=10%, rake=10%:");
 for (const afs of afsGrid) {
-  const s = sigmaFor(SIGMA_ROI_FREEZE, afs, 0.1, 0.1, 0.1);
+  const s = freezeSigma(afs, 0.1, 0.1);
   console.log(`  AFS=${afs.toString().padStart(5)}  σ=${s.toFixed(3)}`);
 }
 // Monotone in AFS (β>0):
 let prev = 0;
 for (const afs of afsGrid) {
-  const s = sigmaFor(SIGMA_ROI_FREEZE, afs, 0.1, 0.1, 0.1);
+  const s = freezeSigma(afs, 0.1, 0.1);
   if (s < prev) throw new Error(`freeze σ not monotone: AFS=${afs} s=${s} prev=${prev}`);
   prev = s;
 }
 console.log("  ✓ σ monotone↑ in AFS");
-// Invariant in ROI (C1=0):
-const sLoRoi = sigmaFor(SIGMA_ROI_FREEZE, 1000, -0.3, 0.1, 0.1);
-const sHiRoi = sigmaFor(SIGMA_ROI_FREEZE, 1000, 1.0, 0.1, 0.1);
-if (Math.abs(sLoRoi - sHiRoi) > 1e-9) throw new Error(`freeze σ should not move with ROI`);
-console.log(`  ✓ σ invariant in ROI (C1=0)  [σ@-30%=${sLoRoi.toFixed(3)}, σ@+100%=${sHiRoi.toFixed(3)}]`);
+// Runtime freeze row should react to ROI.
+const sLoRoi = freezeSigma(1000, -0.2, 0.1);
+const sHiRoi = freezeSigma(1000, 0.5, 0.1);
+if (sHiRoi <= sLoRoi) throw new Error("freeze σ should grow with ROI in runtime mode");
+console.log(`  ✓ σ runtime↑ in ROI  [σ@-20%=${sLoRoi.toFixed(3)}, σ@+50%=${sHiRoi.toFixed(3)}]`);
 
 // ---------- Tab 2: PKO ------------------------------------------------------
 
@@ -101,7 +117,7 @@ console.log("  ✓ rake-scale monotone↓ in rake");
 // ---------- Tab 5: MIX (σ² = Σ w_i·σ²_i) -----------------------------------
 
 console.log("\n==== TAB: mix ====");
-const sF = sigmaFor(SIGMA_ROI_FREEZE, 1000, 0.1, 0.1, 0.1);
+const sF = freezeSigma(1000, 0.1, 0.1);
 const sP = sigmaFor(SIGMA_ROI_PKO, 1000, 0.1, 0.1, 0.1);
 const sM = sigmaFor(SIGMA_ROI_MYSTERY, 1000, 0.1, 0.1, 0.1);
 const mix: [number, number, number] = [0.5, 0.3, 0.2];
@@ -121,37 +137,56 @@ const sPureFreezeMix = Math.sqrt(1 * sF * sF + 0 + 0);
 if (Math.abs(sPureFreezeMix - sF) > 1e-12) throw new Error(`pure-freeze mix ≠ freeze`);
 console.log("  ✓ pure-freeze mix ≡ freeze tab");
 
-// ---------- Tab 6: EXACT (per-row σ² combination) --------------------------
+// ---------- Tab 6: EXACT (compiled schedule analytic mode) ------------------
 
 console.log("\n==== TAB: exact ====");
-// Simulate a 3-row schedule:
-//   row A: freeze, AFS=1000, ROI=10%, rake=10%, count=50
-//   row B: pko,    AFS=500,  ROI=20%, rake=10%, count=30
-//   row C: mystery-royale, AFS=18, ROI=5%, rake=8%, count=20
-// Exact uses per-row own-rake; widget rake slider is hidden.
-const rows = [
-  { fmt: "freeze" as Fmt, afs: 1000, roi: 0.1, rake: 0.1, count: 50 },
-  { fmt: "pko" as Fmt, afs: 500, roi: 0.2, rake: 0.1, count: 30 },
-  { fmt: "mystery-royale" as Fmt, afs: 18, roi: 0.05, rake: 0.08, count: 20 },
-];
-const totalCount = rows.reduce((a, r) => a + r.count, 0);
-const COEF: Record<Fmt, RuntimeCoef> = {
-  freeze: SIGMA_ROI_FREEZE,
-  pko: SIGMA_ROI_PKO,
-  mystery: SIGMA_ROI_MYSTERY,
-  "mystery-royale": SIGMA_ROI_MYSTERY_ROYALE,
-};
-let totalVar = 0;
-for (const r of rows) {
-  const w = r.count / totalCount;
-  const s = sigmaFor(COEF[r.fmt], r.afs, r.roi, r.rake, FIT_RAKE_BY_FORMAT[r.fmt]);
-  totalVar += w * s * s;
-  console.log(`  ${r.fmt.padEnd(16)} AFS=${r.afs.toString().padStart(5)}  w=${w.toFixed(2)}  σ=${s.toFixed(3)}`);
+const exact = buildExactBreakdown([
+  {
+    id: "freeze",
+    label: "Freeze",
+    players: 1000,
+    buyIn: 50,
+    rake: 0.1,
+    roi: 0.1,
+    payoutStructure: "mtt-standard",
+    gameType: "freezeout",
+    count: 50,
+  },
+  {
+    id: "pko",
+    label: "PKO",
+    players: 500,
+    buyIn: 50,
+    rake: 0.1,
+    roi: 0.2,
+    payoutStructure: "mtt-gg-bounty",
+    gameType: "pko",
+    bountyFraction: 0.5,
+    count: 30,
+  },
+  {
+    id: "mbr",
+    label: "BR",
+    players: 18,
+    buyIn: 50,
+    rake: 0.08,
+    roi: 0.05,
+    payoutStructure: "battle-royale",
+    gameType: "mystery-royale",
+    bountyFraction: 0.5,
+    itmRate: 0.1667,
+    count: 20,
+  },
+]);
+if (!exact) throw new Error("exact breakdown failed");
+for (const row of exact.perRow) {
+  console.log(
+    `  ${row.format.padEnd(16)} AFS=${row.afs.toFixed(0).padStart(5)}  cost=${(row.costShare * 100).toFixed(1).padStart(5)}%  σ=${row.sigma.toFixed(3)}  σ²=${(row.varShare * 100).toFixed(1).padStart(5)}%`,
+  );
 }
-const sigmaEff = Math.sqrt(totalVar);
-console.log(`  σ_eff = ${sigmaEff.toFixed(3)}`);
-// Invariant: σ_eff must bracket at least one component σ (not just min/max: the weighted-var combo can be inside)
-console.log("  ✓ exact mode composes per-row σ² correctly (weighted by row.count)");
+console.log(`  compiled mean AFS = ${exact.avgField.toFixed(1)}`);
+console.log(`  σ_eff = ${exact.sigmaEff.toFixed(3)}`);
+console.log("  ✓ exact mode uses the compiled schedule, not a count-weighted fit surrogate");
 
 // ---------- Convergence formula: k = ⌈(z·σ/target)²⌉ ----------------------
 
@@ -183,12 +218,10 @@ if (fs.existsSync(benchPath)) {
   const nT = bench.nTourneys;
   console.log("  AFS  widget σ   bench-implied σ   Δ%");
   for (const pt of bench.points) {
-    const sWidget = sigmaFor(
-      SIGMA_ROI_FREEZE,
+    const sWidget = freezeSigma(
       pt.players,
       bench.reference.roi,
       bench.reference.rake,
-      0.1,
     );
     const spreadSE = (pt.ours.p95 - pt.ours.p5) / (2 * 1.6448536); // z95 one-tail = 1.645
     const sBench = spreadSE * Math.sqrt(nT);

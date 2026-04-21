@@ -24,12 +24,55 @@ import {
   roiControlBoundsForFormat,
   type ConvergenceFormat,
   type MixTuple,
+  type SigmaBand,
 } from "@/lib/sim/convergenceMath";
 
 interface Props {
   schedule?: TournamentRow[];
   finishModel?: SimulationInput["finishModel"];
 }
+
+const FORMAT_TAB_ACCENTS: Record<
+  ConvergenceFormat,
+  { text: string; border: string; bg: string; rail: string }
+> = {
+  freeze: {
+    text: "#c4b5fd",
+    border: "rgba(167,139,250,0.42)",
+    bg: "rgba(139,92,246,0.18)",
+    rail: "rgba(196,181,253,0.85)",
+  },
+  pko: {
+    text: "#fb7185",
+    border: "rgba(251,113,133,0.42)",
+    bg: "rgba(251,113,133,0.16)",
+    rail: "rgba(253,164,175,0.88)",
+  },
+  mystery: {
+    text: "#38bdf8",
+    border: "rgba(56,189,248,0.42)",
+    bg: "rgba(14,165,233,0.16)",
+    rail: "rgba(125,211,252,0.9)",
+  },
+  "mystery-royale": {
+    text: "#f59e0b",
+    border: "rgba(245,158,11,0.45)",
+    bg: "rgba(245,158,11,0.16)",
+    rail: "rgba(252,211,77,0.9)",
+  },
+  mix: {
+    text: "#34d399",
+    border: "rgba(52,211,153,0.42)",
+    bg: "rgba(16,185,129,0.16)",
+    rail: "rgba(110,231,183,0.9)",
+  },
+  exact: {
+    text: "#86efac",
+    border: "rgba(74,222,128,0.42)",
+    bg: "rgba(34,197,94,0.16)",
+    rail: "rgba(134,239,172,0.9)",
+  },
+};
 
 function RangeBandValue({
   pointLabel,
@@ -97,8 +140,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   // Baseline avgField / roi are taken from the current schedule when present;
   // if the user hasn't loaded a schedule yet, fall back to neutral defaults
   // (1000-player field, +10 % ROI) so the widget is fully usable before any
-  // simulation has been run. σ_ROI itself is the closed-form analytic fit
-  // C(roi) · afs^β, so no measurement input is required.
+  // simulation has been run. Bounty tabs use promoted runtime fits; freeze
+  // uses a synthetic single-row runtime compile at the chosen AFS / ROI.
   const baseline = useMemo(() => {
     let countTotal = 0;
     let fieldWeighted = 0;
@@ -270,15 +313,13 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     }
   };
 
-  // Rake — fraction of buy-in taken by the room. σ fits were measured at
-  // format-specific baselines (see scripts/fit_sigma_parallel.ts): 10% for
-  // freeze/PKO/mystery, 8% for Mystery Battle Royale (GGPoker's actual
-  // rake since March 2024). We rescale by (1+FIT_RAKE_format)/(1+rake) —
-  // σ_profit is ~rake-invariant but σ_ROI divides by cost basis
-  // buyIn·(1+rake), so higher rake compresses ROI-unit σ.
-  // Default rake snaps to format's real-world baseline on format switch —
-  // matches "as-fit" σ for that format without relying on the rake-rescale
-  // to do compensation work at every render. Users can still slide away.
+  // Rake — fraction of buy-in taken by the room. Fit-based tabs were measured
+  // at format-specific baselines (see scripts/fit_sigma_parallel.ts): 10% for
+  // PKO/mystery, 8% for Mystery Battle Royale. Those tabs rescale σ by
+  // (1+FIT_RAKE_format)/(1+rake). Freeze now compiles a runtime single-row
+  // model directly at the chosen rake, so it doesn't rely on a promoted fit.
+  // Default rake still snaps to a realistic baseline on format switch, and
+  // users can slide away from it.
   const formatDefaultRake = format === "mystery-royale" ? 8 : 10;
   const [rakeOverridePct, setRakeOverridePct] = useState<number | null>(null);
   const rakePct = rakeOverridePct ?? formatDefaultRake;
@@ -303,6 +344,32 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     // rake slider is hidden so there's nothing to override with.
     return buildExactBreakdown(schedule, { finishModel });
   }, [effectiveMode, schedule, finishModel]);
+  const freezeSigmaOverride = useMemo<SigmaBand | null>(() => {
+    if (effectiveMode === "exact") return null;
+    if (format !== "freeze" && format !== "mix") return null;
+    const syntheticFreeze = buildExactBreakdown(
+      [
+        {
+          id: "convergence-freeze-runtime",
+          label: "Freeze",
+          players: Math.max(2, Math.round(effectiveAfs)),
+          buyIn: 10,
+          rake: rakePct / 100,
+          roi: effectiveRoi,
+          payoutStructure: "mtt-standard",
+          gameType: "freezeout",
+          count: 1,
+        },
+      ],
+      { finishModel },
+    );
+    if (!syntheticFreeze) return null;
+    return {
+      s: syntheticFreeze.sigmaEff,
+      lo: syntheticFreeze.sigmaEff,
+      hi: syntheticFreeze.sigmaEff,
+    };
+  }, [effectiveMode, format, effectiveAfs, rakePct, effectiveRoi, finishModel]);
 
   const rows = useMemo(() => {
     return computeConvergenceRows({
@@ -313,6 +380,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       format,
       rakePct,
       exactBreakdown,
+      sigmaOverrides: freezeSigmaOverride
+        ? { freeze: freezeSigmaOverride }
+        : undefined,
     });
   }, [
     effectiveAfs,
@@ -322,16 +392,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     format,
     rakePct,
     exactBreakdown,
+    freezeSigmaOverride,
   ]);
 
   const fitBoxSamples = useMemo<readonly FitBoxSample[]>(() => {
-    if (effectiveMode === "exact" && schedule) {
-      return schedule.map((row) => ({
-        format: inferRowFormat(row),
-        field: Math.max(1, row.players),
-        roi: row.roi,
-      }));
-    }
+    if (effectiveMode === "exact") return [];
     if (
       format === "freeze" ||
       format === "pko" ||
@@ -352,17 +417,12 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       list.push({ format: "mystery", field: effectiveAfs, roi: effectiveRoi });
     }
     return list;
-  }, [effectiveMode, schedule, format, mix, effectiveAfs, effectiveRoi]);
+  }, [effectiveMode, format, mix, effectiveAfs, effectiveRoi]);
   const bandPolicy = useMemo(
-    () =>
-      effectiveMode === "exact"
-        ? fitBoxSamples.some((s) => s.format === "mystery")
-          ? { kind: "warning" as const, reason: "contains-mystery" as const }
-          : { kind: "numeric" as const }
-        : getConvergenceBandPolicy(fitBoxSamples),
+    () => (effectiveMode === "exact" ? null : getConvergenceBandPolicy(fitBoxSamples)),
     [effectiveMode, fitBoxSamples],
   );
-  const showBand = bandPolicy.kind === "numeric";
+  const showBand = bandPolicy?.kind === "numeric";
 
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
@@ -412,10 +472,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           effectiveMode === "exact" ? t("chart.convergence.mode.hint") : undefined
         }
       >
-        <div className="flex flex-1 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-0.5">
+        <div className="flex flex-1 gap-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 p-1">
           {FORMATS.map((f) => {
             const active = format === f.id;
             const disabled = f.id === "exact" && !hasSchedule;
+            const accent = FORMAT_TAB_ACCENTS[f.id];
             return (
               <button
                 key={f.id}
@@ -431,14 +492,26 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                   setRakeDraft(null);
                   setFormatOverride(f.id);
                 }}
-                className={`flex-1 whitespace-nowrap rounded px-1.5 py-1 text-[10px] uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`relative flex-1 whitespace-nowrap rounded-md border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
                   active
-                    ? f.id === "exact"
-                      ? "bg-emerald-500/20 text-emerald-200"
-                      : "bg-fuchsia-500/20 text-fuchsia-200"
-                    : "text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+                    ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+                    : "border-transparent bg-transparent text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border)] hover:bg-[color:var(--color-bg)]/55 hover:text-[color:var(--color-fg)]"
                 }`}
+                style={
+                  active
+                    ? {
+                        color: accent.text,
+                        borderColor: accent.border,
+                        backgroundColor: accent.bg,
+                      }
+                    : undefined
+                }
               >
+                <span
+                  className="pointer-events-none absolute inset-x-2 top-1 h-px rounded-full opacity-70"
+                  style={{ backgroundColor: accent.rail }}
+                  aria-hidden
+                />
                 {t(f.labelKey)}
               </button>
             );
@@ -452,35 +525,40 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             setRakeOverridePct(null);
             setRakeDraft(null);
           }}
-          className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
+          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-2 py-1 text-[10px] uppercase tracking-[0.14em] hover:bg-[color:var(--color-bg-elev)]"
           title={`reset to ${baselineFormat}${baselineFormat === "mix" ? ` (${Math.round(baselineMix[0] * 100)}/${Math.round(baselineMix[1] * 100)}/${Math.round(baselineMix[2] * 100)} freeze/PKO/mystery)` : ""}`}
         >
           ↺
         </button>
       </div>
       {format === "mix" && (
-        <div className="mb-3 flex flex-col gap-1.5">
-          <MixRow
-            label={t("chart.convergence.format.freeze")}
-            idx={0}
-            mix={mix}
-            accent="sky"
-            onChange={updateMixComponent}
-          />
-          <MixRow
-            label={t("chart.convergence.format.pko")}
-            idx={1}
-            mix={mix}
-            accent="fuchsia"
-            onChange={updateMixComponent}
-          />
-          <MixRow
-            label={t("chart.convergence.format.mystery")}
-            idx={2}
-            mix={mix}
-            accent="purple"
-            onChange={updateMixComponent}
-          />
+        <div className="mb-3">
+          <div className="flex flex-col gap-1.5">
+            <MixRow
+              label={t("chart.convergence.format.freeze")}
+              idx={0}
+              mix={mix}
+              accent="sky"
+              onChange={updateMixComponent}
+            />
+            <MixRow
+              label={t("chart.convergence.format.pko")}
+              idx={1}
+              mix={mix}
+              accent="fuchsia"
+              onChange={updateMixComponent}
+            />
+            <MixRow
+              label={t("chart.convergence.format.mystery")}
+              idx={2}
+              mix={mix}
+              accent="purple"
+              onChange={updateMixComponent}
+            />
+          </div>
+          <div className="mt-1 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+            {t("chart.convergence.mix.note")}
+          </div>
         </div>
       )}
       {effectiveMode !== "exact" && (
@@ -590,6 +668,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           </span>
         </div>
       )}
+      {effectiveMode !== "exact" && format === "freeze" && (
+        <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 px-2 py-1.5 text-[11px] leading-snug text-emerald-200">
+          {t("chart.convergence.freeze.runtimeNote")}
+        </div>
+      )}
       {effectiveMode !== "exact" && (
       <div
         className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
@@ -686,7 +769,15 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       <div className="mb-2 text-[10px] text-[color:var(--color-fg-dim)]">
         z = {z.toFixed(3)}
       </div>
-      {bandPolicy.kind === "warning" && (
+      {effectiveMode === "exact" && exactBreakdown && (
+        <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 px-2 py-1.5 text-[11px] leading-snug text-emerald-200">
+          {t("chart.convergence.exact.pointOnly")}{" "}
+          <span className="font-mono text-emerald-100">
+            {fmtAfs(exactBreakdown.avgField, numberLocale)}
+          </span>
+        </div>
+      )}
+      {bandPolicy?.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
           {t(
             bandPolicy.reason === "contains-mystery"
