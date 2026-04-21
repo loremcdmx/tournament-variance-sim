@@ -211,6 +211,88 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.customPayouts).toEqual([50, 30, 20]);
   });
 
+  it("drops hidden bounty and re-entry knobs when persisted gameType is explicit freezeout", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            gameType: "freezeout",
+            maxEntries: 4,
+            reentryRate: 0.75,
+            bountyFraction: 0.5,
+            mysteryBountyVariance: 1.8,
+            pkoHeadVar: 0.4,
+            pkoHeat: 1.2,
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]).toMatchObject({
+      gameType: "freezeout",
+      maxEntries: 1,
+      reentryRate: undefined,
+      bountyFraction: undefined,
+      mysteryBountyVariance: undefined,
+      pkoHeadVar: undefined,
+      pkoHeat: undefined,
+    });
+  });
+
+  it("restores required engine knobs for persisted explicit non-freezeout game types", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            id: "re",
+            gameType: "freezeout-reentry",
+          },
+          {
+            ...row,
+            id: "pko",
+            gameType: "pko",
+          },
+          {
+            ...row,
+            id: "mystery",
+            gameType: "mystery",
+            pkoHeadVar: 0.9,
+            pkoHeat: 1.1,
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]).toMatchObject({
+      gameType: "freezeout-reentry",
+      maxEntries: 2,
+      reentryRate: 1,
+      bountyFraction: undefined,
+    });
+    expect(state?.schedule[1]).toMatchObject({
+      gameType: "pko",
+      maxEntries: 1,
+      reentryRate: undefined,
+      bountyFraction: 0.5,
+      pkoHeadVar: 0.4,
+    });
+    expect(state?.schedule[2]).toMatchObject({
+      gameType: "mystery",
+      maxEntries: 1,
+      reentryRate: undefined,
+      bountyFraction: 0.5,
+      mysteryBountyVariance: 2,
+      pkoHeadVar: undefined,
+      pkoHeat: undefined,
+    });
+  });
+
   it("clamps persisted row knobs back into the engine/UI contract before hydration", () => {
     const state = decodeState(
       encoded({

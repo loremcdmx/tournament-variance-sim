@@ -499,6 +499,47 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       typeof row.sitThroughPayJumps === "boolean"
         ? row.sitThroughPayJumps
         : undefined;
+    let finalMaxEntries = nextMaxEntries;
+    let finalReentryRate = nextReentryRate;
+    let finalBountyFraction = nextBountyFraction;
+    let finalMysteryBountyVariance = nextMysteryBountyVariance;
+    let finalPkoHeadVar = nextPkoHeadVar;
+    let finalPkoHeat = nextPkoHeat;
+    if (nextGameType === "freezeout") {
+      finalMaxEntries = 1;
+      finalReentryRate = undefined;
+      finalBountyFraction = undefined;
+      finalMysteryBountyVariance = undefined;
+      finalPkoHeadVar = undefined;
+      finalPkoHeat = undefined;
+    } else if (nextGameType === "freezeout-reentry") {
+      finalMaxEntries = Math.max(2, nextMaxEntries ?? 2);
+      finalReentryRate = nextReentryRate ?? 1;
+      finalBountyFraction = undefined;
+      finalMysteryBountyVariance = undefined;
+      finalPkoHeadVar = undefined;
+      finalPkoHeat = undefined;
+    } else if (nextGameType === "pko") {
+      finalMaxEntries = 1;
+      finalReentryRate = undefined;
+      finalBountyFraction = nextBountyFraction ?? 0.5;
+      finalMysteryBountyVariance = undefined;
+      finalPkoHeadVar = nextPkoHeadVar ?? 0.4;
+    } else if (nextGameType === "mystery") {
+      finalMaxEntries = 1;
+      finalReentryRate = undefined;
+      finalBountyFraction = nextBountyFraction ?? 0.5;
+      finalMysteryBountyVariance = nextMysteryBountyVariance ?? 2.0;
+      finalPkoHeadVar = undefined;
+      finalPkoHeat = undefined;
+    } else if (nextGameType === "mystery-royale") {
+      finalMaxEntries = 1;
+      finalReentryRate = undefined;
+      finalBountyFraction = nextBountyFraction ?? 0.5;
+      finalMysteryBountyVariance = nextMysteryBountyVariance ?? 1.8;
+      finalPkoHeadVar = undefined;
+      finalPkoHeat = undefined;
+    }
     const nextFinishBuckets = normalizePersistedFinishBuckets(
       row.finishBuckets,
       nextItmRate,
@@ -521,15 +562,15 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       nextGuarantee === row.guarantee &&
       nextLateRegMultiplier === row.lateRegMultiplier &&
       nextItmRate === row.itmRate &&
-      nextMaxEntries === row.maxEntries &&
-      nextReentryRate === row.reentryRate &&
-      nextBountyFraction === row.bountyFraction &&
+      finalMaxEntries === row.maxEntries &&
+      finalReentryRate === row.reentryRate &&
+      finalBountyFraction === row.bountyFraction &&
       nextBountyEvBias === row.bountyEvBias &&
       nextPayJumpAggression === row.payJumpAggression &&
       nextItmTopHeavyBias === row.itmTopHeavyBias &&
-      nextMysteryBountyVariance === row.mysteryBountyVariance &&
-      nextPkoHeadVar === row.pkoHeadVar &&
-      nextPkoHeat === row.pkoHeat &&
+      finalMysteryBountyVariance === row.mysteryBountyVariance &&
+      finalPkoHeadVar === row.pkoHeadVar &&
+      finalPkoHeat === row.pkoHeat &&
       nextSitThroughPayJumps === row.sitThroughPayJumps &&
       nextFinishBuckets === row.finishBuckets &&
       nextCustom.payoutStructure === row.payoutStructure &&
@@ -550,15 +591,15 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       guarantee: nextGuarantee,
       lateRegMultiplier: nextLateRegMultiplier,
       itmRate: nextItmRate,
-      maxEntries: nextMaxEntries,
-      reentryRate: nextReentryRate,
-      bountyFraction: nextBountyFraction,
+      maxEntries: finalMaxEntries,
+      reentryRate: finalReentryRate,
+      bountyFraction: finalBountyFraction,
       bountyEvBias: nextBountyEvBias,
       payJumpAggression: nextPayJumpAggression,
       itmTopHeavyBias: nextItmTopHeavyBias,
-      mysteryBountyVariance: nextMysteryBountyVariance,
-      pkoHeadVar: nextPkoHeadVar,
-      pkoHeat: nextPkoHeat,
+      mysteryBountyVariance: finalMysteryBountyVariance,
+      pkoHeadVar: finalPkoHeadVar,
+      pkoHeat: finalPkoHeat,
       sitThroughPayJumps: nextSitThroughPayJumps,
       finishBuckets: nextFinishBuckets,
       payoutStructure: nextCustom.payoutStructure,
