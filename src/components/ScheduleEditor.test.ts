@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { parseImportCSV } from "./ScheduleEditor";
+import { parseBuyIn, parseImportCSV } from "./ScheduleEditor";
+
+describe("parseBuyIn", () => {
+  it("rejects plus-form tickets when fee exceeds 100% of the buy-in", () => {
+    expect(parseBuyIn("50+5000", 0.1)).toBeNull();
+    expect(parseBuyIn("$50 + $51", 0.1)).toBeNull();
+  });
+});
 
 describe("parseImportCSV", () => {
+  it("rejects buy-ins whose fee would produce out-of-contract rake", () => {
+    const parsed = parseImportCSV(
+      "Bad rake, 500, 50+5000, 10, 1, mtt-standard",
+    );
+
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.errors).toEqual(['line 1: bad buy-in "50+5000"']);
+  });
+
   it("rejects players above the editor max instead of importing giant fields", () => {
     const parsed = parseImportCSV(
       "Huge field, 20000000, 50+5, 10, 1, mtt-standard",

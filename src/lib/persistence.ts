@@ -66,6 +66,8 @@ export interface PersistedState {
 const LS_KEY = "tvs:state";
 const PERSISTED_ROW_PLAYERS_MIN = 2;
 const PERSISTED_ROW_PLAYERS_MAX = 1_000_000;
+const PERSISTED_ROW_RAKE_MIN = 0;
+const PERSISTED_ROW_RAKE_MAX = 1;
 const PERSISTED_FIELD_VARIABILITY_BUCKETS_MAX = 20;
 const PERSISTED_ROW_COUNT_MAX = 100_000;
 const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
@@ -79,6 +81,10 @@ function clampPersistedCount(count: number): number {
 
 function clampPersistedPlayers(players: number): number {
   return Math.min(PERSISTED_ROW_PLAYERS_MAX, Math.max(PERSISTED_ROW_PLAYERS_MIN, players));
+}
+
+function clampPersistedRake(rake: number): number {
+  return Math.min(PERSISTED_ROW_RAKE_MAX, Math.max(PERSISTED_ROW_RAKE_MIN, rake));
 }
 
 function normalizePersistedFieldVariability(
@@ -153,12 +159,14 @@ function normalizePersistedState(state: PersistedState): PersistedState {
   let changed = false;
   const schedule = state.schedule.map((row) => {
     const nextPlayers = clampPersistedPlayers(row.players);
+    const nextRake = clampPersistedRake(row.rake);
     const nextFieldVariability = normalizePersistedFieldVariability(
       row.fieldVariability,
     );
     const nextCount = clampPersistedCount(row.count);
     if (
       nextPlayers === row.players &&
+      nextRake === row.rake &&
       nextCount === row.count &&
       nextFieldVariability === row.fieldVariability
     ) {
@@ -168,6 +176,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     return {
       ...row,
       players: nextPlayers,
+      rake: nextRake,
       fieldVariability: nextFieldVariability,
       count: nextCount,
     };

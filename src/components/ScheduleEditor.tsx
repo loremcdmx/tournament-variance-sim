@@ -31,10 +31,12 @@ import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 
+const MAX_BUY_IN_RAKE = 1;
+
 // Parse "50+5", "50 + 5", "55", "$50+$5" → { buyIn: 50, rake: 0.1 }.
 // Plain single number is treated as net buy-in (prize-pool portion); the
 // caller keeps the existing rake in that case by passing `currentRake`.
-function parseBuyIn(
+export function parseBuyIn(
   raw: string,
   currentRake: number,
 ): { buyIn: number; rake: number } | null {
@@ -45,7 +47,9 @@ function parseBuyIn(
     const net = parseFloat(plus[1]);
     const fee = parseFloat(plus[2]);
     if (!isFinite(net) || !isFinite(fee) || net <= 0) return null;
-    return { buyIn: net, rake: fee / net };
+    const rake = fee / net;
+    if (!isFinite(rake) || rake < 0 || rake > MAX_BUY_IN_RAKE) return null;
+    return { buyIn: net, rake };
   }
   const single = parseFloat(cleaned);
   if (!isFinite(single) || single <= 0) return null;

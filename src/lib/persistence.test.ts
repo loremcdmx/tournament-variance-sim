@@ -67,6 +67,22 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.players).toBe(1_000_000);
   });
 
+  it("clamps persisted rake back into the engine's [0,1] contract", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          { ...row, id: "high", rake: 100 },
+          { ...row, id: "low", rake: -5 },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.rake).toBe(1);
+    expect(state?.schedule[1]?.rake).toBe(0);
+  });
+
   it("clamps persisted field-variability ranges and bucket counts back to editor limits", () => {
     const state = decodeState(
       encoded({
