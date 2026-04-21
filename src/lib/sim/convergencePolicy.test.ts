@@ -240,14 +240,11 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     expect(getConvergenceBandPolicy([])).toEqual({ kind: "numeric" });
   });
 
-  it("single freeze / pko / Mystery / MBR in-box → numeric", () => {
+  it("single freeze / pko / MBR in-box → numeric", () => {
     expect(getConvergenceBandPolicy([s("freeze", 1000, 0.1)])).toEqual({
       kind: "numeric",
     });
     expect(getConvergenceBandPolicy([s("pko", 1000, 0.1)])).toEqual({
-      kind: "numeric",
-    });
-    expect(getConvergenceBandPolicy([s("mystery", 1000, 0.1)])).toEqual({
       kind: "numeric",
     });
     expect(getConvergenceBandPolicy([s("mystery-royale", 18, 0)])).toEqual({
@@ -255,7 +252,14 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     });
   });
 
-  it("freeze + PKO + Mystery + MBR all in-box → numeric", () => {
+  it("single Mystery in-box → warning contains-mystery", () => {
+    expect(getConvergenceBandPolicy([s("mystery", 1000, 0.1)])).toEqual({
+      kind: "warning",
+      reason: "contains-mystery",
+    });
+  });
+
+  it("freeze + PKO + Mystery + MBR all in-box → warning contains-mystery", () => {
     expect(
       getConvergenceBandPolicy([
         s("freeze", 1000, 0.1),
@@ -263,10 +267,10 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
         s("mystery", 8000, 0.15),
         s("mystery-royale", 18, 0.05),
       ]),
-    ).toEqual({ kind: "numeric" });
+    ).toEqual({ kind: "warning", reason: "contains-mystery" });
   });
 
-  it("freeze + one Mystery row in-box → numeric", () => {
+  it("freeze + one Mystery row in-box → warning contains-mystery", () => {
     expect(
       getConvergenceBandPolicy([
         s("freeze", 1000, 0.1),
@@ -275,7 +279,7 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
         s("freeze", 1000, 0.1),
         s("mystery", 1000, 0.1),
       ]),
-    ).toEqual({ kind: "numeric" });
+    ).toEqual({ kind: "warning", reason: "contains-mystery" });
   });
 
   it("PKO out of ROI box (validated audit case) → warning outside-fit-box", () => {
@@ -310,16 +314,16 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     });
   });
 
-  it("Mystery outside the validated box → warning outside-fit-box", () => {
+  it("Mystery outside the validated box still prioritizes contains-mystery", () => {
     expect(
       getConvergenceBandPolicy([s("mystery", 200_000, 2.0)]),
-    ).toEqual({ kind: "warning", reason: "outside-fit-box" });
+    ).toEqual({ kind: "warning", reason: "contains-mystery" });
     expect(
       getConvergenceBandPolicy([
         s("pko", 1000, 0.1),
         s("mystery", 200_000, 2.0),
       ]),
-    ).toEqual({ kind: "warning", reason: "outside-fit-box" });
+    ).toEqual({ kind: "warning", reason: "contains-mystery" });
   });
 
   it("multiple out-of-box samples → single outside-fit-box", () => {
@@ -331,7 +335,7 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     ).toEqual({ kind: "warning", reason: "outside-fit-box" });
   });
 
-  it("is order-independent for in-box mixed samples", () => {
+  it("is order-independent for mixed samples with mystery priority", () => {
     const samples: FitBoxSample[] = [
       s("freeze", 1000, 0.1),
       s("mystery", 1000, 0.1),
@@ -344,7 +348,10 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
       [1, 2, 0],
     ]) {
       const permuted = permute.map((i) => samples[i]);
-      expect(getConvergenceBandPolicy(permuted)).toEqual({ kind: "numeric" });
+      expect(getConvergenceBandPolicy(permuted)).toEqual({
+        kind: "warning",
+        reason: "contains-mystery",
+      });
     }
   });
 });

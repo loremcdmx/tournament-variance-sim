@@ -35,7 +35,7 @@ import {
   resolveBattleRoyaleCashTarget,
 } from "./battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "./brBountyTiers";
-import { normalizeBrMrConsistency } from "./gameType";
+import { inferGameType, normalizeBrMrConsistency } from "./gameType";
 import { mulberry32, mixSeed } from "./rng";
 import type {
   CalibrationMode,
@@ -112,6 +112,8 @@ function poissonPTRS(lam: number, rng: () => number): number {
 
 interface CompiledEntry {
   rowIdx: number;
+  /** Real field size seen by the compiled payout/pmf path after late reg. */
+  fieldSize: number;
   /**
    * When this slot corresponds to a row with fieldVariability, variants holds
    * the full bucket set. The hot loop picks one uniformly per sample, so field
@@ -249,6 +251,27 @@ interface CompiledSchedule {
   itmRate: number;
 }
 
+export interface ScheduleAnalyticRow {
+  rowIdx: number;
+  count: number;
+  countShare: number;
+  totalCost: number;
+  costShare: number;
+  varianceDollar: number;
+  sigmaDollar: number;
+  fieldAvg: number;
+  fieldMin: number;
+  fieldMax: number;
+}
+
+export interface ScheduleAnalyticBreakdown {
+  perRow: ScheduleAnalyticRow[];
+  sigmaRoiPerTourney: number;
+  sigmaRoiPerPass: number;
+  totalCost: number;
+  tournamentsPerPass: number;
+}
+
 export function compileSchedule(
   input: SimulationInput,
   calibrationMode: CalibrationMode = "alpha",
@@ -355,6 +378,215 @@ export function compileSchedule(
     rowLabels,
     rowIds,
     itmRate: flat.length > 0 ? itmAcc / flat.length : 0,
+  };
+}
+
+function pmfFromAlias(
+  prob: Float64Array,
+  alias: Int32Array,
+): Float64Array {
+  const n = prob.length;
+  const pmf = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    pmf[i] += prob[i] / n;
+    pmf[alias[i]] += (1 - prob[i]) / n;
+  }
+  return pmf;
+}
+
+function heatBinProbabilities(binCount: number): Float64Array {
+  if (binCount <= 1) return Float64Array.of(1);
+  const probs = new Float64Array(binCount);
+  const step = (2 * HEAT_Z_RANGE) / (binCount - 1);
+  for (let i = 0; i < binCount; i++) {
+    const lo = i === 0 ? -Infinity : -HEAT_Z_RANGE + (i - 0.5) * step;
+    const hi =
+      i === binCount - 1 ? Infinity : -HEAT_Z_RANGE + (i + 0.5) * step;
+    probs[i] = normalCdf(hi) - normalCdf(lo);
+  }
+  return probs;
+}
+
+function secondMomentFromAliasValues(
+  values: Float64Array,
+  aliasProb: Float64Array,
+  aliasIdx: Int32Array,
+): number {
+  const pmf = pmfFromAlias(aliasProb, aliasIdx);
+  let second = 0;
+  for (let i = 0; i < values.length; i++) second += pmf[i] * values[i] * values[i];
+  return second;
+}
+
+function bountySecondMoment(
+  mean: number,
+  lambda: number,
+  perKoSecondMoment: number,
+): number {
+  if (!(mean > 0)) return 0;
+  if (!(lambda > 0)) return mean * mean;
+  const variance = (mean * mean * perKoSecondMoment) / lambda;
+  return mean * mean + variance;
+}
+
+function compiledEntryMoments(entry: CompiledEntry): {
+  meanDollar: number;
+  secondDollar: number;
+  fieldAvg: number;
+  fieldMin: number;
+  fieldMax: number;
+} {
+  if (entry.variants && entry.variants.length > 0) {
+    const weight = 1 / entry.variants.length;
+    let meanDollar = 0;
+    let secondDollar = 0;
+    let fieldAvg = 0;
+    let fieldMin = Infinity;
+    let fieldMax = 0;
+    for (const variant of entry.variants) {
+      const m = compiledEntryMoments(variant);
+      meanDollar += weight * m.meanDollar;
+      secondDollar += weight * m.secondDollar;
+      fieldAvg += weight * m.fieldAvg;
+      fieldMin = Math.min(fieldMin, m.fieldMin);
+      fieldMax = Math.max(fieldMax, m.fieldMax);
+    }
+    return { meanDollar, secondDollar, fieldAvg, fieldMin, fieldMax };
+  }
+
+  const pmf = pmfFromAlias(entry.aliasProb, entry.aliasIdx);
+  const perKoSecondMoment =
+    entry.brTierRatios !== null &&
+    entry.brTierAliasProb !== null &&
+    entry.brTierAliasIdx !== null
+      ? secondMomentFromAliasValues(
+          entry.brTierRatios,
+          entry.brTierAliasProb,
+          entry.brTierAliasIdx,
+        )
+      : entry.mysteryBountyLogVar > 0
+        ? Math.exp(entry.mysteryBountyLogVar)
+        : 1;
+  const heatBanks =
+    entry.heatBountyByPlace !== null
+      ? entry.heatBountyByPlace
+      : [entry.bountyByPlace];
+  const heatWeights =
+    entry.heatBountyByPlace !== null
+      ? heatBinProbabilities(entry.heatBountyByPlace.length)
+      : Float64Array.of(1);
+
+  let meanDollar = 0;
+  let secondDollar = 0;
+  for (let h = 0; h < heatBanks.length; h++) {
+    const q = heatWeights[h] ?? 0;
+    if (!(q > 0)) continue;
+    const bountyByPlace = heatBanks[h];
+    let meanH = 0;
+    let secondH = 0;
+    for (let i = 0; i < pmf.length; i++) {
+      const p = pmf[i];
+      if (!(p > 0)) continue;
+      const prize = entry.prizeByPlace[i] ?? 0;
+      const bountyMean = bountyByPlace?.[i] ?? 0;
+      const lambda = entry.bountyKmean?.[i] ?? 0;
+      const bounty2 = bountySecondMoment(
+        bountyMean,
+        lambda,
+        perKoSecondMoment,
+      );
+      meanH += p * (prize + bountyMean);
+      secondH += p * (prize * prize + 2 * prize * bountyMean + bounty2);
+    }
+    meanDollar += q * meanH;
+    secondDollar += q * secondH;
+  }
+
+  return {
+    meanDollar,
+    secondDollar,
+    fieldAvg: entry.fieldSize,
+    fieldMin: entry.fieldSize,
+    fieldMax: entry.fieldSize,
+  };
+}
+
+export function buildScheduleAnalyticBreakdown(input: {
+  schedule: TournamentRow[];
+  finishModel: SimulationInput["finishModel"];
+  rakebackFracOfRake?: number;
+  calibrationMode?: CalibrationMode;
+}): ScheduleAnalyticBreakdown | null {
+  if (input.schedule.length === 0) return null;
+  const compiled = compileSchedule(
+    {
+      schedule: input.schedule,
+      scheduleRepeats: 1,
+      samples: 1,
+      bankroll: 1,
+      seed: 1,
+      finishModel: input.finishModel,
+      rakebackFracOfRake: input.rakebackFracOfRake,
+    },
+    input.calibrationMode ?? "alpha",
+  );
+  if (compiled.flat.length === 0 || !(compiled.totalBuyIn > 0)) return null;
+
+  const reps = new Array<CompiledEntry | null>(input.schedule.length).fill(null);
+  for (const entry of compiled.flat) {
+    if (reps[entry.rowIdx] === null) reps[entry.rowIdx] = entry;
+  }
+
+  const perRow = compiled.rowCounts.map((count, rowIdx) => {
+    const entry = reps[rowIdx];
+    if (!entry || count <= 0) {
+      return {
+        rowIdx,
+        count: 0,
+        countShare: 0,
+        totalCost: 0,
+        costShare: 0,
+        varianceDollar: 0,
+        sigmaDollar: 0,
+        fieldAvg: 0,
+        fieldMin: 0,
+        fieldMax: 0,
+      };
+    }
+    const m = compiledEntryMoments(entry);
+    const varianceSingle = Math.max(
+      0,
+      m.secondDollar - m.meanDollar * m.meanDollar,
+    );
+    return {
+      rowIdx,
+      count,
+      countShare: count / compiled.tournamentsPerPass,
+      totalCost: compiled.rowBuyIns[rowIdx],
+      costShare: compiled.rowBuyIns[rowIdx] / compiled.totalBuyIn,
+      varianceDollar: varianceSingle * count,
+      sigmaDollar: Math.sqrt(varianceSingle),
+      fieldAvg: m.fieldAvg,
+      fieldMin: m.fieldMin,
+      fieldMax: m.fieldMax,
+    };
+  });
+
+  const totalVar = perRow.reduce((acc, row) => acc + row.varianceDollar, 0);
+  const sigmaPassDollar = Math.sqrt(Math.max(0, totalVar));
+  const sigmaRoiPerPass = sigmaPassDollar / compiled.totalBuyIn;
+  const sigmaRoiPerTourney = sigmaRoiPerPass * Math.sqrt(compiled.tournamentsPerPass);
+
+  return {
+    perRow: perRow.map((row) => ({
+      ...row,
+      costShare: row.costShare,
+      varianceDollar: row.varianceDollar,
+    })),
+    sigmaRoiPerTourney,
+    sigmaRoiPerPass,
+    totalCost: compiled.totalBuyIn,
+    tournamentsPerPass: compiled.tournamentsPerPass,
   };
 }
 
@@ -1056,10 +1288,11 @@ function compileSingleEntry(
 
   // Combined per-KO log-variance: mystery bounty noise + PKO head-size noise.
   // Both are independent log-normal sources, so variances add in log-space.
-  // Default pkoHeadVar to 0.4 when bountyFraction > 0 and not explicitly set,
-  // so all PKO rows get head-size variance even without applyGameType.
+  // Default pkoHeadVar to 0.4 only for rows that structurally infer as PKO;
+  // Mystery / BR rows should not inherit the PKO head-size channel.
+  const inferredGameType = inferGameType(row);
   const effectivePkoHeadVar =
-    row.pkoHeadVar ?? (bountyMean > 0 ? 0.4 : 0);
+    row.pkoHeadVar ?? (inferredGameType === "pko" ? 0.4 : 0);
   const perKoLogVar =
     Math.max(0, row.mysteryBountyVariance ?? 0) +
     Math.max(0, effectivePkoHeadVar);
@@ -1072,6 +1305,7 @@ function compileSingleEntry(
 
   return {
     rowIdx: idx,
+    fieldSize: N,
     costPerEntry,
     singleCost: entryCostSingle,
     rakebackBonusPerBullet: 0,

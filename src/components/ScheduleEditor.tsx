@@ -232,7 +232,9 @@ const PAYOUT_IDS: PayoutStructureId[] = [
   "winner-takes-all",
 ];
 
-function parseImportCSV(raw: string): {
+const IMPORT_COUNT_MAX = 100_000;
+
+export function parseImportCSV(raw: string): {
   rows: TournamentRow[];
   errors: string[];
 } {
@@ -259,7 +261,19 @@ function parseImportCSV(raw: string): {
       return;
     }
     const roiPct = roiStr ? parseFloat(roiStr) : 0;
-    const count = countStr ? Math.max(1, Math.floor(parseFloat(countStr))) : 1;
+    let count = 1;
+    if (countStr) {
+      const parsedCount = parseFloat(countStr);
+      if (
+        !Number.isFinite(parsedCount) ||
+        parsedCount < 1 ||
+        parsedCount > IMPORT_COUNT_MAX
+      ) {
+        errors.push(`line ${i + 1}: count must be 1..${IMPORT_COUNT_MAX}`);
+        return;
+      }
+      count = Math.max(1, Math.floor(parsedCount));
+    }
     const payout = (
       payoutStr && PAYOUT_IDS.includes(payoutStr as PayoutStructureId)
         ? payoutStr
@@ -896,7 +910,7 @@ function AdvancedRowPanel({
   const gt = inferGameType(row);
   const showReentry = gt === "freezeout-reentry";
   const showBounty = gt === "pko" || gt === "mystery" || gt === "mystery-royale";
-  const showMysteryVar = gt === "mystery" || gt === "mystery-royale";
+  const showMysteryVar = gt === "mystery";
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
       {/* Field variability */}

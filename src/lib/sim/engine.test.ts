@@ -420,6 +420,71 @@ describe("engine", () => {
     expect(withMyst.stats.stdDev).toBeGreaterThan(plain.stats.stdDev);
   });
 
+  it("mystery rows do not inherit PKO head variance by default", () => {
+    const base = baseInput({
+      samples: 4000,
+      seed: 654,
+      schedule: [
+        {
+          id: "myst",
+          label: "Myst",
+          gameType: "mystery",
+          players: 500,
+          buyIn: 20,
+          rake: 0.1,
+          roi: 0.2,
+          payoutStructure: "mtt-gg-mystery",
+          bountyFraction: 0.5,
+          mysteryBountyVariance: 2.0,
+          count: 1,
+        },
+      ],
+    });
+    const implicit = runSimulation(base);
+    const explicitZero = runSimulation({
+      ...base,
+      schedule: base.schedule.map((r) => ({ ...r, pkoHeadVar: 0 })),
+    });
+    expect(implicit.stats.mean).toBe(explicitZero.stats.mean);
+    expect(implicit.stats.stdDev).toBe(explicitZero.stats.stdDev);
+    expect(implicit.finalProfits[0]).toBe(explicitZero.finalProfits[0]);
+    expect(
+      implicit.finalProfits[implicit.finalProfits.length - 1],
+    ).toBe(explicitZero.finalProfits[explicitZero.finalProfits.length - 1]);
+  });
+
+  it("PKO rows still default pkoHeadVar to 0.4", () => {
+    const base = baseInput({
+      samples: 4000,
+      seed: 655,
+      schedule: [
+        {
+          id: "pko",
+          label: "PKO",
+          gameType: "pko",
+          players: 500,
+          buyIn: 20,
+          rake: 0.1,
+          roi: 0.2,
+          payoutStructure: "mtt-gg-bounty",
+          bountyFraction: 0.5,
+          count: 1,
+        },
+      ],
+    });
+    const implicit = runSimulation(base);
+    const explicit = runSimulation({
+      ...base,
+      schedule: base.schedule.map((r) => ({ ...r, pkoHeadVar: 0.4 })),
+    });
+    expect(implicit.stats.mean).toBe(explicit.stats.mean);
+    expect(implicit.stats.stdDev).toBe(explicit.stats.stdDev);
+    expect(implicit.finalProfits[0]).toBe(explicit.finalProfits[0]);
+    expect(
+      implicit.finalProfits[implicit.finalProfits.length - 1],
+    ).toBe(explicit.finalProfits[explicit.finalProfits.length - 1]);
+  });
+
   it("pkoHeat=0 produces bit-exact same output as omitting the field", () => {
     const base = baseInput({
       samples: 2000,

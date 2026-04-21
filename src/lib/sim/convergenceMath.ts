@@ -5,9 +5,9 @@ import {
   SIGMA_ROI_MYSTERY,
   SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
-  sigmaRoiForRow,
   type SigmaCoef,
 } from "./convergenceFit";
+import { buildScheduleAnalyticBreakdown } from "./engine";
 import {
   CONVERGENCE_FIELD_MAX,
   CONVERGENCE_FIELD_MIN,
@@ -18,7 +18,7 @@ import {
   inferRowFormat,
   type ConvergenceRowFormat,
 } from "./convergencePolicy";
-import type { TournamentRow } from "./types";
+import type { CalibrationMode, SimulationInput, TournamentRow } from "./types";
 
 export {
   FIT_RAKE_BY_FORMAT,
@@ -56,9 +56,13 @@ export interface ExactBreakdownRow {
   index: number;
   label: string;
   afs: number;
+  fieldMin: number;
+  fieldMax: number;
   roi: number;
   format: RowFormat;
   weight: number;
+  countShare: number;
+  costShare: number;
   sigma: number;
   sigmaLo: number;
   sigmaHi: number;
@@ -74,6 +78,12 @@ export interface ExactBreakdown {
   sigmaEff: number;
   sigmaEffLo: number;
   sigmaEffHi: number;
+}
+
+export interface ExactBreakdownOptions {
+  finishModel?: SimulationInput["finishModel"];
+  calibrationMode?: CalibrationMode;
+  rakebackFracOfRake?: number;
 }
 
 export const TARGETS = [
@@ -163,41 +173,49 @@ export function ciToZ(ciFrac: number): number {
 
 export function buildExactBreakdown(
   schedule?: readonly TournamentRow[] | null,
+  options?: ExactBreakdownOptions,
 ): ExactBreakdown | null {
   if (!schedule) return null;
-  const totalCount = schedule.reduce((acc, r) => acc + Math.max(0, r.count), 0);
-  if (totalCount <= 0) return null;
+  const analytic = buildScheduleAnalyticBreakdown({
+    schedule: [...schedule],
+    finishModel: options?.finishModel ?? { id: "power-law" },
+    calibrationMode: options?.calibrationMode,
+    rakebackFracOfRake: options?.rakebackFracOfRake,
+  });
+  if (!analytic) return null;
 
   const perRowWithoutShare = schedule.map((row, i) => {
     const fmt = inferRowFormat(row);
-    const { sigma, sigmaLo, sigmaHi } = sigmaRoiForRow(row);
-    const w = Math.max(0, row.count) / totalCount;
+    const stats = analytic.perRow[i];
+    const sigma =
+      stats.totalCost > 0 ? stats.sigmaDollar / (stats.totalCost / stats.count) : 0;
+    const varContribution =
+      analytic.totalCost > 0
+        ? (analytic.tournamentsPerPass * stats.varianceDollar) /
+          (analytic.totalCost * analytic.totalCost)
+        : 0;
     return {
       index: i,
       label: row.label || `#${i + 1}`,
-      afs: row.players,
+      afs: stats.fieldAvg,
+      fieldMin: stats.fieldMin,
+      fieldMax: stats.fieldMax,
       roi: row.roi,
       format: fmt,
-      weight: w,
+      weight: stats.costShare,
+      countShare: stats.countShare,
+      costShare: stats.costShare,
       sigma,
-      sigmaLo,
-      sigmaHi,
+      sigmaLo: sigma,
+      sigmaHi: sigma,
       variance: sigma * sigma,
-      varContribution: w * sigma * sigma,
-      varContributionLo: w * sigmaLo * sigmaLo,
-      varContributionHi: w * sigmaHi * sigmaHi,
+      varContribution,
+      varContributionLo: varContribution,
+      varContributionHi: varContribution,
     };
   });
   const totalVar = perRowWithoutShare.reduce(
     (a, r) => a + r.varContribution,
-    0,
-  );
-  const totalVarLo = perRowWithoutShare.reduce(
-    (a, r) => a + r.varContributionLo,
-    0,
-  );
-  const totalVarHi = perRowWithoutShare.reduce(
-    (a, r) => a + r.varContributionHi,
     0,
   );
   return {
@@ -205,9 +223,9 @@ export function buildExactBreakdown(
       ...r,
       varShare: totalVar > 0 ? r.varContribution / totalVar : 0,
     })),
-    sigmaEff: Math.sqrt(Math.max(0, totalVar)),
-    sigmaEffLo: Math.sqrt(Math.max(0, totalVarLo)),
-    sigmaEffHi: Math.sqrt(Math.max(0, totalVarHi)),
+    sigmaEff: analytic.sigmaRoiPerTourney,
+    sigmaEffLo: analytic.sigmaRoiPerTourney,
+    sigmaEffHi: analytic.sigmaRoiPerTourney,
   };
 }
 
