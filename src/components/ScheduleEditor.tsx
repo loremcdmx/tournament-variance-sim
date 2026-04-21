@@ -232,6 +232,8 @@ const PAYOUT_IDS: PayoutStructureId[] = [
   "winner-takes-all",
 ];
 
+const IMPORT_COUNT_MAX = 100_000;
+
 export function parseImportCSV(raw: string): {
   rows: TournamentRow[];
   errors: string[];
@@ -262,8 +264,12 @@ export function parseImportCSV(raw: string): {
     let count = 1;
     if (countStr) {
       const parsedCount = parseFloat(countStr);
-      if (!Number.isFinite(parsedCount) || parsedCount < 1) {
-        errors.push(`line ${i + 1}: count must be >= 1`);
+      if (
+        !Number.isFinite(parsedCount) ||
+        parsedCount < 1 ||
+        parsedCount > IMPORT_COUNT_MAX
+      ) {
+        errors.push(`line ${i + 1}: count must be 1..${IMPORT_COUNT_MAX}`);
         return;
       }
       count = Math.max(1, Math.floor(parsedCount));

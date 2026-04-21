@@ -8,7 +8,16 @@ describe("parseImportCSV", () => {
     );
 
     expect(parsed.rows).toEqual([]);
-    expect(parsed.errors).toEqual(["line 1: count must be >= 1"]);
+    expect(parsed.errors).toEqual(["line 1: count must be 1..100000"]);
+  });
+
+  it("rejects count cells above the UI max instead of importing huge runs", () => {
+    const parsed = parseImportCSV(
+      "Huge count, 500, 50+5, 10, 1000000000, mtt-standard",
+    );
+
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.errors).toEqual(["line 1: count must be 1..100000"]);
   });
 
   it("keeps missing count optional and floors valid numeric counts", () => {
