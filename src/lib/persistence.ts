@@ -118,7 +118,6 @@ const PERSISTED_ROW_RAKE_MIN = 0;
 const PERSISTED_ROW_RAKE_MAX = 1;
 const PERSISTED_ROW_ROI_MIN = -0.99;
 const PERSISTED_ROW_ROI_MAX = 100;
-const PERSISTED_ROW_GUARANTEE_MIN = 0;
 const PERSISTED_ROW_ITM_RATE_MIN = 0;
 const PERSISTED_ROW_ITM_RATE_MAX = 1;
 const PERSISTED_ROW_MAX_ENTRIES_MIN = 1;
@@ -135,9 +134,6 @@ const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MIN = -1;
 const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MAX = 1;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MIN = 0;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MAX = 3;
-const PERSISTED_ROW_PKO_HEAD_VAR_MIN = 0;
-const PERSISTED_ROW_PKO_HEAT_MIN = 0;
-const PERSISTED_ROW_PKO_HEAT_MAX = 3;
 const PERSISTED_FIELD_VARIABILITY_BUCKETS_MAX = 20;
 const PERSISTED_ROW_COUNT_MAX = 100_000;
 const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
@@ -435,16 +431,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       PERSISTED_ROW_ROI_MAX,
       Math.max(PERSISTED_ROW_ROI_MIN, row.roi),
     );
-    const nextGuarantee = clampPersistedOptionalNumber(
-      row.guarantee,
-      PERSISTED_ROW_GUARANTEE_MIN,
-      Number.MAX_SAFE_INTEGER,
-    );
-    const nextLateRegMultiplier = clampPersistedOptionalNumber(
-      row.lateRegMultiplier,
-      1,
-      PERSISTED_ROW_PLAYERS_MAX / Math.max(PERSISTED_ROW_PLAYERS_MIN, nextPlayers),
-    );
+    const nextGuarantee = undefined;
+    const nextLateRegMultiplier = undefined;
     const nextItmRate = clampPersistedOptionalNumber(
       row.itmRate,
       PERSISTED_ROW_ITM_RATE_MIN,
@@ -485,26 +473,19 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       PERSISTED_ROW_MYSTERY_VARIANCE_MIN,
       PERSISTED_ROW_MYSTERY_VARIANCE_MAX,
     );
-    const nextPkoHeadVar = clampPersistedOptionalNumber(
-      row.pkoHeadVar,
-      PERSISTED_ROW_PKO_HEAD_VAR_MIN,
-      Number.MAX_SAFE_INTEGER,
-    );
-    const nextPkoHeat = clampPersistedOptionalNumber(
-      row.pkoHeat,
-      PERSISTED_ROW_PKO_HEAT_MIN,
-      PERSISTED_ROW_PKO_HEAT_MAX,
-    );
+    const nextPkoHeadVar = undefined;
+    const nextPkoHeat = undefined;
     const nextSitThroughPayJumps =
       typeof row.sitThroughPayJumps === "boolean"
         ? row.sitThroughPayJumps
         : undefined;
-    let finalMaxEntries = nextMaxEntries;
-    let finalReentryRate = nextReentryRate;
-    let finalBountyFraction = nextBountyFraction;
-    let finalMysteryBountyVariance = nextMysteryBountyVariance;
-    let finalPkoHeadVar = nextPkoHeadVar;
-    let finalPkoHeat = nextPkoHeat;
+    let finalMaxEntries: number | undefined = nextMaxEntries;
+    let finalReentryRate: number | undefined = nextReentryRate;
+    let finalBountyFraction: number | undefined = nextBountyFraction;
+    let finalMysteryBountyVariance: number | undefined =
+      nextMysteryBountyVariance;
+    let finalPkoHeadVar: number | undefined = nextPkoHeadVar;
+    let finalPkoHeat: number | undefined = nextPkoHeat;
     if (nextGameType === "freezeout") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;

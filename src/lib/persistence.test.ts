@@ -317,8 +317,8 @@ describe("persistence validation", () => {
       bountyFraction: 0.9,
       payJumpAggression: 0,
       mysteryBountyVariance: 0,
-      pkoHeadVar: 0,
-      pkoHeat: 3,
+      pkoHeadVar: undefined,
+      pkoHeat: undefined,
     });
   });
 
@@ -341,7 +341,7 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.payJumpAggression).toBe(0.8);
   });
 
-  it("preserves persisted re-entry and late-reg row knobs when they are still valid product inputs", () => {
+  it("preserves persisted re-entry row knobs when they are still valid product inputs", () => {
     const state = decodeState(
       encoded({
         v: 1,
@@ -349,7 +349,6 @@ describe("persistence validation", () => {
           {
             ...row,
             gameType: "freezeout-reentry",
-            lateRegMultiplier: 3,
             maxEntries: 4,
             reentryRate: 0.75,
           },
@@ -359,12 +358,11 @@ describe("persistence validation", () => {
     );
 
     expect(state?.schedule[0]?.gameType).toBe("freezeout-reentry");
-    expect(state?.schedule[0]?.lateRegMultiplier).toBe(3);
     expect(state?.schedule[0]?.maxEntries).toBe(4);
     expect(state?.schedule[0]?.reentryRate).toBe(0.75);
   });
 
-  it("clamps persisted late-reg and shape-bias row knobs back into the UI/engine box", () => {
+  it("drops hidden persisted row knobs that are no longer user-visible", () => {
     const state = decodeState(
       encoded({
         v: 1,
@@ -372,14 +370,16 @@ describe("persistence validation", () => {
           {
             ...row,
             players: 500,
+            guarantee: 1_000_000,
             lateRegMultiplier: 1_000_000_000,
-            guarantee: -10,
             maxEntries: 0,
             reentryRate: 5,
             bountyFraction: 0.5,
             bountyEvBias: 999,
             itmRate: 0.18,
             itmTopHeavyBias: -999,
+            pkoHeadVar: 9,
+            pkoHeat: 9,
           },
         ],
         controls,
@@ -387,12 +387,14 @@ describe("persistence validation", () => {
     );
 
     expect(state?.schedule[0]).toMatchObject({
-      lateRegMultiplier: 2000,
-      guarantee: 0,
+      lateRegMultiplier: undefined,
+      guarantee: undefined,
       maxEntries: 1,
       reentryRate: 1,
       bountyEvBias: 0.25,
       itmTopHeavyBias: -1,
+      pkoHeadVar: undefined,
+      pkoHeat: undefined,
     });
   });
 
