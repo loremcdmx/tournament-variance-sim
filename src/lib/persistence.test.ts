@@ -67,6 +67,50 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.players).toBe(1_000_000);
   });
 
+  it("clamps persisted field-variability ranges and bucket counts back to editor limits", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            fieldVariability: {
+              kind: "uniform",
+              min: 100,
+              max: 20_000_000,
+              buckets: 200,
+            },
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.fieldVariability).toEqual({
+      kind: "uniform",
+      min: 100,
+      max: 1_000_000,
+      buckets: 20,
+    });
+  });
+
+  it("drops malformed persisted field-variability objects before they reach engine compile", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            fieldVariability: { kind: "uniform", min: "oops", max: 5000 },
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.fieldVariability).toBeUndefined();
+  });
+
   it("drops non-numeric persisted run controls so defaults can win on hydration", () => {
     const state = loadLocalFromPayload({
       v: 1,
@@ -165,6 +209,45 @@ describe("persistence validation", () => {
     const presets = loadUserPresets();
     expect(presets).toHaveLength(1);
     expect(presets[0]?.state.schedule[0]?.players).toBe(1_000_000);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("normalizes oversized field-variability ranges inside saved user presets", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () =>
+        JSON.stringify([
+          {
+            id: "big-range",
+            name: "Big range",
+            createdAt: 1,
+            state: {
+              v: 1,
+              schedule: [
+                {
+                  ...row,
+                  fieldVariability: {
+                    kind: "uniform",
+                    min: 100,
+                    max: 20_000_000,
+                    buckets: 200,
+                  },
+                },
+              ],
+              controls,
+            },
+          },
+        ]),
+    });
+
+    const presets = loadUserPresets();
+    expect(presets).toHaveLength(1);
+    expect(presets[0]?.state.schedule[0]?.fieldVariability).toEqual({
+      kind: "uniform",
+      min: 100,
+      max: 1_000_000,
+      buckets: 20,
+    });
 
     vi.unstubAllGlobals();
   });

@@ -66,6 +66,7 @@ export interface PersistedState {
 const LS_KEY = "tvs:state";
 const PERSISTED_ROW_PLAYERS_MIN = 2;
 const PERSISTED_ROW_PLAYERS_MAX = 1_000_000;
+const PERSISTED_FIELD_VARIABILITY_BUCKETS_MAX = 20;
 const PERSISTED_ROW_COUNT_MAX = 100_000;
 const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
 const PERSISTED_SAMPLES_MIN = 100;
@@ -78,6 +79,33 @@ function clampPersistedCount(count: number): number {
 
 function clampPersistedPlayers(players: number): number {
   return Math.min(PERSISTED_ROW_PLAYERS_MAX, Math.max(PERSISTED_ROW_PLAYERS_MIN, players));
+}
+
+function normalizePersistedFieldVariability(
+  fieldVariability: TournamentRow["fieldVariability"],
+): TournamentRow["fieldVariability"] | undefined {
+  if (!fieldVariability || typeof fieldVariability !== "object") return undefined;
+  if (fieldVariability.kind === "fixed") return { kind: "fixed" };
+  if (
+    fieldVariability.kind !== "uniform" ||
+    !isFiniteNumber(fieldVariability.min) ||
+    !isFiniteNumber(fieldVariability.max)
+  ) {
+    return undefined;
+  }
+  const buckets = isFiniteNumber(fieldVariability.buckets)
+    ? clampPersistedInt(
+        fieldVariability.buckets,
+        1,
+        PERSISTED_FIELD_VARIABILITY_BUCKETS_MAX,
+      )
+    : 5;
+  return {
+    kind: "uniform",
+    min: clampPersistedPlayers(fieldVariability.min),
+    max: clampPersistedPlayers(fieldVariability.max),
+    buckets,
+  };
 }
 
 function clampPersistedInt(value: number, min: number, max: number): number {
@@ -125,10 +153,24 @@ function normalizePersistedState(state: PersistedState): PersistedState {
   let changed = false;
   const schedule = state.schedule.map((row) => {
     const nextPlayers = clampPersistedPlayers(row.players);
+    const nextFieldVariability = normalizePersistedFieldVariability(
+      row.fieldVariability,
+    );
     const nextCount = clampPersistedCount(row.count);
-    if (nextPlayers === row.players && nextCount === row.count) return row;
+    if (
+      nextPlayers === row.players &&
+      nextCount === row.count &&
+      nextFieldVariability === row.fieldVariability
+    ) {
+      return row;
+    }
     changed = true;
-    return { ...row, players: nextPlayers, count: nextCount };
+    return {
+      ...row,
+      players: nextPlayers,
+      fieldVariability: nextFieldVariability,
+      count: nextCount,
+    };
   });
   const controls = normalizePersistedControls(state.controls);
   if (controls !== state.controls) changed = true;
