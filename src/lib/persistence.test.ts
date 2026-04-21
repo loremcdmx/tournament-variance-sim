@@ -200,8 +200,6 @@ describe("persistence validation", () => {
           {
             ...row,
             itmRate: 5,
-            maxEntries: 0,
-            reentryRate: 2,
             bountyFraction: 5,
             payJumpAggression: -1,
             mysteryBountyVariance: -3,
@@ -215,8 +213,6 @@ describe("persistence validation", () => {
 
     expect(state?.schedule[0]).toMatchObject({
       itmRate: 1,
-      maxEntries: 1,
-      reentryRate: 1,
       bountyFraction: 0.9,
       payJumpAggression: 0,
       mysteryBountyVariance: 0,
@@ -244,22 +240,59 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.payJumpAggression).toBe(0.8);
   });
 
-  it("clamps persisted late-reg multiplier so compiled field stays inside the field-size cap", () => {
+  it("preserves persisted re-entry and late-reg row knobs when they are still valid product inputs", () => {
     const state = decodeState(
       encoded({
         v: 1,
         schedule: [
           {
             ...row,
-            players: 2,
-            lateRegMultiplier: 1_000_000_000,
+            gameType: "freezeout-reentry",
+            lateRegMultiplier: 3,
+            maxEntries: 4,
+            reentryRate: 0.75,
           },
         ],
         controls,
       }),
     );
 
-    expect(state?.schedule[0]?.lateRegMultiplier).toBe(500_000);
+    expect(state?.schedule[0]?.gameType).toBe("freezeout-reentry");
+    expect(state?.schedule[0]?.lateRegMultiplier).toBe(3);
+    expect(state?.schedule[0]?.maxEntries).toBe(4);
+    expect(state?.schedule[0]?.reentryRate).toBe(0.75);
+  });
+
+  it("clamps persisted late-reg and shape-bias row knobs back into the UI/engine box", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            players: 500,
+            lateRegMultiplier: 1_000_000_000,
+            guarantee: -10,
+            maxEntries: 0,
+            reentryRate: 5,
+            bountyFraction: 0.5,
+            bountyEvBias: 999,
+            itmRate: 0.18,
+            itmTopHeavyBias: -999,
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]).toMatchObject({
+      lateRegMultiplier: 2000,
+      guarantee: 0,
+      maxEntries: 1,
+      reentryRate: 1,
+      bountyEvBias: 0.25,
+      itmTopHeavyBias: -1,
+    });
   });
 
   it("drops malformed persisted finish-bucket locks instead of hydrating impossible shell constraints", () => {

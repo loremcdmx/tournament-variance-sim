@@ -118,6 +118,7 @@ const PERSISTED_ROW_RAKE_MIN = 0;
 const PERSISTED_ROW_RAKE_MAX = 1;
 const PERSISTED_ROW_ROI_MIN = -0.99;
 const PERSISTED_ROW_ROI_MAX = 100;
+const PERSISTED_ROW_GUARANTEE_MIN = 0;
 const PERSISTED_ROW_ITM_RATE_MIN = 0;
 const PERSISTED_ROW_ITM_RATE_MAX = 1;
 const PERSISTED_ROW_MAX_ENTRIES_MIN = 1;
@@ -126,8 +127,12 @@ const PERSISTED_ROW_REENTRY_RATE_MIN = 0;
 const PERSISTED_ROW_REENTRY_RATE_MAX = 1;
 const PERSISTED_ROW_BOUNTY_MIN = 0;
 const PERSISTED_ROW_BOUNTY_MAX = 0.9;
+const PERSISTED_ROW_BOUNTY_EV_BIAS_MIN = -0.25;
+const PERSISTED_ROW_BOUNTY_EV_BIAS_MAX = 0.25;
 const PERSISTED_ROW_PAY_JUMP_MIN = 0;
 const PERSISTED_ROW_PAY_JUMP_MAX = 1;
+const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MIN = -1;
+const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MAX = 1;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MIN = 0;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MAX = 3;
 const PERSISTED_ROW_PKO_HEAD_VAR_MIN = 0;
@@ -190,6 +195,10 @@ function isValidCompareMode(
 
 function isValidGameType(value: unknown): value is GameType {
   return typeof value === "string" && VALID_GAME_TYPES.has(value as GameType);
+}
+
+function normalizePersistedGameType(value: unknown): GameType | undefined {
+  return isValidGameType(value) ? value : undefined;
 }
 
 function isValidPayoutStructureId(value: unknown): value is PayoutStructureId {
@@ -410,7 +419,7 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
 function normalizePersistedState(state: PersistedState): PersistedState {
   let changed = false;
   const schedule = state.schedule.map((row) => {
-    const nextGameType = isValidGameType(row.gameType) ? row.gameType : undefined;
+    const nextGameType = normalizePersistedGameType(row.gameType);
     const nextPayoutStructure = isValidPayoutStructureId(row.payoutStructure)
       ? row.payoutStructure
       : defaultPayoutStructureForGameType(nextGameType);
@@ -420,6 +429,11 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     const nextRoi = Math.min(
       PERSISTED_ROW_ROI_MAX,
       Math.max(PERSISTED_ROW_ROI_MIN, row.roi),
+    );
+    const nextGuarantee = clampPersistedOptionalNumber(
+      row.guarantee,
+      PERSISTED_ROW_GUARANTEE_MIN,
+      Number.MAX_SAFE_INTEGER,
     );
     const nextLateRegMultiplier = clampPersistedOptionalNumber(
       row.lateRegMultiplier,
@@ -446,10 +460,20 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       PERSISTED_ROW_BOUNTY_MIN,
       PERSISTED_ROW_BOUNTY_MAX,
     );
+    const nextBountyEvBias = clampPersistedOptionalNumber(
+      row.bountyEvBias,
+      PERSISTED_ROW_BOUNTY_EV_BIAS_MIN,
+      PERSISTED_ROW_BOUNTY_EV_BIAS_MAX,
+    );
     const nextPayJumpAggression = clampPersistedOptionalNumber(
       row.payJumpAggression,
       PERSISTED_ROW_PAY_JUMP_MIN,
       PERSISTED_ROW_PAY_JUMP_MAX,
+    );
+    const nextItmTopHeavyBias = clampPersistedOptionalNumber(
+      row.itmTopHeavyBias,
+      PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MIN,
+      PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MAX,
     );
     const nextMysteryBountyVariance = clampPersistedOptionalNumber(
       row.mysteryBountyVariance,
@@ -489,12 +513,15 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       nextBuyIn === row.buyIn &&
       nextRake === row.rake &&
       nextRoi === row.roi &&
+      nextGuarantee === row.guarantee &&
       nextLateRegMultiplier === row.lateRegMultiplier &&
       nextItmRate === row.itmRate &&
       nextMaxEntries === row.maxEntries &&
       nextReentryRate === row.reentryRate &&
       nextBountyFraction === row.bountyFraction &&
+      nextBountyEvBias === row.bountyEvBias &&
       nextPayJumpAggression === row.payJumpAggression &&
+      nextItmTopHeavyBias === row.itmTopHeavyBias &&
       nextMysteryBountyVariance === row.mysteryBountyVariance &&
       nextPkoHeadVar === row.pkoHeadVar &&
       nextPkoHeat === row.pkoHeat &&
@@ -515,12 +542,15 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       buyIn: nextBuyIn,
       rake: nextRake,
       roi: nextRoi,
+      guarantee: nextGuarantee,
       lateRegMultiplier: nextLateRegMultiplier,
       itmRate: nextItmRate,
       maxEntries: nextMaxEntries,
       reentryRate: nextReentryRate,
       bountyFraction: nextBountyFraction,
+      bountyEvBias: nextBountyEvBias,
       payJumpAggression: nextPayJumpAggression,
+      itmTopHeavyBias: nextItmTopHeavyBias,
       mysteryBountyVariance: nextMysteryBountyVariance,
       pkoHeadVar: nextPkoHeadVar,
       pkoHeat: nextPkoHeat,
