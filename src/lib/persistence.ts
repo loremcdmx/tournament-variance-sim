@@ -91,6 +91,8 @@ const PERSISTED_ROW_PLAYERS_MIN = 2;
 const PERSISTED_ROW_PLAYERS_MAX = 1_000_000;
 const PERSISTED_ROW_RAKE_MIN = 0;
 const PERSISTED_ROW_RAKE_MAX = 1;
+const PERSISTED_ROW_ROI_MIN = -0.99;
+const PERSISTED_ROW_ROI_MAX = 100;
 const PERSISTED_ROW_ITM_RATE_MIN = 0;
 const PERSISTED_ROW_ITM_RATE_MAX = 1;
 const PERSISTED_ROW_MAX_ENTRIES_MIN = 1;
@@ -339,6 +341,10 @@ function normalizePersistedState(state: PersistedState): PersistedState {
   const schedule = state.schedule.map((row) => {
     const nextPlayers = clampPersistedPlayers(row.players);
     const nextRake = clampPersistedRake(row.rake);
+    const nextRoi = Math.min(
+      PERSISTED_ROW_ROI_MAX,
+      Math.max(PERSISTED_ROW_ROI_MIN, row.roi),
+    );
     const nextLateRegMultiplier = clampPersistedOptionalNumber(
       row.lateRegMultiplier,
       1,
@@ -396,6 +402,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     if (
       nextPlayers === row.players &&
       nextRake === row.rake &&
+      nextRoi === row.roi &&
       nextLateRegMultiplier === row.lateRegMultiplier &&
       nextItmRate === row.itmRate &&
       nextMaxEntries === row.maxEntries &&
@@ -418,6 +425,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       ...row,
       players: nextPlayers,
       rake: nextRake,
+      roi: nextRoi,
       lateRegMultiplier: nextLateRegMultiplier,
       itmRate: nextItmRate,
       maxEntries: nextMaxEntries,

@@ -83,6 +83,22 @@ describe("persistence validation", () => {
     expect(state?.schedule[1]?.rake).toBe(0);
   });
 
+  it("clamps persisted ROI back into the editor range to avoid infinite EV targets", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          { ...row, id: "hi", roi: 1e308 },
+          { ...row, id: "lo", roi: -5 },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.roi).toBe(100);
+    expect(state?.schedule[1]?.roi).toBe(-0.99);
+  });
+
   it("drops malformed persisted custom payout arrays instead of keeping a fake zero-payout custom row", () => {
     const state = decodeState(
       encoded({
