@@ -355,6 +355,35 @@ describe("persistence validation", () => {
     expect(loaded.itmGlobalEnabled).toBeUndefined();
   });
 
+  it("drops hidden persisted shock and tilt knobs so invisible state cannot silently alter runs", () => {
+    const state = loadLocalFromPayload({
+      v: 1,
+      schedule: [row],
+      controls: {
+        roiShockPerTourney: 0.25,
+        roiShockPerSession: 0.5,
+        roiDriftSigma: 0.1,
+        tiltFastGain: 0.8,
+        tiltFastScale: 100,
+        tiltSlowGain: 0.5,
+        tiltSlowThreshold: 200,
+        tiltSlowMinDuration: 20,
+        tiltSlowRecoveryFrac: 0.75,
+      },
+    });
+
+    const loaded = state?.controls as unknown as Record<string, unknown>;
+    expect(loaded.roiShockPerTourney).toBeUndefined();
+    expect(loaded.roiShockPerSession).toBeUndefined();
+    expect(loaded.roiDriftSigma).toBeUndefined();
+    expect(loaded.tiltFastGain).toBeUndefined();
+    expect(loaded.tiltFastScale).toBeUndefined();
+    expect(loaded.tiltSlowGain).toBeUndefined();
+    expect(loaded.tiltSlowThreshold).toBeUndefined();
+    expect(loaded.tiltSlowMinDuration).toBeUndefined();
+    expect(loaded.tiltSlowRecoveryFrac).toBeUndefined();
+  });
+
   it("ignores malformed localStorage state", () => {
     vi.stubGlobal("localStorage", {
       getItem: () => JSON.stringify({ v: 1, schedule: null, controls: {} }),

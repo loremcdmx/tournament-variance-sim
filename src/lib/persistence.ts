@@ -308,6 +308,26 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
   normalizeBoolean("usePrimedopeRakeMath");
   normalizeBoolean("itmGlobalEnabled");
 
+  // These controls are intentionally hidden in the current UI. Letting them
+  // survive from old localStorage/share state silently changes the model while
+  // giving the user no visible way to inspect or clear the cause.
+  for (const key of [
+    "roiShockPerTourney",
+    "roiShockPerSession",
+    "roiDriftSigma",
+    "tiltFastGain",
+    "tiltFastScale",
+    "tiltSlowGain",
+    "tiltSlowThreshold",
+    "tiltSlowMinDuration",
+    "tiltSlowRecoveryFrac",
+  ] as const satisfies readonly (keyof ControlsState)[]) {
+    if (key in next) {
+      delete next[key];
+      changed = true;
+    }
+  }
+
   if ("finishModelId" in next && !isValidFinishModelId(next.finishModelId)) {
     delete next.finishModelId;
     changed = true;
