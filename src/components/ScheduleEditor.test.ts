@@ -45,6 +45,25 @@ describe("parseImportCSV", () => {
     expect(parsed.errors).toEqual(["line 1: count must be 1..100000"]);
   });
 
+  it("rejects junk numeric cells instead of silently truncating them", () => {
+    const parsed = parseImportCSV(
+      [
+        "Sci players, 2e3, 50+5, 10, 3, mtt-standard",
+        "Junk players, 500abc, 20+2, 5, 2, mtt-standard",
+        "Junk roi, 1000, 10+1, 5oops, 1, mtt-standard",
+        "Junk count, 1000, 10+1, 5, 2oops, mtt-standard",
+      ].join("\n"),
+    );
+
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.errors).toEqual([
+      "line 1: players must be 2..1000000",
+      "line 2: players must be 2..1000000",
+      "line 3: roi must be a plain number",
+      "line 4: count must be 1..100000",
+    ]);
+  });
+
   it("keeps missing count optional and floors valid numeric counts", () => {
     const parsed = parseImportCSV(
       [

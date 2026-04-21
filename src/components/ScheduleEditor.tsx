@@ -238,6 +238,20 @@ const PAYOUT_IDS: PayoutStructureId[] = [
 
 const IMPORT_PLAYERS_MAX = 1_000_000;
 const IMPORT_COUNT_MAX = 100_000;
+const PLAIN_INT_RE = /^\d+$/;
+const PLAIN_NUMBER_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)$/;
+
+function parsePlainInt(raw: string): number | null {
+  if (!PLAIN_INT_RE.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parsePlainNumber(raw: string): number | null {
+  if (!PLAIN_NUMBER_RE.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 export function parseImportCSV(raw: string): {
   rows: TournamentRow[];
@@ -255,8 +269,8 @@ export function parseImportCSV(raw: string): {
       return;
     }
     const [label, playersStr, buyInStr, roiStr, countStr, payoutStr] = cells;
-    const players = parseInt(playersStr, 10);
-    if (!isFinite(players) || players < 2 || players > IMPORT_PLAYERS_MAX) {
+    const players = parsePlainInt(playersStr);
+    if (players === null || players < 2 || players > IMPORT_PLAYERS_MAX) {
       errors.push(`line ${i + 1}: players must be 2..${IMPORT_PLAYERS_MAX}`);
       return;
     }
@@ -265,12 +279,20 @@ export function parseImportCSV(raw: string): {
       errors.push(`line ${i + 1}: bad buy-in "${buyInStr}"`);
       return;
     }
-    const roiPct = roiStr ? parseFloat(roiStr) : 0;
+    let roiPct = 0;
+    if (roiStr) {
+      const parsedRoi = parsePlainNumber(roiStr);
+      if (parsedRoi === null) {
+        errors.push(`line ${i + 1}: roi must be a plain number`);
+        return;
+      }
+      roiPct = parsedRoi;
+    }
     let count = 1;
     if (countStr) {
-      const parsedCount = parseFloat(countStr);
+      const parsedCount = parsePlainNumber(countStr);
       if (
-        !Number.isFinite(parsedCount) ||
+        parsedCount === null ||
         parsedCount < 1 ||
         parsedCount > IMPORT_COUNT_MAX
       ) {
@@ -290,7 +312,7 @@ export function parseImportCSV(raw: string): {
       players,
       buyIn: parsed.buyIn,
       rake: parsed.rake,
-      roi: isFinite(roiPct) ? roiPct / 100 : 0,
+      roi: roiPct / 100,
       payoutStructure: payout,
       count,
     });
