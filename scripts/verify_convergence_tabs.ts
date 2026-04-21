@@ -14,7 +14,6 @@ import path from "node:path";
 import {
   FIT_RAKE_BY_FORMAT,
   SIGMA_ROI_MYSTERY,
-  SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
   buildExactBreakdown,
   ciToZ,
@@ -44,6 +43,31 @@ function freezeSigma(afs: number, roi: number, rake: number): number {
     },
   ]);
   if (!exact) throw new Error("freeze exact breakdown failed");
+  return exact.sigmaEff;
+}
+
+function battleRoyaleSigma(roi: number, rake: number): number {
+  const exact = buildExactBreakdown(
+    [
+      {
+        id: "mbr",
+        label: "Battle Royale",
+        players: 18,
+        buyIn: 50,
+        rake,
+        roi,
+        payoutStructure: "battle-royale",
+        gameType: "mystery-royale",
+        bountyFraction: 0.5,
+        mysteryBountyVariance: 1.8,
+        pkoHeadVar: 0,
+        itmRate: 0.18,
+        count: 1,
+      },
+    ],
+    { finishModel: { id: "mystery-realdata-linear" } },
+  );
+  if (!exact) throw new Error("battle royale exact breakdown failed");
   return exact.sigmaEff;
 }
 
@@ -91,28 +115,26 @@ console.log(`σ@-20% = ${sMyLoRoi.toFixed(3)}  σ@+80% = ${sMyHiRoi.toFixed(3)} 
 if (sMyHiRoi <= sMyLoRoi) throw new Error(`mystery σ not monotone↑ in ROI`);
 console.log("  ✓ σ monotone↑ in ROI inside fit box");
 
-// ---------- Tab 4: MYSTERY-ROYALE (β=0, AFS-independent) --------------------
+// ---------- Tab 4: MYSTERY-ROYALE (runtime point estimate @ fixed AFS=18) ---
 
 console.log("\n==== TAB: mystery-royale ====");
-const sMbrAfs50 = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE, 50, 0, 0.08, 0.08);
-const sMbrAfs50k = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE, 50000, 0, 0.08, 0.08);
-if (Math.abs(sMbrAfs50 - sMbrAfs50k) > 1e-9) throw new Error(`mystery-royale should be AFS-invariant (β=0)`);
-console.log(`  ✓ σ invariant in AFS (β=0)  [σ@50=${sMbrAfs50.toFixed(3)}, σ@50k=${sMbrAfs50k.toFixed(3)}]`);
+console.log("  ✓ AFS is locked at 18 in the widget; runtime BR sigma is evaluated at that field");
 // ROI band is clipped to ±10% in the UI.
-const sMbrLoRoi = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE, 18, -0.1, 0.08, 0.08);
-const sMbrHiRoi = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE, 18, 0.1, 0.08, 0.08);
+const sMbrLoRoi = battleRoyaleSigma(-0.1, 0.08);
+const sMbrHiRoi = battleRoyaleSigma(0.1, 0.08);
 console.log(`σ@-10% = ${sMbrLoRoi.toFixed(3)}  σ@+10% = ${sMbrHiRoi.toFixed(3)}`);
+if (sMbrHiRoi <= sMbrLoRoi) throw new Error("mystery-royale runtime σ should grow with ROI");
+console.log("  ✓ runtime σ monotone↑ in ROI");
 
-// Rake-scale check: at rake=fit_rake, rakeScale must be 1.
-const sMbrRakeMatch = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE, 18, 0, 0.08, 0.08);
-const sMbrRakeLow = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE, 18, 0, 0.0, 0.08);
-const sMbrRakeHigh = sigmaFor(SIGMA_ROI_MYSTERY_ROYALE, 18, 0, 0.20, 0.08);
+const sMbrRakeMatch = battleRoyaleSigma(0, 0.08);
+const sMbrRakeLow = battleRoyaleSigma(0, 0.0);
+const sMbrRakeHigh = battleRoyaleSigma(0, 0.20);
 console.log(`rake=0%:  σ=${sMbrRakeLow.toFixed(3)}   (should be > σ@8%)`);
 console.log(`rake=8%:  σ=${sMbrRakeMatch.toFixed(3)}  (fit baseline)`);
 console.log(`rake=20%: σ=${sMbrRakeHigh.toFixed(3)}  (should be < σ@8%)`);
 if (!(sMbrRakeLow > sMbrRakeMatch && sMbrRakeMatch > sMbrRakeHigh))
   throw new Error("rake-scale not monotone↓ in rake");
-console.log("  ✓ rake-scale monotone↓ in rake");
+console.log("  ✓ runtime σ monotone↓ in rake");
 
 // ---------- Tab 5: MIX (σ² = Σ w_i·σ²_i) -----------------------------------
 

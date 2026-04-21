@@ -62,6 +62,9 @@ export const SIGMA_ROI_MYSTERY: SigmaCoef = {
 };
 
 export const SIGMA_ROI_MYSTERY_ROYALE: SigmaCoef = {
+  // Legacy averaged BR fit retained for diagnostics and generic helpers.
+  // The user-facing averaged BR tab now uses a runtime point estimate and
+  // hides the numeric band until a new residual policy is validated.
   kind: "single-beta",
   C0: 8.1534,
   C1: 7.9063,

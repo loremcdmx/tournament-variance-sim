@@ -191,6 +191,57 @@ describe("convergence math", () => {
     );
   });
 
+  it("battle royale averaged mode can use runtime sigma instead of the stale fit band center", () => {
+    const runtime = buildExactBreakdown([
+      {
+        id: "br",
+        label: "BR",
+        players: 18,
+        buyIn: 50,
+        rake: 0.08,
+        roi: 0.05,
+        payoutStructure: "battle-royale",
+        gameType: "mystery-royale",
+        bountyFraction: 0.5,
+        mysteryBountyVariance: 1.8,
+        pkoHeadVar: 0,
+        itmRate: 0.18,
+        count: 1,
+      },
+    ]);
+    expect(runtime).not.toBeNull();
+
+    const fitRows = computeConvergenceRows({
+      afs: 18,
+      z: z95,
+      roi: 0.05,
+      mix: [1, 0, 0],
+      format: "mystery-royale",
+      rakePct: 8,
+    });
+    const runtimeRows = computeConvergenceRows({
+      afs: 18,
+      z: z95,
+      roi: 0.05,
+      mix: [1, 0, 0],
+      format: "mystery-royale",
+      rakePct: 8,
+      sigmaOverrides: {
+        "mystery-royale": {
+          s: runtime!.sigmaEff,
+          lo: runtime!.sigmaEff,
+          hi: runtime!.sigmaEff,
+        },
+      },
+    });
+
+    const expectedK = Math.ceil(Math.pow((z95 * runtime!.sigmaEff) / 0.1, 2));
+    expect(runtimeRows[targetRow].tourneys).toBe(expectedK);
+    expect(fitRows[targetRow].tourneys).toBeGreaterThan(
+      runtimeRows[targetRow].tourneys * 1.5,
+    );
+  });
+
   it("exact mode weights mixed ABI by dollar risk, not row count alone", () => {
     const schedule: TournamentRow[] = [
       {

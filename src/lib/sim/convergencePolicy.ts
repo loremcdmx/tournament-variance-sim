@@ -8,8 +8,11 @@
  * policy reports `outside-fit-box`. Mystery is stricter: its current 2D fit
  * still carries p95 residuals that are too wide for an honest numeric band,
  * so any schedule containing Mystery reports `contains-mystery` even inside
- * the validated box. The point estimate is still shown as a ballpark; only
- * the numeric ±band is suppressed.
+ * the validated box. Battle Royale is also point-only for now: the averaged
+ * tab uses a runtime single-row estimate, but its old residual policy is no
+ * longer trusted, so in-box MBR reports `contains-mystery-royale`. The point
+ * estimate is still shown as a ballpark; only the numeric ±band is
+ * suppressed.
  */
 
 import type { TournamentRow } from "./types";
@@ -24,7 +27,10 @@ export type ConvergenceBandPolicy =
   | { kind: "numeric" }
   | {
       kind: "warning";
-      reason: "contains-mystery" | "outside-fit-box";
+      reason:
+        | "contains-mystery"
+        | "contains-mystery-royale"
+        | "outside-fit-box";
     };
 
 export interface FitBoxSample {
@@ -157,6 +163,11 @@ export function getConvergenceBandPolicy(
   for (const s of samples) {
     if (!isInsideFitBox(s)) {
       return { kind: "warning", reason: "outside-fit-box" };
+    }
+  }
+  for (const s of samples) {
+    if (s.format === "mystery-royale") {
+      return { kind: "warning", reason: "contains-mystery-royale" };
     }
   }
   return { kind: "numeric" };

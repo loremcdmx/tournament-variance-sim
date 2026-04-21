@@ -240,15 +240,19 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     expect(getConvergenceBandPolicy([])).toEqual({ kind: "numeric" });
   });
 
-  it("single freeze / pko / MBR in-box → numeric", () => {
+  it("single freeze / pko in-box → numeric", () => {
     expect(getConvergenceBandPolicy([s("freeze", 1000, 0.1)])).toEqual({
       kind: "numeric",
     });
     expect(getConvergenceBandPolicy([s("pko", 1000, 0.1)])).toEqual({
       kind: "numeric",
     });
+  });
+
+  it("single MBR in-box → warning contains-mystery-royale", () => {
     expect(getConvergenceBandPolicy([s("mystery-royale", 18, 0)])).toEqual({
-      kind: "numeric",
+      kind: "warning",
+      reason: "contains-mystery-royale",
     });
   });
 
@@ -308,6 +312,15 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     ).toEqual({ kind: "warning", reason: "outside-fit-box" });
   });
 
+  it("MBR in-box keeps point-only policy even when mixed with in-box PKO", () => {
+    expect(
+      getConvergenceBandPolicy([
+        s("pko", 1000, 0.1),
+        s("mystery-royale", 18, 0.05),
+      ]),
+    ).toEqual({ kind: "warning", reason: "contains-mystery-royale" });
+  });
+
   it("freeze extreme ROI is still numeric (fit is ROI-invariant)", () => {
     expect(getConvergenceBandPolicy([s("freeze", 1000, 5)])).toEqual({
       kind: "numeric",
@@ -322,6 +335,15 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
       getConvergenceBandPolicy([
         s("pko", 1000, 0.1),
         s("mystery", 200_000, 2.0),
+      ]),
+    ).toEqual({ kind: "warning", reason: "contains-mystery" });
+  });
+
+  it("Mystery still outranks MBR point-only in mixed samples", () => {
+    expect(
+      getConvergenceBandPolicy([
+        s("mystery-royale", 18, 0.05),
+        s("mystery", 1000, 0.1),
       ]),
     ).toEqual({ kind: "warning", reason: "contains-mystery" });
   });

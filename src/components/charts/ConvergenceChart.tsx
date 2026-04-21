@@ -370,6 +370,48 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       hi: syntheticFreeze.sigmaEff,
     };
   }, [effectiveMode, format, effectiveAfs, rakePct, effectiveRoi, finishModel]);
+  const battleRoyaleSigmaOverride = useMemo<SigmaBand | null>(() => {
+    if (effectiveMode === "exact") return null;
+    if (format !== "mystery-royale") return null;
+    const syntheticBattleRoyale = buildExactBreakdown(
+      [
+        {
+          id: "convergence-br-runtime",
+          label: "Battle Royale",
+          players: BR_FIXED_AFS,
+          buyIn: 50,
+          rake: rakePct / 100,
+          roi: effectiveRoi,
+          payoutStructure: "battle-royale",
+          gameType: "mystery-royale",
+          bountyFraction: 0.5,
+          mysteryBountyVariance: 1.8,
+          pkoHeadVar: 0,
+          itmRate: 0.18,
+          count: 1,
+        },
+      ],
+      { finishModel },
+    );
+    if (!syntheticBattleRoyale) return null;
+    return {
+      s: syntheticBattleRoyale.sigmaEff,
+      lo: syntheticBattleRoyale.sigmaEff,
+      hi: syntheticBattleRoyale.sigmaEff,
+    };
+  }, [effectiveMode, format, rakePct, effectiveRoi, finishModel]);
+  const sigmaOverrides = useMemo<
+    Partial<Record<"freeze" | "pko" | "mystery" | "mystery-royale", SigmaBand>> | undefined
+  >(() => {
+    const overrides: Partial<
+      Record<"freeze" | "pko" | "mystery" | "mystery-royale", SigmaBand>
+    > = {};
+    if (freezeSigmaOverride) overrides.freeze = freezeSigmaOverride;
+    if (battleRoyaleSigmaOverride) {
+      overrides["mystery-royale"] = battleRoyaleSigmaOverride;
+    }
+    return Object.keys(overrides).length > 0 ? overrides : undefined;
+  }, [freezeSigmaOverride, battleRoyaleSigmaOverride]);
 
   const rows = useMemo(() => {
     return computeConvergenceRows({
@@ -380,9 +422,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       format,
       rakePct,
       exactBreakdown,
-      sigmaOverrides: freezeSigmaOverride
-        ? { freeze: freezeSigmaOverride }
-        : undefined,
+      sigmaOverrides,
     });
   }, [
     effectiveAfs,
@@ -392,7 +432,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     format,
     rakePct,
     exactBreakdown,
-    freezeSigmaOverride,
+    sigmaOverrides,
   ]);
 
   const fitBoxSamples = useMemo<readonly FitBoxSample[]>(() => {
@@ -668,11 +708,6 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           </span>
         </div>
       )}
-      {effectiveMode !== "exact" && format === "freeze" && (
-        <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 px-2 py-1.5 text-[11px] leading-snug text-emerald-200">
-          {t("chart.convergence.freeze.runtimeNote")}
-        </div>
-      )}
       {effectiveMode !== "exact" && (
       <div
         className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
@@ -782,7 +817,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           {t(
             bandPolicy.reason === "contains-mystery"
               ? "chart.convergence.bandWarning.containsMystery"
-              : "chart.convergence.bandWarning.outsideFitBox",
+              : bandPolicy.reason === "contains-mystery-royale"
+                ? "chart.convergence.bandWarning.containsMysteryRoyale"
+                : "chart.convergence.bandWarning.outsideFitBox",
           )}
         </div>
       )}
