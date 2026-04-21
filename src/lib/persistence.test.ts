@@ -186,6 +186,25 @@ describe("persistence validation", () => {
     });
   });
 
+  it("drops non-boolean persisted sit-through flags so string values cannot silently enable the transform", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            sitThroughPayJumps: "false",
+            payJumpAggression: 0.8,
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.sitThroughPayJumps).toBeUndefined();
+    expect(state?.schedule[0]?.payJumpAggression).toBe(0.8);
+  });
+
   it("clamps persisted late-reg multiplier so compiled field stays inside the field-size cap", () => {
     const state = decodeState(
       encoded({

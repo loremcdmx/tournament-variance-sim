@@ -392,6 +392,10 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       PERSISTED_ROW_PKO_HEAT_MIN,
       PERSISTED_ROW_PKO_HEAT_MAX,
     );
+    const nextSitThroughPayJumps =
+      typeof row.sitThroughPayJumps === "boolean"
+        ? row.sitThroughPayJumps
+        : undefined;
     const nextFinishBuckets = normalizePersistedFinishBuckets(
       row.finishBuckets,
       nextItmRate,
@@ -415,6 +419,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       nextMysteryBountyVariance === row.mysteryBountyVariance &&
       nextPkoHeadVar === row.pkoHeadVar &&
       nextPkoHeat === row.pkoHeat &&
+      nextSitThroughPayJumps === row.sitThroughPayJumps &&
       nextFinishBuckets === row.finishBuckets &&
       nextCustom.payoutStructure === row.payoutStructure &&
       nextCustom.customPayouts === row.customPayouts &&
@@ -439,6 +444,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       mysteryBountyVariance: nextMysteryBountyVariance,
       pkoHeadVar: nextPkoHeadVar,
       pkoHeat: nextPkoHeat,
+      sitThroughPayJumps: nextSitThroughPayJumps,
       finishBuckets: nextFinishBuckets,
       payoutStructure: nextCustom.payoutStructure,
       customPayouts: nextCustom.customPayouts,
