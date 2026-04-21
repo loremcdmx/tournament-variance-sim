@@ -210,6 +210,47 @@ describe("persistence validation", () => {
     expect(state?.controls.bankroll).toBe(500);
   });
 
+  it("drops malformed persisted control enums and strings before they can crash the UI", () => {
+    const state = loadLocalFromPayload({
+      v: 1,
+      schedule: [row],
+      controls: {
+        finishModelId: "oops",
+        compareMode: "oops",
+        alphaOverride: "oops",
+      },
+    });
+
+    const loaded = state?.controls as unknown as Record<string, unknown>;
+    expect(loaded.finishModelId).toBeUndefined();
+    expect(loaded.compareMode).toBeUndefined();
+    expect(loaded.alphaOverride).toBeUndefined();
+  });
+
+  it("drops malformed persisted empirical buckets and non-boolean flags", () => {
+    const state = loadLocalFromPayload({
+      v: 1,
+      schedule: [row],
+      controls: {
+        finishModelId: "empirical",
+        empiricalBuckets: ["oops"],
+        compareWithPrimedope: "yes",
+        usePrimedopePayouts: 1,
+        usePrimedopeFinishModel: "true",
+        usePrimedopeRakeMath: "true",
+        itmGlobalEnabled: "true",
+      },
+    });
+
+    const loaded = state?.controls as unknown as Record<string, unknown>;
+    expect(loaded.empiricalBuckets).toBeUndefined();
+    expect(loaded.compareWithPrimedope).toBeUndefined();
+    expect(loaded.usePrimedopePayouts).toBeUndefined();
+    expect(loaded.usePrimedopeFinishModel).toBeUndefined();
+    expect(loaded.usePrimedopeRakeMath).toBeUndefined();
+    expect(loaded.itmGlobalEnabled).toBeUndefined();
+  });
+
   it("ignores malformed localStorage state", () => {
     vi.stubGlobal("localStorage", {
       getItem: () => JSON.stringify({ v: 1, schedule: null, controls: {} }),

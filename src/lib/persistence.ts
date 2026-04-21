@@ -64,6 +64,29 @@ export interface PersistedState {
 }
 
 const LS_KEY = "tvs:state";
+const VALID_FINISH_MODEL_IDS = new Set<ControlsState["finishModelId"]>([
+  "power-law",
+  "linear-skill",
+  "stretched-exp",
+  "plackett-luce",
+  "uniform",
+  "empirical",
+  "freeze-realdata-step",
+  "freeze-realdata-linear",
+  "freeze-realdata-tilt",
+  "pko-realdata-step",
+  "pko-realdata-linear",
+  "pko-realdata-tilt",
+  "mystery-realdata-step",
+  "mystery-realdata-linear",
+  "mystery-realdata-tilt",
+  "powerlaw-realdata-influenced",
+]);
+const VALID_COMPARE_MODES = new Set<ControlsState["compareMode"]>([
+  "random",
+  "primedope",
+]);
+const MAX_EMPIRICAL_BUCKETS = 100_000;
 const PERSISTED_ROW_PLAYERS_MIN = 2;
 const PERSISTED_ROW_PLAYERS_MAX = 1_000_000;
 const PERSISTED_ROW_RAKE_MIN = 0;
@@ -118,6 +141,36 @@ function clampPersistedOptionalInt(
 ): number | undefined {
   if (!isFiniteNumber(value)) return undefined;
   return clampPersistedInt(value, min, max);
+}
+
+function isValidFinishModelId(
+  value: unknown,
+): value is ControlsState["finishModelId"] {
+  return (
+    typeof value === "string" &&
+    VALID_FINISH_MODEL_IDS.has(value as ControlsState["finishModelId"])
+  );
+}
+
+function isValidCompareMode(
+  value: unknown,
+): value is ControlsState["compareMode"] {
+  return (
+    typeof value === "string" &&
+    VALID_COMPARE_MODES.has(value as ControlsState["compareMode"])
+  );
+}
+
+function normalizeEmpiricalBuckets(value: unknown): number[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  if (value.length > MAX_EMPIRICAL_BUCKETS) return undefined;
+  const buckets = value.filter(
+    (entry): entry is number =>
+      isFiniteNumber(entry) && entry >= 0 && Number.isInteger(entry),
+  );
+  if (buckets.length !== value.length) return undefined;
+  if (!(buckets.reduce((sum, entry) => sum + entry, 0) > 0)) return undefined;
+  return buckets;
 }
 
 function normalizePersistedCustomPayouts(
@@ -175,6 +228,14 @@ function clampPersistedInt(value: number, min: number, max: number): number {
 function normalizePersistedControls(controls: ControlsState): ControlsState {
   let changed = false;
   const next: Record<string, unknown> = { ...controls };
+  const normalizeBoolean = (key: keyof ControlsState) => {
+    if (!(key in next)) return;
+    const raw = next[key];
+    if (typeof raw !== "boolean") {
+      delete next[key];
+      changed = true;
+    }
+  };
   const normalizeNumber = (
     key: keyof ControlsState,
     min: number,
@@ -205,6 +266,37 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
   normalizeNumber("rakebackPct", 0, 100);
   normalizeNumber("itmGlobalPct", 0.5, 99);
   normalizeNumber("roiStdErr", 0, 5);
+  normalizeBoolean("compareWithPrimedope");
+  normalizeBoolean("usePrimedopePayouts");
+  normalizeBoolean("usePrimedopeFinishModel");
+  normalizeBoolean("usePrimedopeRakeMath");
+  normalizeBoolean("itmGlobalEnabled");
+
+  if ("finishModelId" in next && !isValidFinishModelId(next.finishModelId)) {
+    delete next.finishModelId;
+    changed = true;
+  }
+  if ("compareMode" in next && !isValidCompareMode(next.compareMode)) {
+    delete next.compareMode;
+    changed = true;
+  }
+  if ("alphaOverride" in next) {
+    const raw = next.alphaOverride;
+    if (raw !== null && !isFiniteNumber(raw)) {
+      delete next.alphaOverride;
+      changed = true;
+    }
+  }
+  if ("empiricalBuckets" in next) {
+    const normalized = normalizeEmpiricalBuckets(next.empiricalBuckets);
+    if (normalized === undefined) {
+      delete next.empiricalBuckets;
+      changed = true;
+    } else if (normalized !== next.empiricalBuckets) {
+      next.empiricalBuckets = normalized;
+      changed = true;
+    }
+  }
 
   return changed ? (next as unknown as ControlsState) : controls;
 }
