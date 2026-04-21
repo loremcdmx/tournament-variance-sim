@@ -689,7 +689,7 @@ const ScheduleRow = memo(function ScheduleRow({
         <Td align="right" className={gt === "mystery-royale" ? "min-w-[132px]" : ""}>
           <div className="flex flex-col items-center gap-1">
             <NumInput
-              value={+(r.roi * 100).toFixed(2)}
+              value={Math.round(r.roi * 100)}
               onChange={(v) => update(r.id, { roi: v / 100 })}
               min={-99}
               max={10_000}
@@ -1112,8 +1112,20 @@ function NumInputBox({
   max?: number;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current !== null) clearTimeout(commitTimerRef.current);
+    };
+  }, []);
+  const clearCommitTimer = () => {
+    if (commitTimerRef.current !== null) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+  };
   const display =
-    draft !== null ? draft : Number.isFinite(value) ? String(value) : "";
+    draft !== null ? draft : Number.isFinite(value) ? formatStepDisplay(value, step) : "";
   const invalid = computeInvalid(draft, min, max);
   return (
     <input
@@ -1126,13 +1138,46 @@ function NumInputBox({
       onChange={(e) => {
         const raw = e.target.value;
         setDraft(raw);
-        const v = Number(raw);
-        if (raw.trim() === "" || !Number.isFinite(v)) return;
-        if (min !== undefined && v < min) return;
-        if (max !== undefined && v > max) return;
-        onChange(v);
+        clearCommitTimer();
+        const next = normalizeDraftValue(raw, min, max, step);
+        if (next === null) return;
+        commitTimerRef.current = setTimeout(() => {
+          startTransition(() => {
+            if (!numbersEqual(next, value)) onChange(next);
+          });
+        }, 140);
       }}
-      onBlur={() => commitDraft(draft, value, min, max, onChange, setDraft)}
+      onBlur={() => {
+        clearCommitTimer();
+        commitDraft(
+          draft,
+          value,
+          min,
+          max,
+          step,
+          (next) => startTransition(() => onChange(next)),
+          setDraft,
+        );
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          clearCommitTimer();
+          commitDraft(
+            draft,
+            value,
+            min,
+            max,
+            step,
+            (next) => startTransition(() => onChange(next)),
+            setDraft,
+          );
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          clearCommitTimer();
+          setDraft(null);
+        }
+      }}
       className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
         invalid
           ? "border-rose-500/70 ring-1 ring-rose-500/30"
@@ -1156,24 +1201,72 @@ function computeInvalid(
   return false;
 }
 
+function stepDecimals(step: number | undefined): number {
+  if (step === undefined || !Number.isFinite(step) || step <= 0) return 0;
+  const text = step.toString().toLowerCase();
+  if (text.includes("e-")) {
+    const exp = Number(text.split("e-")[1]);
+    return Number.isFinite(exp) ? exp : 0;
+  }
+  return text.split(".")[1]?.length ?? 0;
+}
+
+function roundToDecimals(value: number, decimals: number): number {
+  if (decimals <= 0) return Math.round(value);
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+function numbersEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) <= 1e-9;
+}
+
+function normalizeDraftValue(
+  raw: string,
+  min: number | undefined,
+  max: number | undefined,
+  step: number | undefined,
+): number | null {
+  if (raw.trim() === "") return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  let next = parsed;
+  if (min !== undefined) next = Math.max(min, next);
+  if (max !== undefined) next = Math.min(max, next);
+  if (step !== undefined && Number.isFinite(step) && step > 0) {
+    const decimals = stepDecimals(step);
+    const base = min ?? 0;
+    next = base + Math.round((next - base) / step) * step;
+    next = roundToDecimals(next, decimals);
+    if (min !== undefined) next = Math.max(min, next);
+    if (max !== undefined) next = Math.min(max, next);
+  }
+  return next;
+}
+
+function formatStepDisplay(value: number, step: number | undefined): string {
+  if (!Number.isFinite(value)) return "";
+  const decimals = stepDecimals(step);
+  const rounded = roundToDecimals(value, decimals);
+  return decimals > 0 ? rounded.toFixed(decimals).replace(/\.?0+$/, "") : String(rounded);
+}
+
 function commitDraft(
   draft: string | null,
   value: number,
   min: number | undefined,
   max: number | undefined,
+  step: number | undefined,
   onChange: (v: number) => void,
   setDraft: (v: string | null) => void,
 ) {
   if (draft === null) return;
-  const v = Number(draft);
-  if (draft.trim() === "" || !Number.isFinite(v)) {
+  const next = normalizeDraftValue(draft, min, max, step);
+  if (next === null) {
     setDraft(null);
     return;
   }
-  const lo = min ?? -Infinity;
-  const hi = max ?? Infinity;
-  const clamped = Math.min(hi, Math.max(lo, v));
-  if (clamped !== value) onChange(clamped);
+  if (!numbersEqual(next, value)) onChange(next);
   setDraft(null);
 }
 
@@ -1511,8 +1604,20 @@ function NumInput({
   max?: number;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current !== null) clearTimeout(commitTimerRef.current);
+    };
+  }, []);
+  const clearCommitTimer = () => {
+    if (commitTimerRef.current !== null) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+  };
   const display =
-    draft !== null ? draft : Number.isFinite(value) ? String(value) : "";
+    draft !== null ? draft : Number.isFinite(value) ? formatStepDisplay(value, step) : "";
   const invalid = computeInvalid(draft, min, max);
   return (
     <input
@@ -1525,22 +1630,46 @@ function NumInput({
       onChange={(e) => {
         const raw = e.target.value;
         setDraft(raw);
-        const v = Number(raw);
-        if (raw.trim() === "" || !Number.isFinite(v)) return;
-        if (min !== undefined && v < min) return;
-        if (max !== undefined && v > max) return;
-        startTransition(() => onChange(v));
+        clearCommitTimer();
+        const next = normalizeDraftValue(raw, min, max, step);
+        if (next === null) return;
+        commitTimerRef.current = setTimeout(() => {
+          startTransition(() => {
+            if (!numbersEqual(next, value)) onChange(next);
+          });
+        }, 140);
       }}
-      onBlur={() =>
+      onBlur={() => {
+        clearCommitTimer();
         commitDraft(
           draft,
           value,
           min,
           max,
+          step,
           (next) => startTransition(() => onChange(next)),
           setDraft,
-        )
-      }
+        );
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          clearCommitTimer();
+          commitDraft(
+            draft,
+            value,
+            min,
+            max,
+            step,
+            (next) => startTransition(() => onChange(next)),
+            setDraft,
+          );
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          clearCommitTimer();
+          setDraft(null);
+        }
+      }}
       className={
         INPUT_BASE +
         " w-20 text-center tabular-nums " +

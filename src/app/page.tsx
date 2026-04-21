@@ -45,7 +45,7 @@ const scenarioDerived = new Map(
     return [s.id, { total, range }] as const;
   }),
 );
-const APP_VERSION = "v0.7.3";
+const APP_VERSION = "v0.7.4";
 import type {
   SimulationInput,
   SimulationResult,
@@ -1103,6 +1103,12 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v074.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v074.brWinnerFirst")}</li>
+              <li>{t("changelog.v074.brParity")}</li>
+              <li>{t("changelog.v074.inputPerf")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v073.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v073.koAudit")}</li>

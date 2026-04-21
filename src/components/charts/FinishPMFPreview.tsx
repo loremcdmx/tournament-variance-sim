@@ -13,6 +13,7 @@ import {
   clampBountyMean,
   isBattleRoyaleRow,
 } from "@/lib/sim/bountySplit";
+import { buildBattleRoyaleWinnerFirstPmf } from "@/lib/sim/battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
@@ -1137,6 +1138,8 @@ function BountyShareSlider({
   const [draftBias, setDraftBias] = useState<number | null>(null);
   const [manualText, setManualText] = useState<string | null>(null);
   const submittedBiasRef = useRef<number | null>(null);
+  const sliderFrameRef = useRef<number | null>(null);
+  const pendingSliderBiasRef = useRef<number | null>(null);
   const axisMin = -MAX_BOUNTY_BIAS;
   const axisMax = -MIN_BOUNTY_BIAS;
   const axisRange = axisMax - axisMin;
@@ -1171,6 +1174,24 @@ function BountyShareSlider({
   const inputMinPct = Number((inputMinShare * 100).toFixed(3));
   const inputMaxPct = Number((inputMaxShare * 100).toFixed(3));
   const manualValue = manualText ?? evPctInputValue(value);
+
+  useEffect(() => {
+    return () => {
+      if (sliderFrameRef.current !== null) cancelAnimationFrame(sliderFrameRef.current);
+    };
+  }, []);
+
+  const scheduleSliderDraft = (rawBias: number) => {
+    const nextBias = locked ? 0 : snapBountyBias(rawBias);
+    pendingSliderBiasRef.current = nextBias;
+    if (sliderFrameRef.current !== null) return;
+    sliderFrameRef.current = requestAnimationFrame(() => {
+      sliderFrameRef.current = null;
+      const pendingBias = pendingSliderBiasRef.current;
+      if (pendingBias === null) return;
+      setDraftBias(pendingBias);
+    });
+  };
 
   const commitBias = (rawBias: number) => {
     const nextBias = locked ? 0 : snapBountyBias(rawBias);
@@ -1326,7 +1347,7 @@ function BountyShareSlider({
             value={-effectiveBias}
             onChange={(e) => {
               setManualText(null);
-              setDraftBias(snapBountyBias(-Number(e.target.value)));
+              scheduleSliderDraft(-Number(e.target.value));
             }}
             onPointerUp={(e) => commitBias(-Number(e.currentTarget.value))}
             onKeyUp={(e) => commitBias(-Number(e.currentTarget.value))}
@@ -1485,7 +1506,9 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const prizePool = basePool * (1 - bountyFraction);
   const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
 
-  const cashEVForTargetRegular = (regularTarget: number): number => {
+  const solveCashTarget = (
+    regularTarget: number,
+  ): { pmf: Float64Array; cashEV: number } => {
     let targetPmf: Float64Array;
     if (row.itmRate != null && row.itmRate > 0) {
       targetPmf = calibrateShelledItm(
@@ -1515,15 +1538,21 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     for (let i = 0; i < Math.min(payouts.length, N); i++) {
       cashEV += targetPmf[i] * payouts[i] * prizePool;
     }
-    return cashEV;
+    return { pmf: targetPmf, cashEV };
   };
+
+  let battleRoyaleNeutral: {
+    pmf: Float64Array;
+    cashEV: number;
+  } | null = null;
 
   if (bountyFraction > 0 && isBattleRoyaleRow(row)) {
     // Same BR rule as the engine: split incremental ROI profit from the
     // breakeven finish baseline, not gross EV from zero.
     const neutralBountyMean = entryCost * bountyFraction;
     const neutralTargetRegular = Math.max(0.01, entryCost - neutralBountyMean);
-    const neutralCashEV = cashEVForTargetRegular(neutralTargetRegular);
+    battleRoyaleNeutral = solveCashTarget(neutralTargetRegular);
+    const neutralCashEV = battleRoyaleNeutral.cashEV;
     const desiredCashEV = Math.max(
       0.01,
       neutralCashEV + entryCost * row.roi * battleRoyaleCashProfitShare(bias),
@@ -1538,20 +1567,39 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   let feasible = true;
   let currentWinningsFromSolver: number | null = null;
   if (row.itmRate != null && row.itmRate > 0) {
-    const fi = calibrateShelledItm(
-      N,
-      paidCount,
-      payouts,
-      prizePool,
-      targetRegular,
-      row.itmRate,
-      row.finishBuckets,
-      model,
-    );
-    alpha = fi.alpha;
-    pmf = fi.pmf;
-    feasible = fi.feasible;
-    currentWinningsFromSolver = fi.currentWinnings;
+    const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleNeutral
+      ? buildBattleRoyaleWinnerFirstPmf({
+          N,
+          payouts,
+          prizePool,
+          itmRate: row.itmRate,
+          targetWinnings: targetRegular,
+          neutralPmf: battleRoyaleNeutral.pmf,
+          neutralWinnings: battleRoyaleNeutral.cashEV,
+          finishBuckets: row.finishBuckets,
+        })
+      : null;
+    if (winnerFirst) {
+      alpha = 0;
+      pmf = winnerFirst.pmf;
+      feasible = winnerFirst.feasible;
+      currentWinningsFromSolver = winnerFirst.currentWinnings;
+    } else {
+      const fi = calibrateShelledItm(
+        N,
+        paidCount,
+        payouts,
+        prizePool,
+        targetRegular,
+        row.itmRate,
+        row.finishBuckets,
+        model,
+      );
+      alpha = fi.alpha;
+      pmf = fi.pmf;
+      feasible = fi.feasible;
+      currentWinningsFromSolver = fi.currentWinnings;
+    }
   } else {
     alpha = calibrateAlpha(
       N,

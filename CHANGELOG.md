@@ -3,6 +3,17 @@
 Only user-facing changes are listed here. Small refactors, bench refreshes,
 internal scripts, and other low-signal maintenance are intentionally omitted.
 
+## v0.7.4 - 2026-04-20
+
+- Fixed Battle Royale fixed-ITM profit routing: when cash-side ROI grows, the
+  model now strengthens 1st place before it starts reallocating extra mass
+  across the rest of top-3.
+- Cleaned up the Battle Royale fixed-ITM path so the engine, validation, and
+  single-tournament microscope all use the same winner-first logic.
+- ROI editing is responsive again: number fields stop re-solving on every
+  keystroke, snap back to valid step values, and no longer leak `.04` style
+  tails into whole-percent ROI boxes.
+
 ## v0.7.3 — 2026-04-20
 
 - Made the KO-share control easier to audit: the midpoint now resets to the

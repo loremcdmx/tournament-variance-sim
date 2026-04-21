@@ -31,6 +31,7 @@ import {
   clampBountyMean,
   isBattleRoyaleRow,
 } from "./bountySplit";
+import { buildBattleRoyaleWinnerFirstPmf } from "./battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "./brBountyTiers";
 import { normalizeBrMrConsistency } from "./gameType";
 import { mulberry32, mixSeed } from "./rng";
@@ -488,6 +489,10 @@ function compileSingleEntry(
   const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
   const totalWinningsEV = entryCostSingle * (1 + row.roi);
   const isBattleRoyale = isBattleRoyaleRow(row);
+  let battleRoyaleNeutral: {
+    pmf: Float64Array;
+    cashEV: number;
+  } | null = null;
   if (bountyFraction > 0) {
     const bountyPerSeat = row.buyIn * bountyFraction;
     // Skill lift on bounty collection — equilibrium haul is bountyPerSeat
@@ -607,6 +612,10 @@ function compileSingleEntry(
     const neutralTargetRegular = Math.max(0.01, entryCostSingle - neutralBountyMean);
     const neutral = solveFinish(neutralTargetRegular);
     const neutralCashEV = cashEVFor(neutral.pmf, neutral.prizeByPlace);
+    battleRoyaleNeutral = {
+      pmf: neutral.pmf,
+      cashEV: neutralCashEV,
+    };
     const desiredCashEV = Math.max(
       0.01,
       neutralCashEV + entryCostSingle * row.roi * battleRoyaleCashProfitShare(bias),
@@ -649,18 +658,34 @@ function compileSingleEntry(
     // pins top-shell masses (P(1st), P(top-3), P(FT)). Skill concentrates
     // only within the cashed band; locked shells stay fixed, free band
     // α-calibrates so total E[W] still hits target.
-    const fi = calibrateShelledItm(
-      N,
-      paidCount,
-      payouts,
-      prizePool,
-      targetRegular,
-      row.itmRate,
-      row.finishBuckets,
-      model,
-    );
-    alpha = fi.alpha;
-    pmf = fi.pmf;
+    const winnerFirst = isBattleRoyale && battleRoyaleNeutral
+      ? buildBattleRoyaleWinnerFirstPmf({
+          N,
+          payouts,
+          prizePool,
+          itmRate: row.itmRate,
+          targetWinnings: targetRegular,
+          neutralPmf: battleRoyaleNeutral.pmf,
+          neutralWinnings: battleRoyaleNeutral.cashEV,
+          finishBuckets: row.finishBuckets,
+        })
+      : null;
+    if (winnerFirst) {
+      pmf = winnerFirst.pmf;
+    } else {
+      const fi = calibrateShelledItm(
+        N,
+        paidCount,
+        payouts,
+        prizePool,
+        targetRegular,
+        row.itmRate,
+        row.finishBuckets,
+        model,
+      );
+      alpha = fi.alpha;
+      pmf = fi.pmf;
+    }
   } else {
     alpha = calibrateAlpha(
       N,

@@ -11,6 +11,7 @@ import {
   clampBountyMean,
   isBattleRoyaleRow,
 } from "./bountySplit";
+import { buildBattleRoyaleWinnerFirstPmf } from "./battleRoyaleWinnerFirst";
 import { normalizeBrMrConsistency } from "./gameType";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
@@ -79,6 +80,10 @@ export function validateSchedule(
     const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
     let bountyMean = 0;
     let prizePool = basePool + overlay;
+    let battleRoyaleNeutral: {
+      pmf: Float64Array;
+      cashEV: number;
+    } | null = null;
     if (bountyFraction > 0) {
       const bountyPerSeat = row.buyIn * bountyFraction;
       const bountyLift = Math.max(
@@ -105,6 +110,10 @@ export function validateSchedule(
         row.finishBuckets,
         model,
       );
+      battleRoyaleNeutral = {
+        pmf: neutral.pmf,
+        cashEV: neutral.currentWinnings,
+      };
       const desiredCashEV = Math.max(
         0.01,
         neutral.currentWinnings + entryCost * row.roi * battleRoyaleCashProfitShare(bias),
@@ -113,7 +122,19 @@ export function validateSchedule(
     }
     const targetRegular = Math.max(0.01, totalWinningsEV - bountyMean);
 
-    const r = calibrateShelledItm(
+    const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleNeutral
+      ? buildBattleRoyaleWinnerFirstPmf({
+          N,
+          payouts,
+          prizePool,
+          itmRate: row.itmRate,
+          targetWinnings: targetRegular,
+          neutralPmf: battleRoyaleNeutral.pmf,
+          neutralWinnings: battleRoyaleNeutral.cashEV,
+          finishBuckets: row.finishBuckets,
+        })
+      : null;
+    const r = winnerFirst ?? calibrateShelledItm(
       N,
       paidCount,
       payouts,

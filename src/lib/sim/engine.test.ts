@@ -968,6 +968,43 @@ describe("bountyEvBias", () => {
     expect(koHeavy.bountyKmean![0]).toBeGreaterThan(balanced.bountyKmean![0]);
   });
 
+  it("fixed-ITM Battle Royale grows first place before pushing extra ROI into the rest of top-3", () => {
+    const compileRoyale = (roi: number) =>
+      compileSchedule({
+        schedule: [
+          {
+            id: `mbr-winner-first-${roi}`,
+            label: "mbr",
+            players: 18,
+            buyIn: 25 / 1.08,
+            rake: 0.08,
+            roi,
+            gameType: "mystery-royale",
+            payoutStructure: "battle-royale",
+            bountyFraction: 0.5,
+            mysteryBountyVariance: 1.8,
+            itmRate: 0.24,
+            count: 1,
+            bountyEvBias: 0,
+          },
+        ],
+        scheduleRepeats: 1,
+        samples: 1,
+        bankroll: 100,
+        seed: 7,
+        finishModel: { id: "power-law" },
+      }).flat[0];
+
+    const low = compileRoyale(0);
+    const high = compileRoyale(0.03);
+    const lowPmf = pmfFromAlias(low.aliasProb, low.aliasIdx);
+    const highPmf = pmfFromAlias(high.aliasProb, high.aliasIdx);
+
+    expect(highPmf[0]).toBeGreaterThan(lowPmf[0]);
+    expect(highPmf[1]).toBeCloseTo(lowPmf[1], 10);
+    expect(highPmf[2]).toBeLessThan(lowPmf[2]);
+  });
+
   // Fixed-shape models can't move cashEV to cancel the heuristic's
   // bountyMean error, so without the residual bounty-budget reconcile
   // total EV would drift away from the ROI contract even at bias=0. With

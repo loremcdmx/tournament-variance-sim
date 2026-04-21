@@ -1314,6 +1314,19 @@ export const DICT = {
     ru: "Импортировано {n} {_preset}.",
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
+  "changelog.v074.title": { en: "v0.7.4 - 2026-04-20", ru: "v0.7.4 - 2026-04-20" },
+  "changelog.v074.brWinnerFirst": {
+    en: "Battle Royale fixed-ITM profit now strengthens 1st place before extra cash EV starts spilling into the rest of top-3.",
+    ru: "В Battle Royale с фиксированным ITM дополнительный профит теперь сначала усиливает 1-е место, и только потом начинает перетекать в остальной топ-3.",
+  },
+  "changelog.v074.brParity": {
+    en: "Battle Royale fixed-ITM math was cleaned up so the engine, validation, and microscope preview all use the same winner-first path.",
+    ru: "Математику Battle Royale с фиксированным ITM почистили: движок, валидация и микроскоп теперь используют один и тот же winner-first путь.",
+  },
+  "changelog.v074.inputPerf": {
+    en: "ROI editing is responsive again: number fields stop re-solving on every keystroke, snap to valid step values, and no longer leak .04-style tails into whole-percent ROI boxes.",
+    ru: "Редактирование ROI снова отзывчивое: числовые поля перестали пересчитывать всё на каждый символ, снапятся к валидному шагу и больше не протаскивают хвосты вроде .04 в поля с целым процентом ROI.",
+  },
   "changelog.v073.title": { en: "v0.7.3 — 2026-04-20", ru: "v0.7.3 — 2026-04-20" },
   "changelog.v073.koAudit": {
     en: "KO-share control is easier to audit: neutral midpoint, bounded numeric EV entry, and cash / regular KO / jackpot percentages in gross EV.",
