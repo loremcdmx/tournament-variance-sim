@@ -3,7 +3,7 @@
 import { memo, useMemo, useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
-import type { TournamentRow } from "@/lib/sim/types";
+import type { SimulationInput, TournamentRow } from "@/lib/sim/types";
 import {
   getConvergenceBandPolicy,
   inferRowFormat,
@@ -28,6 +28,7 @@ import {
 
 interface Props {
   schedule?: TournamentRow[];
+  finishModel?: SimulationInput["finishModel"];
 }
 
 function RangeBandValue({
@@ -88,6 +89,7 @@ function RangeBandValue({
 
 export const ConvergenceChart = memo(function ConvergenceChart({
   schedule,
+  finishModel,
 }: Props) {
   const { locale, t } = useLocale();
   const numberLocale = locale === "ru" ? "ru-RU" : "en-US";
@@ -293,14 +295,14 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   const gameRoi = effectiveRoi;
   const roiControlActive = isRoiControlActive(format, effectiveMode, mix);
 
-  // Per-row σ breakdown — only populated in "exact" mode. Each entry is
-  // {row index, AFS, ROI, format, count share, σ² share}.
+  // Per-row σ breakdown — only populated in "exact" mode. Each entry carries
+  // the row's compiled field summary plus cost-share / σ²-share diagnostics.
   const exactBreakdown = useMemo(() => {
     if (effectiveMode !== "exact" || !schedule) return null;
     // In exact mode every row's own rake drives its σ rescale — the widget's
     // rake slider is hidden so there's nothing to override with.
-    return buildExactBreakdown(schedule);
-  }, [effectiveMode, schedule]);
+    return buildExactBreakdown(schedule, { finishModel });
+  }, [effectiveMode, schedule, finishModel]);
 
   const rows = useMemo(() => {
     return computeConvergenceRows({
@@ -352,8 +354,13 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     return list;
   }, [effectiveMode, schedule, format, mix, effectiveAfs, effectiveRoi]);
   const bandPolicy = useMemo(
-    () => getConvergenceBandPolicy(fitBoxSamples),
-    [fitBoxSamples],
+    () =>
+      effectiveMode === "exact"
+        ? fitBoxSamples.some((s) => s.format === "mystery")
+          ? { kind: "warning" as const, reason: "contains-mystery" as const }
+          : { kind: "numeric" as const }
+        : getConvergenceBandPolicy(fitBoxSamples),
+    [effectiveMode, fitBoxSamples],
   );
   const showBand = bandPolicy.kind === "numeric";
 
@@ -370,6 +377,20 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     if (n >= 100) return `${Math.round(n)}×`;
     if (n >= 10) return `${n.toFixed(1)}×`;
     return `${n.toFixed(2)}×`;
+  };
+  const fmtExactField = (row: {
+    afs: number;
+    fieldMin: number;
+    fieldMax: number;
+  }): string => {
+    if (
+      row.fieldMin > 0 &&
+      row.fieldMax > 0 &&
+      Math.abs(row.fieldMax - row.fieldMin) > 1e-9
+    ) {
+      return `${fmtAfs(row.fieldMin, numberLocale)}–${fmtAfs(row.fieldMax, numberLocale)}`;
+    }
+    return fmtAfs(row.afs, numberLocale);
   };
 
   const FORMATS: { id: ConvergenceFormat; labelKey: DictKey }[] = [
@@ -792,7 +813,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                   className="border-t border-[color:var(--color-border)]/50 text-[color:var(--color-fg-muted)]"
                 >
                   <td className="py-1 pr-2 truncate max-w-[160px]">{r.label}</td>
-                  <td className="py-1 px-2 text-right">{fmtAfs(r.afs, numberLocale)}</td>
+                  <td className="py-1 px-2 text-right">{fmtExactField(r)}</td>
                   <td className="py-1 px-2 text-right">
                     {(r.roi * 100).toFixed(1)}%
                   </td>
@@ -800,7 +821,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                     {t(`chart.convergence.format.${r.format}` as DictKey)}
                   </td>
                   <td className="py-1 px-2 text-right">
-                    {(r.weight * 100).toFixed(1)}%
+                    {(r.costShare * 100).toFixed(1)}%
                   </td>
                   <td className="py-1 pl-2 text-right text-emerald-300">
                     {(r.varShare * 100).toFixed(1)}%

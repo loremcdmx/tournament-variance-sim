@@ -1161,8 +1161,8 @@ export const DICT = {
     ru: "Расписание",
   },
   "chart.convergence.mode.hint": {
-    en: "Averaged: combines rows into one weighted σ_ROI at the mean AFS/ROI. Exact: computes σ per row at its own AFS/ROI/format and combines via σ²_eff = Σ w_r·σ²_r (w_r = row count share). Exact is honest for heterogeneous schedules; averaged smooths tail rows into the mean.",
-    ru: "Усреднённо: сводит ряды в одну σ_ROI на среднем AFS/ROI. Точно: считает σ per-ряд на собственных AFS/ROI/формате и комбинирует σ²_эфф = Σ w_r·σ²_r (w_r = доля по числу турниров). Точный режим честнее для гетерогенных расписаний; averaged размазывает хвостовые ряды в средние.",
+    en: "Averaged: combines rows into one weighted σ_ROI at the mean AFS/ROI. Exact: compiles the real schedule and combines per-row dollar variance, late reg, field variability, payout shape, and bounty structure into one schedule-aware σ_ROI. Averaged smooths tail rows into the mean; exact follows the actual row physics.",
+    ru: "Усреднённо: сводит ряды в одну σ_ROI на среднем AFS/ROI. Точно: компилирует реальное расписание и собирает schedule-aware σ_ROI из долларовой дисперсии по строкам, late reg, field variability, payout-shape и bounty-структуры. Усреднение размазывает хвостовые ряды в средние; exact следует реальной физике строк.",
   },
   "chart.convergence.exact.breakdown": {
     en: "Variance contribution per row",
@@ -1172,7 +1172,7 @@ export const DICT = {
   "chart.convergence.exact.rowCol.afs": { en: "AFS", ru: "AFS" },
   "chart.convergence.exact.rowCol.roi": { en: "ROI", ru: "ROI" },
   "chart.convergence.exact.rowCol.fmt": { en: "Fmt", ru: "Фмт" },
-  "chart.convergence.exact.rowCol.share": { en: "Count %", ru: "Доля шт." },
+  "chart.convergence.exact.rowCol.share": { en: "Cost %", ru: "Доля $-риска" },
   "chart.convergence.exact.rowCol.varShare": { en: "σ² share", ru: "Доля σ²" },
   "chart.convergence.exact.empty": {
     en: "Load a schedule to see per-row σ breakdown.",
@@ -1191,8 +1191,8 @@ export const DICT = {
     ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",
   },
   "chart.convergence.assumptions": {
-    en: "Read a row as: play this many tournaments and, with the chosen CI confidence, your observed ROI lands inside the target band around the true one. Freeze is ROI-invariant in this fit, so its ROI control is hidden. PKO, Mystery, and Battle Royale grow with ROI because better runs collect more bounty value. Mix combines Freeze / PKO / Mystery by variance share: σ²_mix = Σ w_format·σ²_format. Schedule mode ignores the global sliders and combines every schedule row at its own AFS, ROI, rake, and format. Freeze, PKO, Mystery, and Battle Royale show a numeric range inside their validated training boxes; out-of-box points keep the point estimate as a ballpark and hide the range.",
-    ru: "Строка читается так: сыграй столько турниров, и с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного. Во фризе этот fit не зависит от ROI, поэтому ROI-контрол скрыт. В ПКО, Мистери и Battle Royale σ растёт с ROI: более глубокие проходы собирают больше баунти. Микс комбинирует Фриз / ПКО / Мистери по дисперсии: σ²_микс = Σ w_format·σ²_format. Режим Расписание игнорирует глобальные ползунки и считает каждую строку по её собственным AFS, ROI, рейку и формату. Фриз, ПКО, Мистери и Battle Royale показывают числовой диапазон внутри validated training box; для точек вне box остаётся ориентир-точка, а диапазон скрыт.",
+    en: "Read a row as: play this many tournaments and, with the chosen CI confidence, your observed ROI lands inside the target band around the true one. Freeze is ROI-invariant in this fit, so its ROI control is hidden. PKO, Mystery, and Battle Royale grow with ROI because better runs collect more bounty value. Mix combines Freeze / PKO / Mystery by variance share: σ²_mix = Σ w_format·σ²_format. Schedule mode ignores the global sliders and compiles each schedule row with its own field, late reg, field variability, payout shape, rake, and bounty structure before aggregating schedule-level dollar variance. Freeze, PKO, and Battle Royale show a numeric range inside their validated training boxes; Mystery keeps the point estimate but hides the numeric band until its policy is revalidated.",
+    ru: "Строка читается так: сыграй столько турниров, и с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного. Во фризе этот fit не зависит от ROI, поэтому ROI-контрол скрыт. В ПКО, Мистери и Battle Royale σ растёт с ROI: более глубокие проходы собирают больше баунти. Микс комбинирует Фриз / ПКО / Мистери по дисперсии: σ²_микс = Σ w_format·σ²_format. Режим Расписание игнорирует глобальные ползунки и сначала компилирует каждую строку со своим полем, late reg, field variability, payout-shape, рейком и bounty-структурой, а потом агрегирует schedule-level долларовую дисперсию. Фриз, ПКО и Battle Royale показывают числовой диапазон внутри validated training box; для Mystery остаётся точка-ориентир, а числовая полоса скрыта до новой валидации политики.",
   },
   "chart.decomp": { en: "Per-row EV decomposition", ru: "Декомпозиция EV по строкам" },
   "chart.decomp.sub": {

@@ -17,6 +17,7 @@ import {
 import type uPlot from "uplot";
 import type {
   FinishModelId,
+  SimulationInput,
   SimulationResult,
   TournamentRow,
 } from "@/lib/sim/types";
@@ -109,6 +110,7 @@ interface Props {
   compareMode?: "random" | "primedope";
   modelPresetId?: string;
   finishModelId?: FinishModelId;
+  finishModel?: SimulationInput["finishModel"];
   settings?: ControlsState;
   elapsedMs?: number | null;
   availableRuns?: number;
@@ -1656,6 +1658,7 @@ function ResultsViewImpl({
   compareMode = "primedope",
   modelPresetId,
   finishModelId,
+  finishModel,
   settings,
   elapsedMs,
   availableRuns = 0,
@@ -2590,7 +2593,7 @@ function ResultsViewImpl({
             subtitle={t("chart.convergence.sub")}
             showUnitToggle={false}
           />
-          <ConvergenceChart schedule={schedule} />
+          <ConvergenceChart schedule={schedule} finishModel={finishModel} />
         </Card>
         {result.downswings.length > 0 && (
           <UnitScope id="downswings">

@@ -13,6 +13,7 @@ import {
   roiControlBoundsForFormat,
   type MixTuple,
 } from "./convergenceMath";
+import { sigmaRoiForRow } from "./convergenceFit";
 
 const z95 = ciToZ(0.95);
 const targetRow = 3; // +/-10%
@@ -136,6 +137,107 @@ describe("convergence math", () => {
     expect(kFor({ format: "exact", roi: -0.3, exactBreakdown })).toBe(
       kFor({ format: "exact", roi: 1.0, exactBreakdown }),
     );
+  });
+
+  it("exact mode weights mixed ABI by dollar risk, not row count alone", () => {
+    const schedule: TournamentRow[] = [
+      {
+        id: "low",
+        label: "$5",
+        players: 100,
+        buyIn: 5,
+        rake: 0.1,
+        roi: 0.1,
+        payoutStructure: "mtt-standard",
+        count: 100,
+      },
+      {
+        id: "high",
+        label: "$500",
+        players: 100,
+        buyIn: 500,
+        rake: 0.1,
+        roi: 0.1,
+        payoutStructure: "mtt-standard",
+        count: 100,
+      },
+    ];
+    const exact = buildExactBreakdown(schedule);
+    expect(exact).not.toBeNull();
+    const totalCount = schedule.reduce((acc, row) => acc + row.count, 0);
+    const naiveCountShare = Math.sqrt(
+      schedule.reduce((acc, row) => {
+        const sigma = sigmaRoiForRow(row).sigma;
+        return acc + (row.count / totalCount) * sigma * sigma;
+      }, 0),
+    );
+    expect(exact!.sigmaEff).toBeGreaterThan(naiveCountShare * 1.25);
+    expect(exact!.perRow[1].costShare).toBeGreaterThan(0.98);
+  });
+
+  it("late reg changes exact schedule sigma", () => {
+    const baseRow: TournamentRow = {
+      id: "freeze",
+      label: "Freeze",
+      players: 500,
+      buyIn: 10,
+      rake: 0.1,
+      roi: 0.1,
+      payoutStructure: "mtt-standard",
+      count: 100,
+    };
+    const base = buildExactBreakdown([baseRow]);
+    const late = buildExactBreakdown([{ ...baseRow, lateRegMultiplier: 2 }]);
+    expect(base).not.toBeNull();
+    expect(late).not.toBeNull();
+    expect(late!.sigmaEff).toBeGreaterThan(base!.sigmaEff);
+    expect(late!.perRow[0].afs).toBeGreaterThan(base!.perRow[0].afs);
+  });
+
+  it("field variability changes exact schedule sigma", () => {
+    const baseRow: TournamentRow = {
+      id: "freeze",
+      label: "Freeze",
+      players: 500,
+      buyIn: 10,
+      rake: 0.1,
+      roi: 0.1,
+      payoutStructure: "mtt-standard",
+      count: 100,
+    };
+    const base = buildExactBreakdown([baseRow]);
+    const variable = buildExactBreakdown([
+      {
+        ...baseRow,
+        fieldVariability: { kind: "uniform", min: 500, max: 5000, buckets: 5 },
+      },
+    ]);
+    expect(base).not.toBeNull();
+    expect(variable).not.toBeNull();
+    expect(variable!.sigmaEff).toBeGreaterThan(base!.sigmaEff);
+    expect(variable!.perRow[0].fieldMin).toBeGreaterThan(500);
+    expect(variable!.perRow[0].fieldMax).toBeLessThan(5000);
+    expect(variable!.perRow[0].afs).toBeCloseTo(2750, 6);
+  });
+
+  it("payout shape changes exact schedule sigma", () => {
+    const baseRow: TournamentRow = {
+      id: "std",
+      label: "Standard",
+      players: 500,
+      buyIn: 10,
+      rake: 0.1,
+      roi: 0.1,
+      payoutStructure: "mtt-standard",
+      count: 100,
+    };
+    const standard = buildExactBreakdown([baseRow]);
+    const topHeavy = buildExactBreakdown([
+      { ...baseRow, id: "top", label: "Top", payoutStructure: "mtt-top-heavy" },
+    ]);
+    expect(standard).not.toBeNull();
+    expect(topHeavy).not.toBeNull();
+    expect(topHeavy!.sigmaEff).toBeGreaterThan(standard!.sigmaEff);
   });
 
   it("formats point values with direct ranges, not +/- suffixes", () => {

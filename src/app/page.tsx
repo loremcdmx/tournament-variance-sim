@@ -289,6 +289,21 @@ export default function Home() {
     }),
     [controls.finishModelId, controls.alphaOverride, controls.empiricalBuckets],
   );
+  const deferredPreviewModel = useMemo(
+    () => ({
+      id: deferredControls.finishModelId,
+      alpha: deferredControls.alphaOverride ?? undefined,
+      empiricalBuckets:
+        deferredControls.finishModelId === "empirical"
+          ? deferredControls.empiricalBuckets
+          : undefined,
+    }),
+    [
+      deferredControls.finishModelId,
+      deferredControls.alphaOverride,
+      deferredControls.empiricalBuckets,
+    ],
+  );
 
   // Feasibility memo drives the banner + row highlights + fixAllAuto. Heavy
   // (walks every row + calibrates α on finishBuckets rows), so feed it the
@@ -1030,7 +1045,10 @@ export default function Home() {
           <div className="mb-1 text-[11px] text-[color:var(--color-fg-muted)]">
             {t("chart.convergence.sub")}
           </div>
-          <ConvergenceChart schedule={deferredSchedule} />
+          <ConvergenceChart
+            schedule={deferredSchedule}
+            finishModel={deferredPreviewModel}
+          />
         </Card>
       )}
 
@@ -1072,6 +1090,7 @@ export default function Home() {
               compareMode={deferredControls.compareMode}
               modelPresetId={deferredControls.modelPresetId}
               finishModelId={deferredControls.finishModelId}
+              finishModel={deferredPreviewModel}
               settings={deferredControls}
               elapsedMs={elapsedMs}
               availableRuns={availableRuns}
