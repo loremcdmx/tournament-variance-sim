@@ -47,11 +47,24 @@ describe("persistence validation", () => {
       encoded({
         v: 1,
         schedule: [{ ...row, count: 1_000_000_000 }],
-        controls,
+        controls: { ...controls, samples: 1_000_000_000 },
       }),
     );
 
     expect(state?.schedule[0]?.count).toBe(100_000);
+    expect(state?.controls.samples).toBe(1_000_000);
+  });
+
+  it("drops non-numeric persisted run controls so defaults can win on hydration", () => {
+    const state = loadLocalFromPayload({
+      v: 1,
+      schedule: [row],
+      controls: { samples: "oops", scheduleRepeats: "bad", bankroll: 500 },
+    });
+
+    expect((state?.controls as unknown as Record<string, unknown>).samples).toBeUndefined();
+    expect((state?.controls as unknown as Record<string, unknown>).scheduleRepeats).toBeUndefined();
+    expect(state?.controls.bankroll).toBe(500);
   });
 
   it("ignores malformed localStorage state", () => {
@@ -120,3 +133,12 @@ describe("persistence validation", () => {
     vi.unstubAllGlobals();
   });
 });
+
+function loadLocalFromPayload(payload: unknown) {
+  vi.stubGlobal("localStorage", {
+    getItem: () => JSON.stringify(payload),
+  });
+  const loaded = loadLocal();
+  vi.unstubAllGlobals();
+  return loaded;
+}

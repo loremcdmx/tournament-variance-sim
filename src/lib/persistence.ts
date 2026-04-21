@@ -65,9 +65,54 @@ export interface PersistedState {
 
 const LS_KEY = "tvs:state";
 const PERSISTED_ROW_COUNT_MAX = 100_000;
+const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
+const PERSISTED_SAMPLES_MIN = 100;
+const PERSISTED_SAMPLES_MAX = 1_000_000;
+const PERSISTED_BANKROLL_MAX = 1_000_000_000;
 
 function clampPersistedCount(count: number): number {
   return Math.min(PERSISTED_ROW_COUNT_MAX, Math.max(1, count));
+}
+
+function clampPersistedInt(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+function normalizePersistedControls(controls: ControlsState): ControlsState {
+  let changed = false;
+  const next: Record<string, unknown> = { ...controls };
+  const normalizeNumber = (
+    key: keyof ControlsState,
+    min: number,
+    max: number,
+    integer = false,
+  ) => {
+    if (!(key in next)) return;
+    const raw = next[key];
+    if (typeof raw !== "number" || !Number.isFinite(raw)) {
+      delete next[key];
+      changed = true;
+      return;
+    }
+    const normalized = integer
+      ? clampPersistedInt(raw, min, max)
+      : Math.min(max, Math.max(min, raw));
+    if (normalized !== raw) {
+      next[key] = normalized;
+      changed = true;
+    }
+  };
+
+  // Only normalize persisted knobs that either control simulation work
+  // directly or have a tight visible numeric contract in the UI.
+  normalizeNumber("scheduleRepeats", 1, PERSISTED_SCHEDULE_REPEATS_MAX, true);
+  normalizeNumber("samples", PERSISTED_SAMPLES_MIN, PERSISTED_SAMPLES_MAX, true);
+  normalizeNumber("bankroll", 0, PERSISTED_BANKROLL_MAX);
+  normalizeNumber("rakebackPct", 0, 100);
+  normalizeNumber("itmGlobalPct", 0.5, 99);
+  normalizeNumber("roiStdErr", 0, 5);
+
+  return changed ? (next as unknown as ControlsState) : controls;
 }
 
 function normalizePersistedState(state: PersistedState): PersistedState {
@@ -78,7 +123,9 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     changed = true;
     return { ...row, count: nextCount };
   });
-  return changed ? { ...state, schedule } : state;
+  const controls = normalizePersistedControls(state.controls);
+  if (controls !== state.controls) changed = true;
+  return changed ? { ...state, schedule, controls } : state;
 }
 
 export function encodeState(state: PersistedState): string {
