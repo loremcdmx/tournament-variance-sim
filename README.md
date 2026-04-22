@@ -66,6 +66,7 @@ npm test          # vitest
 npx tsc --noEmit  # type check
 npm run lint      # eslint
 npm run build     # prod build
+npm run smoke:cash # release smoke for the advanced cash tab
 ```
 
 Требует Node 20+. Vercel-деплой без конфига (App Router).

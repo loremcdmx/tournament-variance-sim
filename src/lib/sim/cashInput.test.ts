@@ -126,4 +126,29 @@ describe("cashInput persistence guardrails", () => {
       MAX_RAKE_CONTRIB_BB100,
     );
   });
+
+  it("does not resurrect disabled optional lenses when a hydrated cash input is normalized again", () => {
+    const hydratedUiState = normalizeCashInputForUi({
+      type: "cash",
+      wrBb100: 5,
+      sdBb100: 100,
+      hands: 25_000,
+      nSimulations: 300,
+      bbSize: 1,
+      rake: {
+        enabled: false,
+        contributedRakeBb100: 8,
+        advertisedRbPct: 30,
+        pvi: 1,
+      },
+      hoursBlock: null,
+      baseSeed: 42,
+    });
+
+    expect(hydratedUiState.hoursBlock).toBeUndefined();
+
+    const rerunNormalized = normalizeCashInput(hydratedUiState);
+
+    expect(rerunNormalized.hoursBlock).toBeUndefined();
+  });
 });

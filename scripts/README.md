@@ -46,9 +46,16 @@ Use these when validating user-visible behavior outside the main app flow:
 
 - `smoke.ts`
 - `smoke_fixed_itm.ts`
+- `smoke_cash_release.mjs`
 - `verify_convergence_tabs.ts`
 - `verify_rakeback.ts`
 - `check_primedope.ts`
+
+`smoke_cash_release.mjs` is the canonical pre-release smoke for the advanced
+cash tab. It auto-detects a running local app when possible, otherwise tries
+to boot a temporary dev server, then runs desktop/mobile checks, a mixed-stakes
+renorm path, and an hourly-disabled path. Screenshots and `report.json` land
+in `scripts/smoke-out/cash-release/`.
 
 ### PrimeDope parity and ingestion research
 

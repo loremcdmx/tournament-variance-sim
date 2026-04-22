@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke:cash": "node scripts/smoke_cash_release.mjs",
     "postinstall": "git config core.hooksPath .githooks || true",
     "bench:convergence": "tsx scripts/bench_convergence.ts"
   },

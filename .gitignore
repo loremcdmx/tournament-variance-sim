@@ -51,6 +51,7 @@ tmp_legacy*
 # exploratory sweep outputs (regenerable from scripts/)
 /data/variance-fits/
 /scripts/layout-audit-out/
+/scripts/smoke-out/
 /scripts/.fit_par_tmp/
 /scripts/fit_beta_*_200k_probe.json
 /scripts/fit_drift_report.json

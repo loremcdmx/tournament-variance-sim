@@ -60,6 +60,19 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object";
 }
 
+function looksLikeHydratedCashInput(v: Record<string, unknown>): boolean {
+  return (
+    v.type === "cash" &&
+    "wrBb100" in v &&
+    "sdBb100" in v &&
+    "hands" in v &&
+    "nSimulations" in v &&
+    "bbSize" in v &&
+    "rake" in v &&
+    "baseSeed" in v
+  );
+}
+
 function finiteOr(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -135,6 +148,9 @@ export function normalizeCashInput(
   fallback: CashInput = DEFAULT_CASH_INPUT,
 ): CashInput {
   const src = isRecord(raw) ? raw : {};
+  // Hydrated UI state intentionally omits optional blocks when a toggle is off.
+  // Treat that as "keep disabled", not as "restore DEFAULT_CASH_INPUT".
+  const preserveOptionalOff = looksLikeHydratedCashInput(src);
   const rake = normalizeRake(src.rake, fallback.rake);
   const bbSize = clamp(
     finiteOr(src.bbSize, fallback.bbSize),
@@ -174,7 +190,7 @@ export function normalizeCashInput(
   const hasHoursBlock = Object.prototype.hasOwnProperty.call(src, "hoursBlock");
   let hoursBlock: CashInput["hoursBlock"];
   if (!hasHoursBlock) {
-    hoursBlock = fallback.hoursBlock;
+    hoursBlock = preserveOptionalOff ? undefined : fallback.hoursBlock;
   } else if (isRecord(src.hoursBlock)) {
     hoursBlock = {
       handsPerHour: Math.min(
@@ -196,7 +212,7 @@ export function normalizeCashInput(
   const hasRiskBlock = Object.prototype.hasOwnProperty.call(src, "riskBlock");
   let riskBlock: CashInput["riskBlock"];
   if (!hasRiskBlock) {
-    riskBlock = fallback.riskBlock;
+    riskBlock = preserveOptionalOff ? undefined : fallback.riskBlock;
   } else if (isRecord(src.riskBlock)) {
     riskBlock = {
       thresholdBb: clampMin(
