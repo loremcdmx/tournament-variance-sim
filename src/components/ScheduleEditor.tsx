@@ -19,7 +19,9 @@ import type {
 import {
   inferGameType,
   applyGameType,
-  GAME_TYPE_ORDER,
+  VISIBLE_GAME_TYPE_ORDER,
+  toVisibleGameType,
+  type VisibleGameType,
 } from "@/lib/sim/gameType";
 import {
   preRakebackRoiFromReportedRoi,
@@ -582,6 +584,7 @@ const ScheduleRow = memo(function ScheduleRow({
     (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
     (r.bountyFraction ?? 0) > 0;
   const gt = inferGameType(r);
+  const uiGt = toVisibleGameType(gt);
   const showInlineBrLeaderboard = advanced && gt === "mystery-royale";
 
   // The payout dropdown would otherwise re-run STRUCTURES.map+filter (14×3)
@@ -590,14 +593,14 @@ const ScheduleRow = memo(function ScheduleRow({
   const dropdownData = useMemo(() => {
     const grouped = STRUCTURES.map((s) => ({
       s,
-      compat: payoutCompat(s.id, r.players, gt),
+      compat: payoutCompat(s.id, r.players, uiGt),
     }));
     const available = grouped.filter((g) => g.compat.ok);
     const unavailable = grouped.filter((g) => !g.compat.ok);
     const availableReal = available.filter(({ s }) => s.real);
     const availableGeneric = available.filter(({ s }) => !s.real);
     return { grouped, available, unavailable, availableReal, availableGeneric };
-  }, [r.players, gt]);
+  }, [r.players, uiGt]);
 
   const current = dropdownData.grouped.find(
     (g) => g.s.id === r.payoutStructure,
@@ -610,12 +613,11 @@ const ScheduleRow = memo(function ScheduleRow({
       const gtKey = (
         {
           freezeout: "row.gameType.freezeout",
-          "freezeout-reentry": "row.gameType.freezeoutReentry",
           pko: "row.gameType.pko",
           mystery: "row.gameType.mystery",
           "mystery-royale": "row.gameType.mysteryRoyale",
         } as const
-      )[g.compat.gameType];
+      )[toVisibleGameType(g.compat.gameType)];
       return t("row.payoutCompat.wrongGameType").replace(
         "{gameType}",
         t(gtKey),
@@ -681,7 +683,7 @@ const ScheduleRow = memo(function ScheduleRow({
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-center gap-1">
               <GameTypeSelect
-                value={gt}
+                value={uiGt}
                 onChange={(next) =>
                   startTransition(() => update(r.id, applyGameType(r, next)))
                 }
@@ -1619,16 +1621,14 @@ function GameTypeSelect({
   value,
   onChange,
 }: {
-  value: GameType;
-  onChange: (next: GameType) => void;
+  value: VisibleGameType;
+  onChange: (next: VisibleGameType) => void;
 }) {
   const t = useT();
-  const fullLabel = (g: GameType): string => {
+  const fullLabel = (g: VisibleGameType): string => {
     switch (g) {
       case "freezeout":
         return t("row.gameType.freezeout");
-      case "freezeout-reentry":
-        return t("row.gameType.freezeoutReentry");
       case "pko":
         return t("row.gameType.pko");
       case "mystery":
@@ -1637,16 +1637,16 @@ function GameTypeSelect({
         return t("row.gameType.mysteryRoyale");
     }
   };
-  const optionLabel = (g: GameType): string =>
+  const optionLabel = (g: VisibleGameType): string =>
     g === "mystery-royale" ? "GG BR" : fullLabel(g);
   return (
     <select
       value={value}
-      onChange={(e) => onChange(e.target.value as GameType)}
+      onChange={(e) => onChange(e.target.value as VisibleGameType)}
       title={fullLabel(value)}
       className="h-8 w-full min-w-0 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-left text-[11px] text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
     >
-      {GAME_TYPE_ORDER.map((g) => (
+      {VISIBLE_GAME_TYPE_ORDER.map((g) => (
         <option key={g} value={g}>
           {optionLabel(g)}
         </option>

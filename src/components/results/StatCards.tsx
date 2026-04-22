@@ -32,11 +32,22 @@ interface RangeSublineProps {
   accentColor?: string;
 }
 
+interface OutcomeSublineProps {
+  label: string;
+  leftLabel: string;
+  rightLabel: string;
+  leftValue: string;
+  rightValue: string;
+  ratio: number;
+  accentColor?: string;
+}
+
 interface BigStatProps {
   label: string;
   value: string;
   sub?: string;
   rangeSubline?: Omit<RangeSublineProps, "accentColor">;
+  outcomeSubline?: Omit<OutcomeSublineProps, "accentColor">;
   tone?: "pos" | "neg";
   tip?: string;
   suit?: StatSuit;
@@ -63,6 +74,7 @@ export function BigStat({
   value,
   sub,
   rangeSubline,
+  outcomeSubline,
   tone,
   tip,
   suit = "club",
@@ -107,6 +119,11 @@ export function BigStat({
       </div>
       {rangeSubline ? (
         <RangeSubline {...rangeSubline} accentColor={accentColor} />
+      ) : outcomeSubline ? (
+        <>
+          <OutcomeSubline {...outcomeSubline} accentColor={accentColor} />
+          {sub && <StatSubline text={sub} accentColor={accentColor} />}
+        </>
       ) : (
         sub && <StatSubline text={sub} accentColor={accentColor} />
       )}
@@ -216,6 +233,82 @@ function RangeSubline({
           </div>
           <div className="mt-0.5 whitespace-normal break-words font-mono text-[12px] font-semibold leading-[1.05] tabular-nums text-[color:var(--color-fg)] sm:text-[13px]">
             {maxValue}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OutcomeSubline({
+  label,
+  leftLabel,
+  rightLabel,
+  leftValue,
+  rightValue,
+  ratio,
+  accentColor,
+}: OutcomeSublineProps) {
+  const clampedRatio = Number.isFinite(ratio)
+    ? Math.max(0, Math.min(1, ratio))
+    : 0.5;
+  const frameBorder = accentColor
+    ? `color-mix(in srgb, ${accentColor} 18%, var(--color-border))`
+    : "color-mix(in srgb, var(--color-border) 88%, transparent)";
+
+  return (
+    <div
+      className="max-w-full rounded-md border bg-[color:var(--color-bg)]/55 px-3 py-2.5"
+      style={{ borderColor: frameBorder }}
+    >
+      <div className="text-[11px] font-medium capitalize tracking-[0.01em] text-[color:var(--color-fg-muted)]">
+        {label}
+      </div>
+      <div className="mt-2.5">
+        <div className="relative h-2.5 overflow-hidden rounded-full bg-[color:var(--color-border)]/40">
+          <div
+            className="absolute inset-y-0 left-0 rounded-l-full"
+            style={{
+              width: `${(1 - clampedRatio) * 100}%`,
+              background:
+                "linear-gradient(90deg, rgba(248,113,113,0.52) 0%, rgba(248,113,113,0.2) 100%)",
+            }}
+          />
+          <div
+            className="absolute inset-y-0 right-0 rounded-r-full"
+            style={{
+              width: `${clampedRatio * 100}%`,
+              background:
+                "linear-gradient(90deg, rgba(74,222,128,0.3) 0%, rgba(74,222,128,0.72) 100%)",
+            }}
+          />
+          <span
+            className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-[color:var(--color-bg-elev)]"
+            style={{
+              left: `${clampedRatio * 100}%`,
+              borderColor: accentColor ?? "var(--color-fg-muted)",
+              boxShadow: accentColor
+                ? `0 0 0 3px color-mix(in srgb, ${accentColor} 10%, transparent)`
+                : "0 0 0 3px rgba(255,255,255,0.06)",
+            }}
+          />
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-2 items-end gap-4">
+        <div className="min-w-0">
+          <div className="text-[10px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]">
+            {leftLabel}
+          </div>
+          <div className="mt-0.5 whitespace-normal break-words font-mono text-[12px] font-semibold leading-[1.05] tabular-nums text-[color:var(--color-danger)] sm:text-[13px]">
+            {leftValue}
+          </div>
+        </div>
+        <div className="min-w-0 text-right">
+          <div className="text-[10px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]">
+            {rightLabel}
+          </div>
+          <div className="mt-0.5 whitespace-normal break-words font-mono text-[12px] font-semibold leading-[1.05] tabular-nums text-[color:var(--color-success)] sm:text-[13px]">
+            {rightValue}
           </div>
         </div>
       </div>

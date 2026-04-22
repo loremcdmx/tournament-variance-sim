@@ -80,6 +80,7 @@ import {
   StatGroup,
 } from "./results/StatCards";
 import {
+  OurModelWeaknessCard,
   PrimeDopeWeaknessCard,
   SettingsDumpCard,
 } from "./results/ResultsPanels";
@@ -424,9 +425,15 @@ function TrajectoryPlot({
     };
     return { showBands, includeBest, includeWorst, isPathVisible, isBandVisible };
   }, [assets, visibleRuns, trimTopPct, trimBotPct]);
+  const representativeBand = useMemo(
+    () =>
+      assets.mainLines.find((line) => line.kind === "band" && line.percentile === 0.15)
+      ?? assets.mainLines.find((line) => line.kind === "band" && line.percentile === 0.85)
+      ?? assets.mainLines.find((line) => line.kind === "band"),
+    [assets.mainLines],
+  );
   const legendItems = useMemo(() => {
     const ev = assets.mainLines.find((line) => line.label === "EV");
-    const band = assets.mainLines.find((line) => line.kind === "band");
     const best = assets.mainLines.find((line) => line.kind === "best" && line.variant === "real")
       ?? assets.mainLines.find((line) => line.kind === "best");
     const overlay = assets.overlayLabel
@@ -447,10 +454,10 @@ function TrajectoryPlot({
         }),
         color: assets.visibility.pathBasePreset.stroke,
       },
-      visibilityGate.showBands && band && {
+      visibilityGate.showBands && representativeBand && {
         key: "bands",
         label: t("chart.traj.legend.bands"),
-        color: band.color,
+        color: representativeBand.color,
       },
       visibilityGate.includeBest && best && {
         key: "extremes",
@@ -464,7 +471,7 @@ function TrajectoryPlot({
         dash: true,
       },
     ].filter(Boolean) as Array<{ key: string; label: string; color: string; dash?: boolean }>;
-  }, [assets, t, visibleRuns, visibilityGate]);
+  }, [assets, representativeBand, t, visibleRuns, visibilityGate]);
 
   // Imperative visibility layer: instead of rebuilding the uPlot instance
   // on every slider tick, flip `show` on the pre-built path/band/best/worst
@@ -567,11 +574,11 @@ function TrajectoryPlot({
 
   let nearest: TrajectoryLineMeta | null = null;
   let nearestVal = 0;
-  let nearestPath: TrajectoryLineMeta | null = null;
-  let nearestPathVal = 0;
+  let nearestVisual: TrajectoryLineMeta | null = null;
+  let nearestVisualVal = 0;
   if (cursor && idx != null) {
     let bestDist = Infinity;
-    let bestPathPxDist = Infinity;
+    let bestVisualPxDist = Infinity;
     for (const line of assets.mainLines) {
       if (line.kind === "path") {
         if (!isPathVisible(line.rank ?? 0)) continue;
@@ -602,34 +609,47 @@ function TrajectoryPlot({
       const isHighlightable =
         line.kind === "path" ||
         line.kind === "best" ||
-        line.kind === "worst";
+        line.kind === "worst" ||
+        line.kind === "band";
       if (isHighlightable) {
         const pxDist = visualDistanceToSeries(
           cursor,
           assets.data[0] as ArrayLike<number>,
           arr,
         );
-        if (pxDist < bestPathPxDist) {
-          bestPathPxDist = pxDist;
-          nearestPath = line;
-          nearestPathVal = tooltipValue;
+        if (pxDist < bestVisualPxDist) {
+          bestVisualPxDist = pxDist;
+          nearestVisual = line;
+          nearestVisualVal = tooltipValue;
         }
       }
     }
-    // For per-run hovering, trust the visual hit-test over the value-only
-    // nearest line. The flock paths are dense and checkpointed; using only the
-    // nearest x-index can miss the segment the cursor is actually sitting on.
-    if (nearestPath && bestPathPxDist <= TRAJECTORY_PATH_HIT_PX) {
-      nearest = nearestPath;
-      nearestVal = nearestPathVal;
-    } else {
-      nearestPath = null;
+    // Trust the visual hit-test over the value-only nearest line. That keeps
+    // thin interval boundaries hoverable instead of letting nearby path
+    // trajectories steal focus at the same x-index.
+    if (nearestVisual) {
+      const visualHitPx =
+        nearestVisual.kind === "band"
+          ? TRAJECTORY_BAND_HIT_PX
+          : TRAJECTORY_PATH_HIT_PX;
+      if (bestVisualPxDist <= visualHitPx) {
+        nearest = nearestVisual;
+        nearestVal = nearestVisualVal;
+      } else {
+        nearestVisual = null;
+      }
     }
   }
 
   // Draw a bright highlight line on top of the focused path using a canvas
   // that sits inside uPlot's .over element for perfect alignment.
-  const focusedLine = nearestPath;
+  const focusedLine =
+    nearestVisual &&
+    (nearestVisual.kind === "path" ||
+      nearestVisual.kind === "best" ||
+      nearestVisual.kind === "worst")
+      ? nearestVisual
+      : null;
   const focusedSeriesIdx = focusedLine?.seriesIdx ?? null;
   const focusedStatsSeriesIdx =
     focusedLine &&
@@ -848,6 +868,13 @@ function TrajectoryPlot({
       case "ref": return t("chart.traj.kind.ref");
     }
   };
+  const tooltipLabel = (line: TrajectoryLineMeta): string => {
+    if (line.kind !== "band" || line.percentile == null) return line.label;
+    return fmt(t("chart.traj.band.title"), {
+      coverage: formatTrajectoryBandCoverage(line.percentile),
+      side: t(trajectoryBandSideKey(line.percentile)),
+    });
+  };
   const likelihood = (line: TrajectoryLineMeta): string | null => {
     if (line.kind === "ref") return null;
     // Path lines don't get a likelihood line — each is just one of many runs.
@@ -915,6 +942,19 @@ function TrajectoryPlot({
                 </span>
               </>
             )}
+            {visibilityGate.showBands && representativeBand && (
+              <>
+                <span className="text-[color:var(--color-border-strong)]">/</span>
+                <span className="inline-flex items-center gap-1">
+                  <span
+                    className="inline-block h-0 w-3 border-t-2"
+                    style={{ borderColor: representativeBand.color }}
+                    aria-hidden
+                  />
+                  {t("chart.traj.hoverHint.band")}
+                </span>
+              </>
+            )}
           </div>
         </div>
         {xZoomed && (
@@ -953,7 +993,7 @@ function TrajectoryPlot({
               style={{ background: nearest.color }}
             />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
-              {nearest.label}
+              {tooltipLabel(nearest)}
             </span>
             <span className="ml-auto text-[9px] text-[color:var(--color-fg-dim)]">
               {kindLabel(nearest)}
@@ -1099,6 +1139,7 @@ function parseRgb(css: string): [number, number, number] {
 }
 
 const TRAJECTORY_PATH_HIT_PX = 20;
+const TRAJECTORY_BAND_HIT_PX = 18;
 
 /** Per-run path color + width scaled to the number of visible runs.
  *  Few runs → brighter, thicker, visually distinct. Many runs → faint,
@@ -1112,6 +1153,23 @@ function pathStyleForCount(
   const alpha = Math.min(0.9, Math.max(0.04, 0.9 / Math.sqrt(n)));
   const width = Math.min(1.6, Math.max(0.55, 1.55 - 0.115 * Math.log2(n)));
   return { stroke: `rgba(${r},${g},${b},${alpha.toFixed(3)})`, width };
+}
+
+function formatTrajectoryBandCoverage(percentile: number): string {
+  const centralPct = (1 - 2 * Math.min(percentile, 1 - percentile)) * 100;
+  const rounded =
+    Math.abs(centralPct - Math.round(centralPct)) < 0.05
+      ? Math.round(centralPct).toString()
+      : centralPct.toFixed(1);
+  return `${rounded}%`;
+}
+
+function trajectoryBandSideKey(
+  percentile: number,
+): "chart.traj.band.side.lower" | "chart.traj.band.side.upper" {
+  return percentile < 0.5
+    ? "chart.traj.band.side.lower"
+    : "chart.traj.band.side.upper";
 }
 
 /** Metadata for the imperative visibility layer: which uPlot series indices
@@ -1937,6 +1995,13 @@ function ResultsViewImpl({
       ? (displayResultStats.expectedProfit - shiftedStats.min) /
         (shiftedStats.max - shiftedStats.min)
       : 0.5;
+  const bankrollSafetyRatio =
+    Number.isFinite(s.minBankrollRoR5pct) &&
+    Number.isFinite(s.minBankrollRoR1pct) &&
+    s.minBankrollRoR1pct > s.minBankrollRoR5pct
+      ? (bankroll - s.minBankrollRoR5pct) /
+        (s.minBankrollRoR1pct - s.minBankrollRoR5pct)
+      : 0.5;
   const modelPreset = modelPresetId
     ? STANDARD_PRESETS.find((p) => p.id === modelPresetId)
     : undefined;
@@ -2352,6 +2417,14 @@ function ResultsViewImpl({
           suit="spade"
           label={t("stat.probProfit")}
           value={pct(shiftedStats.probProfit)}
+          outcomeSubline={{
+            label: t("stat.probProfit.outcome"),
+            leftLabel: t("stat.probProfit.outcome.down"),
+            rightLabel: t("stat.probProfit.outcome.up"),
+            leftValue: pct(1 - shiftedStats.probProfit),
+            rightValue: pct(shiftedStats.probProfit),
+            ratio: shiftedStats.probProfit,
+          }}
           sub={t("stat.probProfit.sub").replace(
             "{n}",
             intFmt(shiftedStats.tournamentsFor95ROI),
@@ -2369,6 +2442,20 @@ function ResultsViewImpl({
           suit="heart"
           label={t("stat.riskOfRuin")}
           value={pct(s.riskOfRuin)}
+          rangeSubline={
+            s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
+              ? undefined
+              : {
+                  label: t("stat.riskOfRuin.range"),
+                  fromLabel: t("stat.riskOfRuin.range.from"),
+                  toLabel: t("stat.riskOfRuin.range.to"),
+                  pointLabel: t("stat.riskOfRuin.range.point"),
+                  pointHint: t("stat.riskOfRuin.range.hint"),
+                  minValue: money(s.minBankrollRoR5pct),
+                  maxValue: money(s.minBankrollRoR1pct),
+                  anchorRatio: bankrollSafetyRatio,
+                }
+          }
           sub={
             s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
               ? t("stat.bankrollOff")
@@ -2795,6 +2882,14 @@ function ResultsViewImpl({
         showUnitToggle={false}
       >
         <PrimeDopeWeaknessCard />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        id="ourWeakness"
+        title={t("section.ourWeakness")}
+        showUnitToggle={false}
+      >
+        <OurModelWeaknessCard />
       </CollapsibleSection>
     </div>
     </MoneyFmtContext.Provider>

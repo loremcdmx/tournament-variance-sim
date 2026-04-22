@@ -139,6 +139,18 @@ export const DICT = {
     en: "Mixed mode (freeze + PKO, $22-$55)",
     ru: "Микс фриз+PKO ($22-$55)",
   },
+  "demo.mixedDailyAllFormats": {
+    en: "Daily mix (freeze + PKO + Mystery, $11-$55)",
+    ru: "Daily mix: фриз+PKO+Mystery ($11-$55)",
+  },
+  "demo.mixedGgWithBr": {
+    en: "GG mix (BR + Mystery + PKO, $3-$25)",
+    ru: "GG mix: BR+Mystery+PKO ($3-$25)",
+  },
+  "demo.mixedSundayMajors": {
+    en: "Sunday mix (freeze + PKO + Mystery, $55-$215)",
+    ru: "Sunday mix: фриз+PKO+Mystery ($55-$215)",
+  },
 
   "userPreset.label": { en: "My presets", ru: "Мои пресеты" },
   "userPreset.saveCurrent": { en: "Save current", ru: "Сохранить текущий" },
@@ -218,7 +230,7 @@ export const DICT = {
     ru: "Сколько турниров из этой строки ты играешь за один проход расписания. Дробные значения допустимы и округляются стохастически.",
   },
   "row.guarantee": { en: "Guarantee $", ru: "Гарантия $" },
-  "row.addRow": { en: "+ Add row", ru: "+ Добавить" },
+  "row.addRow": { en: "Add row", ru: "Добавить" },
   "row.delete": { en: "Delete", ru: "Удалить" },
   "row.gameType": { en: "Game type", ru: "Тип игры" },
   "row.gameType.freezeout": { en: "Freezeout", ru: "Фризаут" },
@@ -444,12 +456,16 @@ export const DICT = {
   },
   "controls.alphaPlaceholder": { en: "auto", ru: "авто" },
   "controls.seed": {
-    en: "Run number (reproducibility)",
-    ru: "Номер рана (повторяемость)",
+    en: "Sample variant",
+    ru: "Вариант выборки",
   },
   "controls.seedAuto": {
-    en: "new seed on launch",
-    ru: "новый сид при запуске",
+    en: "auto: new on every run",
+    ru: "авто: новый на каждый запуск",
+  },
+  "controls.seedCurrent": {
+    en: "current: {seed}",
+    ru: "текущий: {seed}",
   },
   "controls.seedReroll": { en: "Re-roll", ru: "Перебросить" },
   "controls.roiStdErr": {
@@ -648,6 +664,18 @@ export const DICT = {
     en: "{n} tourneys to reach ±5% ROI",
     ru: "{n} турниров до точного ROI ±5%",
   },
+  "stat.probProfit.outcome": {
+    en: "Sample finish",
+    ru: "Финиш сэмпла",
+  },
+  "stat.probProfit.outcome.down": {
+    en: "Not up",
+    ru: "Не в плюсе",
+  },
+  "stat.probProfit.outcome.up": {
+    en: "In profit",
+    ru: "В плюсе",
+  },
   "stat.riskOfRuin.sub": {
     en: "chance your bankroll streaks to zero",
     ru: "шанс стрикануть весь банкролл",
@@ -655,6 +683,26 @@ export const DICT = {
   "stat.riskOfRuin.tip": {
     en: "For 1% RoR → need bankroll ≥ {br1}. For 5% RoR → need bankroll ≥ {br5}.",
     ru: "Для 1% риска разорения нужен БР ≥ {br1}. Для 5% — БР ≥ {br5}.",
+  },
+  "stat.riskOfRuin.range": {
+    en: "Bankroll cushion",
+    ru: "Запас БР",
+  },
+  "stat.riskOfRuin.range.from": {
+    en: "5% risk",
+    ru: "5% риск",
+  },
+  "stat.riskOfRuin.range.to": {
+    en: "1% risk",
+    ru: "1% риск",
+  },
+  "stat.riskOfRuin.range.point": {
+    en: "Current BR",
+    ru: "Текущий БР",
+  },
+  "stat.riskOfRuin.range.hint": {
+    en: "The dot shows where your current bankroll sits relative to the bankroll needed for about 5% and 1% risk of ruin.",
+    ru: "Точка показывает, где текущий банкролл находится относительно уровней, нужных примерно для 5% и 1% риска разорения.",
   },
   "stat.ddWorst": { en: "Deepest drawdown", ru: "Максимальная просадка" },
   "stat.ddWorst.tip": {
@@ -1041,8 +1089,20 @@ export const DICT = {
     ru: "среднее по всем симулированным ранам",
   },
   "chart.traj.kind.band": {
-    en: "percentile band around the average",
-    ru: "полоса процентилей вокруг среднего",
+    en: "boundary of the percentile interval",
+    ru: "граница интервала разброса",
+  },
+  "chart.traj.band.side.lower": {
+    en: "lower edge",
+    ru: "нижняя граница",
+  },
+  "chart.traj.band.side.upper": {
+    en: "upper edge",
+    ru: "верхняя граница",
+  },
+  "chart.traj.band.title": {
+    en: "{coverage} interval · {side}",
+    ru: "{coverage} интервал · {side}",
   },
   "chart.traj.kind.bestReal": {
     en: "the luckiest single simulated run",
@@ -1079,6 +1139,10 @@ export const DICT = {
   "chart.traj.hoverHint.maxDd": {
     en: "max drawdown",
     ru: "макс. просадка",
+  },
+  "chart.traj.hoverHint.band": {
+    en: "interval edges",
+    ru: "границы интервалов",
   },
   "chart.traj.extreme.realBest": {
     en: "real best run",
@@ -1138,8 +1202,8 @@ export const DICT = {
     ru: "{n} ранов",
   },
   "chart.traj.legend.bands": {
-    en: "70 / 95 / 99.7% bands",
-    ru: "полосы 70 / 95 / 99.7%",
+    en: "70 / 95 / 99.7% intervals",
+    ru: "интервалы 70 / 95 / 99.7%",
   },
   "chart.traj.legend.extremes": {
     en: "best / worst",
@@ -1246,8 +1310,8 @@ export const DICT = {
     ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",
   },
   "chart.convergence.assumptions": {
-    en: "Read a row as: play this many tournaments and, with the chosen CI confidence, your observed ROI lands inside the target band around the true one. Freeze now reacts to ROI through the runtime single-row model. PKO, Mystery, and Battle Royale also grow with ROI because better runs collect more bounty value. Mix combines Freeze / PKO / Mystery by user-set tournament weights: σ²_mix = Σ w_format·σ²_format. Schedule mode ignores the global AFS / ROI / rake sliders, compiles each row with its own field, field variability, payout shape, rake, and bounty structure, then aggregates schedule-level dollar variance. Averaged PKO keeps its numeric residual band inside the validated box. Mystery keeps a runtime-centered band across its full validated UI box (AFS 50–50k, ROI −20..+80%). Battle Royale keeps a runtime-centered band inside its validated BR box (AFS fixed at 18, ROI ±10%). Freeze also keeps a conservative runtime-centered band across its UI box; Schedule remains point-only.",
-    ru: "Строка читается так: сыграй столько турниров, и с выбранной доверительностью наблюдаемый ROI попадёт в указанную полосу вокруг истинного. Фриз теперь реагирует на ROI через runtime single-row модель. В ПКО, Мистери и Battle Royale σ тоже растёт с ROI, потому что более глубокие проходы собирают больше баунти. Микс комбинирует Фриз / ПКО / Мистери по заданным весам турниров: σ²_микс = Σ w_format·σ²_format. Режим Расписание игнорирует глобальные ползунки AFS / ROI / рейка, компилирует каждую строку со своим полем, field variability, payout-shape, рейком и bounty-структурой, а потом агрегирует schedule-level долларовую дисперсию. В усреднённом ПКО числовая residual-полоса остаётся внутри validated box. У Mystery есть runtime-centered диапазон во всём validated UI-box'е (AFS 50–50k, ROI −20..+80%). У Battle Royale тоже runtime-centered диапазон внутри validated BR-box'а (AFS строго 18, ROI ±10%). У Фриза теперь тоже есть консервативный runtime-centered диапазон во всём UI-box'е; point-only остаётся только у режима Расписание.",
+    en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, Mystery, and Battle Royale use runtime format-specific estimates; PKO uses a validated fitted model, and Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where they are validated; outside that safe zone the table falls back to a point estimate.",
+    ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, Мистери и Battle Royale считают это через runtime-модель своего формата; ПКО использует проверенную аппроксимацию, а Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где он провалидирован; вне безопасной зоны таблица оставляет только точечную оценку.",
   },
   "chart.decomp": { en: "Per-row EV decomposition", ru: "Декомпозиция EV по строкам" },
   "chart.decomp.sub": {
@@ -1336,6 +1400,7 @@ export const DICT = {
   "section.verdict": { en: "Verdict", ru: "Вердикт" },
   "section.primedopeReport": { en: "PrimeDope report", ru: "PrimeDope отчёт" },
   "section.pdWeakness": { en: "PrimeDope model flaws", ru: "Минусы модели PrimeDope" },
+  "section.ourWeakness": { en: "Limits of our model", ru: "Минусы нашей модели" },
   "section.settingsDump": { en: "Run settings", ru: "Настройки рана" },
   "section.pdVerdict": { en: "PrimeDope verdict", ru: "Вердикт PrimeDope" },
   "section.pdDiff": { en: "PrimeDope diff", ru: "Разница с PrimeDope" },
@@ -1374,6 +1439,10 @@ export const DICT = {
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
   "changelog.v076.title": { en: "v0.7.6 — 2026-04-22", ru: "v0.7.6 — 2026-04-22" },
+  "changelog.v076.summary": {
+    en: "Result cards and tournament preview became much clearer and easier to scan.",
+    ru: "Карточки результатов и превью одного турнира стали заметно понятнее и чище визуально.",
+  },
   "changelog.v076.resultsRail": {
     en: "Expected-profit cards now show spread as a cleaner visual rail with an EV anchor, instead of the older boxed min/max strip.",
     ru: "В карточке ожидаемого профита разброс теперь показывается как более аккуратная визуальная полоса с точкой EV вместо старой boxed min/max полосы.",
@@ -1391,6 +1460,10 @@ export const DICT = {
     ru: "Блок про слабости PrimeDope переписан вокруг реального math-gap в MTT: finish-shell, современные форматные каналы и отсутствующие слои неопределённости.",
   },
   "changelog.v075.title": { en: "v0.7.5 — 2026-04-22", ru: "v0.7.5 — 2026-04-22" },
+  "changelog.v075.summary": {
+    en: "Mystery and Battle Royale now show honest validated convergence ranges instead of vague warnings or stale fits.",
+    ru: "Mystery и Battle Royale теперь показывают честные валидированные диапазоны сходимости вместо мутных warning'ов и старых fit-оценок.",
+  },
   "changelog.v075.brConvergence": {
     en: "Battle Royale convergence bands are back in a validated form: the chart now centers on runtime sigma and shows a tested numeric range instead of the old stale fit shell.",
     ru: "Для Battle Royale вернули валидированные полосы сходимости: график теперь центрируется по runtime sigma и показывает проверенный числовой диапазон вместо старой протухшей fit-оболочки.",
@@ -1416,6 +1489,14 @@ export const DICT = {
     ru: "Расписание и статистические карточки получили еще один проход полировки, а гидрация cash-state стала строже к невалидным сохраненным значениям.",
   },
   "changelog.v074.title": { en: "v0.7.4 - 2026-04-20", ru: "v0.7.4 - 2026-04-20" },
+  "changelog.v074v073.title": {
+    en: "v0.7.4–0.7.3 — BR and preview cleanup",
+    ru: "v0.7.4–0.7.3 — Battle Royale и превью",
+  },
+  "changelog.v074v073.summary": {
+    en: "Battle Royale got saner ROI / winner-first behavior, and the EV split preview became easier to read.",
+    ru: "В Battle Royale починили ROI / winner-first логику, а разложение EV в превью стало заметно понятнее.",
+  },
   "changelog.v074.brWinnerFirst": {
     en: "Battle Royale fixed-ITM profit now strengthens 1st place before extra cash EV starts spilling into the rest of top-3.",
     ru: "В Battle Royale с фиксированным ITM дополнительный профит теперь сначала усиливает 1-е место, и только потом начинает перетекать в остальной топ-3.",
@@ -1446,6 +1527,14 @@ export const DICT = {
     ru: "ROI-пресеты Battle Royale в центре слайдера делят добавленный ROI-профит 50/50 между кешем и ноками, а затем слайдер доли ноков двигает этот сплит.",
   },
   "changelog.v07a.title": { en: "v0.7.1 — 2026-04-18", ru: "v0.7.1 — 2026-04-18" },
+  "changelog.v07x.title": {
+    en: "v0.7.1–0.7 — major simulator expansion",
+    ru: "v0.7.1–0.7 — большое расширение симулятора",
+  },
+  "changelog.v07x.summary": {
+    en: "Cash mode, Mystery, Battle Royale, exact schedule mode, better convergence, and rakeback-aware results all landed here.",
+    ru: "Здесь приехали cash mode, Mystery, Battle Royale, exact-режим расписания, сильнее блок сходимости и нормальный учет рейкбека в результатах.",
+  },
   "changelog.v07a.cash": {
     en: "Advanced mode now has a separate cash-game variance simulator with mixed limits and parallel workers.",
     ru: "В advanced mode появился отдельный симулятор дисперсии для кэша с миксом лимитов и параллельными воркерами.",
@@ -1525,6 +1614,14 @@ export const DICT = {
     ru: "Приложение сместилось от «просто профита» к вопросу «какие именно просадки и отыгрывания реально бывают».",
   },
   "changelog.v03.title": { en: "v0.3 — 2026-04-13", ru: "v0.3 — 2026-04-13" },
+  "changelog.early.title": {
+    en: "Earlier",
+    ru: "Раньше",
+  },
+  "changelog.early.summary": {
+    en: "The foundations landed early: PKO support, PrimeDope comparison, EV breakdowns, presets, and import/export.",
+    ru: "База появилась здесь: PKO, сравнение с PrimeDope, разложение EV, пресеты и импорт/экспорт.",
+  },
   "changelog.v03.presets": {
     en: "The first usable simulator build: presets, trajectory styling, unit switcher and import/export.",
     ru: "Первая реально рабочая версия симулятора: пресеты, стили траекторий, переключатель единиц и импорт/экспорт.",
@@ -1811,7 +1908,7 @@ export const DICT = {
   "preview.eyebrow": { en: "Single tournament", ru: "Один турнир" },
   "preview.youPay": { en: "Buy-in", ru: "Баин" },
   "preview.avgReturn": { en: "EV profit", ru: "EV профит" },
-  "preview.evSplit": { en: "Gross EV", ru: "Брутто EV" },
+  "preview.evSplit": { en: "EV mix", ru: "Состав EV" },
   "preview.evSplit.cash": { en: "cash", ru: "кеш" },
   "preview.evSplit.bounty": { en: "bounty", ru: "ноки" },
   "preview.evBias.label": {
@@ -2124,8 +2221,8 @@ export const DICT = {
     ru: "Жёстко задать крутизну кривой скилла вместо автоподгонки под ROI. Пусто = авто. 1.0 — нейтрально, 2.0 — агрессивная концентрация у 1-го. Продвинутое: фиксирует форму кривой и сознательно промахивается по ROI.",
   },
   "help.seed": {
-    en: "Starting point for the RNG — same seed = same result. Change it for a different sample on the same schedule; keep it fixed to compare tweaks.",
-    ru: "Стартовая точка ГПСЧ — один сид = идентичный результат. Новый сид — новая выборка; фиксированный — для сравнения правок.",
+    en: "This is just the random sample variant. Same seed = same run on the same schedule. Usually you don't need to touch it: every launch gets a fresh one. Keep it fixed only when you want to compare two setting changes against exactly the same randomness.",
+    ru: "Это просто вариант случайной выборки. Один и тот же сид = тот же самый ран на том же расписании. Обычно трогать не нужно: при каждом запуске берётся новый. Фиксировать имеет смысл только когда сравниваешь две настройки на одной и той же случайности.",
   },
   "help.roiStdErr": {
     en: "How uncertain you are about your real ROI, as a fraction. 0.05 = \"my true ROI is maybe ±5 pp off\". 0 = you know ROI exactly (PrimeDope's assumption). On each run the engine rolls a random skill shift applied to every bullet — the biggest source of bad-tail swings PrimeDope ignores.",

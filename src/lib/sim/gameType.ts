@@ -14,6 +14,24 @@ export const GAME_TYPE_ORDER: GameType[] = [
   "mystery-royale",
 ];
 
+export type VisibleGameType = Exclude<GameType, "freezeout-reentry">;
+
+export const VISIBLE_GAME_TYPE_ORDER: VisibleGameType[] = [
+  "freezeout",
+  "pko",
+  "mystery",
+  "mystery-royale",
+];
+
+/**
+ * `freezeout-reentry` is still supported internally for legacy rows and
+ * engine math, but it is no longer presented as a separate tournament type
+ * in the editor. User-facing UI collapses it into plain freezeout.
+ */
+export function toVisibleGameType(gameType: GameType): VisibleGameType {
+  return gameType === "freezeout-reentry" ? "freezeout" : gameType;
+}
+
 /**
  * Infer a row's game type from its underlying fields. Used for legacy
  * rows (no explicit `gameType`) and for presets imported before this

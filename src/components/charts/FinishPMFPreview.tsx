@@ -396,18 +396,10 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
           );
           return (
             <div className="mt-3 border-t border-[color:var(--color-border)]/60 pt-2">
-              <div className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+              <div className="mb-2.5 text-[13px] font-semibold tracking-[0.08em] text-[color:var(--color-fg-dim)]">
                 {t("preview.evSplit")}
               </div>
-              <div
-                className={`grid gap-2 ${
-                  hasJp ||
-                  directRakebackPerEntry > 1e-6 ||
-                  leaderboardPromoPerEntry > 1e-6
-                    ? "sm:grid-cols-3"
-                    : "sm:grid-cols-2"
-                }`}
-              >
+              <div className="flex flex-wrap justify-center gap-2.5 sm:gap-3">
                 <PreviewSplitStat
                   label={t("preview.evSplit.cash")}
                   value={moneyFmt(stats.cashEvPerEntry)}
@@ -483,7 +475,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
 
       {/* Tier-by-tier breakdown + discrete position rows. Shared grid
           template: swatch | label | bar | %EV | field % | equilibrium % | $ ROI */}
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5 pl-6">
         <div className="grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
           <span />
           <span>{t("preview.evBreakdown")}</span>
@@ -1320,21 +1312,23 @@ function PreviewSplitStat({
 }) {
   return (
     <div
-      className="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/55 px-2.5 py-2 text-[10px] text-[color:var(--color-fg-dim)] shadow-sm"
+      className="w-full rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/55 px-3 py-2.5 text-[11px] text-[color:var(--color-fg-dim)] shadow-sm sm:w-[15.5rem]"
       title={title}
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
         <span
-          className="inline-block h-1.5 w-1.5 rounded-sm"
+          className="inline-block h-2 w-2 rounded-sm"
           style={{ background: color }}
         />
-        <span className="truncate">{label}</span>
+        <span className="truncate text-[13px] font-medium text-[color:var(--color-fg-dim)]">
+          {label}
+        </span>
       </div>
-      <div className="mt-1 flex items-end justify-between gap-2">
-        <span className="font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)]">
+      <div className="mt-1.5 flex items-end justify-between gap-3">
+        <span className="font-mono text-[15px] font-semibold tabular-nums text-[color:var(--color-fg)]">
           {value}
         </span>
-        <span className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[color:var(--color-fg)]">
+        <span className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)]">
           {evPct(share)}
         </span>
       </div>

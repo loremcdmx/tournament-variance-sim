@@ -212,6 +212,9 @@ export const ControlsPanel = memo(function ControlsPanel({
   const shownSeed = activeSeed ?? value.seed;
   const seedLabel = `0x${(shownSeed >>> 0).toString(16).padStart(8, "0")}`;
   const showSeedLabel = running || !!doneSummary;
+  const shownSeedLabel = showSeedLabel
+    ? t("controls.seedCurrent").replace("{seed}", seedLabel)
+    : t("controls.seedAuto");
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
   const setTournamentTarget = (target: number) => {
@@ -514,12 +517,12 @@ export const ControlsPanel = memo(function ControlsPanel({
             </span>
           </div>
           <div
-            className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]"
+            className="text-[10px] tracking-[0.08em] text-[color:var(--color-fg-dim)]"
             title={t("help.seed")}
           >
             {t("controls.seed")}:{" "}
-            <span className="tracking-normal text-[color:var(--color-fg-muted)]">
-              {showSeedLabel ? seedLabel : t("controls.seedAuto")}
+            <span className="font-mono tracking-normal text-[color:var(--color-fg-muted)]">
+              {shownSeedLabel}
             </span>
           </div>
         </div>

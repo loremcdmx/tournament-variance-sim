@@ -1167,67 +1167,25 @@ export default function Home() {
           <div className="mt-3 space-y-3 pl-2">
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v076.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v076.resultsRail")}</li>
-              <li>{t("changelog.v076.resultsTypography")}</li>
-              <li>{t("changelog.v076.previewPko")}</li>
+              <li>{t("changelog.v076.summary")}</li>
               <li>{t("changelog.v076.pdWeakness")}</li>
             </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v075.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v075.brConvergence")}</li>
-              <li>{t("changelog.v075.mysteryConvergence")}</li>
-              <li>{t("changelog.v075.brPromo")}</li>
-              <li>{t("changelog.v075.previewMath")}</li>
+              <li>{t("changelog.v075.summary")}</li>
               <li>{t("changelog.v075.inputs")}</li>
-              <li>{t("changelog.v075.polish")}</li>
             </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v074.title")}</div>
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v074v073.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v074.brWinnerFirst")}</li>
-              <li>{t("changelog.v074.brParity")}</li>
-              <li>{t("changelog.v074.inputPerf")}</li>
+              <li>{t("changelog.v074v073.summary")}</li>
             </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v073.title")}</div>
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07x.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v073.koAudit")}</li>
-              <li>{t("changelog.v073.evCard")}</li>
-              <li>{t("changelog.v073.brRoi")}</li>
-              <li>{t("changelog.v073.brRoiSplit")}</li>
+              <li>{t("changelog.v07x.summary")}</li>
             </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07a.title")}</div>
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.early.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v07a.cash")}</li>
-              <li>{t("changelog.v07a.mttPerf")}</li>
-              <li>{t("changelog.v07a.progress")}</li>
-              <li>{t("changelog.v07a.mystery")}</li>
-              <li>{t("changelog.v07a.stats")}</li>
-            </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v07.title")}</div>
-            <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v07.formats")}</li>
-              <li>{t("changelog.v07.convergence")}</li>
-              <li>{t("changelog.v07.gameType")}</li>
-              <li>{t("changelog.v07.rakeback")}</li>
-            </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06b.title")}</div>
-            <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v06b.ev")}</li>
-            </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v06.title")}</div>
-            <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v06.pko")}</li>
-            </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v05.title")}</div>
-            <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v05.pdWidget")}</li>
-            </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v04.title")}</div>
-            <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v04.summary")}</li>
-            </ul>
-            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v03.title")}</div>
-            <ul className="list-disc space-y-1 pl-5">
-              <li>{t("changelog.v03.presets")}</li>
+              <li>{t("changelog.early.summary")}</li>
             </ul>
           </div>
         </details>
