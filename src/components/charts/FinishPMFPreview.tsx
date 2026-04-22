@@ -30,8 +30,13 @@ import {
   MAX_ITM_TOP_HEAVY_BIAS,
   MIN_ITM_TOP_HEAVY_BIAS,
 } from "@/lib/sim/itmTopHeavy";
+import {
+  battleRoyaleDirectRakebackShareForRow,
+  battleRoyaleLeaderboardShareForRow,
+} from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { getPayoutTable } from "@/lib/sim/payouts";
+import { derivePreviewRowEconomics } from "@/lib/sim/previewRowEconomics";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
@@ -42,6 +47,7 @@ import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 interface Props {
   row: TournamentRow;
   model: FinishModelConfig;
+  rakebackPct?: number;
   /** If provided, the fixed-ITM shape controls panel is shown below the
    *  tier breakdown and can edit row.itmRate / row.finishBuckets. */
   onRowChange?: (updates: Partial<TournamentRow>) => void;
@@ -124,6 +130,7 @@ interface TierRow {
 export const FinishPMFPreview = memo(function FinishPMFPreview({
   row,
   model,
+  rakebackPct = 0,
   onRowChange,
   itmLocked,
 }: Props) {
@@ -159,7 +166,31 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   const committedItmTopHeavyBias = clampItmTopHeavyBias(
     row.itmTopHeavyBias ?? 0,
   );
+  const previewEconomics = useMemo(() => derivePreviewRowEconomics(row), [row]);
   const stats = useMemo(() => computeRowStats(row, model), [row, model]);
+  const rbFrac = Math.max(0, rakebackPct) / 100;
+  const directRakebackShare = battleRoyaleDirectRakebackShareForRow(
+    row,
+    advanced,
+  );
+  const leaderboardPromoShare = battleRoyaleLeaderboardShareForRow(
+    row,
+    advanced,
+  );
+  const directRakebackPerEntry =
+    rbFrac *
+    directRakebackShare *
+    row.rake *
+    row.buyIn *
+    previewEconomics.expectedBullets;
+  const leaderboardPromoPerEntry =
+    rbFrac *
+    leaderboardPromoShare *
+    row.rake *
+    row.buyIn *
+    previewEconomics.expectedBullets;
+  const totalEvPerEntry =
+    stats.evPerEntry + directRakebackPerEntry + leaderboardPromoPerEntry;
   const committedBountyShare = clampUnit(stats.bountyShare);
   const shareProbeBaseRow = useMemo<TournamentRow>(
     () => ({
@@ -237,7 +268,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     };
   }, [shareProbeBaseRow, model]);
 
-  const evTotal = stats.tiers.reduce((a, tier) => a + tier.ev, 0) || 1;
+  const evTotal = totalEvPerEntry || 1;
 
   const moneyFmt = (v: number) => {
     if (v === 0) return "$0";
@@ -250,16 +281,18 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     return `${sign}$${Math.round(abs).toLocaleString()}`;
   };
 
-  const netProfitPerEntry = stats.evPerEntry - stats.cost;
+  const netProfitPerEntry = totalEvPerEntry - stats.cost;
   const roiPerEntry = stats.cost > 1e-9 ? netProfitPerEntry / stats.cost : 0;
-  const rakeAmount = Math.max(0, stats.cost - row.buyIn);
+  const rakeAmount = previewEconomics.totalRake;
   const rakeFooter =
     rakeAmount > 0.005
-      ? `${moneyFmt(row.buyIn)} + ${moneyFmt(rakeAmount)} ${t("chart.convergence.rake")}`
-      : moneyFmt(row.buyIn);
+      ? `${moneyFmt(previewEconomics.buyInTotal)} + ${moneyFmt(rakeAmount)} ${t("chart.convergence.rake")}`
+      : moneyFmt(previewEconomics.buyInTotal);
   const quickRoi = `${roiPerEntry >= 0 ? "+" : ""}${(roiPerEntry * 100).toFixed(1)}%`;
   const quickItm = `${(stats.itm * 100).toFixed(1)}%`;
-  const quickField = row.players.toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
+  const quickField = previewEconomics.fieldSize.toLocaleString(
+    locale === "ru" ? "ru-RU" : "en-US",
+  );
   const rowTitle = getTournamentRowDisplayLabel(row, t);
   const bountyTag = stats.progressivePko
     ? t("preview.statBountyPko")
@@ -294,7 +327,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
           />
           <PreviewHeroStat
             label="EV"
-            value={moneyFmt(stats.evPerEntry)}
+            value={moneyFmt(totalEvPerEntry)}
             accent
             details={[
               { label: t("row.roi"), value: quickRoi, tone: "accent" },
@@ -326,17 +359,31 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             }
           />
         </div>
-        {stats.bountyEvPerEntry > 0 && (() => {
+        {(stats.bountyEvPerEntry > 0 ||
+          directRakebackPerEntry > 1e-6 ||
+          leaderboardPromoPerEntry > 1e-6) &&
+          (() => {
           const jp = stats.jackpotBountyEvPerEntry;
           const hasJp = jp > 0 && jp / stats.bountyEvPerEntry > 0.001;
           const regularBounty = stats.bountyEvPerEntry - jp;
           const cashShare =
-            stats.evPerEntry > 1e-9 ? stats.cashEvPerEntry / stats.evPerEntry : 0;
+            totalEvPerEntry > 1e-9 ? stats.cashEvPerEntry / totalEvPerEntry : 0;
           const bountyShare =
-            stats.evPerEntry > 1e-9 ? stats.bountyEvPerEntry / stats.evPerEntry : 0;
+            totalEvPerEntry > 1e-9
+              ? stats.bountyEvPerEntry / totalEvPerEntry
+              : 0;
           const regularBountyShare =
-            stats.evPerEntry > 1e-9 ? regularBounty / stats.evPerEntry : 0;
-          const jackpotShare = stats.evPerEntry > 1e-9 ? jp / stats.evPerEntry : 0;
+            totalEvPerEntry > 1e-9 ? regularBounty / totalEvPerEntry : 0;
+          const jackpotShare =
+            totalEvPerEntry > 1e-9 ? jp / totalEvPerEntry : 0;
+          const directRbShare =
+            totalEvPerEntry > 1e-9
+              ? directRakebackPerEntry / totalEvPerEntry
+              : 0;
+          const promoShare =
+            totalEvPerEntry > 1e-9
+              ? leaderboardPromoPerEntry / totalEvPerEntry
+              : 0;
           const thresholdStr = String(stats.jackpotThreshold);
           const jpLabel = t("preview.evSplit.bountyJackpot").replace(
             "{x}",
@@ -351,7 +398,15 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
               <div className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
                 {t("preview.evSplit")}
               </div>
-              <div className={`grid gap-2 ${hasJp ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+              <div
+                className={`grid gap-2 ${
+                  hasJp ||
+                  directRakebackPerEntry > 1e-6 ||
+                  leaderboardPromoPerEntry > 1e-6
+                    ? "sm:grid-cols-3"
+                    : "sm:grid-cols-2"
+                }`}
+              >
                 <PreviewSplitStat
                   label={t("preview.evSplit.cash")}
                   value={moneyFmt(stats.cashEvPerEntry)}
@@ -375,6 +430,22 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                     share={jackpotShare}
                     color="hsl(45, 95%, 60%)"
                     title={jpTip}
+                  />
+                )}
+                {directRakebackPerEntry > 1e-6 && (
+                  <PreviewSplitStat
+                    label={t("chart.brLeaderboard.directRb")}
+                    value={moneyFmt(directRakebackPerEntry)}
+                    share={directRbShare}
+                    color="var(--color-club)"
+                  />
+                )}
+                {leaderboardPromoPerEntry > 1e-6 && (
+                  <PreviewSplitStat
+                    label={t("chart.brLeaderboard.meanPayout")}
+                    value={moneyFmt(leaderboardPromoPerEntry)}
+                    share={promoShare}
+                    color="var(--color-rival)"
                   />
                 )}
               </div>
@@ -423,6 +494,32 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
         </div>
         <div className="flex flex-col divide-y divide-[color:var(--color-border)]/60">
           {(() => {
+            const extraRows = [
+              directRakebackPerEntry > 1e-6
+                ? {
+                    key: "__rb__",
+                    label: t("chart.brLeaderboard.directRb"),
+                    color: "var(--color-club)",
+                    evShare: directRakebackPerEntry / evTotal,
+                    netDollars: directRakebackPerEntry,
+                  }
+                : null,
+              leaderboardPromoPerEntry > 1e-6
+                ? {
+                    key: "__promo__",
+                    label: t("chart.brLeaderboard.meanPayout"),
+                    color: "var(--color-rival)",
+                    evShare: leaderboardPromoPerEntry / evTotal,
+                    netDollars: leaderboardPromoPerEntry,
+                  }
+                : null,
+            ].filter(Boolean) as Array<{
+              key: string;
+              label: string;
+              color: string;
+              evShare: number;
+              netDollars: number;
+            }>;
             const rows: React.ReactNode[] = [];
             // Max evShare across disjoint tiers — used as the 100% baseline
             // for bar widths so the largest tier fills the full bar.
@@ -430,6 +527,9 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             for (const tier of stats.tiers) {
               const s = tier.ev / evTotal;
               if (s > maxEv) maxEv = s;
+            }
+            for (const extra of extraRows) {
+              if (extra.evShare > maxEv) maxEv = extra.evShare;
             }
             // Disjoint tiers + interleaved cumulative summary rows (top3
             // and FT) injected right after the winner tier, so "топ3" and
@@ -469,6 +569,20 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                 />,
               );
             }
+            for (const extra of extraRows) {
+              rows.push(
+                <EvBreakdownRow
+                  key={extra.key}
+                  label={extra.label}
+                  color={extra.color}
+                  evShare={extra.evShare}
+                  fieldShare={null}
+                  eqShare={null}
+                  netDollars={extra.netDollars}
+                  maxEvShare={maxEv}
+                />,
+              );
+            }
             // Footer: the column-wise sum of net $ across disjoint tiers
             // equals net profit per entry — the user asked for ROI to
             // literally appear as the bottom of this column.
@@ -484,8 +598,12 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
               <EvBreakdownFooter
                 key="__footer__"
                 label={t("preview.evBreakdownTotal")}
-                netDollars={tierNetSum}
-                eqNetDollars={tierEqNetSum}
+                netDollars={
+                  tierNetSum + directRakebackPerEntry + leaderboardPromoPerEntry
+                }
+                eqNetDollars={
+                  tierEqNetSum + directRakebackPerEntry + leaderboardPromoPerEntry
+                }
               />,
             );
             return rows;
@@ -594,8 +712,8 @@ function EvBreakdownRow({
   label: string;
   color: string;
   evShare: number;
-  fieldShare: number;
-  eqShare: number;
+  fieldShare: number | null;
+  eqShare: number | null;
   netDollars: number;
   maxEvShare?: number;
   /** 0..1 — fraction of this tier's EV that comes from the bounty pool.
@@ -681,7 +799,7 @@ function EvBreakdownRow({
             className="absolute inset-y-0 left-0 rounded-sm opacity-30"
             style={{
               width: fmtWidth(
-                (maxEvShare ? eqShare / maxEvShare : eqShare) * 100,
+                (maxEvShare ? (eqShare ?? 0) / maxEvShare : (eqShare ?? 0)) * 100,
               ),
               backgroundColor: color,
             }}
@@ -708,10 +826,10 @@ function EvBreakdownRow({
           {pct(evShare)}
         </span>
         <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
-          {pct(fieldShare)}
+          {fieldShare == null ? "—" : pct(fieldShare)}
         </span>
         <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
-          {fmtEq(eqShare)}
+          {eqShare == null ? "—" : fmtEq(eqShare)}
         </span>
         <span
           className={`text-right font-mono tabular-nums ${netClass}`}
@@ -1904,10 +2022,13 @@ function stdNormalCdf(x: number): number {
  * preview matches what the simulator will actually sample.
  */
 function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats {
-  const N = Math.max(2, Math.floor(row.players));
+  const economics = derivePreviewRowEconomics(row);
+  const N = economics.fieldSize;
   const payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
-  const basePool = row.players * row.buyIn;
-  const entryCost = row.buyIn * (1 + row.rake);
+  const basePool = economics.basePool;
+  const entryCostSingle = economics.singleCost;
+  const entryCost = economics.costPerTournament;
+  const expectedBullets = economics.expectedBullets;
   const brSampler =
     row.payoutStructure === "battle-royale"
       ? makeBrTierSampler(row.buyIn)
@@ -1920,12 +2041,12 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   // Mirror engine.ts compileSingleEntry: user-tunable EV-bias shifts the
   // split between cash and bounty channels while keeping total ROI intact.
   const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
-  const totalWinningsEV = entryCost * (1 + row.roi);
+  const totalWinningsEV = entryCostSingle * (1 + row.roi);
   let bountyMean =
     bountyFraction > 0
       ? applyBountyBias(defaultBountyMean, totalWinningsEV, bias)
       : 0;
-  const prizePool = basePool * (1 - bountyFraction);
+  const prizePool = economics.prizePoolBeforeBounty * (1 - bountyFraction);
   const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
 
   const solveCashTarget = (
@@ -1945,12 +2066,12 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
         row.itmTopHeavyBias ?? 0,
       ).pmf;
     } else {
-      const targetEffectiveROI = regularTarget / entryCost - 1;
+      const targetEffectiveROI = regularTarget / entryCostSingle - 1;
       const targetAlpha = calibrateAlpha(
         N,
         payouts,
         prizePool,
-        entryCost,
+        entryCostSingle,
         targetEffectiveROI,
         model,
       );
@@ -1981,8 +2102,8 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   ) {
     // Same BR rule as the engine: bias walks the real feasible cash/KO EV
     // interval around a true 50/50 gross-EV midpoint.
-    const neutralBountyMean = entryCost * bountyFraction;
-    const neutralTargetRegular = Math.max(0.01, entryCost - neutralBountyMean);
+    const neutralBountyMean = entryCostSingle * bountyFraction;
+    const neutralTargetRegular = Math.max(0.01, entryCostSingle - neutralBountyMean);
     battleRoyaleNeutral = solveCashTarget(neutralTargetRegular);
     const centerCashTarget = Math.max(0.01, totalWinningsEV * 0.5);
     const resolvedCash = resolveBattleRoyaleCashTarget({
@@ -2010,8 +2131,11 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
   }
 
-  const targetRegular = Math.max(0.01, entryCost * (1 + row.roi) - bountyMean);
-  const effectiveROI = targetRegular / entryCost - 1;
+  const targetRegular = Math.max(
+    0.01,
+    entryCostSingle * (1 + row.roi) - bountyMean,
+  );
+  const effectiveROI = targetRegular / entryCostSingle - 1;
   let alpha: number;
   let pmf: Float64Array;
   let feasible = true;
@@ -2058,7 +2182,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
       N,
       payouts,
       prizePool,
-      entryCost,
+      entryCostSingle,
       effectiveROI,
       model,
     );
@@ -2174,6 +2298,14 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     cashEv += pmf[i] * prizeByPlace[i];
     bountyEv += pmf[i] * bountyByPlace[i];
   }
+  const totalEvPerBullet = totalEv;
+  const payoutVarPerBullet = Math.max(
+    0,
+    totalEv2 - totalEvPerBullet * totalEvPerBullet,
+  );
+  totalEv = totalEvPerBullet * expectedBullets;
+  cashEv *= expectedBullets;
+  bountyEv *= expectedBullets;
   // Jackpot share of bounty EV — fraction of bountyEv that comes from
   // per-KO draws with ratio ≥ JACKPOT_THRESHOLD × mean. Derived from the
   // envelope distribution, independent of place (every KO is an iid draw).
@@ -2195,7 +2327,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     }
   }
   const jackpotBountyEv = bountyEv * jackpotShareFrac;
-  const payoutVar = Math.max(0, totalEv2 - totalEv * totalEv);
+  const payoutVar = payoutVarPerBullet * expectedBullets;
   const payoutStd = Math.sqrt(payoutVar);
   const cv = totalEv > 1e-9 ? payoutStd / totalEv : 0;
 
@@ -2204,7 +2336,9 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
 
   // Per-place arrays used for both tier binning and the half-mass fact.
   const evByPlace = new Float64Array(N);
-  for (let i = 0; i < N; i++) evByPlace[i] = pmf[i] * totalByPlace[i];
+  for (let i = 0; i < N; i++) {
+    evByPlace[i] = pmf[i] * totalByPlace[i] * expectedBullets;
+  }
 
   // Half-mass: smallest k such that top-k places cover ≥50% of total EV.
   // Computed over *paid* places (OOTM adds no EV) and bounded by paidCount.
@@ -2341,7 +2475,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     }
     const width = hi - prevHi;
     const eqShareTier = N > 0 ? width / N : 0;
-    const evEqTier = N > 0 ? totalTierSum / N : 0;
+    const evEqTier = N > 0 ? (totalTierSum / N) * expectedBullets : 0;
     const cashGivenFinish = fTier > 1e-12 ? cashTier / fTier : 0;
     const bountyGivenFinish = fTier > 1e-12 ? bountyTier / fTier : 0;
     const bustsGivenFinish = fTier > 1e-12 ? bustsWeighted / fTier : 0;
@@ -2352,8 +2486,8 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
       labelKey: c.labelKey,
       color: c.color,
       ev: evTier,
-      cashEv: cashTier,
-      bountyEv: bountyTier,
+      cashEv: cashTier * expectedBullets,
+      bountyEv: bountyTier * expectedBullets,
       cashGivenFinish,
       bountyGivenFinish,
       bustsGivenFinish,
@@ -2411,9 +2545,11 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     ftEvShare,
     shellMode: row.itmRate != null && row.itmRate > 0,
     shellFeasible: feasible,
-    shellTargetEv: targetRegular,
+    shellTargetEv: targetRegular * expectedBullets,
     shellCurrentEv:
-      currentWinningsFromSolver != null ? currentWinningsFromSolver : totalEv - bountyShareOfPayout * totalEv,
+      currentWinningsFromSolver != null
+        ? currentWinningsFromSolver * expectedBullets
+        : totalEv - bountyShareOfPayout * totalEv,
     shellP1,
     shellTop3: shellTop3Sum,
     shellFt: shellFtSum,

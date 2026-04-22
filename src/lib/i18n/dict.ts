@@ -356,8 +356,8 @@ export const DICT = {
     ru: "Дисперсия лог-нормального разброса на ценность одной выбитой головы. 0 = плоские баунти. 0.5–1 = умеренный mystery-скью. 1.5+ = как у GG (редкие крупные, в основном мелкие). Среднее сохраняется — меняется только дисперсия.",
   },
   "row.brLeaderboard": {
-    en: "BR promo split",
-    ru: "BR promo split",
+    en: "BR promo",
+    ru: "BR промо",
   },
   "row.brLeaderboardHint": {
     en: "Current BR promo model. The global rakeback % is treated as this row's total promo budget. When the split is on, part stays as direct deterministic RB and part is rerouted into a separate leaderboard channel. Right now the leaderboard uses the fixed house model: 200 regs, 100 BR per window, points = entry 1 + 4 per KO + 15/9/6 for 1st/2nd/3rd, and payout bands 500 / 200 / 75. The leaderboard EV is scaled to the diverted promo budget; trajectories keep only the direct RB piece.",
@@ -388,8 +388,8 @@ export const DICT = {
     ru: "Лидерборд",
   },
   "row.brLeaderboardOff": {
-    en: "Off: this BR row keeps the full global rakeback as direct deterministic RB, exactly like the old model.",
-    ru: "Выключено: эта BR-строка держит весь глобальный рейкбек как прямой детерминированный RB, ровно как в старой модели.",
+    en: "Off: the whole promo stays as direct RB, like the old model.",
+    ru: "Выключено: весь промо-бюджет остаётся прямым RB, как в старой модели.",
   },
   // Controls panel
   "controls.scheduleRepeats": {

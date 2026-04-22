@@ -402,7 +402,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
           <colgroup>
             <col className="w-8" />
             <col />
-            <col className="w-[9rem]" />
+            <col className="w-[12rem]" />
             <col className="w-[5rem]" />
             <col className="w-[6.25rem]" />
             <col className="w-[6.5rem]" />
@@ -697,7 +697,6 @@ const ScheduleRow = memo(function ScheduleRow({
             {showInlineBrLeaderboard && (
               <BattleRoyaleLeaderboardInlineControl
                 row={r}
-                globalRakebackPct={globalRakebackPct}
                 onChange={(patch) => update(r.id, patch)}
               />
             )}
@@ -1074,24 +1073,20 @@ function AdvancedRowPanel({
 
 function BattleRoyaleLeaderboardInlineControl({
   row,
-  globalRakebackPct,
   onChange,
 }: {
   row: TournamentRow;
-  globalRakebackPct: number;
   onChange: (patch: Partial<TournamentRow>) => void;
 }) {
   const t = useT();
   const brLeaderboardEnabled = row.battleRoyaleLeaderboardEnabled ?? false;
   const brLeaderboardShare = battleRoyaleLeaderboardShareForRow(row, true);
   const brDirectShare = battleRoyaleDirectRakebackShareForRow(row, true);
-  const directRakePct = globalRakebackPct * brDirectShare;
-  const leaderboardRakePct = globalRakebackPct * brLeaderboardShare;
 
   return (
-    <div className="rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/45 px-2.5 py-2">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <label className="flex min-w-0 items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+    <div className="rounded-md border border-[color:var(--color-border)]/65 bg-[color:var(--color-bg-elev)]/45 px-2 py-1.5">
+      <div className="flex items-center gap-2">
+        <label className="flex min-w-0 flex-1 items-center gap-2 text-[10px] font-medium tracking-[0.02em] text-[color:var(--color-fg-dim)]">
           <input
             type="checkbox"
             checked={brLeaderboardEnabled}
@@ -1109,13 +1104,25 @@ function BattleRoyaleLeaderboardInlineControl({
           />
           <span className="truncate">{t("row.brLeaderboard")}</span>
         </label>
+        <span
+          className="rounded-[5px] border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/55 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.06em] tabular-nums text-[color:var(--color-fg-muted)]"
+          title={
+            brLeaderboardEnabled
+              ? t("row.brLeaderboardLeader")
+              : t("row.brLeaderboardDirect")
+          }
+        >
+          {brLeaderboardEnabled
+            ? `${Math.round(brLeaderboardShare * 100)}% LB`
+            : "RB"}
+        </span>
         <InfoTooltip content={t("row.brLeaderboardHint")} />
       </div>
       {brLeaderboardEnabled ? (
-        <>
-          <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
-            <span>{t("row.brLeaderboardSlider.direct")}</span>
-            <span>{t("row.brLeaderboardSlider.leaderboard")}</span>
+        <div className="mt-1.5">
+          <div className="mb-1 flex items-center justify-between px-0.5 text-[8px] font-medium uppercase tracking-[0.08em] text-[color:var(--color-fg-dim)]">
+            <span title={t("row.brLeaderboardDirect")}>RB</span>
+            <span title={t("row.brLeaderboardLeader")}>LB</span>
           </div>
           <input
             type="range"
@@ -1128,27 +1135,14 @@ function BattleRoyaleLeaderboardInlineControl({
                 battleRoyaleLeaderboardShare: Number(e.target.value) / 100,
               })
             }
-            className="mt-1.5 w-full"
+            className="w-full accent-[color:var(--color-accent)]"
           />
-          <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-muted)]">
-            {t("row.brLeaderboardCurrent")
-              .replace("{directShare}", `${Math.round(brDirectShare * 100)}%`)
-              .replace(
-                "{leaderboardShare}",
-                `${Math.round(brLeaderboardShare * 100)}%`,
-              )
-              .replace("{directRb}", `${directRakePct.toFixed(1)}%`)
-              .replace(
-                "{leaderboardRb}",
-                `${leaderboardRakePct.toFixed(1)}%`,
-              )}
+          <div className="mt-1.5 flex items-center justify-between rounded-[5px] border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/55 px-1.5 py-1 text-[10px] font-medium tabular-nums text-[color:var(--color-fg-muted)]">
+            <span>{Math.round(brDirectShare * 100)}% RB</span>
+            <span>{Math.round(brLeaderboardShare * 100)}% LB</span>
           </div>
-        </>
-      ) : (
-        <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-          {t("row.brLeaderboardOff")}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1604,7 +1598,7 @@ function GameTypeSelect({
   onChange: (next: GameType) => void;
 }) {
   const t = useT();
-  const labelKey = (g: GameType): string => {
+  const fullLabel = (g: GameType): string => {
     switch (g) {
       case "freezeout":
         return t("row.gameType.freezeout");
@@ -1618,15 +1612,18 @@ function GameTypeSelect({
         return t("row.gameType.mysteryRoyale");
     }
   };
+  const optionLabel = (g: GameType): string =>
+    g === "mystery-royale" ? "GG BR" : fullLabel(g);
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as GameType)}
-      className="h-8 w-full min-w-0 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[12px] text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
+      title={fullLabel(value)}
+      className="h-8 w-full min-w-0 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-left text-[11px] text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
     >
       {GAME_TYPE_ORDER.map((g) => (
         <option key={g} value={g}>
-          {labelKey(g)}
+          {optionLabel(g)}
         </option>
       ))}
     </select>

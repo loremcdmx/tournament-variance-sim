@@ -1010,6 +1010,7 @@ export default function Home() {
               <FinishPMFPreview
                 row={previewRow}
                 model={previewModel}
+                rakebackPct={deferredControls.rakebackPct}
                 itmLocked={itmTargetLocked}
                 onRowChange={onPreviewRowChange}
               />
