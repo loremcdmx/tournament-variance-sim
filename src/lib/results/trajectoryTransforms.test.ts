@@ -43,8 +43,36 @@ describe("computeExpectedRakebackCurve", () => {
       1,
       0,
       [0, 1],
+      false,
     );
     expect(curve).toBeNull();
+  });
+
+  it("keeps legacy full direct RB when advanced BR split is off, and reduces only the opted-in BR row when on", () => {
+    const schedule: TournamentRow[] = [
+      makeRow({
+        id: "fr",
+        payoutStructure: "mtt-standard",
+        gameType: "freezeout",
+        buyIn: 100,
+        rake: 0.1,
+      }),
+      makeRow({
+        id: "br",
+        payoutStructure: "battle-royale",
+        gameType: "mystery-royale",
+        buyIn: 100,
+        rake: 0.1,
+        battleRoyaleLeaderboardEnabled: true,
+        battleRoyaleLeaderboardShare: 0.25,
+      }),
+    ];
+
+    const legacy = computeExpectedRakebackCurve(schedule, 1, 0.5, [0, 1, 2], false);
+    const split = computeExpectedRakebackCurve(schedule, 1, 0.5, [0, 1, 2], true);
+
+    expect(Array.from(legacy ?? [])).toEqual([0, 5, 10]);
+    expect(Array.from(split ?? [])).toEqual([0, 5, 8.75]);
   });
 });
 

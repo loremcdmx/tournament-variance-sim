@@ -7,6 +7,7 @@ import type { ProgressStage } from "@/lib/sim/useSimulation";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
+import type { BattleRoyaleLeaderboardControls } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
   COMPLETING_HOLD_MS,
   type BarState,
@@ -59,10 +60,12 @@ export interface ControlsState {
    *  an explicit per-row `itmRate` override. Whole-number percent. */
   itmGlobalEnabled: boolean;
   itmGlobalPct: number;
-  /** Global rakeback, as a whole-number % of rake paid back per entry.
-   *  Engine adds `(rakebackPct/100) × row.rake × row.buyIn` to each bullet's
-   *  profit. Pure deterministic shift — σ is untouched. */
+  /** Global rakeback / promo budget, as a whole-number % of rake paid back
+   *  per entry. By default this lands as direct deterministic RB; advanced
+   *  BR rows may divert part of it into the leaderboard side-channel. */
   rakebackPct: number;
+  /** Optional Battle Royale leaderboard promo model. */
+  battleRoyaleLeaderboard: BattleRoyaleLeaderboardControls;
   /**
    * Empirical histogram buckets in arbitrary units. Parsed out of CSV /
    * paste upload — each line is one finishing position from a real

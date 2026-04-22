@@ -210,6 +210,243 @@ describe("engine", () => {
     expect(result.samplePaths.sampleIndices[999]).toBe(2499);
   });
 
+  it("emits a deterministic BR leaderboard backend channel", () => {
+    const input = baseInput({
+      samples: 1200,
+      schedule: [
+        {
+          id: "br",
+          label: "battle royale",
+          players: 18,
+          buyIn: 9.2592592593,
+          rake: 0.08,
+          roi: 0.05,
+          payoutStructure: "battle-royale",
+          gameType: "mystery-royale",
+          bountyFraction: 0.5,
+          mysteryBountyVariance: 1.8,
+          count: 1,
+        },
+      ],
+      scheduleRepeats: 20,
+      battleRoyaleLeaderboard: {
+        participants: 200,
+        windowTournaments: 5,
+        scoring: {
+          entryPoints: 1,
+          knockoutPoints: 5,
+          firstPoints: 12,
+          secondPoints: 6,
+          thirdPoints: 3,
+        },
+        payouts: [
+          { rankFrom: 1, rankTo: 1, prizeEach: 250 },
+          { rankFrom: 2, rankTo: 5, prizeEach: 75 },
+          { rankFrom: 6, rankTo: 20, prizeEach: 20 },
+        ],
+        opponentModel: {
+          kind: "normal",
+          meanScore: 28,
+          stdDevScore: 9,
+        },
+      },
+    });
+
+    const a = runSimulation(input);
+    const b = runSimulation(input);
+    expect(a.battleRoyaleLeaderboard).toBeDefined();
+    expect(b.battleRoyaleLeaderboard).toBeDefined();
+    expect(a.battleRoyaleLeaderboard!.stats.meanWindows).toBe(4);
+    expect(a.battleRoyaleLeaderboard!.points[0]).toBe(
+      b.battleRoyaleLeaderboard!.points[0],
+    );
+    expect(a.battleRoyaleLeaderboard!.payouts[0]).toBe(
+      b.battleRoyaleLeaderboard!.payouts[0],
+    );
+    expect(a.battleRoyaleLeaderboard!.stats.meanPayout).toBeCloseTo(
+      b.battleRoyaleLeaderboard!.stats.meanPayout,
+      12,
+    );
+  });
+
+  it("counts only BR tournaments inside leaderboard windows", () => {
+    const input = baseInput({
+      samples: 400,
+      schedule: [
+        {
+          id: "fr",
+          label: "freeze",
+          players: 200,
+          buyIn: 10,
+          rake: 0.1,
+          roi: 0.08,
+          payoutStructure: "mtt-standard",
+          count: 2,
+        },
+        {
+          id: "br",
+          label: "battle royale",
+          players: 18,
+          buyIn: 9.2592592593,
+          rake: 0.08,
+          roi: 0.03,
+          payoutStructure: "battle-royale",
+          gameType: "mystery-royale",
+          bountyFraction: 0.5,
+          mysteryBountyVariance: 1.8,
+          count: 1,
+        },
+      ],
+      scheduleRepeats: 12,
+      battleRoyaleLeaderboard: {
+        participants: 120,
+        windowTournaments: 3,
+        scoring: {
+          entryPoints: 1,
+          knockoutPoints: 4,
+          firstPoints: 10,
+          secondPoints: 5,
+          thirdPoints: 2,
+        },
+        payouts: [{ rankFrom: 1, rankTo: 10, prizeEach: 10 }],
+        opponentModel: {
+          kind: "normal",
+          meanScore: 15,
+          stdDevScore: 6,
+        },
+      },
+    });
+
+    const r = runSimulation(input);
+    expect(r.battleRoyaleLeaderboard).toBeDefined();
+    expect(r.battleRoyaleLeaderboard!.stats.meanWindows).toBe(4);
+    expect(r.battleRoyaleLeaderboard!.stats.meanKnockouts).toBeGreaterThan(0);
+    expect(r.battleRoyaleLeaderboard!.stats.meanFirsts).toBeGreaterThanOrEqual(0);
+  });
+
+  it("still scores explicit BR rows even when the row omits bounty-share knobs", () => {
+    const input = baseInput({
+      samples: 300,
+      schedule: [
+        {
+          id: "br",
+          label: "battle royale legacy",
+          players: 18,
+          buyIn: 9.2592592593,
+          rake: 0.08,
+          roi: 0.02,
+          payoutStructure: "battle-royale",
+          gameType: "mystery-royale",
+          count: 1,
+        },
+      ],
+      scheduleRepeats: 8,
+      battleRoyaleLeaderboard: {
+        participants: 50,
+        windowTournaments: 4,
+        scoring: {
+          entryPoints: 2,
+          knockoutPoints: 0,
+          firstPoints: 5,
+          secondPoints: 3,
+          thirdPoints: 1,
+        },
+        payouts: [{ rankFrom: 1, rankTo: 5, prizeEach: 10 }],
+        opponentModel: {
+          kind: "normal",
+          meanScore: 10,
+          stdDevScore: 4,
+        },
+      },
+    });
+
+    const r = runSimulation(input);
+    expect(r.battleRoyaleLeaderboard).toBeDefined();
+    expect(r.battleRoyaleLeaderboard!.stats.meanWindows).toBe(2);
+    expect(r.battleRoyaleLeaderboard!.stats.meanPoints).toBeGreaterThan(0);
+    expect(r.battleRoyaleLeaderboard!.stats.meanKnockouts).toBe(0);
+  });
+
+  it("splits BR promo budget between direct RB and leaderboard when rows opt in", () => {
+    const row = {
+      id: "br",
+      label: "battle royale",
+      players: 18,
+      buyIn: 9.2592592593,
+      rake: 0.08,
+      roi: 0.05,
+      payoutStructure: "battle-royale" as const,
+      gameType: "mystery-royale" as const,
+      bountyFraction: 0.5,
+      count: 10,
+    };
+    const scheduleRepeats = 5;
+    const rbFrac = 0.4;
+    const totalBrEntries = row.count * scheduleRepeats;
+    const fullPromoBudget = totalBrEntries * rbFrac * row.rake * row.buyIn;
+
+    const baseline = runSimulation(
+      baseInput({
+        samples: 300,
+        schedule: [row],
+        scheduleRepeats,
+        rakebackFracOfRake: rbFrac,
+      }),
+    );
+    const split = runSimulation(
+      baseInput({
+        samples: 300,
+        schedule: [
+          {
+            ...row,
+            battleRoyaleLeaderboardEnabled: true,
+            battleRoyaleLeaderboardShare: 1,
+          },
+        ],
+        scheduleRepeats,
+        rakebackFracOfRake: rbFrac,
+        battleRoyaleLeaderboard: {
+          participants: 120,
+          windowTournaments: 10,
+          scoring: {
+            entryPoints: 1,
+            knockoutPoints: 4,
+            firstPoints: 15,
+            secondPoints: 9,
+            thirdPoints: 6,
+          },
+          payouts: [
+            { rankFrom: 1, rankTo: 1, prizeEach: 500 },
+            { rankFrom: 2, rankTo: 3, prizeEach: 200 },
+            { rankFrom: 4, rankTo: 10, prizeEach: 75 },
+          ],
+          opponentModel: {
+            kind: "normal",
+            meanScore: 180,
+            stdDevScore: 45,
+          },
+          includedRowIds: ["br"],
+        },
+      }),
+    );
+
+    expect(split.battleRoyaleLeaderboard).toBeDefined();
+    expect(split.expectedProfit).toBeCloseTo(
+      baseline.expectedProfit - fullPromoBudget,
+      10,
+    );
+    expect(split.battleRoyaleLeaderboard!.stats.meanPayout).toBeCloseTo(
+      fullPromoBudget,
+      10,
+    );
+    expect(
+      split.expectedProfit + split.battleRoyaleLeaderboard!.stats.meanPayout,
+    ).toBeCloseTo(baseline.expectedProfit, 10);
+    expect(
+      split.battleRoyaleLeaderboard!.sourceMix.directRakebackMean,
+    ).toBeCloseTo(0, 12);
+  });
+
   it("bounty row produces a non-zero expected bounty lump per entry", () => {
     const base = runSimulation(
       baseInput({

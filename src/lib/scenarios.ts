@@ -5,6 +5,7 @@
  * beyond the shared `TournamentRow` / `ControlsState` types.
  */
 import type { ControlsState } from "@/components/ControlsPanel";
+import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import type { TournamentRow } from "./sim/types";
 import type { DictKey } from "./i18n/dict";
 
@@ -43,9 +44,39 @@ const BASE_CONTROLS: ControlsState = {
   itmGlobalEnabled: true,
   itmGlobalPct: 15,
   rakebackPct: 0,
+  battleRoyaleLeaderboard: DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
 };
 
 export const SCENARIOS: DemoScenario[] = [
+  {
+    id: "br-leaderboard",
+    labelKey: "demo.brLeaderboard",
+    description:
+      "Battle Royale гринд с включённым leaderboard promo: 100 BR за окно, отдельный side-channel для очков и leaderboard payouts.",
+    schedule: [
+      {
+        id: "br-leaderboard-1",
+        label: "GG Battle Royale $3",
+        players: 18,
+        buyIn: 2.78,
+        rake: 0.22 / 2.78,
+        roi: 0.05,
+        payoutStructure: "battle-royale",
+        gameType: "mystery-royale",
+        bountyFraction: 0.5,
+        battleRoyaleLeaderboardEnabled: true,
+        battleRoyaleLeaderboardShare: 1,
+        count: 100,
+      },
+    ],
+    controls: {
+      ...BASE_CONTROLS,
+      scheduleRepeats: 1,
+      samples: 10_000,
+      bankroll: 300,
+      rakebackPct: 40,
+    },
+  },
   {
     id: "primedope-reference",
     labelKey: "demo.primedopeReference",
@@ -471,4 +502,3 @@ export const SCENARIOS: DemoScenario[] = [
     },
   },
 ];
-

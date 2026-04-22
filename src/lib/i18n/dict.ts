@@ -110,6 +110,10 @@ export const DICT = {
 
   // Demo scenarios
   "demo.label": { en: "Example schedules", ru: "Примеры расписаний" },
+  "demo.brLeaderboard": {
+    en: "BR leaderboard promo",
+    ru: "BR leaderboard promo",
+  },
   "demo.primedopeReference": {
     en: "$50 standard MTT",
     ru: "$50 обычный турнир",
@@ -350,6 +354,42 @@ export const DICT = {
   "row.mysteryHint": {
     en: "Per-KO lognormal variance on the bounty value. 0 = flat bounties. 0.5–1 = moderate mystery skew. 1.5+ = GG-style jackpot distribution (occasional huge, mostly tiny). Mean is preserved, only variance is reshaped.",
     ru: "Дисперсия лог-нормального разброса на ценность одной выбитой головы. 0 = плоские баунти. 0.5–1 = умеренный mystery-скью. 1.5+ = как у GG (редкие крупные, в основном мелкие). Среднее сохраняется — меняется только дисперсия.",
+  },
+  "row.brLeaderboard": {
+    en: "BR promo split",
+    ru: "BR promo split",
+  },
+  "row.brLeaderboardHint": {
+    en: "Current BR promo model. The global rakeback % is treated as this row's total promo budget. When the split is on, part stays as direct deterministic RB and part is rerouted into a separate leaderboard channel. Right now the leaderboard uses the fixed house model: 200 regs, 100 BR per window, points = entry 1 + 4 per KO + 15/9/6 for 1st/2nd/3rd, and payout bands 500 / 200 / 75. The leaderboard EV is scaled to the diverted promo budget; trajectories keep only the direct RB piece.",
+    ru: "Текущая модель BR-промо. Глобальный % рейкбека трактуется как общий промо-бюджет этой строки. Если сплит включён, часть остаётся прямым детерминированным RB, а часть уходит в отдельный лидербордный канал. Сейчас лидерборд использует фиксированную house-модель: 200 регов, 100 BR в окне, очки = 1 за вход + 4 за KO + 15/9/6 за 1/2/3 место, призовые полосы 500 / 200 / 75. EV лидерборда скейлится к отведённому промо-бюджету, а в траекториях остаётся только прямой RB.",
+  },
+  "row.brLeaderboardToggle": {
+    en: "Split BR rakeback into leaderboard",
+    ru: "Разбивать BR-рейкбек через лидерборд",
+  },
+  "row.brLeaderboardSlider.direct": {
+    en: "100% direct RB",
+    ru: "100% прямой RB",
+  },
+  "row.brLeaderboardSlider.leaderboard": {
+    en: "100% leaderboard",
+    ru: "100% лидерборд",
+  },
+  "row.brLeaderboardCurrent": {
+    en: "Current split: {directShare} direct RB ({directRb} of rake) · {leaderboardShare} leaderboard ({leaderboardRb} of rake).",
+    ru: "Текущий сплит: {directShare} прямой RB ({directRb} от рейка) · {leaderboardShare} лидерборд ({leaderboardRb} от рейка).",
+  },
+  "row.brLeaderboardDirect": {
+    en: "Direct RB",
+    ru: "Прямой RB",
+  },
+  "row.brLeaderboardLeader": {
+    en: "Leaderboard",
+    ru: "Лидерборд",
+  },
+  "row.brLeaderboardOff": {
+    en: "Off: this BR row keeps the full global rakeback as direct deterministic RB, exactly like the old model.",
+    ru: "Выключено: эта BR-строка держит весь глобальный рейкбек как прямой детерминированный RB, ровно как в старой модели.",
   },
   // Controls panel
   "controls.scheduleRepeats": {
@@ -1873,8 +1913,8 @@ export const DICT = {
     ru: "Рейкбек %",
   },
   "controls.rakeback.title": {
-    en: "Global rakeback — % of paid rake credited back after every tournament entry. Added deterministically to profit as ((rb%/100) × row.rake × row.buyIn). Pure mean shift: trajectories lift, σ and convergence are untouched.",
-    ru: "Глобальный рейкбек — % от уплаченного рейка, возвращаемый после каждого входа в турнир. Прибавляется к профиту детерминированно: ((rb%/100) × рейк × бай-ин). Это чистый сдвиг среднего: график поднимается, а σ и сходимость не меняются.",
+    en: "Global promo budget from rake. By default it comes back as direct deterministic RB after every entry. In advanced mode, BR rows can divert part of that same budget into the separate leaderboard channel instead.",
+    ru: "Глобальный промо-бюджет из рейка. По умолчанию он возвращается как прямой детерминированный RB после каждого входа. В advanced-режиме BR-строки могут увести часть этого же бюджета в отдельный лидербордный канал.",
   },
   "controls.rakeback.avgBr": {
     en: "40% BR ref",
@@ -1883,6 +1923,90 @@ export const DICT = {
   "controls.rakeback.avgBrTitle": {
     en: "Set the rough Battle Royale regulars reference: 40% of paid rake returned as rakeback.",
     ru: "Поставить примерный ориентир регов Battle Royale: 40% уплаченного рейка возвращается рейкбеком.",
+  },
+  "controls.brLeaderboard.label": {
+    en: "BR leaderboard",
+    ru: "Лидерборд BR",
+  },
+  "controls.brLeaderboard.title": {
+    en: "Battle Royale leaderboard promo. BR rows earn points by entry / KO / podium finish, then each window settles against an exogenous opponent-score model and pays the configured prize tiers.",
+    ru: "Промо-лидерборд Battle Royale. BR-строки набирают очки за вход / KO / призовые места, после чего каждое окно сравнивается с внешней моделью очков оппонентов и выплачивает заданные призовые tiers.",
+  },
+  "controls.brLeaderboard.noRows": {
+    en: "No BR rows in schedule yet",
+    ru: "В расписании пока нет BR-строк",
+  },
+  "controls.brLeaderboard.noteOn": {
+    en: "Enabled: leaderboard payout is simulated as a separate promo channel and shown explicitly in results.",
+    ru: "Включено: лидерборд симулируется как отдельный promo-канал и показывается отдельно в результатах.",
+  },
+  "controls.brLeaderboard.noteOff": {
+    en: "Off by default. Turn on only when you want BR promo EV on top of the core game run.",
+    ru: "По умолчанию выключено. Включай только если хочешь добавить BR-промо EV поверх базового игрового прогона.",
+  },
+  "controls.brLeaderboard.windowBlock": {
+    en: "Window + Field",
+    ru: "Окно + поле",
+  },
+  "controls.brLeaderboard.participants": {
+    en: "Regs",
+    ru: "Участники",
+  },
+  "controls.brLeaderboard.windowTournaments": {
+    en: "BR / window",
+    ru: "BR / окно",
+  },
+  "controls.brLeaderboard.partial": {
+    en: "Pay the final partial window too",
+    ru: "Платить и неполное финальное окно",
+  },
+  "controls.brLeaderboard.opponentMean": {
+    en: "Opp mean pts",
+    ru: "Ср. очки поля",
+  },
+  "controls.brLeaderboard.opponentStd": {
+    en: "Opp σ pts",
+    ru: "σ очков поля",
+  },
+  "controls.brLeaderboard.scoring": {
+    en: "Scoring",
+    ru: "Очки",
+  },
+  "controls.brLeaderboard.points.entry": {
+    en: "Entry",
+    ru: "Вход",
+  },
+  "controls.brLeaderboard.points.ko": {
+    en: "KO",
+    ru: "KO",
+  },
+  "controls.brLeaderboard.points.first": {
+    en: "1st",
+    ru: "1-е",
+  },
+  "controls.brLeaderboard.points.second": {
+    en: "2nd",
+    ru: "2-е",
+  },
+  "controls.brLeaderboard.points.third": {
+    en: "3rd",
+    ru: "3-е",
+  },
+  "controls.brLeaderboard.payouts": {
+    en: "Payout tiers",
+    ru: "Призы",
+  },
+  "controls.brLeaderboard.prize.top1": {
+    en: "1st prize",
+    ru: "Приз за 1-е",
+  },
+  "controls.brLeaderboard.prize.top2to3": {
+    en: "2-3 prize",
+    ru: "Приз за 2-3",
+  },
+  "controls.brLeaderboard.prize.top4to10": {
+    en: "4-10 prize",
+    ru: "Приз за 4-10",
   },
   "preview.footnote": {
     en: "If the top (EV) bar is much wider than the bottom (finishes) bar in the same colour, that slice of finishes carries way more money than its share of the field — and that's exactly where your variance lives.",
@@ -2307,6 +2431,106 @@ export const DICT = {
   "cash.summary.probSub100": {
     en: "Ever ≤ −100 BB",
     ru: "Хотя бы раз ≤ −100 BB",
+  },
+  "chart.brLeaderboard.title": {
+    en: "BR leaderboard promo",
+    ru: "Промо-лидерборд BR",
+  },
+  "chart.brLeaderboard.sub": {
+    en: "{participants} regs · {window} BR per window · pays through rank {paid}",
+    ru: "{participants} регов · {window} BR в окне · выплата до {paid}-го места",
+  },
+  "chart.brLeaderboard.note": {
+    en: "This promo layer is modeled and shown separately. Direct RB stays in the main result; the leaderboard line here is the diverted BR promo budget re-expressed through the simulated rank model. Trajectory, drawdown, and ruin cards above still stay game-only until leaderboard cashflows are threaded through full paths.",
+    ru: "Этот промо-слой моделируется и показывается отдельно. Прямой RB остаётся в основном результате; лидербордная строка здесь — это отведённый BR-промо-бюджет, пропущенный через симулированную модель рангов. Траектория, просадки и риск разорения выше всё ещё остаются game-only, пока лидербордные выплаты не протянуты через полные path-и.",
+  },
+  "chart.brLeaderboard.groupSettlement": {
+    en: "Settlement",
+    ru: "Выплаты",
+  },
+  "chart.brLeaderboard.groupScoring": {
+    en: "Scoring",
+    ru: "Скоринг",
+  },
+  "chart.brLeaderboard.meanPayout": {
+    en: "Promo EV",
+    ru: "Промо EV",
+  },
+  "chart.brLeaderboard.directRb": {
+    en: "Direct RB",
+    ru: "Прямой RB",
+  },
+  "chart.brLeaderboard.totalWithPromo": {
+    en: "EV + promo",
+    ru: "EV + промо",
+  },
+  "chart.brLeaderboard.promoSplit": {
+    en: "RB / LB split",
+    ru: "RB / LB сплит",
+  },
+  "chart.brLeaderboard.paidShare": {
+    en: "Paid windows",
+    ru: "Платные окна",
+  },
+  "chart.brLeaderboard.meanRank": {
+    en: "Avg rank",
+    ru: "Средний ранг",
+  },
+  "chart.brLeaderboard.p95": {
+    en: "P95 payout",
+    ru: "P95 выплата",
+  },
+  "chart.brLeaderboard.p99": {
+    en: "P99 payout",
+    ru: "P99 выплата",
+  },
+  "chart.brLeaderboard.pointsPerWindow": {
+    en: "Pts / window",
+    ru: "Очки / окно",
+  },
+  "chart.brLeaderboard.koPerWindow": {
+    en: "KOs / window",
+    ru: "KO / окно",
+  },
+  "chart.brLeaderboard.firstPerWindow": {
+    en: "1sts / window",
+    ru: "1-е / окно",
+  },
+  "chart.brLeaderboard.top3PerWindow": {
+    en: "Top-3 / window",
+    ru: "Топ-3 / окно",
+  },
+  "chart.brLeaderboard.meanWindows": {
+    en: "Avg windows",
+    ru: "Среднее окон",
+  },
+  "chart.brLeaderboard.meanPaidWindows": {
+    en: "Avg paid windows",
+    ru: "Среднее платных окон",
+  },
+  "chart.brLeaderboard.partialYes": {
+    en: "partial window pays",
+    ru: "неполное окно оплачивается",
+  },
+  "chart.brLeaderboard.partialNo": {
+    en: "partial window skipped",
+    ru: "неполное окно пропускается",
+  },
+  "chart.brLeaderboard.dist": {
+    en: "Leaderboard payout distribution",
+    ru: "Распределение лидербордных выплат",
+  },
+  "chart.brLeaderboard.dist.sub": {
+    en: "{samples} samples · {windows} windows per sample on average",
+    ru: "{samples} сэмплов · в среднем {windows} окон на сэмпл",
+  },
+  "chart.brLeaderboard.rowMix": {
+    en: "Per-row split",
+    ru: "Сплит по строкам",
+  },
+  "chart.brLeaderboard.rowMixLine": {
+    en: "{count} tournaments · {direct} direct ({directEv}) · {leaderboard} leaderboard ({leaderEv})",
+    ru: "{count} турниров · {direct} прямой ({directEv}) · {leaderboard} лидерборд ({leaderEv})",
   },
   "cash.empty": {
     en: "Press Run to simulate the cash session.",

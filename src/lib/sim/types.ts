@@ -280,6 +280,76 @@ export interface TournamentRow {
    * Ignored when fixed-ITM mode is off (`itmRate` unset/zero).
    */
   itmTopHeavyBias?: number;
+
+  /**
+   * Battle Royale promo split toggle. Only read when the product is in
+   * advanced mode AND the row is effectively Battle Royale. When enabled,
+   * the global rakeback budget for this row is split between deterministic
+   * direct rakeback and the separate BR leaderboard promo channel.
+   */
+  battleRoyaleLeaderboardEnabled?: boolean;
+  /**
+   * Share of this row's global rakeback budget diverted into the BR
+   * leaderboard promo channel, clamped to [0, 1]. `0` = 100 % direct RB,
+   * `1` = 100 % leaderboard. Ignored unless
+   * `battleRoyaleLeaderboardEnabled` is true on a BR row.
+   */
+  battleRoyaleLeaderboardShare?: number;
+}
+
+export interface BattleRoyaleLeaderboardPayoutTier {
+  /** Inclusive 1-based rank bounds for this prize band. */
+  rankFrom: number;
+  rankTo: number;
+  /** Prize paid to EACH finishing rank inside the band. */
+  prizeEach: number;
+}
+
+export interface BattleRoyaleLeaderboardScoring {
+  /** Flat points awarded for registering and completing one BR event. */
+  entryPoints?: number;
+  /** Linear points per knockout / envelope-dropping elimination. */
+  knockoutPoints: number;
+  /** Additional place points for 1st / 2nd / 3rd. */
+  firstPoints: number;
+  secondPoints: number;
+  thirdPoints: number;
+}
+
+export interface BattleRoyaleLeaderboardOpponentModel {
+  kind: "normal";
+  /** Mean leaderboard score per leaderboard window for one opponent. */
+  meanScore: number;
+  /** Standard deviation of opponent score over the same window. */
+  stdDevScore: number;
+}
+
+/**
+ * Optional Battle Royale leaderboard model. Only rows whose effective format
+ * is Battle Royale contribute points; the simulator resolves leaderboard
+ * payouts in a separate promo channel so the product can present that income
+ * explicitly instead of silently pretending it already lives inside bankroll
+ * trajectories.
+ */
+export interface BattleRoyaleLeaderboardConfig {
+  /** Total players on the leaderboard INCLUDING hero. */
+  participants: number;
+  /** Number of BR tournaments that make up one leaderboard period. */
+  windowTournaments: number;
+  scoring: BattleRoyaleLeaderboardScoring;
+  payouts: BattleRoyaleLeaderboardPayoutTier[];
+  opponentModel: BattleRoyaleLeaderboardOpponentModel;
+  /**
+   * Whether the final incomplete leaderboard window inside a sample should be
+   * settled. Defaults to true; false means only full windows pay.
+   */
+  awardPartialWindow?: boolean;
+  /**
+   * Schedule row ids that actually feed this leaderboard. Lets advanced-mode
+   * BR rows opt in individually while every other row stays on plain direct
+   * rakeback.
+   */
+  includedRowIds?: string[];
 }
 
 /**
@@ -373,14 +443,25 @@ export interface SimulationInput {
    */
   primedopeStyleEV?: boolean;
   /**
-   * Global rakeback, as a fraction of rake paid back after every entry.
-   * E.g. 0.3 = 30 % of rake returned. A deterministic bonus of
-   * `rakebackFracOfRake × row.rake × row.buyIn` is added to profit for each
-   * bullet fired (re-entries included, since each bullet pays rake). Adds
-   * zero variance — it's a pure mean shift — so σ and convergence numbers
-   * are untouched; only EV and trajectory shift upward. Defaults to 0.
+   * Global rakeback budget, as a fraction of rake paid back after every
+   * entry. E.g. 0.3 = 30 % of rake returned in promo EV.
+   *
+   * By default the whole amount is a deterministic direct bonus of
+   * `rakebackFracOfRake × row.rake × row.buyIn` added to profit for each
+   * bullet fired (re-entries included, since each bullet pays rake).
+   *
+   * In advanced mode, Battle Royale rows may divert part of that promo budget
+   * into `battleRoyaleLeaderboard`; only the remaining direct share is added
+   * deterministically to paths.
    */
   rakebackFracOfRake?: number;
+  /**
+   * Optional Battle Royale leaderboard side-channel. BR rows accumulate
+   * points, each leaderboard window resolves against an exogenous opponent-
+   * score model, and the result is returned separately as
+   * `result.battleRoyaleLeaderboard`.
+   */
+  battleRoyaleLeaderboard?: BattleRoyaleLeaderboardConfig;
   /**
    * One-sigma uncertainty on the player's true ROI, expressed as a fraction
    * (e.g. 0.05 = ±5 pp on the configured target). Defaults to 0 — the
@@ -483,6 +564,54 @@ export interface RowDecomposition {
   kellyBankroll: number;
 }
 
+export interface BattleRoyaleLeaderboardResult {
+  points: Float64Array;
+  payouts: Float64Array;
+  windows: Int32Array;
+  paidWindows: Int32Array;
+  rankSums: Int32Array;
+  knockouts: Int32Array;
+  firsts: Int32Array;
+  seconds: Int32Array;
+  thirds: Int32Array;
+  stats: {
+    meanPoints: number;
+    stdDevPoints: number;
+    meanPayout: number;
+    stdDevPayout: number;
+    p95Payout: number;
+    p99Payout: number;
+    meanWindows: number;
+    meanPaidWindows: number;
+    paidWindowShare: number;
+    meanRank: number;
+    meanKnockouts: number;
+    meanFirsts: number;
+    meanSeconds: number;
+    meanThirds: number;
+  };
+  config: {
+    participants: number;
+    windowTournaments: number;
+    awardPartialWindow: boolean;
+    maxPaidRank: number;
+  };
+  sourceMix: {
+    directRakebackMean: number;
+    leaderboardMeanTarget: number;
+    totalPromoMean: number;
+    rows: {
+      rowId: string;
+      label: string;
+      tournaments: number;
+      directShare: number;
+      leaderboardShare: number;
+      directRakebackMean: number;
+      leaderboardMeanTarget: number;
+    }[];
+  };
+}
+
 export interface SimulationResult {
   type: "result";
   samples: number;
@@ -578,6 +707,9 @@ export interface SimulationResult {
     deltas: number[];
     expectedProfits: number[];
   };
+
+  /** Optional Battle Royale leaderboard promo channel. */
+  battleRoyaleLeaderboard?: BattleRoyaleLeaderboardResult;
 
   /**
    * Worst-N drawdown catalog — top-3 samples sorted by peak-to-trough

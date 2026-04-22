@@ -1,4 +1,5 @@
 import { histogramOf } from "@/lib/sim/engine";
+import { battleRoyaleDirectRakebackShareForRow } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { aggregateStreaks } from "@/lib/sim/pathStreaks";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
@@ -25,6 +26,7 @@ export function computeExpectedRakebackCurve(
   scheduleRepeats: number,
   rbFrac: number,
   xCheckpoints: number[],
+  useBattleRoyaleSplit = false,
 ): Float64Array | null {
   if (rbFrac <= 0 || schedule.length === 0) return null;
   const repeats = Number.isFinite(scheduleRepeats)
@@ -43,7 +45,11 @@ export function computeExpectedRakebackCurve(
     const reRate =
       maxEntries > 1 ? Math.max(0, Math.min(1, row.reentryRate ?? 1)) : 0;
     const expectedBullets = 1 + reentryExpectedClient(maxEntries, reRate);
-    const rbPer = rbFrac * row.rake * row.buyIn * expectedBullets;
+    const directShare = battleRoyaleDirectRakebackShareForRow(
+      row,
+      useBattleRoyaleSplit,
+    );
+    const rbPer = rbFrac * directShare * row.rake * row.buyIn * expectedBullets;
 
     rowCounts.push(count);
     rowRbs.push(rbPer);

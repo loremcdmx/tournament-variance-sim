@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { ControlsState } from "@/components/ControlsPanel";
+import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
   STANDARD_PRESETS,
   applyModelPatch,
@@ -38,6 +39,7 @@ const baseState: ControlsState = {
   itmGlobalEnabled: false,
   itmGlobalPct: 18.7,
   rakebackPct: 5,
+  battleRoyaleLeaderboard: DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
 };
 
 describe("applyModelPatch", () => {

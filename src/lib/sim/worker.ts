@@ -105,6 +105,17 @@ function collectResultTransfers(r: SimulationResult): Transferable[] {
   out.push(r.finalProfits.buffer);
   out.push(r.rowProfits.buffer);
   out.push(r.jackpotMask.buffer);
+  if (r.battleRoyaleLeaderboard) {
+    out.push(r.battleRoyaleLeaderboard.points.buffer);
+    out.push(r.battleRoyaleLeaderboard.payouts.buffer);
+    out.push(r.battleRoyaleLeaderboard.windows.buffer);
+    out.push(r.battleRoyaleLeaderboard.paidWindows.buffer);
+    out.push(r.battleRoyaleLeaderboard.rankSums.buffer);
+    out.push(r.battleRoyaleLeaderboard.knockouts.buffer);
+    out.push(r.battleRoyaleLeaderboard.firsts.buffer);
+    out.push(r.battleRoyaleLeaderboard.seconds.buffer);
+    out.push(r.battleRoyaleLeaderboard.thirds.buffer);
+  }
   out.push(r.samplePaths.best.buffer);
   out.push(r.samplePaths.worst.buffer);
   for (const p of r.samplePaths.paths) out.push(p.buffer);
@@ -145,6 +156,15 @@ function collectShardTransfers(shard: RawShard): Transferable[] {
     shard.hiResBestPath.buffer,
     shard.hiResWorstPath.buffer,
   ];
+  if (shard.leaderboardPoints) out.push(shard.leaderboardPoints.buffer);
+  if (shard.leaderboardPayouts) out.push(shard.leaderboardPayouts.buffer);
+  if (shard.leaderboardWindows) out.push(shard.leaderboardWindows.buffer);
+  if (shard.leaderboardPaidWindows) out.push(shard.leaderboardPaidWindows.buffer);
+  if (shard.leaderboardRankSums) out.push(shard.leaderboardRankSums.buffer);
+  if (shard.leaderboardKnockouts) out.push(shard.leaderboardKnockouts.buffer);
+  if (shard.leaderboardFirsts) out.push(shard.leaderboardFirsts.buffer);
+  if (shard.leaderboardSeconds) out.push(shard.leaderboardSeconds.buffer);
+  if (shard.leaderboardThirds) out.push(shard.leaderboardThirds.buffer);
   for (const p of shard.hiResPaths) out.push(p.buffer);
   return out;
 }

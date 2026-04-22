@@ -23,6 +23,11 @@ import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import {
+  DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  buildBattleRoyaleLeaderboardConfig,
+  scheduleHasBattleRoyaleRows,
+} from "@/lib/sim/battleRoyaleLeaderboardUi";
+import {
   countScheduleTournaments,
   redistributeScheduleCounts,
 } from "@/lib/sim/scheduleTarget";
@@ -107,6 +112,7 @@ const initialControls: ControlsState = {
   itmGlobalEnabled: false,
   itmGlobalPct: 18.7,
   rakebackPct: 0,
+  battleRoyaleLeaderboard: DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
 };
 
 interface CompareSlot {
@@ -271,8 +277,13 @@ export default function Home() {
       tiltSlowMinDuration: c.tiltSlowMinDuration,
       tiltSlowRecoveryFrac: c.tiltSlowRecoveryFrac,
       rakebackFracOfRake: c.rakebackPct / 100,
+      battleRoyaleLeaderboard: buildBattleRoyaleLeaderboardConfig(
+        c.battleRoyaleLeaderboard,
+        s,
+        advanced,
+      ),
     }),
-    [],
+    [advanced],
   );
 
   const itmTargetCfg = useMemo(
@@ -456,7 +467,7 @@ export default function Home() {
     [controls.itmGlobalEnabled, controls.itmGlobalPct],
   );
   const hasBattleRoyaleRows = useMemo(
-    () => schedule.some((r) => r.gameType === "mystery-royale" || r.payoutStructure === "battle-royale"),
+    () => scheduleHasBattleRoyaleRows(schedule),
     [schedule],
   );
   const scheduleToolbarExtras = useMemo(

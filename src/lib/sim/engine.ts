@@ -31,6 +31,15 @@ import {
   isBattleRoyaleRow,
 } from "./bountySplit";
 import {
+  battleRoyaleLeaderboardPoints,
+  normalizeBattleRoyaleLeaderboardConfig,
+  sampleBattleRoyaleLeaderboardWindow,
+} from "./battleRoyaleLeaderboard";
+import {
+  battleRoyaleDirectRakebackShareForRow,
+  battleRoyaleLeaderboardShareForRow,
+} from "./battleRoyaleLeaderboardUi";
+import {
   buildBattleRoyaleCashTargetPmf,
   resolveBattleRoyaleCashTarget,
 } from "./battleRoyaleWinnerFirst";
@@ -233,6 +242,20 @@ interface CompiledEntry {
   brTierRatios: Float64Array | null;
   brTierAliasProb: Float64Array | null;
   brTierAliasIdx: Int32Array | null;
+  /** Explicit BR-format flag for runtime policy / side-channels. */
+  isBattleRoyale: boolean;
+  /** Share of this row's global promo budget routed into BR leaderboard. */
+  battleRoyaleLeaderboardShare: number;
+}
+
+interface BattleRoyaleLeaderboardMixRow {
+  rowId: string;
+  label: string;
+  tournaments: number;
+  directShare: number;
+  leaderboardShare: number;
+  directRakebackMean: number;
+  leaderboardMeanTarget: number;
 }
 
 interface CompiledSchedule {
@@ -240,6 +263,9 @@ interface CompiledSchedule {
   totalBuyIn: number;
   /** Deterministic profit target from the schedule ROI plus deterministic RB. */
   expectedProfit: number;
+  expectedDirectRakeback: number;
+  expectedBattleRoyaleSplitDirectRakeback: number;
+  expectedLeaderboardPromo: number;
   tournamentsPerSample: number;
   /** flat.length / scheduleRepeats — used as session boundary in the hot loop. */
   tournamentsPerPass: number;
@@ -249,6 +275,7 @@ interface CompiledSchedule {
   rowIds: string[];
   /** Weighted mean ITM over every entry in the flat schedule. */
   itmRate: number;
+  battleRoyaleLeaderboardMix: BattleRoyaleLeaderboardMixRow[];
 }
 
 export interface ScheduleAnalyticRow {
@@ -286,6 +313,10 @@ export function compileSchedule(
   const rowBuyIns = new Array<number>(input.schedule.length).fill(0);
   const rowLabels = input.schedule.map((r, i) => r.label || `Row ${i + 1}`);
   const rowIds = input.schedule.map((r) => r.id);
+  const leaderboardIncludedRowIds = input.battleRoyaleLeaderboard?.includedRowIds;
+  const leaderboardSplitActive =
+    Array.isArray(leaderboardIncludedRowIds) &&
+    leaderboardIncludedRowIds.length > 0;
 
   // For each row, compile one or more variants depending on fieldVariability.
   // variants[r] is an array of { entry, weight } — weight is # of plays per
@@ -316,18 +347,31 @@ export function compileSchedule(
   // in-place here keeps compileRowVariants / compileSingleEntry signatures
   // unchanged and means the hot loop just reads `entry.rakebackBonusPerBullet`.
   const rbFrac = Math.max(0, input.rakebackFracOfRake ?? 0);
-  if (rbFrac > 0) {
-    for (let r = 0; r < input.schedule.length; r++) {
-      const row = input.schedule[r];
-      const bonus = rbFrac * row.rake * row.buyIn;
-      for (const v of variants[r]) v.entry.rakebackBonusPerBullet = bonus;
+  for (let r = 0; r < input.schedule.length; r++) {
+    const row = input.schedule[r];
+    const directShare = leaderboardSplitActive
+      ? battleRoyaleDirectRakebackShareForRow(row, true)
+      : 1;
+    const leaderboardShare = leaderboardSplitActive
+      ? battleRoyaleLeaderboardShareForRow(row, true)
+      : 0;
+    const bonus = rbFrac * directShare * row.rake * row.buyIn;
+    for (const v of variants[r]) {
+      v.entry.rakebackBonusPerBullet = bonus;
+      v.entry.battleRoyaleLeaderboardShare = leaderboardShare;
     }
   }
 
   const flat: CompiledEntry[] = [];
   let totalBuyIn = 0;
   let expectedProfit = 0;
+  let expectedDirectRakeback = 0;
+  let expectedBattleRoyaleSplitDirectRakeback = 0;
+  let expectedLeaderboardPromo = 0;
   let itmAcc = 0;
+  const leaderboardMix = new Array<BattleRoyaleLeaderboardMixRow>(
+    input.schedule.length,
+  );
   // Build one "slot entry" per row. For rows with a single bucket this is
   // the compiled entry itself. For rows with fieldVariability it's a copy
   // of the first variant with .variants populated — the hot loop rolls a
@@ -354,12 +398,40 @@ export function compileSchedule(
       const row = input.schedule[r];
       const entry = slotEntries[r];
       const n = Math.max(1, Math.floor(row.count));
+      const leaderboardShare = leaderboardSplitActive
+        ? battleRoyaleLeaderboardShareForRow(row, true)
+        : 0;
+      const directShare = 1 - leaderboardShare;
+      const expectedBullets = 1 + entry.reentryExpected;
+      const directRbMean =
+        entry.rakebackBonusPerBullet * expectedBullets;
+      const leaderboardMean =
+        rbFrac *
+        leaderboardShare *
+        row.rake *
+        row.buyIn *
+        expectedBullets;
+      if (rep === 0 && leaderboardShare > 0) {
+        leaderboardMix[r] = {
+          rowId: row.id,
+          label: row.label || `Row ${r + 1}`,
+          tournaments: n * Math.max(1, input.scheduleRepeats),
+          directShare,
+          leaderboardShare,
+          directRakebackMean: n * Math.max(1, input.scheduleRepeats) * directRbMean,
+          leaderboardMeanTarget:
+            n * Math.max(1, input.scheduleRepeats) * leaderboardMean,
+        };
+      }
       for (let k = 0; k < n; k++) {
         flat.push(entry);
         totalBuyIn += entry.costPerEntry;
-        expectedProfit +=
-          entry.costPerEntry * row.roi +
-          entry.rakebackBonusPerBullet * (1 + entry.reentryExpected);
+        expectedProfit += entry.costPerEntry * row.roi + directRbMean;
+        expectedDirectRakeback += directRbMean;
+        if (leaderboardShare > 0) {
+          expectedBattleRoyaleSplitDirectRakeback += directRbMean;
+        }
+        expectedLeaderboardPromo += leaderboardMean;
         itmAcc += entry.itm;
         rowCounts[r] += 1;
         rowBuyIns[r] += entry.costPerEntry;
@@ -372,6 +444,9 @@ export function compileSchedule(
     flat,
     totalBuyIn,
     expectedProfit,
+    expectedDirectRakeback,
+    expectedBattleRoyaleSplitDirectRakeback,
+    expectedLeaderboardPromo,
     tournamentsPerSample: flat.length,
     tournamentsPerPass: Math.max(1, Math.floor(flat.length / reps)),
     rowCounts,
@@ -379,6 +454,9 @@ export function compileSchedule(
     rowLabels,
     rowIds,
     itmRate: flat.length > 0 ? itmAcc / flat.length : 0,
+    battleRoyaleLeaderboardMix: leaderboardMix.filter(
+      (row): row is BattleRoyaleLeaderboardMixRow => row != null,
+    ),
   };
 }
 
@@ -1331,6 +1409,10 @@ function compileSingleEntry(
     brTierRatios: bountyByPlace !== null ? brSampler?.ratios ?? null : null,
     brTierAliasProb: bountyByPlace !== null ? brSampler?.aliasProb ?? null : null,
     brTierAliasIdx: bountyByPlace !== null ? brSampler?.aliasIdx ?? null : null,
+    isBattleRoyale:
+      row.payoutStructure === "battle-royale" ||
+      row.gameType === "mystery-royale",
+    battleRoyaleLeaderboardShare: 0,
   };
 }
 
@@ -1493,6 +1575,16 @@ export function buildResult(
     recoveryLengths,
     rowProfits,
     rowBountyProfits,
+    leaderboardPoints,
+    leaderboardPayouts,
+    leaderboardExpectedPayouts,
+    leaderboardWindows,
+    leaderboardPaidWindows,
+    leaderboardRankSums,
+    leaderboardKnockouts,
+    leaderboardFirsts,
+    leaderboardSeconds,
+    leaderboardThirds,
     ruinedCount,
   } = shard;
   onBuildProgress?.(0.02, "stats");
@@ -2006,6 +2098,116 @@ export function buildResult(
   }
   onBuildProgress?.(0.99, "convergence");
 
+  const battleRoyaleLeaderboard =
+    leaderboardPoints !== null &&
+    leaderboardPayouts !== null &&
+    leaderboardExpectedPayouts !== null &&
+    leaderboardWindows !== null &&
+    leaderboardPaidWindows !== null &&
+    leaderboardRankSums !== null &&
+    leaderboardKnockouts !== null &&
+    leaderboardFirsts !== null &&
+    leaderboardSeconds !== null &&
+    leaderboardThirds !== null
+      ? (() => {
+          let pointsMeanAcc = 0;
+          let windowsAcc = 0;
+          let paidWindowsAcc = 0;
+          let rankAcc = 0;
+          let koAcc = 0;
+          let firstAcc = 0;
+          let secondAcc = 0;
+          let thirdAcc = 0;
+          for (let i = 0; i < S; i++) {
+            pointsMeanAcc += leaderboardPoints[i];
+            windowsAcc += leaderboardWindows[i];
+            paidWindowsAcc += leaderboardPaidWindows[i];
+            rankAcc += leaderboardRankSums[i];
+            koAcc += leaderboardKnockouts[i];
+            firstAcc += leaderboardFirsts[i];
+            secondAcc += leaderboardSeconds[i];
+            thirdAcc += leaderboardThirds[i];
+          }
+          const meanPoints = pointsMeanAcc / S;
+          let rawMeanPayout = 0;
+          for (let i = 0; i < S; i++) {
+            rawMeanPayout += leaderboardExpectedPayouts[i];
+          }
+          rawMeanPayout /= S;
+          const splitMode =
+            !!input.battleRoyaleLeaderboard?.includedRowIds &&
+            input.battleRoyaleLeaderboard.includedRowIds.length > 0;
+          const targetMeanPayout = splitMode
+            ? Math.max(0, compiled.expectedLeaderboardPromo)
+            : rawMeanPayout;
+          const payoutScale =
+            rawMeanPayout > 0 ? targetMeanPayout / rawMeanPayout : 1;
+          if (payoutScale !== 1) {
+            for (let i = 0; i < S; i++) leaderboardPayouts[i] *= payoutScale;
+          }
+          let pointsVarAcc = 0;
+          let payoutVarAcc = 0;
+          for (let i = 0; i < S; i++) {
+            const dp = leaderboardPoints[i] - meanPoints;
+            pointsVarAcc += dp * dp;
+          }
+          const meanPayout = targetMeanPayout;
+          for (let i = 0; i < S; i++) {
+            const dy = leaderboardPayouts[i] - meanPayout;
+            payoutVarAcc += dy * dy;
+          }
+          const payoutSorted = leaderboardPayouts.slice().sort();
+          const payoutPct = (p: number) =>
+            payoutSorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
+          const leaderboardConfig = normalizeBattleRoyaleLeaderboardConfig(
+            input.battleRoyaleLeaderboard,
+          )!;
+          return {
+            points: leaderboardPoints,
+            payouts: leaderboardPayouts,
+            windows: leaderboardWindows,
+            paidWindows: leaderboardPaidWindows,
+            rankSums: leaderboardRankSums,
+            knockouts: leaderboardKnockouts,
+            firsts: leaderboardFirsts,
+            seconds: leaderboardSeconds,
+            thirds: leaderboardThirds,
+            stats: {
+              meanPoints,
+              stdDevPoints: Math.sqrt(pointsVarAcc / Math.max(1, S - 1)),
+              meanPayout,
+              stdDevPayout: Math.sqrt(payoutVarAcc / Math.max(1, S - 1)),
+              p95Payout: payoutPct(0.95),
+              p99Payout: payoutPct(0.99),
+              meanWindows: windowsAcc / S,
+              meanPaidWindows: paidWindowsAcc / S,
+              paidWindowShare:
+                windowsAcc > 0 ? paidWindowsAcc / windowsAcc : 0,
+              meanRank: windowsAcc > 0 ? rankAcc / windowsAcc : 0,
+              meanKnockouts: koAcc / S,
+              meanFirsts: firstAcc / S,
+              meanSeconds: secondAcc / S,
+              meanThirds: thirdAcc / S,
+            },
+            config: {
+              participants: leaderboardConfig.participants,
+              windowTournaments: leaderboardConfig.windowTournaments,
+              awardPartialWindow: leaderboardConfig.awardPartialWindow,
+              maxPaidRank: leaderboardConfig.maxPaidRank,
+            },
+            sourceMix: {
+              directRakebackMean:
+                compiled.expectedBattleRoyaleSplitDirectRakeback,
+              leaderboardMeanTarget: targetMeanPayout,
+              totalPromoMean:
+                compiled.expectedBattleRoyaleSplitDirectRakeback +
+                targetMeanPayout,
+              rows: compiled.battleRoyaleLeaderboardMix,
+            },
+          };
+        })()
+      : undefined;
+
   return {
     type: "result",
     samples: S,
@@ -2038,6 +2240,7 @@ export function buildResult(
     },
     decomposition,
     sensitivity: { deltas: sensDeltas, expectedProfits: sensProfits },
+    battleRoyaleLeaderboard,
     downswings,
     upswings,
     convergence: { x: convX, mean: convMean, seLo: convSeLo, seHi: convSeHi },
@@ -2329,6 +2532,18 @@ export interface RawShard {
    *  determinism contract. Empty (length 0) for schedules without
    *  mystery rows — callers must null-check. */
   jackpotMask: Uint8Array;
+  /** Optional Battle Royale leaderboard side-channel. Null when the run has
+   *  no leaderboard config or no BR rows. */
+  leaderboardPoints: Float64Array | null;
+  leaderboardPayouts: Float64Array | null;
+  leaderboardExpectedPayouts: Float64Array | null;
+  leaderboardWindows: Int32Array | null;
+  leaderboardPaidWindows: Int32Array | null;
+  leaderboardRankSums: Int32Array | null;
+  leaderboardKnockouts: Int32Array | null;
+  leaderboardFirsts: Int32Array | null;
+  leaderboardSeconds: Int32Array | null;
+  leaderboardThirds: Int32Array | null;
   ruinedCount: number;
   /** Hi-res capture grid (K'+1 points). Shared across all hi-res buffers
    *  in this shard. */
@@ -2433,6 +2648,31 @@ export function simulateShard(
   const rowProfits = new Float64Array(shardSize * numRows);
   const rowBountyProfits = new Float64Array(shardSize * numRows);
   const jackpotMask = new Uint8Array(shardSize);
+  const leaderboardConfig = normalizeBattleRoyaleLeaderboardConfig(
+    input.battleRoyaleLeaderboard,
+  );
+  const leaderboardLegacyAllBr =
+    leaderboardConfig !== null &&
+    (!input.battleRoyaleLeaderboard?.includedRowIds ||
+      input.battleRoyaleLeaderboard.includedRowIds.length === 0);
+  const hasBattleRoyaleRows = compiled.flat.some(
+    (entry) =>
+      entry.isBattleRoyale &&
+      (leaderboardLegacyAllBr || entry.battleRoyaleLeaderboardShare > 0),
+  );
+  const leaderboardActive = leaderboardConfig !== null && hasBattleRoyaleRows;
+  const leaderboardPoints = leaderboardActive ? new Float64Array(shardSize) : null;
+  const leaderboardPayouts = leaderboardActive ? new Float64Array(shardSize) : null;
+  const leaderboardExpectedPayouts = leaderboardActive
+    ? new Float64Array(shardSize)
+    : null;
+  const leaderboardWindows = leaderboardActive ? new Int32Array(shardSize) : null;
+  const leaderboardPaidWindows = leaderboardActive ? new Int32Array(shardSize) : null;
+  const leaderboardRankSums = leaderboardActive ? new Int32Array(shardSize) : null;
+  const leaderboardKnockouts = leaderboardActive ? new Int32Array(shardSize) : null;
+  const leaderboardFirsts = leaderboardActive ? new Int32Array(shardSize) : null;
+  const leaderboardSeconds = leaderboardActive ? new Int32Array(shardSize) : null;
+  const leaderboardThirds = leaderboardActive ? new Int32Array(shardSize) : null;
   // Per-length streak counters. Cashless is indexed by integer tournament
   // count so it's allocated at N+1. Breakeven is indexed by chord-grid
   // position (0..K) to keep the downstream histogram aligned to the
@@ -2534,10 +2774,14 @@ export function simulateShard(
     // a bounty flag doesn't perturb the finish-sampling stream (otherwise
     // same-seed comparison tests between bounty and non-bounty runs drift).
     const bRng = mulberry32(mixSeed((input.seed ^ 0xb01dface) >>> 0, s));
+    const leaderboardRng = leaderboardActive
+      ? mulberry32(mixSeed((input.seed ^ 0x1eadeb0b) >>> 0, s))
+      : null;
     // Cached-pair gaussians bound to each stream — halves log/sqrt cost
     // relative to the discarding boxMuller.
     const gaussSkill = makeGauss(skillRng);
     const gaussB = makeGauss(bRng);
+    const gaussLeaderboard = leaderboardRng ? makeGauss(leaderboardRng) : null;
 
     const deltaROI = roiStdErr > 0 ? gaussSkill() * roiStdErr : 0;
     let drift = 0;
@@ -2556,6 +2800,18 @@ export function simulateShard(
     let ddTroughIdx = -1;
     let sampleRecoveryLen = -1;
     let ruined = false;
+    let leaderboardWindowScore = 0;
+    let leaderboardTournaments = 0;
+    let leaderboardTotalPoints = 0;
+    let leaderboardTotalPayout = 0;
+    let leaderboardTotalExpectedPayout = 0;
+    let leaderboardSettledWindows = 0;
+    let leaderboardPaid = 0;
+    let leaderboardRankSum = 0;
+    let leaderboardKoTotal = 0;
+    let leaderboardFirstTotal = 0;
+    let leaderboardSecondTotal = 0;
+    let leaderboardThirdTotal = 0;
 
     let nextCp = 1;
     let nextCpIdx = checkpointIdx[1];
@@ -2665,13 +2921,19 @@ export function simulateShard(
       const brRatios = t.brTierRatios;
       const brAliasProb = t.brTierAliasProb;
       const brAliasIdx = t.brTierAliasIdx;
+      const isBattleRoyale = t.isBattleRoyale;
+      const leaderboardRowActive =
+        leaderboardLegacyAllBr || t.battleRoyaleLeaderboardShare > 0;
       let delta = 0;
       let cashedThisSlot = false;
+      let leaderboardPlace = -1;
+      let leaderboardKnockoutsThisSlot = 0;
       if (maxB === 1) {
         // Vose alias: one uniform → O(1) finish draw.
         const r0 = rng() * aliasN;
         const i0 = r0 | 0;
         const place = r0 - i0 < aliasProb[i0] ? i0 : aliasIdx[i0];
+        leaderboardPlace = place;
         let bountyDraw = 0;
         if (bp !== null) {
           const mean = bp[place];
@@ -2705,6 +2967,7 @@ export function simulateShard(
                     sumRatio += ratio;
                     bountyDraw += perKO * ratio;
                   }
+                  leaderboardKnockoutsThisSlot = k;
                   if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
                 } else if (mystVar > 0) {
                   const perKO = mean * bkmInv![place];
@@ -2715,8 +2978,10 @@ export function simulateShard(
                     sumRatio += ratio;
                     bountyDraw += perKO * ratio;
                   }
+                  leaderboardKnockoutsThisSlot = k;
                   if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
                 }
+                if (brRatios === null) leaderboardKnockoutsThisSlot = 0;
               }
             } else {
               bountyDraw = mean;
@@ -2734,6 +2999,7 @@ export function simulateShard(
           const r1 = rng() * aliasN;
           const i1 = r1 | 0;
           const place = r1 - i1 < aliasProb[i1] ? i1 : aliasIdx[i1];
+          leaderboardPlace = place;
           let bountyDraw = 0;
           if (bp !== null) {
             const mean = bp[place];
@@ -2767,6 +3033,7 @@ export function simulateShard(
                       sumRatio += ratio;
                       bountyDraw += perKO * ratio;
                     }
+                    leaderboardKnockoutsThisSlot += k;
                     if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
                   } else if (mystVar > 0) {
                     const perKO = mean * bkmInv![place];
@@ -2777,6 +3044,7 @@ export function simulateShard(
                       sumRatio += ratio;
                       bountyDraw += perKO * ratio;
                     }
+                    if (brRatios === null) leaderboardKnockoutsThisSlot = 0;
                     if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
                   }
                 }
@@ -2798,6 +3066,44 @@ export function simulateShard(
       }
       profit += delta;
       rowProfits[rowBase + t.rowIdx] += delta;
+      if (
+        leaderboardConfig !== null &&
+        leaderboardRng !== null &&
+        gaussLeaderboard !== null &&
+        isBattleRoyale &&
+        leaderboardRowActive &&
+        leaderboardPlace >= 0
+      ) {
+        const place1 = leaderboardPlace + 1;
+        const points = battleRoyaleLeaderboardPoints(
+          leaderboardConfig.scoring,
+          place1,
+          leaderboardKnockoutsThisSlot,
+        );
+        leaderboardWindowScore += points;
+        leaderboardTotalPoints += points;
+        leaderboardKoTotal += leaderboardKnockoutsThisSlot;
+        leaderboardTournaments++;
+        if (place1 === 1) leaderboardFirstTotal++;
+        else if (place1 === 2) leaderboardSecondTotal++;
+        else if (place1 === 3) leaderboardThirdTotal++;
+        if (
+          leaderboardTournaments % leaderboardConfig.windowTournaments === 0
+        ) {
+          const settled = sampleBattleRoyaleLeaderboardWindow(
+            leaderboardWindowScore,
+            leaderboardConfig,
+            leaderboardRng,
+            gaussLeaderboard,
+          );
+          leaderboardSettledWindows++;
+          leaderboardRankSum += settled.rank;
+          if (settled.payout > 0) leaderboardPaid++;
+          leaderboardTotalPayout += settled.payout;
+          leaderboardTotalExpectedPayout += settled.expectedPayout;
+          leaderboardWindowScore = 0;
+        }
+      }
 
       if (cashedThisSlot) {
         if (cashlessRun > 0) cashlessStreakCounts[cashlessRun]++;
@@ -2923,6 +3229,27 @@ export function simulateShard(
         ? (firstReturnSum / firstReturnCount / K) * N
         : 0;
 
+    if (
+      leaderboardConfig !== null &&
+      leaderboardRng !== null &&
+      gaussLeaderboard !== null &&
+      leaderboardTournaments % leaderboardConfig.windowTournaments !== 0 &&
+      leaderboardConfig.awardPartialWindow
+    ) {
+      const settled = sampleBattleRoyaleLeaderboardWindow(
+        leaderboardWindowScore,
+        leaderboardConfig,
+        leaderboardRng,
+        gaussLeaderboard,
+      );
+      leaderboardSettledWindows++;
+      leaderboardRankSum += settled.rank;
+      if (settled.payout > 0) leaderboardPaid++;
+      leaderboardTotalPayout += settled.payout;
+      leaderboardTotalExpectedPayout += settled.expectedPayout;
+      leaderboardWindowScore = 0;
+    }
+
     finalProfits[localS] = profit;
     maxDrawdowns[localS] = maxDD;
     maxRunUps[localS] = maxUp;
@@ -2931,6 +3258,18 @@ export function simulateShard(
     breakevenStreakAvgs[localS] = breakevenStreakAvg;
     longestCashless[localS] = longestCashlessRun;
     recoveryLengths[localS] = sampleRecoveryLen;
+    if (leaderboardPoints !== null) leaderboardPoints[localS] = leaderboardTotalPoints;
+    if (leaderboardPayouts !== null) leaderboardPayouts[localS] = leaderboardTotalPayout;
+    if (leaderboardExpectedPayouts !== null) {
+      leaderboardExpectedPayouts[localS] = leaderboardTotalExpectedPayout;
+    }
+    if (leaderboardWindows !== null) leaderboardWindows[localS] = leaderboardSettledWindows;
+    if (leaderboardPaidWindows !== null) leaderboardPaidWindows[localS] = leaderboardPaid;
+    if (leaderboardRankSums !== null) leaderboardRankSums[localS] = leaderboardRankSum;
+    if (leaderboardKnockouts !== null) leaderboardKnockouts[localS] = leaderboardKoTotal;
+    if (leaderboardFirsts !== null) leaderboardFirsts[localS] = leaderboardFirstTotal;
+    if (leaderboardSeconds !== null) leaderboardSeconds[localS] = leaderboardSecondTotal;
+    if (leaderboardThirds !== null) leaderboardThirds[localS] = leaderboardThirdTotal;
     if (ruined) ruinedCount++;
 
     if (onProgress && localS + 1 >= nextProgressAt) {
@@ -2957,6 +3296,16 @@ export function simulateShard(
     rowProfits,
     rowBountyProfits,
     jackpotMask,
+    leaderboardPoints,
+    leaderboardPayouts,
+    leaderboardExpectedPayouts,
+    leaderboardWindows,
+    leaderboardPaidWindows,
+    leaderboardRankSums,
+    leaderboardKnockouts,
+    leaderboardFirsts,
+    leaderboardSeconds,
+    leaderboardThirds,
     ruinedCount,
     hiResCheckpointIdx: hiCheckpointIdx,
     hiResPaths,
@@ -3001,6 +3350,19 @@ export function mergeShards(
   const rowProfits = new Float64Array(S * numRows);
   const rowBountyProfits = new Float64Array(S * numRows);
   const jackpotMask = new Uint8Array(S);
+  const hasLeaderboard = sorted[0].leaderboardPoints !== null;
+  const leaderboardPoints = hasLeaderboard ? new Float64Array(S) : null;
+  const leaderboardPayouts = hasLeaderboard ? new Float64Array(S) : null;
+  const leaderboardExpectedPayouts = hasLeaderboard
+    ? new Float64Array(S)
+    : null;
+  const leaderboardWindows = hasLeaderboard ? new Int32Array(S) : null;
+  const leaderboardPaidWindows = hasLeaderboard ? new Int32Array(S) : null;
+  const leaderboardRankSums = hasLeaderboard ? new Int32Array(S) : null;
+  const leaderboardKnockouts = hasLeaderboard ? new Int32Array(S) : null;
+  const leaderboardFirsts = hasLeaderboard ? new Int32Array(S) : null;
+  const leaderboardSeconds = hasLeaderboard ? new Int32Array(S) : null;
+  const leaderboardThirds = hasLeaderboard ? new Int32Array(S) : null;
   const beCountsLen = sorted[0].breakevenStreakCounts.length;
   const clCountsLen = sorted[0].cashlessStreakCounts.length;
   const breakevenStreakCounts = new Int32Array(beCountsLen);
@@ -3019,6 +3381,21 @@ export function mergeShards(
     rowProfits.set(sh.rowProfits, sh.sStart * numRows);
     rowBountyProfits.set(sh.rowBountyProfits, sh.sStart * numRows);
     jackpotMask.set(sh.jackpotMask, sh.sStart);
+    if (leaderboardPoints !== null && sh.leaderboardPoints !== null) {
+      leaderboardPoints.set(sh.leaderboardPoints, sh.sStart);
+      leaderboardPayouts!.set(sh.leaderboardPayouts!, sh.sStart);
+      leaderboardExpectedPayouts!.set(
+        sh.leaderboardExpectedPayouts!,
+        sh.sStart,
+      );
+      leaderboardWindows!.set(sh.leaderboardWindows!, sh.sStart);
+      leaderboardPaidWindows!.set(sh.leaderboardPaidWindows!, sh.sStart);
+      leaderboardRankSums!.set(sh.leaderboardRankSums!, sh.sStart);
+      leaderboardKnockouts!.set(sh.leaderboardKnockouts!, sh.sStart);
+      leaderboardFirsts!.set(sh.leaderboardFirsts!, sh.sStart);
+      leaderboardSeconds!.set(sh.leaderboardSeconds!, sh.sStart);
+      leaderboardThirds!.set(sh.leaderboardThirds!, sh.sStart);
+    }
     for (let i = 0; i < beCountsLen; i++) {
       breakevenStreakCounts[i] += sh.breakevenStreakCounts[i];
     }
@@ -3076,6 +3453,16 @@ export function mergeShards(
     rowProfits,
     rowBountyProfits,
     jackpotMask,
+    leaderboardPoints,
+    leaderboardPayouts,
+    leaderboardExpectedPayouts,
+    leaderboardWindows,
+    leaderboardPaidWindows,
+    leaderboardRankSums,
+    leaderboardKnockouts,
+    leaderboardFirsts,
+    leaderboardSeconds,
+    leaderboardThirds,
     ruinedCount,
     hiResCheckpointIdx,
     hiResPaths,

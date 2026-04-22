@@ -265,6 +265,42 @@ function mergedHistogramDomain(
   return [lo, hi];
 }
 
+function histogramOfValues(
+  values: ArrayLike<number>,
+  bins = 40,
+): { binEdges: number[]; counts: number[] } {
+  const n = values.length;
+  if (n === 0) return { binEdges: [0, 1], counts: [0] };
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const v = values[i];
+    if (!Number.isFinite(v)) continue;
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
+    return { binEdges: [0, 1], counts: [0] };
+  }
+  if (hi === lo) {
+    const span = Math.max(1, Math.abs(hi) * 0.1);
+    lo -= span / 2;
+    hi += span / 2;
+  }
+  const span = hi - lo;
+  const edges = new Array<number>(bins + 1);
+  for (let i = 0; i <= bins; i++) edges[i] = lo + (span * i) / bins;
+  const counts = new Array<number>(bins).fill(0);
+  for (let i = 0; i < n; i++) {
+    const v = values[i];
+    if (!Number.isFinite(v)) continue;
+    const raw = ((v - lo) / span) * bins;
+    const idx = Math.max(0, Math.min(bins - 1, Math.floor(raw)));
+    counts[idx]++;
+  }
+  return { binEdges: edges, counts };
+}
+
 type AccentHue = "felt" | "magenta";
 
 const HUES: Record<AccentHue, {
@@ -1720,9 +1756,16 @@ function ResultsViewImpl({
             deferredScheduleRepeats,
             deferredRbFrac,
             result.samplePaths.x,
+            advanced,
           )
         : null,
-    [deferredSchedule, deferredScheduleRepeats, deferredRbFrac, result.samplePaths.x],
+    [
+      advanced,
+      deferredSchedule,
+      deferredScheduleRepeats,
+      deferredRbFrac,
+      result.samplePaths.x,
+    ],
   );
   const pdRakebackCurve = useMemo(
     () =>
@@ -1732,9 +1775,10 @@ function ResultsViewImpl({
             deferredScheduleRepeats,
             deferredRbFrac,
             pdChart.samplePaths.x,
+            advanced,
           )
         : null,
-    [pdChart, deferredSchedule, deferredScheduleRepeats, deferredRbFrac],
+    [advanced, pdChart, deferredSchedule, deferredScheduleRepeats, deferredRbFrac],
   );
   // Four independent region toggles — each controls whether its region
   // shows RB baked in (engine default) or subtracts it for the game-only view.
@@ -2321,6 +2365,13 @@ function ResultsViewImpl({
         />
       </div>
 
+      {result.battleRoyaleLeaderboard && (
+        <BattleRoyaleLeaderboardSection
+          leaderboard={result.battleRoyaleLeaderboard}
+          gameExpectedProfit={displayResultStats.expectedProfit}
+        />
+      )}
+
       <StatGroup title={t("statGroup.drawdowns")}>
         <MiniStat
           suit="heart"
@@ -2831,6 +2882,223 @@ function SatelliteCard({
   );
 }
 
+function BattleRoyaleLeaderboardSection({
+  leaderboard,
+  gameExpectedProfit,
+}: {
+  leaderboard: NonNullable<SimulationResult["battleRoyaleLeaderboard"]>;
+  gameExpectedProfit: number;
+}) {
+  const t = useT();
+  const { money } = useMoneyFmt();
+  const payoutHistogram = useMemo(
+    () => histogramOfValues(leaderboard.payouts, 40),
+    [leaderboard.payouts],
+  );
+  const payoutDomain = useMemo(
+    () => mergedHistogramDomain(payoutHistogram),
+    [payoutHistogram],
+  );
+  const meanPointsPerWindow =
+    leaderboard.stats.meanWindows > 0
+      ? leaderboard.stats.meanPoints / leaderboard.stats.meanWindows
+      : 0;
+  const meanKoPerWindow =
+    leaderboard.stats.meanWindows > 0
+      ? leaderboard.stats.meanKnockouts / leaderboard.stats.meanWindows
+      : 0;
+  const meanFirstPerWindow =
+    leaderboard.stats.meanWindows > 0
+      ? leaderboard.stats.meanFirsts / leaderboard.stats.meanWindows
+      : 0;
+  const meanTop3PerWindow =
+    leaderboard.stats.meanWindows > 0
+      ? (leaderboard.stats.meanFirsts +
+          leaderboard.stats.meanSeconds +
+          leaderboard.stats.meanThirds) /
+        leaderboard.stats.meanWindows
+      : 0;
+  const directPromoMean = leaderboard.sourceMix.directRakebackMean;
+  const promoTotal = directPromoMean + leaderboard.stats.meanPayout;
+  const directPromoShare = promoTotal > 0 ? directPromoMean / promoTotal : 0;
+  const leaderboardPromoShare =
+    promoTotal > 0 ? leaderboard.stats.meanPayout / promoTotal : 0;
+  const totalExpectedWithPromo = gameExpectedProfit + leaderboard.stats.meanPayout;
+  const subtitle = t("chart.brLeaderboard.sub")
+    .replace("{participants}", leaderboard.config.participants.toLocaleString("ru-RU"))
+    .replace(
+      "{window}",
+      leaderboard.config.windowTournaments.toLocaleString("ru-RU"),
+    )
+    .replace("{paid}", String(leaderboard.config.maxPaidRank));
+  const note = t("chart.brLeaderboard.note");
+  return (
+    <CollapsibleSection
+      id="battleRoyaleLeaderboard"
+      title={t("chart.brLeaderboard.title")}
+      showUnitToggle={false}
+      defaultOpen
+    >
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <Card className="p-5">
+          <ChartHeader
+            title={t("chart.brLeaderboard.title")}
+            subtitle={subtitle}
+            showUnitToggle={false}
+          />
+          <div className="mb-4 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+            {note}
+          </div>
+          <StatGroup title={t("chart.brLeaderboard.groupSettlement")}>
+            <MiniStat
+              suit="diamond"
+              label={t("chart.brLeaderboard.meanPayout")}
+              value={money(leaderboard.stats.meanPayout)}
+              tone={leaderboard.stats.meanPayout >= 0 ? "pos" : "neg"}
+            />
+            <MiniStat
+              suit="club"
+              label={t("chart.brLeaderboard.directRb")}
+              value={money(directPromoMean)}
+              tone={directPromoMean >= 0 ? "pos" : "neg"}
+            />
+            <MiniStat
+              suit="club"
+              label={t("chart.brLeaderboard.totalWithPromo")}
+              value={money(totalExpectedWithPromo)}
+              tone={totalExpectedWithPromo >= 0 ? "pos" : "neg"}
+            />
+            <MiniStat
+              suit="spade"
+              label={t("chart.brLeaderboard.promoSplit")}
+              value={`${pct(directPromoShare)} / ${pct(leaderboardPromoShare)}`}
+            />
+            <MiniStat
+              suit="spade"
+              label={t("chart.brLeaderboard.paidShare")}
+              value={pct(leaderboard.stats.paidWindowShare)}
+            />
+            <MiniStat
+              suit="spade"
+              label={t("chart.brLeaderboard.meanRank")}
+              value={`#${leaderboard.stats.meanRank.toFixed(1)}`}
+            />
+            <MiniStat
+              suit="heart"
+              label={t("chart.brLeaderboard.p95")}
+              value={money(leaderboard.stats.p95Payout)}
+              tone="neg"
+            />
+            <MiniStat
+              suit="heart"
+              label={t("chart.brLeaderboard.p99")}
+              value={money(leaderboard.stats.p99Payout)}
+              tone="neg"
+            />
+          </StatGroup>
+          <div className="mt-4" />
+          <StatGroup title={t("chart.brLeaderboard.groupScoring")}>
+            <MiniStat
+              suit="club"
+              label={t("chart.brLeaderboard.pointsPerWindow")}
+              value={meanPointsPerWindow.toFixed(1)}
+            />
+            <MiniStat
+              suit="diamond"
+              label={t("chart.brLeaderboard.koPerWindow")}
+              value={meanKoPerWindow.toFixed(2)}
+            />
+            <MiniStat
+              suit="spade"
+              label={t("chart.brLeaderboard.firstPerWindow")}
+              value={meanFirstPerWindow.toFixed(2)}
+            />
+            <MiniStat
+              suit="spade"
+              label={t("chart.brLeaderboard.top3PerWindow")}
+              value={meanTop3PerWindow.toFixed(2)}
+            />
+          </StatGroup>
+          <div className="mt-4 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+            <span>
+              {t("chart.brLeaderboard.meanWindows")}:{" "}
+              {leaderboard.stats.meanWindows.toFixed(1)}
+            </span>
+            <span>·</span>
+            <span>
+              {t("chart.brLeaderboard.meanPaidWindows")}:{" "}
+              {leaderboard.stats.meanPaidWindows.toFixed(1)}
+            </span>
+            <span>·</span>
+            <span>
+              {leaderboard.config.awardPartialWindow
+                ? t("chart.brLeaderboard.partialYes")
+                : t("chart.brLeaderboard.partialNo")}
+            </span>
+          </div>
+          {leaderboard.sourceMix.rows.length > 0 && (
+            <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/45 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                {t("chart.brLeaderboard.rowMix")}
+              </div>
+              <div className="mt-2 space-y-2">
+                {leaderboard.sourceMix.rows.map((row) => (
+                  <div
+                    key={row.rowId}
+                    className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
+                  >
+                    <div className="font-medium text-[color:var(--color-fg)]">
+                      {row.label}
+                    </div>
+                    <div className="text-[color:var(--color-fg-dim)]">
+                      {t("chart.brLeaderboard.rowMixLine")
+                        .replace("{count}", row.tournaments.toLocaleString("ru-RU"))
+                        .replace(
+                          "{direct}",
+                          `${Math.round(row.directShare * 100)}%`,
+                        )
+                        .replace(
+                          "{leaderboard}",
+                          `${Math.round(row.leaderboardShare * 100)}%`,
+                        )
+                        .replace("{directEv}", money(row.directRakebackMean))
+                        .replace(
+                          "{leaderEv}",
+                          money(row.leaderboardMeanTarget),
+                        )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+
+        <UnitScope id="battleRoyaleLeaderboard.payouts">
+          <MoneyDistributionCard
+            title={t("chart.brLeaderboard.dist")}
+            subtitle={t("chart.brLeaderboard.dist.sub")
+              .replace(
+                "{samples}",
+                leaderboard.payouts.length.toLocaleString("ru-RU"),
+              )
+              .replace(
+                "{windows}",
+                leaderboard.stats.meanWindows.toFixed(1),
+              )}
+            binEdges={payoutHistogram.binEdges}
+            counts={payoutHistogram.counts}
+            color="#f59e0b"
+            overlay={null}
+            yAsPct
+            xDomain={payoutDomain}
+          />
+        </UnitScope>
+      </div>
+    </CollapsibleSection>
+  );
+}
+
 /**
  * Trajectory Card. Lives inside its own UnitScope so flipping the unit
  * toggle in the card header only affects this widget's formatters (the
@@ -2980,9 +3248,15 @@ const TrajectoryCard = memo(function TrajectoryCard({
   const compareRakebackCurve = useMemo(
     () =>
       compareResult && schedule && scheduleRepeats != null
-        ? computeExpectedRakebackCurve(schedule, scheduleRepeats, rbFrac, compareResult.samplePaths.x)
+        ? computeExpectedRakebackCurve(
+            schedule,
+            scheduleRepeats,
+            rbFrac,
+            compareResult.samplePaths.x,
+            advanced,
+          )
         : null,
-    [compareResult, schedule, scheduleRepeats, rbFrac],
+    [advanced, compareResult, schedule, scheduleRepeats, rbFrac],
   );
   const displayCompareResult = useMemo(
     () =>
@@ -3704,11 +3978,13 @@ function CollapsibleSection({
   title,
   children,
   showUnitToggle = true,
+  defaultOpen = false,
 }: {
   id: string;
   title: string;
   children: ReactNode;
   showUnitToggle?: boolean;
+  defaultOpen?: boolean;
 }) {
   const storageKey = `tvs.collapse.${id}.v1`;
   const ref = useRef<HTMLDetailsElement>(null);
@@ -3721,9 +3997,9 @@ function CollapsibleSection({
     if (!el || typeof localStorage === "undefined") return;
     try {
       const v = localStorage.getItem(storageKey);
-      el.open = v === "1";
+      el.open = v == null ? defaultOpen : v === "1";
     } catch {}
-  }, [storageKey]);
+  }, [storageKey, defaultOpen]);
   const onToggle: ReactEventHandler<HTMLDetailsElement> = (e) => {
     try {
       localStorage.setItem(
