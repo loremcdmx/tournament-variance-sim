@@ -393,30 +393,30 @@ export const ScheduleEditor = memo(function ScheduleEditor({
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
       <div className="schedule-table-scroll overflow-x-auto">
-        <table className="dense-control-table w-full min-w-[760px] table-fixed text-sm min-[1024px]:min-w-0">
+        <table className="dense-control-table w-full min-w-[960px] table-fixed text-sm xl:min-w-0">
           <colgroup>
             <col className="w-8" />
             <col />
-            <col className="w-[8.5rem]" />
+            <col className="w-[9rem]" />
             <col className="w-[5rem]" />
+            <col className="w-[6.25rem]" />
+            <col className="w-[6.5rem]" />
+            <col className="w-[6.5rem]" />
+            <col className="w-[13rem]" />
             <col className="w-[5.75rem]" />
-            <col className="w-[4.75rem]" />
-            <col className="w-[5.25rem]" />
-            <col className="w-[12rem]" />
-            <col className="w-[5rem]" />
-            <col className="w-14" />
+            <col className="w-[4.5rem]" />
           </colgroup>
           <thead>
-            <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-left text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-left text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
               <Th> </Th>
-              <Th hint={t("help.row.label")}>{t("row.label")}</Th>
-              <Th hint={t("row.gameTypeHint")}>{t("row.gameType")}</Th>
-              <Th align="right" hint={t("help.row.players")}>{t("row.players")}</Th>
-              <Th align="right" hint={t("help.row.buyIn")}>{t("row.buyIn")}</Th>
-              <Th align="right" hint={t("help.row.roi")}>{t("row.roi")}</Th>
-              <Th align="right" hint={t("row.fixedItmHint")}>{t("row.fixedItm")}</Th>
-              <Th hint={t("help.row.payouts")}>{t("row.payouts")}</Th>
-              <Th align="right" hint={t("help.row.count")}>{t("row.count")}</Th>
+              <Th align="center" hint={t("help.row.label")}>{t("row.label")}</Th>
+              <Th align="center" hint={t("row.gameTypeHint")}>{t("row.gameType")}</Th>
+              <Th align="center" hint={t("help.row.players")}>{t("row.players")}</Th>
+              <Th align="center" hint={t("help.row.buyIn")}>{t("row.buyIn")}</Th>
+              <Th align="center" hint={t("help.row.roi")}>{t("row.roi")}</Th>
+              <Th align="center" hint={t("row.fixedItmHint")}>{t("row.fixedItm")}</Th>
+              <Th align="center" hint={t("help.row.payouts")}>{t("row.payouts")}</Th>
+              <Th align="center" hint={t("help.row.count")}>{t("row.count")}</Th>
               <Th> </Th>
             </tr>
           </thead>
@@ -704,7 +704,7 @@ const ScheduleRow = memo(function ScheduleRow({
             onChange={(buyIn, rake) => update(r.id, { buyIn, rake })}
           />
         </Td>
-        <Td align="right" className={gt === "mystery-royale" ? "min-w-[132px]" : ""}>
+        <Td align="right">
           <div className="flex flex-col items-center gap-1">
             <NumInput
               value={Math.round(r.roi * 100)}
@@ -714,11 +714,13 @@ const ScheduleRow = memo(function ScheduleRow({
               step={1}
             />
             {gt === "mystery-royale" && (
-              <BrReportedRoiControl
-                row={r}
-                globalRakebackPct={globalRakebackPct}
-                onApply={(roi) => update(r.id, { roi, bountyEvBias: 0 })}
-              />
+              <div className="w-full max-w-[6rem]">
+                <BrReportedRoiControl
+                  row={r}
+                  globalRakebackPct={globalRakebackPct}
+                  onApply={(roi) => update(r.id, { roi, bountyEvBias: 0 })}
+                />
+              </div>
             )}
           </div>
         </Td>
@@ -1250,20 +1252,28 @@ function Th({
   hint,
 }: {
   children: React.ReactNode;
-  align?: "left" | "right";
+  align?: "left" | "right" | "center";
   hint?: React.ReactNode;
 }) {
   return (
     <th
       className={
-        "whitespace-nowrap px-1.5 py-2.5 font-medium first:pl-4 last:pr-4 " +
-        (align === "right" ? "text-right" : "")
+        "whitespace-nowrap px-1.5 py-2.5 font-medium leading-none first:pl-4 last:pr-4 " +
+        (align === "right"
+          ? "text-right"
+          : align === "center"
+            ? "text-center"
+            : "")
       }
     >
       <span
         className={
-          "inline-flex items-center gap-1.5 " +
-          (align === "right" ? "flex-row-reverse" : "")
+          "inline-flex w-full items-center gap-1.5 " +
+          (align === "right"
+            ? "justify-end flex-row-reverse"
+            : align === "center"
+              ? "justify-center"
+              : "")
         }
       >
         {children}
@@ -1406,19 +1416,16 @@ function BrReportedRoiControl({
     .replace("{reported}", formatPct(reportedRoi))
     .replace("{field}", formatPct(row.roi));
   return (
-    <div
-      className="w-28 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1"
-      title={title}
-    >
+    <div className="w-full min-w-0" title={title}>
       <div
-        className="flex items-center justify-between gap-1 text-[9px] font-medium uppercase leading-none tracking-[0.08em] text-[color:var(--color-fg-dim)]"
+        className="mb-1 flex items-center justify-between px-0.5 text-[8px] font-medium uppercase leading-none tracking-[0.08em] text-[color:var(--color-fg-dim)]"
       >
-        <span>{t("row.brRoi.short")}</span>
-        <span className="tabular-nums text-[color:var(--color-fg-muted)]">
+        <span className="truncate">{t("row.brRoi.short")}</span>
+        <span className="shrink-0 tabular-nums text-[10px] text-[color:var(--color-fg-muted)]">
           {formatPct(reportedRoi)}
         </span>
       </div>
-      <div className="mt-1 grid grid-cols-4 gap-0.5">
+      <div className="grid grid-cols-4 gap-0.5 rounded-md border border-[color:var(--color-border)]/80 bg-[color:var(--color-bg)]/45 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
         {BR_REPORTED_ROI_PRESETS.map((p) => {
           const fieldRoi = preRakebackRoiFromReportedRoi(
             p.reportedRoi,
@@ -1426,6 +1433,7 @@ function BrReportedRoiControl({
             rbPct,
           );
           const roundedFieldRoi = roundRoiToWholePct(fieldRoi);
+          const isActive = Math.abs(roundedFieldRoi - row.roi) < 0.0001;
           const optionTitle = t(p.labelKey)
             .replace("{reported}", formatPct(p.reportedRoi))
             .replace("{field}", formatPct(roundedFieldRoi));
@@ -1434,17 +1442,21 @@ function BrReportedRoiControl({
               key={p.id}
               type="button"
               onClick={() => onApply(roundedFieldRoi)}
-              className="h-5 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)] text-[9px] font-semibold tabular-nums text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] focus:border-[color:var(--color-accent)] focus:outline-none"
+              className={
+                "h-7 min-w-0 rounded-[5px] px-0.5 text-[10px] font-semibold tabular-nums transition-colors focus:outline-none " +
+                (isActive
+                  ? "bg-[color:var(--color-accent)]/18 text-[color:var(--color-accent)] ring-1 ring-inset ring-[color:var(--color-accent)]/85"
+                  : "text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-bg-elev-2)]/80 hover:text-[color:var(--color-fg)] focus:bg-[color:var(--color-bg-elev-2)]/80 focus:text-[color:var(--color-fg)]")
+              }
               title={optionTitle}
               aria-label={optionTitle}
+              aria-pressed={isActive}
+              style={{ minHeight: 28, minWidth: 0 }}
             >
               {(p.reportedRoi * 100).toFixed(0)}
             </button>
           );
         })}
-      </div>
-      <div className="mt-1 truncate text-center text-[8px] uppercase leading-none tracking-[0.08em] text-[color:var(--color-fg-dim)]">
-        {t("row.brRoi.rbLine").replace("{rb}", formatPct(rbRoi))}
       </div>
     </div>
   );
@@ -1669,6 +1681,7 @@ function IconBtn({
 }) {
   return (
     <button
+      data-compact-icon-button="true"
       type="button"
       onClick={onClick}
       disabled={disabled}

@@ -323,7 +323,7 @@ input[type="range"] {
   min-height: 32px;
 }
 
-.dense-control-table button {
+.dense-control-table button:not([data-compact-icon-button="true"]) {
   min-width: 32px;
 }
 

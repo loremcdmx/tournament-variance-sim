@@ -4813,7 +4813,7 @@ function BigStat({
       >
         {value}
       </div>
-      {sub && <StatSubline text={sub} />}
+      {sub && <StatSubline text={sub} accentColor={SUIT_COLOR[suit]} />}
       {pdValue != null && (
         <PdCompareRow
           pdValue={pdValue}
@@ -4826,20 +4826,47 @@ function BigStat({
   );
 }
 
-function StatSubline({ text }: { text: string }) {
+function StatSubline({
+  text,
+  accentColor,
+}: {
+  text: string;
+  accentColor?: string;
+}) {
   const colonIdx = text.indexOf(":");
   const hasStructuredRange = colonIdx > 0 && text.includes("→");
   if (hasStructuredRange) {
     const label = text.slice(0, colonIdx).trim();
     const value = text.slice(colonIdx + 1).trim();
+    const [rawMin, rawMax] = value.split("→");
+    const minValue = rawMin?.trim() ?? "";
+    const maxValue = rawMax?.trim() ?? "";
     return (
-      <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/45 px-2.5 py-1 text-[11px] text-[color:var(--color-fg-dim)]">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
+      <div
+        className="max-w-full rounded-md border bg-[color:var(--color-bg)]/55 px-2.5 py-2"
+        style={{
+          borderColor: accentColor
+            ? `color-mix(in srgb, ${accentColor} 22%, var(--color-border))`
+            : "color-mix(in srgb, var(--color-border) 88%, transparent)",
+        }}
+      >
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
           {label}
-        </span>
-        <span className="truncate font-mono tabular-nums text-[color:var(--color-fg)]">
-          {value}
-        </span>
+        </div>
+        <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+          <div className="min-w-0 rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg-elev)]/80 px-2 py-1 text-right font-mono text-[12px] font-semibold leading-none tabular-nums text-[color:var(--color-fg)]">
+            <span className="block truncate">{minValue}</span>
+          </div>
+          <span
+            className="font-mono text-[12px] leading-none"
+            style={{ color: accentColor ?? "var(--color-fg-dim)" }}
+          >
+            →
+          </span>
+          <div className="min-w-0 rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg-elev)]/80 px-2 py-1 text-left font-mono text-[12px] font-semibold leading-none tabular-nums text-[color:var(--color-fg)]">
+            <span className="block truncate">{maxValue}</span>
+          </div>
+        </div>
       </div>
     );
   }
