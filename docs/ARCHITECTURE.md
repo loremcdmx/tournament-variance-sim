@@ -56,8 +56,12 @@ The current split is:
 - **`src/components/results/ResultsPanels.tsx`** — long-form explanatory panels
   such as PrimeDope comparison notes and model-limit cards.
 - **`src/components/charts/FinishPMFPreview.tsx`** — the per-row EV breakdown /
-  payout preview surface. This is still a concentrated module and one of the
-  main remaining UI cleanup targets.
+  payout preview surface. It now acts as the container/composer for:
+  - **`src/components/charts/finishPreview/PreviewParts.tsx`** — reusable
+    preview chrome such as hero stats, EV breakdown rows, split cards, and
+    slider styling tokens.
+  - **`src/lib/sim/previewRowStats.ts`** — pure row-level preview math:
+    finish PMF calibration, EV decomposition, shell stats, and tier building.
 
 ## Data flow per run
 
@@ -233,6 +237,8 @@ remaining concentrated modules are:
   composition, controls, and result rendering.
 - **`src/components/ScheduleEditor.tsx`** — dense but still large because row
   chrome, presets, and format-specific editing all live in one place.
+- **`src/components/charts/FinishPMFPreview.tsx`** — much smaller than before,
+  but still owns shape-control wiring and format-specific preview state.
 - **`src/lib/i18n/dict.ts`** — intentionally centralized, but large enough that
   any future locale work should stay disciplined and grouped.
 
