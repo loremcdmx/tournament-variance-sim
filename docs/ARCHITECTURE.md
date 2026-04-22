@@ -62,6 +62,15 @@ The current split is:
     slider styling tokens.
   - **`src/lib/sim/previewRowStats.ts`** — pure row-level preview math:
     finish PMF calibration, EV decomposition, shell stats, and tier building.
+- **`src/components/CashApp.tsx`** — cash-mode input/orchestration surface. It
+  now owns cash-input persistence, worker-pool lifecycle, and the editor side
+  of the cash page, while the result surface lives in:
+  - **`src/components/cash/CashResultsView.tsx`** — cash results orchestrator:
+    hero cards, section composition, summaries, and mix breakdown.
+  - **`src/components/cash/CashResultsCharts.tsx`** — cash chart subsystem:
+    trajectory, histograms, odds, convergence, diagnostics, and toolbar chrome.
+  - **`src/components/cash/CashResultsShared.tsx`** — reusable cash result
+    presentation language and formatting helpers.
 
 ## Data flow per run
 
@@ -233,8 +242,12 @@ remaining concentrated modules are:
   in one file. This is the main core-engine split target.
 - **`src/components/charts/FinishPMFPreview.tsx`** — presentation and preview
   economics still live together in one large UI module.
-- **`src/components/CashApp.tsx`** — page-sized cash surface that mixes
-  composition, controls, and result rendering.
+- **`src/components/cash/CashResultsView.tsx`** — much cleaner than the old
+  `CashApp.tsx`, but still the next split point inside cash-mode presentation
+  if we want finer boundaries between cards, breakdowns, and disclosure panels.
+- **`src/components/CashApp.tsx`** — now mostly orchestration/editor logic, but
+  the input-side chrome is still large enough that cash settings could be split
+  into their own modules later.
 - **`src/components/ScheduleEditor.tsx`** — dense but still large because row
   chrome, presets, and format-specific editing all live in one place.
 - **`src/components/charts/FinishPMFPreview.tsx`** — much smaller than before,
