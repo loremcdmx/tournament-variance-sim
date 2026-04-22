@@ -1,6 +1,14 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   applyBountyBias,
   buildFinishPMF,
@@ -734,34 +742,39 @@ function TierHoverPopup({
           Math.round(1 / tier.field),
         )}`
       : "—";
-  const [placement, setPlacement] = useState<"right" | "left" | "below">(
-    "right",
+  const [placement, setPlacement] = useState<"right" | "left" | "below" | null>(
+    null,
   );
   const popupRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      const el = popupRef.current;
-      if (!el) return;
+  useLayoutEffect(() => {
+    const el = popupRef.current;
+    if (!el) return;
 
-      const anchorRect = el.parentElement?.getBoundingClientRect();
-      const popupWidth = el.getBoundingClientRect().width;
-      if (!anchorRect || popupWidth <= 0) return;
+    const anchorRect = el.parentElement?.getBoundingClientRect();
+    const popupWidth = el.getBoundingClientRect().width;
+    if (!anchorRect || popupWidth <= 0) return;
 
-      const edgePad = 8;
-      const gap = 8;
-      const rightSpace = window.innerWidth - anchorRect.right - gap - edgePad;
-      const leftSpace = anchorRect.left - gap - edgePad;
-      const nextPlacement =
-        window.innerWidth < 1100 || (rightSpace < popupWidth && leftSpace < popupWidth)
-          ? "below"
-          : rightSpace >= popupWidth
-            ? "right"
-            : "left";
+    const edgePad = 8;
+    const gap = 8;
+    const rightSpace = window.innerWidth - anchorRect.right - gap - edgePad;
+    const leftSpace = anchorRect.left - gap - edgePad;
+    const nextPlacement =
+      window.innerWidth < 1100 || (rightSpace < popupWidth && leftSpace < popupWidth)
+        ? "below"
+        : rightSpace >= popupWidth
+          ? "right"
+          : "left";
 
-      if (nextPlacement !== placement) setPlacement(nextPlacement);
+    if (nextPlacement === placement) return;
+
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setPlacement(nextPlacement);
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      cancelled = true;
+    };
   }, [
     label,
     placement,
@@ -779,10 +792,11 @@ function TierHoverPopup({
       className={`pointer-events-none z-50 rounded-md border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3 py-2.5 text-left text-[11px] leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] ${
         placement === "below"
           ? "relative mt-2 w-full max-w-full overflow-x-hidden"
-          : placement === "right"
-            ? "absolute left-full top-0 ml-2 w-72 max-w-[85vw]"
-            : "absolute right-full top-0 mr-2 w-72 max-w-[85vw]"
+          : placement === "left"
+            ? "absolute right-full top-0 mr-2 w-72 max-w-[85vw]"
+            : "absolute left-full top-0 ml-2 w-72 max-w-[85vw]"
       }`}
+      style={placement ? undefined : { visibility: "hidden" }}
     >
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
         <div className="flex items-baseline gap-1.5">
