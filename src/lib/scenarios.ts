@@ -74,6 +74,7 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 1,
       samples: 10_000,
       bankroll: 300,
+      itmGlobalPct: 20,
       rakebackPct: 40,
     },
   },

@@ -716,6 +716,7 @@ const ScheduleRow = memo(function ScheduleRow({
         </Td>
         <Td align="right">
           <BuyInInput
+            gameType={uiGt}
             buyIn={r.buyIn}
             rake={r.rake}
             onChange={(buyIn, rake) => update(r.id, { buyIn, rake })}
@@ -1501,6 +1502,16 @@ function brPresetMatch(
   return best;
 }
 
+export function suggestStandardBuyInFromBrCarryover(
+  buyIn: number,
+  rake: number,
+): { buyIn: number; rake: number } | null {
+  if (Math.abs(rake - BR_RAKE) > 0.0001) return null;
+  const preset = brPresetMatch(buyIn, rake);
+  if (!preset) return null;
+  return { buyIn: preset.total, rake: 0.1 };
+}
+
 const BR_REPORTED_ROI_PRESETS = [
   { id: "low", reportedRoi: 0.03, labelKey: "row.brRoi.preset.low" },
   { id: "goodLow", reportedRoi: 0.05, labelKey: "row.brRoi.preset.goodLow" },
@@ -1653,49 +1664,78 @@ function GameTypeSelect({
 }
 
 function BuyInInput({
+  gameType,
   buyIn,
   rake,
   onChange,
 }: {
+  gameType: VisibleGameType;
   buyIn: number;
   rake: number;
   onChange: (buyIn: number, rake: number) => void;
 }) {
+  const t = useT();
   const canonical = formatBuyIn(buyIn, rake);
   const [local, setLocal] = useState(canonical);
   const [focused, setFocused] = useState(false);
   if (!focused && local !== canonical) setLocal(canonical);
   const parsed = parseBuyIn(local, rake);
   const invalid = local.trim() !== "" && parsed === null;
+  const snapSuggestion =
+    gameType === "mystery-royale"
+      ? null
+      : suggestStandardBuyInFromBrCarryover(buyIn, rake);
+  const snapLabel = snapSuggestion
+    ? formatBuyIn(snapSuggestion.buyIn, snapSuggestion.rake)
+    : "";
   return (
-    <input
-      type="text"
-      inputMode="decimal"
-      value={local}
-      onFocus={() => setFocused(true)}
-      onBlur={() => {
-        setFocused(false);
-        const p = parseBuyIn(local, rake);
-        if (p) {
-          startTransition(() => onChange(p.buyIn, p.rake));
-          setLocal(formatBuyIn(p.buyIn, p.rake));
-        } else {
-          setLocal(canonical);
+    <div className="flex w-full flex-col items-center gap-1">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={local}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          const p = parseBuyIn(local, rake);
+          if (p) {
+            startTransition(() => onChange(p.buyIn, p.rake));
+            setLocal(formatBuyIn(p.buyIn, p.rake));
+          } else {
+            setLocal(canonical);
+          }
+        }}
+        onChange={(e) => {
+          setLocal(e.target.value);
+          const p = parseBuyIn(e.target.value, rake);
+          if (p) startTransition(() => onChange(p.buyIn, p.rake));
+        }}
+        placeholder="50+5"
+        title="50+5 = $50 buy-in + $5 rake (or just a number)"
+        className={
+          INPUT_BASE +
+          " w-full text-center tabular-nums " +
+          (invalid ? "!border-[color:var(--color-danger)]/70" : "")
         }
-      }}
-      onChange={(e) => {
-        setLocal(e.target.value);
-        const p = parseBuyIn(e.target.value, rake);
-        if (p) startTransition(() => onChange(p.buyIn, p.rake));
-      }}
-      placeholder="50+5"
-      title="50+5 = $50 buy-in + $5 rake (or just a number)"
-      className={
-        INPUT_BASE +
-        " w-full text-center tabular-nums " +
-        (invalid ? "!border-[color:var(--color-danger)]/70" : "")
-      }
-    />
+      />
+      {snapSuggestion && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setFocused(false);
+            setLocal(snapLabel);
+            startTransition(() =>
+              onChange(snapSuggestion.buyIn, snapSuggestion.rake),
+            );
+          }}
+          className="max-w-full rounded-full border border-[color:var(--color-border)]/80 bg-[color:var(--color-bg)]/55 px-2 py-0.5 text-[9px] font-semibold tracking-[0.04em] text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)]/65 hover:text-[color:var(--color-fg)] focus:outline-none focus:ring-1 focus:ring-[color:var(--color-accent)]/55"
+          title={t("row.buyIn.normalizeBrHint").replace("{value}", snapLabel)}
+        >
+          {t("row.buyIn.normalizeBr").replace("{value}", snapLabel)}
+        </button>
+      )}
+    </div>
   );
 }
 

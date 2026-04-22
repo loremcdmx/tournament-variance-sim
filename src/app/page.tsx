@@ -22,6 +22,7 @@ import { ConvergenceChart } from "@/components/charts/ConvergenceChart";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
+import { inferGameType } from "@/lib/sim/gameType";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
   buildBattleRoyaleLeaderboardConfig,
@@ -116,6 +117,15 @@ const initialControls: ControlsState = {
   battleRoyaleLeaderboard: DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
 };
 
+const DEFAULT_BR_GLOBAL_ITM_PCT = 20;
+
+function isPureBattleRoyaleSchedule(schedule: TournamentRow[]): boolean {
+  return (
+    schedule.length > 0 &&
+    schedule.every((row) => inferGameType(row) === "mystery-royale")
+  );
+}
+
 interface CompareSlot {
   label: string;
   state: PersistedState;
@@ -156,6 +166,11 @@ export default function Home() {
     },
     "mtt",
   );
+  const pureBattleRoyaleSchedule = useMemo(
+    () => isPureBattleRoyaleSchedule(schedule),
+    [schedule],
+  );
+  const prevPureBattleRoyaleRef = useRef(pureBattleRoyaleSchedule);
   // Advanced mode off → force MTT view regardless of persisted state.
   const activeMode: "mtt" | "cash" = advanced ? mode : "mtt";
   const activeCompareSlot = advanced ? compareSlot : null;
@@ -231,6 +246,31 @@ export default function Home() {
     }, 200);
     return () => window.clearTimeout(timeoutId);
   }, [schedule, controls, hydrated]);
+
+  useEffect(() => {
+    const wasPureBattleRoyale = prevPureBattleRoyaleRef.current;
+    prevPureBattleRoyaleRef.current = pureBattleRoyaleSchedule;
+    if (!pureBattleRoyaleSchedule || wasPureBattleRoyale) return;
+    const timeoutId = window.setTimeout(() => {
+      setControls((prev) => {
+        const hasGenericItmDefault =
+          Math.abs(prev.itmGlobalPct - initialControls.itmGlobalPct) < 1e-9;
+        if (!hasGenericItmDefault) return prev;
+        if (
+          prev.itmGlobalEnabled &&
+          Math.abs(prev.itmGlobalPct - DEFAULT_BR_GLOBAL_ITM_PCT) < 1e-9
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          itmGlobalEnabled: true,
+          itmGlobalPct: DEFAULT_BR_GLOBAL_ITM_PCT,
+        };
+      });
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [pureBattleRoyaleSchedule]);
 
   const clearPendingInterrupt = useCallback(() => {
     if (pendingInterruptRef.current == null) return;

@@ -1,10 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { parseBuyIn, parseImportCSV } from "./ScheduleEditor";
+import {
+  parseBuyIn,
+  parseImportCSV,
+  suggestStandardBuyInFromBrCarryover,
+} from "./ScheduleEditor";
 
 describe("parseBuyIn", () => {
   it("rejects plus-form tickets when fee exceeds 100% of the buy-in", () => {
     expect(parseBuyIn("50+5000", 0.1)).toBeNull();
     expect(parseBuyIn("$50 + $51", 0.1)).toBeNull();
+  });
+});
+
+describe("suggestStandardBuyInFromBrCarryover", () => {
+  it("snaps carried-over BR tiers to a regular 10% buy-in+rake structure", () => {
+    expect(suggestStandardBuyInFromBrCarryover(10 / 1.08, 0.08)).toEqual({
+      buyIn: 10,
+      rake: 0.1,
+    });
+    expect(suggestStandardBuyInFromBrCarryover(3 / 1.08, 0.08)).toEqual({
+      buyIn: 3,
+      rake: 0.1,
+    });
+  });
+
+  it("does not suggest anything for normal non-BR structures", () => {
+    expect(suggestStandardBuyInFromBrCarryover(10, 0.1)).toBeNull();
+    expect(suggestStandardBuyInFromBrCarryover(50, 0.1)).toBeNull();
   });
 });
 

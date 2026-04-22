@@ -183,6 +183,14 @@ export const DICT = {
   "row.label": { en: "Label", ru: "Турнир" },
   "row.players": { en: "AFS", ru: "AFS" },
   "row.buyIn": { en: "Buy-in", ru: "Бай-ин" },
+  "row.buyIn.normalizeBr": {
+    en: "standard {value}",
+    ru: "станд. {value}",
+  },
+  "row.buyIn.normalizeBrHint": {
+    en: "Battle Royale tiers use a room-style total ticket. Click to snap this row back to a regular buy-in + rake structure: {value}.",
+    ru: "У Battle Royale хранится румовский total-ticket. Кликни, чтобы вернуть строку к обычной структуре бай-ина + рейка: {value}.",
+  },
   "row.rake": { en: "Rake %", ru: "Рейк %" },
   "row.import": { en: "Import…", ru: "Импорт…" },
   "row.importTitle": {
