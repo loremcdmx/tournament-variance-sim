@@ -723,7 +723,7 @@ const ScheduleRow = memo(function ScheduleRow({
         </Td>
         <Td align="right">
           <div className="flex flex-col items-center gap-1">
-            <NumInput
+            <PercentNumInput
               value={Math.round(r.roi * 100)}
               onChange={(v) => update(r.id, { roi: v / 100 })}
               min={-99}
@@ -742,24 +742,22 @@ const ScheduleRow = memo(function ScheduleRow({
           </div>
         </Td>
         <Td align="right">
-          <input
-            type="number"
+          <PercentDraftInput
             min={0}
             max={100}
             step={0.5}
             disabled={globalItmPct != null}
-            placeholder={globalItmPct != null ? `${globalItmPct}` : "auto"}
             value={
               globalItmPct != null
-                ? ""
+                ? +(globalItmPct).toFixed(1)
                 : r.itmRate != null
                   ? +(r.itmRate * 100).toFixed(2)
                   : ""
             }
-            onChange={(e) => {
+            placeholder={globalItmPct != null ? "" : "auto"}
+            lockedLabel={globalItmPct != null ? t("row.inheritedShort") : undefined}
+            onChange={(raw) => {
               if (globalItmPct != null) return;
-              const raw = normalizeNumericDraft(e.target.value);
-              if (raw !== e.target.value) e.target.value = raw;
               if (raw === "") {
                 update(r.id, { itmRate: undefined });
                 return;
@@ -768,7 +766,6 @@ const ScheduleRow = memo(function ScheduleRow({
               if (!Number.isFinite(v) || v < 0 || v > 100) return;
               update(r.id, { itmRate: v / 100 });
             }}
-            className="h-8 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:cursor-not-allowed disabled:opacity-50"
           />
         </Td>
         <Td className="min-w-0">
@@ -1708,12 +1705,16 @@ function NumInput({
   step,
   min,
   max,
+  className = "",
+  disabled = false,
 }: {
   value: number;
   onChange: (v: number) => void;
   step?: number;
   min?: number;
   max?: number;
+  className?: string;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1738,8 +1739,10 @@ function NumInput({
       min={min}
       max={max}
       step={step}
+      disabled={disabled}
       inputMode="decimal"
       onChange={(e) => {
+        if (disabled) return;
         const raw = e.target.value;
         setDraft(raw);
         clearCommitTimer();
@@ -1752,6 +1755,7 @@ function NumInput({
         }, 140);
       }}
       onBlur={() => {
+        if (disabled) return;
         clearCommitTimer();
         commitDraft(
           draft,
@@ -1764,6 +1768,7 @@ function NumInput({
         );
       }}
       onKeyDown={(e) => {
+        if (disabled) return;
         if (e.key === "Enter") {
           e.preventDefault();
           clearCommitTimer();
@@ -1784,10 +1789,78 @@ function NumInput({
       }}
       className={
         INPUT_BASE +
-        " w-full text-center tabular-nums " +
+        " w-full text-center tabular-nums disabled:cursor-not-allowed disabled:opacity-55 " +
+        className +
+        " " +
         (invalid ? "!border-rose-500/70 ring-1 ring-rose-500/30" : "")
       }
     />
+  );
+}
+
+function PercentNumInput(
+  props: React.ComponentProps<typeof NumInput>,
+) {
+  return (
+    <div className="relative w-full">
+      <NumInput {...props} className="pr-7" />
+      <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[11px] font-medium tabular-nums text-[color:var(--color-fg-dim)]">
+        %
+      </span>
+    </div>
+  );
+}
+
+function PercentDraftInput({
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  placeholder,
+  disabled,
+  lockedLabel,
+}: {
+  value: number | "";
+  onChange: (raw: string) => void;
+  min: number;
+  max: number;
+  step: number;
+  placeholder?: string;
+  disabled?: boolean;
+  lockedLabel?: string;
+}) {
+  return (
+    <div className="relative w-full">
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        disabled={disabled}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => {
+          if (disabled) return;
+          const raw = normalizeNumericDraft(e.target.value);
+          if (raw !== e.target.value) e.target.value = raw;
+          onChange(raw);
+        }}
+        className={
+          INPUT_BASE +
+          " w-full pr-7 text-center tabular-nums disabled:cursor-not-allowed disabled:border-[color:var(--color-border)]/70 disabled:bg-[color:var(--color-bg-elev)]/55 disabled:text-[color:var(--color-fg-muted)]"
+        }
+      />
+      {lockedLabel ? (
+        <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+          {lockedLabel}
+        </span>
+      ) : (
+        <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[11px] font-medium tabular-nums text-[color:var(--color-fg-dim)]">
+          %
+        </span>
+      )}
+    </div>
   );
 }
 

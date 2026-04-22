@@ -291,6 +291,7 @@ export const DICT = {
     en: "Pin the in-the-money rate at a constant value regardless of ROI. All skill concentrates WITHIN the cashed band — a grinder doesn't cash more often than a no-skill player, they just run deeper when they do. Empty = auto (classic α-calibration, ITM rate scales with ROI). Typical: 15–18 % for a solid grinder.",
     ru: "Фиксирует частоту попадания в призовые независимо от ROI. Скилл весь уходит ВНУТРЬ призовой зоны — гриндер попадает в деньги не чаще нулевого игрока, но бежит глубже. Пусто = авто (классическая α-калибровка, ITM растёт с ROI). Типично: 15–18 % для крепкого гриндера.",
   },
+  "row.inheritedShort": { en: "global", ru: "глоб." },
   "row.unnamed": { en: "unnamed", ru: "без названия" },
   "row.noGuarantee": { en: "no guarantee", ru: "без гарантии" },
   "row.advanced": { en: "Advanced", ru: "Доп. параметры" },
