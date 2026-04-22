@@ -35,6 +35,7 @@ import {
   battleRoyaleLeaderboardShareForRow,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
+import { inferGameType } from "@/lib/sim/gameType";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import { derivePreviewRowEconomics } from "@/lib/sim/previewRowEconomics";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
@@ -2025,7 +2026,6 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
   const economics = derivePreviewRowEconomics(row);
   const N = economics.fieldSize;
   const payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
-  const basePool = economics.basePool;
   const entryCostSingle = economics.singleCost;
   const entryCost = economics.costPerTournament;
   const expectedBullets = economics.expectedBullets;
@@ -2536,7 +2536,7 @@ function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats
     jackpotBountyEvPerEntry: jackpotBountyEv,
     jackpotThreshold: JACKPOT_THRESHOLD,
     bountyShare: bountyShareOfPayout,
-    progressivePko: bountyFraction > 0,
+    progressivePko: inferGameType(row) === "pko",
     topPlaces: Math.max(1, Math.ceil(N * 0.01)),
     tiers,
     halfMassK,

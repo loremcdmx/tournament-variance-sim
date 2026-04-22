@@ -632,6 +632,14 @@ export const DICT = {
     en: "range: {min} → {max}",
     ru: "разброс: {min} → {max}",
   },
+  "stat.range.spread": { en: "Range", ru: "Разброс" },
+  "stat.range.from": { en: "From", ru: "От" },
+  "stat.range.to": { en: "To", ru: "До" },
+  "stat.range.pointEv": { en: "Point = EV", ru: "Точка = EV" },
+  "stat.range.pointHint": {
+    en: "The dot shows where the current expected value sits between the low and high ends of this simulated range.",
+    ru: "Точка показывает, где текущий ожидаемый профит находится между нижней и верхней границей этого симулированного диапазона.",
+  },
   "stat.expectedProfit.tip": {
     en: "Analytical EV (expected payout − full entry cost × entries). Actual MC mean: {mean} · ROI {roi} · median {median}.",
     ru: "Аналитическое EV (ожидаемая выплата − полная стоимость входов). Фактическое MC-среднее: {mean} · ROI {roi} · медиана {median}.",
@@ -1365,6 +1373,48 @@ export const DICT = {
     ru: "Импортировано {n} {_preset}.",
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
+  "changelog.v076.title": { en: "v0.7.6 — 2026-04-22", ru: "v0.7.6 — 2026-04-22" },
+  "changelog.v076.resultsRail": {
+    en: "Expected-profit cards now show spread as a cleaner visual rail with an EV anchor, instead of the older boxed min/max strip.",
+    ru: "В карточке ожидаемого профита разброс теперь показывается как более аккуратная визуальная полоса с точкой EV вместо старой boxed min/max полосы.",
+  },
+  "changelog.v076.resultsTypography": {
+    en: "Large result cards were retuned with calmer typography: softer titles, cleaner primary values, and less shouty terminal styling.",
+    ru: "Большие карточки результатов получили более спокойную типографику: мягче заголовки, чище главные значения и меньше крикливого terminal-стайлинга.",
+  },
+  "changelog.v076.previewPko": {
+    en: "Finish preview now infers the real game type before labeling rows as progressive PKO, avoiding false PKO markers on non-PKO formats.",
+    ru: "Finish preview теперь сначала выводит реальный тип игры и только потом помечает строку как progressive PKO, так что ложные PKO-маркеры на не-PKO форматах исчезли.",
+  },
+  "changelog.v076.pdWeakness": {
+    en: "The PrimeDope weakness section was rewritten around the real MTT math gap: finish shell, modern format channels, and missing uncertainty layers.",
+    ru: "Блок про слабости PrimeDope переписан вокруг реального math-gap в MTT: finish-shell, современные форматные каналы и отсутствующие слои неопределённости.",
+  },
+  "changelog.v075.title": { en: "v0.7.5 — 2026-04-22", ru: "v0.7.5 — 2026-04-22" },
+  "changelog.v075.brConvergence": {
+    en: "Battle Royale convergence bands are back in a validated form: the chart now centers on runtime sigma and shows a tested numeric range instead of the old stale fit shell.",
+    ru: "Для Battle Royale вернули валидированные полосы сходимости: график теперь центрируется по runtime sigma и показывает проверенный числовой диапазон вместо старой протухшей fit-оболочки.",
+  },
+  "changelog.v075.mysteryConvergence": {
+    en: "Mystery convergence moved to runtime-centered bands, so the chart no longer hides the numeric range behind the old narrow safe-box warning.",
+    ru: "Сходимость Mystery перевели на runtime-centered полосы, так что числовой диапазон больше не прячется за старым узким safe-box предупреждением.",
+  },
+  "changelog.v075.brPromo": {
+    en: "Battle Royale promo / leaderboard support was split into a cleaner layer with less self-contradictory controls.",
+    ru: "Для Battle Royale добавили отдельный promo / leaderboard слой и заодно почистили контролы, чтобы интерфейс меньше противоречил сам себе.",
+  },
+  "changelog.v075.previewMath": {
+    en: "Preview economics and BR controls were realigned with engine math: re-entry cost, RB / promo contribution, and per-tournament EV now match the actual model much closer.",
+    ru: "Экономику preview и BR-контролы выровняли с математикой движка: стоимость re-entry, вклад RB / promo и per-tournament EV теперь заметно ближе к реальной модели.",
+  },
+  "changelog.v075.inputs": {
+    en: "Numeric drafts are calmer: whole-number boxes stop keeping junk tails, and inputs like 0100 collapse back to 100.",
+    ru: "Числовые поля стали спокойнее: цельнопроцентные боксы перестали тащить мусорные хвосты, а ввод вроде 0100 автоматически схлопывается обратно в 100.",
+  },
+  "changelog.v075.polish": {
+    en: "Schedule / stat layout got another polish pass, and cash-state hydration became stricter about invalid persisted values.",
+    ru: "Расписание и статистические карточки получили еще один проход полировки, а гидрация cash-state стала строже к невалидным сохраненным значениям.",
+  },
   "changelog.v074.title": { en: "v0.7.4 - 2026-04-20", ru: "v0.7.4 - 2026-04-20" },
   "changelog.v074.brWinnerFirst": {
     en: "Battle Royale fixed-ITM profit now strengthens 1st place before extra cash EV starts spilling into the rest of top-3.",

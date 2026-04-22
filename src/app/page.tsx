@@ -1165,6 +1165,22 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v076.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v076.resultsRail")}</li>
+              <li>{t("changelog.v076.resultsTypography")}</li>
+              <li>{t("changelog.v076.previewPko")}</li>
+              <li>{t("changelog.v076.pdWeakness")}</li>
+            </ul>
+            <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v075.title")}</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v075.brConvergence")}</li>
+              <li>{t("changelog.v075.mysteryConvergence")}</li>
+              <li>{t("changelog.v075.brPromo")}</li>
+              <li>{t("changelog.v075.previewMath")}</li>
+              <li>{t("changelog.v075.inputs")}</li>
+              <li>{t("changelog.v075.polish")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v074.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v074.brWinnerFirst")}</li>
