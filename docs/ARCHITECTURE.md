@@ -36,6 +36,29 @@ This document describes the data flow, module boundaries, and invariants of the 
 └──────────────────────────────────────────────────────────────┘
 ```
 
+## UI surface map
+
+The simulator UI is no longer one undifferentiated `ResultsView.tsx` blob.
+The current split is:
+
+- **`src/app/page.tsx`** — top-level page composition, scenario loading,
+  persistence wiring, and run/compare orchestration.
+- **`src/components/ScheduleEditor.tsx`** — schedule authoring UI and per-row
+  tournament controls.
+- **`src/components/ResultsView.tsx`** — results page orchestrator. It owns
+  section-level state, compare-mode toggles, card composition, and wires
+  `SimulationResult` into the smaller presentation modules below.
+- **`src/components/results/TrajectoryPlot.tsx`** — trajectory chart rendering,
+  visibility gating, hover/highlight behavior, chart asset construction, and
+  y-range policy. If you need to change how path charts work, start here.
+- **`src/components/results/StatCards.tsx`** — shared KPI card language used by
+  Expected Profit / Risk / Drawdowns / Series.
+- **`src/components/results/ResultsPanels.tsx`** — long-form explanatory panels
+  such as PrimeDope comparison notes and model-limit cards.
+- **`src/components/charts/FinishPMFPreview.tsx`** — the per-row EV breakdown /
+  payout preview surface. This is still a concentrated module and one of the
+  main remaining UI cleanup targets.
+
 ## Data flow per run
 
 1. **User clicks Run.** `useSimulation.onRun(input)` is called with `SimulationInput` (schedule, samples, seed, model, bankroll, noise params, etc.).
@@ -183,10 +206,40 @@ Add new tests next to the file they cover. Keep them fast — the whole suite sh
 ## What lives outside `src/lib/sim/`
 
 - **`src/components/charts/`** — all uPlot charts. They read `SimulationResult` and nothing else. Pure rendering.
-- **`src/components/ResultsView.tsx`** — composite view. Owns the slider/legend state, line-style preset picker, and the "show/hide" state for each CollapsibleSection. Does not touch the engine.
+- **`src/components/ResultsView.tsx`** — results orchestrator. Owns section
+  state, compare wiring, and composes the submodules below; it should not be
+  the home for low-level chart math anymore.
+- **`src/components/results/TrajectoryPlot.tsx`** — low-level trajectory chart
+  subsystem: asset building, trim-aware y-range, hover hit-testing, and
+  visibility/restyling of path families.
+- **`src/components/results/StatCards.tsx`** — reusable result-card language
+  and shared internal subwidgets.
+- **`src/components/results/ResultsPanels.tsx`** — explanatory/report panels
+  that would otherwise bloat `ResultsView.tsx`.
 - **`src/lib/scenarios.ts`** — declarative demo presets. Read by the scenario grid in `page.tsx`.
 - **`src/lib/persistence.ts`** — localStorage + share-URL. Stores only the serializable state, no worker state.
 - **`src/lib/lineStyles.ts`** — tracker-inspired color/width presets for the trajectory chart (HM2, H2N, HM3, PT4, PokerCraft, PokerDope).
+
+## Remaining structural debt
+
+The repo is cleaner than it was, but it is not “finished forever”. The biggest
+remaining concentrated modules are:
+
+- **`src/lib/sim/engine.ts`** — still owns build/compile/hot-loop/result-build
+  in one file. This is the main core-engine split target.
+- **`src/components/charts/FinishPMFPreview.tsx`** — presentation and preview
+  economics still live together in one large UI module.
+- **`src/components/CashApp.tsx`** — page-sized cash surface that mixes
+  composition, controls, and result rendering.
+- **`src/components/ScheduleEditor.tsx`** — dense but still large because row
+  chrome, presets, and format-specific editing all live in one place.
+- **`src/lib/i18n/dict.ts`** — intentionally centralized, but large enough that
+  any future locale work should stay disciplined and grouped.
+
+If you are doing cleanup work, prefer extracting **self-contained subsystems**
+with real boundaries (chart asset builders, result panels, preview economics,
+cash result cards) instead of “misc helpers” files that only move clutter
+around.
 
 ## Where to start if you want to...
 
