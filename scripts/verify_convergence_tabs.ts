@@ -120,6 +120,20 @@ const sLoRoi = freezeSigma(1000, -0.2, 0.1);
 const sHiRoi = freezeSigma(1000, 0.5, 0.1);
 if (sHiRoi <= sLoRoi) throw new Error("freeze σ should grow with ROI in runtime mode");
 console.log(`  ✓ σ runtime↑ in ROI  [σ@-20%=${sLoRoi.toFixed(3)}, σ@+50%=${sHiRoi.toFixed(3)}]`);
+const freezeResidual = 0.5;
+const freezeKPoint = Math.ceil(Math.pow((z95 * freezeSigma(1000, 0.1, 0.1)) / 0.1, 2));
+const freezeKLo = Math.ceil(
+  Math.pow((z95 * freezeSigma(1000, 0.1, 0.1) * (1 - freezeResidual)) / 0.1, 2),
+);
+const freezeKHi = Math.ceil(
+  Math.pow((z95 * freezeSigma(1000, 0.1, 0.1) * (1 + freezeResidual)) / 0.1, 2),
+);
+if (!(freezeKLo < freezeKPoint && freezeKPoint < freezeKHi)) {
+  throw new Error("freeze runtime band should produce a real k-range");
+}
+console.log(
+  `  ✓ runtime-centered freeze band widens k  [${freezeKLo.toLocaleString()} < ${freezeKPoint.toLocaleString()} < ${freezeKHi.toLocaleString()}]`,
+);
 
 // ---------- Tab 2: PKO ------------------------------------------------------
 

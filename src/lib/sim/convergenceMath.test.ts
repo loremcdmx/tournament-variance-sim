@@ -168,7 +168,11 @@ describe("convergence math", () => {
       format: "freeze",
       rakePct: 10,
       sigmaOverrides: {
-        freeze: { s: low!.sigmaEff, lo: low!.sigmaEff, hi: low!.sigmaEff },
+        freeze: {
+          s: low!.sigmaEff,
+          lo: low!.sigmaEff * 0.5,
+          hi: low!.sigmaEff * 1.5,
+        },
       },
     });
     const highRows = computeConvergenceRows({
@@ -181,14 +185,26 @@ describe("convergence math", () => {
       sigmaOverrides: {
         freeze: {
           s: high!.sigmaEff,
-          lo: high!.sigmaEff,
-          hi: high!.sigmaEff,
+          lo: high!.sigmaEff * 0.5,
+          hi: high!.sigmaEff * 1.5,
         },
       },
     });
 
     expect(highRows[targetRow].tourneys).toBeGreaterThan(
       lowRows[targetRow].tourneys,
+    );
+    expect(lowRows[targetRow].tourneysLo).toBeLessThan(
+      lowRows[targetRow].tourneys,
+    );
+    expect(lowRows[targetRow].tourneysHi).toBeGreaterThan(
+      lowRows[targetRow].tourneys,
+    );
+    expect(highRows[targetRow].tourneysLo).toBeLessThan(
+      highRows[targetRow].tourneys,
+    );
+    expect(highRows[targetRow].tourneysHi).toBeGreaterThan(
+      highRows[targetRow].tourneys,
     );
   });
 

@@ -374,10 +374,16 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       { finishModel },
     );
     if (!syntheticFreeze) return null;
+    // Runtime single-row freeze sigma is the point estimate we trust most.
+    // The surrounding ± band is intentionally conservative: a sweep over the
+    // full UI box (AFS 50..50k, ROI -30..+100%) showed up to ~50% drift
+    // versus the old generic freeze surface, so we show a coarse 50% envelope
+    // instead of pretending freeze is point-only.
+    const resid = 0.5;
     return {
       s: syntheticFreeze.sigmaEff,
-      lo: syntheticFreeze.sigmaEff,
-      hi: syntheticFreeze.sigmaEff,
+      lo: syntheticFreeze.sigmaEff * (1 - resid),
+      hi: syntheticFreeze.sigmaEff * (1 + resid),
     };
   }, [effectiveMode, format, effectiveAfs, rakePct, effectiveRoi, finishModel]);
   const battleRoyaleSigmaOverride = useMemo<SigmaBand | null>(() => {

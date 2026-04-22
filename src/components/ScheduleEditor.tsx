@@ -581,6 +581,7 @@ const ScheduleRow = memo(function ScheduleRow({
     (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
     (r.bountyFraction ?? 0) > 0;
   const gt = inferGameType(r);
+  const showInlineBrLeaderboard = advanced && gt === "mystery-royale";
 
   // The payout dropdown would otherwise re-run STRUCTURES.map+filter (14×3)
   // on every keystroke in any sibling field. Only players/gameType shift the
@@ -676,19 +677,28 @@ const ScheduleRow = memo(function ScheduleRow({
           />
         </Td>
         <Td className="min-w-0">
-          <div className="flex items-center justify-center gap-1">
-            <GameTypeSelect
-              value={gt}
-              onChange={(next) =>
-                startTransition(() => update(r.id, applyGameType(r, next)))
-              }
-            />
-            {gt === "mystery-royale" && (
-              <BrPresetSelect
-                row={r}
-                onApply={(patch) =>
-                  startTransition(() => update(r.id, patch))
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-center gap-1">
+              <GameTypeSelect
+                value={gt}
+                onChange={(next) =>
+                  startTransition(() => update(r.id, applyGameType(r, next)))
                 }
+              />
+              {gt === "mystery-royale" && (
+                <BrPresetSelect
+                  row={r}
+                  onApply={(patch) =>
+                    startTransition(() => update(r.id, patch))
+                  }
+                />
+              )}
+            </div>
+            {showInlineBrLeaderboard && (
+              <BattleRoyaleLeaderboardInlineControl
+                row={r}
+                globalRakebackPct={globalRakebackPct}
+                onChange={(patch) => update(r.id, patch)}
               />
             )}
           </div>
@@ -871,7 +881,6 @@ const ScheduleRow = memo(function ScheduleRow({
           <td colSpan={10} className="px-6 py-4">
             <AdvancedRowPanel
               row={r}
-              globalRakebackPct={globalRakebackPct}
               onChange={(patch) => update(r.id, patch)}
             />
           </td>
@@ -898,11 +907,9 @@ function SectionLabel({
 
 function AdvancedRowPanel({
   row,
-  globalRakebackPct,
   onChange,
 }: {
   row: TournamentRow;
-  globalRakebackPct: number;
   onChange: (patch: Partial<TournamentRow>) => void;
 }) {
   const t = useT();
@@ -910,12 +917,6 @@ function AdvancedRowPanel({
   const gt = inferGameType(row);
   const showBounty = gt === "pko" || gt === "mystery" || gt === "mystery-royale";
   const showMysteryVar = gt === "mystery";
-  const showBrLeaderboard = gt === "mystery-royale";
-  const brLeaderboardEnabled = row.battleRoyaleLeaderboardEnabled ?? false;
-  const brLeaderboardShare = battleRoyaleLeaderboardShareForRow(row, true);
-  const brDirectShare = battleRoyaleDirectRakebackShareForRow(row, true);
-  const directRakePct = globalRakebackPct * brDirectShare;
-  const leaderboardRakePct = globalRakebackPct * brLeaderboardShare;
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
       {/* Field variability */}
@@ -1067,80 +1068,85 @@ function AdvancedRowPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
 
-      {showBrLeaderboard && (
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel hint={t("row.brLeaderboardHint")}>
-            {t("row.brLeaderboard")}
-          </SectionLabel>
-          <label className="flex items-center gap-2 text-xs text-[color:var(--color-fg-muted)]">
-            <input
-              type="checkbox"
-              checked={brLeaderboardEnabled}
-              onChange={(e) =>
-                onChange({
-                  battleRoyaleLeaderboardEnabled: e.target.checked,
-                  battleRoyaleLeaderboardShare: e.target.checked
-                    ? normalizeBattleRoyaleShareForInput(
-                        row.battleRoyaleLeaderboardShare,
-                      )
-                    : undefined,
-                })
-              }
-              className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
-            />
-            {t("row.brLeaderboardToggle")}
-          </label>
-          {brLeaderboardEnabled ? (
-            <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/50 p-2.5">
-              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
-                <span>{t("row.brLeaderboardSlider.direct")}</span>
-                <span>{t("row.brLeaderboardSlider.leaderboard")}</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={Math.round(brLeaderboardShare * 100)}
-                onChange={(e) =>
-                  onChange({
-                    battleRoyaleLeaderboardShare: Number(e.target.value) / 100,
-                  })
-                }
-                className="mt-2 w-full"
-              />
-              <div className="mt-2 text-[11px] leading-snug text-[color:var(--color-fg-muted)]">
-                {t("row.brLeaderboardCurrent")
-                  .replace("{directShare}", `${Math.round(brDirectShare * 100)}%`)
-                  .replace(
-                    "{leaderboardShare}",
-                    `${Math.round(brLeaderboardShare * 100)}%`,
-                  )
-                  .replace("{directRb}", `${directRakePct.toFixed(1)}%`)
-                  .replace(
-                    "{leaderboardRb}",
-                    `${leaderboardRakePct.toFixed(1)}%`,
-                  )}
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <FieldSmall label={t("row.brLeaderboardDirect")}>
-                  <span className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)]">
-                    {Math.round(brDirectShare * 100)}% / {directRakePct.toFixed(1)}%
-                  </span>
-                </FieldSmall>
-                <FieldSmall label={t("row.brLeaderboardLeader")}>
-                  <span className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)]">
-                    {Math.round(brLeaderboardShare * 100)}% / {leaderboardRakePct.toFixed(1)}%
-                  </span>
-                </FieldSmall>
-              </div>
-            </div>
-          ) : (
-            <div className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-              {t("row.brLeaderboardOff")}
-            </div>
-          )}
+function BattleRoyaleLeaderboardInlineControl({
+  row,
+  globalRakebackPct,
+  onChange,
+}: {
+  row: TournamentRow;
+  globalRakebackPct: number;
+  onChange: (patch: Partial<TournamentRow>) => void;
+}) {
+  const t = useT();
+  const brLeaderboardEnabled = row.battleRoyaleLeaderboardEnabled ?? false;
+  const brLeaderboardShare = battleRoyaleLeaderboardShareForRow(row, true);
+  const brDirectShare = battleRoyaleDirectRakebackShareForRow(row, true);
+  const directRakePct = globalRakebackPct * brDirectShare;
+  const leaderboardRakePct = globalRakebackPct * brLeaderboardShare;
+
+  return (
+    <div className="rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/45 px-2.5 py-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <label className="flex min-w-0 items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+          <input
+            type="checkbox"
+            checked={brLeaderboardEnabled}
+            onChange={(e) =>
+              onChange({
+                battleRoyaleLeaderboardEnabled: e.target.checked,
+                battleRoyaleLeaderboardShare: e.target.checked
+                  ? normalizeBattleRoyaleShareForInput(
+                      row.battleRoyaleLeaderboardShare,
+                    )
+                  : undefined,
+              })
+            }
+            className="h-3.5 w-3.5 shrink-0 accent-[color:var(--color-accent)]"
+          />
+          <span className="truncate">{t("row.brLeaderboard")}</span>
+        </label>
+        <InfoTooltip content={t("row.brLeaderboardHint")} />
+      </div>
+      {brLeaderboardEnabled ? (
+        <>
+          <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+            <span>{t("row.brLeaderboardSlider.direct")}</span>
+            <span>{t("row.brLeaderboardSlider.leaderboard")}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(brLeaderboardShare * 100)}
+            onChange={(e) =>
+              onChange({
+                battleRoyaleLeaderboardShare: Number(e.target.value) / 100,
+              })
+            }
+            className="mt-1.5 w-full"
+          />
+          <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-muted)]">
+            {t("row.brLeaderboardCurrent")
+              .replace("{directShare}", `${Math.round(brDirectShare * 100)}%`)
+              .replace(
+                "{leaderboardShare}",
+                `${Math.round(brLeaderboardShare * 100)}%`,
+              )
+              .replace("{directRb}", `${directRakePct.toFixed(1)}%`)
+              .replace(
+                "{leaderboardRb}",
+                `${leaderboardRakePct.toFixed(1)}%`,
+              )}
+          </div>
+        </>
+      ) : (
+        <div className="text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("row.brLeaderboardOff")}
         </div>
       )}
     </div>
