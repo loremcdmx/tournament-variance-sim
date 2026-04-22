@@ -7,6 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Agent orientation — tournament-variance-sim
 
 Post-compression re-entry point. If the conversation was summarized, start here, then open the docs below.
+Before any code or audit work, open `WISDOM.md`.
 
 ## What this is
 
@@ -14,6 +15,7 @@ Next.js 16 + React 19 + TypeScript Monte Carlo simulator for poker MTT variance.
 
 ## Canonical docs (read these instead of guessing)
 
+- **`WISDOM.md`** — living project memory: recurring audit traps, model-policy lessons, branch/process surprises, and "do not repeat this stale finding without re-checking code" notes. **Read this first.**
 - **`docs/ARCHITECTURE.md`** — data flow, worker pool, determinism contract, hot-loop shape, storage, perf knobs, "where to start if you want to…" table. Authoritative architecture map.
 - **`docs/FITTING.md`** — how to run parameter sweeps (`scripts/fit_sigma_parallel.ts` et al.), interpret σ_ROI fit coefficients `{C0, C1, β}`, and calibrate against custom data. Read before touching `scripts/fit_*.ts` or `ConvergenceChart` coefficients.
 - **`CONTRIBUTING.md`** — dev setup, branching, commit style, testing rules, code style, sharp edges.
@@ -73,9 +75,10 @@ See the table at the bottom of `docs/ARCHITECTURE.md`. Short version:
 ## Re-entry checklist after compression
 
 1. Read this file (you're here).
-2. Skim `docs/ARCHITECTURE.md` for the data-flow diagram and determinism contract.
-3. Run `git status` + `git log -5 --oneline` to see actual repo state — don't trust summary claims about what's committed.
-4. If touching the engine: re-read `src/lib/sim/engine.ts` top-of-file. If touching UI: re-read the file you're about to edit before editing — `page.tsx` and `ResultsView.tsx` are large and shift often.
-5. Run `npm test` before any non-trivial change to confirm baseline is green.
+2. Read `WISDOM.md` fully before trusting any prior summary or review finding.
+3. Skim `docs/ARCHITECTURE.md` for the data-flow diagram and determinism contract.
+4. Run `git status` + `git log -5 --oneline` to see actual repo state — don't trust summary claims about what's committed.
+5. If touching the engine: re-read `src/lib/sim/engine.ts` top-of-file. If touching UI: re-read the file you're about to edit before editing — `page.tsx` and `ResultsView.tsx` are large and shift often.
+6. Run `npm test` before any non-trivial change to confirm baseline is green.
 
 Do not act on summary claims about in-progress work without verifying against the filesystem. Summaries lose nuance; the tree does not.
