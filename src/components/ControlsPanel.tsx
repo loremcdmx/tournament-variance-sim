@@ -7,6 +7,7 @@ import type { ProgressStage } from "@/lib/sim/useSimulation";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
+import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import type { BattleRoyaleLeaderboardControls } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
   COMPLETING_HOLD_MS,
@@ -623,7 +624,7 @@ function NumInput({
       step={step}
       inputMode="decimal"
       onChange={(e) => {
-        const raw = e.target.value;
+        const raw = normalizeNumericDraft(e.target.value);
         setDraft(raw);
         if (raw.trim() === "") return;
         const v = Number(raw);

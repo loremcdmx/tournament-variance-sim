@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import { Section, Card } from "@/components/ui/Section";
 import { UplotChart } from "@/components/charts/UplotChart";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import {
   commitNumFieldDraft,
@@ -1476,7 +1477,7 @@ function NumField({
           setDraft(e.currentTarget.value);
         }}
         onChange={(e) => {
-          const raw = e.target.value;
+          const raw = normalizeNumericDraft(e.target.value);
           setDraft(raw);
           const parsed = parseNumFieldDraft(raw, min, max);
           if (parsed !== null) onChange(parsed);

@@ -3,6 +3,7 @@
 import { memo, useMemo, useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
+import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import type { SimulationInput, TournamentRow } from "@/lib/sim/types";
 import {
   getConvergenceBandPolicy,
@@ -719,7 +720,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           step={1}
           value={afsLocked ? String(BR_FIXED_AFS) : afsInput}
           onFocus={(e) => setAfsDraft(e.currentTarget.value)}
-          onChange={(e) => setAfsDraft(e.target.value)}
+          onChange={(e) => setAfsDraft(normalizeNumericDraft(e.target.value))}
           onBlur={(e) => commitAfsInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -764,7 +765,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             step={0.5}
             value={roiInput}
             onFocus={(e) => setRoiDraft(e.currentTarget.value)}
-            onChange={(e) => setRoiDraft(e.target.value)}
+            onChange={(e) => setRoiDraft(normalizeNumericDraft(e.target.value))}
             onBlur={(e) => commitRoiInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -823,7 +824,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           step={0.5}
           value={rakeInput}
           onFocus={(e) => setRakeDraft(e.currentTarget.value)}
-          onChange={(e) => setRakeDraft(e.target.value)}
+          onChange={(e) => setRakeDraft(normalizeNumericDraft(e.target.value))}
           onBlur={(e) => commitRakeInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -868,7 +869,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           step={0.1}
           value={ciInput}
           onFocus={(e) => setCiDraft(e.currentTarget.value)}
-          onChange={(e) => setCiDraft(e.target.value)}
+          onChange={(e) => setCiDraft(normalizeNumericDraft(e.target.value))}
           onBlur={(e) => commitCiInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -1191,7 +1192,7 @@ function MixRow({
         step={1}
         value={raw}
         onFocus={(e) => setRawDraft(e.currentTarget.value)}
-        onChange={(e) => setRawDraft(e.target.value)}
+        onChange={(e) => setRawDraft(normalizeNumericDraft(e.target.value))}
         onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {

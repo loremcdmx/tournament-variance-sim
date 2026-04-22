@@ -33,6 +33,7 @@ import {
 } from "@/lib/sim/scheduleTarget";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
+import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
@@ -1273,7 +1274,9 @@ const GlobalItmControl = memo(function GlobalItmControl({
           value={value.itmGlobalPct}
           disabled={disabled || !value.itmGlobalEnabled}
           onChange={(e) => {
-            const v = Number(e.target.value);
+            const raw = normalizeNumericDraft(e.target.value);
+            if (raw !== e.target.value) e.target.value = raw;
+            const v = Number(raw);
             if (!Number.isFinite(v)) return;
             onChange({ ...value, itmGlobalPct: v });
           }}
@@ -1314,7 +1317,9 @@ const GlobalRakebackControl = memo(function GlobalRakebackControl({
           value={value.rakebackPct}
           disabled={disabled}
           onChange={(e) => {
-            const v = Number(e.target.value);
+            const raw = normalizeNumericDraft(e.target.value);
+            if (raw !== e.target.value) e.target.value = raw;
+            const v = Number(raw);
             if (!Number.isFinite(v)) return;
             onChange({
               ...value,

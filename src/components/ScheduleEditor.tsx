@@ -31,6 +31,7 @@ import {
   battleRoyaleLeaderboardShareForRow,
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
+import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -755,7 +756,8 @@ const ScheduleRow = memo(function ScheduleRow({
             }
             onChange={(e) => {
               if (globalItmPct != null) return;
-              const raw = e.target.value;
+              const raw = normalizeNumericDraft(e.target.value);
+              if (raw !== e.target.value) e.target.value = raw;
               if (raw === "") {
                 update(r.id, { itmRate: undefined });
                 return;
@@ -1003,7 +1005,8 @@ function AdvancedRowPanel({
             step={5}
             value={+((row.bountyFraction ?? 0) * 100).toFixed(1)}
             onChange={(e) => {
-              const raw = e.target.value;
+              const raw = normalizeNumericDraft(e.target.value);
+              if (raw !== e.target.value) e.target.value = raw;
               if (raw === "") {
                 onChange({ bountyFraction: undefined });
                 return;
@@ -1084,9 +1087,9 @@ function BattleRoyaleLeaderboardInlineControl({
   const brDirectShare = battleRoyaleDirectRakebackShareForRow(row, true);
 
   return (
-    <div className="rounded-md border border-[color:var(--color-border)]/65 bg-[color:var(--color-bg-elev)]/45 px-2 py-1.5">
-      <div className="flex items-center gap-2">
-        <label className="flex min-w-0 flex-1 items-center gap-2 text-[10px] font-medium tracking-[0.02em] text-[color:var(--color-fg-dim)]">
+    <div className="min-w-0 rounded-md border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg-elev)]/55 p-2">
+      <div className="flex items-start gap-2">
+        <label className="flex min-w-0 flex-1 items-start gap-2 rounded-[6px] border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/45 px-2 py-1.5 text-left transition-colors hover:border-[color:var(--color-border-strong)]">
           <input
             type="checkbox"
             checked={brLeaderboardEnabled}
@@ -1100,29 +1103,38 @@ function BattleRoyaleLeaderboardInlineControl({
                   : undefined,
               })
             }
-            className="h-3.5 w-3.5 shrink-0 accent-[color:var(--color-accent)]"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[color:var(--color-accent)]"
           />
-          <span className="truncate">{t("row.brLeaderboard")}</span>
+          <span className="min-w-0">
+            <span className="block truncate text-[11px] font-semibold text-[color:var(--color-fg)]">
+              {t("row.brLeaderboard")}
+            </span>
+            <span className="mt-0.5 block text-[9.5px] leading-snug text-[color:var(--color-fg-dim)]">
+              {brLeaderboardEnabled
+                ? t("row.brLeaderboardOn")
+                : t("row.brLeaderboardOff")}
+            </span>
+          </span>
         </label>
-        <span
-          className="rounded-[5px] border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/55 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.06em] tabular-nums text-[color:var(--color-fg-muted)]"
-          title={
-            brLeaderboardEnabled
-              ? t("row.brLeaderboardLeader")
-              : t("row.brLeaderboardDirect")
-          }
-        >
-          {brLeaderboardEnabled
-            ? `${Math.round(brLeaderboardShare * 100)}% LB`
-            : "RB"}
-        </span>
         <InfoTooltip content={t("row.brLeaderboardHint")} />
       </div>
       {brLeaderboardEnabled ? (
-        <div className="mt-1.5">
-          <div className="mb-1 flex items-center justify-between px-0.5 text-[8px] font-medium uppercase tracking-[0.08em] text-[color:var(--color-fg-dim)]">
-            <span title={t("row.brLeaderboardDirect")}>RB</span>
-            <span title={t("row.brLeaderboardLeader")}>LB</span>
+        <div className="mt-2">
+          <div className="mb-1.5 flex items-center justify-between gap-2 rounded-[6px] border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/45 px-2 py-1.5 text-[10px] font-medium tabular-nums text-[color:var(--color-fg-muted)]">
+            <span className="truncate">
+              {Math.round(brDirectShare * 100)}% {t("row.brLeaderboardDirect")}
+            </span>
+            <span className="truncate text-right">
+              {Math.round(brLeaderboardShare * 100)}% {t("row.brLeaderboardLeader")}
+            </span>
+          </div>
+          <div className="mb-1 flex items-center justify-between gap-2 px-0.5 text-[8px] font-medium uppercase tracking-[0.08em] text-[color:var(--color-fg-dim)]">
+            <span className="truncate" title={t("row.brLeaderboardDirect")}>
+              {t("row.brLeaderboardSlider.direct")}
+            </span>
+            <span className="truncate text-right" title={t("row.brLeaderboardLeader")}>
+              {t("row.brLeaderboardSlider.leaderboard")}
+            </span>
           </div>
           <input
             type="range"
@@ -1137,12 +1149,25 @@ function BattleRoyaleLeaderboardInlineControl({
             }
             className="w-full accent-[color:var(--color-accent)]"
           />
-          <div className="mt-1.5 flex items-center justify-between rounded-[5px] border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/55 px-1.5 py-1 text-[10px] font-medium tabular-nums text-[color:var(--color-fg-muted)]">
-            <span>{Math.round(brDirectShare * 100)}% RB</span>
-            <span>{Math.round(brLeaderboardShare * 100)}% LB</span>
+          <div className="mt-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+            {t("row.brLeaderboardCurrent")
+              .replace("{directShare}", `${Math.round(brDirectShare * 100)}%`)
+              .replace(
+                "{leaderboardShare}",
+                `${Math.round(brLeaderboardShare * 100)}%`,
+              )
+              .replace("{directRb}", `${Math.round(brDirectShare * 100)}%`)
+              .replace(
+                "{leaderboardRb}",
+                `${Math.round(brLeaderboardShare * 100)}%`,
+              )}
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="mt-2 rounded-[6px] border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/45 px-2 py-1.5 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("row.brLeaderboardOff")}
+        </div>
+      )}
     </div>
   );
 }
@@ -1209,7 +1234,7 @@ function NumInputBox({
       step={step}
       inputMode="decimal"
       onChange={(e) => {
-        const raw = e.target.value;
+        const raw = normalizeNumericDraft(e.target.value);
         setDraft(raw);
         clearCommitTimer();
         const next = normalizeDraftValue(raw, min, max, step);
