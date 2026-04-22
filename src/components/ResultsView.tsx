@@ -646,6 +646,7 @@ function TrajectoryPlot({
   const focusedLine =
     nearestVisual &&
     (nearestVisual.kind === "path" ||
+      nearestVisual.kind === "band" ||
       nearestVisual.kind === "best" ||
       nearestVisual.kind === "worst")
       ? nearestVisual
@@ -790,7 +791,7 @@ function TrajectoryPlot({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    if (focusedSeriesIdx == null) return;
+    if (focusedSeriesIdx == null || !focusedLine) return;
     const dataArr = assets.data[focusedSeriesIdx] as ArrayLike<number> | undefined;
     const xArr = assets.data[0] as ArrayLike<number>;
     if (!dataArr || !xArr) return;
@@ -822,6 +823,41 @@ function TrajectoryPlot({
       }
       ctx.stroke();
     };
+
+    if (focusedLine.kind === "band") {
+      const { dash, glowWidth, lineWidth } = trajectoryBandOverlayStyle(
+        focusedLine.percentile,
+      );
+      ctx.setLineDash(dash ?? []);
+      strokeSegment(
+        0,
+        xArr.length - 1,
+        rgbaWithAlpha(focusedLine.color, 0.2),
+        glowWidth,
+      );
+      ctx.setLineDash(dash ?? []);
+      strokeSegment(0, xArr.length - 1, focusedLine.color, lineWidth);
+      if (idx != null) {
+        const xVal = xArr[idx];
+        const yVal = dataArr[idx];
+        if (xVal != null && yVal != null && Number.isFinite(yVal)) {
+          const px = plot.valToPos(xVal, "x", false);
+          const py = plot.valToPos(yVal, "y", false);
+          ctx.save();
+          ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(10,12,16,0.96)";
+          ctx.strokeStyle = focusedLine.color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(px, py, 4.75, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      ctx.restore();
+      return;
+    }
 
     // Base: full path in amber.
     strokeSegment(0, xArr.length - 1, "rgba(253,230,138,0.9)", 2.5);
@@ -856,7 +892,15 @@ function TrajectoryPlot({
       }
     }
     ctx.restore();
-  }, [focusedSeriesIdx, focusedStatsSeriesIdx, assets.data, focusedPathStats, deferredFocusedIdx]);
+  }, [
+    focusedSeriesIdx,
+    focusedLine,
+    focusedStatsSeriesIdx,
+    assets.data,
+    focusedPathStats,
+    deferredFocusedIdx,
+    idx,
+  ]);
 
   const kindLabel = (line: TrajectoryLineMeta): string => {
     switch (line.kind) {
@@ -1138,6 +1182,11 @@ function parseRgb(css: string): [number, number, number] {
   return [200, 200, 200];
 }
 
+function rgbaWithAlpha(css: string, alpha: number): string {
+  const [r, g, b] = parseRgb(css);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 const TRAJECTORY_PATH_HIT_PX = 20;
 const TRAJECTORY_BAND_HIT_PX = 18;
 
@@ -1170,6 +1219,18 @@ function trajectoryBandSideKey(
   return percentile < 0.5
     ? "chart.traj.band.side.lower"
     : "chart.traj.band.side.upper";
+}
+
+function trajectoryBandOverlayStyle(percentile: number | null | undefined): {
+  dash?: number[];
+  glowWidth: number;
+  lineWidth: number;
+} {
+  if (percentile == null) return { glowWidth: 6.5, lineWidth: 2.25 };
+  const tail = Math.min(percentile, 1 - percentile);
+  if (tail <= 0.002) return { dash: [2, 6], glowWidth: 6.25, lineWidth: 2.1 };
+  if (tail <= 0.03) return { dash: [6, 4], glowWidth: 6.75, lineWidth: 2.25 };
+  return { glowWidth: 7.25, lineWidth: 2.5 };
 }
 
 /** Metadata for the imperative visibility layer: which uPlot series indices
@@ -2487,18 +2548,17 @@ function ResultsViewImpl({
         <MiniStat
           suit="heart"
           label={t("stat.ddWorst")}
-          value={
+          value={money(s.maxDrawdownWorst)}
+          detail={
             unit === "abi"
-              ? `${money(s.maxDrawdownWorst)} · ${Math.round(s.longestBreakevenMean)} ${tourneysWord}`
-              : `${money(s.maxDrawdownWorst)} · ${(s.maxDrawdownWorst / abi).toFixed(1)} ABI · ${Math.round(s.longestBreakevenMean)} ${tourneysWord}`
+              ? `${Math.round(s.longestBreakevenMean)} ${tourneysWord}`
+              : `${(s.maxDrawdownWorst / abi).toFixed(1)} ABI · ${Math.round(s.longestBreakevenMean)} ${tourneysWord}`
           }
           tone="neg"
           tip={t("stat.ddWorst.tip")}
           pdValue={
             pdStats
-              ? unit === "abi"
-                ? money(pdStats.maxDrawdownWorst)
-                : `${money(pdStats.maxDrawdownWorst)} · ${(pdStats.maxDrawdownWorst / abi).toFixed(1)} ABI`
+              ? money(pdStats.maxDrawdownWorst)
               : undefined
           }
           pdDelta={

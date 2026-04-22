@@ -476,14 +476,24 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       {/* Tier-by-tier breakdown + discrete position rows. Shared grid
           template: swatch | label | bar | %EV | field % | equilibrium % | $ ROI */}
       <div className="flex flex-col gap-1.5 pl-6">
-        <div className="grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        <div
+          className={`grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)] sm:text-[10px]`}
+        >
           <span />
           <span>{t("preview.evBreakdown")}</span>
           <span />
-          <span className="text-right tabular-nums">{t("preview.colEv")}</span>
-          <span className="text-right tabular-nums">{t("preview.colField")}</span>
-          <span className="text-right tabular-nums">{t("preview.colEq")}</span>
-          <span className="text-right tabular-nums">{t("preview.colRoi")}</span>
+          <span className={`${EV_BREAKDOWN_NUM} text-[color:var(--color-fg-dim)]`}>
+            {t("preview.colEv")}
+          </span>
+          <span className={`${EV_BREAKDOWN_NUM} text-[color:var(--color-fg-dim)]`}>
+            {t("preview.colField")}
+          </span>
+          <span className={`${EV_BREAKDOWN_NUM} text-[color:var(--color-fg-dim)]`}>
+            {t("preview.colEq")}
+          </span>
+          <span className={`${EV_BREAKDOWN_NUM} text-[color:var(--color-fg-dim)]`}>
+            {t("preview.colRoi")}
+          </span>
         </div>
         <div className="flex flex-col divide-y divide-[color:var(--color-border)]/60">
           {(() => {
@@ -748,9 +758,9 @@ function EvBreakdownRow({
   }, []);
 
   return (
-    <div className="relative">
+      <div className="relative">
       <div
-        className={`relative grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 py-1.5 text-[11px] hover:bg-[color:var(--color-bg-elev)]/30 ${
+        className={`relative grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center py-1.5 text-[10px] sm:text-[11px] hover:bg-[color:var(--color-bg-elev)]/30 ${
           breakdown ? "cursor-default sm:cursor-help" : ""
         }`}
         onMouseEnter={() => {
@@ -786,7 +796,7 @@ function EvBreakdownRow({
           className="h-2.5 w-2.5 rounded-sm"
           style={{ backgroundColor: color }}
         />
-        <span className={labelClass}>{label}</span>
+        <span className={`min-w-0 truncate ${labelClass}`}>{label}</span>
         <div className="relative h-2 overflow-hidden rounded-sm bg-[color:var(--color-bg-elev-2)]">
           <div
             className="absolute inset-y-0 left-0 rounded-sm opacity-30"
@@ -815,17 +825,17 @@ function EvBreakdownRow({
             />
           )}
         </div>
-        <span className="text-right font-mono tabular-nums text-[color:var(--color-fg)]">
+        <span className={`${EV_BREAKDOWN_NUM} text-[color:var(--color-fg)]`}>
           {pct(evShare)}
         </span>
-        <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+        <span className={`${EV_BREAKDOWN_NUM} text-[color:var(--color-fg-dim)]`}>
           {fieldShare == null ? "—" : pct(fieldShare)}
         </span>
-        <span className="text-right font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+        <span className={`${EV_BREAKDOWN_NUM} text-[color:var(--color-fg-dim)]`}>
           {eqShare == null ? "—" : fmtEq(eqShare)}
         </span>
         <span
-          className={`text-right font-mono tabular-nums ${netClass}`}
+          className={`${EV_BREAKDOWN_NUM} ${netClass}`}
         >
           {fmtSignedMoney(netDollars)}
         </span>
@@ -1021,18 +1031,20 @@ function EvBreakdownFooter({
         ? "text-[color:var(--color-danger)]"
         : "text-[color:var(--color-fg-dim)]";
   return (
-    <div className="mt-0.5 grid grid-cols-[8px_minmax(0,1fr)_minmax(24px,1fr)_2.25rem_2.25rem_2.25rem_2.5rem] sm:grid-cols-[10px_minmax(0,1fr)_minmax(40px,1fr)_3rem_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 border-t border-[color:var(--color-border)] pt-1.5 text-[11px] font-semibold">
+    <div
+      className={`mt-0.5 grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center border-t border-[color:var(--color-border)] pt-1.5 text-[10px] font-semibold sm:text-[11px]`}
+    >
       <span />
-      <span className="col-span-4 text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+      <span className="col-span-4 text-[9px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)] sm:text-[10px]">
         {label}
       </span>
       <span
-        className="text-right font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]"
+        className={`${EV_BREAKDOWN_NUM} text-[10px] text-[color:var(--color-fg-dim)]`}
         title="equilibrium (−rake)"
       >
         {eqNetDollars != null ? fmtSignedMoney(eqNetDollars) : ""}
       </span>
-      <span className={`text-right font-mono tabular-nums ${netClass}`}>
+      <span className={`${EV_BREAKDOWN_NUM} ${netClass}`}>
         {fmtSignedMoney(netDollars)}
       </span>
     </div>
@@ -1071,6 +1083,23 @@ function evPctInputValue(v: number): string {
   if (!(p > 0)) return "0";
   return p >= 1 ? p.toFixed(1) : p.toFixed(3);
 }
+
+const PREVIEW_SLIDER_CONTROL_CHROME =
+  "flex h-11 items-center rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]";
+const PREVIEW_SLIDER_VALUE_CHROME =
+  PREVIEW_SLIDER_CONTROL_CHROME + " px-2.5";
+const PREVIEW_SLIDER_RESET_CHROME =
+  PREVIEW_SLIDER_CONTROL_CHROME +
+  " min-w-[5.75rem] justify-center px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]";
+const PREVIEW_SLIDER_VALUE_INPUT =
+  "h-full min-w-0 bg-transparent text-right font-mono font-semibold leading-none tabular-nums text-[color:var(--color-fg)] outline-none disabled:opacity-60";
+const PREVIEW_SLIDER_VALUE_SUFFIX =
+  "ml-1 font-mono font-semibold leading-none text-[color:var(--color-fg-dim)]";
+const EV_BREAKDOWN_GRID =
+  "grid-cols-[8px_minmax(4.5rem,0.95fr)_minmax(28px,1fr)_3.25rem_4.2rem_4.2rem_5rem] sm:grid-cols-[10px_minmax(5.75rem,1fr)_minmax(48px,1fr)_3.4rem_4.5rem_4.5rem_5.2rem]";
+const EV_BREAKDOWN_GAP = "gap-x-1 sm:gap-x-1.5";
+const EV_BREAKDOWN_NUM =
+  "min-w-0 whitespace-nowrap text-right font-mono tabular-nums";
 
 function fmtEq(p: number): string {
   if (!(p > 0)) return "—";
@@ -1542,9 +1571,9 @@ function BountyShareSlider({
         <span className="text-[12px] font-semibold uppercase tracking-wide text-[color:var(--color-fg)]">
           {title}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-stretch gap-2">
           <label
-            className={`flex items-center rounded-md border bg-[color:var(--color-bg-elev)] px-2 py-1 ${
+            className={`${PREVIEW_SLIDER_VALUE_CHROME} ${
               manualOutOfRange
                 ? "border-[color:var(--color-danger)]"
                 : "border-[color:var(--color-border)]"
@@ -1570,9 +1599,9 @@ function BountyShareSlider({
               }}
               disabled={locked}
               aria-label={title}
-              className="w-14 bg-transparent text-right font-mono text-[11px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none disabled:opacity-60"
+              className={`${PREVIEW_SLIDER_VALUE_INPUT} w-14 text-[15px]`}
             />
-            <span className="pl-0.5 font-mono text-[10px] font-semibold text-[color:var(--color-fg-dim)]">
+            <span className={`${PREVIEW_SLIDER_VALUE_SUFFIX} text-[12px]`}>
               %
             </span>
           </label>
@@ -1585,7 +1614,7 @@ function BountyShareSlider({
               if (Math.abs(committedBias) > 1e-9) onCommit(0);
             }}
             disabled={Math.abs(committedBias) < 1e-9}
-            className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
+            className={PREVIEW_SLIDER_RESET_CHROME}
           >
             {resetLabel}
           </button>
@@ -1799,9 +1828,9 @@ function TopHeavyPlacementSlider({
         <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--color-fg)]">
           {title}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-stretch gap-2">
           <label
-            className={`flex items-center rounded-md border bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 ${
+            className={`${PREVIEW_SLIDER_VALUE_CHROME} ${
               manualOutOfRange
                 ? "border-[color:var(--color-danger)]"
                 : "border-[color:var(--color-border)]"
@@ -1826,9 +1855,9 @@ function TopHeavyPlacementSlider({
                 }
               }}
               aria-label={title}
-              className="w-16 bg-transparent text-right font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none"
+              className={`${PREVIEW_SLIDER_VALUE_INPUT} w-16 text-[17px]`}
             />
-            <span className="pl-1 font-mono text-[11px] font-semibold text-[color:var(--color-fg-dim)]">
+            <span className={`${PREVIEW_SLIDER_VALUE_SUFFIX} text-[13px]`}>
               %
             </span>
           </label>
@@ -1841,7 +1870,7 @@ function TopHeavyPlacementSlider({
               if (Math.abs(committedBias) > 1e-9) onCommit(0);
             }}
             disabled={Math.abs(committedBias) < 1e-9}
-            className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
+            className={PREVIEW_SLIDER_RESET_CHROME}
           >
             {resetLabel}
           </button>

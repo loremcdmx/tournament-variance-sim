@@ -20,6 +20,23 @@ const SUIT_GLYPH: Record<StatSuit, string> = {
   diamond: "♦",
 };
 
+const BIG_STAT_PANEL_CHROME =
+  "max-w-full rounded-md border bg-[color:var(--color-bg)]/55 px-3 py-2.5";
+const BIG_STAT_PANEL_TITLE =
+  "text-[12px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]";
+const BIG_STAT_PANEL_VALUE =
+  "mt-0.5 whitespace-normal break-words font-mono text-[15px] font-semibold leading-[1.05] tabular-nums text-[color:var(--color-fg)] sm:text-[16px]";
+const BIG_STAT_PANEL_CAPTION =
+  "text-[11px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]";
+const MINI_STAT_CHROME =
+  "flex h-full flex-col rounded-md border border-l-2 border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/55 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]";
+const MINI_STAT_TITLE =
+  "flex min-w-0 items-start gap-1 text-[12px] font-semibold leading-[1.08] tracking-[0.01em] sm:text-[13px]";
+const MINI_STAT_VALUE =
+  "display whitespace-normal break-words text-[15px] font-semibold leading-[1.05] tabular-nums sm:text-[16px]";
+const MINI_STAT_DETAIL =
+  "mt-1 text-[11px] font-medium leading-snug text-[color:var(--color-fg-dim)]";
+
 interface RangeSublineProps {
   label: string;
   fromLabel: string;
@@ -60,6 +77,7 @@ interface BigStatProps {
 interface MiniStatProps {
   label: string;
   value: string;
+  detail?: string;
   tone?: "pos" | "neg";
   suit?: StatSuit;
   tip?: string;
@@ -93,7 +111,7 @@ export function BigStat({
   const titleColor = `color-mix(in srgb, ${accentColor} 72%, var(--color-fg) 28%)`;
 
   return (
-    <div className="relative flex flex-col gap-1.5 overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+    <div className="relative flex h-full flex-col gap-1.5 overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
       <span
         className="absolute left-0 top-0 h-full w-[3px]"
         style={{ background: accentColor }}
@@ -168,16 +186,16 @@ function RangeSubline({
 
   return (
     <div
-      className="max-w-full rounded-md border bg-[color:var(--color-bg)]/55 px-3 py-2.5"
+      className={`${BIG_STAT_PANEL_CHROME} flex min-h-[11.25rem] flex-col`}
       style={{ borderColor: frameBorder }}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[11px] font-medium capitalize tracking-[0.01em] text-[color:var(--color-fg-muted)]">
+      <div className="flex min-h-[1.85rem] items-start justify-between gap-3">
+        <div className={`${BIG_STAT_PANEL_TITLE} capitalize`}>
           {label}
         </div>
         <div className="flex items-center gap-1.5">
           <div
-            className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.04em]"
+            className="rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-[0.02em]"
             style={{
               color: accentColor ?? "var(--color-fg-muted)",
               borderColor: accentColor
@@ -218,20 +236,20 @@ function RangeSubline({
           }}
         />
       </div>
-      <div className="mt-2 grid grid-cols-2 items-end gap-4">
+      <div className="mt-auto grid grid-cols-2 items-end gap-4 pt-2.5">
         <div className="min-w-0">
-          <div className="text-[10px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]">
+          <div className={BIG_STAT_PANEL_CAPTION}>
             {fromLabel}
           </div>
-          <div className="mt-0.5 whitespace-normal break-words font-mono text-[12px] font-semibold leading-[1.05] tabular-nums text-[color:var(--color-fg)] sm:text-[13px]">
+          <div className={BIG_STAT_PANEL_VALUE}>
             {minValue}
           </div>
         </div>
         <div className="min-w-0 text-right">
-          <div className="text-[10px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]">
+          <div className={BIG_STAT_PANEL_CAPTION}>
             {toLabel}
           </div>
-          <div className="mt-0.5 whitespace-normal break-words font-mono text-[12px] font-semibold leading-[1.05] tabular-nums text-[color:var(--color-fg)] sm:text-[13px]">
+          <div className={BIG_STAT_PANEL_VALUE}>
             {maxValue}
           </div>
         </div>
@@ -258,11 +276,15 @@ function OutcomeSubline({
 
   return (
     <div
-      className="max-w-full rounded-md border bg-[color:var(--color-bg)]/55 px-3 py-2.5"
+      className={`${BIG_STAT_PANEL_CHROME} flex min-h-[11.25rem] flex-col`}
       style={{ borderColor: frameBorder }}
     >
-      <div className="text-[11px] font-medium capitalize tracking-[0.01em] text-[color:var(--color-fg-muted)]">
-        {label}
+      <div className="flex min-h-[1.85rem] items-start justify-between gap-3">
+        <div className={`${BIG_STAT_PANEL_TITLE} capitalize`}>{label}</div>
+        <span
+          aria-hidden="true"
+          className="invisible h-[1.6rem] w-[6.25rem] shrink-0 rounded-full border"
+        />
       </div>
       <div className="mt-2.5">
         <div className="relative h-2.5 overflow-hidden rounded-full bg-[color:var(--color-border)]/40">
@@ -294,20 +316,20 @@ function OutcomeSubline({
           />
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-2 items-end gap-4">
+      <div className="mt-auto grid grid-cols-2 items-end gap-4 pt-2.5">
         <div className="min-w-0">
-          <div className="text-[10px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]">
+          <div className={BIG_STAT_PANEL_CAPTION}>
             {leftLabel}
           </div>
-          <div className="mt-0.5 whitespace-normal break-words font-mono text-[12px] font-semibold leading-[1.05] tabular-nums text-[color:var(--color-danger)] sm:text-[13px]">
+          <div className={`${BIG_STAT_PANEL_VALUE} text-[color:var(--color-danger)]`}>
             {leftValue}
           </div>
         </div>
         <div className="min-w-0 text-right">
-          <div className="text-[10px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]">
+          <div className={BIG_STAT_PANEL_CAPTION}>
             {rightLabel}
           </div>
-          <div className="mt-0.5 whitespace-normal break-words font-mono text-[12px] font-semibold leading-[1.05] tabular-nums text-[color:var(--color-success)] sm:text-[13px]">
+          <div className={`${BIG_STAT_PANEL_VALUE} text-[color:var(--color-success)]`}>
             {rightValue}
           </div>
         </div>
@@ -413,6 +435,7 @@ function StatSubline({
 export function MiniStat({
   label,
   value,
+  detail,
   tone,
   suit = "club",
   tip,
@@ -432,29 +455,32 @@ export function MiniStat({
 
   return (
     <div
-      className="flex flex-col gap-1.5 rounded-md border border-l-2 border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/55 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+      className={MINI_STAT_CHROME}
       style={{ borderLeftColor: accentColor }}
     >
       <div
-        className="flex min-w-0 items-center gap-1 text-[12px] font-semibold leading-[1.08] tracking-[0.01em]"
+        className={`${MINI_STAT_TITLE} min-h-[1.85rem]`}
         style={{ color: titleColor }}
       >
         {label}
         {tip && <InfoTooltip content={tip} />}
       </div>
-      <div
-        className="display whitespace-nowrap text-[15px] font-semibold leading-none tabular-nums"
-        style={{ color: toneColor }}
-      >
-        {value}
+      <div className="mt-1 flex min-h-[3.7rem] flex-col justify-end">
+        <div className={MINI_STAT_VALUE} style={{ color: toneColor }}>
+          {value}
+        </div>
+        {detail && <div className={MINI_STAT_DETAIL}>{detail}</div>}
       </div>
       {pdValue != null && (
-        <PdCompareRow
-          pdValue={pdValue}
-          delta={pdDelta ?? null}
-          emphasizeTail={emphasizeTail}
-          pdLabel={pdLabel}
-        />
+        <div className="mt-auto pt-2">
+          <PdCompareRow
+            pdValue={pdValue}
+            delta={pdDelta ?? null}
+            emphasizeTail={emphasizeTail}
+            pdLabel={pdLabel}
+            flush
+          />
+        </div>
       )}
     </div>
   );
@@ -478,11 +504,13 @@ function PdCompareRow({
   delta,
   emphasizeTail,
   pdLabel,
+  flush,
 }: {
   pdValue: string;
   delta: number | null;
   emphasizeTail?: boolean;
   pdLabel?: string;
+  flush?: boolean;
 }) {
   const t = useT();
   const sev = pdBadgeSeverity(delta, emphasizeTail);
@@ -495,7 +523,7 @@ function PdCompareRow({
     const precisionPct = Math.max(1, Math.round(Math.abs(delta) * 100));
     return (
       <div
-        className="mt-1.5 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+        className={`${flush ? "" : "mt-1.5 "}flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]`}
         style={{
           borderColor: "rgba(232,121,249,0.18)",
           backgroundColor: "rgba(255,255,255,0.015)",
@@ -560,7 +588,7 @@ function PdCompareRow({
 
   return (
     <div
-      className="mt-1.5 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+      className={`${flush ? "" : "mt-1.5 "}flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]`}
       style={{
         borderColor: "rgba(232,121,249,0.18)",
         backgroundColor: "rgba(255,255,255,0.015)",
