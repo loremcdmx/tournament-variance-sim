@@ -121,6 +121,8 @@ export function applyGameType(
       patch.reentryRate = undefined;
       patch.bountyFraction = undefined;
       patch.mysteryBountyVariance = undefined;
+      patch.battleRoyaleLeaderboardEnabled = undefined;
+      patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-standard";
       snapAfs(30);
       break;
@@ -129,6 +131,8 @@ export function applyGameType(
       patch.reentryRate = row.reentryRate ?? 1;
       patch.bountyFraction = undefined;
       patch.mysteryBountyVariance = undefined;
+      patch.battleRoyaleLeaderboardEnabled = undefined;
+      patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-standard";
       snapAfs(30);
       break;
@@ -138,6 +142,8 @@ export function applyGameType(
       patch.bountyFraction = bounty > 0 ? bounty : 0.5;
       patch.mysteryBountyVariance = undefined;
       patch.pkoHeadVar = row.pkoHeadVar ?? 0.4;
+      patch.battleRoyaleLeaderboardEnabled = undefined;
+      patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-gg-bounty";
       snapAfs(500);
       break;
@@ -152,6 +158,8 @@ export function applyGameType(
       // gave P(>100×) = 1e-8 — effectively zero jackpot tail. When real
       // non-BR Mystery tier data lands, switch to discrete-tier draw like BR.
       patch.mysteryBountyVariance = 2.0;
+      patch.battleRoyaleLeaderboardEnabled = undefined;
+      patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-gg-mystery";
       snapAfs(500);
       break;
@@ -169,6 +177,10 @@ export function applyGameType(
       // this bump is smaller than in MTTs where paid% itself flexes.
       patch.itmRate = 0.18;
       patch.players = 18;
+      patch.battleRoyaleLeaderboardEnabled =
+        row.battleRoyaleLeaderboardEnabled ?? false;
+      patch.battleRoyaleLeaderboardShare =
+        row.battleRoyaleLeaderboardShare ?? 0.5;
       patch.payoutStructure = "battle-royale";
       break;
   }

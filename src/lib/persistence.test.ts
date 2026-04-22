@@ -550,6 +550,73 @@ describe("persistence validation", () => {
     expect(loaded.itmGlobalEnabled).toBeUndefined();
   });
 
+  it("resets hidden persisted BR leaderboard controls back to the fixed house defaults", () => {
+    const state = loadLocalFromPayload({
+      v: 1,
+      schedule: [row],
+      controls: {
+        battleRoyaleLeaderboard: {
+          enabled: true,
+          participants: 1,
+          windowTournaments: 0,
+          awardPartialWindow: "oops",
+          entryPoints: "bad",
+          knockoutPoints: 7,
+          firstPoints: 15,
+          secondPoints: 9,
+          thirdPoints: 6,
+          top1Prize: -100,
+          top2To3Prize: 220,
+          top4To10Prize: 80,
+          opponentMeanScore: "oops",
+          opponentStdDevScore: -4,
+        },
+      },
+    });
+
+    expect(state?.controls.battleRoyaleLeaderboard).toMatchObject({
+      enabled: false,
+      participants: 200,
+      windowTournaments: 100,
+      awardPartialWindow: true,
+      knockoutPoints: 4,
+      top1Prize: 500,
+      top2To3Prize: 200,
+      top4To10Prize: 75,
+      opponentStdDevScore: 45,
+    });
+    expect(state?.controls.battleRoyaleLeaderboard.entryPoints).toBe(1);
+    expect(state?.controls.battleRoyaleLeaderboard.opponentMeanScore).toBe(180);
+  });
+
+  it("normalizes persisted BR row leaderboard split only on mystery-royale rows", () => {
+    const state = loadLocalFromPayload({
+      v: 1,
+      schedule: [
+        {
+          ...row,
+          id: "br-row",
+          payoutStructure: "battle-royale",
+          gameType: "mystery-royale",
+          battleRoyaleLeaderboardEnabled: true,
+          battleRoyaleLeaderboardShare: 2,
+        },
+        {
+          ...row,
+          id: "freeze-row",
+          battleRoyaleLeaderboardEnabled: true,
+          battleRoyaleLeaderboardShare: 0.5,
+        },
+      ],
+      controls: {},
+    });
+
+    expect(state?.schedule[0].battleRoyaleLeaderboardEnabled).toBe(true);
+    expect(state?.schedule[0].battleRoyaleLeaderboardShare).toBe(1);
+    expect(state?.schedule[1].battleRoyaleLeaderboardEnabled).toBeUndefined();
+    expect(state?.schedule[1].battleRoyaleLeaderboardShare).toBeUndefined();
+  });
+
   it("drops hidden persisted shock and tilt knobs so invisible state cannot silently alter runs", () => {
     const state = loadLocalFromPayload({
       v: 1,

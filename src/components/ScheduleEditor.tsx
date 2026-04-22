@@ -26,6 +26,11 @@ import {
   rakebackRoiContribution,
   reportedRoiFromPreRakebackRoi,
 } from "@/lib/sim/rakebackMath";
+import {
+  battleRoyaleDirectRakebackShareForRow,
+  battleRoyaleLeaderboardShareForRow,
+  DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE,
+} from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -866,6 +871,7 @@ const ScheduleRow = memo(function ScheduleRow({
           <td colSpan={10} className="px-6 py-4">
             <AdvancedRowPanel
               row={r}
+              globalRakebackPct={globalRakebackPct}
               onChange={(patch) => update(r.id, patch)}
             />
           </td>
@@ -892,9 +898,11 @@ function SectionLabel({
 
 function AdvancedRowPanel({
   row,
+  globalRakebackPct,
   onChange,
 }: {
   row: TournamentRow;
+  globalRakebackPct: number;
   onChange: (patch: Partial<TournamentRow>) => void;
 }) {
   const t = useT();
@@ -902,6 +910,12 @@ function AdvancedRowPanel({
   const gt = inferGameType(row);
   const showBounty = gt === "pko" || gt === "mystery" || gt === "mystery-royale";
   const showMysteryVar = gt === "mystery";
+  const showBrLeaderboard = gt === "mystery-royale";
+  const brLeaderboardEnabled = row.battleRoyaleLeaderboardEnabled ?? false;
+  const brLeaderboardShare = battleRoyaleLeaderboardShareForRow(row, true);
+  const brDirectShare = battleRoyaleDirectRakebackShareForRow(row, true);
+  const directRakePct = globalRakebackPct * brDirectShare;
+  const leaderboardRakePct = globalRakebackPct * brLeaderboardShare;
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
       {/* Field variability */}
@@ -1053,8 +1067,91 @@ function AdvancedRowPanel({
           </div>
         </div>
       )}
+
+      {showBrLeaderboard && (
+        <div className="flex flex-col gap-1.5">
+          <SectionLabel hint={t("row.brLeaderboardHint")}>
+            {t("row.brLeaderboard")}
+          </SectionLabel>
+          <label className="flex items-center gap-2 text-xs text-[color:var(--color-fg-muted)]">
+            <input
+              type="checkbox"
+              checked={brLeaderboardEnabled}
+              onChange={(e) =>
+                onChange({
+                  battleRoyaleLeaderboardEnabled: e.target.checked,
+                  battleRoyaleLeaderboardShare: e.target.checked
+                    ? normalizeBattleRoyaleShareForInput(
+                        row.battleRoyaleLeaderboardShare,
+                      )
+                    : undefined,
+                })
+              }
+              className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
+            />
+            {t("row.brLeaderboardToggle")}
+          </label>
+          {brLeaderboardEnabled ? (
+            <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/50 p-2.5">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)]">
+                <span>{t("row.brLeaderboardSlider.direct")}</span>
+                <span>{t("row.brLeaderboardSlider.leaderboard")}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(brLeaderboardShare * 100)}
+                onChange={(e) =>
+                  onChange({
+                    battleRoyaleLeaderboardShare: Number(e.target.value) / 100,
+                  })
+                }
+                className="mt-2 w-full"
+              />
+              <div className="mt-2 text-[11px] leading-snug text-[color:var(--color-fg-muted)]">
+                {t("row.brLeaderboardCurrent")
+                  .replace("{directShare}", `${Math.round(brDirectShare * 100)}%`)
+                  .replace(
+                    "{leaderboardShare}",
+                    `${Math.round(brLeaderboardShare * 100)}%`,
+                  )
+                  .replace("{directRb}", `${directRakePct.toFixed(1)}%`)
+                  .replace(
+                    "{leaderboardRb}",
+                    `${leaderboardRakePct.toFixed(1)}%`,
+                  )}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <FieldSmall label={t("row.brLeaderboardDirect")}>
+                  <span className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)]">
+                    {Math.round(brDirectShare * 100)}% / {directRakePct.toFixed(1)}%
+                  </span>
+                </FieldSmall>
+                <FieldSmall label={t("row.brLeaderboardLeader")}>
+                  <span className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)]">
+                    {Math.round(brLeaderboardShare * 100)}% / {leaderboardRakePct.toFixed(1)}%
+                  </span>
+                </FieldSmall>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+              {t("row.brLeaderboardOff")}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+function normalizeBattleRoyaleShareForInput(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE;
+  }
+  return Math.min(1, Math.max(0, value));
 }
 
 function FieldSmall({

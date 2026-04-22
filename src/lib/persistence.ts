@@ -9,6 +9,10 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import type { GameType, PayoutStructureId, TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
+import {
+  DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  normalizeBattleRoyaleLeaderboardShare,
+} from "@/lib/sim/battleRoyaleLeaderboardUi";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object";
@@ -134,6 +138,8 @@ const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MIN = -1;
 const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MAX = 1;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MIN = 0;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MAX = 3;
+const PERSISTED_ROW_BR_LEADERBOARD_SHARE_MIN = 0;
+const PERSISTED_ROW_BR_LEADERBOARD_SHARE_MAX = 1;
 const PERSISTED_FIELD_VARIABILITY_BUCKETS_MAX = 20;
 const PERSISTED_ROW_COUNT_MAX = 100_000;
 const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
@@ -412,6 +418,14 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
       changed = true;
     }
   }
+  if ("battleRoyaleLeaderboard" in next) {
+    const before = JSON.stringify(next.battleRoyaleLeaderboard);
+    const after = JSON.stringify(DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS);
+    if (before !== after) {
+      next.battleRoyaleLeaderboard = DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS;
+      changed = true;
+    }
+  }
 
   return changed ? (next as unknown as ControlsState) : controls;
 }
@@ -474,6 +488,15 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     );
     const nextPkoHeadVar = undefined;
     const nextPkoHeat = undefined;
+    const nextBattleRoyaleLeaderboardEnabled =
+      typeof row.battleRoyaleLeaderboardEnabled === "boolean"
+        ? row.battleRoyaleLeaderboardEnabled
+        : undefined;
+    const nextBattleRoyaleLeaderboardShare = clampPersistedOptionalNumber(
+      row.battleRoyaleLeaderboardShare,
+      PERSISTED_ROW_BR_LEADERBOARD_SHARE_MIN,
+      PERSISTED_ROW_BR_LEADERBOARD_SHARE_MAX,
+    );
     const nextSitThroughPayJumps =
       typeof row.sitThroughPayJumps === "boolean"
         ? row.sitThroughPayJumps
@@ -485,6 +508,11 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       nextMysteryBountyVariance;
     let finalPkoHeadVar: number | undefined = nextPkoHeadVar;
     let finalPkoHeat: number | undefined = nextPkoHeat;
+    let finalBattleRoyaleLeaderboardEnabled:
+      | boolean
+      | undefined = nextBattleRoyaleLeaderboardEnabled;
+    let finalBattleRoyaleLeaderboardShare: number | undefined =
+      nextBattleRoyaleLeaderboardShare;
     if (nextGameType === "freezeout") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
@@ -492,6 +520,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalMysteryBountyVariance = undefined;
       finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
+      finalBattleRoyaleLeaderboardEnabled = undefined;
+      finalBattleRoyaleLeaderboardShare = undefined;
     } else if (nextGameType === "freezeout-reentry") {
       finalMaxEntries = Math.max(2, nextMaxEntries ?? 2);
       finalReentryRate = nextReentryRate ?? 1;
@@ -499,12 +529,16 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalMysteryBountyVariance = undefined;
       finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
+      finalBattleRoyaleLeaderboardEnabled = undefined;
+      finalBattleRoyaleLeaderboardShare = undefined;
     } else if (nextGameType === "pko") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
       finalBountyFraction = nextBountyFraction ?? 0.5;
       finalMysteryBountyVariance = undefined;
       finalPkoHeadVar = nextPkoHeadVar ?? 0.4;
+      finalBattleRoyaleLeaderboardEnabled = undefined;
+      finalBattleRoyaleLeaderboardShare = undefined;
     } else if (nextGameType === "mystery") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
@@ -512,6 +546,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalMysteryBountyVariance = nextMysteryBountyVariance ?? 2.0;
       finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
+      finalBattleRoyaleLeaderboardEnabled = undefined;
+      finalBattleRoyaleLeaderboardShare = undefined;
     } else if (nextGameType === "mystery-royale") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
@@ -519,6 +555,21 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalMysteryBountyVariance = nextMysteryBountyVariance ?? 1.8;
       finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
+      finalBattleRoyaleLeaderboardEnabled =
+        nextBattleRoyaleLeaderboardEnabled ?? false;
+      finalBattleRoyaleLeaderboardShare =
+        finalBattleRoyaleLeaderboardEnabled
+          ? normalizeBattleRoyaleLeaderboardShare(
+              nextBattleRoyaleLeaderboardShare,
+            )
+          : undefined;
+    }
+    const effectiveBattleRoyaleRow =
+      nextGameType === "mystery-royale" ||
+      nextPayoutStructure === "battle-royale";
+    if (!effectiveBattleRoyaleRow) {
+      finalBattleRoyaleLeaderboardEnabled = undefined;
+      finalBattleRoyaleLeaderboardShare = undefined;
     }
     const nextFinishBuckets = normalizePersistedFinishBuckets(
       row.finishBuckets,
@@ -551,6 +602,9 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalMysteryBountyVariance === row.mysteryBountyVariance &&
       finalPkoHeadVar === row.pkoHeadVar &&
       finalPkoHeat === row.pkoHeat &&
+      finalBattleRoyaleLeaderboardEnabled ===
+        row.battleRoyaleLeaderboardEnabled &&
+      finalBattleRoyaleLeaderboardShare === row.battleRoyaleLeaderboardShare &&
       nextSitThroughPayJumps === row.sitThroughPayJumps &&
       nextFinishBuckets === row.finishBuckets &&
       nextCustom.payoutStructure === row.payoutStructure &&
@@ -580,6 +634,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       mysteryBountyVariance: finalMysteryBountyVariance,
       pkoHeadVar: finalPkoHeadVar,
       pkoHeat: finalPkoHeat,
+      battleRoyaleLeaderboardEnabled: finalBattleRoyaleLeaderboardEnabled,
+      battleRoyaleLeaderboardShare: finalBattleRoyaleLeaderboardShare,
       sitThroughPayJumps: nextSitThroughPayJumps,
       finishBuckets: nextFinishBuckets,
       payoutStructure: nextCustom.payoutStructure,
