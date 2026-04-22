@@ -61,6 +61,13 @@ export const SIGMA_ROI_MYSTERY: SigmaCoef = {
   resid: 0.17,
 };
 
+// The user-facing Mystery convergence tab now centers on a runtime single-row
+// compile instead of this promoted 2D surface. Independent fresh-sim checks
+// across off-grid and edge-of-box points stayed within roughly 1.2% of sigma,
+// so the chart uses a conservative symmetric runtime residual band of ±3%.
+// The legacy 2D coefficients remain useful for diagnostics / generic helpers.
+export const SIGMA_ROI_MYSTERY_RUNTIME_RESID = 0.03;
+
 export const SIGMA_ROI_MYSTERY_ROYALE: SigmaCoef = {
   // BR is locked to AFS=18 in the widget, so the user-facing tab centers on
   // the runtime single-row compile rather than this helper. These coefficients

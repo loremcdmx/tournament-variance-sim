@@ -22,6 +22,7 @@ import {
   normalizeMix,
   posToAfs,
   roiControlBoundsForFormat,
+  SIGMA_ROI_MYSTERY_RUNTIME_RESID,
   SIGMA_ROI_MYSTERY_ROYALE,
   type ConvergenceFormat,
   type MixTuple,
@@ -410,6 +411,36 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       hi: syntheticBattleRoyale.sigmaEff * (1 + resid),
     };
   }, [effectiveMode, format, rakePct, effectiveRoi, finishModel]);
+  const mysterySigmaOverride = useMemo<SigmaBand | null>(() => {
+    if (effectiveMode === "exact") return null;
+    if (format !== "mystery" && format !== "mix") return null;
+    const syntheticMystery = buildExactBreakdown(
+      [
+        {
+          id: "convergence-mystery-runtime",
+          label: "Mystery",
+          players: Math.max(2, Math.round(effectiveAfs)),
+          buyIn: 50,
+          rake: rakePct / 100,
+          roi: effectiveRoi,
+          payoutStructure: "mtt-gg-mystery",
+          gameType: "mystery",
+          bountyFraction: 0.5,
+          mysteryBountyVariance: 2.0,
+          pkoHeadVar: 0.4,
+          count: 1,
+        },
+      ],
+      { finishModel },
+    );
+    if (!syntheticMystery) return null;
+    const resid = SIGMA_ROI_MYSTERY_RUNTIME_RESID;
+    return {
+      s: syntheticMystery.sigmaEff,
+      lo: syntheticMystery.sigmaEff * (1 - resid),
+      hi: syntheticMystery.sigmaEff * (1 + resid),
+    };
+  }, [effectiveMode, format, effectiveAfs, rakePct, effectiveRoi, finishModel]);
   const sigmaOverrides = useMemo<
     Partial<Record<"freeze" | "pko" | "mystery" | "mystery-royale", SigmaBand>> | undefined
   >(() => {
@@ -417,11 +448,12 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       Record<"freeze" | "pko" | "mystery" | "mystery-royale", SigmaBand>
     > = {};
     if (freezeSigmaOverride) overrides.freeze = freezeSigmaOverride;
+    if (mysterySigmaOverride) overrides.mystery = mysterySigmaOverride;
     if (battleRoyaleSigmaOverride) {
       overrides["mystery-royale"] = battleRoyaleSigmaOverride;
     }
     return Object.keys(overrides).length > 0 ? overrides : undefined;
-  }, [freezeSigmaOverride, battleRoyaleSigmaOverride]);
+  }, [freezeSigmaOverride, mysterySigmaOverride, battleRoyaleSigmaOverride]);
 
   const rows = useMemo(() => {
     return computeConvergenceRows({
@@ -863,11 +895,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       )}
       {bandPolicy?.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
-          {t(
-            bandPolicy.reason === "contains-mystery"
-              ? "chart.convergence.bandWarning.containsMystery"
-              : "chart.convergence.bandWarning.outsideFitBox",
-          )}
+          {t("chart.convergence.bandWarning.outsideFitBox")}
         </div>
       )}
       <div className="space-y-2 sm:hidden">

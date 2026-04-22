@@ -13,7 +13,6 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   FIT_RAKE_BY_FORMAT,
-  SIGMA_ROI_MYSTERY,
   SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
   buildExactBreakdown,
@@ -72,6 +71,30 @@ function battleRoyaleSigma(roi: number, rake: number): number {
   return exact.sigmaEff;
 }
 
+function mysterySigma(afs: number, roi: number, rake: number): number {
+  const exact = buildExactBreakdown(
+    [
+      {
+        id: "mystery",
+        label: "Mystery",
+        players: Math.max(2, Math.round(afs)),
+        buyIn: 50,
+        rake,
+        roi,
+        payoutStructure: "mtt-gg-mystery",
+        gameType: "mystery",
+        bountyFraction: 0.5,
+        mysteryBountyVariance: 2.0,
+        pkoHeadVar: 0.4,
+        count: 1,
+      },
+    ],
+    { finishModel: { id: "mystery-realdata-linear" } },
+  );
+  if (!exact) throw new Error("mystery exact breakdown failed");
+  return exact.sigmaEff;
+}
+
 // ---------- Tab 1: FREEZE ---------------------------------------------------
 
 console.log("==== TAB: freeze ====");
@@ -110,11 +133,21 @@ console.log("  ✓ σ monotone↑ in ROI inside fit box");
 // ---------- Tab 3: MYSTERY --------------------------------------------------
 
 console.log("\n==== TAB: mystery ====");
-const sMyLoRoi = sigmaFor(SIGMA_ROI_MYSTERY, 1000, -0.2, 0.1, 0.1);
-const sMyHiRoi = sigmaFor(SIGMA_ROI_MYSTERY, 1000, 0.8, 0.1, 0.1);
+const sMyLoRoi = mysterySigma(1000, -0.2, 0.1);
+const sMyHiRoi = mysterySigma(1000, 0.8, 0.1);
 console.log(`σ@-20% = ${sMyLoRoi.toFixed(3)}  σ@+80% = ${sMyHiRoi.toFixed(3)}  (must be ↑ in-box)`);
 if (sMyHiRoi <= sMyLoRoi) throw new Error(`mystery σ not monotone↑ in ROI`);
-console.log("  ✓ σ monotone↑ in ROI inside fit box");
+console.log("  ✓ runtime σ monotone↑ in ROI inside the full UI box");
+
+const sMyEdgeLo = mysterySigma(50, -0.2, 0.1);
+const sMyEdgeHi = mysterySigma(50_000, 0.8, 0.1);
+console.log(
+  `edge cells: σ@AFS50,-20%=${sMyEdgeLo.toFixed(3)}  σ@AFS50k,+80%=${sMyEdgeHi.toFixed(3)}`,
+);
+if (!(sMyEdgeLo > 0 && sMyEdgeHi > sMyEdgeLo)) {
+  throw new Error("mystery runtime σ is not stable across the validated UI box");
+}
+console.log("  ✓ runtime σ stays positive across the validated Mystery UI box");
 
 // ---------- Tab 4: MYSTERY-ROYALE (runtime point estimate @ fixed AFS=18) ---
 
@@ -159,7 +192,7 @@ console.log("  ✓ runtime σ monotone↓ in rake");
 console.log("\n==== TAB: mix ====");
 const sF = freezeSigma(1000, 0.1, 0.1);
 const sP = sigmaFor(SIGMA_ROI_PKO, 1000, 0.1, 0.1, 0.1);
-const sM = sigmaFor(SIGMA_ROI_MYSTERY, 1000, 0.1, 0.1, 0.1);
+const sM = mysterySigma(1000, 0.1, 0.1);
 const mix: [number, number, number] = [0.5, 0.3, 0.2];
 const sMix = Math.sqrt(mix[0] * sF * sF + mix[1] * sP * sP + mix[2] * sM * sM);
 console.log(`freeze: σ=${sF.toFixed(3)}`);

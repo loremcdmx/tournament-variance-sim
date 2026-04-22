@@ -2,18 +2,16 @@
  * Policy for the ConvergenceChart numeric ±band. Separated from the chart so
  * the contract lives in one place and can be unit-tested without rendering.
  *
- * The fits are only validated inside an explicit training box per format.
+ * Numeric bands are only validated inside an explicit per-format box.
  * Anything outside (e.g. ROI=−30 % for PKO/Mystery, field > 50 000 for
  * non-MBR, field !== 18 for MBR) is extrapolation and not band-worthy —
- * policy reports `outside-fit-box`. Mystery is stricter: although its current
- * 2D fit is good on the canonical grid overall, off-grid drift is still too
- * wide in low-field / edge-ROI corners, so numeric bands are only allowed in
- * a narrower revalidated safe box. In-box-but-outside-safe-box Mystery reports
- * `contains-mystery`. Battle Royale is narrower but simpler: its whole UI box
- * is already the validated box (`field === 18`, ROI ±10%), and the chart now
- * uses a runtime single-row point estimate with a separately revalidated
- * runtime-vs-sim residual band there. So in-box MBR can keep the numeric
- * ±band; only extrapolation outside that box is suppressed.
+ * policy reports `outside-fit-box`.
+ *
+ * PKO still uses its promoted fit directly. Mystery and Battle Royale now
+ * center the user-facing chart on runtime single-row compiles with separately
+ * revalidated runtime-vs-sim residual bands, but those runtime bands are only
+ * signed off inside the same user-facing boxes below. So the policy remains
+ * simple: in-box → numeric, outside → warning.
  */
 
 import type { TournamentRow } from "./types";
@@ -28,7 +26,7 @@ export type ConvergenceBandPolicy =
   | { kind: "numeric" }
   | {
       kind: "warning";
-      reason: "contains-mystery" | "outside-fit-box";
+      reason: "outside-fit-box";
     };
 
 export interface FitBoxSample {
@@ -41,10 +39,6 @@ export const CONVERGENCE_FIELD_MIN = 50;
 export const CONVERGENCE_FIELD_MAX = 50_000;
 export const CONVERGENCE_KO_ROI_MIN = -0.20;
 export const CONVERGENCE_KO_ROI_MAX = 0.80;
-export const CONVERGENCE_MYSTERY_NUMERIC_FIELD_MIN = 500;
-export const CONVERGENCE_MYSTERY_NUMERIC_FIELD_MAX = 10_000;
-export const CONVERGENCE_MYSTERY_NUMERIC_ROI_MIN = -0.10;
-export const CONVERGENCE_MYSTERY_NUMERIC_ROI_MAX = 0.30;
 export const CONVERGENCE_MBR_FIELD = 18;
 export const CONVERGENCE_MBR_ROI_MIN = -0.10;
 export const CONVERGENCE_MBR_ROI_MAX = 0.10;
@@ -154,44 +148,12 @@ export function isInsideFitBox(sample: FitBoxSample): boolean {
   }
 }
 
-/**
- * Mystery numeric bands are deliberately stricter than the raw fit box.
- *
- * Evidence currently supports a stable "working pocket" around the mid-field,
- * non-extreme ROI controls that the widget defaults into:
- *   - canonical userNarrow grid: p95 ≈ 3.8%, max ≈ 4.1%
- *   - off-grid hold-outs in the same neighborhood stay single-digit
- *
- * Outside this pocket we still show the point estimate, but suppress the
- * numeric range until the full-box Mystery policy is revalidated.
- */
-export function isInsideMysteryNumericBox(sample: FitBoxSample): boolean {
-  return (
-    sample.format === "mystery" &&
-    betweenInclusive(
-      sample.field,
-      CONVERGENCE_MYSTERY_NUMERIC_FIELD_MIN,
-      CONVERGENCE_MYSTERY_NUMERIC_FIELD_MAX,
-    ) &&
-    betweenInclusive(
-      sample.roi,
-      CONVERGENCE_MYSTERY_NUMERIC_ROI_MIN,
-      CONVERGENCE_MYSTERY_NUMERIC_ROI_MAX,
-    )
-  );
-}
-
 export function getConvergenceBandPolicy(
   samples: readonly FitBoxSample[],
 ): ConvergenceBandPolicy {
   for (const s of samples) {
     if (!isInsideFitBox(s)) {
       return { kind: "warning", reason: "outside-fit-box" };
-    }
-  }
-  for (const s of samples) {
-    if (s.format === "mystery" && !isInsideMysteryNumericBox(s)) {
-      return { kind: "warning", reason: "contains-mystery" };
     }
   }
   return { kind: "numeric" };

@@ -1,25 +1,35 @@
 /**
- * Cross-validate Mystery σ_ROI fit on INDEPENDENT (field, ROI) points.
+ * Validate the user-facing Mystery convergence predictor against independent
+ * fresh sims.
  *
- * Training (fit_beta_mystery.json, 2026-04-18) used 18 fields × 11 ROIs.
- * This script measures σ_ROI on held-out combinations not in the training
- * grid, comparing against the runtime 2D log-poly Mystery predictor.
+ * We keep two predictors here:
+ *   1. legacy promoted 2D fit (diagnostic only)
+ *   2. runtime single-row analytic compile (the chart's current source)
+ *
+ * The point is not to defend the old fit anymore; it's to prove that the
+ * runtime-centered Mystery widget can honestly show a numeric band across the
+ * full UI box. So we probe both:
+ *   - off-grid points between trained field / ROI cells
+ *   - nasty edge points right on the UI-box boundaries
  *
  *   npx tsx scripts/xval_mystery.ts
  */
 
-import { runSimulation } from "../src/lib/sim/engine";
+import {
+  buildScheduleAnalyticBreakdown,
+  runSimulation,
+} from "../src/lib/sim/engine";
+import { SIGMA_ROI_MYSTERY_RUNTIME_RESID } from "../src/lib/sim/convergenceFit";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
 const N_TOURNEYS = 500;
 const SAMPLES = 120_000;
 const BUY_IN = 50;
 const RAKE = 0.1;
-// Different seed from training (20260417/20260418) — independence of samples.
-const SEED = 20260419;
+// Different seed from earlier sweeps so this stays independent.
+const SEED = 20260421;
 
-// Runtime Mystery coefficients from ConvergenceChart.tsx.
-const MYSTERY = {
+const LEGACY_FIT = {
   a0: 2.33290,
   a1: -0.27564,
   a2: 0.02917,
@@ -28,9 +38,7 @@ const MYSTERY = {
   c: -0.08406,
 };
 
-// Held-out (field, ROI) pairs: none of these appear in the training grid.
-// Fields chosen between training grid points; ROIs chosen between the 11 trained ROIs.
-const HELD_OUT: Array<{ afs: number; roi: number }> = [
+const OFF_GRID: Array<{ afs: number; roi: number }> = [
   { afs: 125, roi: -0.15 },
   { afs: 250, roi: -0.05 },
   { afs: 400, roi: 0.02 },
@@ -43,8 +51,27 @@ const HELD_OUT: Array<{ afs: number; roi: number }> = [
   { afs: 35000, roi: 0.6 },
 ];
 
-function buildInput(afs: number, roi: number): SimulationInput {
-  const row: TournamentRow = {
+const EDGE_BOX: Array<{ afs: number; roi: number }> = [
+  { afs: 50, roi: -0.20 },
+  { afs: 50, roi: 0.80 },
+  { afs: 100, roi: -0.20 },
+  { afs: 100, roi: 0.80 },
+  { afs: 500, roi: -0.10 },
+  { afs: 10000, roi: 0.30 },
+  { afs: 50000, roi: -0.20 },
+  { afs: 50000, roi: 0.40 },
+  { afs: 50000, roi: 0.80 },
+];
+
+type Bucket = "off-grid" | "edge";
+
+const POINTS: Array<{ afs: number; roi: number; bucket: Bucket }> = [
+  ...OFF_GRID.map((p) => ({ ...p, bucket: "off-grid" as const })),
+  ...EDGE_BOX.map((p) => ({ ...p, bucket: "edge" as const })),
+];
+
+function buildRow(afs: number, roi: number): TournamentRow {
+  return {
     id: "mys-xval",
     label: `mys-xval-${afs}-${roi}`,
     players: afs,
@@ -58,8 +85,11 @@ function buildInput(afs: number, roi: number): SimulationInput {
     pkoHeadVar: 0.4,
     count: N_TOURNEYS,
   };
+}
+
+function buildInput(afs: number, roi: number): SimulationInput {
   return {
-    schedule: [row],
+    schedule: [buildRow(afs, roi)],
     scheduleRepeats: 1,
     samples: SAMPLES,
     bankroll: 0,
@@ -77,73 +107,119 @@ function measure(afs: number, roi: number): { sigma: number; sigmaSE: number } {
   return { sigma, sigmaSE };
 }
 
-function predictMystery(afs: number, roi: number): number {
+function predictLegacyFit(afs: number, roi: number): number {
   const L = Math.log(Math.max(1, afs));
   return Math.exp(
-    MYSTERY.a0 +
-      MYSTERY.a1 * L +
-      MYSTERY.a2 * L * L +
-      MYSTERY.b1 * roi +
-      MYSTERY.b2 * roi * roi +
-      MYSTERY.c * roi * L,
+    LEGACY_FIT.a0 +
+      LEGACY_FIT.a1 * L +
+      LEGACY_FIT.a2 * L * L +
+      LEGACY_FIT.b1 * roi +
+      LEGACY_FIT.b2 * roi * roi +
+      LEGACY_FIT.c * roi * L,
+  );
+}
+
+function predictRuntime(afs: number, roi: number): number {
+  const exact = buildScheduleAnalyticBreakdown({
+    schedule: [buildRow(afs, roi)],
+    finishModel: { id: "mystery-realdata-linear" },
+  });
+  if (!exact) throw new Error("mystery runtime breakdown failed");
+  return exact.sigmaRoiPerTourney;
+}
+
+type RowResult = {
+  bucket: Bucket;
+  afs: number;
+  roi: number;
+  sigma: number;
+  sigmaSE: number;
+  legacy: number;
+  runtime: number;
+  legacyPct: number;
+  runtimePct: number;
+  legacySE: number;
+  runtimeSE: number;
+};
+
+function summarize(label: string, rows: RowResult[]) {
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const max = (xs: number[]) => Math.max(...xs.map((x) => Math.abs(x)));
+  const legacyPct = rows.map((r) => r.legacyPct);
+  const runtimePct = rows.map((r) => r.runtimePct);
+  const legacySE = rows.map((r) => r.legacySE);
+  const runtimeSE = rows.map((r) => r.runtimeSE);
+
+  console.log(`\n  ${label}:`);
+  console.log(
+    `    legacy fit     mean |Δ/σ| = ${mean(legacyPct.map(Math.abs)).toFixed(2)}%   max = ${max(legacyPct).toFixed(2)}%   mean |Δ/SE| = ${mean(legacySE.map(Math.abs)).toFixed(2)}`,
+  );
+  console.log(
+    `    runtime exact  mean |Δ/σ| = ${mean(runtimePct.map(Math.abs)).toFixed(2)}%   max = ${max(runtimePct).toFixed(2)}%   mean |Δ/SE| = ${mean(runtimeSE.map(Math.abs)).toFixed(2)}`,
   );
 }
 
 async function main() {
   const t0 = Date.now();
   console.log(
-    `xval_mystery: ${HELD_OUT.length} held-out (field,roi) points, N=${N_TOURNEYS}, samples=${SAMPLES}, seed=${SEED}`,
+    `xval_mystery: ${POINTS.length} fresh-sim points, N=${N_TOURNEYS}, samples=${SAMPLES}, seed=${SEED}`,
   );
   console.log(
-    "  predictor: log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L",
+    `  buckets: ${OFF_GRID.length} off-grid + ${EDGE_BOX.length} edge-of-box`,
+  );
+  console.log(
+    `  runtime band candidate: ±${(SIGMA_ROI_MYSTERY_RUNTIME_RESID * 100).toFixed(1)}%`,
   );
   console.log("");
   console.log(
-    "  field   roi      σ(actual)  σ(SE)    σ(pred)    Δ        Δ/σ(SE)  Δ/σ(%)",
+    "  bucket    field   roi      σ(actual)  σ(SE)    σ(fit)    Δfit/σ   σ(runtime)  Δrt/σ",
   );
   console.log(
-    "  ------  -------  ---------  -------  ---------  -------  -------  -------",
+    "  -------  ------  -------  ---------  -------  --------  -------  ----------  -------",
   );
-  const rows: Array<{
-    afs: number;
-    roi: number;
-    sigma: number;
-    sigmaSE: number;
-    pred: number;
-    resid: number;
-    residStd: number;
-    residPct: number;
-  }> = [];
-  for (const { afs, roi } of HELD_OUT) {
+
+  const rows: RowResult[] = [];
+  for (const { afs, roi, bucket } of POINTS) {
     const { sigma, sigmaSE } = measure(afs, roi);
-    const pred = predictMystery(afs, roi);
-    const resid = sigma - pred;
-    const residStd = resid / sigmaSE;
-    const residPct = (resid / sigma) * 100;
-    rows.push({ afs, roi, sigma, sigmaSE, pred, resid, residStd, residPct });
+    const legacy = predictLegacyFit(afs, roi);
+    const runtime = predictRuntime(afs, roi);
+    const legacyPct = ((legacy - sigma) / sigma) * 100;
+    const runtimePct = ((runtime - sigma) / sigma) * 100;
+    const legacySE = (legacy - sigma) / sigmaSE;
+    const runtimeSE = (runtime - sigma) / sigmaSE;
+    rows.push({
+      bucket,
+      afs,
+      roi,
+      sigma,
+      sigmaSE,
+      legacy,
+      runtime,
+      legacyPct,
+      runtimePct,
+      legacySE,
+      runtimeSE,
+    });
     console.log(
-      `  ${String(afs).padStart(6)}  ${(roi * 100).toFixed(1).padStart(5)}%   ${sigma.toFixed(4).padStart(8)}  ${sigmaSE.toFixed(4).padStart(6)}   ${pred.toFixed(4).padStart(8)}   ${resid >= 0 ? "+" : ""}${resid.toFixed(4)}  ${residStd >= 0 ? "+" : ""}${residStd.toFixed(2).padStart(5)}   ${residPct >= 0 ? "+" : ""}${residPct.toFixed(2)}%`,
+      `  ${bucket.padEnd(7)} ${String(afs).padStart(6)} ${(roi * 100).toFixed(1).padStart(6)}%   ${sigma.toFixed(4).padStart(8)}  ${sigmaSE.toFixed(4).padStart(6)}   ${legacy.toFixed(4).padStart(8)}  ${legacyPct >= 0 ? "+" : ""}${legacyPct.toFixed(2).padStart(6)}%   ${runtime.toFixed(4).padStart(8)}  ${runtimePct >= 0 ? "+" : ""}${runtimePct.toFixed(2).padStart(6)}%`,
     );
   }
 
-  const n = rows.length;
-  const meanAbsResid = rows.reduce((s, r) => s + Math.abs(r.resid), 0) / n;
-  const maxAbsResidPct = Math.max(...rows.map((r) => Math.abs(r.residPct)));
-  const rmseResid = Math.sqrt(
-    rows.reduce((s, r) => s + r.resid * r.resid, 0) / n,
-  );
-  const meanAbsResidSE = rows.reduce((s, r) => s + Math.abs(r.residStd), 0) / n;
-  const meanAbsResidPct = rows.reduce((s, r) => s + Math.abs(r.residPct), 0) / n;
+  summarize("off-grid only", rows.filter((r) => r.bucket === "off-grid"));
+  summarize("edge box only", rows.filter((r) => r.bucket === "edge"));
+  summarize("overall", rows);
 
+  const runtimeMaxAbsPct = Math.max(...rows.map((r) => Math.abs(r.runtimePct)));
   console.log("");
-  console.log("  Aggregate residuals on held-out (field, roi):");
-  console.log(`    mean |resid|     = ${meanAbsResid.toFixed(4)}`);
-  console.log(`    RMSE             = ${rmseResid.toFixed(4)}`);
-  console.log(`    mean |resid/σ|   = ${meanAbsResidPct.toFixed(2)}%`);
-  console.log(`    max  |resid/σ|   = ${maxAbsResidPct.toFixed(2)}%`);
-  console.log(`    mean |resid/SE|  = ${meanAbsResidSE.toFixed(2)}  (<2 = noise-indistinguishable)`);
-
-  console.log("");
+  if (runtimeMaxAbsPct <= SIGMA_ROI_MYSTERY_RUNTIME_RESID * 100) {
+    console.log(
+      `  VERDICT: runtime Mystery predictor fits inside the validated ±${(SIGMA_ROI_MYSTERY_RUNTIME_RESID * 100).toFixed(1)}% residual band.`,
+    );
+  } else {
+    console.log(
+      `  VERDICT: runtime Mystery predictor exceeds the proposed ±${(SIGMA_ROI_MYSTERY_RUNTIME_RESID * 100).toFixed(1)}% residual band.`,
+    );
+  }
   console.log(`  total: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 

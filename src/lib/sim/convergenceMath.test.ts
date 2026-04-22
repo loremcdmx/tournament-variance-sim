@@ -11,6 +11,7 @@ import {
   isRoiControlActive,
   posToAfs,
   roiControlBoundsForFormat,
+  SIGMA_ROI_MYSTERY_RUNTIME_RESID,
   type MixTuple,
 } from "./convergenceMath";
 import { SIGMA_ROI_MYSTERY_ROYALE, sigmaRoiForRow } from "./convergenceFit";
@@ -225,6 +226,53 @@ describe("convergence math", () => {
       rakePct: 8,
       sigmaOverrides: {
         "mystery-royale": {
+          s: runtime!.sigmaEff,
+          lo: runtime!.sigmaEff * (1 - resid),
+          hi: runtime!.sigmaEff * (1 + resid),
+        },
+      },
+    });
+
+    const expectedK = Math.ceil(Math.pow((z95 * runtime!.sigmaEff) / 0.1, 2));
+    expect(runtimeRows[targetRow].tourneys).toBe(expectedK);
+    expect(runtimeRows[targetRow].tourneysLo).toBeLessThan(
+      runtimeRows[targetRow].tourneys,
+    );
+    expect(runtimeRows[targetRow].tourneysHi).toBeGreaterThan(
+      runtimeRows[targetRow].tourneys,
+    );
+  });
+
+  it("mystery averaged mode can use a runtime-centered residual band across the full UI box", () => {
+    const row: TournamentRow = {
+      id: "mystery",
+      label: "Mystery",
+      players: 50_000,
+      buyIn: 50,
+      rake: 0.1,
+      roi: 0.8,
+      payoutStructure: "mtt-gg-mystery",
+      gameType: "mystery",
+      bountyFraction: 0.5,
+      mysteryBountyVariance: 2.0,
+      pkoHeadVar: 0.4,
+      count: 1,
+    };
+    const runtime = buildExactBreakdown([row], {
+      finishModel: { id: "mystery-realdata-linear" },
+    });
+    expect(runtime).not.toBeNull();
+
+    const resid = SIGMA_ROI_MYSTERY_RUNTIME_RESID;
+    const runtimeRows = computeConvergenceRows({
+      afs: row.players,
+      z: z95,
+      roi: row.roi,
+      mix: [0, 0, 1],
+      format: "mystery",
+      rakePct: 10,
+      sigmaOverrides: {
+        mystery: {
           s: runtime!.sigmaEff,
           lo: runtime!.sigmaEff * (1 - resid),
           hi: runtime!.sigmaEff * (1 + resid),
