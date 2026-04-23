@@ -2480,6 +2480,18 @@ export const DICT = {
     en: "Thin lines are individual runs. Colored rails show where the bulk of honest sessions usually lives. The dashed line marks {threshold}.",
     ru: "Тонкие линии — отдельные раны. Цветные рельсы показывают, где обычно живёт основная масса честных сессий. Пунктиром отмечен порог {threshold}.",
   },
+  "cash.chart.trajectory.bankrollBb": {
+    en: "Bankroll (BB)",
+    ru: "Банкролл (BB)",
+  },
+  "cash.chart.trajectory.bankrollUsd": {
+    en: "Bankroll ($)",
+    ru: "Банкролл ($)",
+  },
+  "cash.chart.trajectory.finalBankroll": {
+    en: "Final bankroll",
+    ru: "Финальный банкролл",
+  },
   "cash.chart.final.title": {
     en: "Final bankroll distribution",
     ru: "Распределение финального BR",

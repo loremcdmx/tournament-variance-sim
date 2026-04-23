@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/Section";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import type { CashResult } from "@/lib/sim/cashTypes";
+import type { RunMode } from "@/lib/trajectorySelection";
 import {
   type CashMoneyUnit,
   type HeroStat,
@@ -38,10 +39,11 @@ export function CashResultsView({ result }: { result: CashResult }) {
   const riskThresholdBb = result.oddsOverDistance.thresholdBb;
   const mixBreakdown = result.mixBreakdown;
   const [moneyUnit, setMoneyUnit] = useState<CashMoneyUnit>("bb");
-  const maxVisibleRuns = Math.max(1, Math.min(36, result.samplePaths.paths.length));
+  const maxVisibleRuns = Math.max(1, Math.min(120, result.samplePaths.paths.length));
   const [visibleRuns, setVisibleRuns] = useState(() =>
-    Math.min(12, maxVisibleRuns),
+    Math.min(80, maxVisibleRuns),
   );
+  const [runMode, setRunMode] = useState<RunMode>("random");
   const clampedVisibleRuns = Math.max(
     0,
     Math.min(visibleRuns, maxVisibleRuns),
@@ -230,6 +232,8 @@ export function CashResultsView({ result }: { result: CashResult }) {
           visibleRuns={clampedVisibleRuns}
           maxVisibleRuns={maxVisibleRuns}
           onVisibleRunsChange={setVisibleRuns}
+          runMode={runMode}
+          onRunModeChange={setRunMode}
           moneyUnit={moneyUnit}
           onMoneyUnitChange={setMoneyUnit}
           riskThresholdBb={riskThresholdBb}
@@ -239,6 +243,7 @@ export function CashResultsView({ result }: { result: CashResult }) {
           result={result}
           bbSize={bb}
           visibleRuns={clampedVisibleRuns}
+          runMode={runMode}
           moneyUnit={moneyUnit}
           riskThresholdBb={riskThresholdBb}
         />
