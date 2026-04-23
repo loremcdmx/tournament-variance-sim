@@ -39,6 +39,7 @@ import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { SCENARIOS } from "@/lib/scenarios";
+import { ScheduleToolbarExtras } from "@/components/ScheduleToolbarExtras";
 
 const scenarioDerived = new Map(
   SCENARIOS.map((s) => {
@@ -511,31 +512,34 @@ export default function Home() {
     () => scheduleHasBattleRoyaleRows(schedule),
     [schedule],
   );
+  const handleScheduleReset = useCallback(() => {
+    queueInterruptBackground();
+    setSchedule([
+      {
+        id: crypto.randomUUID(),
+        label: "",
+        players: 500,
+        buyIn: 10,
+        rake: 0.1,
+        roi: 0.2,
+        payoutStructure: "mtt-standard",
+        gameType: "freezeout",
+        count: 1,
+      },
+    ]);
+    setActiveScenarioId(null);
+  }, [queueInterruptBackground]);
   const scheduleToolbarExtras = useMemo(
     () => (
-      <>
-        <span className="eyebrow whitespace-nowrap text-[color:var(--color-fg-dim)]">
-          {t("demo.label")}
-        </span>
-        <select
-          value={activeScenarioId ?? ""}
-          onChange={(e) => {
-            const id = e.target.value;
-            if (id) loadScenario(id);
-          }}
-          className="max-w-[200px] truncate rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-1 text-xs text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
-          aria-label={t("demo.label")}
-        >
-          <option value="">—</option>
-          {SCENARIOS.map((s) => (
-            <option key={s.id} value={s.id}>
-              {t(s.labelKey)}
-            </option>
-          ))}
-        </select>
-      </>
+      <ScheduleToolbarExtras
+        t={t}
+        activeScenarioId={activeScenarioId}
+        loadScenario={loadScenario}
+        onReset={handleScheduleReset}
+        disabled={running}
+      />
     ),
-    [t, activeScenarioId, loadScenario],
+    [t, activeScenarioId, loadScenario, handleScheduleReset, running],
   );
   const doneSummary = useMemo(
     () =>
@@ -1350,8 +1354,35 @@ const GlobalRakebackControl = memo(function GlobalRakebackControl({
           disabled={disabled}
           onClick={() => onChange({ ...value, rakebackPct: 40 })}
           title={t("controls.rakeback.avgBrTitle")}
-          className="rounded-md border border-[color:var(--color-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-40"
+          aria-pressed={value.rakebackPct === 40}
+          className={
+            "inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors disabled:opacity-40 " +
+            (value.rakebackPct === 40
+              ? "bg-[color:var(--color-accent)]/18 text-[color:var(--color-accent)] ring-1 ring-inset ring-[color:var(--color-accent)]/70"
+              : "border border-dashed border-[color:var(--color-accent)]/55 text-[color:var(--color-accent)]/80 hover:border-solid hover:border-[color:var(--color-accent)] hover:bg-[color:var(--color-accent)]/10 hover:text-[color:var(--color-accent)]")
+          }
         >
+          {value.rakebackPct === 40 ? (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M5 12l5 5L20 7"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M12 19V5M6 11l6-6 6 6"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
           {t("controls.rakeback.avgBr")}
         </button>
       )}
