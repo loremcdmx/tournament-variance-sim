@@ -1,4 +1,4 @@
-import { runSimulation } from "../src/lib/sim/engine";
+import { compileSchedule, runSimulation } from "../src/lib/sim/engine";
 
 const base = {
   schedule: [
@@ -19,10 +19,15 @@ const base = {
   seed: 42,
   finishModel: { id: "power-law" as const },
   compareWithPrimedope: true,
+  primedopeStyleEV: true,
 };
 
 const r = runSimulation(base);
 const binary = r.comparison!;
+const binaryExact = compileSchedule(
+  { ...base, compareWithPrimedope: false, calibrationMode: "primedope-binary-itm" },
+  "primedope-binary-itm",
+);
 
 console.log("=== PrimeDope reference (100p, $50, 11% rake, 10% ROI, 1000 tourneys) ===");
 console.log("PrimeDope site: EV=$5000 SD(math)=$5607 SD(sim)=$5789");
@@ -33,5 +38,5 @@ console.log("  mean:", binary.stats ? r.stats.mean.toFixed(0) : "-", "SD:", r.st
 console.log("  RoR50%:", r.stats.minBankrollRoR50pct?.toFixed(0), "RoR5%:", r.stats.minBankrollRoR5pct.toFixed(0), "RoR1%:", r.stats.minBankrollRoR1pct.toFixed(0));
 console.log();
 console.log("Binary-ITM (new PrimeDope-compat):");
-console.log("  mean:", binary.stats.mean.toFixed(0), "SD:", binary.stats.stdDev.toFixed(0));
+console.log("  exact EV:", binaryExact.expectedProfit.toFixed(0), "MC mean:", binary.stats.mean.toFixed(0), "SD:", binary.stats.stdDev.toFixed(0));
 console.log("  RoR50%:", binary.stats.minBankrollRoR50pct?.toFixed(0), "RoR5%:", binary.stats.minBankrollRoR5pct.toFixed(0), "RoR1%:", binary.stats.minBankrollRoR1pct.toFixed(0));

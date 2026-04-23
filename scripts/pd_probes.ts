@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runSimulation } from "../src/lib/sim/engine";
+import { compileSchedule, runSimulation } from "../src/lib/sim/engine";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 import { primedopeCurveForPaid } from "../src/lib/sim/pdCurves";
 
@@ -124,8 +124,12 @@ function runOurs(rows: RowSpec[], samples = 50_000, bankroll = 1000) {
     seed: 42,
     finishModel: { id: "power-law" },
     calibrationMode: "primedope-binary-itm",
+    primedopeStyleEV: true,
   };
-  return runSimulation(input);
+  return {
+    exactEv: compileSchedule(input, "primedope-binary-itm").expectedProfit,
+    result: runSimulation(input),
+  };
 }
 
 const money = (n: number) => (n >= 0 ? "$" : "-$") + Math.abs(Math.round(n)).toLocaleString("en-US");
@@ -133,10 +137,10 @@ const pct = (n: number) => (n * 100).toFixed(2) + "%";
 const relErr = (a: number, b: number) => (Math.abs(b) < 1 ? a - b : (a - b) / Math.abs(b));
 
 function diffLine(label: string, pd: any, ours: any) {
-  const evE = relErr(ours.stats.mean, pd.ev);
-  const sdE = relErr(ours.stats.stdDev, pd.sd);
+  const evE = relErr(ours.exactEv, pd.ev);
+  const sdE = relErr(ours.result.stats.stdDev, pd.sd);
   console.log(
-    `  ${label.padEnd(20)}  EV ${money(pd.ev)} vs ${money(ours.stats.mean)} (Δ ${(evE * 100).toFixed(2)}%)   SD ${money(pd.sd)} vs ${money(ours.stats.stdDev)} (Δ ${(sdE * 100).toFixed(2)}%)`,
+    `  ${label.padEnd(20)}  EV ${money(pd.ev)} vs exact ${money(ours.exactEv)} (Δ ${(evE * 100).toFixed(2)}%)   SD ${money(pd.sd)} vs ${money(ours.result.stats.stdDev)} (Δ ${(sdE * 100).toFixed(2)}%)`,
   );
 }
 

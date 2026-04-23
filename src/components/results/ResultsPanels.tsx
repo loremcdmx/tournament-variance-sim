@@ -104,7 +104,8 @@ export function PrimeDopeWeaknessCard() {
                     <code>usePrimedopePayouts</code> — их структура выплат
                   </li>
                   <li>
-                    <code>usePrimedopeRakeMath</code> — их трактовка cost / rake
+                    <code>usePrimedopeRakeMath</code> — их rake-to-SD quirk без
+                    смены ROI-базы UI
                   </li>
                 </ul>
                 <p>

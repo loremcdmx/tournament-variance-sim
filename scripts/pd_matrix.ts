@@ -3,8 +3,8 @@
  *
  * Each scenario is configured to match PD's UI exactly: explicit
  * "Places paid" taken from their dropdown, their default sample size
- * (10000), and primedope-binary-itm calibration so the finish model
- * matches their Distribution object.
+ * (10000), primedope-binary-itm calibration, and PD-style EV basis so the
+ * finish model and buy-in/rake convention match their Distribution object.
  *
  * We pre-resample the PD h[8] payout curve to the chosen paid count via
  * customPayouts — that removes any ambiguity about what our engine uses
@@ -167,6 +167,7 @@ function runScenario(sc: Scenario) {
     seed: 42,
     finishModel: { id: "power-law" },
     calibrationMode: "primedope-binary-itm",
+    primedopeStyleEV: true,
   };
   return runSimulation(input);
 }
@@ -199,5 +200,5 @@ for (const sc of scenarios) {
 
 console.log();
 console.log(
-  "Our numbers: 10,000 MC samples, primedope-binary-itm mode, PD h[8] payout curve resampled to the exact Places paid.",
+  "Our numbers: 10,000 MC samples, primedope-binary-itm mode, PD-style EV basis, PD h[8] payout curve resampled to the exact Places paid.",
 );

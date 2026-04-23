@@ -1,4 +1,4 @@
-import { runSimulation } from "../src/lib/sim/engine";
+import { compileSchedule, runSimulation } from "../src/lib/sim/engine";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
 const row: TournamentRow = {
@@ -9,13 +9,18 @@ const input: SimulationInput = {
   schedule: [row], scheduleRepeats: 1, samples: 10000,
   bankroll: 1000, seed: 42, finishModel: { id: "power-law" },
   compareWithPrimedope: true,
+  primedopeStyleEV: true,
   usePrimedopePayouts: true,
   usePrimedopeFinishModel: true,
   usePrimedopeRakeMath: true,
 };
 const r = runSimulation(input);
+const pdExact = compileSchedule(
+  { ...input, compareWithPrimedope: false, calibrationMode: "primedope-binary-itm" },
+  "primedope-binary-itm",
+);
 console.log("primary EV/SD:", r.stats.mean.toFixed(0), r.stats.stdDev.toFixed(0));
 if (r.comparison) {
-  console.log("comparison (PD pane) EV/SD:", r.comparison.stats.mean.toFixed(0), r.comparison.stats.stdDev.toFixed(0));
+  console.log("comparison (PD pane) exact EV / MC mean / SD:", pdExact.expectedProfit.toFixed(0), r.comparison.stats.mean.toFixed(0), r.comparison.stats.stdDev.toFixed(0));
 }
 console.log("PD site says: EV=20000 SD(math)=12030 SD(sim)=11936");

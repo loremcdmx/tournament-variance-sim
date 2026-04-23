@@ -382,7 +382,9 @@ export type BattleRoyaleLeaderboardPromoConfig =
  * - "alpha" (default): the skilled-aware parametric calibration — binary-search
  *   α so the configured skill model (power-law / linear-skill / stretched-exp)
  *   hits the target ROI. Concentrates skill in deep finishes.
- * - "primedope-binary-itm": reproduces PrimeDope's actual variance model.
+ * - "primedope-binary-itm": reproduces PrimeDope's binary-ITM distribution
+ *   model; the app keeps its full-cost ROI basis unless `primedopeStyleEV`
+ *   is explicitly enabled for live-site parity diagnostics.
  *   The probability of cashing is a single Bernoulli "you cashed / you
  *   didn't" — every paid place has the same probability `l / paid`, where
  *   `l` is solved from the ROI target. Crucially, the per-place payouts
