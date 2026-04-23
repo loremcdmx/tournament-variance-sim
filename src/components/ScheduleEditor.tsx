@@ -211,6 +211,24 @@ function payoutCompat(
   return { ok: true };
 }
 
+// Payout structure → poker room mark. Lets each card show its venue at a
+// glance. Only payouts calibrated to a specific operator get a mark; generic
+// tables / SNGs / satellites stay unbranded.
+type PokerRoom = "pokerstars" | "ggpoker" | "coinpoker";
+const PAYOUT_ROOM: Partial<Record<PayoutStructureId, PokerRoom>> = {
+  "mtt-pokerstars": "pokerstars",
+  "mtt-sunday-million": "pokerstars",
+  "mtt-gg-mystery": "ggpoker",
+  "battle-royale": "ggpoker",
+  "mtt-gg": "coinpoker",
+  "mtt-gg-bounty": "coinpoker",
+};
+const ROOM_META: Record<PokerRoom, { label: string; src: string }> = {
+  pokerstars: { label: "PokerStars", src: "/logos/pokerstars.svg" },
+  ggpoker: { label: "GGPoker", src: "/logos/ggpoker.svg" },
+  coinpoker: { label: "CoinPoker", src: "/logos/coinpoker.svg" },
+};
+
 const PAYOUT_IDS: PayoutStructureId[] = [
   "mtt-standard",
   "mtt-flat",
@@ -395,53 +413,23 @@ export const ScheduleEditor = memo(function ScheduleEditor({
         disabled={disabled}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      <div className="schedule-table-scroll overflow-x-auto">
-        <table className="dense-control-table w-full min-w-[960px] table-fixed text-sm xl:min-w-0">
-          <colgroup>
-            <col className="w-8" />
-            <col />
-            <col className="w-[12rem]" />
-            <col className="w-[5rem]" />
-            <col className="w-[6.25rem]" />
-            <col className="w-[6.5rem]" />
-            <col className="w-[6.5rem]" />
-            <col className="w-[13rem]" />
-            <col className="w-[5.75rem]" />
-            <col className="w-[4.5rem]" />
-          </colgroup>
-          <thead>
-            <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-left text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
-              <Th> </Th>
-              <Th align="center" hint={t("help.row.label")}>{t("row.label")}</Th>
-              <Th align="center" hint={t("row.gameTypeHint")}>{t("row.gameType")}</Th>
-              <Th align="center" hint={t("help.row.players")}>{t("row.players")}</Th>
-              <Th align="center" hint={t("help.row.buyIn")}>{t("row.buyIn")}</Th>
-              <Th align="center" hint={t("help.row.roi")}>{t("row.roi")}</Th>
-              <Th align="center" hint={t("row.fixedItmHint")}>{t("row.fixedItm")}</Th>
-              <Th align="center" hint={t("help.row.payouts")}>{t("row.payouts")}</Th>
-              <Th align="center" hint={t("help.row.count")}>{t("row.count")}</Th>
-              <Th> </Th>
-            </tr>
-          </thead>
-          <tbody>
-            {schedule.map((r, i) => (
-              <ScheduleRow
-                key={r.id}
-                row={r}
-                rowIndex={i}
-                advanced={advanced}
-                isOpen={advanced && expanded.has(r.id)}
-                globalItmPct={globalItmPct}
-                globalRakebackPct={globalRakebackPct}
-                canRemove={canRemove}
-                update={update}
-                remove={remove}
-                duplicate={duplicate}
-                toggleExpand={toggleExpand}
-              />
-            ))}
-          </tbody>
-        </table>
+      <div className="dense-control-table flex flex-col gap-2 p-2">
+        {schedule.map((r, i) => (
+          <ScheduleRow
+            key={r.id}
+            row={r}
+            rowIndex={i}
+            advanced={advanced}
+            isOpen={advanced && expanded.has(r.id)}
+            globalItmPct={globalItmPct}
+            globalRakebackPct={globalRakebackPct}
+            canRemove={canRemove}
+            update={update}
+            remove={remove}
+            duplicate={duplicate}
+            toggleExpand={toggleExpand}
+          />
+        ))}
       </div>
       <div className="border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/40 px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
@@ -547,6 +535,16 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   );
 });
 
+// Card stripe colour keyed to the user-facing game type. Uses the existing
+// suit palette from globals.css so the tint is consistent with the rest of
+// the UI (no new colour tokens).
+const GAME_TYPE_TINT: Record<VisibleGameType, string> = {
+  freezeout: "var(--c-spade)",
+  pko: "var(--c-heart)",
+  mystery: "var(--c-diamond)",
+  "mystery-royale": "var(--c-club)",
+};
+
 interface ScheduleRowProps {
   row: TournamentRow;
   rowIndex: number;
@@ -563,7 +561,6 @@ interface ScheduleRowProps {
 
 const ScheduleRow = memo(function ScheduleRow({
   row: r,
-  rowIndex: i,
   advanced,
   isOpen,
   globalItmPct,
@@ -624,14 +621,220 @@ const ScheduleRow = memo(function ScheduleRow({
   };
 
   return (
-    <>
-      <tr
-        className={
-          "group border-b border-[color:var(--color-border)]/60 transition-colors hover:bg-[color:var(--color-fg)]/[0.03] " +
-          (i % 2 === 1 ? "bg-[color:var(--color-fg)]/[0.02]" : "")
-        }
+    <div
+      className={
+        "group relative overflow-hidden rounded-lg border transition-colors focus-within:border-[color:var(--color-accent)]/40 " +
+        (currentDisabled
+          ? "border-[color:var(--color-danger)]/55"
+          : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]")
+      }
+      style={{
+        background:
+          "linear-gradient(to bottom, color-mix(in oklab, var(--c-bg-elev), white 2%), color-mix(in oklab, var(--c-bg-elev), black 4%))",
+      }}
+    >
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-[3px]"
+        style={{ background: GAME_TYPE_TINT[uiGt] }}
+      />
+      <div
+        className="grid gap-4 py-3 pl-5 pr-3"
+        style={{
+          gridTemplateColumns:
+            "minmax(11rem,1.5fr) minmax(10rem,1.1fr) minmax(11rem,1.1fr) auto",
+        }}
       >
-        <Td>
+        {/* IDENTITY — label + game type */}
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <SectionLabel hint={t("help.row.label")}>{t("row.label")}</SectionLabel>
+          <div className="flex min-w-0 items-center gap-2">
+            <RoomBadge payoutId={r.payoutStructure} />
+            <TextInput
+              value={r.label ?? ""}
+              onChange={(v) => update(r.id, { label: v })}
+              placeholder={getTournamentRowDisplayLabel(r, t)}
+              className="w-full min-w-0"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <GameTypeSelect
+              value={uiGt}
+              onChange={(next) =>
+                startTransition(() => update(r.id, applyGameType(r, next)))
+              }
+            />
+            {gt === "mystery-royale" && (
+              <BrPresetSelect
+                row={r}
+                onApply={(patch) =>
+                  startTransition(() => update(r.id, patch))
+                }
+              />
+            )}
+          </div>
+          {showInlineBrLeaderboard && (
+            <BattleRoyaleLeaderboardInlineControl
+              row={r}
+              onChange={(patch) => update(r.id, patch)}
+            />
+          )}
+        </div>
+
+        {/* MONEY — buy-in + ROI + ITM */}
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <SectionLabel hint={t("help.row.buyIn")}>{t("row.buyIn")}</SectionLabel>
+          <BuyInInput
+            gameType={uiGt}
+            buyIn={r.buyIn}
+            rake={r.rake}
+            onChange={(buyIn, rake) => update(r.id, { buyIn, rake })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <SectionLabel hint={t("help.row.roi")}>{t("row.roi")}</SectionLabel>
+              <PercentNumInput
+                value={Math.round(r.roi * 100)}
+                onChange={(v) => update(r.id, { roi: v / 100 })}
+                min={-99}
+                max={10_000}
+                step={1}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <SectionLabel hint={t("row.fixedItmHint")}>
+                {t("row.fixedItm")}
+              </SectionLabel>
+              <PercentDraftInput
+                min={0}
+                max={100}
+                step={0.5}
+                disabled={globalItmPct != null}
+                value={
+                  globalItmPct != null
+                    ? +(globalItmPct).toFixed(1)
+                    : r.itmRate != null
+                      ? +(r.itmRate * 100).toFixed(2)
+                      : ""
+                }
+                placeholder={globalItmPct != null ? "" : "auto"}
+                lockedLabel={
+                  globalItmPct != null ? t("row.inheritedShort") : undefined
+                }
+                onChange={(raw) => {
+                  if (globalItmPct != null) return;
+                  if (raw === "") {
+                    update(r.id, { itmRate: undefined });
+                    return;
+                  }
+                  const v = Number(raw);
+                  if (!Number.isFinite(v) || v < 0 || v > 100) return;
+                  update(r.id, { itmRate: v / 100 });
+                }}
+              />
+            </div>
+          </div>
+          {gt === "mystery-royale" && (
+            <BrReportedRoiControl
+              row={r}
+              globalRakebackPct={globalRakebackPct}
+              onApply={(roi) => update(r.id, { roi, bountyEvBias: 0 })}
+            />
+          )}
+        </div>
+
+        {/* META — AFS, payout, count (label stacked on top of each field so
+             the connection between the two reads at a glance, same pattern
+             as the identity/money columns). */}
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
+            <SectionLabel hint={t("help.row.players")}>
+              {t("row.players")}
+            </SectionLabel>
+            <NumInput
+              value={r.players}
+              onChange={(v) => update(r.id, { players: Math.floor(v) })}
+              min={2}
+              max={1_000_000}
+              step={1}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <SectionLabel hint={t("help.row.payouts")}>
+              {t("row.payouts")}
+            </SectionLabel>
+            <select
+              value={r.payoutStructure}
+              title={current?.s.full ?? ""}
+              onChange={(e) => {
+                const next = e.target.value as PayoutStructureId;
+                update(r.id, { payoutStructure: next });
+              }}
+              className={
+                "h-8 w-full min-w-0 rounded-md border px-2 text-[11px] outline-none transition-colors focus:border-[color:var(--color-accent)] " +
+                (currentDisabled
+                  ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
+                  : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
+              }
+            >
+              {dropdownData.availableReal.length > 0 && (
+                <optgroup label={`— ${t("row.payoutGroup.real2026")} —`}>
+                  {dropdownData.availableReal.map(({ s }) => (
+                    <option key={s.id} value={s.id} title={s.full}>
+                      {s.short}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {dropdownData.availableGeneric.length > 0 && (
+                <optgroup label={`— ${t("row.payoutGroup.generic")} —`}>
+                  {dropdownData.availableGeneric.map(({ s }) => (
+                    <option key={s.id} value={s.id} title={s.full}>
+                      {s.short}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {legacyCustom && (
+                <optgroup label="— Legacy —">
+                  <option value="custom">Legacy custom (read-only)</option>
+                </optgroup>
+              )}
+              {dropdownData.unavailable.length > 0 && (
+                <optgroup label={`— ${t("row.payoutCompat.unavailable")} —`}>
+                  {dropdownData.unavailable.map((g) => {
+                    const reasonText = describe(g);
+                    return (
+                      <option
+                        key={g.s.id}
+                        value={g.s.id}
+                        disabled
+                        title={`${g.s.full} — ${reasonText}`}
+                      >
+                        {`✕ ${g.s.short} — ${reasonText}`}
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <SectionLabel hint={t("help.row.count")}>
+              {t("row.count")}
+            </SectionLabel>
+            <NumInput
+              value={r.count}
+              onChange={(v) => update(r.id, { count: Math.floor(v) })}
+              min={1}
+              max={100_000}
+              step={1}
+            />
+          </div>
+        </div>
+
+        {/* ACTIONS */}
+        <div className="flex flex-col items-center gap-1 self-start pt-5">
           <button
             type="button"
             onClick={() => advanced && toggleExpand(r.id)}
@@ -639,8 +842,10 @@ const ScheduleRow = memo(function ScheduleRow({
             title={advanced ? t("row.advanced") : t("controls.expandAdvanced")}
             aria-label={t("row.advanced")}
             className={
-              "inline-flex h-6 w-6 items-center justify-center rounded text-[color:var(--color-fg-dim)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)] " +
-              (isOpen ? "text-[color:var(--color-accent)]" : "")
+              "relative inline-flex h-[26px] w-[26px] items-center justify-center rounded-md border border-transparent text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-border)] hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)] disabled:cursor-not-allowed disabled:opacity-30 " +
+              (isOpen
+                ? "border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent)]"
+                : "")
             }
           >
             <svg
@@ -662,228 +867,60 @@ const ScheduleRow = memo(function ScheduleRow({
               />
             </svg>
             {hasAdv && !isOpen && (
-              <span className="ml-0.5 h-1 w-1 rounded-full bg-[color:var(--color-accent)]" />
+              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[color:var(--color-accent)]" />
             )}
           </button>
-        </Td>
-        <Td className="min-w-0">
-          <TextInput
-            value={r.label ?? ""}
-            onChange={(v) => update(r.id, { label: v })}
-            placeholder={getTournamentRowDisplayLabel(r, t)}
-            className="w-full min-w-0"
-          />
-        </Td>
-        <Td className="min-w-0">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-center gap-1">
-              <GameTypeSelect
-                value={uiGt}
-                onChange={(next) =>
-                  startTransition(() => update(r.id, applyGameType(r, next)))
-                }
+          <IconBtn onClick={() => duplicate(r.id)} label={t("row.addRow")}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <rect
+                x="8"
+                y="8"
+                width="12"
+                height="12"
+                rx="2"
+                stroke="currentColor"
+                strokeWidth="1.8"
               />
-              {gt === "mystery-royale" && (
-                <BrPresetSelect
-                  row={r}
-                  onApply={(patch) =>
-                    startTransition(() => update(r.id, patch))
-                  }
-                />
-              )}
-            </div>
-            {showInlineBrLeaderboard && (
-              <BattleRoyaleLeaderboardInlineControl
-                row={r}
-                onChange={(patch) => update(r.id, patch)}
+              <path
+                d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
               />
-            )}
-          </div>
-        </Td>
-        <Td align="right">
-          <NumInput
-            value={r.players}
-            onChange={(v) => update(r.id, { players: Math.floor(v) })}
-            min={2}
-            max={1_000_000}
-            step={1}
-          />
-        </Td>
-        <Td align="right">
-          <BuyInInput
-            gameType={uiGt}
-            buyIn={r.buyIn}
-            rake={r.rake}
-            onChange={(buyIn, rake) => update(r.id, { buyIn, rake })}
-          />
-        </Td>
-        <Td align="right">
-          <div className="flex flex-col items-center gap-1">
-            <PercentNumInput
-              value={Math.round(r.roi * 100)}
-              onChange={(v) => update(r.id, { roi: v / 100 })}
-              min={-99}
-              max={10_000}
-              step={1}
-            />
-            {gt === "mystery-royale" && (
-              <div className="w-full max-w-[6rem]">
-                <BrReportedRoiControl
-                  row={r}
-                  globalRakebackPct={globalRakebackPct}
-                  onApply={(roi) => update(r.id, { roi, bountyEvBias: 0 })}
-                />
-              </div>
-            )}
-          </div>
-        </Td>
-        <Td align="right">
-          <PercentDraftInput
-            min={0}
-            max={100}
-            step={0.5}
-            disabled={globalItmPct != null}
-            value={
-              globalItmPct != null
-                ? +(globalItmPct).toFixed(1)
-                : r.itmRate != null
-                  ? +(r.itmRate * 100).toFixed(2)
-                  : ""
-            }
-            placeholder={globalItmPct != null ? "" : "auto"}
-            lockedLabel={globalItmPct != null ? t("row.inheritedShort") : undefined}
-            onChange={(raw) => {
-              if (globalItmPct != null) return;
-              if (raw === "") {
-                update(r.id, { itmRate: undefined });
-                return;
-              }
-              const v = Number(raw);
-              if (!Number.isFinite(v) || v < 0 || v > 100) return;
-              update(r.id, { itmRate: v / 100 });
-            }}
-          />
-        </Td>
-        <Td className="min-w-0">
-          <select
-            value={r.payoutStructure}
-            title={current?.s.full ?? ""}
-            onChange={(e) => {
-              const next = e.target.value as PayoutStructureId;
-              update(r.id, { payoutStructure: next });
-            }}
-            className={
-              "h-8 w-full min-w-0 rounded-md border px-2 text-[11px] outline-none transition-colors focus:border-[color:var(--color-accent)] " +
-              (currentDisabled
-                ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
-                : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
-            }
+            </svg>
+          </IconBtn>
+          <IconBtn
+            onClick={() => remove(r.id)}
+            disabled={!canRemove}
+            label={t("row.delete")}
+            danger
           >
-            {dropdownData.availableReal.length > 0 && (
-              <optgroup label={`— ${t("row.payoutGroup.real2026")} —`}>
-                {dropdownData.availableReal.map(({ s }) => (
-                  <option key={s.id} value={s.id} title={s.full}>
-                    {s.short}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {dropdownData.availableGeneric.length > 0 && (
-              <optgroup label={`— ${t("row.payoutGroup.generic")} —`}>
-                {dropdownData.availableGeneric.map(({ s }) => (
-                  <option key={s.id} value={s.id} title={s.full}>
-                    {s.short}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {legacyCustom && (
-              <optgroup label="— Legacy —">
-                <option value="custom">Legacy custom (read-only)</option>
-              </optgroup>
-            )}
-            {dropdownData.unavailable.length > 0 && (
-              <optgroup label={`— ${t("row.payoutCompat.unavailable")} —`}>
-                {dropdownData.unavailable.map((g) => {
-                  const reasonText = describe(g);
-                  return (
-                    <option
-                      key={g.s.id}
-                      value={g.s.id}
-                      disabled
-                      title={`${g.s.full} — ${reasonText}`}
-                    >
-                      {`✕ ${g.s.short} — ${reasonText}`}
-                    </option>
-                  );
-                })}
-              </optgroup>
-            )}
-          </select>
-        </Td>
-        <Td align="right">
-          <NumInput
-            value={r.count}
-            onChange={(v) => update(r.id, { count: Math.floor(v) })}
-            min={1}
-            max={100_000}
-            step={1}
-            commitMode="blur"
-          />
-        </Td>
-        <Td>
-          <div className="flex justify-end gap-1 opacity-60 transition-opacity group-hover:opacity-100">
-            <IconBtn
-              onClick={() => duplicate(r.id)}
-              label={t("row.addRow")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <rect
-                  x="8"
-                  y="8"
-                  width="12"
-                  height="12"
-                  rx="2"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                />
-                <path
-                  d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </IconBtn>
-            <IconBtn
-              onClick={() => remove(r.id)}
-              disabled={!canRemove}
-              label={t("row.delete")}
-              danger
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M6 6l12 12M18 6L6 18"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </IconBtn>
-          </div>
-        </Td>
-      </tr>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M6 6l12 12M18 6L6 18"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </IconBtn>
+        </div>
+      </div>
       {isOpen && (
-        <tr className="border-b border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30">
-          <td colSpan={10} className="px-6 py-4">
-            <AdvancedRowPanel
-              row={r}
-              onChange={(patch) => update(r.id, patch)}
-            />
-          </td>
-        </tr>
+        <div
+          className="border-t px-6 py-4"
+          style={{
+            borderColor: "var(--c-border)",
+            background: "color-mix(in oklab, var(--c-bg-elev-2), transparent 70%)",
+          }}
+        >
+          <AdvancedRowPanel
+            row={r}
+            onChange={(patch) => update(r.id, patch)}
+          />
+        </div>
       )}
-    </>
+    </div>
   );
 });
 
@@ -1300,64 +1337,6 @@ function commitDraft(
   setDraft(null);
 }
 
-function Th({
-  children,
-  align = "left",
-  hint,
-}: {
-  children: React.ReactNode;
-  align?: "left" | "right" | "center";
-  hint?: React.ReactNode;
-}) {
-  return (
-    <th
-      className={
-        "whitespace-nowrap px-1.5 py-2.5 font-medium leading-none first:pl-4 last:pr-4 " +
-        (align === "right"
-          ? "text-right"
-          : align === "center"
-            ? "text-center"
-            : "")
-      }
-    >
-      <span
-        className={
-          "inline-flex w-full items-center gap-1.5 " +
-          (align === "right"
-            ? "justify-end flex-row-reverse"
-            : align === "center"
-              ? "justify-center"
-              : "")
-        }
-      >
-        {children}
-        {hint && <InfoTooltip content={hint} />}
-      </span>
-    </th>
-  );
-}
-function Td({
-  children,
-  align = "left",
-  className = "",
-}: {
-  children: React.ReactNode;
-  align?: "left" | "right";
-  className?: string;
-}) {
-  return (
-    <td
-      className={
-        "px-1.5 py-2 align-middle first:pl-4 last:pr-4 " +
-        (align === "right" ? "text-right " : "") +
-        className
-      }
-    >
-      {children}
-    </td>
-  );
-}
-
 // Shared input chrome for the schedule table — always-visible border + fill
 // so fields read as "editable" at a glance, accent focus ring for the hit.
 const INPUT_BASE =
@@ -1444,11 +1423,14 @@ export function suggestStandardBuyInFromBrCarryover(
   return { buyIn: preset.total, rake: 0.1 };
 }
 
+// Tier colour escalates with reported ROI: cool → warm → hot, so even at a
+// glance the row radiates "this field beats the regs" vs "this field is soft".
+// Colours reuse the existing suit palette (see globals.css) — nothing new.
 const BR_REPORTED_ROI_PRESETS = [
-  { id: "low", reportedRoi: 0.03, labelKey: "row.brRoi.preset.low" },
-  { id: "goodLow", reportedRoi: 0.05, labelKey: "row.brRoi.preset.goodLow" },
-  { id: "goodHigh", reportedRoi: 0.07, labelKey: "row.brRoi.preset.goodHigh" },
-  { id: "top", reportedRoi: 0.1, labelKey: "row.brRoi.preset.top" },
+  { id: "low", reportedRoi: 0.03, labelKey: "row.brRoi.preset.low", tint: "var(--c-spade)" },
+  { id: "goodLow", reportedRoi: 0.05, labelKey: "row.brRoi.preset.goodLow", tint: "var(--c-rival)" },
+  { id: "goodHigh", reportedRoi: 0.07, labelKey: "row.brRoi.preset.goodHigh", tint: "var(--c-club)" },
+  { id: "top", reportedRoi: 0.1, labelKey: "row.brRoi.preset.top", tint: "var(--c-accent)" },
 ] as const;
 
 function formatPct(v: number, digits = 1): string {
@@ -1509,13 +1491,25 @@ function BrReportedRoiControl({
               className={
                 "h-7 min-w-0 rounded-[5px] px-0.5 text-[10px] font-semibold tabular-nums transition-colors focus:outline-none " +
                 (isActive
-                  ? "bg-[color:var(--color-accent)]/18 text-[color:var(--color-accent)] ring-1 ring-inset ring-[color:var(--color-accent)]/85"
-                  : "text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-bg-elev-2)]/80 hover:text-[color:var(--color-fg)] focus:bg-[color:var(--color-bg-elev-2)]/80 focus:text-[color:var(--color-fg)]")
+                  ? ""
+                  : "hover:bg-[color:var(--color-bg-elev-2)]/80 focus:bg-[color:var(--color-bg-elev-2)]/80")
               }
               title={optionTitle}
               aria-label={optionTitle}
               aria-pressed={isActive}
-              style={{ minHeight: 28, minWidth: 0 }}
+              style={{
+                minHeight: 28,
+                minWidth: 0,
+                color: isActive
+                  ? p.tint
+                  : `color-mix(in oklab, ${p.tint}, var(--c-fg-muted) 38%)`,
+                background: isActive
+                  ? `color-mix(in oklab, ${p.tint}, transparent 78%)`
+                  : undefined,
+                boxShadow: isActive
+                  ? `inset 0 0 0 1px color-mix(in oklab, ${p.tint}, transparent 18%)`
+                  : undefined,
+              }}
             >
               {(p.reportedRoi * 100).toFixed(0)}
             </button>
@@ -1836,6 +1830,25 @@ function PercentDraftInput({
         </span>
       )}
     </div>
+  );
+}
+
+function RoomBadge({ payoutId }: { payoutId: PayoutStructureId }) {
+  const room = PAYOUT_ROOM[payoutId];
+  if (!room) return null;
+  const meta = ROOM_META[room];
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- 20px decorative room mark; static SVG, no LCP payoff from next/image.
+    <img
+      src={meta.src}
+      alt={meta.label}
+      title={meta.label}
+      width={20}
+      height={20}
+      className="h-5 w-5 shrink-0 rounded-[4px] shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
+      loading="lazy"
+      decoding="async"
+    />
   );
 }
 

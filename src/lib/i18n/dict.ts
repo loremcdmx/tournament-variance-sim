@@ -110,6 +110,19 @@ export const DICT = {
 
   // Demo scenarios
   "demo.label": { en: "Example schedules", ru: "Примеры расписаний" },
+  "demo.choosePlaceholder": {
+    en: "Pick a scenario",
+    ru: "Выбрать пример",
+  },
+  "schedule.reset": { en: "Reset schedule", ru: "Сбросить расписание" },
+  "schedule.resetHint": {
+    en: "Replace the whole schedule with a single default MTT row. Global controls stay as-is.",
+    ru: "Заменить всё расписание одной строкой-дефолтом. Общие настройки сверху не трогаются.",
+  },
+  "schedule.resetConfirm": {
+    en: "Replace the current schedule with a single default row?",
+    ru: "Заменить текущее расписание одной строкой-дефолтом?",
+  },
   "demo.brLeaderboard": {
     en: "BR leaderboard promo",
     ru: "BR leaderboard promo",
