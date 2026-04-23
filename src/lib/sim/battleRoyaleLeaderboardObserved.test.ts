@@ -53,6 +53,31 @@ describe("buildObservedBattleRoyalePromoResult", () => {
     expect(result?.rows.map((row) => row.payout)).toEqual([15, 7.5]);
   });
 
+  it("uses raw observed totals instead of the rounded dollars-per-tournament label", () => {
+    const result = buildObservedBattleRoyalePromoResult({
+      config: {
+        mode: "observed",
+        totalPrizes: 4016,
+        totalTournaments: 76238,
+        pointsByStake: {
+          "0.25": 219_114,
+          "1": 2_202_653,
+          "3": 584_513,
+          "10": 0,
+          "25": 0,
+        },
+      },
+      schedule: [makeBrRow("a", 7000)],
+      rowCounts: [7000],
+      rowBuyIns: [7000],
+      activeDays: 1,
+    });
+
+    expect(result).toBeDefined();
+    expect(result?.payoutPerTournament).toBeCloseTo(4016 / 76238, 12);
+    expect(result?.expectedPayout).toBeCloseTo((4016 / 76238) * 7000, 10);
+  });
+
   it("flags large ABI drift as mismatch", () => {
     const result = buildObservedBattleRoyalePromoResult({
       config: {

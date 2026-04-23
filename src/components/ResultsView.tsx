@@ -500,15 +500,28 @@ function ResultsViewImpl({
 
   const shiftedStats = displayResultStats.stats;
   const shiftedPdStats = displayPdChartStats?.stats;
+  const observedPromoShift =
+    result.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
+  const totalExpectedProfit =
+    displayResultStats.expectedProfit + observedPromoShift;
+  const totalMean = shiftedStats.mean + observedPromoShift;
+  const totalMedian = shiftedStats.median + observedPromoShift;
+  const totalMin = shiftedStats.min + observedPromoShift;
+  const totalMax = shiftedStats.max + observedPromoShift;
   const s = result.stats;
   const pdStats = pdChart?.stats;
-  const pdExpectedProfit = displayPdChartStats?.expectedProfit;
+  const pdObservedPromoShift =
+    pdChart?.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
+  const pdExpectedProfit =
+    displayPdChartStats != null
+      ? displayPdChartStats.expectedProfit + pdObservedPromoShift
+      : undefined;
   const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
-  const roi = shiftedStats.mean / displayResultStats.totalBuyIn;
+  const roi = totalMean / displayResultStats.totalBuyIn;
   const expectedProfitRangeRatio =
-    Math.abs(shiftedStats.max - shiftedStats.min) > 1e-9
-      ? (displayResultStats.expectedProfit - shiftedStats.min) /
-        (shiftedStats.max - shiftedStats.min)
+    Math.abs(totalMax - totalMin) > 1e-9
+      ? (totalExpectedProfit - totalMin) /
+        (totalMax - totalMin)
       : 0.5;
   const bankrollSafetyRatio =
     Number.isFinite(s.minBankrollRoR5pct) &&
@@ -901,29 +914,29 @@ function ResultsViewImpl({
         <BigStat
           suit="club"
           label={t("stat.expectedProfit")}
-          value={money(displayResultStats.expectedProfit)}
+          value={money(totalExpectedProfit)}
           rangeSubline={{
             label: t("stat.range.spread"),
             fromLabel: t("stat.range.from"),
             toLabel: t("stat.range.to"),
             pointLabel: t("stat.range.pointEv"),
             pointHint: t("stat.range.pointHint"),
-            minValue: money(shiftedStats.min),
-            maxValue: money(shiftedStats.max),
+            minValue: money(totalMin),
+            maxValue: money(totalMax),
             anchorRatio: expectedProfitRangeRatio,
           }}
           sub={t("stat.expectedProfit.sub")
-            .replace("{min}", money(shiftedStats.min))
-            .replace("{max}", money(shiftedStats.max))}
+            .replace("{min}", money(totalMin))
+            .replace("{max}", money(totalMax))}
           tip={t("stat.expectedProfit.tip")
-            .replace("{mean}", money(shiftedStats.mean))
+            .replace("{mean}", money(totalMean))
             .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
-            .replace("{median}", money(shiftedStats.median))}
-          tone={displayResultStats.expectedProfit >= 0 ? "pos" : "neg"}
+            .replace("{median}", money(totalMedian))}
+          tone={totalExpectedProfit >= 0 ? "pos" : "neg"}
           pdValue={pdExpectedProfit != null ? money(pdExpectedProfit) : undefined}
           pdDelta={
             pdExpectedProfit != null
-              ? pctDelta(displayResultStats.expectedProfit, pdExpectedProfit)
+              ? pctDelta(totalExpectedProfit, pdExpectedProfit)
               : null
           }
           pdLabel={pdBadgeLabel}

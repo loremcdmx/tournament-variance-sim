@@ -102,9 +102,7 @@ function buildObservedConfig(
 export function buildBattleRoyaleLeaderboardPromoConfig(
   controls: BattleRoyaleLeaderboardControls | null | undefined,
   schedule: readonly Pick<TournamentRow, "gameType" | "payoutStructure">[],
-  advanced: boolean,
 ): BattleRoyaleLeaderboardPromoConfig | undefined {
-  if (!advanced) return undefined;
   if (!scheduleHasBattleRoyaleRows(schedule)) return undefined;
   const cfg =
     controls ?? DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS;

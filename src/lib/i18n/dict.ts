@@ -2110,8 +2110,8 @@ export const DICT = {
     ru: "В расписании пока нет GG BR-строк. Добавь такую строку, и этот слой начнёт влиять на расчёты.",
   },
   "controls.brLeaderboard.lockedBasic": {
-    en: "This block is configurable in advanced mode. In basic mode it stays visible only as a prompt that BR promo exists separately.",
-    ru: "Этот блок настраивается в advanced-режиме. В basic-режиме он остаётся видимым как напоминание, что у BR есть отдельный promo-слой.",
+    en: "This block is editable in advanced mode. Saved or shared observed values still apply to the EV total in basic mode.",
+    ru: "Этот блок редактируется в advanced-режиме. Сохранённые или шаренные observed-значения всё равно входят в общий EV в basic-режиме.",
   },
   "controls.brLeaderboard.mode.off": {
     en: "Off",

@@ -50,7 +50,6 @@ function buildInputFromScenario(
       controls.battleRoyaleLeaderboard ??
         DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
       schedule,
-      true,
     ),
   };
 }

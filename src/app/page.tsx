@@ -332,7 +332,6 @@ export default function Home() {
         battleRoyaleLeaderboardPromo: buildBattleRoyaleLeaderboardPromoConfig(
           effectiveControls.battleRoyaleLeaderboard,
           s,
-          advanced,
         ),
       };
     },
@@ -574,17 +573,22 @@ export default function Home() {
   const doneSummary = useMemo(
     () =>
       status === "done" && result
-        ? {
-            mean: result.stats.mean,
-            median: result.stats.median,
-            roi: result.stats.mean / result.totalBuyIn,
-            probProfit: result.stats.probProfit,
-            riskOfRuin: result.stats.riskOfRuin,
-            worstDrawdown: result.stats.maxDrawdownP99,
-            longestCashlessWorst: result.stats.longestCashlessWorst,
-            elapsedMs,
-            resultsAnchorId: "results-top",
-          }
+        ? (() => {
+            const observedPromo =
+              result.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
+            const mean = result.stats.mean + observedPromo;
+            return {
+              mean,
+              median: result.stats.median + observedPromo,
+              roi: mean / result.totalBuyIn,
+              probProfit: result.stats.probProfit,
+              riskOfRuin: result.stats.riskOfRuin,
+              worstDrawdown: result.stats.maxDrawdownP99,
+              longestCashlessWorst: result.stats.longestCashlessWorst,
+              elapsedMs,
+              resultsAnchorId: "results-top",
+            };
+          })()
         : null,
     [status, result, elapsedMs],
   );
