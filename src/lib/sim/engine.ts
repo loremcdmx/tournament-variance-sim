@@ -35,7 +35,7 @@ import {
   normalizeBattleRoyaleLeaderboardConfig,
   sampleBattleRoyaleLeaderboardWindow,
 } from "./battleRoyaleLeaderboard";
-import { buildObservedBattleRoyalePromoResult } from "./battleRoyaleLeaderboardObserved";
+import { buildBattleRoyalePromoResult } from "./battleRoyaleLeaderboardObserved";
 import {
   buildBattleRoyaleCashTargetPmf,
   resolveBattleRoyaleCashTarget,
@@ -2256,11 +2256,8 @@ export function buildResult(
           };
         })()
       : undefined;
-  const battleRoyaleLeaderboardPromo = buildObservedBattleRoyalePromoResult({
-    config:
-      input.battleRoyaleLeaderboardPromo?.mode === "observed"
-        ? input.battleRoyaleLeaderboardPromo
-        : undefined,
+  const battleRoyaleLeaderboardPromo = buildBattleRoyalePromoResult({
+    config: input.battleRoyaleLeaderboardPromo,
     schedule: input.schedule,
     rowCounts: compiled.rowCounts,
     rowBuyIns: compiled.rowBuyIns,

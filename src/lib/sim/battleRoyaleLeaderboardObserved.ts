@@ -1,6 +1,8 @@
 import { isBattleRoyaleRow } from "./battleRoyaleLeaderboardUi";
 import type {
   BattleRoyaleLeaderboardObservedConfig,
+  BattleRoyaleLeaderboardObservedPromoResult,
+  BattleRoyaleLeaderboardPromoConfig,
   BattleRoyaleLeaderboardPromoResult,
   TournamentRow,
 } from "./types";
@@ -15,16 +17,16 @@ function sum(values: readonly number[]): number {
   return acc;
 }
 
-export function buildObservedBattleRoyalePromoResult(params: {
-  config: BattleRoyaleLeaderboardObservedConfig | undefined;
+function collectCurrentBrRows(params: {
   schedule: readonly TournamentRow[];
   rowCounts: readonly number[];
   rowBuyIns: readonly number[];
-  activeDays: number;
-}): BattleRoyaleLeaderboardPromoResult | undefined {
-  const { config, schedule, rowCounts, rowBuyIns, activeDays } = params;
-  if (!config) return undefined;
-
+}): {
+  currentRows: BattleRoyaleLeaderboardPromoResult["rows"];
+  currentTournaments: number;
+  currentBuyIn: number;
+} {
+  const { schedule, rowCounts, rowBuyIns } = params;
   const currentRows: BattleRoyaleLeaderboardPromoResult["rows"] = [];
   let currentTournaments = 0;
   let currentBuyIn = 0;
@@ -44,7 +46,55 @@ export function buildObservedBattleRoyalePromoResult(params: {
     currentTournaments += tournaments;
     currentBuyIn += buyIn;
   }
+  return { currentRows, currentTournaments, currentBuyIn };
+}
+
+export function buildBattleRoyalePromoResult(params: {
+  config: BattleRoyaleLeaderboardPromoConfig | undefined;
+  schedule: readonly TournamentRow[];
+  rowCounts: readonly number[];
+  rowBuyIns: readonly number[];
+  activeDays: number;
+}): BattleRoyaleLeaderboardPromoResult | undefined {
+  const { config, schedule, rowCounts, rowBuyIns, activeDays } = params;
+  if (!config) return undefined;
+
+  const { currentRows, currentTournaments, currentBuyIn } = collectCurrentBrRows(
+    { schedule, rowCounts, rowBuyIns },
+  );
   if (currentTournaments <= 0) return undefined;
+
+  if (config.mode === "manual") {
+    const payoutPerTournament = Math.max(0, config.payoutPerTournament);
+    if (payoutPerTournament <= 0) return undefined;
+    const expectedPayout = currentTournaments * payoutPerTournament;
+    const currentAbi = currentTournaments > 0 ? currentBuyIn / currentTournaments : null;
+    const pctOfCurrentBuyIns =
+      currentBuyIn > 0 ? expectedPayout / currentBuyIn : 0;
+    return {
+      mode: "manual",
+      expectedPayout,
+      payoutPerTournament,
+      payoutPerDay:
+        activeDays > 0 ? expectedPayout / Math.max(1, activeDays) : expectedPayout,
+      pctOfCurrentBuyIns,
+      notInPathRisk: true,
+      manual: {
+        payoutPerTournament,
+      },
+      current: {
+        activeDays: Math.max(1, activeDays),
+        tournaments: currentTournaments,
+        tournamentsPerDay: currentTournaments / Math.max(1, activeDays),
+        totalBuyIn: currentBuyIn,
+        abi: currentAbi,
+      },
+      rows: currentRows.map((row) => ({
+        ...row,
+        payout: row.tournaments * payoutPerTournament,
+      })),
+    };
+  }
 
   const totalPoints = sum(
     STAKE_KEYS.map((stake) => Math.max(0, config.pointsByStake[stake])),
@@ -116,4 +166,15 @@ export function buildObservedBattleRoyalePromoResult(params: {
       payout: row.tournaments * payoutPerRowTournament,
     })),
   };
+}
+
+export function buildObservedBattleRoyalePromoResult(params: {
+  config: BattleRoyaleLeaderboardObservedConfig | undefined;
+  schedule: readonly TournamentRow[];
+  rowCounts: readonly number[];
+  rowBuyIns: readonly number[];
+  activeDays: number;
+}): BattleRoyaleLeaderboardObservedPromoResult | undefined {
+  const result = buildBattleRoyalePromoResult(params);
+  return result?.mode === "observed" ? result : undefined;
 }

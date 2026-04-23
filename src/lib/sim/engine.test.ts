@@ -7,7 +7,12 @@ import {
   runSimulation,
   simulateShard,
 } from "./engine";
-import type { SimulationInput, FinishModelId, PayoutStructureId } from "./types";
+import type {
+  FinishModelId,
+  PayoutStructureId,
+  SimulationInput,
+  TournamentRow,
+} from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
 const BR_10 = battleRoyaleRowFromTotalTicket(10);
@@ -525,6 +530,48 @@ describe("engine", () => {
       0.15,
       10,
     );
+  });
+
+  it("adds manual BR leaderboard promo as separate EV without changing path risk", () => {
+    const row: TournamentRow = {
+      id: "br",
+      label: "br",
+      players: 18,
+      buyIn: 0.92,
+      rake: 0.08 / 0.92,
+      roi: 0,
+      itmRate: 0.2,
+      payoutStructure: "battle-royale",
+      gameType: "mystery-royale",
+      bountyFraction: 0.45,
+      count: 7000,
+    };
+    const baseline = runSimulation(
+      baseInput({
+        samples: 300,
+        schedule: [row],
+        scheduleRepeats: 1,
+      }),
+    );
+    const withManual = runSimulation(
+      baseInput({
+        samples: 300,
+        schedule: [row],
+        scheduleRepeats: 1,
+        battleRoyaleLeaderboardPromo: {
+          mode: "manual",
+          payoutPerTournament: 0.05,
+        },
+      }),
+    );
+
+    expect(withManual.expectedProfit).toBeCloseTo(baseline.expectedProfit, 10);
+    expect(withManual.battleRoyaleLeaderboardPromo?.mode).toBe("manual");
+    expect(withManual.battleRoyaleLeaderboardPromo?.expectedPayout).toBeCloseTo(
+      350,
+      10,
+    );
+    expect(withManual.stats.mean).toBeCloseTo(baseline.stats.mean, 10);
   });
 
   it("bounty row produces a non-zero expected bounty lump per entry", () => {

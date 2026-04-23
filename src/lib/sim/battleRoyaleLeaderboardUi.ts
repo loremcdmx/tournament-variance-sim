@@ -1,4 +1,5 @@
 import type {
+  BattleRoyaleLeaderboardManualConfig,
   BattleRoyaleLeaderboardObservedConfig,
   BattleRoyaleLeaderboardObservedPointsByStake,
   BattleRoyaleLeaderboardPromoConfig,
@@ -6,10 +7,11 @@ import type {
 } from "./types";
 
 export interface BattleRoyaleLeaderboardControls {
-  mode: "off" | "observed";
+  mode: "off" | "observed" | "manual";
   observedTotalPrizes: number;
   observedTotalTournaments: number;
   observedPointsByStake: BattleRoyaleLeaderboardObservedPointsByStake;
+  manualPayoutPerTournament: number;
 }
 
 export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS: BattleRoyaleLeaderboardObservedPointsByStake =
@@ -27,6 +29,7 @@ export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS: BattleRoyaleLeaderboard
     observedTotalPrizes: 0,
     observedTotalTournaments: 0,
     observedPointsByStake: DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS,
+    manualPayoutPerTournament: 0,
   };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -60,7 +63,12 @@ export function normalizeBattleRoyaleLeaderboardControls(
   value: unknown,
 ): BattleRoyaleLeaderboardControls | undefined {
   if (!isRecord(value)) return undefined;
-  const mode = value.mode === "observed" ? "observed" : "off";
+  const mode =
+    value.mode === "observed"
+      ? "observed"
+      : value.mode === "manual"
+        ? "manual"
+        : "off";
   return {
     mode,
     observedTotalPrizes: finiteOr(value.observedTotalPrizes, 0),
@@ -68,6 +76,12 @@ export function normalizeBattleRoyaleLeaderboardControls(
       finiteOr(value.observedTotalTournaments, 0, 0, 10_000_000),
     ),
     observedPointsByStake: normalizePointsByStake(value.observedPointsByStake),
+    manualPayoutPerTournament: finiteOr(
+      value.manualPayoutPerTournament,
+      0,
+      0,
+      1_000_000,
+    ),
   };
 }
 
@@ -99,6 +113,17 @@ function buildObservedConfig(
   };
 }
 
+function buildManualConfig(
+  controls: BattleRoyaleLeaderboardControls,
+): BattleRoyaleLeaderboardManualConfig | undefined {
+  if (controls.mode !== "manual") return undefined;
+  if (!(controls.manualPayoutPerTournament > 0)) return undefined;
+  return {
+    mode: "manual",
+    payoutPerTournament: Math.max(0, controls.manualPayoutPerTournament),
+  };
+}
+
 export function buildBattleRoyaleLeaderboardPromoConfig(
   controls: BattleRoyaleLeaderboardControls | null | undefined,
   schedule: readonly Pick<TournamentRow, "gameType" | "payoutStructure">[],
@@ -106,5 +131,5 @@ export function buildBattleRoyaleLeaderboardPromoConfig(
   if (!scheduleHasBattleRoyaleRows(schedule)) return undefined;
   const cfg =
     controls ?? DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS;
-  return buildObservedConfig(cfg);
+  return buildObservedConfig(cfg) ?? buildManualConfig(cfg);
 }

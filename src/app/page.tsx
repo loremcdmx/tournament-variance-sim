@@ -31,6 +31,7 @@ import { inferGameType } from "@/lib/sim/gameType";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
   buildBattleRoyaleLeaderboardPromoConfig,
+  isBattleRoyaleRow,
   scheduleHasBattleRoyaleRows,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
@@ -541,6 +542,18 @@ export default function Home() {
     () => scheduleHasBattleRoyaleRows(schedule),
     [schedule],
   );
+  const brLeaderboardPreview = useMemo(() => {
+    const repeats = Math.max(1, controls.scheduleRepeats);
+    let tournaments = 0;
+    let totalBuyIn = 0;
+    for (const row of effectiveSchedule) {
+      if (!isBattleRoyaleRow(row)) continue;
+      const rowTournaments = Math.max(0, row.count) * repeats;
+      tournaments += rowTournaments;
+      totalBuyIn += rowTournaments * Math.max(0, row.buyIn);
+    }
+    return { tournaments, totalBuyIn };
+  }, [effectiveSchedule, controls.scheduleRepeats]);
   const handleScheduleReset = useCallback(() => {
     queueInterruptBackground();
     setSchedule([
@@ -1030,15 +1043,6 @@ export default function Home() {
             abi={abi}
           />
         </div>
-        <div className="mb-3">
-          <BattleRoyaleLeaderboardControl
-            value={controls}
-            onChange={handleControlsChange}
-            disabled={running}
-            advanced={advanced}
-            hasBattleRoyaleRows={hasBattleRoyaleRows}
-          />
-        </div>
         <ScheduleEditor
           schedule={schedule}
           onChange={handleScheduleChange}
@@ -1047,6 +1051,18 @@ export default function Home() {
           globalRakebackPct={controls.rakebackPct}
           toolbarExtras={scheduleToolbarExtras}
         />
+        {hasBattleRoyaleRows && (
+          <div className="mt-3">
+            <BattleRoyaleLeaderboardControl
+              value={controls}
+              onChange={handleControlsChange}
+              disabled={running}
+              advanced={advanced}
+              previewTournaments={brLeaderboardPreview.tournaments}
+              previewBuyIn={brLeaderboardPreview.totalBuyIn}
+            />
+          </div>
+        )}
       </Section>
 
       <Section
@@ -1488,13 +1504,15 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
   onChange,
   disabled,
   advanced,
-  hasBattleRoyaleRows,
+  previewTournaments,
+  previewBuyIn,
 }: {
   value: ControlsState;
   onChange: (next: ControlsState) => void;
   disabled?: boolean;
   advanced: boolean;
-  hasBattleRoyaleRows: boolean;
+  previewTournaments: number;
+  previewBuyIn: number;
 }) {
   const t = useT();
   const controls = value.battleRoyaleLeaderboard;
@@ -1526,6 +1544,14 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
     controls.observedTotalTournaments > 0
       ? controls.observedTotalPrizes / controls.observedTotalTournaments
       : 0;
+  const manualExpectedPayout =
+    previewTournaments * Math.max(0, controls.manualPayoutPerTournament);
+  const manualPctOfBuyIns =
+    previewBuyIn > 0 ? manualExpectedPayout / previewBuyIn : 0;
+  const fmtMoney = (n: number) =>
+    Math.abs(n) >= 100
+      ? `$${Math.round(n).toLocaleString("ru-RU")}`
+      : `$${n.toFixed(2)}`;
 
   const setPoints = (
     stake: keyof ControlsState["battleRoyaleLeaderboard"]["observedPointsByStake"],
@@ -1554,11 +1580,6 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
           <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
             {t("controls.brLeaderboard.note")}
           </div>
-          {!hasBattleRoyaleRows && (
-            <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-              {t("controls.brLeaderboard.inactive")}
-            </div>
-          )}
           {!advanced && (
             <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
               {t("controls.brLeaderboard.lockedBasic")}
@@ -1573,7 +1594,12 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
               ...value,
               battleRoyaleLeaderboard: {
                 ...controls,
-                mode: e.target.value === "observed" ? "observed" : "off",
+                mode:
+                  e.target.value === "observed"
+                    ? "observed"
+                    : e.target.value === "manual"
+                      ? "manual"
+                      : "off",
               },
             })
           }
@@ -1583,8 +1609,62 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
           <option value="observed">
             {t("controls.brLeaderboard.mode.observed")}
           </option>
+          <option value="manual">
+            {t("controls.brLeaderboard.mode.manual")}
+          </option>
         </select>
       </div>
+      {controls.mode === "manual" && (
+        <>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <Field
+              label={t("controls.brLeaderboard.manualPerTournament")}
+              hint={t("controls.brLeaderboard.manualPerTournamentHint")}
+            >
+              <NumInput
+                value={controls.manualPayoutPerTournament}
+                min={0}
+                max={1_000_000}
+                step={0.01}
+                disabled={uiDisabled}
+                onChange={(v) =>
+                  onChange({
+                    ...value,
+                    battleRoyaleLeaderboard: {
+                      ...controls,
+                      manualPayoutPerTournament: Math.max(0, v),
+                    },
+                  })
+                }
+              />
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.manualProjected")}
+              hint={t("controls.brLeaderboard.manualProjectedHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtMoney(manualExpectedPayout)}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.manualVolume")}
+              hint={t("controls.brLeaderboard.manualVolumeHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {Math.round(previewTournaments).toLocaleString("ru-RU")}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.manualPct")}
+              hint={t("controls.brLeaderboard.manualPctHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {(manualPctOfBuyIns * 100).toFixed(2)}%
+              </div>
+            </Field>
+          </div>
+        </>
+      )}
       {controls.mode === "observed" && (
         <>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">

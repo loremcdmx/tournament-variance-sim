@@ -1534,14 +1534,16 @@ function BattleRoyaleLeaderboardPromoSection({
 }) {
   const t = useT();
   const { money } = useMoneyFmt();
-  const confidenceTone =
-    promo.confidence.level === "aligned"
+  const isObserved = promo.mode === "observed";
+  const confidenceTone = isObserved
+    ? promo.confidence.level === "aligned"
       ? "border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/8 text-[color:var(--color-accent)]"
       : promo.confidence.level === "approximate"
         ? "border-[color:var(--c-diamond)]/45 bg-[color:var(--c-diamond)]/8 text-[color:var(--c-diamond)]"
         : promo.confidence.level === "mismatch"
           ? "border-[color:var(--color-danger)]/45 bg-[color:var(--color-danger)]/8 text-[color:var(--color-danger)]"
-          : "border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 text-[color:var(--color-fg-dim)]";
+          : "border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 text-[color:var(--color-fg-dim)]"
+    : "";
 
   const subtitle = t("chart.brLeaderboardObserved.sub")
     .replace(
@@ -1563,10 +1565,18 @@ function BattleRoyaleLeaderboardPromoSection({
             title={t("chart.brLeaderboardObserved.title")}
             subtitle={subtitle}
             showUnitToggle={false}
-            tip={t("chart.brLeaderboardObserved.tip")}
+            tip={t(
+              isObserved
+                ? "chart.brLeaderboardObserved.tip"
+                : "chart.brLeaderboardManual.tip",
+            )}
           />
           <div className="mb-4 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-            {t("chart.brLeaderboardObserved.note")}
+            {t(
+              isObserved
+                ? "chart.brLeaderboardObserved.note"
+                : "chart.brLeaderboardManual.note",
+            )}
           </div>
           <StatGroup title={t("chart.brLeaderboardObserved.groupCurrent")}>
             <MiniStat
@@ -1610,59 +1620,82 @@ function BattleRoyaleLeaderboardPromoSection({
             />
           </StatGroup>
           <div className="mt-4" />
-          <StatGroup title={t("chart.brLeaderboardObserved.groupObserved")}>
-            <MiniStat
-              suit="diamond"
-              label={t("chart.brLeaderboardObserved.observedPrizes")}
-              value={money(promo.observed.totalPrizes)}
-              tone={promo.observed.totalPrizes >= 0 ? "pos" : "neg"}
-            />
-            <MiniStat
-              suit="club"
-              label={t("chart.brLeaderboardObserved.observedTournaments")}
-              value={promo.observed.totalTournaments.toLocaleString("ru-RU")}
-            />
-            <MiniStat
-              suit="spade"
-              label={t("chart.brLeaderboardObserved.observedAbi")}
-              value={
-                promo.observed.reconstructedAbi == null
-                  ? "—"
-                  : `${promo.observed.reconstructedAbi.toFixed(2)} ABI`
-              }
-            />
-            <MiniStat
-              suit="spade"
-              label={t("chart.brLeaderboardObserved.observedPct")}
-              value={
-                promo.observed.pctOfObservedBuyIns == null
-                  ? "—"
-                  : pct(promo.observed.pctOfObservedBuyIns)
-              }
-            />
-            <MiniStat
-              suit="spade"
-              label={t("chart.brLeaderboardObserved.observedPoints")}
-              value={promo.observed.totalPoints.toLocaleString("ru-RU")}
-            />
-          </StatGroup>
-          <div
-            className={`mt-4 rounded-md border px-3 py-2 text-[11px] leading-snug ${confidenceTone}`}
-          >
-            <div className="font-semibold">
-              {t(
-                `chart.brLeaderboardObserved.confidence.${promo.confidence.level}` as DictKey,
-              )}
-            </div>
-            <div className="mt-1">
-              {promo.confidence.abiDriftPct == null
-                ? t("chart.brLeaderboardObserved.confidence.noAbiDrift")
-                : t("chart.brLeaderboardObserved.confidence.abiDrift").replace(
-                    "{value}",
-                    pct(promo.confidence.abiDriftPct),
+          {promo.mode === "observed" ? (
+            <>
+              <StatGroup title={t("chart.brLeaderboardObserved.groupObserved")}>
+                <MiniStat
+                  suit="diamond"
+                  label={t("chart.brLeaderboardObserved.observedPrizes")}
+                  value={money(promo.observed.totalPrizes)}
+                  tone={promo.observed.totalPrizes >= 0 ? "pos" : "neg"}
+                />
+                <MiniStat
+                  suit="club"
+                  label={t("chart.brLeaderboardObserved.observedTournaments")}
+                  value={promo.observed.totalTournaments.toLocaleString("ru-RU")}
+                />
+                <MiniStat
+                  suit="spade"
+                  label={t("chart.brLeaderboardObserved.observedAbi")}
+                  value={
+                    promo.observed.reconstructedAbi == null
+                      ? "—"
+                      : `${promo.observed.reconstructedAbi.toFixed(2)} ABI`
+                  }
+                />
+                <MiniStat
+                  suit="spade"
+                  label={t("chart.brLeaderboardObserved.observedPct")}
+                  value={
+                    promo.observed.pctOfObservedBuyIns == null
+                      ? "—"
+                      : pct(promo.observed.pctOfObservedBuyIns)
+                  }
+                />
+                <MiniStat
+                  suit="spade"
+                  label={t("chart.brLeaderboardObserved.observedPoints")}
+                  value={promo.observed.totalPoints.toLocaleString("ru-RU")}
+                />
+              </StatGroup>
+              <div
+                className={`mt-4 rounded-md border px-3 py-2 text-[11px] leading-snug ${confidenceTone}`}
+              >
+                <div className="font-semibold">
+                  {t(
+                    `chart.brLeaderboardObserved.confidence.${promo.confidence.level}` as DictKey,
                   )}
-            </div>
-          </div>
+                </div>
+                <div className="mt-1">
+                  {promo.confidence.abiDriftPct == null
+                    ? t("chart.brLeaderboardObserved.confidence.noAbiDrift")
+                    : t("chart.brLeaderboardObserved.confidence.abiDrift").replace(
+                        "{value}",
+                        pct(promo.confidence.abiDriftPct),
+                      )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <StatGroup title={t("chart.brLeaderboardManual.groupAnchor")}>
+              <MiniStat
+                suit="club"
+                label={t("chart.brLeaderboardManual.perTournament")}
+                value={money(promo.manual.payoutPerTournament)}
+                tone={promo.manual.payoutPerTournament >= 0 ? "pos" : "neg"}
+              />
+              <MiniStat
+                suit="diamond"
+                label={t("chart.brLeaderboardManual.formula")}
+                value={t("chart.brLeaderboardManual.formulaValue")
+                  .replace("{perTournament}", money(promo.manual.payoutPerTournament))
+                  .replace(
+                    "{tournaments}",
+                    promo.current.tournaments.toLocaleString("ru-RU"),
+                  )}
+              />
+            </StatGroup>
+          )}
         </Card>
 
         <Card className="p-5">
@@ -1689,32 +1722,44 @@ function BattleRoyaleLeaderboardPromoSection({
               </div>
             ))}
           </div>
-          <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-3">
-            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
-              {t("chart.brLeaderboardObserved.observedMix")}
-            </div>
-            <div className="mt-2 space-y-2">
-              {promo.observed.pointsByStake
-                .filter((row) => row.points > 0)
-                .map((row) => (
-                  <div
-                    key={row.stake}
-                    className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
-                  >
-                    <div className="font-medium text-[color:var(--color-fg)]">
-                      ${row.stake}
+          {promo.mode === "observed" ? (
+            <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                {t("chart.brLeaderboardObserved.observedMix")}
+              </div>
+              <div className="mt-2 space-y-2">
+                {promo.observed.pointsByStake
+                  .filter((row) => row.points > 0)
+                  .map((row) => (
+                    <div
+                      key={row.stake}
+                      className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
+                    >
+                      <div className="font-medium text-[color:var(--color-fg)]">
+                        ${row.stake}
+                      </div>
+                      <div className="text-[color:var(--color-fg-dim)]">
+                        {t("chart.brLeaderboardObserved.observedMixLine")
+                          .replace("{points}", row.points.toLocaleString("ru-RU"))
+                          .replace("{share}", pct(row.share))
+                          .replace("{tournaments}", row.tournaments.toFixed(0))
+                          .replace("{buyIn}", money(row.buyIn))}
+                      </div>
                     </div>
-                    <div className="text-[color:var(--color-fg-dim)]">
-                      {t("chart.brLeaderboardObserved.observedMixLine")
-                        .replace("{points}", row.points.toLocaleString("ru-RU"))
-                        .replace("{share}", pct(row.share))
-                        .replace("{tournaments}", row.tournaments.toFixed(0))
-                        .replace("{buyIn}", money(row.buyIn))}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-3 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+              {t("chart.brLeaderboardManual.anchorNote")
+                .replace("{perTournament}", money(promo.manual.payoutPerTournament))
+                .replace(
+                  "{tournaments}",
+                  promo.current.tournaments.toLocaleString("ru-RU"),
+                )
+                .replace("{payout}", money(promo.expectedPayout))}
+            </div>
+          )}
         </Card>
       </div>
     </CollapsibleSection>

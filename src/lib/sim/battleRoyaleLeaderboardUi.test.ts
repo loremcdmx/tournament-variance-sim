@@ -106,6 +106,34 @@ describe("battleRoyaleLeaderboardUi", () => {
     });
   });
 
+  it("emits manual promo config for target-limit planning without observed distance", () => {
+    const controls = {
+      ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+      mode: "manual" as const,
+      manualPayoutPerTournament: 0.05,
+    };
+    const brSchedule = [
+      {
+        id: "br",
+        payoutStructure: "battle-royale",
+        gameType: "mystery-royale",
+      },
+    ] as const;
+
+    expect(
+      buildBattleRoyaleLeaderboardPromoConfig(controls, brSchedule),
+    ).toEqual({
+      mode: "manual",
+      payoutPerTournament: 0.05,
+    });
+    expect(
+      buildBattleRoyaleLeaderboardPromoConfig(
+        { ...controls, manualPayoutPerTournament: 0 },
+        brSchedule,
+      ),
+    ).toBeUndefined();
+  });
+
   it("keeps shared/basic observed BR values live instead of treating them as a visual hint", () => {
     const controls = {
       ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,

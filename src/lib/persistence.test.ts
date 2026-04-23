@@ -646,6 +646,33 @@ describe("persistence validation", () => {
     });
   });
 
+  it("normalizes persisted manual BR leaderboard planning controls", () => {
+    const state = loadLocalFromPayload({
+      v: 1,
+      schedule: [row],
+      controls: {
+        battleRoyaleLeaderboard: {
+          mode: "manual",
+          manualPayoutPerTournament: -1,
+          observedTotalPrizes: 100,
+          observedTotalTournaments: 10,
+          observedPointsByStake: {
+            "0.25": 1,
+            "1": 2,
+            "3": 3,
+            "10": 4,
+            "25": 5,
+          },
+        },
+      },
+    });
+
+    expect(state?.controls.battleRoyaleLeaderboard).toMatchObject({
+      mode: "manual",
+      manualPayoutPerTournament: 0,
+    });
+  });
+
   it("drops persisted BR row leaderboard split on all rows", () => {
     const state = loadLocalFromPayload({
       v: 1,

@@ -373,8 +373,20 @@ export interface BattleRoyaleLeaderboardObservedConfig {
   pointsByStake: BattleRoyaleLeaderboardObservedPointsByStake;
 }
 
+/**
+ * Planning mode for BR leaderboard promo when the target limit has no
+ * meaningful observed profile distance yet. The user supplies the expected
+ * leaderboard dollars per BR tournament directly; the engine projects it onto
+ * the current BR volume and keeps it outside path-risk metrics.
+ */
+export interface BattleRoyaleLeaderboardManualConfig {
+  mode: "manual";
+  payoutPerTournament: number;
+}
+
 export type BattleRoyaleLeaderboardPromoConfig =
-  | BattleRoyaleLeaderboardObservedConfig;
+  | BattleRoyaleLeaderboardObservedConfig
+  | BattleRoyaleLeaderboardManualConfig;
 
 /**
  * Calibration mode — how ROI is translated into a finish-place distribution.
@@ -634,13 +646,32 @@ export interface BattleRoyaleLeaderboardResult {
   };
 }
 
-export interface BattleRoyaleLeaderboardPromoResult {
-  mode: "observed";
+export interface BattleRoyaleLeaderboardPromoResultBase {
+  mode: "observed" | "manual";
   expectedPayout: number;
   payoutPerTournament: number;
   payoutPerDay: number;
   pctOfCurrentBuyIns: number;
   notInPathRisk: true;
+  current: {
+    activeDays: number;
+    tournaments: number;
+    tournamentsPerDay: number;
+    totalBuyIn: number;
+    abi: number | null;
+  };
+  rows: Array<{
+    rowId: string;
+    label: string;
+    tournaments: number;
+    buyIn: number;
+    payout: number;
+  }>;
+}
+
+export interface BattleRoyaleLeaderboardObservedPromoResult
+  extends BattleRoyaleLeaderboardPromoResultBase {
+  mode: "observed";
   observed: {
     totalPrizes: number;
     totalTournaments: number;
@@ -667,14 +698,19 @@ export interface BattleRoyaleLeaderboardPromoResult {
     level: "unknown" | "aligned" | "approximate" | "mismatch";
     abiDriftPct: number | null;
   };
-  rows: Array<{
-    rowId: string;
-    label: string;
-    tournaments: number;
-    buyIn: number;
-    payout: number;
-  }>;
 }
+
+export interface BattleRoyaleLeaderboardManualPromoResult
+  extends BattleRoyaleLeaderboardPromoResultBase {
+  mode: "manual";
+  manual: {
+    payoutPerTournament: number;
+  };
+}
+
+export type BattleRoyaleLeaderboardPromoResult =
+  | BattleRoyaleLeaderboardObservedPromoResult
+  | BattleRoyaleLeaderboardManualPromoResult;
 
 export interface SimulationResult {
   type: "result";
