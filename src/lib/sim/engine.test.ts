@@ -267,6 +267,36 @@ describe("engine", () => {
     expect(Number.isFinite(r.comparison!.stats.stdDev)).toBe(true);
   });
 
+  it("keeps full-cost EV by default but honors primedopeStyleEV opt-in", () => {
+    const input = baseInput({
+      schedule: [
+        {
+          id: "r",
+          label: "pd-ev",
+          players: 100,
+          buyIn: 100,
+          rake: 0.2,
+          roi: 0.1,
+          payoutStructure: "mtt-standard",
+          count: 10,
+        },
+      ],
+      scheduleRepeats: 1,
+      samples: 100,
+    });
+
+    const fullCost = compileSchedule(input, "primedope-binary-itm");
+    const pdCost = compileSchedule(
+      { ...input, primedopeStyleEV: true },
+      "primedope-binary-itm",
+    );
+
+    expect(fullCost.totalBuyIn).toBeCloseTo(100 * 1.2 * 10, 12);
+    expect(fullCost.expectedProfit).toBeCloseTo(100 * 1.2 * 0.1 * 10, 12);
+    expect(pdCost.totalBuyIn).toBeCloseTo(100 * 10, 12);
+    expect(pdCost.expectedProfit).toBeCloseTo(100 * 0.1 * 10, 12);
+  });
+
   it("preserves global sample indices for merged hi-res paths", () => {
     const input = baseInput({
       samples: 4000,

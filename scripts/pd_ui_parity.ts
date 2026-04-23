@@ -3,12 +3,13 @@
  * path used by `pd_parity.ts`. Feeds the engine the exact shape the UI
  * feeds it (`payoutStructure: "mtt-standard"`, `compareWithPrimedope:
  * true`, PD flags at UI defaults) and reads `result.comparison.stats`
- * — that's what the PD pane renders. Then diffs against cached PD
- * responses.
+ * — that's what the PD pane renders. It also runs the explicit
+ * `primedopeStyleEV` diagnostic opt-in, which is the only mode expected to
+ * match the live site EV/SD byte-for-byte.
  *
  * If this fails but `pd_parity.ts` passes, the math is fine and the UI
- * pane is mislabeled "PrimeDope" — fix is to force PD curve/paid in
- * compare mode, not to touch math.
+ * pane is mislabeled "exact PrimeDope site" — normal UI intentionally keeps
+ * the app's full-ticket ROI basis while borrowing PD's distribution quirks.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -64,36 +65,28 @@ function loadCachedPd(sc: Scenario): PdResponse {
   return JSON.parse(readFileSync(f, "utf-8")) as PdResponse;
 }
 
-// Flags as the app's default ControlsState sets them (src/app/page.tsx
-// CONTROLS_DEFAULT and src/lib/scenarios.ts BASE_CONTROLS). These are
-// what a user sees when they just open the app and hit Run. As of the
-// faithful-by-default fix, this equals PD_FAITHFUL_FLAGS.
+// Flags as the app's default ControlsState sets them. These are what a user
+// sees when they just open the app and hit Run: PD distribution/rake quirks,
+// but still our full-ticket ROI basis.
 const UI_DEFAULT_FLAGS = {
   usePrimedopePayouts: true,
   usePrimedopeFinishModel: true,
   usePrimedopeRakeMath: true,
 };
 
-// Historical "broken default" — usePrimedopePayouts=false was the UI
-// default for one dev cycle. Kept here as a regression reference so the
-// script can still show the gap that motivated flipping defaults back.
-const UI_BROKEN_DEFAULT_FLAGS = {
-  usePrimedopePayouts: false,
-  usePrimedopeFinishModel: true,
-  usePrimedopeRakeMath: false,
-};
-
-// "PD-faithful" means all three ON + PD curve forced. This is what the
-// `primedope` model preset does (see modelPresets.ts).
-const PD_FAITHFUL_FLAGS = {
+// Exact live-site parity also opts into PD's rake-ignored EV basis.
+const PD_SITE_EV_FLAGS = {
   usePrimedopePayouts: true,
   usePrimedopeFinishModel: true,
   usePrimedopeRakeMath: true,
+  primedopeStyleEV: true,
 };
+
+type PdUiFlags = typeof UI_DEFAULT_FLAGS & { primedopeStyleEV?: boolean };
 
 function buildInput(
   sc: Scenario,
-  flags: typeof UI_DEFAULT_FLAGS,
+  flags: PdUiFlags,
 ): SimulationInput {
   // mimic the UI: user picks payoutStructure "mtt-standard" on a single
   // row, ticks "compare with PrimeDope". No customPayouts override.
@@ -119,7 +112,7 @@ function buildInput(
   };
 }
 
-function runUiPath(sc: Scenario, flags: typeof UI_DEFAULT_FLAGS) {
+function runUiPath(sc: Scenario, flags: PdUiFlags) {
   const result = runSimulation(buildInput(sc, flags));
   if (!result.comparison) throw new Error("no comparison in result");
   return {
@@ -157,19 +150,17 @@ function main() {
   console.log("=".repeat(100));
 
   let worstUiSd = 0;
-  let worstFaithfulSd = 0;
+  let worstPdSiteSd = 0;
 
   for (const sc of scenarios) {
     const pd = loadCachedPd(sc);
-    const broken = runUiPath(sc, UI_BROKEN_DEFAULT_FLAGS);
     const ui = runUiPath(sc, UI_DEFAULT_FLAGS);
-    const fi = runUiPath(sc, PD_FAITHFUL_FLAGS);
-    void broken;
+    const pdSite = runUiPath(sc, PD_SITE_EV_FLAGS);
 
     const uiSdErr = relErr(ui.pdPane.sd, pd.sd);
-    const fiSdErr = relErr(fi.pdPane.sd, pd.sd);
+    const pdSiteSdErr = relErr(pdSite.pdPane.sd, pd.sd);
     worstUiSd = Math.max(worstUiSd, Math.abs(uiSdErr));
-    worstFaithfulSd = Math.max(worstFaithfulSd, Math.abs(fiSdErr));
+    worstPdSiteSd = Math.max(worstPdSiteSd, Math.abs(pdSiteSdErr));
 
     console.log();
     console.log(
@@ -182,10 +173,10 @@ function main() {
       `  PD site (math)    :  ${pad(money(pd.ev), 10)}  ${pad(money(pd.sd), 10)}  ${pad("—", 14)}`,
     );
     console.log(
-      `  UI PD pane default:  ${pad(money(ui.pdPane.mean), 10)}  ${pad(money(ui.pdPane.sd), 10)}  ${pad((uiSdErr * 100).toFixed(2) + "%", 14)}`,
+      `  UI PD pane full-cost: ${pad(money(ui.pdPane.mean), 10)}  ${pad(money(ui.pdPane.sd), 10)}  ${pad((uiSdErr * 100).toFixed(2) + "%", 14)}`,
     );
     console.log(
-      `  UI PD pane faithful: ${pad(money(fi.pdPane.mean), 10)}  ${pad(money(fi.pdPane.sd), 10)}  ${pad((fiSdErr * 100).toFixed(2) + "%", 14)}`,
+      `  PD-site EV opt-in:    ${pad(money(pdSite.pdPane.mean), 10)}  ${pad(money(pdSite.pdPane.sd), 10)}  ${pad((pdSiteSdErr * 100).toFixed(2) + "%", 14)}`,
     );
     console.log(
       `  UI primary (alpha):  ${pad(money(ui.primary.mean), 10)}  ${pad(money(ui.primary.sd), 10)}`,
@@ -198,10 +189,10 @@ function main() {
     `WORST SD ERROR vs PD site:`,
   );
   console.log(
-    `  UI default flags  (usePrimedopePayouts=false): ${(worstUiSd * 100).toFixed(2)}%`,
+    `  UI full-cost PD pane: ${(worstUiSd * 100).toFixed(2)}%`,
   );
   console.log(
-    `  UI PD-faithful    (all three flags ON):        ${(worstFaithfulSd * 100).toFixed(2)}%`,
+    `  PD-site EV opt-in:   ${(worstPdSiteSd * 100).toFixed(2)}%`,
   );
   console.log("=".repeat(100));
 }

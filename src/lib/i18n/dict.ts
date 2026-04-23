@@ -584,8 +584,8 @@ export const DICT = {
   },
   "preset.primedope.label": { en: "Like PrimeDope", ru: "Как на PrimeDope" },
   "preset.primedope.tagline": {
-    en: "Matches the PrimeDope online calculator: every paid place is equally likely once you cash, so skill only shifts how often you cash — not how deep you run. Top-heavy payouts stay intact, but a skilled player never gets rewarded with extra deep finishes. Here only so you can see how much PrimeDope understates the real swings.",
-    ru: "Считает ровно как калькулятор на сайте PrimeDope: внутри призовых все места равновероятны, поэтому скилл влияет только на частоту попаданий в деньги — но не на глубину прохода. Top-heavy выплаты сохраняются, просто скилловому игроку не достаётся больше глубоких финишей. Нужен только чтобы увидеть, насколько PrimeDope занижает реальные колебания.",
+    en: "Uses PrimeDope's core distribution assumptions: every paid place is equally likely once you cash, so skill only shifts how often you cash — not how deep you run. The app still keeps ROI on the full buy-in+rake cost basis. Here only so you can see how much PrimeDope-style math understates the real swings.",
+    ru: "Использует ключевые допущения PrimeDope: внутри призовых все места равновероятны, поэтому скилл влияет только на частоту попаданий в деньги — но не на глубину прохода. ROI всё равно считается на честной базе полной стоимости buy-in+rake. Нужен только чтобы увидеть, насколько PrimeDope-стиль занижает реальные колебания.",
   },
   "preset.naive.label": { en: "Standard mode", ru: "Стандартный режим" },
   "preset.naive.tagline": {
@@ -986,8 +986,8 @@ export const DICT = {
     ru: "Пейауты ПД",
   },
   "chart.trajectory.pdPayouts.hint": {
-    en: "PD payout curves.\n\nSource: lifted from primedope.com's Tournament Variance Calculator — we ran their tool with 1000-player fields across 10-20% ITM presets, recorded the per-place % of pool, and rebuilt the same family locally (src/lib/sim/pdCurves.ts).\n\nShape: top-heavy but not crazy — 1st place ≈18-25% of pool, 2nd ≈13-15%, flat tail down to min-cash ≈1.5× buy-in. Paid spots ≈ round(0.15 × field). Matches PD's numbers to within ~0.2% SD on shared schedules.\n\nUncheck to run PD's math (finish model + rake quirk) on YOUR row's real payout table instead.",
-    ru: "Пейауты ПД.\n\nИсточник: сняты с primedope.com Tournament Variance Calculator — прогоняли их калькулятор на полях в 1000 игроков по пресетам 10-20% ITM, записывали % пула на место и восстановили ту же семью у себя (src/lib/sim/pdCurves.ts).\n\nФорма: top-heavy, но не зверь — 1 место ≈18-25% пула, 2 ≈13-15%, плоский хвост до мин-кэша ≈1.5×БИ. Платных мест ≈ round(0.15 × поле). Совпадает с их цифрами с точностью ~0.2% по SD на общих расписаниях.\n\nСнимите галку — прогнать математику ПД (финиш-модель + рейк-квирк) на РЕАЛЬНОЙ таблице выплат вашего турнира.",
+    en: "PD payout curves.\n\nSource: lifted from primedope.com's Tournament Variance Calculator — we ran their tool with 1000-player fields across 10-20% ITM presets, recorded the per-place % of pool, and rebuilt the same family locally (src/lib/sim/pdCurves.ts).\n\nShape: top-heavy but not crazy — 1st place ≈18-25% of pool, 2nd ≈13-15%, flat tail down to min-cash ≈1.5× buy-in. Paid spots ≈ round(0.15 × field). The curve family matches PD; this UI comparison still keeps our full-cost ROI basis unless a diagnostic script opts into PD-style EV.\n\nUncheck to run PD's math (finish model + rake quirk) on YOUR row's real payout table instead.",
+    ru: "Пейауты ПД.\n\nИсточник: сняты с primedope.com Tournament Variance Calculator — прогоняли их калькулятор на полях в 1000 игроков по пресетам 10-20% ITM, записывали % пула на место и восстановили ту же семью у себя (src/lib/sim/pdCurves.ts).\n\nФорма: top-heavy, но не зверь — 1 место ≈18-25% пула, 2 ≈13-15%, плоский хвост до мин-кэша ≈1.5×БИ. Платных мест ≈ round(0.15 × поле). Семья кривых совпадает с PD; UI-сравнение всё равно держит нашу честную ROI-базу от полной стоимости, если только диагностический скрипт не включает PD-style EV.\n\nСнимите галку — прогнать математику ПД (финиш-модель + рейк-квирк) на РЕАЛЬНОЙ таблице выплат вашего турнира.",
   },
   "chart.trajectory.pdFinishModel": {
     en: "PD finish model",

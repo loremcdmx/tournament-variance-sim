@@ -227,7 +227,7 @@ SimulationResult → ResultsView
 
 **Global ITM %.** `controls.itmGlobalPct` + чекбокс `itmGlobalEnabled` применяется каскадом в `applyItmTarget()`: заполняет `row.itmRate` только там, где он не задан. Per-row значение всегда побеждает глобальное. Смотри `src/lib/sim/itmTarget.ts`.
 
-**PrimeDope-style EV.** `primedopeStyleEV: true` игнорирует рейк при подсчёте target winnings в binary-ITM compare-режиме. Это формально неверно (рейк — часть cost basis), но нужно, чтобы наши цифры совпадали с PrimeDope байт-в-байт для side-by-side view.
+**PrimeDope-style EV.** По умолчанию compare-панель держит честную ROI-базу приложения: profit / (buy-in + rake). `primedopeStyleEV: true` — отдельный диагностический opt-in для live-PD parity scripts: он игнорирует рейк при target winnings, как сайт PrimeDope, чтобы можно было проверить их цифры байт-в-байт.
 
 ## Дополнительная документация
 

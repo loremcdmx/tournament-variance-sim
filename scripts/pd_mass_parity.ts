@@ -3,9 +3,9 @@
  * field size × paid count × buy-in × rake × ROI × schedule length, hits
  * the live PD API for each (cached under `scripts/pd_cache/`), runs our
  * engine in full-PD-compat mode (all three `usePrimedope*` flags true),
- * and reports worst-case EV / SD deltas plus a per-scenario dump.
+ * and reports worst-case exact EV / SD deltas plus a per-scenario dump.
  *
- * Target: EV err < 3 % (MC noise), SD err < 1 % (closed-form on PD side).
+ * Target: exact EV err < 0.1 %, SD err < 1 %.
  * Anything beyond that is a real discrepancy to investigate.
  */
 
@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runSimulation } from "../src/lib/sim/engine";
+import { compileSchedule, runSimulation } from "../src/lib/sim/engine";
 import { primedopeCurveForPaid } from "../src/lib/sim/pdCurves";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
@@ -106,12 +106,14 @@ function runOurs(sc: Scenario) {
     seed: 42,
     finishModel: { id: "power-law" },
     calibrationMode: "primedope-binary-itm",
+    primedopeStyleEV: true,
     usePrimedopePayouts: true,
     usePrimedopeFinishModel: true,
     usePrimedopeRakeMath: true,
   };
+  const compiled = compileSchedule(input, "primedope-binary-itm");
   const r = runSimulation(input);
-  return { mean: r.stats.mean, sd: r.stats.stdDev };
+  return { exactEv: compiled.expectedProfit, simMean: r.stats.mean, sd: r.stats.stdDev };
 }
 
 // PD dropdown values for `places_paid` (from pd_payout_cache/).
@@ -213,7 +215,8 @@ interface Row {
   sc: Scenario;
   pdEv: number;
   pdSd: number;
-  ourEv: number;
+  ourExactEv: number;
+  ourSimMean: number;
   ourSd: number;
   evErr: number;
   sdErr: number;
@@ -222,7 +225,7 @@ interface Row {
 async function main() {
   const scenarios = buildGrid();
   console.log(
-    `Running ${scenarios.length} PD-parity scenarios (ours=200k MC, PD=closed-form)…`,
+    `Running ${scenarios.length} PD-parity scenarios (ours exact EV + 200k MC SD, PD=closed-form)…`,
   );
 
   const rows: Row[] = [];
@@ -238,13 +241,14 @@ async function main() {
     if (wasCached) cached++;
     else fetched++;
     const ours = runOurs(sc);
-    const evErr = relErr(ours.mean, pd.ev);
+    const evErr = relErr(ours.exactEv, pd.ev);
     const sdErr = relErr(ours.sd, pd.sd);
     rows.push({
       sc,
       pdEv: pd.ev,
       pdSd: pd.sd,
-      ourEv: ours.mean,
+      ourExactEv: ours.exactEv,
+      ourSimMean: ours.simMean,
       ourSd: ours.sd,
       evErr,
       sdErr,
@@ -265,7 +269,7 @@ async function main() {
     `Summary: ${rows.length} scenarios (${cached} cached, ${fetched} live)`,
   );
   console.log(
-    `Worst EV err vs PD math : ${pct(worstEv)} (target < 3 %, MC noise on ours)`,
+    `Worst exact EV err vs PD math : ${pct(worstEv)} (target < 0.1 %)`,
   );
   console.log(
     `Worst SD err vs PD math : ${pct(worstSd)} (target < 1 %, both closed-form)`,
@@ -277,7 +281,7 @@ async function main() {
   console.log("\nTop 10 worst EV errors:");
   for (const r of byEv.slice(0, 10)) {
     console.log(
-      `  ${r.sc.name.padEnd(45)}  pd=${r.pdEv.toFixed(0).padStart(8)}  ours=${r.ourEv.toFixed(0).padStart(8)}  Δ ${(r.evErr * 100).toFixed(2)}%`,
+      `  ${r.sc.name.padEnd(45)}  pd=${r.pdEv.toFixed(0).padStart(8)}  oursExact=${r.ourExactEv.toFixed(0).padStart(8)}  simMean=${r.ourSimMean.toFixed(0).padStart(8)}  Δ ${(r.evErr * 100).toFixed(2)}%`,
     );
   }
   console.log("\nTop 10 worst SD errors:");
@@ -285,6 +289,9 @@ async function main() {
     console.log(
       `  ${r.sc.name.padEnd(45)}  pd=${r.pdSd.toFixed(0).padStart(8)}  ours=${r.ourSd.toFixed(0).padStart(8)}  Δ ${(r.sdErr * 100).toFixed(2)}%`,
     );
+  }
+  if (worstEv > 0.001 || worstSd > 0.01) {
+    process.exitCode = 1;
   }
 }
 

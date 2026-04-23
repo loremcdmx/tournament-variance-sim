@@ -180,6 +180,10 @@ to safely continue from.
   before dispatching. A real bug let sequential PrimeDope checkboxes update the
   visible React state while the second worker re-run started from an older
   input snapshot and silently re-enabled the first checkbox's flag.
+- PrimeDope "faithful" has two separate meanings here. The UI/preset should
+  borrow PD's payout/finish/rake distribution mechanics but keep the app's
+  full buy-in+rake ROI basis. Byte-for-byte live-site parity also needs
+  `primedopeStyleEV: true`, and that should stay a diagnostic-script opt-in.
 
 ## Good Defaults For New Agents
 

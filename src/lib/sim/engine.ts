@@ -403,10 +403,10 @@ export function compileSchedule(
   // variants[r] is an array of { entry, weight } — weight is # of plays per
   // unit `count` consumed from this row.
   const primedopeCompare = calibrationMode === "primedope-binary-itm";
-  // Compare mode isolates PrimeDope's distribution assumptions. The EV target
-  // stays on our user-facing ROI basis (buy-in + rake), otherwise the right
-  // pane compares a different edge instead of a different variance model.
-  const primedopeStyleEV = false;
+  // Compare mode normally isolates PrimeDope's distribution assumptions while
+  // keeping the app's full-ticket ROI basis. The explicit opt-in exists for
+  // live-site parity scripts that need to reproduce PD's rake-ignored EV.
+  const primedopeStyleEV = primedopeCompare && input.primedopeStyleEV === true;
   // Three independent PD-flavour toggles, all default ON when compare mode
   // is active. Flipping any of them off isolates that single PD quirk's
   // contribution to σ while keeping the schedule EV fixed.
@@ -804,8 +804,8 @@ function compileSingleEntry(
   }
   // ROI in this app is always net of rake: profit / (buy-in + rake). Keep
   // that cost basis in the PrimeDope comparison too so both panes compare the
-  // same edge. PrimeDope's rake quirk is modeled below through the prize-pool
-  // variance basis, not by silently changing the EV target.
+  // same edge. Only diagnostic live-site parity scripts opt into PD's
+  // rake-ignored EV basis through `primedopeStyleEV`.
   const entryCostSingle = primedopeStyleEV
     ? row.buyIn
     : row.buyIn * (1 + row.rake);
@@ -873,11 +873,9 @@ function compileSingleEntry(
   }
 
   // ---- raw payout curve --------------------------------------------------
-  // Both passes honour the user's selected payout by default, so the
-  // PrimeDope comparison isolates the *finish-model* effect. Only when
-  // `usePrimedopePayouts` is explicitly set does the binary-ITM pass
-  // switch onto PD's native curve — that's the "reproduce PD's σ on
-  // their reference scenarios" escape hatch, not the default behaviour.
+  // The PD comparison defaults to PD's native payout curve. Turning
+  // `usePrimedopePayouts` off makes the binary-ITM pass honour the user's
+  // selected payout table so the toolbar can isolate the finish-model effect.
   const effectivePayoutStructure = forcePrimedopePayouts
     ? "mtt-primedope"
     : row.payoutStructure;

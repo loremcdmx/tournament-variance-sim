@@ -134,7 +134,9 @@ export function PrimeDopeWeaknessCard() {
                   В compare-mode мы воспроизводим не абстрактный
                   &quot;PrimeDope-стиль&quot;, а именно те слои, которые у них реально
                   живут на сайте: binary paid-shell, их live payout-curves и
-                  их трактовку cost / rake.
+                  их rake-to-SD механику. ROI в UI остаётся на нашей полной
+                  базе buy-in+rake, чтобы сравнение показывало модельную
+                  разницу, а не другой edge.
                 </p>
                 <ul className="list-disc space-y-1 pl-4 text-[color:var(--color-fg-dim)]">
                   <li>

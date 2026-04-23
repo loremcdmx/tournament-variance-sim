@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runSimulation } from "../src/lib/sim/engine";
+import { compileSchedule, runSimulation } from "../src/lib/sim/engine";
 import { primedopeCurveForPaid } from "../src/lib/sim/pdCurves";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
@@ -150,11 +150,14 @@ function runOurs(sc: Scenario) {
     seed: 42,
     finishModel: { id: "power-law" },
     calibrationMode: "primedope-binary-itm",
+    primedopeStyleEV: true,
   };
+  const compiled = compileSchedule(input, "primedope-binary-itm");
   const r = runSimulation(input);
   const sorted = new Float64Array(r.finalProfits);
   sorted.sort();
   return {
+    exactEv: compiled.expectedProfit,
     mean: r.stats.mean,
     sd: r.stats.stdDev,
     minBR50: r.stats.minBankrollRoR50pct ?? 0,
@@ -207,7 +210,8 @@ async function main() {
     console.log("ok");
     const ours = runOurs(sc);
 
-    const evErr = relErr(ours.mean, pd.ev);
+    const evErr = relErr(ours.exactEv, pd.ev);
+    const simEvErr = relErr(ours.mean, pd.evSimulated);
     const sdErrMath = relErr(ours.sd, pd.sd);
     const sdErrSim = relErr(ours.sd, pd.sdSimulated);
     // Skip EV worst-case accumulation when |pd.ev| is trivially small vs SD —
@@ -258,10 +262,13 @@ async function main() {
       `  PD  sim(${pad(pd.samplesize, 4)}):  ${pad(money(pd.evSimulated), 10)}  ${pad(money(pd.sdSimulated), 10)}  ${pad(money(pdMinBR50), 10)}  ${pad(money(pdMinBR15), 10)}  ${pad(money(pdMinBR5), 10)}  ${pad(money(pdMinBR1), 10)}  ${pad(pct(pd.riskOfRuin), 8)}  ${pad(String(pd.neverBelowZero), 9)}`,
     );
     console.log(
+      `  OUR exact EV:  ${pad(money(ours.exactEv), 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 10)}  ${pad("-", 8)}  ${pad("-", 9)}`,
+    );
+    console.log(
       `  OUR sim(2M)  :  ${pad(money(ours.mean), 10)}  ${pad(money(ours.sd), 10)}  ${pad(money(ours.minBR50), 10)}  ${pad(money(ours.minBR15), 10)}  ${pad(money(ours.minBR5), 10)}  ${pad(money(ours.minBR1), 10)}  ${pad(pct(ours.ruinFrac), 8)}  ${pad(pct(ours.neverBelowZeroFrac), 9)}`,
     );
     console.log(
-      `  Δ vs PD-sim :  ${pad((evErr * 100).toFixed(2) + "%", 10)}  ${pad((sdErrSim * 100).toFixed(2) + "%", 10)}  ${pad((minBR50Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR15Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR5Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR1Err * 100).toFixed(1) + "%", 10)}`,
+      `  Δ vs PD-sim :  ${pad((simEvErr * 100).toFixed(2) + "%", 10)}  ${pad((sdErrSim * 100).toFixed(2) + "%", 10)}  ${pad((minBR50Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR15Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR5Err * 100).toFixed(1) + "%", 10)}  ${pad((minBR1Err * 100).toFixed(1) + "%", 10)}`,
     );
     console.log(
       `  Δ vs PD-math:  ${pad((evErr * 100).toFixed(2) + "%", 10)}  ${pad((sdErrMath * 100).toFixed(2) + "%", 10)}`,
@@ -286,12 +293,15 @@ async function main() {
     `WORST ERRORS vs PD (sim) :  minBR ${(worstMinBRErr * 100).toFixed(1)}%, conf-bounds ${(worstConfErr * 100).toFixed(1)}%`,
   );
   console.log(
-    "Expected: EV < 2%, SD < 0.2% (both closed-form, no MC noise on PD side).",
+    "Expected: exact EV < 0.1%, SD < 0.2% (PD EV is closed-form; our sim mean is reported separately).",
   );
   console.log(
-    "minBR / conf bounds: PD uses 5000 samples, we use 500k — expect ±5-20% noise on tail quantiles driven entirely by PD's low S.",
+    "minBR / conf bounds: PD uses 5000 samples, we use 2M — expect ±5-20% noise on tail quantiles driven entirely by PD's low S.",
   );
   console.log("=".repeat(100));
+  if (worstEvErr > 0.001 || worstSdErr > 0.002) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((e) => {

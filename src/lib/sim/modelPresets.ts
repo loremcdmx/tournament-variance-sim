@@ -68,10 +68,10 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     taglineKey: "preset.primedope.tagline",
     patch: {
       ...ZERO_SHOCKS,
-      // PrimeDope-equivalent: uniform-lift calibration, no shocks, no tilt,
-      // no skill model nuance. This preset is the one place where forcing
-      // the PD payout curve onto the comparison pane is correct — it's
-      // explicitly "reproduce PD's reference σ on their own curve".
+      // PrimeDope-style distribution: uniform-lift calibration, PD payout
+      // curve, no shocks, no tilt, no skill model nuance. It still keeps the
+      // app's full buy-in+rake ROI basis; exact live-site EV parity is a
+      // diagnostic script-only opt-in.
       finishModelId: "power-law",
       compareWithPrimedope: true,
       usePrimedopePayouts: true,

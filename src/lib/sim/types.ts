@@ -436,7 +436,8 @@ export interface SimulationInput {
    * in the schedule, regardless of the user's selected payout structure.
    *
    * Default in the UI/presets: `true`, together with PD finish/rake flags,
-   * so the right pane reproduces PrimeDope's whole stack by default.
+   * so the right pane borrows PrimeDope's distribution stack by default while
+   * keeping this app's full buy-in+rake ROI basis.
    * Turn it off from the result toolbar when you want both passes to honour
    * `row.payoutStructure` and isolate only the finish-model effect.
    */
@@ -445,8 +446,9 @@ export interface SimulationInput {
    * PrimeDope comparison toggles: when the run is in `primedope-binary-itm`
    * mode, each flag independently controls whether the PD pass keeps PD's
    * native behaviour for that aspect. All three default to `true`, so the
-   * PD pane reproduces the live site exactly; flipping any flag off isolates
-   * how much that single PD quirk is contributing to the σ gap.
+   * PD pane reproduces PD's distribution/rake mechanics while keeping the
+   * app's full-cost EV basis; flipping any flag off isolates how much that
+   * single PD quirk is contributing to the σ gap.
    *
    * - `usePrimedopeFinishModel`: binary-ITM (uniform-over-paid) vs our α-model.
    * - `usePrimedopeRakeMath`: post-rake pool as variance driver (PD's §7 quirk)
