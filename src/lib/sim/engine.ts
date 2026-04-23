@@ -300,6 +300,94 @@ export interface ScheduleAnalyticBreakdown {
   tournamentsPerPass: number;
 }
 
+interface PassOrderCursor {
+  rowIdx: number;
+  count: number;
+  emitted: number;
+}
+
+function comparePassOrderCursor(
+  a: PassOrderCursor,
+  b: PassOrderCursor,
+): number {
+  // The row with the smallest emitted/count ratio is furthest below its
+  // ideal schedule share and should fire next. Ties preserve schedule order.
+  const left = a.emitted * b.count;
+  const right = b.emitted * a.count;
+  if (left !== right) return left - right;
+  return a.rowIdx - b.rowIdx;
+}
+
+export function buildSchedulePassOrder(counts: readonly number[]): number[] {
+  const total = counts.reduce((acc, n) => acc + n, 0);
+  const order = new Array<number>(total);
+  const heap: PassOrderCursor[] = [];
+
+  const siftUp = (idx: number) => {
+    while (idx > 0) {
+      const parent = (idx - 1) >> 1;
+      if (comparePassOrderCursor(heap[idx], heap[parent]) >= 0) break;
+      const tmp = heap[idx];
+      heap[idx] = heap[parent];
+      heap[parent] = tmp;
+      idx = parent;
+    }
+  };
+
+  const siftDown = (idx: number) => {
+    for (;;) {
+      let best = idx;
+      const left = idx * 2 + 1;
+      const right = left + 1;
+      if (
+        left < heap.length &&
+        comparePassOrderCursor(heap[left], heap[best]) < 0
+      ) {
+        best = left;
+      }
+      if (
+        right < heap.length &&
+        comparePassOrderCursor(heap[right], heap[best]) < 0
+      ) {
+        best = right;
+      }
+      if (best === idx) break;
+      const tmp = heap[idx];
+      heap[idx] = heap[best];
+      heap[best] = tmp;
+      idx = best;
+    }
+  };
+
+  const push = (cursor: PassOrderCursor) => {
+    heap.push(cursor);
+    siftUp(heap.length - 1);
+  };
+
+  const pop = (): PassOrderCursor => {
+    const top = heap[0];
+    const last = heap.pop()!;
+    if (heap.length > 0) {
+      heap[0] = last;
+      siftDown(0);
+    }
+    return top;
+  };
+
+  counts.forEach((count, rowIdx) => {
+    if (count > 0) push({ rowIdx, count, emitted: 0 });
+  });
+
+  for (let i = 0; i < total; i++) {
+    const cursor = pop();
+    order[i] = cursor.rowIdx;
+    cursor.emitted += 1;
+    if (cursor.emitted < cursor.count) push(cursor);
+  }
+
+  return order;
+}
+
 export function compileSchedule(
   input: SimulationInput,
   calibrationMode: CalibrationMode = "alpha",
@@ -393,49 +481,64 @@ export function compileSchedule(
     };
   });
 
+  const passCounts = input.schedule.map((row) =>
+    Math.max(1, Math.floor(row.count)),
+  );
+  const passOrder = buildSchedulePassOrder(passCounts);
+  const rowDirectShares = input.schedule.map((row) =>
+    leaderboardSplitActive
+      ? battleRoyaleDirectRakebackShareForRow(row, true)
+      : 1,
+  );
+  const rowLeaderboardShares = input.schedule.map((row) =>
+    leaderboardSplitActive ? battleRoyaleLeaderboardShareForRow(row, true) : 0,
+  );
+  const rowDirectRakebackMeans = slotEntries.map(
+    (entry) => entry.rakebackBonusPerBullet * (1 + entry.reentryExpected),
+  );
+  const rowLeaderboardMeans = input.schedule.map((row, rowIdx) =>
+    rbFrac *
+    rowLeaderboardShares[rowIdx] *
+    row.rake *
+    row.buyIn *
+    (1 + slotEntries[rowIdx].reentryExpected),
+  );
+
   for (let rep = 0; rep < input.scheduleRepeats; rep++) {
-    for (let r = 0; r < input.schedule.length; r++) {
-      const row = input.schedule[r];
-      const entry = slotEntries[r];
-      const n = Math.max(1, Math.floor(row.count));
-      const leaderboardShare = leaderboardSplitActive
-        ? battleRoyaleLeaderboardShareForRow(row, true)
-        : 0;
-      const directShare = 1 - leaderboardShare;
-      const expectedBullets = 1 + entry.reentryExpected;
-      const directRbMean =
-        entry.rakebackBonusPerBullet * expectedBullets;
-      const leaderboardMean =
-        rbFrac *
-        leaderboardShare *
-        row.rake *
-        row.buyIn *
-        expectedBullets;
-      if (rep === 0 && leaderboardShare > 0) {
+    if (rep === 0) {
+      for (let r = 0; r < input.schedule.length; r++) {
+        const row = input.schedule[r];
+        const leaderboardShare = rowLeaderboardShares[r];
+        if (leaderboardShare <= 0) continue;
+        const tournaments = passCounts[r] * Math.max(1, input.scheduleRepeats);
         leaderboardMix[r] = {
           rowId: row.id,
           label: row.label || `Row ${r + 1}`,
-          tournaments: n * Math.max(1, input.scheduleRepeats),
-          directShare,
+          tournaments,
+          directShare: rowDirectShares[r],
           leaderboardShare,
-          directRakebackMean: n * Math.max(1, input.scheduleRepeats) * directRbMean,
-          leaderboardMeanTarget:
-            n * Math.max(1, input.scheduleRepeats) * leaderboardMean,
+          directRakebackMean: tournaments * rowDirectRakebackMeans[r],
+          leaderboardMeanTarget: tournaments * rowLeaderboardMeans[r],
         };
       }
-      for (let k = 0; k < n; k++) {
-        flat.push(entry);
-        totalBuyIn += entry.costPerEntry;
-        expectedProfit += entry.costPerEntry * row.roi + directRbMean;
-        expectedDirectRakeback += directRbMean;
-        if (leaderboardShare > 0) {
-          expectedBattleRoyaleSplitDirectRakeback += directRbMean;
-        }
-        expectedLeaderboardPromo += leaderboardMean;
-        itmAcc += entry.itm;
-        rowCounts[r] += 1;
-        rowBuyIns[r] += entry.costPerEntry;
+    }
+    for (const rowIdx of passOrder) {
+      const row = input.schedule[rowIdx];
+      const entry = slotEntries[rowIdx];
+      const directRbMean = rowDirectRakebackMeans[rowIdx];
+      const leaderboardShare = rowLeaderboardShares[rowIdx];
+      const leaderboardMean = rowLeaderboardMeans[rowIdx];
+      flat.push(entry);
+      totalBuyIn += entry.costPerEntry;
+      expectedProfit += entry.costPerEntry * row.roi + directRbMean;
+      expectedDirectRakeback += directRbMean;
+      if (leaderboardShare > 0) {
+        expectedBattleRoyaleSplitDirectRakeback += directRbMean;
       }
+      expectedLeaderboardPromo += leaderboardMean;
+      itmAcc += entry.itm;
+      rowCounts[rowIdx] += 1;
+      rowBuyIns[rowIdx] += entry.costPerEntry;
     }
   }
 

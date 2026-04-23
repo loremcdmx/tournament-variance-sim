@@ -101,7 +101,7 @@ The current split is:
 
 All in `src/lib/sim/types.ts`:
 
-- **`TournamentRow`** — one line in the schedule. Has buy-in, rake, field, ROI, payout structure, and optional bounty/mystery fields.
+- **`TournamentRow`** — one line in the schedule. Has buy-in, rake, field, ROI, payout structure, and optional bounty/mystery fields. `count` is the row's per-pass frequency; compile-time scheduling interleaves rows as evenly as possible inside each pass rather than batching one row at a time.
 - **`SimulationInput`** — `{schedule, scheduleRepeats, samples, bankroll, seed, finishModel, ...noise, ...tilt}`.
 - **`FinishModelConfig`** — `{id: "power-law"|"stretched-exp"|"empirical"|..., alpha?, beta?, empiricalBuckets?}`. Note: when `alpha` is set, calibration is skipped and the override is used as-is.
 - **`SimulationResult`** — `{samples, totalBuyIn, expectedProfit, finalProfits, rowProfits, histogram, samplePaths, envelopes, stats, decomposition, downswings, sensitivity, ...}`. This is what `ResultsView` consumes.

@@ -160,7 +160,9 @@ export interface TournamentRow {
 
   /**
    * How many times this row is played per schedule pass. Fractional values
-   * are allowed and rounded stochastically at compile time.
+   * are allowed and rounded stochastically at compile time. Within a pass,
+   * rows are interleaved as evenly as possible by their frequencies rather
+   * than executed in row-sized batches.
    */
   count: number;
 

@@ -104,6 +104,78 @@ describe("engine", () => {
     expect(shareSum).toBeCloseTo(1, 6);
   });
 
+  it("interleaves equal-frequency rows inside each schedule pass", () => {
+    const compiled = compileSchedule(
+      baseInput({
+        schedule: [
+          {
+            id: "a",
+            label: "A",
+            players: 100,
+            buyIn: 5,
+            rake: 0.1,
+            roi: 0.15,
+            payoutStructure: "mtt-standard",
+            count: 2,
+          },
+          {
+            id: "b",
+            label: "B",
+            players: 200,
+            buyIn: 10,
+            rake: 0.1,
+            roi: 0.12,
+            payoutStructure: "mtt-standard",
+            count: 2,
+          },
+        ],
+        scheduleRepeats: 2,
+      }),
+    );
+
+    const perPass = compiled.tournamentsPerPass;
+    const firstPass = compiled.flat.slice(0, perPass).map((entry) => entry.rowIdx);
+    const secondPass = compiled.flat
+      .slice(perPass, perPass * 2)
+      .map((entry) => entry.rowIdx);
+
+    expect(firstPass).toEqual([0, 1, 0, 1]);
+    expect(secondPass).toEqual(firstPass);
+  });
+
+  it("spaces weighted rows across a schedule pass instead of batching them", () => {
+    const compiled = compileSchedule(
+      baseInput({
+        schedule: [
+          {
+            id: "a",
+            label: "A",
+            players: 100,
+            buyIn: 1,
+            rake: 0.1,
+            roi: 0.1,
+            payoutStructure: "mtt-standard",
+            count: 3,
+          },
+          {
+            id: "b",
+            label: "B",
+            players: 100,
+            buyIn: 2,
+            rake: 0.1,
+            roi: 0.1,
+            payoutStructure: "mtt-standard",
+            count: 2,
+          },
+        ],
+        scheduleRepeats: 1,
+      }),
+    );
+
+    const firstPass = compiled.flat.map((entry) => entry.rowIdx);
+    expect(firstPass).toEqual([0, 1, 0, 1, 0]);
+  });
+
   it("risk of ruin increases as bankroll shrinks", () => {
     const big = runSimulation(baseInput({ bankroll: 5000 }));
     const small = runSimulation(baseInput({ bankroll: 100 }));
