@@ -11,7 +11,6 @@ import type { GameType, PayoutStructureId, TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
-  normalizeBattleRoyaleLeaderboardShare,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -558,11 +557,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalBattleRoyaleLeaderboardEnabled =
         nextBattleRoyaleLeaderboardEnabled ?? false;
       finalBattleRoyaleLeaderboardShare =
-        finalBattleRoyaleLeaderboardEnabled
-          ? normalizeBattleRoyaleLeaderboardShare(
-              nextBattleRoyaleLeaderboardShare,
-            )
-          : undefined;
+        finalBattleRoyaleLeaderboardEnabled ? 1 : undefined;
     }
     const effectiveBattleRoyaleRow =
       nextGameType === "mystery-royale" ||

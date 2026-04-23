@@ -61,8 +61,8 @@ describe("battleRoyaleLeaderboardUi", () => {
 
     expect(battleRoyaleLeaderboardShareForRow(row, false)).toBe(0);
     expect(battleRoyaleDirectRakebackShareForRow(row, false)).toBe(1);
-    expect(battleRoyaleLeaderboardShareForRow(row, true)).toBe(0.4);
-    expect(battleRoyaleDirectRakebackShareForRow(row, true)).toBe(0.6);
+    expect(battleRoyaleLeaderboardShareForRow(row, true)).toBe(1);
+    expect(battleRoyaleDirectRakebackShareForRow(row, true)).toBe(0);
   });
 
   it("emits an engine config only when advanced mode has opted-in BR rows", () => {

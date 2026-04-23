@@ -5,6 +5,7 @@
  * Pure data + small helpers — no side effects, no RNG.
  */
 import type { GameType, TournamentRow } from "./types";
+import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE } from "./battleRoyaleLeaderboardUi";
 
 export const GAME_TYPE_ORDER: GameType[] = [
   "freezeout",
@@ -198,7 +199,8 @@ export function applyGameType(
       patch.battleRoyaleLeaderboardEnabled =
         row.battleRoyaleLeaderboardEnabled ?? false;
       patch.battleRoyaleLeaderboardShare =
-        row.battleRoyaleLeaderboardShare ?? 0.5;
+        row.battleRoyaleLeaderboardShare ??
+        DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE;
       patch.payoutStructure = "battle-royale";
       break;
   }

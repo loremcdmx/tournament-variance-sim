@@ -553,7 +553,7 @@ export const SCENARIOS: DemoScenario[] = [
         gameType: "mystery-royale",
         bountyFraction: 0.5,
         battleRoyaleLeaderboardEnabled: true,
-        battleRoyaleLeaderboardShare: 0.6,
+        battleRoyaleLeaderboardShare: 1,
         count: 120,
       },
       {

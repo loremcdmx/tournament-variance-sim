@@ -38,7 +38,7 @@ export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS: BattleRoyaleLeaderboard
     opponentStdDevScore: 45,
   };
 
-export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE = 0.5;
+export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE = 1;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object";
@@ -193,9 +193,11 @@ export function battleRoyaleLeaderboardShareForRow(
 ): number {
   if (!advanced || !isBattleRoyaleRow(row)) return 0;
   if (!row.battleRoyaleLeaderboardEnabled) return 0;
-  return normalizeBattleRoyaleLeaderboardShare(
-    row.battleRoyaleLeaderboardShare,
-  );
+  // The current product contract is a simple on/off toggle:
+  // off  -> 100% direct RB
+  // on   -> 100% leaderboard promo channel
+  // Keep the legacy share field only for backward-compatible payload reads.
+  return 1;
 }
 
 export function battleRoyaleDirectRakebackShareForRow(

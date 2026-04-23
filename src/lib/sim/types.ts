@@ -282,17 +282,16 @@ export interface TournamentRow {
   itmTopHeavyBias?: number;
 
   /**
-   * Battle Royale promo split toggle. Only read when the product is in
+   * Battle Royale leaderboard promo toggle. Only read when the product is in
    * advanced mode AND the row is effectively Battle Royale. When enabled,
-   * the global rakeback budget for this row is split between deterministic
-   * direct rakeback and the separate BR leaderboard promo channel.
+   * the row's BR promo budget is routed into the separate leaderboard promo
+   * channel instead of staying as direct deterministic rakeback.
    */
   battleRoyaleLeaderboardEnabled?: boolean;
   /**
-   * Share of this row's global rakeback budget diverted into the BR
-   * leaderboard promo channel, clamped to [0, 1]. `0` = 100 % direct RB,
-   * `1` = 100 % leaderboard. Ignored unless
-   * `battleRoyaleLeaderboardEnabled` is true on a BR row.
+   * Legacy field kept for backward-compatible payloads. The current UI/model
+   * contract is binary: enabled BR rows are treated as 100 % leaderboard and
+   * disabled rows as 100 % direct RB.
    */
   battleRoyaleLeaderboardShare?: number;
 }

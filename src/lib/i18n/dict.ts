@@ -377,12 +377,12 @@ export const DICT = {
     ru: "Дисперсия лог-нормального разброса на ценность одной выбитой головы. 0 = плоские баунти. 0.5–1 = умеренный mystery-скью. 1.5+ = как у GG (редкие крупные, в основном мелкие). Среднее сохраняется — меняется только дисперсия.",
   },
   "row.brLeaderboard": {
-    en: "Leaderboard promo",
-    ru: "Лидерборд-промо",
+    en: "LB",
+    ru: "ЛБ",
   },
   "row.brLeaderboardHint": {
-    en: "Current BR promo model. The global rakeback % is treated as this row's total promo budget. When the split is on, part stays as direct deterministic RB and part is rerouted into a separate leaderboard channel. Right now the leaderboard uses the fixed house model: 200 regs, 100 BR per window, points = entry 1 + 4 per KO + 15/9/6 for 1st/2nd/3rd, and payout bands 500 / 200 / 75. The leaderboard EV is scaled to the diverted promo budget; trajectories keep only the direct RB piece.",
-    ru: "Текущая модель BR-промо. Глобальный % рейкбека трактуется как общий промо-бюджет этой строки. Если сплит включён, часть остаётся прямым детерминированным RB, а часть уходит в отдельный лидербордный канал. Сейчас лидерборд использует фиксированную house-модель: 200 регов, 100 BR в окне, очки = 1 за вход + 4 за KO + 15/9/6 за 1/2/3 место, призовые полосы 500 / 200 / 75. EV лидерборда скейлится к отведённому промо-бюджету, а в траекториях остаётся только прямой RB.",
+    en: "BR promo for this row. Off: the whole promo budget stays as direct RB. On: the whole budget goes into the separate leaderboard channel.",
+    ru: "BR-промо этой строки. Выкл.: весь промо-бюджет остаётся прямым RB. Вкл.: весь бюджет уходит в отдельный лидербордный канал.",
   },
   "row.brLeaderboardToggle": {
     en: "Split BR rakeback into leaderboard",
