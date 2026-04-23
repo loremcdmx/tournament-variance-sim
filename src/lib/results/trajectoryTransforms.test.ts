@@ -22,19 +22,19 @@ function makeRow(overrides: Partial<TournamentRow>): TournamentRow {
 describe("computeExpectedRakebackCurve", () => {
   it("tracks heterogeneous schedules in engine order", () => {
     const schedule: TournamentRow[] = [
-      makeRow({ id: "a", count: 1, buyIn: 100, rake: 0.1 }),
+      makeRow({ id: "a", count: 2, buyIn: 100, rake: 0.1 }),
       makeRow({ id: "b", count: 2, buyIn: 50, rake: 0.1 }),
     ];
 
     const curve = computeExpectedRakebackCurve(
       schedule,
-      2,
+      1,
       0.5,
       [0, 1, 2, 3, 4],
     );
 
     expect(curve).not.toBeNull();
-    expect(Array.from(curve ?? [])).toEqual([0, 5, 7.5, 10, 15]);
+    expect(Array.from(curve ?? [])).toEqual([0, 5, 7.5, 12.5, 15]);
   });
 
   it("returns null when rakeback is disabled", () => {

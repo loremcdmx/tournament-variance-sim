@@ -1,4 +1,4 @@
-import { histogramOf } from "@/lib/sim/engine";
+import { buildSchedulePassOrder, histogramOf } from "@/lib/sim/engine";
 import { battleRoyaleDirectRakebackShareForRow } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { aggregateStreaks } from "@/lib/sim/pathStreaks";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
@@ -18,9 +18,9 @@ export function reentryExpectedClient(
 }
 
 // Deterministic cumulative rakeback curve aligned to `xCheckpoints` (tournament
-// indices into the flat schedule). Walks `schedule x scheduleRepeats` in the
-// same order the engine flattens, so heterogeneous schedules produce the
-// correctly-shaped ramp.
+// indices into the flat schedule). Walks schedule passes in the same weighted
+// interleave order as `compileSchedule()`, so heterogeneous schedules don't
+// render fake row-batch kinks when the trajectory card toggles RB on/off.
 export function computeExpectedRakebackCurve(
   schedule: TournamentRow[],
   scheduleRepeats: number,
@@ -35,7 +35,6 @@ export function computeExpectedRakebackCurve(
   const rowCounts: number[] = [];
   const rowRbs: number[] = [];
   let cycleCount = 0;
-  let cycleRb = 0;
 
   for (const row of schedule) {
     const count = Number.isFinite(row.count)
@@ -54,22 +53,17 @@ export function computeExpectedRakebackCurve(
     rowCounts.push(count);
     rowRbs.push(rbPer);
     cycleCount += count;
-    cycleRb += count * rbPer;
   }
 
   if (cycleCount === 0) return null;
 
+  const passOrder = buildSchedulePassOrder(rowCounts);
+  const passPrefix = new Float64Array(cycleCount + 1);
+  for (let i = 0; i < cycleCount; i++) {
+    passPrefix[i + 1] = passPrefix[i] + rowRbs[passOrder[i]];
+  }
+  const cycleRb = passPrefix[cycleCount];
   const totalCount = cycleCount * repeats;
-  const rbWithinCycle = (partialCount: number): number => {
-    let remaining = partialCount;
-    let sum = 0;
-    for (let i = 0; i < rowCounts.length && remaining > 0; i++) {
-      const take = Math.min(rowCounts[i], remaining);
-      sum += take * rowRbs[i];
-      remaining -= take;
-    }
-    return sum;
-  };
 
   const out = new Float64Array(xCheckpoints.length);
   for (let i = 0; i < xCheckpoints.length; i++) {
@@ -77,7 +71,7 @@ export function computeExpectedRakebackCurve(
     const idx = Math.max(0, Math.min(totalCount, Math.floor(checkpoint)));
     const fullCycles = Math.floor(idx / cycleCount);
     const partialCount = idx - fullCycles * cycleCount;
-    out[i] = fullCycles * cycleRb + rbWithinCycle(partialCount);
+    out[i] = fullCycles * cycleRb + passPrefix[partialCount];
   }
   return out;
 }
