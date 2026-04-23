@@ -134,24 +134,27 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.customPayouts).toBeUndefined();
   });
 
-  it("drops invalid persisted gameType so legacy payoutStructure can keep the row on its intended format", () => {
+  it("promotes legacy Battle Royale payout rows to canonical 18-max Mystery Royale", () => {
     const state = decodeState(
       encoded({
         v: 1,
         schedule: [
           {
             ...row,
-            players: 18,
+            players: 500,
             payoutStructure: "battle-royale",
             gameType: "oops",
+            fieldVariability: { kind: "uniform", min: 100, max: 900, buckets: 5 },
           },
         ],
         controls,
       }),
     );
 
-    expect(state?.schedule[0]?.gameType).toBeUndefined();
+    expect(state?.schedule[0]?.gameType).toBe("mystery-royale");
     expect(state?.schedule[0]?.payoutStructure).toBe("battle-royale");
+    expect(state?.schedule[0]?.players).toBe(18);
+    expect(state?.schedule[0]?.fieldVariability).toBeUndefined();
   });
 
   it("repairs invalid persisted payoutStructure from a valid explicit gameType", () => {
@@ -171,6 +174,40 @@ describe("persistence validation", () => {
 
     expect(state?.schedule[0]?.gameType).toBe("mystery");
     expect(state?.schedule[0]?.payoutStructure).toBe("mtt-gg-mystery");
+  });
+
+  it("repairs persisted Battle Royale split-brain before hydration", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            gameType: "mystery",
+            payoutStructure: "battle-royale",
+          },
+          {
+            ...row,
+            id: "br",
+            players: 36,
+            gameType: "mystery-royale",
+            payoutStructure: "mtt-standard",
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]).toMatchObject({
+      gameType: "mystery",
+      payoutStructure: "mtt-gg-mystery",
+      players: 500,
+    });
+    expect(state?.schedule[1]).toMatchObject({
+      gameType: "mystery-royale",
+      payoutStructure: "battle-royale",
+      players: 18,
+    });
   });
 
   it("drops zero-sum persisted custom payout arrays instead of simulating a no-prize tournament", () => {

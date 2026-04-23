@@ -18,6 +18,7 @@ export const VISIBLE_GAME_TYPE_ORDER: VisibleGameType[] = [
 
 export const DEFAULT_BOUNTY_FRACTION = 0.5;
 export const DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION = 0.45;
+export const BATTLE_ROYALE_PLAYERS = 18;
 
 /**
  * `freezeout-reentry` is still supported internally for legacy rows and
@@ -69,7 +70,7 @@ export function inferGameType(row: TournamentRow): GameType {
  * Defaults chosen to match what a typical online grinder would see:
  *   - PKO: 50 % of prize pool in the bounty pool.
  *   - Mystery: 50 % bounty, σ² = 0.8 (moderate right tail).
- *   - Mystery royale: 50 % bounty, σ² = 1.8 (jackpot-tier tail).
+ *   - Mystery royale: 45 % bounty, 18-max, σ² = 1.8 (jackpot-tier tail).
  *   - Freezeout-reentry: maxEntries=2, reentryRate=1 (always re-enter).
  * Existing values that the new format *still uses* are preserved when
  * possible (e.g. switching between mystery ↔ mystery-royale keeps the
@@ -192,7 +193,7 @@ export function applyGameType(
       // more often than random — the SNG structure caps the ceiling, so
       // this bump is smaller than in MTTs where paid% itself flexes.
       patch.itmRate = 0.18;
-      patch.players = 18;
+      patch.players = BATTLE_ROYALE_PLAYERS;
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "battle-royale";

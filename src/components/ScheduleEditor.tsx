@@ -17,6 +17,7 @@ import type {
   TournamentRow,
 } from "@/lib/sim/types";
 import {
+  BATTLE_ROYALE_PLAYERS,
   inferGameType,
   applyGameType,
   VISIBLE_GAME_TYPE_ORDER,
@@ -156,7 +157,7 @@ const PAYOUT_COMPAT: Partial<Record<PayoutStructureId, CompatRange>> = {
   "mtt-primedope": { min: 30, max: Infinity },
   "mtt-flat": { min: 30, max: Infinity },
   "mtt-top-heavy": { min: 30, max: Infinity },
-  "battle-royale": { min: 9, max: 36 },
+  "battle-royale": { min: BATTLE_ROYALE_PLAYERS, max: BATTLE_ROYALE_PLAYERS },
   "mtt-pokerstars": { min: 50, max: Infinity },
   "mtt-gg": { min: 50, max: Infinity },
   "mtt-sunday-million": { min: 2000, max: Infinity },
@@ -319,16 +320,19 @@ export function parseImportCSV(raw: string): {
         ? payoutStr
         : "mtt-standard"
     ) as PayoutStructureId;
-    rows.push({
+    const isBattleRoyaleImport = payout === "battle-royale";
+    const importedRow: TournamentRow = {
       id: crypto.randomUUID(),
       label: label || `Imported ${rows.length + 1}`,
-      players,
+      players: isBattleRoyaleImport ? BATTLE_ROYALE_PLAYERS : players,
       buyIn: parsed.buyIn,
       rake: parsed.rake,
       roi: roiPct / 100,
       payoutStructure: payout,
       count,
-    });
+    };
+    if (isBattleRoyaleImport) importedRow.gameType = "mystery-royale";
+    rows.push(importedRow);
   });
   return { rows, errors };
 }
@@ -577,6 +581,7 @@ const ScheduleRow = memo(function ScheduleRow({
 }: ScheduleRowProps) {
   const t = useT();
   const gt = inferGameType(r);
+  const isBattleRoyale = gt === "mystery-royale";
   const uiGt = toVisibleGameType(gt);
   const showBounty =
     uiGt === "pko" || uiGt === "mystery" || uiGt === "mystery-royale";
@@ -772,11 +777,12 @@ const ScheduleRow = memo(function ScheduleRow({
               {t("row.players")}
             </SectionLabel>
             <NumInput
-              value={r.players}
+              value={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : r.players}
               onChange={(v) => update(r.id, { players: Math.floor(v) })}
-              min={2}
-              max={1_000_000}
+              min={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 2}
+              max={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 1_000_000}
               step={1}
+              disabled={isBattleRoyale}
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -968,8 +974,11 @@ function AdvancedRowPanel({
   onChange: (patch: Partial<TournamentRow>) => void;
 }) {
   const t = useT();
-  const fv: FieldVariability = row.fieldVariability ?? { kind: "fixed" };
   const gt = inferGameType(row);
+  const isBattleRoyale = gt === "mystery-royale";
+  const fv: FieldVariability = isBattleRoyale
+    ? { kind: "fixed" }
+    : (row.fieldVariability ?? { kind: "fixed" });
   const showMysteryVar = gt === "mystery";
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
@@ -981,7 +990,9 @@ function AdvancedRowPanel({
         <div className="flex gap-2">
           <select
             value={fv.kind}
+            disabled={isBattleRoyale}
             onChange={(e) => {
+              if (isBattleRoyale) return;
               const kind = e.target.value as FieldVariability["kind"];
               if (kind === "fixed") onChange({ fieldVariability: { kind } });
               else

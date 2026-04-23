@@ -14,8 +14,10 @@ import {
   normalizeBattleRoyaleLeaderboardControls,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
+  BATTLE_ROYALE_PLAYERS,
   DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
   DEFAULT_BOUNTY_FRACTION,
+  normalizeBrMrConsistency,
 } from "@/lib/sim/gameType";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -442,7 +444,16 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     const nextPayoutStructure = isValidPayoutStructureId(row.payoutStructure)
       ? row.payoutStructure
       : defaultPayoutStructureForGameType(nextGameType);
+    const consistentFlags = normalizeBrMrConsistency({
+      ...row,
+      gameType: nextGameType,
+      payoutStructure: nextPayoutStructure,
+    });
+    const finalGameType = consistentFlags.gameType;
+    const finalPayoutStructure = consistentFlags.payoutStructure;
     const nextPlayers = clampPersistedPlayers(row.players);
+    const finalPlayers =
+      finalGameType === "mystery-royale" ? BATTLE_ROYALE_PLAYERS : nextPlayers;
     const nextBuyIn = Math.max(PERSISTED_ROW_BUYIN_MIN, row.buyIn);
     const nextRake = clampPersistedRake(row.rake);
     const nextRoi = Math.min(
@@ -511,7 +522,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       | undefined = nextBattleRoyaleLeaderboardEnabled;
     let finalBattleRoyaleLeaderboardShare: number | undefined =
       nextBattleRoyaleLeaderboardShare;
-    if (nextGameType === "freezeout") {
+    if (finalGameType === "freezeout") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
       finalBountyFraction = undefined;
@@ -520,7 +531,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalPkoHeat = undefined;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
-    } else if (nextGameType === "freezeout-reentry") {
+    } else if (finalGameType === "freezeout-reentry") {
       finalMaxEntries = Math.max(2, nextMaxEntries ?? 2);
       finalReentryRate = nextReentryRate ?? 1;
       finalBountyFraction = undefined;
@@ -529,7 +540,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalPkoHeat = undefined;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
-    } else if (nextGameType === "pko") {
+    } else if (finalGameType === "pko") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
       finalBountyFraction = nextBountyFraction ?? DEFAULT_BOUNTY_FRACTION;
@@ -537,7 +548,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalPkoHeadVar = nextPkoHeadVar ?? 0.4;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
-    } else if (nextGameType === "mystery") {
+    } else if (finalGameType === "mystery") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
       finalBountyFraction = nextBountyFraction ?? DEFAULT_BOUNTY_FRACTION;
@@ -546,7 +557,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalPkoHeat = undefined;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
-    } else if (nextGameType === "mystery-royale") {
+    } else if (finalGameType === "mystery-royale") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
       finalBountyFraction =
@@ -560,8 +571,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalBattleRoyaleLeaderboardShare = undefined;
     }
     const effectiveBattleRoyaleRow =
-      nextGameType === "mystery-royale" ||
-      nextPayoutStructure === "battle-royale";
+      finalGameType === "mystery-royale" ||
+      finalPayoutStructure === "battle-royale";
     if (!effectiveBattleRoyaleRow) {
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
@@ -572,16 +583,17 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     );
     const nextCustom = normalizePersistedCustomPayouts({
       ...row,
-      gameType: nextGameType,
-      payoutStructure: nextPayoutStructure,
-    }, nextPlayers);
-    const nextFieldVariability = normalizePersistedFieldVariability(
-      row.fieldVariability,
-    );
+      gameType: finalGameType,
+      payoutStructure: finalPayoutStructure,
+    }, finalPlayers);
+    const finalFieldVariability =
+      finalGameType === "mystery-royale"
+        ? undefined
+        : normalizePersistedFieldVariability(row.fieldVariability);
     const nextCount = clampPersistedCount(row.count);
     if (
-      nextGameType === row.gameType &&
-      nextPlayers === row.players &&
+      finalGameType === row.gameType &&
+      finalPlayers === row.players &&
       nextBuyIn === row.buyIn &&
       nextRake === row.rake &&
       nextRoi === row.roi &&
@@ -605,15 +617,15 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       nextCustom.payoutStructure === row.payoutStructure &&
       nextCustom.customPayouts === row.customPayouts &&
       nextCount === row.count &&
-      nextFieldVariability === row.fieldVariability
+      finalFieldVariability === row.fieldVariability
     ) {
       return row;
     }
     changed = true;
     return {
       ...row,
-      gameType: nextGameType,
-      players: nextPlayers,
+      gameType: finalGameType,
+      players: finalPlayers,
       buyIn: nextBuyIn,
       rake: nextRake,
       roi: nextRoi,
@@ -635,7 +647,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finishBuckets: nextFinishBuckets,
       payoutStructure: nextCustom.payoutStructure,
       customPayouts: nextCustom.customPayouts,
-      fieldVariability: nextFieldVariability,
+      fieldVariability: finalFieldVariability,
       count: nextCount,
     };
   });

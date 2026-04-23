@@ -102,4 +102,19 @@ describe("parseImportCSV", () => {
     expect(parsed.rows[0].count).toBe(1);
     expect(parsed.rows[1].count).toBe(3);
   });
+
+  it("canonicalizes imported Battle Royale rows to 18-max Mystery Royale", () => {
+    const parsed = parseImportCSV(
+      "Imported BR, 500, 9.20+0.80, 5, 12, battle-royale",
+    );
+
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows).toHaveLength(1);
+    expect(parsed.rows[0]).toMatchObject({
+      players: 18,
+      gameType: "mystery-royale",
+      payoutStructure: "battle-royale",
+      count: 12,
+    });
+  });
 });
