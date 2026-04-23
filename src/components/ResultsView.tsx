@@ -274,42 +274,6 @@ function mergedHistogramDomain(
   return [lo, hi];
 }
 
-function histogramOfValues(
-  values: ArrayLike<number>,
-  bins = 40,
-): { binEdges: number[]; counts: number[] } {
-  const n = values.length;
-  if (n === 0) return { binEdges: [0, 1], counts: [0] };
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (let i = 0; i < n; i++) {
-    const v = values[i];
-    if (!Number.isFinite(v)) continue;
-    if (v < lo) lo = v;
-    if (v > hi) hi = v;
-  }
-  if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
-    return { binEdges: [0, 1], counts: [0] };
-  }
-  if (hi === lo) {
-    const span = Math.max(1, Math.abs(hi) * 0.1);
-    lo -= span / 2;
-    hi += span / 2;
-  }
-  const span = hi - lo;
-  const edges = new Array<number>(bins + 1);
-  for (let i = 0; i <= bins; i++) edges[i] = lo + (span * i) / bins;
-  const counts = new Array<number>(bins).fill(0);
-  for (let i = 0; i < n; i++) {
-    const v = values[i];
-    if (!Number.isFinite(v)) continue;
-    const raw = ((v - lo) / span) * bins;
-    const idx = Math.max(0, Math.min(bins - 1, Math.floor(raw)));
-    counts[idx]++;
-  }
-  return { binEdges: edges, counts };
-}
-
 function ResultsViewImpl({
   result,
   compareResult,
@@ -382,16 +346,9 @@ function ResultsViewImpl({
             deferredScheduleRepeats,
             deferredRbFrac,
             result.samplePaths.x,
-            advanced,
           )
         : null,
-    [
-      advanced,
-      deferredSchedule,
-      deferredScheduleRepeats,
-      deferredRbFrac,
-      result.samplePaths.x,
-    ],
+    [deferredSchedule, deferredScheduleRepeats, deferredRbFrac, result.samplePaths.x],
   );
   const pdRakebackCurve = useMemo(
     () =>
@@ -401,10 +358,9 @@ function ResultsViewImpl({
             deferredScheduleRepeats,
             deferredRbFrac,
             pdChart.samplePaths.x,
-            advanced,
           )
         : null,
-    [advanced, pdChart, deferredSchedule, deferredScheduleRepeats, deferredRbFrac],
+    [pdChart, deferredSchedule, deferredScheduleRepeats, deferredRbFrac],
   );
   // Four independent region toggles — each controls whether its region
   // shows RB baked in (engine default) or subtracts it for the game-only view.
@@ -1035,10 +991,9 @@ function ResultsViewImpl({
         />
       </div>
 
-      {result.battleRoyaleLeaderboard && (
-        <BattleRoyaleLeaderboardSection
-          leaderboard={result.battleRoyaleLeaderboard}
-          gameExpectedProfit={displayResultStats.expectedProfit}
+      {result.battleRoyaleLeaderboardPromo && (
+        <BattleRoyaleLeaderboardPromoSection
+          promo={result.battleRoyaleLeaderboardPromo}
         />
       )}
 
@@ -1559,218 +1514,195 @@ function SatelliteCard({
   );
 }
 
-function BattleRoyaleLeaderboardSection({
-  leaderboard,
-  gameExpectedProfit,
+function BattleRoyaleLeaderboardPromoSection({
+  promo,
 }: {
-  leaderboard: NonNullable<SimulationResult["battleRoyaleLeaderboard"]>;
-  gameExpectedProfit: number;
+  promo: NonNullable<SimulationResult["battleRoyaleLeaderboardPromo"]>;
 }) {
   const t = useT();
   const { money } = useMoneyFmt();
-  const payoutHistogram = useMemo(
-    () => histogramOfValues(leaderboard.payouts, 40),
-    [leaderboard.payouts],
-  );
-  const payoutDomain = useMemo(
-    () => mergedHistogramDomain(payoutHistogram),
-    [payoutHistogram],
-  );
-  const meanPointsPerWindow =
-    leaderboard.stats.meanWindows > 0
-      ? leaderboard.stats.meanPoints / leaderboard.stats.meanWindows
-      : 0;
-  const meanKoPerWindow =
-    leaderboard.stats.meanWindows > 0
-      ? leaderboard.stats.meanKnockouts / leaderboard.stats.meanWindows
-      : 0;
-  const meanFirstPerWindow =
-    leaderboard.stats.meanWindows > 0
-      ? leaderboard.stats.meanFirsts / leaderboard.stats.meanWindows
-      : 0;
-  const meanTop3PerWindow =
-    leaderboard.stats.meanWindows > 0
-      ? (leaderboard.stats.meanFirsts +
-          leaderboard.stats.meanSeconds +
-          leaderboard.stats.meanThirds) /
-        leaderboard.stats.meanWindows
-      : 0;
-  const directPromoMean = leaderboard.sourceMix.directRakebackMean;
-  const promoTotal = directPromoMean + leaderboard.stats.meanPayout;
-  const directPromoShare = promoTotal > 0 ? directPromoMean / promoTotal : 0;
-  const leaderboardPromoShare =
-    promoTotal > 0 ? leaderboard.stats.meanPayout / promoTotal : 0;
-  const totalExpectedWithPromo = gameExpectedProfit + leaderboard.stats.meanPayout;
-  const subtitle = t("chart.brLeaderboard.sub")
-    .replace("{participants}", leaderboard.config.participants.toLocaleString("ru-RU"))
+  const confidenceTone =
+    promo.confidence.level === "aligned"
+      ? "border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/8 text-[color:var(--color-accent)]"
+      : promo.confidence.level === "approximate"
+        ? "border-[color:var(--c-diamond)]/45 bg-[color:var(--c-diamond)]/8 text-[color:var(--c-diamond)]"
+        : promo.confidence.level === "mismatch"
+          ? "border-[color:var(--color-danger)]/45 bg-[color:var(--color-danger)]/8 text-[color:var(--color-danger)]"
+          : "border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 text-[color:var(--color-fg-dim)]";
+
+  const subtitle = t("chart.brLeaderboardObserved.sub")
     .replace(
-      "{window}",
-      leaderboard.config.windowTournaments.toLocaleString("ru-RU"),
+      "{tourneysPerDay}",
+      promo.current.tournamentsPerDay.toFixed(1),
     )
-    .replace("{paid}", String(leaderboard.config.maxPaidRank));
-  const note = t("chart.brLeaderboard.note");
+    .replace("{days}", promo.current.activeDays.toLocaleString("ru-RU"));
+
   return (
     <CollapsibleSection
-      id="battleRoyaleLeaderboard"
-      title={t("chart.brLeaderboard.title")}
+      id="battleRoyaleLeaderboardPromo"
+      title={t("chart.brLeaderboardObserved.title")}
       showUnitToggle={false}
       defaultOpen
     >
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card className="p-5">
           <ChartHeader
-            title={t("chart.brLeaderboard.title")}
+            title={t("chart.brLeaderboardObserved.title")}
             subtitle={subtitle}
             showUnitToggle={false}
+            tip={t("chart.brLeaderboardObserved.tip")}
           />
           <div className="mb-4 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-            {note}
+            {t("chart.brLeaderboardObserved.note")}
           </div>
-          <StatGroup title={t("chart.brLeaderboard.groupSettlement")}>
+          <StatGroup title={t("chart.brLeaderboardObserved.groupCurrent")}>
             <MiniStat
               suit="diamond"
-              label={t("chart.brLeaderboard.meanPayout")}
-              value={money(leaderboard.stats.meanPayout)}
-              tone={leaderboard.stats.meanPayout >= 0 ? "pos" : "neg"}
+              label={t("chart.brLeaderboardObserved.expectedPayout")}
+              value={money(promo.expectedPayout)}
+              tone={promo.expectedPayout >= 0 ? "pos" : "neg"}
             />
             <MiniStat
               suit="club"
-              label={t("chart.brLeaderboard.directRb")}
-              value={money(directPromoMean)}
-              tone={directPromoMean >= 0 ? "pos" : "neg"}
+              label={t("chart.brLeaderboardObserved.perTournament")}
+              value={money(promo.payoutPerTournament)}
+              tone={promo.payoutPerTournament >= 0 ? "pos" : "neg"}
             />
             <MiniStat
               suit="club"
-              label={t("chart.brLeaderboard.totalWithPromo")}
-              value={money(totalExpectedWithPromo)}
-              tone={totalExpectedWithPromo >= 0 ? "pos" : "neg"}
+              label={t("chart.brLeaderboardObserved.perDay")}
+              value={money(promo.payoutPerDay)}
+              tone={promo.payoutPerDay >= 0 ? "pos" : "neg"}
             />
             <MiniStat
               suit="spade"
-              label={t("chart.brLeaderboard.promoSplit")}
-              value={`${pct(directPromoShare)} / ${pct(leaderboardPromoShare)}`}
+              label={t("chart.brLeaderboardObserved.currentPct")}
+              value={pct(promo.pctOfCurrentBuyIns)}
             />
             <MiniStat
               suit="spade"
-              label={t("chart.brLeaderboard.paidShare")}
-              value={pct(leaderboard.stats.paidWindowShare)}
+              label={t("chart.brLeaderboardObserved.currentAbi")}
+              value={
+                promo.current.abi == null ? "—" : `${promo.current.abi.toFixed(2)} ABI`
+              }
             />
             <MiniStat
               suit="spade"
-              label={t("chart.brLeaderboard.meanRank")}
-              value={`#${leaderboard.stats.meanRank.toFixed(1)}`}
-            />
-            <MiniStat
-              suit="heart"
-              label={t("chart.brLeaderboard.p95")}
-              value={money(leaderboard.stats.p95Payout)}
-              tone="neg"
-            />
-            <MiniStat
-              suit="heart"
-              label={t("chart.brLeaderboard.p99")}
-              value={money(leaderboard.stats.p99Payout)}
-              tone="neg"
+              label={t("chart.brLeaderboardObserved.currentVolume")}
+              value={promo.current.tournaments.toLocaleString("ru-RU")}
+              detail={t("chart.brLeaderboardObserved.currentVolumeDetail").replace(
+                "{perDay}",
+                promo.current.tournamentsPerDay.toFixed(1),
+              )}
             />
           </StatGroup>
           <div className="mt-4" />
-          <StatGroup title={t("chart.brLeaderboard.groupScoring")}>
-            <MiniStat
-              suit="club"
-              label={t("chart.brLeaderboard.pointsPerWindow")}
-              value={meanPointsPerWindow.toFixed(1)}
-            />
+          <StatGroup title={t("chart.brLeaderboardObserved.groupObserved")}>
             <MiniStat
               suit="diamond"
-              label={t("chart.brLeaderboard.koPerWindow")}
-              value={meanKoPerWindow.toFixed(2)}
+              label={t("chart.brLeaderboardObserved.observedPrizes")}
+              value={money(promo.observed.totalPrizes)}
+              tone={promo.observed.totalPrizes >= 0 ? "pos" : "neg"}
+            />
+            <MiniStat
+              suit="club"
+              label={t("chart.brLeaderboardObserved.observedTournaments")}
+              value={promo.observed.totalTournaments.toLocaleString("ru-RU")}
             />
             <MiniStat
               suit="spade"
-              label={t("chart.brLeaderboard.firstPerWindow")}
-              value={meanFirstPerWindow.toFixed(2)}
+              label={t("chart.brLeaderboardObserved.observedAbi")}
+              value={
+                promo.observed.reconstructedAbi == null
+                  ? "—"
+                  : `${promo.observed.reconstructedAbi.toFixed(2)} ABI`
+              }
             />
             <MiniStat
               suit="spade"
-              label={t("chart.brLeaderboard.top3PerWindow")}
-              value={meanTop3PerWindow.toFixed(2)}
+              label={t("chart.brLeaderboardObserved.observedPct")}
+              value={
+                promo.observed.pctOfObservedBuyIns == null
+                  ? "—"
+                  : pct(promo.observed.pctOfObservedBuyIns)
+              }
+            />
+            <MiniStat
+              suit="spade"
+              label={t("chart.brLeaderboardObserved.observedPoints")}
+              value={promo.observed.totalPoints.toLocaleString("ru-RU")}
             />
           </StatGroup>
-          <div className="mt-4 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
-            <span>
-              {t("chart.brLeaderboard.meanWindows")}:{" "}
-              {leaderboard.stats.meanWindows.toFixed(1)}
-            </span>
-            <span>·</span>
-            <span>
-              {t("chart.brLeaderboard.meanPaidWindows")}:{" "}
-              {leaderboard.stats.meanPaidWindows.toFixed(1)}
-            </span>
-            <span>·</span>
-            <span>
-              {leaderboard.config.awardPartialWindow
-                ? t("chart.brLeaderboard.partialYes")
-                : t("chart.brLeaderboard.partialNo")}
-            </span>
+          <div
+            className={`mt-4 rounded-md border px-3 py-2 text-[11px] leading-snug ${confidenceTone}`}
+          >
+            <div className="font-semibold">
+              {t(
+                `chart.brLeaderboardObserved.confidence.${promo.confidence.level}` as DictKey,
+              )}
+            </div>
+            <div className="mt-1">
+              {promo.confidence.abiDriftPct == null
+                ? t("chart.brLeaderboardObserved.confidence.noAbiDrift")
+                : t("chart.brLeaderboardObserved.confidence.abiDrift").replace(
+                    "{value}",
+                    pct(promo.confidence.abiDriftPct),
+                  )}
+            </div>
           </div>
-          {leaderboard.sourceMix.rows.length > 0 && (
-            <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/45 p-3">
-              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
-                {t("chart.brLeaderboard.rowMix")}
+        </Card>
+
+        <Card className="p-5">
+          <ChartHeader
+            title={t("chart.brLeaderboardObserved.rows")}
+            subtitle={t("chart.brLeaderboardObserved.rowsSub")}
+            showUnitToggle={false}
+          />
+          <div className="space-y-2">
+            {promo.rows.map((row) => (
+              <div
+                key={row.rowId}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 px-3 py-2 text-[11px]"
+              >
+                <div className="font-medium text-[color:var(--color-fg)]">
+                  {row.label}
+                </div>
+                <div className="text-[color:var(--color-fg-dim)]">
+                  {t("chart.brLeaderboardObserved.rowLine")
+                    .replace("{count}", row.tournaments.toLocaleString("ru-RU"))
+                    .replace("{buyIn}", money(row.buyIn))
+                    .replace("{payout}", money(row.payout))}
+                </div>
               </div>
-              <div className="mt-2 space-y-2">
-                {leaderboard.sourceMix.rows.map((row) => (
+            ))}
+          </div>
+          <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-3">
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+              {t("chart.brLeaderboardObserved.observedMix")}
+            </div>
+            <div className="mt-2 space-y-2">
+              {promo.observed.pointsByStake
+                .filter((row) => row.points > 0)
+                .map((row) => (
                   <div
-                    key={row.rowId}
+                    key={row.stake}
                     className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
                   >
                     <div className="font-medium text-[color:var(--color-fg)]">
-                      {row.label}
+                      ${row.stake}
                     </div>
                     <div className="text-[color:var(--color-fg-dim)]">
-                      {t("chart.brLeaderboard.rowMixLine")
-                        .replace("{count}", row.tournaments.toLocaleString("ru-RU"))
-                        .replace(
-                          "{direct}",
-                          `${Math.round(row.directShare * 100)}%`,
-                        )
-                        .replace(
-                          "{leaderboard}",
-                          `${Math.round(row.leaderboardShare * 100)}%`,
-                        )
-                        .replace("{directEv}", money(row.directRakebackMean))
-                        .replace(
-                          "{leaderEv}",
-                          money(row.leaderboardMeanTarget),
-                        )}
+                      {t("chart.brLeaderboardObserved.observedMixLine")
+                        .replace("{points}", row.points.toLocaleString("ru-RU"))
+                        .replace("{share}", pct(row.share))
+                        .replace("{tournaments}", row.tournaments.toFixed(0))
+                        .replace("{buyIn}", money(row.buyIn))}
                     </div>
                   </div>
                 ))}
-              </div>
             </div>
-          )}
+          </div>
         </Card>
-
-        <UnitScope id="battleRoyaleLeaderboard.payouts">
-          <MoneyDistributionCard
-            title={t("chart.brLeaderboard.dist")}
-            subtitle={t("chart.brLeaderboard.dist.sub")
-              .replace(
-                "{samples}",
-                leaderboard.payouts.length.toLocaleString("ru-RU"),
-              )
-              .replace(
-                "{windows}",
-                leaderboard.stats.meanWindows.toFixed(1),
-              )}
-            binEdges={payoutHistogram.binEdges}
-            counts={payoutHistogram.counts}
-            color="#f59e0b"
-            overlay={null}
-            yAsPct
-            xDomain={payoutDomain}
-          />
-        </UnitScope>
       </div>
     </CollapsibleSection>
   );
@@ -1930,10 +1862,9 @@ const TrajectoryCard = memo(function TrajectoryCard({
             scheduleRepeats,
             rbFrac,
             compareResult.samplePaths.x,
-            advanced,
           )
         : null,
-    [advanced, compareResult, schedule, scheduleRepeats, rbFrac],
+    [compareResult, schedule, scheduleRepeats, rbFrac],
   );
   const displayCompareResult = useMemo(
     () =>

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ControlsState } from "@/components/ControlsPanel";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
-  buildBattleRoyaleLeaderboardConfig,
+  buildBattleRoyaleLeaderboardPromoConfig,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { compileSchedule } from "@/lib/sim/engine";
 import type { SimulationInput } from "@/lib/sim/types";
@@ -46,7 +46,7 @@ function buildInputFromScenario(
     tiltSlowMinDuration: controls.tiltSlowMinDuration,
     tiltSlowRecoveryFrac: controls.tiltSlowRecoveryFrac,
     rakebackFracOfRake: controls.rakebackPct / 100,
-    battleRoyaleLeaderboard: buildBattleRoyaleLeaderboardConfig(
+    battleRoyaleLeaderboardPromo: buildBattleRoyaleLeaderboardPromoConfig(
       controls.battleRoyaleLeaderboard ??
         DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
       schedule,

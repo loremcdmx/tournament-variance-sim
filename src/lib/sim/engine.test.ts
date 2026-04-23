@@ -8,6 +8,10 @@ import {
   simulateShard,
 } from "./engine";
 import type { SimulationInput, FinishModelId, PayoutStructureId } from "./types";
+import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
+
+const BR_10 = battleRoyaleRowFromTotalTicket(10);
+const BR_25 = battleRoyaleRowFromTotalTicket(25);
 
 function baseInput(overrides: Partial<SimulationInput> = {}): SimulationInput {
   return {
@@ -290,8 +294,8 @@ describe("engine", () => {
           id: "br",
           label: "battle royale",
           players: 18,
-          buyIn: 9.2592592593,
-          rake: 0.08,
+          buyIn: BR_10.buyIn,
+          rake: BR_10.rake,
           roi: 0.05,
           payoutStructure: "battle-royale",
           gameType: "mystery-royale",
@@ -359,8 +363,8 @@ describe("engine", () => {
           id: "br",
           label: "battle royale",
           players: 18,
-          buyIn: 9.2592592593,
-          rake: 0.08,
+          buyIn: BR_10.buyIn,
+          rake: BR_10.rake,
           roi: 0.03,
           payoutStructure: "battle-royale",
           gameType: "mystery-royale",
@@ -404,8 +408,8 @@ describe("engine", () => {
           id: "br",
           label: "battle royale legacy",
           players: 18,
-          buyIn: 9.2592592593,
-          rake: 0.08,
+          buyIn: BR_10.buyIn,
+          rake: BR_10.rake,
           roi: 0.02,
           payoutStructure: "battle-royale",
           gameType: "mystery-royale",
@@ -439,13 +443,13 @@ describe("engine", () => {
     expect(r.battleRoyaleLeaderboard!.stats.meanKnockouts).toBe(0);
   });
 
-  it("splits BR promo budget between direct RB and leaderboard when rows opt in", () => {
+  it("keeps BR leaderboard promo as a separate observed layer without changing main EV", () => {
     const row = {
       id: "br",
       label: "battle royale",
       players: 18,
-      buyIn: 9.2592592593,
-      rake: 0.08,
+      buyIn: BR_10.buyIn,
+      rake: BR_10.rake,
       roi: 0.05,
       payoutStructure: "battle-royale" as const,
       gameType: "mystery-royale" as const,
@@ -454,8 +458,6 @@ describe("engine", () => {
     };
     const scheduleRepeats = 5;
     const rbFrac = 0.4;
-    const totalBrEntries = row.count * scheduleRepeats;
-    const fullPromoBudget = totalBrEntries * rbFrac * row.rake * row.buyIn;
 
     const baseline = runSimulation(
       baseInput({
@@ -468,55 +470,31 @@ describe("engine", () => {
     const split = runSimulation(
       baseInput({
         samples: 300,
-        schedule: [
-          {
-            ...row,
-            battleRoyaleLeaderboardEnabled: true,
-            battleRoyaleLeaderboardShare: 1,
-          },
-        ],
+        schedule: [row],
         scheduleRepeats,
         rakebackFracOfRake: rbFrac,
-        battleRoyaleLeaderboard: {
-          participants: 120,
-          windowTournaments: 10,
-          scoring: {
-            entryPoints: 1,
-            knockoutPoints: 4,
-            firstPoints: 15,
-            secondPoints: 9,
-            thirdPoints: 6,
+        battleRoyaleLeaderboardPromo: {
+          mode: "observed",
+          totalPrizes: 450,
+          totalTournaments: 3000,
+          pointsByStake: {
+            "0.25": 0,
+            "1": 0,
+            "3": 120_000,
+            "10": 0,
+            "25": 0,
           },
-          payouts: [
-            { rankFrom: 1, rankTo: 1, prizeEach: 500 },
-            { rankFrom: 2, rankTo: 3, prizeEach: 200 },
-            { rankFrom: 4, rankTo: 10, prizeEach: 75 },
-          ],
-          opponentModel: {
-            kind: "normal",
-            meanScore: 180,
-            stdDevScore: 45,
-          },
-          includedRowIds: ["br"],
         },
       }),
     );
 
-    expect(split.battleRoyaleLeaderboard).toBeDefined();
-    expect(split.expectedProfit).toBeCloseTo(
-      baseline.expectedProfit - fullPromoBudget,
+    expect(split.expectedProfit).toBeCloseTo(baseline.expectedProfit, 10);
+    expect(split.battleRoyaleLeaderboardPromo).toBeDefined();
+    expect(split.battleRoyaleLeaderboardPromo?.expectedPayout).toBeCloseTo(7.5, 10);
+    expect(split.battleRoyaleLeaderboardPromo?.payoutPerTournament).toBeCloseTo(
+      0.15,
       10,
     );
-    expect(split.battleRoyaleLeaderboard!.stats.meanPayout).toBeCloseTo(
-      fullPromoBudget,
-      10,
-    );
-    expect(
-      split.expectedProfit + split.battleRoyaleLeaderboard!.stats.meanPayout,
-    ).toBeCloseTo(baseline.expectedProfit, 10);
-    expect(
-      split.battleRoyaleLeaderboard!.sourceMix.directRakebackMean,
-    ).toBeCloseTo(0, 12);
   });
 
   it("bounty row produces a non-zero expected bounty lump per entry", () => {
@@ -1168,8 +1146,8 @@ describe("bountyEvBias", () => {
             id: `mbr-profit-${roi}-${bias}`,
             label: "mbr",
             players: 18,
-            buyIn: 25 / 1.08,
-            rake: 0.08,
+            buyIn: BR_25.buyIn,
+            rake: BR_25.rake,
             roi,
             gameType: "mystery-royale",
             payoutStructure: "battle-royale",
@@ -1222,8 +1200,8 @@ describe("bountyEvBias", () => {
           id: "mbr-low-roi-wide-range",
           label: "mbr",
           players: 18,
-          buyIn: 10 / 1.08,
-          rake: 0.08,
+          buyIn: BR_10.buyIn,
+          rake: BR_10.rake,
           roi: 0.02,
           gameType: "mystery-royale",
           payoutStructure: "battle-royale",
@@ -1297,8 +1275,8 @@ describe("bountyEvBias", () => {
             id: `mbr-winner-first-${roi}`,
             label: "mbr",
             players: 18,
-            buyIn: 25 / 1.08,
-            rake: 0.08,
+            buyIn: BR_25.buyIn,
+            rake: BR_25.rake,
             roi,
             gameType: "mystery-royale",
             payoutStructure: "battle-royale",
@@ -1419,8 +1397,8 @@ describe("itmTopHeavyBias", () => {
             id: `mbr-itm-bias-${itmTopHeavyBias}`,
             label: "mbr",
             players: 18,
-            buyIn: 25 / 1.08,
-            rake: 0.08,
+            buyIn: BR_25.buyIn,
+            rake: BR_25.rake,
             roi: 0.03,
             gameType: "mystery-royale",
             payoutStructure: "battle-royale",
@@ -1716,8 +1694,8 @@ describe("conservation fixtures per gameType", () => {
         payoutStructure: "battle-royale" as PayoutStructureId,
         gameType: "mystery-royale" as const,
         players: 18,
-        buyIn: 10 / 1.08,
-        rake: 0.08,
+        buyIn: BR_10.buyIn,
+        rake: BR_10.rake,
         roi: 0.03,
         bountyFraction: 0.5,
         mysteryBountyVariance: 1.8,

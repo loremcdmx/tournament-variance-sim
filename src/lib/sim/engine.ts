@@ -35,10 +35,7 @@ import {
   normalizeBattleRoyaleLeaderboardConfig,
   sampleBattleRoyaleLeaderboardWindow,
 } from "./battleRoyaleLeaderboard";
-import {
-  battleRoyaleDirectRakebackShareForRow,
-  battleRoyaleLeaderboardShareForRow,
-} from "./battleRoyaleLeaderboardUi";
+import { buildObservedBattleRoyalePromoResult } from "./battleRoyaleLeaderboardObserved";
 import {
   buildBattleRoyaleCashTargetPmf,
   resolveBattleRoyaleCashTarget,
@@ -401,10 +398,6 @@ export function compileSchedule(
   const rowBuyIns = new Array<number>(input.schedule.length).fill(0);
   const rowLabels = input.schedule.map((r, i) => r.label || `Row ${i + 1}`);
   const rowIds = input.schedule.map((r) => r.id);
-  const leaderboardIncludedRowIds = input.battleRoyaleLeaderboard?.includedRowIds;
-  const leaderboardSplitActive =
-    Array.isArray(leaderboardIncludedRowIds) &&
-    leaderboardIncludedRowIds.length > 0;
 
   // For each row, compile one or more variants depending on fieldVariability.
   // variants[r] is an array of { entry, weight } — weight is # of plays per
@@ -437,16 +430,10 @@ export function compileSchedule(
   const rbFrac = Math.max(0, input.rakebackFracOfRake ?? 0);
   for (let r = 0; r < input.schedule.length; r++) {
     const row = input.schedule[r];
-    const directShare = leaderboardSplitActive
-      ? battleRoyaleDirectRakebackShareForRow(row, true)
-      : 1;
-    const leaderboardShare = leaderboardSplitActive
-      ? battleRoyaleLeaderboardShareForRow(row, true)
-      : 0;
-    const bonus = rbFrac * directShare * row.rake * row.buyIn;
+    const bonus = rbFrac * row.rake * row.buyIn;
     for (const v of variants[r]) {
       v.entry.rakebackBonusPerBullet = bonus;
-      v.entry.battleRoyaleLeaderboardShare = leaderboardShare;
+      v.entry.battleRoyaleLeaderboardShare = 0;
     }
   }
 
@@ -454,8 +441,8 @@ export function compileSchedule(
   let totalBuyIn = 0;
   let expectedProfit = 0;
   let expectedDirectRakeback = 0;
-  let expectedBattleRoyaleSplitDirectRakeback = 0;
-  let expectedLeaderboardPromo = 0;
+  const expectedBattleRoyaleSplitDirectRakeback = 0;
+  const expectedLeaderboardPromo = 0;
   let itmAcc = 0;
   const leaderboardMix = new Array<BattleRoyaleLeaderboardMixRow>(
     input.schedule.length,
@@ -485,57 +472,18 @@ export function compileSchedule(
     Math.max(1, Math.floor(row.count)),
   );
   const passOrder = buildSchedulePassOrder(passCounts);
-  const rowDirectShares = input.schedule.map((row) =>
-    leaderboardSplitActive
-      ? battleRoyaleDirectRakebackShareForRow(row, true)
-      : 1,
-  );
-  const rowLeaderboardShares = input.schedule.map((row) =>
-    leaderboardSplitActive ? battleRoyaleLeaderboardShareForRow(row, true) : 0,
-  );
   const rowDirectRakebackMeans = slotEntries.map(
     (entry) => entry.rakebackBonusPerBullet * (1 + entry.reentryExpected),
   );
-  const rowLeaderboardMeans = input.schedule.map((row, rowIdx) =>
-    rbFrac *
-    rowLeaderboardShares[rowIdx] *
-    row.rake *
-    row.buyIn *
-    (1 + slotEntries[rowIdx].reentryExpected),
-  );
 
   for (let rep = 0; rep < input.scheduleRepeats; rep++) {
-    if (rep === 0) {
-      for (let r = 0; r < input.schedule.length; r++) {
-        const row = input.schedule[r];
-        const leaderboardShare = rowLeaderboardShares[r];
-        if (leaderboardShare <= 0) continue;
-        const tournaments = passCounts[r] * Math.max(1, input.scheduleRepeats);
-        leaderboardMix[r] = {
-          rowId: row.id,
-          label: row.label || `Row ${r + 1}`,
-          tournaments,
-          directShare: rowDirectShares[r],
-          leaderboardShare,
-          directRakebackMean: tournaments * rowDirectRakebackMeans[r],
-          leaderboardMeanTarget: tournaments * rowLeaderboardMeans[r],
-        };
-      }
-    }
     for (const rowIdx of passOrder) {
-      const row = input.schedule[rowIdx];
       const entry = slotEntries[rowIdx];
       const directRbMean = rowDirectRakebackMeans[rowIdx];
-      const leaderboardShare = rowLeaderboardShares[rowIdx];
-      const leaderboardMean = rowLeaderboardMeans[rowIdx];
       flat.push(entry);
       totalBuyIn += entry.costPerEntry;
-      expectedProfit += entry.costPerEntry * row.roi + directRbMean;
+      expectedProfit += entry.costPerEntry * input.schedule[rowIdx].roi + directRbMean;
       expectedDirectRakeback += directRbMean;
-      if (leaderboardShare > 0) {
-        expectedBattleRoyaleSplitDirectRakeback += directRbMean;
-      }
-      expectedLeaderboardPromo += leaderboardMean;
       itmAcc += entry.itm;
       rowCounts[rowIdx] += 1;
       rowBuyIns[rowIdx] += entry.costPerEntry;
@@ -2310,6 +2258,16 @@ export function buildResult(
           };
         })()
       : undefined;
+  const battleRoyaleLeaderboardPromo = buildObservedBattleRoyalePromoResult({
+    config:
+      input.battleRoyaleLeaderboardPromo?.mode === "observed"
+        ? input.battleRoyaleLeaderboardPromo
+        : undefined,
+    schedule: input.schedule,
+    rowCounts: compiled.rowCounts,
+    rowBuyIns: compiled.rowBuyIns,
+    activeDays: input.scheduleRepeats,
+  });
 
   return {
     type: "result",
@@ -2344,6 +2302,7 @@ export function buildResult(
     decomposition,
     sensitivity: { deltas: sensDeltas, expectedProfits: sensProfits },
     battleRoyaleLeaderboard,
+    battleRoyaleLeaderboardPromo,
     downswings,
     upswings,
     convergence: { x: convX, mean: convMean, seLo: convSeLo, seHi: convSeHi },

@@ -43,12 +43,11 @@ describe("computeExpectedRakebackCurve", () => {
       1,
       0,
       [0, 1],
-      false,
     );
     expect(curve).toBeNull();
   });
 
-  it("keeps full direct RB when advanced BR leaderboard mode is off, and removes the whole opted-in BR promo from direct RB when on", () => {
+  it("keeps full direct RB for BR rows regardless of legacy leaderboard flags", () => {
     const schedule: TournamentRow[] = [
       makeRow({
         id: "fr",
@@ -68,11 +67,9 @@ describe("computeExpectedRakebackCurve", () => {
       }),
     ];
 
-    const legacy = computeExpectedRakebackCurve(schedule, 1, 0.5, [0, 1, 2], false);
-    const split = computeExpectedRakebackCurve(schedule, 1, 0.5, [0, 1, 2], true);
+    const curve = computeExpectedRakebackCurve(schedule, 1, 0.5, [0, 1, 2]);
 
-    expect(Array.from(legacy ?? [])).toEqual([0, 5, 10]);
-    expect(Array.from(split ?? [])).toEqual([0, 5, 5]);
+    expect(Array.from(curve ?? [])).toEqual([0, 5, 10]);
   });
 });
 

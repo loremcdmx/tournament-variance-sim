@@ -28,6 +28,10 @@ import {
   rakebackRoiContribution,
   reportedRoiFromPreRakebackRoi,
 } from "@/lib/sim/rakebackMath";
+import {
+  battleRoyaleRowFromTotalTicket,
+  BATTLE_ROYALE_INTERNAL_RAKE,
+} from "@/lib/sim/battleRoyaleTicket";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useT } from "@/lib/i18n/LocaleProvider";
@@ -572,12 +576,16 @@ const ScheduleRow = memo(function ScheduleRow({
   toggleExpand,
 }: ScheduleRowProps) {
   const t = useT();
-  const hasAdv =
-    (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
-    (r.bountyFraction ?? 0) > 0;
   const gt = inferGameType(r);
   const uiGt = toVisibleGameType(gt);
-  const showInlineBrLeaderboard = advanced && gt === "mystery-royale";
+  const showBounty =
+    uiGt === "pko" || uiGt === "mystery" || uiGt === "mystery-royale";
+  const hasAdv =
+    (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
+    !!r.sitThroughPayJumps ||
+    (gt === "mystery" &&
+      r.mysteryBountyVariance != null &&
+      Math.abs(r.mysteryBountyVariance - 2.0) > 1e-9);
 
   // The payout dropdown would otherwise re-run STRUCTURES.map+filter (14×3)
   // on every keystroke in any sibling field. Only players/gameType shift the
@@ -673,12 +681,6 @@ const ScheduleRow = memo(function ScheduleRow({
               />
             )}
           </div>
-          {showInlineBrLeaderboard && (
-            <BattleRoyaleLeaderboardInlineControl
-              row={r}
-              onChange={(patch) => update(r.id, patch)}
-            />
-          )}
         </div>
 
         {/* MONEY — buy-in + ROI + ITM */}
@@ -690,7 +692,9 @@ const ScheduleRow = memo(function ScheduleRow({
             rake={r.rake}
             onChange={(buyIn, rake) => update(r.id, { buyIn, rake })}
           />
-          <div className="grid grid-cols-2 gap-2">
+          <div
+            className={`grid gap-2 ${showBounty ? "grid-cols-3" : "grid-cols-2"}`}
+          >
             <div className="flex flex-col gap-1">
               <SectionLabel hint={t("help.row.roi")}>{t("row.roi")}</SectionLabel>
               <PercentNumInput
@@ -733,6 +737,22 @@ const ScheduleRow = memo(function ScheduleRow({
                 }}
               />
             </div>
+            {showBounty && (
+              <div className="flex flex-col gap-1">
+                <SectionLabel hint={t("row.bountyHint")}>
+                  {t("row.bounty")}
+                </SectionLabel>
+                <PercentNumInput
+                  value={+(((r.bountyFraction ?? 0) * 100).toFixed(1))}
+                  onChange={(v) =>
+                    update(r.id, { bountyFraction: Math.max(0, Math.min(90, v)) / 100 })
+                  }
+                  min={0}
+                  max={90}
+                  step={5}
+                />
+              </div>
+            )}
           </div>
           {gt === "mystery-royale" && (
             <BrReportedRoiControl
@@ -829,6 +849,7 @@ const ScheduleRow = memo(function ScheduleRow({
               min={1}
               max={100_000}
               step={1}
+              commitMode="blur"
             />
           </div>
         </div>
@@ -949,7 +970,6 @@ function AdvancedRowPanel({
   const t = useT();
   const fv: FieldVariability = row.fieldVariability ?? { kind: "fixed" };
   const gt = inferGameType(row);
-  const showBounty = gt === "pko" || gt === "mystery" || gt === "mystery-royale";
   const showMysteryVar = gt === "mystery";
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
@@ -1025,34 +1045,6 @@ function AdvancedRowPanel({
         )}
       </div>
 
-      {/* Bounty / PKO */}
-      {showBounty && (
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel hint={t("row.bountyHint")}>
-            {t("row.bounty")}
-          </SectionLabel>
-          <input
-            type="number"
-            min={0}
-            max={90}
-            step={5}
-            value={+((row.bountyFraction ?? 0) * 100).toFixed(1)}
-            onChange={(e) => {
-              const raw = normalizeNumericDraft(e.target.value);
-              if (raw !== e.target.value) e.target.value = raw;
-              if (raw === "") {
-                onChange({ bountyFraction: undefined });
-                return;
-              }
-              const v = Number(raw);
-              if (!Number.isFinite(v) || v < 0 || v > 90) return;
-              onChange({ bountyFraction: v / 100 });
-            }}
-            className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
-          />
-        </div>
-      )}
-
       {/* Sit-through-pay-jumps play style */}
       <div className="flex flex-col gap-1.5">
         <SectionLabel hint={t("row.sitThroughHint")}>
@@ -1103,47 +1095,6 @@ function AdvancedRowPanel({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function BattleRoyaleLeaderboardInlineControl({
-  row,
-  onChange,
-}: {
-  row: TournamentRow;
-  onChange: (patch: Partial<TournamentRow>) => void;
-}) {
-  const t = useT();
-  const brLeaderboardEnabled = row.battleRoyaleLeaderboardEnabled ?? false;
-
-  return (
-    <div className="mt-1 flex items-center justify-center gap-1.5">
-      <label
-        className={`inline-flex items-center gap-1.5 rounded-[6px] border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors ${
-          brLeaderboardEnabled
-            ? "border-[color:var(--color-accent)]/70 bg-[color:var(--color-accent)]/12 text-[color:var(--color-accent)]"
-            : "border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/35 text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg-muted)]"
-        }`}
-      >
-        <span className="sr-only">{t("row.brLeaderboardHint")}</span>
-        <input
-          type="checkbox"
-          checked={brLeaderboardEnabled}
-          onChange={(e) =>
-            onChange({
-              battleRoyaleLeaderboardEnabled: e.target.checked,
-              battleRoyaleLeaderboardShare: e.target.checked ? 1 : undefined,
-            })
-          }
-          aria-label={t("row.brLeaderboardHint")}
-          className="h-3.5 w-3.5 shrink-0 accent-[color:var(--color-accent)]"
-        />
-        <span>{t("row.brLeaderboard")}</span>
-      </label>
-      <div className="shrink-0">
-        <InfoTooltip content={t("row.brLeaderboardHint")} />
-      </div>
     </div>
   );
 }
@@ -1378,7 +1329,9 @@ function TextInput({
 // GGPoker Mystery Battle Royale tier ladder — five fixed total buy-ins with
 // matching top-bounty prizes. Field size intentionally NOT in the preset:
 // across tiers the lobby structure is identical, only the jackpot scales.
-// Stored buy-in is the prize-pool portion (total / (1+rake)) at rake 8 %.
+// Stored buy-in is the prize-pool portion of GG's published total ticket.
+// GG markets BR as 8% of total ticket; under the app's MTT contract that
+// becomes fee / net-buy-in ~= 8.6957%, e.g. $10 -> 9.20+0.80.
 export interface BrPreset {
   total: number;
   topBounty: number;
@@ -1390,7 +1343,7 @@ export const BR_PRESETS: BrPreset[] = [
   { total: 10, topBounty: 100_000 },
   { total: 25, topBounty: 250_000 },
 ];
-const BR_RAKE = 0.08;
+const BR_RAKE = BATTLE_ROYALE_INTERNAL_RAKE;
 function brTotalLabel(p: BrPreset): string {
   const t = p.total < 1 ? p.total.toFixed(2) : p.total.toString();
   const b = p.topBounty >= 1000 ? `${p.topBounty / 1000}k` : p.topBounty.toString();
@@ -1535,8 +1488,7 @@ function BrPresetSelect({
       onChange={(e) => {
         const p = BR_PRESETS.find((x) => String(x.total) === e.target.value);
         if (!p) return;
-        const buyIn = p.total / (1 + BR_RAKE);
-        onApply({ buyIn, rake: BR_RAKE });
+        onApply(battleRoyaleRowFromTotalTicket(p.total));
       }}
       className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
       title="GG Battle Royal tier"

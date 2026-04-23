@@ -284,16 +284,14 @@ export interface TournamentRow {
   itmTopHeavyBias?: number;
 
   /**
-   * Battle Royale leaderboard promo toggle. Only read when the product is in
-   * advanced mode AND the row is effectively Battle Royale. When enabled,
-   * the row's BR promo budget is routed into the separate leaderboard promo
-   * channel instead of staying as direct deterministic rakeback.
+   * Legacy row-level BR leaderboard toggle from the old split-budget model.
+   * Kept only so persisted payloads still decode; current product logic
+   * ignores it and treats BR leaderboard promo as a separate global layer.
    */
   battleRoyaleLeaderboardEnabled?: boolean;
   /**
-   * Legacy field kept for backward-compatible payloads. The current UI/model
-   * contract is binary: enabled BR rows are treated as 100 % leaderboard and
-   * disabled rows as 100 % direct RB.
+   * Legacy companion field for backward-compatible payloads. Ignored by the
+   * current model for the same reason as `battleRoyaleLeaderboardEnabled`.
    */
   battleRoyaleLeaderboardShare?: number;
 }
@@ -352,6 +350,31 @@ export interface BattleRoyaleLeaderboardConfig {
    */
   includedRowIds?: string[];
 }
+
+export interface BattleRoyaleLeaderboardObservedPointsByStake {
+  "0.25": number;
+  "1": number;
+  "3": number;
+  "10": number;
+  "25": number;
+}
+
+/**
+ * Global BR leaderboard promo layer reconstructed from observed profile data.
+ * This is intentionally not a daily-rank simulator. It reuses realised
+ * leaderboard dollars per tournament from the player's profile and projects
+ * that onto the current BR volume, while surfacing ABI mismatch as the main
+ * confidence warning.
+ */
+export interface BattleRoyaleLeaderboardObservedConfig {
+  mode: "observed";
+  totalPrizes: number;
+  totalTournaments: number;
+  pointsByStake: BattleRoyaleLeaderboardObservedPointsByStake;
+}
+
+export type BattleRoyaleLeaderboardPromoConfig =
+  | BattleRoyaleLeaderboardObservedConfig;
 
 /**
  * Calibration mode — how ROI is translated into a finish-place distribution.
@@ -447,22 +470,22 @@ export interface SimulationInput {
    * Global rakeback budget, as a fraction of rake paid back after every
    * entry. E.g. 0.3 = 30 % of rake returned in promo EV.
    *
-   * By default the whole amount is a deterministic direct bonus of
+   * The whole amount is a deterministic direct bonus of
    * `rakebackFracOfRake × row.rake × row.buyIn` added to profit for each
    * bullet fired (re-entries included, since each bullet pays rake).
-   *
-   * In advanced mode, Battle Royale rows may divert part of that promo budget
-   * into `battleRoyaleLeaderboard`; only the remaining direct share is added
-   * deterministically to paths.
    */
   rakebackFracOfRake?: number;
   /**
-   * Optional Battle Royale leaderboard side-channel. BR rows accumulate
-   * points, each leaderboard window resolves against an exogenous opponent-
-   * score model, and the result is returned separately as
-   * `result.battleRoyaleLeaderboard`.
+   * Legacy stochastic BR leaderboard side-channel. Retained for backward
+   * compatibility in the engine internals, but no longer populated by the UI.
    */
   battleRoyaleLeaderboard?: BattleRoyaleLeaderboardConfig;
+  /**
+   * Optional global BR leaderboard promo layer reconstructed from observed
+   * profile data. Returned separately as `result.battleRoyaleLeaderboardPromo`
+   * and intentionally excluded from path-risk metrics.
+   */
+  battleRoyaleLeaderboardPromo?: BattleRoyaleLeaderboardPromoConfig;
   /**
    * One-sigma uncertainty on the player's true ROI, expressed as a fraction
    * (e.g. 0.05 = ±5 pp on the configured target). Defaults to 0 — the
@@ -613,6 +636,48 @@ export interface BattleRoyaleLeaderboardResult {
   };
 }
 
+export interface BattleRoyaleLeaderboardPromoResult {
+  mode: "observed";
+  expectedPayout: number;
+  payoutPerTournament: number;
+  payoutPerDay: number;
+  pctOfCurrentBuyIns: number;
+  notInPathRisk: true;
+  observed: {
+    totalPrizes: number;
+    totalTournaments: number;
+    totalPoints: number;
+    reconstructedBuyIn: number;
+    reconstructedAbi: number | null;
+    pctOfObservedBuyIns: number | null;
+    pointsByStake: Array<{
+      stake: number;
+      points: number;
+      share: number;
+      tournaments: number;
+      buyIn: number;
+    }>;
+  };
+  current: {
+    activeDays: number;
+    tournaments: number;
+    tournamentsPerDay: number;
+    totalBuyIn: number;
+    abi: number | null;
+  };
+  confidence: {
+    level: "unknown" | "aligned" | "approximate" | "mismatch";
+    abiDriftPct: number | null;
+  };
+  rows: Array<{
+    rowId: string;
+    label: string;
+    tournaments: number;
+    buyIn: number;
+    payout: number;
+  }>;
+}
+
 export interface SimulationResult {
   type: "result";
   samples: number;
@@ -711,6 +776,8 @@ export interface SimulationResult {
 
   /** Optional Battle Royale leaderboard promo channel. */
   battleRoyaleLeaderboard?: BattleRoyaleLeaderboardResult;
+  /** Optional observed BR leaderboard promo layer. */
+  battleRoyaleLeaderboardPromo?: BattleRoyaleLeaderboardPromoResult;
 
   /**
    * Worst-N drawdown catalog — top-3 samples sorted by peak-to-trough

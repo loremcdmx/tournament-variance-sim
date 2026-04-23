@@ -6,6 +6,8 @@
  */
 import type { ControlsState } from "@/components/ControlsPanel";
 import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS } from "@/lib/sim/battleRoyaleLeaderboardUi";
+import { battleRoyaleRowFromTotalTicket } from "@/lib/sim/battleRoyaleTicket";
+import { DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION } from "@/lib/sim/gameType";
 import type { TournamentRow } from "./sim/types";
 import type { DictKey } from "./i18n/dict";
 
@@ -47,25 +49,25 @@ const BASE_CONTROLS: ControlsState = {
   battleRoyaleLeaderboard: DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
 };
 
+const BR3 = battleRoyaleRowFromTotalTicket(3);
+
 export const SCENARIOS: DemoScenario[] = [
   {
     id: "br-leaderboard",
     labelKey: "demo.brLeaderboard",
     description:
-      "Battle Royale гринд с включённым leaderboard promo: 100 BR за окно, отдельный side-channel для очков и leaderboard payouts.",
+      "Battle Royale гринд с observed leaderboard promo: profile totals и points-by-stake задают отдельный эмпирический promo-layer поверх базового RB.",
     schedule: [
       {
         id: "br-leaderboard-1",
         label: "GG Battle Royale $3",
         players: 18,
-        buyIn: 2.78,
-        rake: 0.22 / 2.78,
+        buyIn: BR3.buyIn,
+        rake: BR3.rake,
         roi: 0.05,
         payoutStructure: "battle-royale",
         gameType: "mystery-royale",
-        bountyFraction: 0.5,
-        battleRoyaleLeaderboardEnabled: true,
-        battleRoyaleLeaderboardShare: 1,
+        bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
         count: 100,
       },
     ],
@@ -76,6 +78,19 @@ export const SCENARIOS: DemoScenario[] = [
       bankroll: 300,
       itmGlobalPct: 20,
       rakebackPct: 40,
+      battleRoyaleLeaderboard: {
+        ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+        mode: "observed",
+        observedTotalPrizes: 450,
+        observedTotalTournaments: 3000,
+        observedPointsByStake: {
+          "0.25": 0,
+          "1": 0,
+          "3": 120_000,
+          "10": 0,
+          "25": 0,
+        },
+      },
     },
   },
   {
@@ -123,7 +138,7 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 3 / 22,
         roi: 0.12,
         payoutStructure: "mtt-gg-bounty",
-        bountyFraction: 0.5,
+        bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
         guarantee: 50_000,
         count: 40,
       },
@@ -546,14 +561,12 @@ export const SCENARIOS: DemoScenario[] = [
         id: "gg-br3",
         label: "GG Battle Royale $3",
         players: 18,
-        buyIn: 2.78,
-        rake: 0.22 / 2.78,
+        buyIn: BR3.buyIn,
+        rake: BR3.rake,
         roi: 0.05,
         payoutStructure: "battle-royale",
         gameType: "mystery-royale",
         bountyFraction: 0.5,
-        battleRoyaleLeaderboardEnabled: true,
-        battleRoyaleLeaderboardShare: 1,
         count: 120,
       },
       {
@@ -591,8 +604,16 @@ export const SCENARIOS: DemoScenario[] = [
       rakebackPct: 35,
       battleRoyaleLeaderboard: {
         ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
-        enabled: true,
-        windowTournaments: 120,
+        mode: "observed",
+        observedTotalPrizes: 540,
+        observedTotalTournaments: 3600,
+        observedPointsByStake: {
+          "0.25": 0,
+          "1": 0,
+          "3": 144_000,
+          "10": 0,
+          "25": 0,
+        },
       },
     },
   },

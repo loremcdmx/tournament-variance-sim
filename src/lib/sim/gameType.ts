@@ -5,7 +5,7 @@
  * Pure data + small helpers — no side effects, no RNG.
  */
 import type { GameType, TournamentRow } from "./types";
-import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE } from "./battleRoyaleLeaderboardUi";
+import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
 export const GAME_TYPE_ORDER: GameType[] = [
   "freezeout",
@@ -23,6 +23,9 @@ export const VISIBLE_GAME_TYPE_ORDER: VisibleGameType[] = [
   "mystery",
   "mystery-royale",
 ];
+
+export const DEFAULT_BOUNTY_FRACTION = 0.5;
+export const DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION = 0.45;
 
 /**
  * `freezeout-reentry` is still supported internally for legacy rows and
@@ -158,7 +161,7 @@ export function applyGameType(
     case "pko":
       patch.maxEntries = 1;
       patch.reentryRate = undefined;
-      patch.bountyFraction = bounty > 0 ? bounty : 0.5;
+      patch.bountyFraction = bounty > 0 ? bounty : DEFAULT_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = undefined;
       patch.pkoHeadVar = row.pkoHeadVar ?? 0.4;
       patch.battleRoyaleLeaderboardEnabled = undefined;
@@ -169,7 +172,7 @@ export function applyGameType(
     case "mystery":
       patch.maxEntries = 1;
       patch.reentryRate = undefined;
-      patch.bountyFraction = bounty > 0 ? bounty : 0.5;
+      patch.bountyFraction = bounty > 0 ? bounty : DEFAULT_BOUNTY_FRACTION;
       // σ² = 2.0 is a stopgap — log-normal structurally can't match GG's
       // real envelope distribution (jackpot tier ~10000× mean w/ prob ~6e-7,
       // see #92's scraped BR tiers), but σ² = 2.0 gives P(X > 100×mean) ≈
@@ -182,13 +185,15 @@ export function applyGameType(
       patch.payoutStructure = "mtt-gg-mystery";
       snapAfs(500);
       break;
-    case "mystery-royale":
+    case "mystery-royale": {
+      const brDefault = battleRoyaleRowFromTotalTicket(10);
       patch.maxEntries = 1;
       patch.reentryRate = undefined;
-      patch.bountyFraction = bounty > 0 ? bounty : 0.5;
+      patch.bountyFraction =
+        bounty > 0 ? bounty : DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = 1.8;
-      patch.rake = 0.08;
-      patch.buyIn = 10 / 1.08;
+      patch.rake = brDefault.rake;
+      patch.buyIn = brDefault.buyIn;
       patch.roi = 0.03;
       // Skill-adjusted ITM: structural 3/18 = 16.7 % is the field average.
       // A reg edges it up modestly (≈1–2 pp) by surviving the FT bubble
@@ -196,13 +201,11 @@ export function applyGameType(
       // this bump is smaller than in MTTs where paid% itself flexes.
       patch.itmRate = 0.18;
       patch.players = 18;
-      patch.battleRoyaleLeaderboardEnabled =
-        row.battleRoyaleLeaderboardEnabled ?? false;
-      patch.battleRoyaleLeaderboardShare =
-        row.battleRoyaleLeaderboardShare ??
-        DEFAULT_BATTLE_ROYALE_LEADERBOARD_SHARE;
+      patch.battleRoyaleLeaderboardEnabled = undefined;
+      patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "battle-royale";
       break;
+    }
   }
   return patch;
 }

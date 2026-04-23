@@ -269,7 +269,7 @@ export const DICT = {
     en: "Top-level format switch. Chooses which bounty fields apply: none for freezeouts, bounty% for PKO and Mystery, and mystery-variance controls for mystery variants. Existing bounty% is preserved when switching between bounty types.",
     ru: "Основной переключатель формата. Определяет, какие баунти-поля применяются: ничего для фризов, баунти% для PKO и Mystery и настройки дисперсии мистери для мистери-форматов. При переключении между баунти-форматами баунти% сохраняется.",
   },
-  "row.bounty": { en: "Bounty %", ru: "Баунти %" },
+  "row.bounty": { en: "KO %", ru: "Ноки %" },
   "shape.title": { en: "Finish shape", ru: "Форма распределения" },
   "shape.itmLabel": { en: "ITM rate %", ru: "ITM-ставка %" },
   "shape.rowFirst": { en: "P(1st)", ru: "P(1-е)" },
@@ -2101,85 +2101,61 @@ export const DICT = {
     en: "BR leaderboard",
     ru: "Лидерборд BR",
   },
-  "controls.brLeaderboard.title": {
-    en: "Battle Royale leaderboard promo. BR rows earn points by entry / KO / podium finish, then each window settles against an exogenous opponent-score model and pays the configured prize tiers.",
-    ru: "Промо-лидерборд Battle Royale. BR-строки набирают очки за вход / KO / призовые места, после чего каждое окно сравнивается с внешней моделью очков оппонентов и выплачивает заданные призовые tiers.",
+  "controls.brLeaderboard.note": {
+    en: "Observed mode only: reconstruct leaderboard promo from ResultHub-style points and real profile totals. This stays separate from path-risk metrics until a daily rank model is validated.",
+    ru: "Пока только observed-режим: восстанавливаем лидербордное промо по ResultHub-поинтам и реальным totals из профиля. В path-risk метрики это не идёт, пока не будет провалидирована дневная rank-модель.",
   },
-  "controls.brLeaderboard.noRows": {
-    en: "No BR rows in schedule yet",
-    ru: "В расписании пока нет BR-строк",
+  "controls.brLeaderboard.inactive": {
+    en: "There are no GG BR rows in the schedule yet. Add one to make this layer affect calculations.",
+    ru: "В расписании пока нет GG BR-строк. Добавь такую строку, и этот слой начнёт влиять на расчёты.",
   },
-  "controls.brLeaderboard.noteOn": {
-    en: "Enabled: leaderboard payout is simulated as a separate promo channel and shown explicitly in results.",
-    ru: "Включено: лидерборд симулируется как отдельный promo-канал и показывается отдельно в результатах.",
+  "controls.brLeaderboard.lockedBasic": {
+    en: "This block is configurable in advanced mode. In basic mode it stays visible only as a prompt that BR promo exists separately.",
+    ru: "Этот блок настраивается в advanced-режиме. В basic-режиме он остаётся видимым как напоминание, что у BR есть отдельный promo-слой.",
   },
-  "controls.brLeaderboard.noteOff": {
-    en: "Off by default. Turn on only when you want BR promo EV on top of the core game run.",
-    ru: "По умолчанию выключено. Включай только если хочешь добавить BR-промо EV поверх базового игрового прогона.",
+  "controls.brLeaderboard.mode.off": {
+    en: "Off",
+    ru: "Выкл.",
   },
-  "controls.brLeaderboard.windowBlock": {
-    en: "Window + Field",
-    ru: "Окно + поле",
+  "controls.brLeaderboard.mode.observed": {
+    en: "Observed",
+    ru: "Observed",
   },
-  "controls.brLeaderboard.participants": {
-    en: "Regs",
-    ru: "Участники",
+  "controls.brLeaderboard.prizes": {
+    en: "Observed LB prizes",
+    ru: "LB-призы из профиля",
   },
-  "controls.brLeaderboard.windowTournaments": {
-    en: "BR / window",
-    ru: "BR / окно",
+  "controls.brLeaderboard.prizesHint": {
+    en: "Total leaderboard prizes from the observed profile window.",
+    ru: "Сумма лидербордных призов в том наблюдаемом окне, которое ты разбираешь.",
   },
-  "controls.brLeaderboard.partial": {
-    en: "Pay the final partial window too",
-    ru: "Платить и неполное финальное окно",
+  "controls.brLeaderboard.tournaments": {
+    en: "Observed tournaments",
+    ru: "Турниров в профиле",
   },
-  "controls.brLeaderboard.opponentMean": {
-    en: "Opp mean pts",
-    ru: "Ср. очки поля",
+  "controls.brLeaderboard.tournamentsHint": {
+    en: "Total Battle Royale tournaments from the same observed profile window.",
+    ru: "Общее число Battle Royale турниров в том же окне профиля.",
   },
-  "controls.brLeaderboard.opponentStd": {
-    en: "Opp σ pts",
-    ru: "σ очков поля",
+  "controls.brLeaderboard.lbPerTournament": {
+    en: "LB / tournament",
+    ru: "LB / турнир",
   },
-  "controls.brLeaderboard.scoring": {
-    en: "Scoring",
-    ru: "Очки",
+  "controls.brLeaderboard.lbPerTournamentHint": {
+    en: "Observed leaderboard dollars per tournament. This is the direct anchor used for the current projection.",
+    ru: "Наблюдаемый лидербордный доллар на турнир. Это прямой якорь, от которого строится текущая проекция.",
   },
-  "controls.brLeaderboard.points.entry": {
-    en: "Entry",
-    ru: "Вход",
+  "controls.brLeaderboard.observedAbi": {
+    en: "Observed ABI",
+    ru: "Observed ABI",
   },
-  "controls.brLeaderboard.points.ko": {
-    en: "KO",
-    ru: "KO",
+  "controls.brLeaderboard.observedAbiHint": {
+    en: "Reconstructed ABI from the points split across stakes. This is used only as a confidence check against the current BR mix.",
+    ru: "Восстановленный ABI по долям очков между лимитами. Он нужен только как проверка, насколько текущий BR-микс похож на наблюдаемый.",
   },
-  "controls.brLeaderboard.points.first": {
-    en: "1st",
-    ru: "1-е",
-  },
-  "controls.brLeaderboard.points.second": {
-    en: "2nd",
-    ru: "2-е",
-  },
-  "controls.brLeaderboard.points.third": {
-    en: "3rd",
-    ru: "3-е",
-  },
-  "controls.brLeaderboard.payouts": {
-    en: "Payout tiers",
-    ru: "Призы",
-  },
-  "controls.brLeaderboard.prize.top1": {
-    en: "1st prize",
-    ru: "Приз за 1-е",
-  },
-  "controls.brLeaderboard.prize.top2to3": {
-    en: "2-3 prize",
-    ru: "Приз за 2-3",
-  },
-  "controls.brLeaderboard.prize.top4to10": {
-    en: "4-10 prize",
-    ru: "Приз за 4-10",
+  "controls.brLeaderboard.pointsHint": {
+    en: "Observed leaderboard points by stake for the same profile window.",
+    ru: "Наблюдаемые лидербордные очки по лимитам в том же окне профиля.",
   },
   "preview.footnote": {
     en: "If the top (EV) bar is much wider than the bottom (finishes) bar in the same colour, that slice of finishes carries way more money than its share of the field — and that's exactly where your variance lives.",
@@ -2617,105 +2593,129 @@ export const DICT = {
     en: "Ever ≤ −100 BB",
     ru: "Хотя бы раз ≤ −100 BB",
   },
-  "chart.brLeaderboard.title": {
+  "chart.brLeaderboardObserved.title": {
     en: "BR leaderboard promo",
     ru: "Промо-лидерборд BR",
   },
-  "chart.brLeaderboard.sub": {
-    en: "{participants} regs · {window} BR per window · pays through rank {paid}",
-    ru: "{participants} регов · {window} BR в окне · выплата до {paid}-го места",
+  "chart.brLeaderboardObserved.sub": {
+    en: "{tourneysPerDay} BR/day across {days} active days",
+    ru: "{tourneysPerDay} BR в день на {days} активных дней",
   },
-  "chart.brLeaderboard.note": {
-    en: "This promo layer is modeled and shown separately. Direct RB stays in the main result; the leaderboard line here is the diverted BR promo budget re-expressed through the simulated rank model. Trajectory, drawdown, and ruin cards above still stay game-only until leaderboard cashflows are threaded through full paths.",
-    ru: "Этот промо-слой моделируется и показывается отдельно. Прямой RB остаётся в основном результате; лидербордная строка здесь — это отведённый BR-промо-бюджет, пропущенный через симулированную модель рангов. Траектория, просадки и риск разорения выше всё ещё остаются game-only, пока лидербордные выплаты не протянуты через полные path-и.",
+  "chart.brLeaderboardObserved.tip": {
+    en: "Observed mode reconstructs effective leaderboard promo from profile totals and ResultHub-style points. This is not a daily rank simulation.",
+    ru: "Observed-режим восстанавливает эффективное лидербордное промо по totals из профиля и ResultHub-поинтам. Это не симуляция дневного ранга.",
   },
-  "chart.brLeaderboard.groupSettlement": {
-    en: "Settlement",
-    ru: "Выплаты",
+  "chart.brLeaderboardObserved.note": {
+    en: "This layer stays outside trajectory, drawdown, and ruin cards. It is an empirical promo estimate for the current BR volume, not a cashflow path model yet.",
+    ru: "Этот слой не входит в траектории, просадки и риск разорения. Пока это эмпирическая оценка промо для текущего BR-объёма, а не cashflow-модель по дням.",
   },
-  "chart.brLeaderboard.groupScoring": {
-    en: "Scoring",
-    ru: "Скоринг",
+  "chart.brLeaderboardObserved.groupCurrent": {
+    en: "Current BR sample",
+    ru: "Текущий BR-сэмпл",
   },
-  "chart.brLeaderboard.meanPayout": {
-    en: "Promo EV",
-    ru: "Промо EV",
+  "chart.brLeaderboardObserved.groupObserved": {
+    en: "Observed anchor",
+    ru: "Наблюдаемый якорь",
+  },
+  "chart.brLeaderboardObserved.expectedPayout": {
+    en: "Projected promo",
+    ru: "Проекция промо",
+  },
+  "chart.brLeaderboardObserved.perTournament": {
+    en: "Promo / tournament",
+    ru: "Промо / турнир",
+  },
+  "chart.brLeaderboardObserved.perDay": {
+    en: "Promo / day",
+    ru: "Промо / день",
+  },
+  "chart.brLeaderboardObserved.currentPct": {
+    en: "Of current buy-ins",
+    ru: "От текущих бай-инов",
+  },
+  "chart.brLeaderboardObserved.currentAbi": {
+    en: "Current ABI",
+    ru: "Текущий ABI",
+  },
+  "chart.brLeaderboardObserved.currentVolume": {
+    en: "BR tournaments",
+    ru: "BR-турниры",
+  },
+  "chart.brLeaderboardObserved.currentVolumeDetail": {
+    en: "{perDay}/day",
+    ru: "{perDay}/день",
+  },
+  "chart.brLeaderboardObserved.observedPrizes": {
+    en: "Observed LB prizes",
+    ru: "Наблюдаемые LB-призы",
+  },
+  "chart.brLeaderboardObserved.observedTournaments": {
+    en: "Observed tournaments",
+    ru: "Наблюдаемые турниры",
+  },
+  "chart.brLeaderboardObserved.observedAbi": {
+    en: "Reconstructed ABI",
+    ru: "Восстановленный ABI",
+  },
+  "chart.brLeaderboardObserved.observedPct": {
+    en: "Of observed buy-ins",
+    ru: "От наблюдаемых бай-инов",
+  },
+  "chart.brLeaderboardObserved.observedPoints": {
+    en: "Observed points",
+    ru: "Наблюдаемые очки",
+  },
+  "chart.brLeaderboardObserved.rows": {
+    en: "Current row allocation",
+    ru: "Аллокация по текущим рядам",
+  },
+  "chart.brLeaderboardObserved.rowsSub": {
+    en: "Projected promo distributed by current BR tournament counts.",
+    ru: "Проекция промо, распределённая по текущим BR-строкам пропорционально числу турниров.",
+  },
+  "chart.brLeaderboardObserved.rowLine": {
+    en: "{count} tournaments · buy-ins {buyIn} · promo {payout}",
+    ru: "{count} турниров · бай-ины {buyIn} · промо {payout}",
+  },
+  "chart.brLeaderboardObserved.observedMix": {
+    en: "Observed stake mix",
+    ru: "Наблюдаемый микс лимитов",
+  },
+  "chart.brLeaderboardObserved.observedMixLine": {
+    en: "{points} pts · {share} share · ~{tournaments} tournaments · buy-ins {buyIn}",
+    ru: "{points} очков · {share} доля · ~{tournaments} турниров · бай-ины {buyIn}",
   },
   "chart.brLeaderboard.directRb": {
     en: "Direct RB",
     ru: "Прямой RB",
   },
-  "chart.brLeaderboard.totalWithPromo": {
-    en: "EV + promo",
-    ru: "EV + промо",
+  "chart.brLeaderboard.meanPayout": {
+    en: "LB promo",
+    ru: "LB-промо",
   },
-  "chart.brLeaderboard.promoSplit": {
-    en: "RB / LB split",
-    ru: "RB / LB сплит",
+  "chart.brLeaderboardObserved.confidence.aligned": {
+    en: "Confidence: aligned",
+    ru: "Уверенность: профиль похож",
   },
-  "chart.brLeaderboard.paidShare": {
-    en: "Paid windows",
-    ru: "Платные окна",
+  "chart.brLeaderboardObserved.confidence.approximate": {
+    en: "Confidence: approximate",
+    ru: "Уверенность: приблизительно",
   },
-  "chart.brLeaderboard.meanRank": {
-    en: "Avg rank",
-    ru: "Средний ранг",
+  "chart.brLeaderboardObserved.confidence.mismatch": {
+    en: "Confidence: mismatch",
+    ru: "Уверенность: профиль расходится",
   },
-  "chart.brLeaderboard.p95": {
-    en: "P95 payout",
-    ru: "P95 выплата",
+  "chart.brLeaderboardObserved.confidence.unknown": {
+    en: "Confidence: unknown",
+    ru: "Уверенность: неизвестно",
   },
-  "chart.brLeaderboard.p99": {
-    en: "P99 payout",
-    ru: "P99 выплата",
+  "chart.brLeaderboardObserved.confidence.abiDrift": {
+    en: "ABI drift versus the observed anchor: {value}.",
+    ru: "Сдвиг ABI относительно наблюдаемого якоря: {value}.",
   },
-  "chart.brLeaderboard.pointsPerWindow": {
-    en: "Pts / window",
-    ru: "Очки / окно",
-  },
-  "chart.brLeaderboard.koPerWindow": {
-    en: "KOs / window",
-    ru: "KO / окно",
-  },
-  "chart.brLeaderboard.firstPerWindow": {
-    en: "1sts / window",
-    ru: "1-е / окно",
-  },
-  "chart.brLeaderboard.top3PerWindow": {
-    en: "Top-3 / window",
-    ru: "Топ-3 / окно",
-  },
-  "chart.brLeaderboard.meanWindows": {
-    en: "Avg windows",
-    ru: "Среднее окон",
-  },
-  "chart.brLeaderboard.meanPaidWindows": {
-    en: "Avg paid windows",
-    ru: "Среднее платных окон",
-  },
-  "chart.brLeaderboard.partialYes": {
-    en: "partial window pays",
-    ru: "неполное окно оплачивается",
-  },
-  "chart.brLeaderboard.partialNo": {
-    en: "partial window skipped",
-    ru: "неполное окно пропускается",
-  },
-  "chart.brLeaderboard.dist": {
-    en: "Leaderboard payout distribution",
-    ru: "Распределение лидербордных выплат",
-  },
-  "chart.brLeaderboard.dist.sub": {
-    en: "{samples} samples · {windows} windows per sample on average",
-    ru: "{samples} сэмплов · в среднем {windows} окон на сэмпл",
-  },
-  "chart.brLeaderboard.rowMix": {
-    en: "Per-row split",
-    ru: "Сплит по строкам",
-  },
-  "chart.brLeaderboard.rowMixLine": {
-    en: "{count} tournaments · {direct} direct ({directEv}) · {leaderboard} leaderboard ({leaderEv})",
-    ru: "{count} турниров · {direct} прямой ({directEv}) · {leaderboard} лидерборд ({leaderEv})",
+  "chart.brLeaderboardObserved.confidence.noAbiDrift": {
+    en: "Not enough observed point mix to compare ABI.",
+    ru: "Недостаточно наблюдаемого point-mix, чтобы сравнить ABI.",
   },
   "cash.empty": {
     en: "Press Run to simulate the cash session.",

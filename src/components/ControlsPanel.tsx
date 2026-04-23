@@ -597,7 +597,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Field({
+export function Field({
   label,
   children,
   hint,
@@ -620,13 +620,14 @@ function Field({
   );
 }
 
-function NumInput({
+export function NumInput({
   value,
   onChange,
   step,
   min,
   max,
   commitMode = "change",
+  disabled = false,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -634,6 +635,7 @@ function NumInput({
   min?: number;
   max?: number;
   commitMode?: "change" | "blur";
+  disabled?: boolean;
 }) {
   // Local draft lets the user fully clear the field or type a below-min
   // number mid-edit without us force-correcting each keystroke. Parent state
@@ -658,6 +660,7 @@ function NumInput({
   return (
     <input
       type="number"
+      disabled={disabled}
       value={display}
       min={min}
       max={max}
@@ -687,7 +690,7 @@ function NumInput({
         if (clamped !== value) onChange(clamped);
         setDraft(null);
       }}
-      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
+      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-45 ${
         invalid
           ? "border-rose-500/70 ring-1 ring-rose-500/30"
           : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"

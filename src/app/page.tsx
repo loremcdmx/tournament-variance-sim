@@ -12,7 +12,12 @@ import {
 } from "react";
 import { CashApp } from "@/components/CashApp";
 import { ScheduleEditor } from "@/components/ScheduleEditor";
-import { ControlsPanel, type ControlsState } from "@/components/ControlsPanel";
+import {
+  ControlsPanel,
+  Field,
+  NumInput,
+  type ControlsState,
+} from "@/components/ControlsPanel";
 import { ResultsView } from "@/components/ResultsView";
 import { PayoutStructureCard } from "@/components/PayoutStructureCard";
 import { Section, Card } from "@/components/ui/Section";
@@ -25,7 +30,7 @@ import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { inferGameType } from "@/lib/sim/gameType";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
-  buildBattleRoyaleLeaderboardConfig,
+  buildBattleRoyaleLeaderboardPromoConfig,
   scheduleHasBattleRoyaleRows,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
@@ -324,7 +329,7 @@ export default function Home() {
         tiltSlowMinDuration: effectiveControls.tiltSlowMinDuration,
         tiltSlowRecoveryFrac: effectiveControls.tiltSlowRecoveryFrac,
         rakebackFracOfRake: effectiveControls.rakebackPct / 100,
-        battleRoyaleLeaderboard: buildBattleRoyaleLeaderboardConfig(
+        battleRoyaleLeaderboardPromo: buildBattleRoyaleLeaderboardPromoConfig(
           effectiveControls.battleRoyaleLeaderboard,
           s,
           advanced,
@@ -1007,6 +1012,15 @@ export default function Home() {
             abi={abi}
           />
         </div>
+        <div className="mb-3">
+          <BattleRoyaleLeaderboardControl
+            value={controls}
+            onChange={handleControlsChange}
+            disabled={running}
+            advanced={advanced}
+            hasBattleRoyaleRows={hasBattleRoyaleRows}
+          />
+        </div>
         <ScheduleEditor
           schedule={schedule}
           onChange={handleScheduleChange}
@@ -1445,6 +1459,196 @@ const BankrollControl = memo(function BankrollControl({
           {brMode === "$" ? "$" : "ABI"}
         </button>
       </div>
+    </div>
+  );
+});
+
+const BR_STAKE_KEYS = ["0.25", "1", "3", "10", "25"] as const;
+
+const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardControl({
+  value,
+  onChange,
+  disabled,
+  advanced,
+  hasBattleRoyaleRows,
+}: {
+  value: ControlsState;
+  onChange: (next: ControlsState) => void;
+  disabled?: boolean;
+  advanced: boolean;
+  hasBattleRoyaleRows: boolean;
+}) {
+  const t = useT();
+  const controls = value.battleRoyaleLeaderboard;
+  const totalPoints = BR_STAKE_KEYS.reduce(
+    (acc, stake) => acc + Math.max(0, controls.observedPointsByStake[stake]),
+    0,
+  );
+  const reconstructedBuyIn =
+    (controls.observedPointsByStake["0.25"] / Math.max(1, totalPoints)) *
+      controls.observedTotalTournaments *
+      0.25 +
+    (controls.observedPointsByStake["1"] / Math.max(1, totalPoints)) *
+      controls.observedTotalTournaments *
+      1 +
+    (controls.observedPointsByStake["3"] / Math.max(1, totalPoints)) *
+      controls.observedTotalTournaments *
+      3 +
+    (controls.observedPointsByStake["10"] / Math.max(1, totalPoints)) *
+      controls.observedTotalTournaments *
+      10 +
+    (controls.observedPointsByStake["25"] / Math.max(1, totalPoints)) *
+      controls.observedTotalTournaments *
+      25;
+  const observedAbi =
+    controls.observedTotalTournaments > 0 && totalPoints > 0
+      ? reconstructedBuyIn / controls.observedTotalTournaments
+      : null;
+  const lbPerTournament =
+    controls.observedTotalTournaments > 0
+      ? controls.observedTotalPrizes / controls.observedTotalTournaments
+      : 0;
+
+  const setPoints = (
+    stake: keyof ControlsState["battleRoyaleLeaderboard"]["observedPointsByStake"],
+    nextValue: number,
+  ) =>
+    onChange({
+      ...value,
+      battleRoyaleLeaderboard: {
+        ...controls,
+        observedPointsByStake: {
+          ...controls.observedPointsByStake,
+          [stake]: Math.max(0, nextValue),
+        },
+      },
+    });
+
+  const uiDisabled = disabled || !advanced;
+
+  return (
+    <div className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+            {t("controls.brLeaderboard.label")}
+          </div>
+          <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+            {t("controls.brLeaderboard.note")}
+          </div>
+          {!hasBattleRoyaleRows && (
+            <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+              {t("controls.brLeaderboard.inactive")}
+            </div>
+          )}
+          {!advanced && (
+            <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+              {t("controls.brLeaderboard.lockedBasic")}
+            </div>
+          )}
+        </div>
+        <select
+          value={controls.mode}
+          disabled={uiDisabled}
+          onChange={(e) =>
+            onChange({
+              ...value,
+              battleRoyaleLeaderboard: {
+                ...controls,
+                mode: e.target.value === "observed" ? "observed" : "off",
+              },
+            })
+          }
+          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] disabled:opacity-40"
+        >
+          <option value="off">{t("controls.brLeaderboard.mode.off")}</option>
+          <option value="observed">
+            {t("controls.brLeaderboard.mode.observed")}
+          </option>
+        </select>
+      </div>
+      {controls.mode === "observed" && (
+        <>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <Field
+              label={t("controls.brLeaderboard.prizes")}
+              hint={t("controls.brLeaderboard.prizesHint")}
+            >
+              <NumInput
+                value={controls.observedTotalPrizes}
+                min={0}
+                max={1_000_000_000}
+                step={10}
+                disabled={uiDisabled}
+                onChange={(v) =>
+                  onChange({
+                    ...value,
+                    battleRoyaleLeaderboard: {
+                      ...controls,
+                      observedTotalPrizes: v,
+                    },
+                  })
+                }
+              />
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.tournaments")}
+              hint={t("controls.brLeaderboard.tournamentsHint")}
+            >
+              <NumInput
+                value={controls.observedTotalTournaments}
+                min={0}
+                max={10_000_000}
+                step={100}
+                disabled={uiDisabled}
+                onChange={(v) =>
+                  onChange({
+                    ...value,
+                    battleRoyaleLeaderboard: {
+                      ...controls,
+                      observedTotalTournaments: Math.floor(v),
+                    },
+                  })
+                }
+              />
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lbPerTournament")}
+              hint={t("controls.brLeaderboard.lbPerTournamentHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                ${lbPerTournament.toFixed(2)}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.observedAbi")}
+              hint={t("controls.brLeaderboard.observedAbiHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {observedAbi == null ? "—" : `${observedAbi.toFixed(2)}`}
+              </div>
+            </Field>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {BR_STAKE_KEYS.map((stake) => (
+              <Field
+                key={stake}
+                label={`pts $${stake}`}
+                hint={t("controls.brLeaderboard.pointsHint")}
+              >
+                <NumInput
+                  value={controls.observedPointsByStake[stake]}
+                  min={0}
+                  max={10_000_000}
+                  step={100}
+                  disabled={uiDisabled}
+                  onChange={(v) => setPoints(stake, Math.floor(v))}
+                />
+              </Field>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 });

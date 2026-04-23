@@ -313,6 +313,31 @@ describe("persistence validation", () => {
     });
   });
 
+  it("migrates legacy Battle Royale default bounty share from 50% to 45%", () => {
+    const state = decodeState(
+      encoded({
+        v: 1,
+        schedule: [
+          {
+            ...row,
+            gameType: "mystery-royale",
+            payoutStructure: "battle-royale",
+            bountyFraction: 0.5,
+            mysteryBountyVariance: 1.8,
+            players: 18,
+          },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]).toMatchObject({
+      gameType: "mystery-royale",
+      payoutStructure: "battle-royale",
+      bountyFraction: 0.45,
+    });
+  });
+
   it("clamps persisted row knobs back into the engine/UI contract before hydration", () => {
     const state = decodeState(
       encoded({
@@ -550,46 +575,41 @@ describe("persistence validation", () => {
     expect(loaded.itmGlobalEnabled).toBeUndefined();
   });
 
-  it("resets hidden persisted BR leaderboard controls back to the fixed house defaults", () => {
+  it("normalizes persisted observed BR leaderboard controls", () => {
     const state = loadLocalFromPayload({
       v: 1,
       schedule: [row],
       controls: {
         battleRoyaleLeaderboard: {
-          enabled: true,
-          participants: 1,
-          windowTournaments: 0,
-          awardPartialWindow: "oops",
-          entryPoints: "bad",
-          knockoutPoints: 7,
-          firstPoints: 15,
-          secondPoints: 9,
-          thirdPoints: 6,
-          top1Prize: -100,
-          top2To3Prize: 220,
-          top4To10Prize: 80,
-          opponentMeanScore: "oops",
-          opponentStdDevScore: -4,
+          mode: "observed",
+          observedTotalPrizes: -100,
+          observedTotalTournaments: 1234.9,
+          observedPointsByStake: {
+            "0.25": -1,
+            "1": 80,
+            "3": "bad",
+            "10": 120,
+            "25": null,
+          },
         },
       },
     });
 
     expect(state?.controls.battleRoyaleLeaderboard).toMatchObject({
-      enabled: false,
-      participants: 200,
-      windowTournaments: 100,
-      awardPartialWindow: true,
-      knockoutPoints: 4,
-      top1Prize: 500,
-      top2To3Prize: 200,
-      top4To10Prize: 75,
-      opponentStdDevScore: 45,
+      mode: "observed",
+      observedTotalPrizes: 0,
+      observedTotalTournaments: 1234,
+      observedPointsByStake: {
+        "0.25": 0,
+        "1": 80,
+        "3": 0,
+        "10": 120,
+        "25": 0,
+      },
     });
-    expect(state?.controls.battleRoyaleLeaderboard.entryPoints).toBe(1);
-    expect(state?.controls.battleRoyaleLeaderboard.opponentMeanScore).toBe(180);
   });
 
-  it("normalizes persisted BR row leaderboard split only on mystery-royale rows", () => {
+  it("drops persisted BR row leaderboard split on all rows", () => {
     const state = loadLocalFromPayload({
       v: 1,
       schedule: [
@@ -611,8 +631,8 @@ describe("persistence validation", () => {
       controls: {},
     });
 
-    expect(state?.schedule[0].battleRoyaleLeaderboardEnabled).toBe(true);
-    expect(state?.schedule[0].battleRoyaleLeaderboardShare).toBe(1);
+    expect(state?.schedule[0].battleRoyaleLeaderboardEnabled).toBeUndefined();
+    expect(state?.schedule[0].battleRoyaleLeaderboardShare).toBeUndefined();
     expect(state?.schedule[1].battleRoyaleLeaderboardEnabled).toBeUndefined();
     expect(state?.schedule[1].battleRoyaleLeaderboardShare).toBeUndefined();
   });

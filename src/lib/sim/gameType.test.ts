@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { inferGameType, normalizeBrMrConsistency } from "./gameType";
+import {
+  applyGameType,
+  DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+  inferGameType,
+  normalizeBrMrConsistency,
+} from "./gameType";
 import type { TournamentRow } from "./types";
 
 const row = (overrides: Partial<TournamentRow> = {}): TournamentRow => ({
@@ -129,5 +134,12 @@ describe("normalizeBrMrConsistency — gameType is authoritative", () => {
   it("both flags absent (pure mtt-standard) → returned unchanged", () => {
     const r = row({ gameType: "freezeout" });
     expect(normalizeBrMrConsistency(r)).toBe(r);
+  });
+});
+
+describe("applyGameType defaults", () => {
+  it("uses 45% bounty share for fresh Battle Royale rows", () => {
+    const patch = applyGameType(row({ bountyFraction: undefined }), "mystery-royale");
+    expect(patch.bountyFraction).toBe(DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION);
   });
 });

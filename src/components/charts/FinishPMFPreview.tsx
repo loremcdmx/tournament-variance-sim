@@ -14,10 +14,6 @@ import {
   MAX_ITM_TOP_HEAVY_BIAS,
   MIN_ITM_TOP_HEAVY_BIAS,
 } from "@/lib/sim/itmTopHeavy";
-import {
-  battleRoyaleDirectRakebackShareForRow,
-  battleRoyaleLeaderboardShareForRow,
-} from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { derivePreviewRowEconomics } from "@/lib/sim/previewRowEconomics";
 import {
   computeRowStats,
@@ -99,26 +95,12 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   const previewEconomics = useMemo(() => derivePreviewRowEconomics(row), [row]);
   const stats = useMemo(() => computeRowStats(row, model), [row, model]);
   const rbFrac = Math.max(0, rakebackPct) / 100;
-  const directRakebackShare = battleRoyaleDirectRakebackShareForRow(
-    row,
-    advanced,
-  );
-  const leaderboardPromoShare = battleRoyaleLeaderboardShareForRow(
-    row,
-    advanced,
-  );
   const directRakebackPerEntry =
     rbFrac *
-    directRakebackShare *
     row.rake *
     row.buyIn *
     previewEconomics.expectedBullets;
-  const leaderboardPromoPerEntry =
-    rbFrac *
-    leaderboardPromoShare *
-    row.rake *
-    row.buyIn *
-    previewEconomics.expectedBullets;
+  const leaderboardPromoPerEntry = 0;
   const totalEvPerEntry =
     stats.evPerEntry + directRakebackPerEntry + leaderboardPromoPerEntry;
   const committedBountyShare = clampUnit(stats.bountyShare);

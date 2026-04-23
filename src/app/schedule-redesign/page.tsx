@@ -76,8 +76,8 @@ const SEED: Row[] = [
     gameType: "mystery-royale",
     brPreset: "$10 · $100k top",
     leaderboard: false,
-    buyIn: 9.26,
-    rake: 0.74 / 9.26,
+    buyIn: 9.2,
+    rake: 0.8 / 9.2,
     roi: 0.07,
     rakebackRoi: 0,
     itm: 0.15,
@@ -305,7 +305,7 @@ function Before() {
               </div>
             </BTd>
             <BTd align="right"><MockInput value="18" align="right" /></BTd>
-            <BTd align="right"><MockInput value="9.26+0.74" align="right" /></BTd>
+            <BTd align="right"><MockInput value="9.20+0.80" align="right" /></BTd>
             <BTd align="right">
               <div className="flex flex-col items-center gap-1">
                 <MockInput value="7" align="right" suffix="%" w="3.5rem" />
@@ -846,7 +846,7 @@ function After2() {
           </Field>
           <Field label="Бай-ин" align="right">
             <span className="tabular text-lg">
-              9.26<span className="text-[color:var(--color-fg-dim)]">+0.74</span>
+              9.20<span className="text-[color:var(--color-fg-dim)]">+0.80</span>
             </span>
           </Field>
           <Field label="ROI" align="right">
@@ -982,7 +982,7 @@ function After3() {
         <div className="flex flex-col items-end leading-tight">
           <span className="eyebrow">бай-ин</span>
           <span className="tabular text-base">
-            $9.26<span className="text-[color:var(--color-fg-dim)]">+0.74</span>
+            $9.20<span className="text-[color:var(--color-fg-dim)]">+0.80</span>
           </span>
         </div>
 

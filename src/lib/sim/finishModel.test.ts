@@ -12,6 +12,7 @@ import {
   applyBountyBias,
 } from "./finishModel";
 import { getPayoutTable } from "./payouts";
+import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 import type { FinishModelConfig } from "./types";
 
 const MODELS: FinishModelConfig[] = [
@@ -293,8 +294,9 @@ describe("calibrateShelledItm", () => {
   it("keeps first place at least equilibrium for high-ITM Battle Royale regs", () => {
     const brN = 18;
     const brPaid = 3;
-    const buyIn = 25 / 1.08;
-    const entryCost = buyIn * 1.08;
+    const br25 = battleRoyaleRowFromTotalTicket(25);
+    const buyIn = br25.buyIn;
+    const entryCost = buyIn * (1 + br25.rake);
     const brPool = brN * buyIn * 0.5;
     const brCurve = getPayoutTable("battle-royale", brN).slice(0, brPaid);
     const targetRegular = entryCost * 1.03 * 0.5;
@@ -320,8 +322,9 @@ describe("calibrateShelledItm", () => {
   it("lets explicit first-place locks override the equilibrium floor", () => {
     const brN = 18;
     const brPaid = 3;
-    const buyIn = 25 / 1.08;
-    const entryCost = buyIn * 1.08;
+    const br25 = battleRoyaleRowFromTotalTicket(25);
+    const buyIn = br25.buyIn;
+    const entryCost = buyIn * (1 + br25.rake);
     const brPool = brN * buyIn * 0.5;
     const brCurve = getPayoutTable("battle-royale", brN).slice(0, brPaid);
     const targetRegular = entryCost * 1.03 * 0.5;

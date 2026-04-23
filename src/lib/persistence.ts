@@ -11,7 +11,12 @@ import type { GameType, PayoutStructureId, TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  normalizeBattleRoyaleLeaderboardControls,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
+import {
+  DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+  DEFAULT_BOUNTY_FRACTION,
+} from "@/lib/sim/gameType";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object";
@@ -137,8 +142,6 @@ const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MIN = -1;
 const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MAX = 1;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MIN = 0;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MAX = 3;
-const PERSISTED_ROW_BR_LEADERBOARD_SHARE_MIN = 0;
-const PERSISTED_ROW_BR_LEADERBOARD_SHARE_MAX = 1;
 const PERSISTED_FIELD_VARIABILITY_BUCKETS_MAX = 20;
 const PERSISTED_ROW_COUNT_MAX = 100_000;
 const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
@@ -418,10 +421,13 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
     }
   }
   if ("battleRoyaleLeaderboard" in next) {
-    const before = JSON.stringify(next.battleRoyaleLeaderboard);
-    const after = JSON.stringify(DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS);
-    if (before !== after) {
-      next.battleRoyaleLeaderboard = DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS;
+    const normalized = normalizeBattleRoyaleLeaderboardControls(
+      next.battleRoyaleLeaderboard,
+    );
+    const finalValue =
+      normalized ?? DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS;
+    if (JSON.stringify(next.battleRoyaleLeaderboard) !== JSON.stringify(finalValue)) {
+      next.battleRoyaleLeaderboard = finalValue;
       changed = true;
     }
   }
@@ -487,15 +493,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     );
     const nextPkoHeadVar = undefined;
     const nextPkoHeat = undefined;
-    const nextBattleRoyaleLeaderboardEnabled =
-      typeof row.battleRoyaleLeaderboardEnabled === "boolean"
-        ? row.battleRoyaleLeaderboardEnabled
-        : undefined;
-    const nextBattleRoyaleLeaderboardShare = clampPersistedOptionalNumber(
-      row.battleRoyaleLeaderboardShare,
-      PERSISTED_ROW_BR_LEADERBOARD_SHARE_MIN,
-      PERSISTED_ROW_BR_LEADERBOARD_SHARE_MAX,
-    );
+    const nextBattleRoyaleLeaderboardEnabled = undefined;
+    const nextBattleRoyaleLeaderboardShare = undefined;
     const nextSitThroughPayJumps =
       typeof row.sitThroughPayJumps === "boolean"
         ? row.sitThroughPayJumps
@@ -533,7 +532,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     } else if (nextGameType === "pko") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
-      finalBountyFraction = nextBountyFraction ?? 0.5;
+      finalBountyFraction = nextBountyFraction ?? DEFAULT_BOUNTY_FRACTION;
       finalMysteryBountyVariance = undefined;
       finalPkoHeadVar = nextPkoHeadVar ?? 0.4;
       finalBattleRoyaleLeaderboardEnabled = undefined;
@@ -541,7 +540,7 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     } else if (nextGameType === "mystery") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
-      finalBountyFraction = nextBountyFraction ?? 0.5;
+      finalBountyFraction = nextBountyFraction ?? DEFAULT_BOUNTY_FRACTION;
       finalMysteryBountyVariance = nextMysteryBountyVariance ?? 2.0;
       finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
@@ -550,14 +549,15 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     } else if (nextGameType === "mystery-royale") {
       finalMaxEntries = 1;
       finalReentryRate = undefined;
-      finalBountyFraction = nextBountyFraction ?? 0.5;
+      finalBountyFraction =
+        nextBountyFraction == null || Math.abs(nextBountyFraction - 0.5) < 1e-9
+          ? DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION
+          : nextBountyFraction;
       finalMysteryBountyVariance = nextMysteryBountyVariance ?? 1.8;
       finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
-      finalBattleRoyaleLeaderboardEnabled =
-        nextBattleRoyaleLeaderboardEnabled ?? false;
-      finalBattleRoyaleLeaderboardShare =
-        finalBattleRoyaleLeaderboardEnabled ? 1 : undefined;
+      finalBattleRoyaleLeaderboardEnabled = undefined;
+      finalBattleRoyaleLeaderboardShare = undefined;
     }
     const effectiveBattleRoyaleRow =
       nextGameType === "mystery-royale" ||

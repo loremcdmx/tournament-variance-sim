@@ -4,6 +4,7 @@ import {
   parseImportCSV,
   suggestStandardBuyInFromBrCarryover,
 } from "./ScheduleEditor";
+import { battleRoyaleRowFromTotalTicket } from "@/lib/sim/battleRoyaleTicket";
 
 describe("parseBuyIn", () => {
   it("rejects plus-form tickets when fee exceeds 100% of the buy-in", () => {
@@ -14,11 +15,13 @@ describe("parseBuyIn", () => {
 
 describe("suggestStandardBuyInFromBrCarryover", () => {
   it("snaps carried-over BR tiers to a regular 10% buy-in+rake structure", () => {
-    expect(suggestStandardBuyInFromBrCarryover(10 / 1.08, 0.08)).toEqual({
+    const br10 = battleRoyaleRowFromTotalTicket(10);
+    const br3 = battleRoyaleRowFromTotalTicket(3);
+    expect(suggestStandardBuyInFromBrCarryover(br10.buyIn, br10.rake)).toEqual({
       buyIn: 10,
       rake: 0.1,
     });
-    expect(suggestStandardBuyInFromBrCarryover(3 / 1.08, 0.08)).toEqual({
+    expect(suggestStandardBuyInFromBrCarryover(br3.buyIn, br3.rake)).toEqual({
       buyIn: 3,
       rake: 0.1,
     });

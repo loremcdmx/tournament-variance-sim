@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { validateSchedule } from "./validation";
 import type { FinishModelConfig, TournamentRow } from "./types";
+import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
 const baseModel: FinishModelConfig = { id: "power-law" };
 
@@ -129,10 +130,11 @@ describe("validateSchedule", () => {
   });
 
   it("flags mystery-royale rows when extreme ROI exceeds the feasible cash+bounty envelope", () => {
+    const br10 = battleRoyaleRowFromTotalTicket(10);
     const r = row({
       players: 18,
-      buyIn: 10 / 1.08,
-      rake: 0.08,
+      buyIn: br10.buyIn,
+      rake: br10.rake,
       payoutStructure: "battle-royale",
       gameType: "mystery-royale",
       bountyFraction: 0.5,
