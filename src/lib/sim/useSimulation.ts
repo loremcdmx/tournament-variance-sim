@@ -412,11 +412,28 @@ export function useSimulation() {
             out.push(sh.breakevenStreakCounts.buffer);
             out.push(sh.cashlessStreakCounts.buffer);
             out.push(sh.rowProfits.buffer);
+            out.push(sh.rowBountyProfits.buffer);
             out.push(sh.jackpotMask.buffer);
+            if (sh.leaderboardPoints) out.push(sh.leaderboardPoints.buffer);
+            if (sh.leaderboardPayouts) out.push(sh.leaderboardPayouts.buffer);
+            if (sh.leaderboardExpectedPayouts) {
+              out.push(sh.leaderboardExpectedPayouts.buffer);
+            }
+            if (sh.leaderboardWindows) out.push(sh.leaderboardWindows.buffer);
+            if (sh.leaderboardPaidWindows) {
+              out.push(sh.leaderboardPaidWindows.buffer);
+            }
+            if (sh.leaderboardRankSums) out.push(sh.leaderboardRankSums.buffer);
+            if (sh.leaderboardKnockouts) out.push(sh.leaderboardKnockouts.buffer);
+            if (sh.leaderboardFirsts) out.push(sh.leaderboardFirsts.buffer);
+            if (sh.leaderboardSeconds) out.push(sh.leaderboardSeconds.buffer);
+            if (sh.leaderboardThirds) out.push(sh.leaderboardThirds.buffer);
             out.push(sh.hiResCheckpointIdx.buffer);
             out.push(sh.hiResSampleIndices.buffer);
             out.push(sh.hiResBestPath.buffer);
             out.push(sh.hiResWorstPath.buffer);
+            out.push(sh.hiResMin.buffer);
+            out.push(sh.hiResMax.buffer);
             for (const p of sh.hiResPaths) out.push(p.buffer);
           }
           return out;

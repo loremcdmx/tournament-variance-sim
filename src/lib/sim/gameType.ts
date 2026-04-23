@@ -7,14 +7,6 @@
 import type { GameType, TournamentRow } from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
-export const GAME_TYPE_ORDER: GameType[] = [
-  "freezeout",
-  "freezeout-reentry",
-  "pko",
-  "mystery",
-  "mystery-royale",
-];
-
 export type VisibleGameType = Exclude<GameType, "freezeout-reentry">;
 
 export const VISIBLE_GAME_TYPE_ORDER: VisibleGameType[] = [

@@ -150,14 +150,20 @@ function collectShardTransfers(shard: RawShard): Transferable[] {
     shard.breakevenStreakCounts.buffer,
     shard.cashlessStreakCounts.buffer,
     shard.rowProfits.buffer,
+    shard.rowBountyProfits.buffer,
     shard.jackpotMask.buffer,
     shard.hiResCheckpointIdx.buffer,
     shard.hiResSampleIndices.buffer,
     shard.hiResBestPath.buffer,
     shard.hiResWorstPath.buffer,
+    shard.hiResMin.buffer,
+    shard.hiResMax.buffer,
   ];
   if (shard.leaderboardPoints) out.push(shard.leaderboardPoints.buffer);
   if (shard.leaderboardPayouts) out.push(shard.leaderboardPayouts.buffer);
+  if (shard.leaderboardExpectedPayouts) {
+    out.push(shard.leaderboardExpectedPayouts.buffer);
+  }
   if (shard.leaderboardWindows) out.push(shard.leaderboardWindows.buffer);
   if (shard.leaderboardPaidWindows) out.push(shard.leaderboardPaidWindows.buffer);
   if (shard.leaderboardRankSums) out.push(shard.leaderboardRankSums.buffer);

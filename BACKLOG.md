@@ -3,7 +3,7 @@
 > **Single source of truth.** Все активные и закрытые задачи живут здесь.
 > Memory-файлы содержат только указатель на этот документ — не дублировать статус.
 >
-> Актуален на **2026-04-20** (v0.7.3, ветка `dev`).
+> Актуален на **2026-04-23** (v0.7.4, ветка `main`).
 > Закрытые задачи см. в `git log`. История прогресса — в `CHANGELOG.md`.
 > Feature scope на 2026-04-13 расширен: re-entry / PKO / empirical model **IN SCOPE** (см. commit ec88189 и ранее).
 
@@ -337,13 +337,13 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 
 ## 🧹 Tech debt / cleanup
 
-### Dead code — статус после knip-прохода 2026-04-20
+### Dead code — статус после knip-прохода 2026-04-23
 - ✅ Удалено: `SensitivityChart.tsx`, `charts/common.ts` (unused)
 - ✅ Удалено: `calibrateFixedItm`, `translate`, `LOCATIVE`, `OVERRIDABLE_LINE_KEYS`, `isOptionalLine`, `loadPdOverlayStyle`/`savePdOverlayStyle`/`DEFAULT_PD_OVERLAY_STYLE`/`PdOverlayStyle`
 - ✅ Удалено: `rowItmTarget`, `findScenario`, `getStandardPreset`, `fmtCoef`, `targetBandsLabel`, `fitRows` (2026-04-18 pre-prod sweep)
 - ✅ Удалено: `calibrateBountyBudget` / `BountyBudgetResult` после перехода engine на прямой residual reconcile
 - ✅ Создан `knip.json` с конфигом для `scripts/` + tailwind/postcss ignore
-- ✅ `npx knip` clean (0 issues на 2026-04-20) — открытый пункт «22 unused types» разрешён предыдущими волнами очистки.
+- ✅ `npx knip` clean (0 issues на 2026-04-23) — открытый пункт «22 unused types» разрешён предыдущими волнами очистки; повторный cleanup также убрал stale BR leaderboard calibration artifact и неиспользуемые helper exports.
 
 ### Knip false-positive profile
 Next.js + worker-pool + dev-only scripts дают систематические false positives в knip:
@@ -374,7 +374,7 @@ Next.js + worker-pool + dev-only scripts дают систематические
 | `docs/FITTING.md` | Как запускать σ-sweep, интерпретировать `{C0, C1, β}` |
 | `CONTRIBUTING.md` | Dev setup, branching, commit style, testing rules |
 | `AGENTS.md` | Post-compression re-entry point + sharp edges |
-| `CHANGELOG.md` | Релиз-история (последний: v0.7.3) |
+| `CHANGELOG.md` | Релиз-история (последний: v0.7.4) |
 
 ---
 

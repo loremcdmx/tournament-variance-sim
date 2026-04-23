@@ -1,5 +1,4 @@
 import { buildSchedulePassOrder, histogramOf } from "@/lib/sim/engine";
-import { aggregateStreaks } from "@/lib/sim/pathStreaks";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
 // Expected extra bullets from a geometric re-entry process with cap `maxEntries`
@@ -68,76 +67,6 @@ export function computeExpectedRakebackCurve(
     out[i] = fullCycles * cycleRb + passPrefix[partialCount];
   }
   return out;
-}
-
-// Re-run path streak statistics against the stored hi-res paths, optionally
-// shifted by a deterministic rakeback curve.
-export function recomputeStreaksFromPaths(
-  result: SimulationResult,
-  signedCurve: Float64Array | null,
-): SimulationResult {
-  const streakAgg = aggregateStreaks(
-    result.samplePaths.paths,
-    result.samplePaths.x,
-    signedCurve,
-  );
-  return {
-    ...result,
-    stats: {
-      ...result.stats,
-      maxDrawdownMean: streakAgg.stats.maxDrawdownMean,
-      maxDrawdownMedian: streakAgg.stats.maxDrawdownMedian,
-      maxDrawdownP95: streakAgg.stats.maxDrawdownP95,
-      maxDrawdownP99: streakAgg.stats.maxDrawdownP99,
-      maxDrawdownWorst: streakAgg.stats.maxDrawdownWorst,
-      longestBreakevenMean: streakAgg.stats.longestBreakevenMean,
-      breakevenStreakMean: streakAgg.stats.breakevenStreakMean,
-      recoveryMedian: streakAgg.stats.recoveryMedian,
-      recoveryP90: streakAgg.stats.recoveryP90,
-      recoveryUnrecoveredShare: streakAgg.stats.recoveryUnrecoveredShare,
-    },
-    drawdownHistogram: streakAgg.drawdownHistogram,
-    longestBreakevenHistogram: streakAgg.longestBreakevenHistogram,
-    recoveryHistogram: streakAgg.recoveryHistogram,
-    downswings: (() => {
-      const count = Math.min(3, result.downswings.length, streakAgg.perSample.length);
-      const idx = streakAgg.perSample
-        .map((_, i) => i)
-        .sort(
-          (a, b) =>
-            streakAgg.perSample[b].maxDrawdown -
-            streakAgg.perSample[a].maxDrawdown,
-        )
-        .slice(0, count);
-      return idx.map((sampleIndex, i) => {
-        const sample = streakAgg.perSample[sampleIndex];
-        return {
-          rank: i + 1,
-          sampleIndex,
-          depth: sample.maxDrawdown,
-          finalProfit: sample.finalProfit,
-          longestBreakeven: sample.longestBreakeven,
-        };
-      });
-    })(),
-    upswings: (() => {
-      const count = Math.min(3, result.upswings.length, streakAgg.perSample.length);
-      const idx = streakAgg.perSample
-        .map((_, i) => i)
-        .sort((a, b) => streakAgg.perSample[b].maxRunUp - streakAgg.perSample[a].maxRunUp)
-        .slice(0, count);
-      return idx.map((sampleIndex, i) => {
-        const sample = streakAgg.perSample[sampleIndex];
-        return {
-          rank: i + 1,
-          sampleIndex,
-          height: sample.maxRunUp,
-          finalProfit: sample.finalProfit,
-          longestBreakeven: sample.longestBreakeven,
-        };
-      });
-    })(),
-  };
 }
 
 export function shiftResultByRakeback(

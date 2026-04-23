@@ -419,35 +419,49 @@ export default function Home() {
     run(input);
   }, [clearPendingInterrupt, effectiveSchedule, previewModel, controls, run, buildInput]);
 
+  const runPdOnlyWithLatestInput = useCallback(
+    (
+      patch: Partial<
+        Pick<
+          SimulationInput,
+          | "usePrimedopePayouts"
+          | "usePrimedopeFinishModel"
+          | "usePrimedopeRakeMath"
+        >
+      >,
+    ) => {
+      const base = lastRunInputRef.current;
+      if (!base) return;
+      const next = { ...base, ...patch };
+      lastRunInputRef.current = next;
+      runPdOnly(next);
+    },
+    [runPdOnly],
+  );
+
   const onUsePdPayoutsChange = useCallback(
     (v: boolean) => {
       clearPendingInterrupt();
       setControls((c) => ({ ...c, usePrimedopePayouts: v }));
-      const base = lastRunInputRef.current;
-      if (!base) return;
-      runPdOnly({ ...base, usePrimedopePayouts: v });
+      runPdOnlyWithLatestInput({ usePrimedopePayouts: v });
     },
-    [clearPendingInterrupt, runPdOnly],
+    [clearPendingInterrupt, runPdOnlyWithLatestInput],
   );
   const onUsePdFinishModelChange = useCallback(
     (v: boolean) => {
       clearPendingInterrupt();
       setControls((c) => ({ ...c, usePrimedopeFinishModel: v }));
-      const base = lastRunInputRef.current;
-      if (!base) return;
-      runPdOnly({ ...base, usePrimedopeFinishModel: v });
+      runPdOnlyWithLatestInput({ usePrimedopeFinishModel: v });
     },
-    [clearPendingInterrupt, runPdOnly],
+    [clearPendingInterrupt, runPdOnlyWithLatestInput],
   );
   const onUsePdRakeMathChange = useCallback(
     (v: boolean) => {
       clearPendingInterrupt();
       setControls((c) => ({ ...c, usePrimedopeRakeMath: v }));
-      const base = lastRunInputRef.current;
-      if (!base) return;
-      runPdOnly({ ...base, usePrimedopeRakeMath: v });
+      runPdOnlyWithLatestInput({ usePrimedopeRakeMath: v });
     },
-    [clearPendingInterrupt, runPdOnly],
+    [clearPendingInterrupt, runPdOnlyWithLatestInput],
   );
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

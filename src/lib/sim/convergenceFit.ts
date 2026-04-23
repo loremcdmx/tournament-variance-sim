@@ -49,7 +49,8 @@ export const SIGMA_ROI_PKO: SigmaCoef = {
 
 // Mystery 2D log-poly refit 2026-04-20 from canonical
 // scripts/fit_beta_mystery.json. LOO xval: mean |delta/sigma|=4.25%,
-// p95=16.97%, max=30.61%. Numeric bands stay hidden by policy.
+// p95=16.97%, max=30.61%. The chart now uses a runtime single-row Mystery
+// center for user-facing bands; this 2D surface remains diagnostic/generic.
 export const SIGMA_ROI_MYSTERY: SigmaCoef = {
   kind: "log-poly-2d",
   a0: 2.33290,

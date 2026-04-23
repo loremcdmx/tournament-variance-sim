@@ -48,24 +48,28 @@ This area produced the most false confidence. Remember:
 
 ### Current mental model
 
-- Freeze is now runtime-first rather than "just trust one old closed form".
+- Freeze is runtime-first rather than "just trust one old closed form".
 - Exact schedule mode is point-first and schedule-aware.
-- Mystery is point-only until policy says otherwise.
-- Battle Royale is also point-only for convergence right now; do not assume it
-  still has an honest averaged residual band.
-- PKO is the only averaged bounty tab that currently keeps a numeric band, and
-  only inside the validated training box.
+- Mystery now centers on runtime single-row estimates and shows numeric bands
+  only inside its validated UI box.
+- Battle Royale also centers on runtime single-row estimates; its numeric band
+  is valid only inside the fixed BR box (AFS 18, ROI +/-10%).
+- PKO keeps the promoted averaged fit band, and only inside the validated
+  training box.
 
 ### Policy taxonomy to remember
 
 Convergence warning reasons are not binary anymore. Verify current code, but the
 important concept is:
 
-- `contains-mystery`
-- `contains-mystery-royale`
 - `outside-fit-box`
 
-Do not resurrect older review text that assumed only `contains-mystery`.
+Older reason names such as `contains-mystery` / `contains-mystery-royale` were
+real at the time, but current policy collapses unsafe bands into
+`outside-fit-box`.
+
+Do not resurrect older review text that assumed the previous multi-reason
+taxonomy without re-checking `convergencePolicy.ts`.
 
 ## Stale Findings To Re-Verify Before Repeating
 
@@ -169,6 +173,13 @@ to safely continue from.
   serialization, or engine snapshot normalization before blaming charts. This
   product already had one bug where first paint looked honest but `runSim()`
   rebuilt a default optional block underneath the user.
+
+## Result Toolbar Re-Run Wisdom
+
+- Isolated result-toolbar re-runs must update the stored `lastRunInputRef`
+  before dispatching. A real bug let sequential PrimeDope checkboxes update the
+  visible React state while the second worker re-run started from an older
+  input snapshot and silently re-enabled the first checkbox's flag.
 
 ## Good Defaults For New Agents
 

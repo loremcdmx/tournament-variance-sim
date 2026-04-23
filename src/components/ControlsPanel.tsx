@@ -33,8 +33,9 @@ export interface ControlsState {
   compareWithPrimedope: boolean;
   /**
    * When true, the PrimeDope comparison pass also substitutes PD's native
-   * payout curve. Default false — both passes use the user's selected
-   * payout so the A/B diff isolates the finish-model effect.
+   * payout curve. Default true in PD mode, so the right pane reproduces
+   * PrimeDope's payout / finish / rake assumptions unless the user disables
+   * individual quirks from the result toolbar.
    */
   usePrimedopePayouts: boolean;
   /** Keep PD's binary-ITM (uniform-over-paid) finish model on the PD pane. */

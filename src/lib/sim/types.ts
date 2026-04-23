@@ -435,16 +435,10 @@ export interface SimulationInput {
    * substitutes PD's native payout curve (`mtt-primedope`) for every row
    * in the schedule, regardless of the user's selected payout structure.
    *
-   * Default: `false` — both passes honour `row.payoutStructure`, so the
-   * only thing that differs between the α pane and the PD pane is the
-   * finish model. That's usually what users want: "how much does our
-   * algorithm change the answer on an identical setup?" rather than
-   * "how much does PD's whole stack (model + payout) differ from ours".
-   *
-   * Enable this flag when you explicitly want to reproduce PD's σ on
-   * their reference scenarios — PD's own math assumes their native
-   * curves, and the flag routes the binary-ITM pass onto those same
-   * curves so the numbers land where PD reports them.
+   * Default in the UI/presets: `true`, together with PD finish/rake flags,
+   * so the right pane reproduces PrimeDope's whole stack by default.
+   * Turn it off from the result toolbar when you want both passes to honour
+   * `row.payoutStructure` and isolate only the finish-model effect.
    */
   usePrimedopePayouts?: boolean;
   /**
