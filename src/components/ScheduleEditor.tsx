@@ -828,6 +828,7 @@ const ScheduleRow = memo(function ScheduleRow({
             min={1}
             max={100_000}
             step={1}
+            commitMode="blur"
           />
         </Td>
         <Td>
@@ -1676,6 +1677,7 @@ function NumInput({
   step,
   min,
   max,
+  commitMode = "change",
   className = "",
   disabled = false,
 }: {
@@ -1684,6 +1686,7 @@ function NumInput({
   step?: number;
   min?: number;
   max?: number;
+  commitMode?: "change" | "blur";
   className?: string;
   disabled?: boolean;
 }) {
@@ -1717,6 +1720,7 @@ function NumInput({
         const raw = e.target.value;
         setDraft(raw);
         clearCommitTimer();
+        if (commitMode === "blur") return;
         const next = normalizeDraftValue(raw, min, max, step);
         if (next === null) return;
         commitTimerRef.current = setTimeout(() => {

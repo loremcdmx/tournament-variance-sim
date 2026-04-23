@@ -280,6 +280,7 @@ export const ControlsPanel = memo(function ControlsPanel({
             min={1}
             max={maxTournamentsPerSample}
             step={1}
+            commitMode="blur"
             onChange={setTournamentTarget}
           />
         </Field>
@@ -591,12 +592,14 @@ function NumInput({
   step,
   min,
   max,
+  commitMode = "change",
 }: {
   value: number;
   onChange: (v: number) => void;
   step?: number;
   min?: number;
   max?: number;
+  commitMode?: "change" | "blur";
 }) {
   // Local draft lets the user fully clear the field or type a below-min
   // number mid-edit without us force-correcting each keystroke. Parent state
@@ -629,6 +632,7 @@ function NumInput({
       onChange={(e) => {
         const raw = normalizeNumericDraft(e.target.value);
         setDraft(raw);
+        if (commitMode === "blur") return;
         if (raw.trim() === "") return;
         const v = Number(raw);
         if (!Number.isFinite(v)) return;
