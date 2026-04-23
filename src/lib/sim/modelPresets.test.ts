@@ -9,6 +9,7 @@ import {
   saveUserPresets,
   addUserPreset,
   deleteUserPreset,
+  sanitizeControlsForBasicMode,
 } from "./modelPresets";
 
 const baseState: ControlsState = {
@@ -84,6 +85,47 @@ describe("STANDARD_PRESETS", () => {
       expect(typeof next.roiStdErr).toBe("number");
       expect(Number.isFinite(next.roiStdErr)).toBe(true);
     }
+  });
+});
+
+describe("sanitizeControlsForBasicMode", () => {
+  it("strips variance-profile noise from custom/basic runs", () => {
+    const next = sanitizeControlsForBasicMode({
+      ...baseState,
+      modelPresetId: "custom",
+      roiStdErr: 0.07,
+      roiShockPerTourney: 0.11,
+      roiShockPerSession: 0.09,
+      roiDriftSigma: 0.03,
+      tiltFastGain: -0.25,
+      tiltFastScale: 1400,
+      tiltSlowGain: 0.05,
+      tiltSlowThreshold: 4500,
+    });
+    expect(next.modelPresetId).toBe("custom");
+    expect(next.finishModelId).toBe(baseState.finishModelId);
+    expect(next.roiStdErr).toBe(0);
+    expect(next.roiShockPerTourney).toBe(0);
+    expect(next.roiShockPerSession).toBe(0);
+    expect(next.roiDriftSigma).toBe(0);
+    expect(next.tiltFastGain).toBe(0);
+    expect(next.tiltFastScale).toBe(0);
+    expect(next.tiltSlowGain).toBe(0);
+    expect(next.tiltSlowThreshold).toBe(0);
+  });
+
+  it("drops built-in advanced presets back to naive in basic mode", () => {
+    const steady = STANDARD_PRESETS.find((preset) => preset.id === "steady-reg");
+    expect(steady).toBeTruthy();
+    const advanced = applyModelPatch(baseState, steady!.patch, steady!.id);
+    const next = sanitizeControlsForBasicMode(advanced);
+    expect(next.modelPresetId).toBe("naive");
+    expect(next.finishModelId).toBe(
+      STANDARD_PRESETS.find((preset) => preset.id === "naive")!.patch.finishModelId,
+    );
+    expect(next.roiStdErr).toBe(0);
+    expect(next.roiShockPerTourney).toBe(0);
+    expect(next.tiltSlowGain).toBe(0);
   });
 });
 

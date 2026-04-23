@@ -3,6 +3,10 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
+import {
+  STANDARD_PRESETS,
+  applyModelPatch,
+} from "@/lib/sim/modelPresets";
 import type { ProgressStage } from "@/lib/sim/useSimulation";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -213,6 +217,11 @@ export const ControlsPanel = memo(function ControlsPanel({
   const setTournamentTarget = (target: number) => {
     onTournamentTargetChange(Math.max(1, Math.floor(target)));
   };
+  const applyPreset = (presetId: string) => {
+    const preset = STANDARD_PRESETS.find((entry) => entry.id === presetId);
+    if (!preset) return;
+    onChange(applyModelPatch(value, preset.patch, preset.id));
+  };
 
   const handleEmpiricalPaste = (raw: string) => {
     setEmpError(null);
@@ -315,6 +324,31 @@ export const ControlsPanel = memo(function ControlsPanel({
             <option value="primedope">{t("controls.compareMode.primedope")}</option>
           </select>
         </Field>
+      </div>
+      <SectionTitle>{t("preset.label")}</SectionTitle>
+      <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+        {STANDARD_PRESETS.map((preset) => {
+          const active = value.modelPresetId === preset.id;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => applyPreset(preset.id)}
+              className={`flex flex-col items-start gap-1 rounded-md border px-3 py-2 text-left transition-colors ${
+                active
+                  ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/8"
+                  : "border-[color:var(--color-border)] bg-[color:var(--color-bg)] hover:border-[color:var(--color-accent)]/60"
+              }`}
+            >
+              <span className="text-sm font-semibold text-[color:var(--color-fg)]">
+                {t(preset.labelKey)}
+              </span>
+              <span className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+                {t(preset.taglineKey)}
+              </span>
+            </button>
+          );
+        })}
       </div>
       {/* Section B — Skill model (how ROI maps to finish positions) */}
       <SectionTitle>{t("controls.section.skill")}</SectionTitle>

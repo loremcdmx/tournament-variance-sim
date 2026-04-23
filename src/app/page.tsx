@@ -31,6 +31,7 @@ import { plural, WORDS } from "@/lib/i18n/plural";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { SCENARIOS } from "@/lib/scenarios";
+import { sanitizeControlsForBasicMode } from "@/lib/sim/modelPresets";
 
 const scenarioDerived = new Map(
   SCENARIOS.map((s) => {
@@ -240,37 +241,42 @@ export default function Home() {
   useEffect(() => clearPendingInterrupt, [clearPendingInterrupt]);
 
   const buildInput = useCallback(
-    (s: TournamentRow[], c: ControlsState): SimulationInput => ({
-      schedule: s,
-      scheduleRepeats: c.scheduleRepeats,
-      samples: c.samples,
-      bankroll: c.bankroll,
-      seed: c.seed >>> 0,
-      finishModel: {
-        id: c.finishModelId,
-        alpha: c.alphaOverride ?? undefined,
-        empiricalBuckets:
-          c.finishModelId === "empirical" ? c.empiricalBuckets : undefined,
-      },
-      compareWithPrimedope: c.compareWithPrimedope,
-      usePrimedopePayouts: c.usePrimedopePayouts,
-      usePrimedopeFinishModel: c.usePrimedopeFinishModel,
-      usePrimedopeRakeMath: c.usePrimedopeRakeMath,
-      compareMode: c.compareMode,
-      modelPresetId: c.modelPresetId,
-      roiStdErr: c.roiStdErr,
-      roiShockPerTourney: c.roiShockPerTourney,
-      roiShockPerSession: c.roiShockPerSession,
-      roiDriftSigma: c.roiDriftSigma,
-      tiltFastGain: c.tiltFastGain,
-      tiltFastScale: c.tiltFastScale,
-      tiltSlowGain: c.tiltSlowGain,
-      tiltSlowThreshold: c.tiltSlowThreshold,
-      tiltSlowMinDuration: c.tiltSlowMinDuration,
-      tiltSlowRecoveryFrac: c.tiltSlowRecoveryFrac,
-      rakebackFracOfRake: c.rakebackPct / 100,
-    }),
-    [],
+    (s: TournamentRow[], c: ControlsState): SimulationInput => {
+      const effectiveControls = advanced ? c : sanitizeControlsForBasicMode(c);
+      return {
+        schedule: s,
+        scheduleRepeats: effectiveControls.scheduleRepeats,
+        samples: effectiveControls.samples,
+        bankroll: effectiveControls.bankroll,
+        seed: effectiveControls.seed >>> 0,
+        finishModel: {
+          id: effectiveControls.finishModelId,
+          alpha: effectiveControls.alphaOverride ?? undefined,
+          empiricalBuckets:
+            effectiveControls.finishModelId === "empirical"
+              ? effectiveControls.empiricalBuckets
+              : undefined,
+        },
+        compareWithPrimedope: effectiveControls.compareWithPrimedope,
+        usePrimedopePayouts: effectiveControls.usePrimedopePayouts,
+        usePrimedopeFinishModel: effectiveControls.usePrimedopeFinishModel,
+        usePrimedopeRakeMath: effectiveControls.usePrimedopeRakeMath,
+        compareMode: effectiveControls.compareMode,
+        modelPresetId: effectiveControls.modelPresetId,
+        roiStdErr: effectiveControls.roiStdErr,
+        roiShockPerTourney: effectiveControls.roiShockPerTourney,
+        roiShockPerSession: effectiveControls.roiShockPerSession,
+        roiDriftSigma: effectiveControls.roiDriftSigma,
+        tiltFastGain: effectiveControls.tiltFastGain,
+        tiltFastScale: effectiveControls.tiltFastScale,
+        tiltSlowGain: effectiveControls.tiltSlowGain,
+        tiltSlowThreshold: effectiveControls.tiltSlowThreshold,
+        tiltSlowMinDuration: effectiveControls.tiltSlowMinDuration,
+        tiltSlowRecoveryFrac: effectiveControls.tiltSlowRecoveryFrac,
+        rakebackFracOfRake: effectiveControls.rakebackPct / 100,
+      };
+    },
+    [advanced],
   );
 
   const itmTargetCfg = useMemo(
@@ -294,6 +300,11 @@ export default function Home() {
   const deferredSchedule = useDeferredValue(effectiveSchedule);
   const deferredScheduleRepeats = useDeferredValue(controls.scheduleRepeats);
   const deferredControls = useDeferredValue(controls);
+  const effectiveResultsControls = useMemo(
+    () => (advanced ? controls : sanitizeControlsForBasicMode(controls)),
+    [advanced, controls],
+  );
+  const deferredResultsControls = useDeferredValue(effectiveResultsControls);
 
   const previewModel = useMemo(
     () => ({
@@ -1108,14 +1119,14 @@ export default function Home() {
             <ResultsView
               result={result}
               compareResult={compareSlot?.result ?? null}
-              bankroll={deferredControls.bankroll}
+              bankroll={deferredResultsControls.bankroll}
               schedule={deferredSchedule}
               scheduleRepeats={deferredScheduleRepeats}
-              compareMode={deferredControls.compareMode}
-              modelPresetId={deferredControls.modelPresetId}
-              finishModelId={deferredControls.finishModelId}
+              compareMode={deferredResultsControls.compareMode}
+              modelPresetId={deferredResultsControls.modelPresetId}
+              finishModelId={deferredResultsControls.finishModelId}
               finishModel={deferredPreviewModel}
-              settings={deferredControls}
+              settings={deferredResultsControls}
               elapsedMs={elapsedMs}
               availableRuns={availableRuns}
               activeRunIdx={activeRunIdx}
