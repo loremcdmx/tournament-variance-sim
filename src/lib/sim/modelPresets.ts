@@ -92,11 +92,14 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     patch: {
       ...ZERO_SHOCKS,
       roiStdErr: 0.03,
-      roiShockPerTourney: 0,
-      roiShockPerSession: 0,
-      roiDriftSigma: 0,
-      tiltFastGain: 0,
-      tiltFastScale: 0
+      roiShockPerTourney: 0.3,
+      roiShockPerSession: 0.05,
+      roiDriftSigma: 0.01,
+      tiltFastGain: -0.15,
+      // Historical solo-mode scale used ABI-like semantics; keep the preset
+      // meaningful under the current "$ drawdown" engine by using a
+      // conservative absolute threshold instead of the old raw "50".
+      tiltFastScale: 2500,
     },
   },
   {
@@ -106,18 +109,30 @@ export const STANDARD_PRESETS: ModelPreset[] = [
     patch: {
       ...ZERO_SHOCKS,
       roiStdErr: 0.02,
-      roiShockPerTourney: 0,
-      roiShockPerSession: 0,
-      roiDriftSigma: 0,
+      roiShockPerTourney: 0.25,
+      roiShockPerSession: 0.04,
+      roiDriftSigma: 0.015,
       tiltFastGain: 0,
       tiltFastScale: 0,
-      tiltSlowGain: 0,
-      tiltSlowThreshold: 0,
+      tiltSlowGain: 0.05,
+      tiltSlowThreshold: 5000,
       tiltSlowMinDuration: 500,
       tiltSlowRecoveryFrac: 0.5,
     },
   },
 ];
+
+const NAIVE_PRESET = (() => {
+  const preset = STANDARD_PRESETS.find((entry) => entry.id === "naive");
+  if (!preset) {
+    throw new Error('STANDARD_PRESETS must include a "naive" preset');
+  }
+  return preset;
+})();
+
+const ADVANCED_ONLY_PRESET_IDS = new Set(
+  STANDARD_PRESETS.filter((preset) => preset.id !== "naive").map((preset) => preset.id),
+);
 
 /** Apply a model patch to a ControlsState, returning a new state. */
 export function applyModelPatch(
@@ -147,6 +162,36 @@ export function extractModelPatch(state: ControlsState): ModelPatch {
     tiltSlowThreshold: state.tiltSlowThreshold,
     tiltSlowMinDuration: state.tiltSlowMinDuration,
     tiltSlowRecoveryFrac: state.tiltSlowRecoveryFrac,
+  };
+}
+
+/**
+ * Basic mode intentionally ignores the experimental variance-profile layer.
+ * Users can keep advanced presets in local state, but once advanced mode is
+ * off we zero the extra noise/tilt channels and drop built-in profile ids
+ * back to the clean baseline so normal-mode runs stay unchanged.
+ */
+export function sanitizeControlsForBasicMode(
+  state: ControlsState,
+): ControlsState {
+  const stripped: ControlsState = {
+    ...state,
+    roiStdErr: 0,
+    roiShockPerTourney: 0,
+    roiShockPerSession: 0,
+    roiDriftSigma: 0,
+    tiltFastGain: 0,
+    tiltFastScale: 0,
+    tiltSlowGain: 0,
+    tiltSlowThreshold: 0,
+    tiltSlowMinDuration: 500,
+    tiltSlowRecoveryFrac: 0.5,
+  };
+  if (!ADVANCED_ONLY_PRESET_IDS.has(state.modelPresetId)) return stripped;
+  return {
+    ...stripped,
+    ...NAIVE_PRESET.patch,
+    modelPresetId: "naive",
   };
 }
 

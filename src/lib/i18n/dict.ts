@@ -597,13 +597,13 @@ export const DICT = {
     ru: "Одиночный игрок, как в жизни",
   },
   "preset.realisticSolo.tagline": {
-    en: "Baseline run with your settings — no additional noise channels. Use as a clean reference before adding variance sources.",
-    ru: "Базовый ран с вашими настройками — без дополнительных каналов шума. Используйте как чистый референс перед добавлением источников дисперсии.",
+    en: "Adds player-level uncertainty, tourney/session ROI noise, slow drift, and mild fast tilt. Use as a realistic solo-grinder stress test.",
+    ru: "Добавляет неопределённость по ROI, шум на турнир и сессию, медленный дрейф и мягкий быстрый тильт. Подходит как стресс-тест для одиночного грайндера.",
   },
   "preset.steadyReg.label": { en: "Steady regular", ru: "Стабильный регуляр" },
   "preset.steadyReg.tagline": {
-    en: "Calibrated for a steady, disciplined regular. Baseline run with minimal noise — most sessions play out at your true ROI.",
-    ru: "Откалибровано под стабильного дисциплинированного регуляра. Базовый ран с минимальным шумом — большинство сессий проходят на реальном ROI.",
+    en: "Lower uncertainty than solo mode, but still includes structured ROI noise and a slow tilt that only appears on long deep downswings.",
+    ru: "Менее шумный профиль, чем solo mode, но с сохранённым ROI-шумом и медленным тильтом, который включается только на длинных глубоких даунсвингах.",
   },
   "controls.compareLabel": {
     en: "Compare with PrimeDope",
@@ -890,12 +890,12 @@ export const DICT = {
     ru: "Модель глубоких финишей, чистый базовый ран.",
   },
   "chart.trajectory.ours.cap.realisticSolo": {
-    en: "Deep-finish skill — solo grinder baseline.",
-    ru: "Глубокие финиши — базовый ран одиночного грайндера.",
+    en: "Deep-finish skill + realistic solo-player noise.",
+    ru: "Глубокие финиши + реалистичный шум одиночного игрока.",
   },
   "chart.trajectory.ours.cap.steadyReg": {
-    en: "Deep-finish skill — stable regular baseline.",
-    ru: "Глубокие финиши — базовый ран стабильного регуляра.",
+    en: "Deep-finish skill + disciplined-reg slow-tilt profile.",
+    ru: "Глубокие финиши + slow-tilt профиль дисциплинированного регуляра.",
   },
   "chart.trajectory.ours.cap.custom": {
     en: "Your hand-tuned model.",
