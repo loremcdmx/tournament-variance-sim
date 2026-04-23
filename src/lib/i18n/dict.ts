@@ -2123,6 +2123,18 @@ export const DICT = {
     en: "Bankroll trajectory",
     ru: "Траектория банкролла",
   },
+  "cash.chart.trajectory.bankrollBb": {
+    en: "Bankroll (BB)",
+    ru: "Банкролл (BB)",
+  },
+  "cash.chart.trajectory.bankrollUsd": {
+    en: "Bankroll ($)",
+    ru: "Банкролл ($)",
+  },
+  "cash.chart.trajectory.finalBankroll": {
+    en: "Final bankroll",
+    ru: "Финальный банкролл",
+  },
   "cash.chart.final.title": {
     en: "Final bankroll distribution",
     ru: "Распределение финального BR",

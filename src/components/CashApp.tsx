@@ -1,10 +1,28 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import uPlot from "uplot";
 import { Section, Card } from "@/components/ui/Section";
-import { UplotChart } from "@/components/charts/UplotChart";
+import { UplotChart, type CursorInfo } from "@/components/charts/UplotChart";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
+import {
+  DEFAULT_LINE_STYLE_PRESET,
+  LINE_STYLE_PRESETS,
+  loadLineStylePreset,
+  saveLineStylePreset,
+  type LineStyle,
+} from "@/lib/lineStyles";
+import { visualDistanceToSeries } from "@/lib/results/trajectoryHitTest";
 import {
   buildCashResult,
   makeCashEnvGrid,
@@ -21,8 +39,12 @@ import type {
   CashResult,
   CashStakeRow,
 } from "@/lib/sim/cashTypes";
+import { rankedRunIndices, type RunMode } from "@/lib/trajectorySelection";
+import type { DictKey } from "@/lib/i18n/dict";
 
 const STORAGE_KEY = "tvs:cash-input";
+const CASH_TRAJECTORY_RUN_CAP = 120;
+const CASH_PATH_HIT_PX = 20;
 
 const DEFAULT_INPUT: CashInput = {
   type: "cash",
@@ -57,6 +79,66 @@ function saveInput(next: CashInput): void {
   } catch {
     // localStorage full / unavailable — silently drop; UI still works.
   }
+}
+
+function parseRgb(css: string): [number, number, number] {
+  const m = css.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])];
+  const hex = css.match(/^#([0-9a-f]{6})$/i);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  }
+  return [200, 200, 200];
+}
+
+function pathStyleForCount(
+  base: LineStyle,
+  count: number,
+): { stroke: string; width: number } {
+  const [r, g, b] = parseRgb(base.stroke);
+  const n = Math.max(1, count);
+  const alpha = Math.min(0.9, Math.max(0.04, 0.9 / Math.sqrt(n)));
+  const width = Math.min(1.6, Math.max(0.55, 1.55 - 0.115 * Math.log2(n)));
+  return { stroke: `rgba(${r},${g},${b},${alpha.toFixed(3)})`, width };
+}
+
+function buildLinearRef(x: readonly number[], slopePerX: number): number[] {
+  return x.map((v) => v * slopePerX);
+}
+
+type CashTrajectoryLineKind = "mean" | "band" | "path" | "ref";
+
+interface CashTrajectoryLineMeta {
+  label: string;
+  color: string;
+  seriesIdx: number;
+  kind: CashTrajectoryLineKind;
+  percentile?: number;
+  rank?: number;
+}
+
+function alignCashPathToEnvX(
+  envX: readonly number[],
+  hiX: ArrayLike<number>,
+  path: ArrayLike<number>,
+): number[] {
+  const out = new Array<number>(envX.length);
+  let j = 0;
+  for (let i = 0; i < envX.length; i++) {
+    const target = envX[i];
+    while (j + 1 < hiX.length && hiX[j + 1] <= target) j++;
+    out[i] = path[j] ?? 0;
+  }
+  return out;
+}
+
+function formatBb(v: number): string {
+  return v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function formatUsd(v: number): string {
+  return "$" + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
 export const CashApp = memo(function CashApp() {
@@ -570,107 +652,656 @@ function TrajectoryChart({
   result: CashResult;
   bbSize: number;
 }) {
-  // X axis is hands (envelope grid). Y axis in BB; no USD lens applied here
-  // for clarity — bbSize shows up in the stats panel.
-  void bbSize;
+  const t = useT();
+  const [linePresetId] = useLocalStorageState(
+    "tvs.lineStylePreset.v1",
+    loadLineStylePreset,
+    saveLineStylePreset,
+    DEFAULT_LINE_STYLE_PRESET,
+  );
+  const linePreset = LINE_STYLE_PRESETS[linePresetId];
+  const maxRuns = Math.min(CASH_TRAJECTORY_RUN_CAP, result.samplePaths.paths.length);
+  const [desiredVisibleRuns, setDesiredVisibleRuns] = useState(80);
+  const [runMode, setRunMode] = useState<RunMode>("random");
+  const [cursor, setCursor] = useState<CursorInfo | null>(null);
+  const plotRef = useRef<uPlot | null>(null);
+  const hlCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [xZoomed, setXZoomed] = useState(false);
 
-  const data = useMemo(() => {
+  const visibleRuns =
+    maxRuns <= 0 ? 0 : Math.max(1, Math.min(desiredVisibleRuns, maxRuns));
+  const deferredVisibleRuns = useDeferredValue(visibleRuns);
+
+  const assets = useMemo(() => {
     const env = result.envelopes;
     const x = Array.from(env.x, (h) => h);
-    const p05 = Array.from(env.p05);
-    const p95 = Array.from(env.p95);
-    const p15 = Array.from(env.p15);
-    const p85 = Array.from(env.p85);
-    const mean = Array.from(env.mean);
-    // Up to N hi-res sample paths layered underneath the envelopes.
-    const HI_PATH_SHOW = 30;
-    const paths = result.samplePaths.paths.slice(0, HI_PATH_SHOW);
-    // Pad hi-res paths to env x-axis length by sampling nearest index. The
-    // two grids have different K but both cover [0, hands], so we align by
-    // hand value rather than index.
-    const hiX = result.samplePaths.x;
-    const aligned: number[][] = paths.map((p) => {
-      const out = new Array<number>(x.length);
-      let j = 0;
-      for (let i = 0; i < x.length; i++) {
-        const target = env.x[i];
-        while (j + 1 < hiX.length && hiX[j + 1] <= target) j++;
-        out[i] = p[j];
-      }
-      return out;
-    });
-    return [x, p05, p15, mean, p85, p95, ...aligned] as Array<
-      (number | null)[]
-    >;
-  }, [result]);
-
-  const series = useMemo(() => {
-    const HI_PATH_SHOW = 30;
-    const pathCount = Math.min(HI_PATH_SHOW, result.samplePaths.paths.length);
-    // points.show: false kills the per-sample dot markers uPlot draws by
-    // default at every x. With 30 hi-res paths layered behind envelopes the
-    // chart turns into a noise field without this.
+    const data: Array<(number | null)[]> = [x];
     const noPoints = { show: false as const };
-    const s: NonNullable<Parameters<typeof UplotChart>[0]["options"]>["series"] =
-      [
-        {},
-        {
-          stroke: "rgba(255,80,80,0.55)",
-          width: 1,
-          label: "p05",
-          points: noPoints,
-        },
-        {
-          stroke: "rgba(255,170,80,0.5)",
-          width: 1,
-          label: "p15",
-          points: noPoints,
-        },
-        {
-          stroke: "var(--color-accent)",
-          width: 2.2,
-          label: "mean",
-          points: noPoints,
-        },
-        {
-          stroke: "rgba(80,200,130,0.5)",
-          width: 1,
-          label: "p85",
-          points: noPoints,
-        },
-        {
-          stroke: "rgba(80,180,255,0.55)",
-          width: 1,
-          label: "p95",
-          points: noPoints,
-        },
-      ];
-    for (let i = 0; i < pathCount; i++) {
-      s.push({
-        stroke: "rgba(150,150,170,0.14)",
-        width: 0.8,
-        label: `r${i}`,
-        points: noPoints,
-      });
-    }
-    return s;
-  }, [result]);
+    const series: NonNullable<Parameters<typeof UplotChart>[0]["options"]>["series"] = [
+      {},
+    ];
+    const lines: CashTrajectoryLineMeta[] = [];
+    const pushSeries = (
+      arr: number[],
+      opt: NonNullable<Parameters<typeof UplotChart>[0]["options"]>["series"][number],
+      meta: Omit<CashTrajectoryLineMeta, "seriesIdx">,
+    ) => {
+      const idx = data.length;
+      data.push(arr);
+      series.push(opt);
+      lines.push({ ...meta, seriesIdx: idx });
+    };
 
-  return (
-    <UplotChart
-      data={data as unknown as Parameters<typeof UplotChart>[0]["data"]}
-      options={{
+    pushSeries(
+      buildLinearRef(x, result.stats.expectedEvBb / Math.max(1, x[x.length - 1] ?? 1)),
+      {
+        stroke: linePreset.ev.stroke,
+        width: linePreset.ev.width,
+        dash: linePreset.ev.dash,
+        points: noPoints,
+        label: "EV",
+      },
+      { label: "EV", color: linePreset.ev.stroke, kind: "ref" },
+    );
+    pushSeries(
+      Array.from(env.p025),
+      {
+        stroke: linePreset.bandWide.stroke,
+        width: linePreset.bandWide.width,
+        dash: linePreset.bandWide.dash,
+        points: noPoints,
+        label: "p2.5",
+      },
+      { label: "p2.5", color: linePreset.bandWide.stroke, kind: "band", percentile: 0.025 },
+    );
+    pushSeries(
+      Array.from(env.p975),
+      {
+        stroke: linePreset.bandWide.stroke,
+        width: linePreset.bandWide.width,
+        dash: linePreset.bandWide.dash,
+        points: noPoints,
+        label: "p97.5",
+      },
+      { label: "p97.5", color: linePreset.bandWide.stroke, kind: "band", percentile: 0.975 },
+    );
+    pushSeries(
+      Array.from(env.p15),
+      {
+        stroke: linePreset.bandNarrow.stroke,
+        width: linePreset.bandNarrow.width,
+        points: noPoints,
+        label: "p15",
+      },
+      { label: "p15", color: linePreset.bandNarrow.stroke, kind: "band", percentile: 0.15 },
+    );
+    pushSeries(
+      Array.from(env.p85),
+      {
+        stroke: linePreset.bandNarrow.stroke,
+        width: linePreset.bandNarrow.width,
+        points: noPoints,
+        label: "p85",
+      },
+      { label: "p85", color: linePreset.bandNarrow.stroke, kind: "band", percentile: 0.85 },
+    );
+    pushSeries(
+      Array.from(env.mean),
+      {
+        stroke: linePreset.mean.stroke,
+        width: linePreset.mean.width,
+        points: noPoints,
+        label: "mean",
+      },
+      { label: "mean", color: linePreset.mean.stroke, kind: "mean" },
+    );
+    pushSeries(
+      Array.from(env.p05),
+      {
+        stroke: linePreset.p05.stroke,
+        width: linePreset.p05.width,
+        dash: linePreset.p05.dash,
+        points: noPoints,
+        label: "p5",
+      },
+      { label: "p5", color: linePreset.p05.stroke, kind: "band", percentile: 0.05 },
+    );
+    pushSeries(
+      Array.from(env.p95),
+      {
+        stroke: linePreset.p95.stroke,
+        width: linePreset.p95.width,
+        dash: linePreset.p95.dash,
+        points: noPoints,
+        label: "p95",
+      },
+      { label: "p95", color: linePreset.p95.stroke, kind: "band", percentile: 0.95 },
+    );
+    pushSeries(
+      buildLinearRef(x, 0),
+      {
+        stroke: "#6b7280",
+        width: 1,
+        points: noPoints,
+        label: "zero",
+      },
+      { label: "zero", color: "#6b7280", kind: "ref" },
+    );
+
+    const ranked = rankedRunIndices(result.samplePaths.paths, runMode);
+    const pathCount = Math.min(deferredVisibleRuns, ranked.length);
+    const pathStyle = pathStyleForCount(linePreset.path, Math.max(1, pathCount));
+    const [pathR, pathG, pathB] = parseRgb(pathStyle.stroke);
+    const baseAlpha =
+      Number(pathStyle.stroke.match(/rgba?\([^)]*?,([^,)]+)\)/i)?.[1] ?? 0.4);
+    const hiX = result.samplePaths.x;
+    const pathFinals = result.samplePaths.paths.map((path, idx) => ({
+      idx,
+      final: path[path.length - 1] ?? 0,
+    }));
+    pathFinals.sort((a, b) => a.final - b.final || a.idx - b.idx);
+    const polarity = new Float64Array(result.samplePaths.paths.length);
+    const denom = Math.max(1, pathFinals.length - 1);
+    for (let k = 0; k < pathFinals.length; k++) {
+      const q = k / denom;
+      polarity[pathFinals[k].idx] = Math.abs(2 * q - 1);
+    }
+
+    for (let rank = 0; rank < pathCount; rank++) {
+      const runIdx = ranked[rank];
+      const boost = polarity[runIdx] >= 0.98 ? 1.2 : 1;
+      const alpha = Math.min(0.95, baseAlpha * boost);
+      const width = pathStyle.width * boost;
+      const stroke = `rgba(${pathR},${pathG},${pathB},${alpha.toFixed(3)})`;
+      pushSeries(
+        alignCashPathToEnvX(x, hiX, result.samplePaths.paths[runIdx]),
+        {
+          stroke,
+          width,
+          points: noPoints,
+          label: `Run ${result.samplePaths.sampleIndices[runIdx] + 1}`,
+        },
+        {
+          label: `Run ${result.samplePaths.sampleIndices[runIdx] + 1}`,
+          color: stroke,
+          kind: "path",
+          rank,
+        },
+      );
+    }
+
+    return {
+      data: data as unknown as Parameters<typeof UplotChart>[0]["data"],
+      options: {
         series,
         cursor: { show: true, points: { show: false } },
         legend: { show: false },
-        scales: { x: { time: false } },
+        scales: {
+          x: { time: false },
+          y: {
+            auto: true,
+          },
+        },
         axes: [
           { label: "hands" },
-          { label: "BB", size: 55 },
+          {
+            label: "BB",
+            size: 55,
+            values: (_u: uPlot, splits: number[]) =>
+              splits.map((v) => formatBb(v)),
+          },
         ],
-      }}
-      height={320}
-    />
+      } satisfies Omit<Parameters<typeof UplotChart>[0]["options"], "width" | "height">,
+      lines,
+      xMin: Number(x[0] ?? 0),
+      xMax: Number(x[x.length - 1] ?? 0),
+    };
+  }, [deferredVisibleRuns, linePreset, result, runMode]);
+
+  const legendItems = useMemo(
+    () => [
+      {
+        key: "ev",
+        label: t("chart.traj.legend.ev"),
+        color: linePreset.ev.stroke,
+        dash: true,
+      },
+      deferredVisibleRuns > 0 && {
+        key: "runs",
+        label: t("chart.traj.legend.runs").replace(
+          "{n}",
+          deferredVisibleRuns.toLocaleString(),
+        ),
+        color: linePreset.path.stroke,
+      },
+      {
+        key: "bands",
+        label: t("chart.traj.legend.bands"),
+        color: linePreset.bandNarrow.stroke,
+      },
+    ].filter(Boolean) as Array<{
+      key: string;
+      label: string;
+      color: string;
+      dash?: boolean;
+    }>,
+    [deferredVisibleRuns, linePreset, t],
+  );
+
+  const handlePlotReady = useCallback((plot: uPlot | null) => {
+    plotRef.current = plot;
+  }, []);
+  const handleScaleChange = useCallback(
+    (scaleKey: string, min: number | null, max: number | null) => {
+      if (scaleKey !== "x") return;
+      if (min == null || max == null || !Number.isFinite(min) || !Number.isFinite(max)) {
+        setXZoomed(false);
+        return;
+      }
+      const span = Math.max(1, assets.xMax - assets.xMin);
+      const eps = span * 1e-6;
+      setXZoomed(
+        Math.abs(min - assets.xMin) > eps || Math.abs(max - assets.xMax) > eps,
+      );
+    },
+    [assets.xMax, assets.xMin],
+  );
+  const resetZoom = useCallback(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    plot.setScale("x", { min: assets.xMin, max: assets.xMax });
+  }, [assets.xMax, assets.xMin]);
+
+  const idx = cursor?.idx;
+  const hands = idx != null ? Math.round((assets.data[0] as number[])[idx] ?? 0) : 0;
+  let nearest: CashTrajectoryLineMeta | null = null;
+  let nearestVal = 0;
+  let nearestPath: CashTrajectoryLineMeta | null = null;
+  let nearestPathVal = 0;
+  if (cursor && idx != null) {
+    let bestDist = Infinity;
+    let bestPathPxDist = Infinity;
+    for (const line of assets.lines) {
+      const arr = assets.data[line.seriesIdx] as ArrayLike<number | null> | undefined;
+      if (!arr) continue;
+      const v = arr[idx];
+      const hasVisibleValue = v != null && Number.isFinite(v);
+      const tooltipValue = hasVisibleValue ? Number(v) : cursor.valY;
+      if (hasVisibleValue) {
+        const d = Math.abs(Number(v) - cursor.valY);
+        if (d < bestDist) {
+          bestDist = d;
+          nearest = line;
+          nearestVal = tooltipValue;
+        }
+      }
+      if (line.kind === "path") {
+        const pxDist = visualDistanceToSeries(
+          cursor,
+          assets.data[0] as ArrayLike<number>,
+          arr,
+        );
+        if (pxDist < bestPathPxDist) {
+          bestPathPxDist = pxDist;
+          nearestPath = line;
+          nearestPathVal = tooltipValue;
+        }
+      }
+    }
+    if (nearestPath && bestPathPxDist <= CASH_PATH_HIT_PX) {
+      nearest = nearestPath;
+      nearestVal = nearestPathVal;
+    }
+  }
+
+  const focusedSeriesIdx = nearest?.kind === "path" ? nearest.seriesIdx : null;
+  const focusedPathStats = useMemo(() => {
+    if (focusedSeriesIdx == null) return null;
+    const yArr = assets.data[focusedSeriesIdx] as ArrayLike<number> | undefined;
+    const xArr = assets.data[0] as ArrayLike<number> | undefined;
+    if (!yArr || !xArr || yArr.length === 0) return null;
+
+    let peak = -Infinity;
+    let maxDd = 0;
+    let ddStart = 0;
+    let ddEnd = 0;
+    let curPeakIdx = 0;
+    for (let i = 0; i < yArr.length; i++) {
+      const v = yArr[i];
+      if (!Number.isFinite(v)) continue;
+      if (v > peak) {
+        peak = v;
+        curPeakIdx = i;
+      }
+      const dd = peak - v;
+      if (dd > maxDd) {
+        maxDd = dd;
+        ddStart = curPeakIdx;
+        ddEnd = i;
+      }
+    }
+
+    let longestBelowPeak = 0;
+    let belowPeakStart = 0;
+    let belowPeakEnd = 0;
+    peak = -Infinity;
+    let streakStart = 0;
+    let streakLen = 0;
+    for (let i = 0; i < yArr.length; i++) {
+      const v = yArr[i];
+      if (!Number.isFinite(v)) continue;
+      if (v > peak) {
+        peak = v;
+        streakStart = i;
+        streakLen = 0;
+      } else {
+        streakLen++;
+        if (streakLen > longestBelowPeak) {
+          longestBelowPeak = streakLen;
+          belowPeakStart = streakStart;
+          belowPeakEnd = i;
+        }
+      }
+    }
+
+    const handAt = (i: number) => Math.round(xArr[i] ?? 0);
+    return {
+      finalBb: yArr[yArr.length - 1] ?? 0,
+      maxDd,
+      ddStart,
+      ddEnd,
+      ddHands: Math.max(0, handAt(ddEnd) - handAt(ddStart)),
+      belowPeakHands:
+        longestBelowPeak > 0
+          ? Math.max(0, handAt(belowPeakEnd) - handAt(belowPeakStart))
+          : 0,
+    };
+  }, [assets.data, focusedSeriesIdx]);
+
+  useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    let canvas = hlCanvasRef.current;
+    if (!canvas || !plot.over.contains(canvas)) {
+      canvas = document.createElement("canvas");
+      canvas.style.position = "absolute";
+      canvas.style.left = "0";
+      canvas.style.top = "0";
+      canvas.style.pointerEvents = "none";
+      canvas.style.zIndex = "5";
+      plot.over.appendChild(canvas);
+      hlCanvasRef.current = canvas;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = plot.over.clientWidth;
+    const h = plot.over.clientHeight;
+    const dpr = devicePixelRatio;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (focusedSeriesIdx == null) return;
+    const xArr = assets.data[0] as ArrayLike<number>;
+    const yArr = assets.data[focusedSeriesIdx] as ArrayLike<number>;
+    if (!xArr || !yArr) return;
+
+    const strokeSegment = (
+      startIdx: number,
+      endIdx: number,
+      stroke: string,
+      width: number,
+    ) => {
+      ctx.save();
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      let started = false;
+      for (let i = startIdx; i <= endIdx; i++) {
+        const xVal = xArr[i];
+        const yVal = yArr[i];
+        if (xVal == null || yVal == null || !Number.isFinite(yVal)) continue;
+        const px = plot.valToPos(xVal, "x", false);
+        const py = plot.valToPos(yVal, "y", false);
+        if (!started) {
+          ctx.moveTo(px, py);
+          started = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    strokeSegment(0, xArr.length - 1, "rgba(253,230,138,0.9)", 2.5);
+    if (focusedPathStats && focusedPathStats.ddEnd > focusedPathStats.ddStart) {
+      strokeSegment(
+        focusedPathStats.ddStart,
+        focusedPathStats.ddEnd,
+        "rgba(248,113,113,0.95)",
+        3,
+      );
+    }
+  }, [assets.data, focusedPathStats, focusedSeriesIdx]);
+
+  const kindLabel = (line: CashTrajectoryLineMeta): string => {
+    switch (line.kind) {
+      case "mean":
+        return t("chart.traj.kind.mean");
+      case "band":
+        return t("chart.traj.kind.band");
+      case "path":
+        return t("chart.traj.kind.path");
+      case "ref":
+        return t("chart.traj.kind.ref");
+    }
+  };
+
+  const winrateSoFar = hands > 0 ? (nearestVal / hands) * 100 : null;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {maxRuns > 0 && (
+        <div className="flex flex-col gap-3 border-b border-[color:var(--color-border)] pb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {legendItems.map((item) => (
+              <span
+                key={item.key}
+                className="inline-flex max-w-full items-center gap-1.5 rounded border border-[color:var(--color-border)]/55 bg-[color:var(--color-bg)]/55 px-2 py-1 text-[10px] font-medium text-[color:var(--color-fg-muted)]"
+              >
+                <span
+                  className={`inline-block h-0 w-5 border-t-2 ${item.dash ? "border-dashed" : ""}`}
+                  style={{ borderColor: item.color }}
+                  aria-hidden
+                />
+                <span className="truncate">{item.label}</span>
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <label className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="eyebrow text-[10px] text-[color:var(--color-fg-dim)]">
+                {t("runs.label")}
+              </span>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={1}
+                  max={maxRuns}
+                  step={1}
+                  value={visibleRuns}
+                  onChange={(e) => setDesiredVisibleRuns(Number(e.target.value))}
+                  className="w-full accent-[color:var(--color-accent)]"
+                  aria-label={t("runs.label")}
+                />
+                <span className="min-w-[58px] text-right font-mono text-[11px] tabular-nums text-[color:var(--color-fg)]">
+                  {visibleRuns}/{maxRuns}
+                </span>
+              </div>
+            </label>
+            <RunModeSlider value={runMode} onChange={setRunMode} t={t} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[10px] text-[color:var(--color-fg-dim)]">
+            <span>{t("chart.traj.zoomHint")}</span>
+            <span className="text-[color:var(--color-border-strong)]">/</span>
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="inline-block h-[3px] w-3 rounded-sm"
+                style={{ background: "rgba(248,113,113,0.95)" }}
+                aria-hidden
+              />
+              {t("chart.traj.hoverHint.maxDd")}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {xZoomed && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={resetZoom}
+            className="rounded border border-[color:var(--color-accent)]/50 bg-[color:var(--color-bg)]/85 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] shadow-sm transition hover:bg-[color:var(--color-accent)] hover:text-black"
+            title={t("chart.traj.resetZoom")}
+          >
+            {t("chart.traj.resetZoom")}
+          </button>
+        </div>
+      )}
+
+      <UplotChart
+        data={assets.data}
+        options={assets.options}
+        height={360}
+        onCursor={setCursor}
+        onPlotReady={handlePlotReady}
+        onScaleChange={handleScaleChange}
+        onDoubleClick={resetZoom}
+      />
+
+      {cursor && idx != null && nearest && (
+        <div className="overflow-hidden rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 text-[11px] shadow-xl backdrop-blur">
+          <div
+            className="flex items-center gap-2 px-3 py-1.5"
+            style={{
+              background: `linear-gradient(90deg, ${nearest.color}22 0%, transparent 70%)`,
+              borderBottom: "1px solid var(--color-border)",
+            }}
+          >
+            <span
+              className="inline-block h-2.5 w-3 rounded-sm"
+              style={{ background: nearest.color }}
+            />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
+              {nearest.label}
+            </span>
+            <span className="ml-auto text-[9px] text-[color:var(--color-fg-dim)]">
+              {kindLabel(nearest)}
+            </span>
+          </div>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 tabular-nums">
+            <span className="text-[color:var(--color-fg-dim)]">{t("cash.hands.label")}</span>
+            <span className="text-right font-semibold text-[color:var(--color-fg)]">
+              {hands.toLocaleString()}
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">
+              {t("cash.chart.trajectory.bankrollBb")}
+            </span>
+            <span
+              className="text-right font-semibold"
+              style={{
+                color:
+                  nearestVal >= 0 ? "var(--color-success)" : "var(--color-danger)",
+              }}
+            >
+              {formatBb(nearestVal)}
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">
+              {t("cash.chart.trajectory.bankrollUsd")}
+            </span>
+            <span
+              className="text-right font-semibold"
+              style={{
+                color:
+                  nearestVal >= 0 ? "var(--color-success)" : "var(--color-danger)",
+              }}
+            >
+              {formatUsd(nearestVal * bbSize)}
+            </span>
+            <span className="text-[color:var(--color-fg-dim)]">
+              {t("cash.wrBb100.label")}
+            </span>
+            <span
+              className="text-right font-semibold"
+              style={{
+                color:
+                  winrateSoFar != null && winrateSoFar >= 0
+                    ? "var(--color-success)"
+                    : "var(--color-danger)",
+              }}
+            >
+              {winrateSoFar != null ? `${winrateSoFar.toFixed(2)}` : "—"}
+            </span>
+          </div>
+          {focusedPathStats && (
+            <div className="border-t border-[color:var(--color-border)]/50 px-3 py-2">
+              <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                {t("chart.traj.runStats")}
+              </div>
+              <div className="mb-1.5 rounded-sm bg-[color:var(--color-danger)]/8 px-2 py-1.5">
+                <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-danger)]">
+                  <span
+                    className="inline-block h-0.5 w-3 rounded-full"
+                    style={{ background: "rgba(248,113,113,0.95)" }}
+                    aria-hidden
+                  />
+                  {t("chart.traj.maxDD")}
+                </div>
+                <div className="mt-0.5 flex items-baseline gap-1.5 tabular-nums">
+                  <span className="text-[13px] font-bold text-[color:var(--color-danger)]">
+                    {formatBb(focusedPathStats.maxDd)} BB
+                  </span>
+                  <span className="rounded-sm bg-[color:var(--color-danger)]/12 px-1 py-0.5 text-[9px] font-semibold text-[color:var(--color-danger)]">
+                    {formatUsd(focusedPathStats.maxDd * bbSize)}
+                  </span>
+                </div>
+                {focusedPathStats.ddHands > 0 && (
+                  <div className="mt-0.5 text-[9px] text-[color:var(--color-fg-dim)]">
+                    {focusedPathStats.ddHands.toLocaleString()} {t("cash.hands.label").toLowerCase()}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
+                <span className="text-[color:var(--color-fg-dim)]">
+                  {t("cash.chart.trajectory.finalBankroll")}
+                </span>
+                <span
+                  className="text-right font-semibold"
+                  style={{
+                    color:
+                      focusedPathStats.finalBb >= 0
+                        ? "var(--color-success)"
+                        : "var(--color-danger)",
+                  }}
+                >
+                  {formatBb(focusedPathStats.finalBb)} BB
+                </span>
+                <span className="text-[color:var(--color-fg-dim)]">
+                  {t("chart.traj.longestBE")}
+                </span>
+                <span className="text-right text-[color:var(--color-fg)]">
+                  {focusedPathStats.belowPeakHands.toLocaleString()} {t("cash.hands.label").toLowerCase()}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -712,6 +1343,48 @@ function HistogramChart({
       }}
       height={220}
     />
+  );
+}
+
+function RunModeSlider({
+  value,
+  onChange,
+  t,
+}: {
+  value: RunMode;
+  onChange: (v: RunMode) => void;
+  t: ReturnType<typeof useT>;
+}) {
+  const modes: RunMode[] = ["worst", "random", "best"];
+  return (
+    <div
+      className="inline-flex max-w-full overflow-hidden rounded-md border border-[color:var(--color-border)]"
+      role="radiogroup"
+      aria-label={t("runs.mode.title")}
+      title={t("runs.mode.title")}
+    >
+      {modes.map((m, i) => {
+        const active = m === value;
+        return (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(m)}
+            className={
+              "px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors " +
+              (active
+                ? "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"
+                : "bg-[color:var(--color-bg-elev)] text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-bg-elev-2)] hover:text-[color:var(--color-fg)]") +
+              (i > 0 ? " border-l border-[color:var(--color-border)]" : "")
+            }
+          >
+            {t(`runs.mode.${m}` as DictKey)}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
