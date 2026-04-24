@@ -1535,6 +1535,7 @@ function BattleRoyaleLeaderboardPromoSection({
   const t = useT();
   const { money } = useMoneyFmt();
   const isObserved = promo.mode === "observed";
+  const isLookup = promo.mode === "lookup";
   const confidenceTone = isObserved
     ? promo.confidence.level === "aligned"
       ? "border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/8 text-[color:var(--color-accent)]"
@@ -1568,14 +1569,18 @@ function BattleRoyaleLeaderboardPromoSection({
             tip={t(
               isObserved
                 ? "chart.brLeaderboardObserved.tip"
-                : "chart.brLeaderboardManual.tip",
+                : isLookup
+                  ? "chart.brLeaderboardLookup.tip"
+                  : "chart.brLeaderboardManual.tip",
             )}
           />
           <div className="mb-4 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
             {t(
               isObserved
                 ? "chart.brLeaderboardObserved.note"
-                : "chart.brLeaderboardManual.note",
+                : isLookup
+                  ? "chart.brLeaderboardLookup.note"
+                  : "chart.brLeaderboardManual.note",
             )}
           </div>
           <StatGroup title={t("chart.brLeaderboardObserved.groupCurrent")}>
@@ -1676,7 +1681,7 @@ function BattleRoyaleLeaderboardPromoSection({
                 </div>
               </div>
             </>
-          ) : (
+          ) : promo.mode === "manual" ? (
             <StatGroup title={t("chart.brLeaderboardManual.groupAnchor")}>
               <MiniStat
                 suit="club"
@@ -1692,7 +1697,44 @@ function BattleRoyaleLeaderboardPromoSection({
                   .replace(
                     "{tournaments}",
                     promo.current.tournaments.toLocaleString("ru-RU"),
+                )}
+              />
+            </StatGroup>
+          ) : (
+            <StatGroup title={t("chart.brLeaderboardLookup.groupAnchor")}>
+              <MiniStat
+                suit="club"
+                label={t("chart.brLeaderboardLookup.perTournament")}
+                value={money(promo.lookup.payoutPerTournament)}
+                tone={promo.lookup.payoutPerTournament >= 0 ? "pos" : "neg"}
+              />
+              <MiniStat
+                suit="diamond"
+                label={t("chart.brLeaderboardLookup.avgPrize")}
+                value={money(promo.lookup.averageDailyPrize)}
+              />
+              <MiniStat
+                suit="spade"
+                label={t("chart.brLeaderboardLookup.targetPoints")}
+                value={Math.round(promo.lookup.targetPoints).toLocaleString("ru-RU")}
+                detail={t("chart.brLeaderboardLookup.targetDetail")
+                  .replace(
+                    "{tournaments}",
+                    promo.lookup.tournamentsPerDay.toLocaleString("ru-RU"),
+                  )
+                  .replace(
+                    "{points}",
+                    promo.lookup.pointsPerTournament.toLocaleString("ru-RU"),
                   )}
+              />
+              <MiniStat
+                suit="spade"
+                label={t("chart.brLeaderboardLookup.days")}
+                value={promo.lookup.snapshotCount.toLocaleString("ru-RU")}
+                detail={t("chart.brLeaderboardLookup.daysDetail").replace(
+                  "{paid}",
+                  promo.lookup.paidDays.toLocaleString("ru-RU"),
+                )}
               />
             </StatGroup>
           )}
@@ -1749,7 +1791,7 @@ function BattleRoyaleLeaderboardPromoSection({
                   ))}
               </div>
             </div>
-          ) : (
+          ) : promo.mode === "manual" ? (
             <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-3 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
               {t("chart.brLeaderboardManual.anchorNote")
                 .replace("{perTournament}", money(promo.manual.payoutPerTournament))
@@ -1757,6 +1799,17 @@ function BattleRoyaleLeaderboardPromoSection({
                   "{tournaments}",
                   promo.current.tournaments.toLocaleString("ru-RU"),
                 )
+                .replace("{payout}", money(promo.expectedPayout))}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-3 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+              {t("chart.brLeaderboardLookup.anchorNote")
+                .replace("{perTournament}", money(promo.lookup.payoutPerTournament))
+                .replace(
+                  "{days}",
+                  promo.lookup.snapshotCount.toLocaleString("ru-RU"),
+                )
+                .replace("{dailyPrize}", money(promo.lookup.averageDailyPrize))
                 .replace("{payout}", money(promo.expectedPayout))}
             </div>
           )}

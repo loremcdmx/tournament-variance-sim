@@ -1,17 +1,25 @@
 import type {
+  BattleRoyaleLeaderboardLookupSnapshot,
   BattleRoyaleLeaderboardManualConfig,
   BattleRoyaleLeaderboardObservedConfig,
   BattleRoyaleLeaderboardObservedPointsByStake,
   BattleRoyaleLeaderboardPromoConfig,
   TournamentRow,
 } from "./types";
+import {
+  analyzeBattleRoyaleLeaderboardLookup,
+  normalizeBattleRoyaleLeaderboardLookupSnapshots,
+} from "./battleRoyaleLeaderboardLookup";
 
 export interface BattleRoyaleLeaderboardControls {
-  mode: "off" | "observed" | "manual";
+  mode: "off" | "observed" | "manual" | "lookup";
   observedTotalPrizes: number;
   observedTotalTournaments: number;
   observedPointsByStake: BattleRoyaleLeaderboardObservedPointsByStake;
   manualPayoutPerTournament: number;
+  lookupTournamentsPerDay: number;
+  lookupPointsPerTournament: number;
+  lookupSnapshots: BattleRoyaleLeaderboardLookupSnapshot[];
 }
 
 export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS: BattleRoyaleLeaderboardObservedPointsByStake =
@@ -30,6 +38,9 @@ export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS: BattleRoyaleLeaderboard
     observedTotalTournaments: 0,
     observedPointsByStake: DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS,
     manualPayoutPerTournament: 0,
+    lookupTournamentsPerDay: 160,
+    lookupPointsPerTournament: 40,
+    lookupSnapshots: [],
   };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -66,6 +77,8 @@ export function normalizeBattleRoyaleLeaderboardControls(
   const mode =
     value.mode === "observed"
       ? "observed"
+      : value.mode === "lookup"
+        ? "lookup"
       : value.mode === "manual"
         ? "manual"
         : "off";
@@ -81,6 +94,21 @@ export function normalizeBattleRoyaleLeaderboardControls(
       0,
       0,
       1_000_000,
+    ),
+    lookupTournamentsPerDay: finiteOr(
+      value.lookupTournamentsPerDay,
+      DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS.lookupTournamentsPerDay,
+      0,
+      1_000_000,
+    ),
+    lookupPointsPerTournament: finiteOr(
+      value.lookupPointsPerTournament,
+      DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS.lookupPointsPerTournament,
+      0,
+      1_000_000,
+    ),
+    lookupSnapshots: normalizeBattleRoyaleLeaderboardLookupSnapshots(
+      value.lookupSnapshots,
     ),
   };
 }
@@ -124,6 +152,31 @@ function buildManualConfig(
   };
 }
 
+function buildLookupConfig(
+  controls: BattleRoyaleLeaderboardControls,
+): BattleRoyaleLeaderboardPromoConfig | undefined {
+  if (controls.mode !== "lookup") return undefined;
+  const lookup = analyzeBattleRoyaleLeaderboardLookup({
+    tournamentsPerDay: controls.lookupTournamentsPerDay,
+    pointsPerTournament: controls.lookupPointsPerTournament,
+    snapshots: controls.lookupSnapshots,
+  });
+  if (!(lookup.snapshotCount > 0) || !(lookup.tournamentsPerDay > 0)) {
+    return undefined;
+  }
+  if (!(lookup.payoutPerTournament > 0)) return undefined;
+  return {
+    mode: "lookup",
+    payoutPerTournament: lookup.payoutPerTournament,
+    tournamentsPerDay: lookup.tournamentsPerDay,
+    pointsPerTournament: lookup.pointsPerTournament,
+    targetPoints: lookup.targetPoints,
+    snapshotCount: lookup.snapshotCount,
+    paidDays: lookup.paidDays,
+    averageDailyPrize: lookup.averageDailyPrize,
+  };
+}
+
 export function buildBattleRoyaleLeaderboardPromoConfig(
   controls: BattleRoyaleLeaderboardControls | null | undefined,
   schedule: readonly Pick<TournamentRow, "gameType" | "payoutStructure">[],
@@ -131,5 +184,5 @@ export function buildBattleRoyaleLeaderboardPromoConfig(
   if (!scheduleHasBattleRoyaleRows(schedule)) return undefined;
   const cfg =
     controls ?? DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS;
-  return buildObservedConfig(cfg) ?? buildManualConfig(cfg);
+  return buildObservedConfig(cfg) ?? buildManualConfig(cfg) ?? buildLookupConfig(cfg);
 }

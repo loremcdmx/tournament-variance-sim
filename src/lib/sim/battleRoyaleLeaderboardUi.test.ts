@@ -134,6 +134,43 @@ describe("battleRoyaleLeaderboardUi", () => {
     ).toBeUndefined();
   });
 
+  it("emits lookup promo config from imported leaderboard snapshots", () => {
+    const controls = {
+      ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+      mode: "lookup" as const,
+      lookupTournamentsPerDay: 160,
+      lookupPointsPerTournament: 40,
+      lookupSnapshots: [
+        {
+          id: "day-1",
+          entries: [
+            { rank: 1, points: 9200, prize: 30 },
+            { rank: 2, points: 7100, prize: 12.5 },
+            { rank: 3, points: 6400, prize: 8 },
+          ],
+        },
+      ],
+    };
+    const brSchedule = [
+      {
+        id: "br",
+        payoutStructure: "battle-royale",
+        gameType: "mystery-royale",
+      },
+    ] as const;
+
+    expect(buildBattleRoyaleLeaderboardPromoConfig(controls, brSchedule)).toEqual({
+      mode: "lookup",
+      payoutPerTournament: 0.05,
+      tournamentsPerDay: 160,
+      pointsPerTournament: 40,
+      targetPoints: 6400,
+      snapshotCount: 1,
+      paidDays: 1,
+      averageDailyPrize: 8,
+    });
+  });
+
   it("keeps shared/basic observed BR values live instead of treating them as a visual hint", () => {
     const controls = {
       ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,

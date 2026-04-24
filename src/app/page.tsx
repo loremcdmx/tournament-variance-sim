@@ -35,6 +35,10 @@ import {
   scheduleHasBattleRoyaleRows,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
+  analyzeBattleRoyaleLeaderboardLookup,
+  parseBattleRoyaleLeaderboardSnapshot,
+} from "@/lib/sim/battleRoyaleLeaderboardLookup";
+import {
   countScheduleTournaments,
   redistributeScheduleCounts,
 } from "@/lib/sim/scheduleTarget";
@@ -1548,10 +1552,63 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
     previewTournaments * Math.max(0, controls.manualPayoutPerTournament);
   const manualPctOfBuyIns =
     previewBuyIn > 0 ? manualExpectedPayout / previewBuyIn : 0;
+  const lookupAnalysis = useMemo(
+    () =>
+      analyzeBattleRoyaleLeaderboardLookup({
+        tournamentsPerDay: controls.lookupTournamentsPerDay,
+        pointsPerTournament: controls.lookupPointsPerTournament,
+        snapshots: controls.lookupSnapshots,
+      }),
+    [
+      controls.lookupPointsPerTournament,
+      controls.lookupSnapshots,
+      controls.lookupTournamentsPerDay,
+    ],
+  );
+  const lookupExpectedPayout =
+    previewTournaments * Math.max(0, lookupAnalysis.payoutPerTournament);
+  const [lookupImportText, setLookupImportText] = useState("");
+  const [lookupImportError, setLookupImportError] = useState<string | null>(null);
   const fmtMoney = (n: number) =>
     Math.abs(n) >= 100
       ? `$${Math.round(n).toLocaleString("ru-RU")}`
       : `$${n.toFixed(2)}`;
+
+  const addLookupSnapshot = () => {
+    const parsed = parseBattleRoyaleLeaderboardSnapshot(lookupImportText);
+    if (parsed.entries.length === 0) {
+      setLookupImportError(t("controls.brLeaderboard.lookupParseError"));
+      return;
+    }
+    const nextIndex = controls.lookupSnapshots.length + 1;
+    onChange({
+      ...value,
+      battleRoyaleLeaderboard: {
+        ...controls,
+        lookupSnapshots: [
+          ...controls.lookupSnapshots,
+          {
+            id: `lb-${Date.now().toString(36)}-${nextIndex}`,
+            label: `Day ${nextIndex}`,
+            entries: parsed.entries,
+          },
+        ],
+      },
+    });
+    setLookupImportText("");
+    setLookupImportError(null);
+  };
+
+  const clearLookupSnapshots = () => {
+    onChange({
+      ...value,
+      battleRoyaleLeaderboard: {
+        ...controls,
+        lookupSnapshots: [],
+      },
+    });
+    setLookupImportError(null);
+  };
 
   const setPoints = (
     stake: keyof ControlsState["battleRoyaleLeaderboard"]["observedPointsByStake"],
@@ -1597,6 +1654,8 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
                 mode:
                   e.target.value === "observed"
                     ? "observed"
+                    : e.target.value === "lookup"
+                      ? "lookup"
                     : e.target.value === "manual"
                       ? "manual"
                       : "off",
@@ -1611,6 +1670,9 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
           </option>
           <option value="manual">
             {t("controls.brLeaderboard.mode.manual")}
+          </option>
+          <option value="lookup">
+            {t("controls.brLeaderboard.mode.lookup")}
           </option>
         </select>
       </div>
@@ -1662,6 +1724,160 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
                 {(manualPctOfBuyIns * 100).toFixed(2)}%
               </div>
             </Field>
+          </div>
+        </>
+      )}
+      {controls.mode === "lookup" && (
+        <>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <Field
+              label={t("controls.brLeaderboard.lookupTournamentsPerDay")}
+              hint={t("controls.brLeaderboard.lookupTournamentsPerDayHint")}
+            >
+              <NumInput
+                value={controls.lookupTournamentsPerDay}
+                min={0}
+                max={1_000_000}
+                step={1}
+                disabled={uiDisabled}
+                onChange={(v) =>
+                  onChange({
+                    ...value,
+                    battleRoyaleLeaderboard: {
+                      ...controls,
+                      lookupTournamentsPerDay: Math.max(0, v),
+                    },
+                  })
+                }
+              />
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupPointsPerTournament")}
+              hint={t("controls.brLeaderboard.lookupPointsPerTournamentHint")}
+            >
+              <NumInput
+                value={controls.lookupPointsPerTournament}
+                min={0}
+                max={1_000_000}
+                step={1}
+                disabled={uiDisabled}
+                onChange={(v) =>
+                  onChange({
+                    ...value,
+                    battleRoyaleLeaderboard: {
+                      ...controls,
+                      lookupPointsPerTournament: Math.max(0, v),
+                    },
+                  })
+                }
+              />
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupTargetPoints")}
+              hint={t("controls.brLeaderboard.lookupTargetPointsHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {Math.round(lookupAnalysis.targetPoints).toLocaleString("ru-RU")}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupPerTournament")}
+              hint={t("controls.brLeaderboard.lookupPerTournamentHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtMoney(lookupAnalysis.payoutPerTournament)}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupAvgPrize")}
+              hint={t("controls.brLeaderboard.lookupAvgPrizeHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtMoney(lookupAnalysis.averageDailyPrize)}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupParsedDays")}
+              hint={t("controls.brLeaderboard.lookupParsedDaysHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {lookupAnalysis.snapshotCount.toLocaleString("ru-RU")}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.manualProjected")}
+              hint={t("controls.brLeaderboard.manualProjectedHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtMoney(lookupExpectedPayout)}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.manualVolume")}
+              hint={t("controls.brLeaderboard.manualVolumeHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {Math.round(previewTournaments).toLocaleString("ru-RU")}
+              </div>
+            </Field>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_260px]">
+            <div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                {t("controls.brLeaderboard.lookupImportLabel")}
+              </div>
+              <textarea
+                value={lookupImportText}
+                disabled={uiDisabled}
+                onChange={(e) => {
+                  setLookupImportText(e.target.value);
+                  setLookupImportError(null);
+                }}
+                placeholder={t("controls.brLeaderboard.lookupImportPlaceholder")}
+                className="min-h-28 w-full resize-y rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+              />
+              <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+                {lookupImportError ?? t("controls.brLeaderboard.lookupImportHint")}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={uiDisabled || lookupImportText.trim().length === 0}
+                onClick={addLookupSnapshot}
+                className="rounded-md border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-black transition-opacity disabled:opacity-40"
+              >
+                {t("controls.brLeaderboard.lookupAddSnapshot")}
+              </button>
+              <button
+                type="button"
+                disabled={uiDisabled || controls.lookupSnapshots.length === 0}
+                onClick={clearLookupSnapshots}
+                className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm font-semibold text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-border-strong)] disabled:opacity-40"
+              >
+                {t("controls.brLeaderboard.lookupClearSnapshots")}
+              </button>
+              <div className="whitespace-pre-line rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-2 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+                {lookupAnalysis.snapshotCount === 0
+                  ? t("controls.brLeaderboard.lookupEmpty")
+                  : lookupAnalysis.days
+                      .slice(0, 4)
+                      .map((day) =>
+                        t("controls.brLeaderboard.lookupSnapshotLine")
+                          .replace("{label}", day.label ?? day.snapshotId)
+                          .replace("{entries}", day.entries.toLocaleString("ru-RU"))
+                          .replace("{rank}", day.rank == null ? "—" : `#${day.rank}`)
+                          .replace(
+                            "{points}",
+                            day.points == null
+                              ? "—"
+                              : Math.round(day.points).toLocaleString("ru-RU"),
+                          )
+                          .replace("{prize}", fmtMoney(day.prize)),
+                      )
+                      .join("\n")}
+              </div>
+            </div>
           </div>
         </>
       )}

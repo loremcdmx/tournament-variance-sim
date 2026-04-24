@@ -127,4 +127,37 @@ describe("buildObservedBattleRoyalePromoResult", () => {
     expect(result?.pctOfCurrentBuyIns).toBeCloseTo(350 / 6440, 10);
     expect(result?.rows.map((row) => row.payout)).toEqual([350]);
   });
+
+  it("projects lookup-derived dollars per tournament with source metadata", () => {
+    const result = buildBattleRoyalePromoResult({
+      config: {
+        mode: "lookup",
+        payoutPerTournament: 0.05,
+        tournamentsPerDay: 160,
+        pointsPerTournament: 40,
+        targetPoints: 6400,
+        snapshotCount: 12,
+        paidDays: 9,
+        averageDailyPrize: 8,
+      },
+      schedule: [makeBrRow("a", 7000)],
+      rowCounts: [7000],
+      rowBuyIns: [6440],
+      activeDays: 1,
+    });
+
+    expect(result).toBeDefined();
+    expect(result?.mode).toBe("lookup");
+    expect(result?.expectedPayout).toBeCloseTo(350, 10);
+    if (result?.mode !== "lookup") throw new Error("expected lookup mode");
+    expect(result.lookup).toMatchObject({
+      payoutPerTournament: 0.05,
+      tournamentsPerDay: 160,
+      pointsPerTournament: 40,
+      targetPoints: 6400,
+      snapshotCount: 12,
+      paidDays: 9,
+      averageDailyPrize: 8,
+    });
+  });
 });

@@ -64,24 +64,20 @@ export function buildBattleRoyalePromoResult(params: {
   );
   if (currentTournaments <= 0) return undefined;
 
-  if (config.mode === "manual") {
+  if (config.mode === "manual" || config.mode === "lookup") {
     const payoutPerTournament = Math.max(0, config.payoutPerTournament);
     if (payoutPerTournament <= 0) return undefined;
     const expectedPayout = currentTournaments * payoutPerTournament;
     const currentAbi = currentTournaments > 0 ? currentBuyIn / currentTournaments : null;
     const pctOfCurrentBuyIns =
       currentBuyIn > 0 ? expectedPayout / currentBuyIn : 0;
-    return {
-      mode: "manual",
+    const base = {
       expectedPayout,
       payoutPerTournament,
       payoutPerDay:
         activeDays > 0 ? expectedPayout / Math.max(1, activeDays) : expectedPayout,
       pctOfCurrentBuyIns,
-      notInPathRisk: true,
-      manual: {
-        payoutPerTournament,
-      },
+      notInPathRisk: true as const,
       current: {
         activeDays: Math.max(1, activeDays),
         tournaments: currentTournaments,
@@ -93,6 +89,28 @@ export function buildBattleRoyalePromoResult(params: {
         ...row,
         payout: row.tournaments * payoutPerTournament,
       })),
+    };
+    if (config.mode === "manual") {
+      return {
+        ...base,
+        mode: "manual",
+        manual: {
+          payoutPerTournament,
+        },
+      };
+    }
+    return {
+      ...base,
+      mode: "lookup",
+      lookup: {
+        payoutPerTournament,
+        tournamentsPerDay: config.tournamentsPerDay,
+        pointsPerTournament: config.pointsPerTournament,
+        targetPoints: config.targetPoints,
+        snapshotCount: config.snapshotCount,
+        paidDays: config.paidDays,
+        averageDailyPrize: config.averageDailyPrize,
+      },
     };
   }
 

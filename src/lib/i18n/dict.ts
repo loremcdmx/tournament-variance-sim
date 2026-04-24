@@ -2102,8 +2102,8 @@ export const DICT = {
     ru: "Лидерборд BR",
   },
   "controls.brLeaderboard.note": {
-    en: "Observed reconstructs leaderboard promo from profile totals; Manual lets you plan a target limit from an expected $/tournament without played distance there. This stays separate from path-risk metrics.",
-    ru: "Observed восстанавливает промо из totals профиля; Manual позволяет планировать нужный лимит по ожидаемым $/турнир без своей дистанции на нём. В path-risk метрики это не входит.",
+    en: "Observed reconstructs leaderboard promo from profile totals; Manual and Lookup let you plan a target limit without played distance there. This stays separate from path-risk metrics.",
+    ru: "Observed восстанавливает промо из totals профиля; Manual и Lookup позволяют планировать нужный лимит без своей дистанции на нём. В path-risk метрики это не входит.",
   },
   "controls.brLeaderboard.inactive": {
     en: "There are no GG BR rows in the schedule yet. Add one to make this layer affect calculations.",
@@ -2124,6 +2124,10 @@ export const DICT = {
   "controls.brLeaderboard.mode.manual": {
     en: "Manual",
     ru: "Manual",
+  },
+  "controls.brLeaderboard.mode.lookup": {
+    en: "Lookup",
+    ru: "Lookup",
   },
   "controls.brLeaderboard.prizes": {
     en: "Observed LB prizes",
@@ -2192,6 +2196,86 @@ export const DICT = {
   "controls.brLeaderboard.manualPctHint": {
     en: "Manual promo as a percentage of the current BR buy-ins.",
     ru: "Ручное промо как процент от текущих BR-бай-инов.",
+  },
+  "controls.brLeaderboard.lookupTournamentsPerDay": {
+    en: "Tournaments / day",
+    ru: "Турниров / день",
+  },
+  "controls.brLeaderboard.lookupTournamentsPerDayHint": {
+    en: "Daily BR volume used to convert average points into a leaderboard score.",
+    ru: "Дневной BR-объём, через который средние очки переводятся в очки лидерборда.",
+  },
+  "controls.brLeaderboard.lookupPointsPerTournament": {
+    en: "Points / tournament",
+    ru: "Очков / турнир",
+  },
+  "controls.brLeaderboard.lookupPointsPerTournamentHint": {
+    en: "Average leaderboard points from one BR tournament.",
+    ru: "Средние лидербордные очки с одного BR-турнира.",
+  },
+  "controls.brLeaderboard.lookupTargetPoints": {
+    en: "Target points / day",
+    ru: "Целевые очки / день",
+  },
+  "controls.brLeaderboard.lookupTargetPointsHint": {
+    en: "Tournaments/day × points/tournament. This score is looked up in each pasted leaderboard day.",
+    ru: "Турниров/день × очков/турнир. По этим очкам ищется место в каждом импортированном дне.",
+  },
+  "controls.brLeaderboard.lookupPerTournament": {
+    en: "Lookup LB / tournament",
+    ru: "Lookup LB / турнир",
+  },
+  "controls.brLeaderboard.lookupPerTournamentHint": {
+    en: "Average daily leaderboard prize divided by tournaments/day.",
+    ru: "Средний дневной лидербордный приз, делённый на турниров/день.",
+  },
+  "controls.brLeaderboard.lookupAvgPrize": {
+    en: "Avg daily prize",
+    ru: "Средний приз / день",
+  },
+  "controls.brLeaderboard.lookupAvgPrizeHint": {
+    en: "Average prize at the target score across imported leaderboard days.",
+    ru: "Средний приз на целевых очках по импортированным дням лидерборда.",
+  },
+  "controls.brLeaderboard.lookupParsedDays": {
+    en: "Parsed days",
+    ru: "Дней распознано",
+  },
+  "controls.brLeaderboard.lookupParsedDaysHint": {
+    en: "Imported leaderboard snapshots that contain rank, points and prize rows.",
+    ru: "Импортированные срезы лидерборда, где найдены строки rank, points и prize.",
+  },
+  "controls.brLeaderboard.lookupImportLabel": {
+    en: "Paste leaderboard page code",
+    ru: "Код страницы лидерборда",
+  },
+  "controls.brLeaderboard.lookupImportHint": {
+    en: "Paste one leaderboard day, add it, then repeat for the next day. Only compact rank/points/prize rows are saved.",
+    ru: "Вставь один день лидерборда, добавь его, потом повтори для следующего дня. Сохраняются только компактные rank/points/prize строки.",
+  },
+  "controls.brLeaderboard.lookupImportPlaceholder": {
+    en: "<tr><td>42</td><td>Nick</td><td>6400</td><td>$8</td></tr>",
+    ru: "<tr><td>42</td><td>Nick</td><td>6400</td><td>$8</td></tr>",
+  },
+  "controls.brLeaderboard.lookupAddSnapshot": {
+    en: "Add day",
+    ru: "Добавить день",
+  },
+  "controls.brLeaderboard.lookupClearSnapshots": {
+    en: "Clear days",
+    ru: "Очистить дни",
+  },
+  "controls.brLeaderboard.lookupParseError": {
+    en: "Could not find leaderboard rows with rank, points and prize.",
+    ru: "Не нашёл строки лидерборда с местом, очками и призом.",
+  },
+  "controls.brLeaderboard.lookupEmpty": {
+    en: "No leaderboard days imported yet.",
+    ru: "Пока нет импортированных дней лидерборда.",
+  },
+  "controls.brLeaderboard.lookupSnapshotLine": {
+    en: "{label}: {entries} rows · {rank} at {points} pts · {prize}",
+    ru: "{label}: {entries} строк · {rank} на {points} pts · {prize}",
   },
   "preview.footnote": {
     en: "If the top (EV) bar is much wider than the bottom (finishes) bar in the same colour, that slice of finishes carries way more money than its share of the field — and that's exactly where your variance lives.",
@@ -2653,6 +2737,14 @@ export const DICT = {
     en: "This layer is a deterministic EV projection, not a daily rank simulation. It is intentionally outside trajectories, drawdown, and ruin cards.",
     ru: "Это детерминированная EV-проекция, а не симуляция дневного ранга. Слой намеренно не входит в траектории, просадки и риск разорения.",
   },
+  "chart.brLeaderboardLookup.tip": {
+    en: "Lookup mode converts pasted leaderboard days into an expected $/tournament by matching your target daily score against rank/prize rows.",
+    ru: "Lookup-режим превращает импортированные дни лидерборда в ожидаемые $/турнир: целевые дневные очки матчятся к строкам место/приз.",
+  },
+  "chart.brLeaderboardLookup.note": {
+    en: "This is still a deterministic EV layer outside trajectories. It automates the rank/prize lookup, not opponent-volume uncertainty.",
+    ru: "Это всё ещё детерминированный EV-слой вне траекторий. Он автоматизирует поиск места/приза, но не моделирует неопределённость объёма поля.",
+  },
   "chart.brLeaderboardObserved.groupCurrent": {
     en: "Current BR sample",
     ru: "Текущий BR-сэмпл",
@@ -2748,6 +2840,38 @@ export const DICT = {
   "chart.brLeaderboardManual.anchorNote": {
     en: "Manual mode used {perTournament} per BR tournament over {tournaments} tournaments, adding {payout} of separate leaderboard EV.",
     ru: "Manual-режим взял {perTournament} за BR-турнир на {tournaments} турниров и добавил {payout} отдельного leaderboard EV.",
+  },
+  "chart.brLeaderboardLookup.groupAnchor": {
+    en: "Leaderboard lookup anchor",
+    ru: "Якорь по таблицам лидерборда",
+  },
+  "chart.brLeaderboardLookup.perTournament": {
+    en: "Lookup LB / tournament",
+    ru: "Lookup LB / турнир",
+  },
+  "chart.brLeaderboardLookup.avgPrize": {
+    en: "Avg daily prize",
+    ru: "Средний приз / день",
+  },
+  "chart.brLeaderboardLookup.targetPoints": {
+    en: "Target score",
+    ru: "Целевые очки",
+  },
+  "chart.brLeaderboardLookup.targetDetail": {
+    en: "{tournaments}/day × {points} pts",
+    ru: "{tournaments}/день × {points} pts",
+  },
+  "chart.brLeaderboardLookup.days": {
+    en: "Imported days",
+    ru: "Импортированные дни",
+  },
+  "chart.brLeaderboardLookup.daysDetail": {
+    en: "{paid} paid at target score",
+    ru: "{paid} с призом на целевых очках",
+  },
+  "chart.brLeaderboardLookup.anchorNote": {
+    en: "Lookup mode averaged {dailyPrize} per imported day across {days} days, converted it to {perTournament} per BR tournament, and added {payout} of separate leaderboard EV.",
+    ru: "Lookup-режим усреднил {dailyPrize} в день по {days} импортированным дням, перевёл это в {perTournament} за BR-турнир и добавил {payout} отдельного leaderboard EV.",
   },
   "chart.brLeaderboard.directRb": {
     en: "Direct RB",

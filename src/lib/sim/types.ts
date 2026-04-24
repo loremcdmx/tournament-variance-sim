@@ -359,6 +359,19 @@ export interface BattleRoyaleLeaderboardObservedPointsByStake {
   "25": number;
 }
 
+export interface BattleRoyaleLeaderboardLookupEntry {
+  rank: number;
+  points: number;
+  prize: number;
+  nickname?: string;
+}
+
+export interface BattleRoyaleLeaderboardLookupSnapshot {
+  id: string;
+  label?: string;
+  entries: BattleRoyaleLeaderboardLookupEntry[];
+}
+
 /**
  * Global BR leaderboard promo layer reconstructed from observed profile data.
  * This is intentionally not a daily-rank simulator. It reuses realised
@@ -384,9 +397,26 @@ export interface BattleRoyaleLeaderboardManualConfig {
   payoutPerTournament: number;
 }
 
+/**
+ * Target-limit planning mode reconstructed from pasted leaderboard pages.
+ * The UI stores compact parsed rows (rank / points / prize), then the runtime
+ * receives only the derived dollars per tournament and the audit metadata.
+ */
+export interface BattleRoyaleLeaderboardLookupConfig {
+  mode: "lookup";
+  payoutPerTournament: number;
+  tournamentsPerDay: number;
+  pointsPerTournament: number;
+  targetPoints: number;
+  snapshotCount: number;
+  paidDays: number;
+  averageDailyPrize: number;
+}
+
 export type BattleRoyaleLeaderboardPromoConfig =
   | BattleRoyaleLeaderboardObservedConfig
-  | BattleRoyaleLeaderboardManualConfig;
+  | BattleRoyaleLeaderboardManualConfig
+  | BattleRoyaleLeaderboardLookupConfig;
 
 /**
  * Calibration mode — how ROI is translated into a finish-place distribution.
@@ -647,7 +677,7 @@ export interface BattleRoyaleLeaderboardResult {
 }
 
 export interface BattleRoyaleLeaderboardPromoResultBase {
-  mode: "observed" | "manual";
+  mode: "observed" | "manual" | "lookup";
   expectedPayout: number;
   payoutPerTournament: number;
   payoutPerDay: number;
@@ -708,9 +738,24 @@ export interface BattleRoyaleLeaderboardManualPromoResult
   };
 }
 
+export interface BattleRoyaleLeaderboardLookupPromoResult
+  extends BattleRoyaleLeaderboardPromoResultBase {
+  mode: "lookup";
+  lookup: {
+    payoutPerTournament: number;
+    tournamentsPerDay: number;
+    pointsPerTournament: number;
+    targetPoints: number;
+    snapshotCount: number;
+    paidDays: number;
+    averageDailyPrize: number;
+  };
+}
+
 export type BattleRoyaleLeaderboardPromoResult =
   | BattleRoyaleLeaderboardObservedPromoResult
-  | BattleRoyaleLeaderboardManualPromoResult;
+  | BattleRoyaleLeaderboardManualPromoResult
+  | BattleRoyaleLeaderboardLookupPromoResult;
 
 export interface SimulationResult {
   type: "result";
