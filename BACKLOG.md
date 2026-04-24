@@ -3,7 +3,7 @@
 > **Single source of truth.** Все активные и закрытые задачи живут здесь.
 > Memory-файлы содержат только указатель на этот документ — не дублировать статус.
 >
-> Актуален на **2026-04-23** (v0.7.4, ветка `main`).
+> Актуален на **2026-04-24** (v0.7.4, ветка `main`).
 > Закрытые задачи см. в `git log`. История прогресса — в `CHANGELOG.md`.
 > Feature scope на 2026-04-13 расширен: re-entry / PKO / empirical model **IN SCOPE** (см. commit ec88189 и ранее).
 
@@ -280,6 +280,30 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 ## ✅ Закрыто (архив последней волны)
 
 Раскрывать по требованию — детали в `git log`. Ниже — что закрыто за текущую волну (2026-04-20 / 2026-04-19 / 2026-04-18) + старые pre-MVP.
+
+**Shipped 2026-04-23 / 2026-04-24:**
+- ✅ **BR leaderboard feature** — новая user-facing surface для GG-style tournament-series promo'в поверх Mystery Battle Royale. Серия коммитов 2026-04-23 19:50 UTC → 2026-04-24 02:03 UTC:
+  - `faa0611 feat(br): add manual leaderboard promo mode` — ручной режим promo-channel'а.
+  - `e9174d8 feat(br): derive leaderboard EV from pasted tables` — paste-import EV из скопированных таблиц.
+  - `378f815 feat(br): automate leaderboard manual inputs` — автоматизация ручного ввода.
+  - `f736c03 fix(br): honor bounty share in ev split` — EV split уважает bounty share.
+  - `2bb5800 fix(br): include observed leaderboard in ev totals` — observed leaderboard включается в EV totals.
+  - `78e9481 fix(br): canonicalize royale user state` — каноникализация royale state'а.
+  - `3398346 refactor(br): move leaderboard promo to observed global layer` — архитектурный rehome в observed-global layer.
+  - `e98962d chore(br): add leaderboard data refresh script` — script обновления data-файлов.
+- ✅ **PrimeDope audit hardening** — worker transfers + style-EV opt-in чистятся и укрепляются:
+  - `96efb24 fix(audit): harden pd toggles and worker transfers`
+  - `5c41bce fix(pd): honor primedope style ev opt-in`
+  - `cbf7274 chore(pd): align legacy parity probes`
+- ✅ **Next.js infra** — `3d33ccb use webpack for local next dev and build` (retreat from turbopack for local dev) + `6c516d3 fix(fonts): disable next font preloads` (убрали font preload warnings).
+- ✅ **Variance presets + basic-mode sanitization** — `192d235 add advanced variance presets and basic-mode sanitization`.
+- ✅ **Cash mode: mtt-style trajectory interactions** — `f61604c bring mtt-style trajectory interactions to cash mode` (унифицирует hit-test + hover поверх cash-trajectory как в MTT).
+- ✅ **Branch housekeeping (2026-04-24)** — восстановлен memory-rule «dev ≥ main»:
+  - `origin/dev` приведено к `origin/main` через `push origin main:dev --force-with-lease`. Проверено `git merge-base --is-ancestor origin/dev origin/main` → true (dev был 19 commits behind, 0 unique — все dev-коммиты уже reachable from main). Старый dev tip `0d04eaa feat(schedule): card layout, room badges, colored preset picker` recoverable 90 дней через GitHub reflog.
+  - `origin/design-beta` (`4cb5480`) удалена — 218 commits behind, 0 ahead, 7 дней stale.
+  - **Остаются отдельным решением owner'а:**
+    - `origin/codex/tvs-split-commits-20260423` — 3 ahead / 53 behind; `git cherry` patch-id check выявил **2 из 3 уникальных commits реально уникальны** (`b3b08dc add advanced variance presets`, `b6fa1bf bring mtt-style trajectory interactions`), не эквивалентны ничему на main. Удалять нельзя без ревью — потенциальная потеря работы.
+    - `origin/design-v2` — 1 ahead / 209 behind; `1708104 Journal-paper redesign: Fraunces + Source Serif + oxblood palette` — design exploration 6-дневной давности.
 
 **Shipped 2026-04-20:**
 - ✅ **#136** ICM removed — unused ICM controls, engine path, types, docs, and tests removed from the product surface.
