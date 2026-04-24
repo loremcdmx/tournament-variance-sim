@@ -2165,13 +2165,53 @@ export const DICT = {
     en: "Observed leaderboard points by stake for the same profile window.",
     ru: "Наблюдаемые лидербордные очки по лимитам в том же окне профиля.",
   },
+  "controls.brLeaderboard.observedImportLabel": {
+    en: "ResultHub import",
+    ru: "Импорт ResultHub",
+  },
+  "controls.brLeaderboard.observedImportHint": {
+    en: "Paste ResultHub extension output; LB prizes, tournaments, and pts by stake will be filled when labels are found.",
+    ru: "Вставь вывод расширения ResultHub; LB-призы, турниры и pts по лимитам заполнятся, если найдены подписи.",
+  },
+  "controls.brLeaderboard.observedImportPlaceholder": {
+    en: "LB prizes: 4016\nTournaments: 76238\npts $0.25: 219114\npts $1: 2202653",
+    ru: "LB prizes: 4016\nTournaments: 76238\npts $0.25: 219114\npts $1: 2202653",
+  },
+  "controls.brLeaderboard.observedImportApply": {
+    en: "Fill observed",
+    ru: "Заполнить observed",
+  },
+  "controls.brLeaderboard.observedImportParseError": {
+    en: "Could not find ResultHub totals or stake points in this paste.",
+    ru: "Не нашёл в этом пасте totals ResultHub или очки по лимитам.",
+  },
+  "controls.brLeaderboard.manualStake": {
+    en: "Target stake",
+    ru: "Целевой лимит",
+  },
+  "controls.brLeaderboard.manualStakeHint": {
+    en: "Auto uses the current BR schedule ABI; fixed stake forces a specific leaderboard dataset.",
+    ru: "Auto берёт ABI текущего BR-расписания; фиксированный лимит принудительно выбирает нужный датасет лидерборда.",
+  },
+  "controls.brLeaderboard.manualStakeAuto": {
+    en: "Auto ({stake})",
+    ru: "Auto ({stake})",
+  },
   "controls.brLeaderboard.manualPerTournament": {
     en: "Expected LB / tournament",
     ru: "Ожидаемый LB / турнир",
   },
   "controls.brLeaderboard.manualPerTournamentHint": {
-    en: "Manual planning anchor for a target limit when you do not have observed distance there yet.",
-    ru: "Ручной плановый якорь для нужного лимита, когда на нём ещё нет своей наблюдаемой дистанции.",
+    en: "Built from target daily points matched against the built-in leaderboard snapshots for the selected stake.",
+    ru: "Считается из целевых дневных очков, сматченных к встроенным snapshot-ам лидерборда выбранного лимита.",
+  },
+  "controls.brLeaderboard.manualSource": {
+    en: "{stake}: built-in finished leaderboard days {from} to {to}.",
+    ru: "{stake}: встроенные завершённые дни лидерборда с {from} по {to}.",
+  },
+  "controls.brLeaderboard.manualNoBuiltInData": {
+    en: "{stake}: no built-in snapshots yet. Use Lookup for this stake or keep a legacy direct $/tournament value.",
+    ru: "{stake}: встроенных snapshot-ов пока нет. Для этого лимита используй Lookup или старый прямой $/турнир.",
   },
   "controls.brLeaderboard.manualProjected": {
     en: "Projected promo",
@@ -2828,6 +2868,18 @@ export const DICT = {
   "chart.brLeaderboardManual.perTournament": {
     en: "Manual LB / tournament",
     ru: "Manual LB / турнир",
+  },
+  "chart.brLeaderboardManual.avgPrize": {
+    en: "Avg daily prize",
+    ru: "Средний приз / день",
+  },
+  "chart.brLeaderboardManual.targetPoints": {
+    en: "Target score",
+    ru: "Целевые очки",
+  },
+  "chart.brLeaderboardManual.days": {
+    en: "Built-in days",
+    ru: "Встроенные дни",
   },
   "chart.brLeaderboardManual.formula": {
     en: "Formula",

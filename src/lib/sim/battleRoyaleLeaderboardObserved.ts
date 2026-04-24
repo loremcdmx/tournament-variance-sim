@@ -96,6 +96,13 @@ export function buildBattleRoyalePromoResult(params: {
         mode: "manual",
         manual: {
           payoutPerTournament,
+          stake: config.stake,
+          tournamentsPerDay: config.tournamentsPerDay,
+          pointsPerTournament: config.pointsPerTournament,
+          targetPoints: config.targetPoints,
+          snapshotCount: config.snapshotCount,
+          paidDays: config.paidDays,
+          averageDailyPrize: config.averageDailyPrize,
         },
       };
     }

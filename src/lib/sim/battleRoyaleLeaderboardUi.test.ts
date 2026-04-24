@@ -110,7 +110,9 @@ describe("battleRoyaleLeaderboardUi", () => {
     const controls = {
       ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
       mode: "manual" as const,
-      manualPayoutPerTournament: 0.05,
+      manualStake: "1" as const,
+      manualTournamentsPerDay: 160,
+      manualPointsPerTournament: 40,
     };
     const brSchedule = [
       {
@@ -124,11 +126,18 @@ describe("battleRoyaleLeaderboardUi", () => {
       buildBattleRoyaleLeaderboardPromoConfig(controls, brSchedule),
     ).toEqual({
       mode: "manual",
-      payoutPerTournament: 0.05,
+      payoutPerTournament: 0.0375,
+      stake: "1",
+      tournamentsPerDay: 160,
+      pointsPerTournament: 40,
+      targetPoints: 6400,
+      snapshotCount: 1,
+      paidDays: 1,
+      averageDailyPrize: 6,
     });
     expect(
       buildBattleRoyaleLeaderboardPromoConfig(
-        { ...controls, manualPayoutPerTournament: 0 },
+        { ...controls, manualStake: "10", manualPayoutPerTournament: 0 },
         brSchedule,
       ),
     ).toBeUndefined();

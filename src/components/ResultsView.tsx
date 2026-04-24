@@ -1689,6 +1689,47 @@ function BattleRoyaleLeaderboardPromoSection({
                 value={money(promo.manual.payoutPerTournament)}
                 tone={promo.manual.payoutPerTournament >= 0 ? "pos" : "neg"}
               />
+              {promo.manual.averageDailyPrize != null && (
+                <MiniStat
+                  suit="diamond"
+                  label={t("chart.brLeaderboardManual.avgPrize")}
+                  value={money(promo.manual.averageDailyPrize)}
+                />
+              )}
+              {promo.manual.targetPoints != null && (
+                <MiniStat
+                  suit="spade"
+                  label={t("chart.brLeaderboardManual.targetPoints")}
+                  value={Math.round(promo.manual.targetPoints).toLocaleString(
+                    "ru-RU",
+                  )}
+                  detail={
+                    promo.manual.tournamentsPerDay != null &&
+                    promo.manual.pointsPerTournament != null
+                      ? t("chart.brLeaderboardLookup.targetDetail")
+                          .replace(
+                            "{tournaments}",
+                            promo.manual.tournamentsPerDay.toLocaleString("ru-RU"),
+                          )
+                          .replace(
+                            "{points}",
+                            promo.manual.pointsPerTournament.toLocaleString("ru-RU"),
+                          )
+                      : undefined
+                  }
+                />
+              )}
+              {promo.manual.snapshotCount != null && (
+                <MiniStat
+                  suit="spade"
+                  label={t("chart.brLeaderboardManual.days")}
+                  value={promo.manual.snapshotCount.toLocaleString("ru-RU")}
+                  detail={t("chart.brLeaderboardLookup.daysDetail").replace(
+                    "{paid}",
+                    (promo.manual.paidDays ?? 0).toLocaleString("ru-RU"),
+                  )}
+                />
+              )}
               <MiniStat
                 suit="diamond"
                 label={t("chart.brLeaderboardManual.formula")}

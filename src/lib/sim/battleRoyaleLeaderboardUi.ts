@@ -10,6 +10,12 @@ import {
   analyzeBattleRoyaleLeaderboardLookup,
   normalizeBattleRoyaleLeaderboardLookupSnapshots,
 } from "./battleRoyaleLeaderboardLookup";
+import {
+  analyzeBattleRoyaleLeaderboardManual,
+  normalizeBattleRoyaleLeaderboardManualStake,
+  resolveBattleRoyaleLeaderboardManualStake,
+  type BattleRoyaleLeaderboardManualStakeSelection,
+} from "./battleRoyaleLeaderboardManual";
 
 export interface BattleRoyaleLeaderboardControls {
   mode: "off" | "observed" | "manual" | "lookup";
@@ -17,10 +23,19 @@ export interface BattleRoyaleLeaderboardControls {
   observedTotalTournaments: number;
   observedPointsByStake: BattleRoyaleLeaderboardObservedPointsByStake;
   manualPayoutPerTournament: number;
+  manualStake: BattleRoyaleLeaderboardManualStakeSelection;
+  manualTournamentsPerDay: number;
+  manualPointsPerTournament: number;
   lookupTournamentsPerDay: number;
   lookupPointsPerTournament: number;
   lookupSnapshots: BattleRoyaleLeaderboardLookupSnapshot[];
 }
+
+type BattleRoyaleLeaderboardScheduleRow = Pick<
+  TournamentRow,
+  "gameType" | "payoutStructure"
+> &
+  Partial<Pick<TournamentRow, "buyIn" | "count">>;
 
 export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS: BattleRoyaleLeaderboardObservedPointsByStake =
   {
@@ -38,6 +53,9 @@ export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS: BattleRoyaleLeaderboard
     observedTotalTournaments: 0,
     observedPointsByStake: DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS,
     manualPayoutPerTournament: 0,
+    manualStake: "auto",
+    manualTournamentsPerDay: 160,
+    manualPointsPerTournament: 40,
     lookupTournamentsPerDay: 160,
     lookupPointsPerTournament: 40,
     lookupSnapshots: [],
@@ -95,6 +113,29 @@ export function normalizeBattleRoyaleLeaderboardControls(
       0,
       1_000_000,
     ),
+    manualStake: normalizeBattleRoyaleLeaderboardManualStake(value.manualStake),
+    manualTournamentsPerDay: finiteOr(
+      value.manualTournamentsPerDay,
+      finiteOr(
+        value.lookupTournamentsPerDay,
+        DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS.manualTournamentsPerDay,
+        0,
+        1_000_000,
+      ),
+      0,
+      1_000_000,
+    ),
+    manualPointsPerTournament: finiteOr(
+      value.manualPointsPerTournament,
+      finiteOr(
+        value.lookupPointsPerTournament,
+        DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS.manualPointsPerTournament,
+        0,
+        1_000_000,
+      ),
+      0,
+      1_000_000,
+    ),
     lookupTournamentsPerDay: finiteOr(
       value.lookupTournamentsPerDay,
       DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS.lookupTournamentsPerDay,
@@ -143,8 +184,32 @@ function buildObservedConfig(
 
 function buildManualConfig(
   controls: BattleRoyaleLeaderboardControls,
+  schedule: readonly BattleRoyaleLeaderboardScheduleRow[],
 ): BattleRoyaleLeaderboardManualConfig | undefined {
   if (controls.mode !== "manual") return undefined;
+  const stake = resolveBattleRoyaleLeaderboardManualStake({
+    selected: controls.manualStake,
+    schedule,
+  });
+  const manual = analyzeBattleRoyaleLeaderboardManual({
+    stake,
+    tournamentsPerDay: controls.manualTournamentsPerDay,
+    pointsPerTournament: controls.manualPointsPerTournament,
+  });
+  if (manual.hasBuiltInSnapshots && manual.tournamentsPerDay > 0) {
+    if (!(manual.payoutPerTournament > 0)) return undefined;
+    return {
+      mode: "manual",
+      payoutPerTournament: manual.payoutPerTournament,
+      stake,
+      tournamentsPerDay: manual.tournamentsPerDay,
+      pointsPerTournament: manual.pointsPerTournament,
+      targetPoints: manual.targetPoints,
+      snapshotCount: manual.snapshotCount,
+      paidDays: manual.paidDays,
+      averageDailyPrize: manual.averageDailyPrize,
+    };
+  }
   if (!(controls.manualPayoutPerTournament > 0)) return undefined;
   return {
     mode: "manual",
@@ -179,10 +244,13 @@ function buildLookupConfig(
 
 export function buildBattleRoyaleLeaderboardPromoConfig(
   controls: BattleRoyaleLeaderboardControls | null | undefined,
-  schedule: readonly Pick<TournamentRow, "gameType" | "payoutStructure">[],
+  schedule: readonly BattleRoyaleLeaderboardScheduleRow[],
 ): BattleRoyaleLeaderboardPromoConfig | undefined {
   if (!scheduleHasBattleRoyaleRows(schedule)) return undefined;
-  const cfg =
-    controls ?? DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS;
-  return buildObservedConfig(cfg) ?? buildManualConfig(cfg) ?? buildLookupConfig(cfg);
+  const cfg = controls ?? DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS;
+  return (
+    buildObservedConfig(cfg) ??
+    buildManualConfig(cfg, schedule) ??
+    buildLookupConfig(cfg)
+  );
 }

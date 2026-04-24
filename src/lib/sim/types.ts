@@ -394,6 +394,13 @@ export interface BattleRoyaleLeaderboardObservedConfig {
 export interface BattleRoyaleLeaderboardManualConfig {
   mode: "manual";
   payoutPerTournament: number;
+  stake?: "0.25" | "1" | "3" | "10" | "25";
+  tournamentsPerDay?: number;
+  pointsPerTournament?: number;
+  targetPoints?: number;
+  snapshotCount?: number;
+  paidDays?: number;
+  averageDailyPrize?: number;
 }
 
 /**
@@ -734,6 +741,13 @@ export interface BattleRoyaleLeaderboardManualPromoResult
   mode: "manual";
   manual: {
     payoutPerTournament: number;
+    stake?: "0.25" | "1" | "3" | "10" | "25";
+    tournamentsPerDay?: number;
+    pointsPerTournament?: number;
+    targetPoints?: number;
+    snapshotCount?: number;
+    paidDays?: number;
+    averageDailyPrize?: number;
   };
 }
 

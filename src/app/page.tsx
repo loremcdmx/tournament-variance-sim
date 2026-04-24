@@ -39,6 +39,16 @@ import {
   parseBattleRoyaleLeaderboardSnapshot,
 } from "@/lib/sim/battleRoyaleLeaderboardLookup";
 import {
+  BATTLE_ROYALE_LEADERBOARD_MANUAL_SOURCE,
+  BATTLE_ROYALE_LEADERBOARD_MANUAL_STAKES,
+} from "@/lib/sim/battleRoyaleLeaderboardManualData";
+import {
+  analyzeBattleRoyaleLeaderboardManual,
+  nearestBattleRoyaleLeaderboardManualStake,
+  type BattleRoyaleLeaderboardManualStakeSelection,
+} from "@/lib/sim/battleRoyaleLeaderboardManual";
+import { parseBattleRoyaleLeaderboardObservedImport } from "@/lib/sim/battleRoyaleLeaderboardObservedImport";
+import {
   countScheduleTournaments,
   redistributeScheduleCounts,
 } from "@/lib/sim/scheduleTarget";
@@ -1548,8 +1558,26 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
     controls.observedTotalTournaments > 0
       ? controls.observedTotalPrizes / controls.observedTotalTournaments
       : 0;
+  const inferredManualStake = nearestBattleRoyaleLeaderboardManualStake(
+    previewTournaments > 0 ? previewBuyIn / previewTournaments : null,
+  );
+  const resolvedManualStake =
+    controls.manualStake === "auto" ? inferredManualStake : controls.manualStake;
+  const manualAnalysis = useMemo(
+    () =>
+      analyzeBattleRoyaleLeaderboardManual({
+        stake: resolvedManualStake,
+        tournamentsPerDay: controls.manualTournamentsPerDay,
+        pointsPerTournament: controls.manualPointsPerTournament,
+      }),
+    [
+      controls.manualPointsPerTournament,
+      controls.manualTournamentsPerDay,
+      resolvedManualStake,
+    ],
+  );
   const manualExpectedPayout =
-    previewTournaments * Math.max(0, controls.manualPayoutPerTournament);
+    previewTournaments * Math.max(0, manualAnalysis.payoutPerTournament);
   const manualPctOfBuyIns =
     previewBuyIn > 0 ? manualExpectedPayout / previewBuyIn : 0;
   const lookupAnalysis = useMemo(
@@ -1569,6 +1597,10 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
     previewTournaments * Math.max(0, lookupAnalysis.payoutPerTournament);
   const [lookupImportText, setLookupImportText] = useState("");
   const [lookupImportError, setLookupImportError] = useState<string | null>(null);
+  const [observedImportText, setObservedImportText] = useState("");
+  const [observedImportError, setObservedImportError] = useState<string | null>(
+    null,
+  );
   const fmtMoney = (n: number) =>
     Math.abs(n) >= 100
       ? `$${Math.round(n).toLocaleString("ru-RU")}`
@@ -1608,6 +1640,37 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
       },
     });
     setLookupImportError(null);
+  };
+
+  const importObservedProfile = () => {
+    const parsed = parseBattleRoyaleLeaderboardObservedImport(observedImportText);
+    const hasAnyPoints = BR_STAKE_KEYS.some(
+      (stake) => (parsed.pointsByStake[stake] ?? 0) > 0,
+    );
+    if (
+      parsed.totalPrizes == null &&
+      parsed.totalTournaments == null &&
+      !hasAnyPoints
+    ) {
+      setObservedImportError(t("controls.brLeaderboard.observedImportParseError"));
+      return;
+    }
+    onChange({
+      ...value,
+      battleRoyaleLeaderboard: {
+        ...controls,
+        observedTotalPrizes:
+          parsed.totalPrizes ?? controls.observedTotalPrizes,
+        observedTotalTournaments:
+          parsed.totalTournaments ?? controls.observedTotalTournaments,
+        observedPointsByStake: {
+          ...controls.observedPointsByStake,
+          ...parsed.pointsByStake,
+        },
+      },
+    });
+    setObservedImportText("");
+    setObservedImportError(null);
   };
 
   const setPoints = (
@@ -1680,25 +1743,110 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
         <>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <Field
-              label={t("controls.brLeaderboard.manualPerTournament")}
-              hint={t("controls.brLeaderboard.manualPerTournamentHint")}
+              label={t("controls.brLeaderboard.manualStake")}
+              hint={t("controls.brLeaderboard.manualStakeHint")}
+            >
+              <select
+                value={controls.manualStake}
+                disabled={uiDisabled}
+                onChange={(e) =>
+                  onChange({
+                    ...value,
+                    battleRoyaleLeaderboard: {
+                      ...controls,
+                      manualStake: e.target
+                        .value as BattleRoyaleLeaderboardManualStakeSelection,
+                    },
+                  })
+                }
+                className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] disabled:opacity-40"
+              >
+                <option value="auto">
+                  {t("controls.brLeaderboard.manualStakeAuto").replace(
+                    "{stake}",
+                    `$${inferredManualStake}`,
+                  )}
+                </option>
+                {BATTLE_ROYALE_LEADERBOARD_MANUAL_STAKES.map((stake) => (
+                  <option key={stake} value={stake}>
+                    ${stake}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupTournamentsPerDay")}
+              hint={t("controls.brLeaderboard.lookupTournamentsPerDayHint")}
             >
               <NumInput
-                value={controls.manualPayoutPerTournament}
+                value={controls.manualTournamentsPerDay}
                 min={0}
                 max={1_000_000}
-                step={0.01}
+                step={1}
                 disabled={uiDisabled}
                 onChange={(v) =>
                   onChange({
                     ...value,
                     battleRoyaleLeaderboard: {
                       ...controls,
-                      manualPayoutPerTournament: Math.max(0, v),
+                      manualTournamentsPerDay: Math.max(0, v),
                     },
                   })
                 }
               />
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupPointsPerTournament")}
+              hint={t("controls.brLeaderboard.lookupPointsPerTournamentHint")}
+            >
+              <NumInput
+                value={controls.manualPointsPerTournament}
+                min={0}
+                max={1_000_000}
+                step={1}
+                disabled={uiDisabled}
+                onChange={(v) =>
+                  onChange({
+                    ...value,
+                    battleRoyaleLeaderboard: {
+                      ...controls,
+                      manualPointsPerTournament: Math.max(0, v),
+                    },
+                  })
+                }
+              />
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupTargetPoints")}
+              hint={t("controls.brLeaderboard.lookupTargetPointsHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {Math.round(manualAnalysis.targetPoints).toLocaleString("ru-RU")}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.manualPerTournament")}
+              hint={t("controls.brLeaderboard.manualPerTournamentHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtMoney(manualAnalysis.payoutPerTournament)}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupAvgPrize")}
+              hint={t("controls.brLeaderboard.lookupAvgPrizeHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {fmtMoney(manualAnalysis.averageDailyPrize)}
+              </div>
+            </Field>
+            <Field
+              label={t("controls.brLeaderboard.lookupParsedDays")}
+              hint={t("controls.brLeaderboard.lookupParsedDaysHint")}
+            >
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {manualAnalysis.snapshotCount.toLocaleString("ru-RU")}
+              </div>
             </Field>
             <Field
               label={t("controls.brLeaderboard.manualProjected")}
@@ -1709,14 +1857,6 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
               </div>
             </Field>
             <Field
-              label={t("controls.brLeaderboard.manualVolume")}
-              hint={t("controls.brLeaderboard.manualVolumeHint")}
-            >
-              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
-                {Math.round(previewTournaments).toLocaleString("ru-RU")}
-              </div>
-            </Field>
-            <Field
               label={t("controls.brLeaderboard.manualPct")}
               hint={t("controls.brLeaderboard.manualPctHint")}
             >
@@ -1724,6 +1864,23 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
                 {(manualPctOfBuyIns * 100).toFixed(2)}%
               </div>
             </Field>
+          </div>
+          <div className="mt-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-2 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+            {manualAnalysis.hasBuiltInSnapshots
+              ? t("controls.brLeaderboard.manualSource")
+                  .replace("{stake}", `$${resolvedManualStake}`)
+                  .replace(
+                    "{from}",
+                    BATTLE_ROYALE_LEADERBOARD_MANUAL_SOURCE.finishedDateFrom,
+                  )
+                  .replace(
+                    "{to}",
+                    BATTLE_ROYALE_LEADERBOARD_MANUAL_SOURCE.finishedDateTo,
+                  )
+              : t("controls.brLeaderboard.manualNoBuiltInData").replace(
+                  "{stake}",
+                  `$${resolvedManualStake}`,
+                )}
           </div>
         </>
       )}
@@ -1883,6 +2040,37 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
       )}
       {controls.mode === "observed" && (
         <>
+          <div className="mb-3 grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_220px]">
+            <div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                {t("controls.brLeaderboard.observedImportLabel")}
+              </div>
+              <textarea
+                value={observedImportText}
+                disabled={uiDisabled}
+                onChange={(e) => {
+                  setObservedImportText(e.target.value);
+                  setObservedImportError(null);
+                }}
+                placeholder={t("controls.brLeaderboard.observedImportPlaceholder")}
+                className="min-h-20 w-full resize-y rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+              />
+              <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+                {observedImportError ??
+                  t("controls.brLeaderboard.observedImportHint")}
+              </div>
+            </div>
+            <div className="flex items-start">
+              <button
+                type="button"
+                disabled={uiDisabled || observedImportText.trim().length === 0}
+                onClick={importObservedProfile}
+                className="w-full rounded-md border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-black transition-opacity disabled:opacity-40"
+              >
+                {t("controls.brLeaderboard.observedImportApply")}
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <Field
               label={t("controls.brLeaderboard.prizes")}
