@@ -1215,7 +1215,8 @@ describe("bountyEvBias", () => {
     }
   });
 
-  it("fixed-ITM Battle Royale keeps the slider center at a true 50/50 gross-EV split", () => {
+  it("fixed-ITM Battle Royale centers the slider on the configured KO-pool split", () => {
+    const bountyFraction = 0.45;
     const compileRoyale = (roi: number, bias = 0) =>
       compileSchedule({
         schedule: [
@@ -1228,7 +1229,7 @@ describe("bountyEvBias", () => {
             roi,
             gameType: "mystery-royale",
             payoutStructure: "battle-royale",
-            bountyFraction: 0.5,
+            bountyFraction,
             mysteryBountyVariance: 1.8,
             itmRate: 0.24,
             count: 1,
@@ -1245,11 +1246,19 @@ describe("bountyEvBias", () => {
     const breakeven = cashBountyEV(compileRoyale(0));
     const plusFour = cashBountyEV(compileRoyale(0.04));
     const profitLift = 25 * 0.04;
+    const breakevenTotal = breakeven.cash + breakeven.bounty;
+    const plusFourTotal = plusFour.cash + plusFour.bounty;
 
-    expect(breakeven.cash).toBeCloseTo(breakeven.bounty, 10);
-    expect(plusFour.cash).toBeCloseTo(plusFour.bounty, 10);
-    expect(plusFour.cash - breakeven.cash).toBeCloseTo(profitLift * 0.5, 10);
-    expect(plusFour.bounty - breakeven.bounty).toBeCloseTo(profitLift * 0.5, 10);
+    expect(breakeven.bounty / breakevenTotal).toBeCloseTo(bountyFraction, 10);
+    expect(plusFour.bounty / plusFourTotal).toBeCloseTo(bountyFraction, 10);
+    expect(plusFour.cash - breakeven.cash).toBeCloseTo(
+      profitLift * (1 - bountyFraction),
+      10,
+    );
+    expect(plusFour.bounty - breakeven.bounty).toBeCloseTo(
+      profitLift * bountyFraction,
+      10,
+    );
 
     const cashHeavy = cashBountyEV(compileRoyale(0.04, 0.25));
     const koHeavy = cashBountyEV(compileRoyale(0.04, -0.25));
@@ -1266,8 +1275,12 @@ describe("bountyEvBias", () => {
       plusFour.cash + plusFour.bounty,
       10,
     );
-    expect(cashHeavy.cash - breakeven.cash).toBeGreaterThan(profitLift * 0.75);
-    expect(koHeavy.bounty - breakeven.bounty).toBeGreaterThan(profitLift * 0.75);
+    expect(cashHeavy.cash - breakeven.cash).toBeGreaterThan(
+      profitLift * (1 - bountyFraction),
+    );
+    expect(koHeavy.bounty - breakeven.bounty).toBeGreaterThan(
+      profitLift * bountyFraction,
+    );
   });
 
   it("fixed-ITM Battle Royale can push KO share well below 50% when first place still has headroom", () => {

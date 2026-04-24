@@ -856,6 +856,7 @@ function compileSingleEntry(
     pmf: Float64Array;
     cashEV: number;
   } | null = null;
+  let defaultBountyMean = 0;
   if (bountyFraction > 0) {
     const bountyPerSeat = row.buyIn * bountyFraction;
     // Skill lift on bounty collection — equilibrium haul is bountyPerSeat
@@ -865,7 +866,7 @@ function compileSingleEntry(
     // build; for constrained models we replace it with the actual residual
     // after the pmf is known.
     const bountyLift = Math.max(0.1, Math.min(3, (1 + row.rake) * (1 + row.roi)));
-    const defaultBountyMean = bountyPerSeat * bountyLift;
+    defaultBountyMean = bountyPerSeat * bountyLift;
     bountyMean = applyBountyBias(defaultBountyMean, totalWinningsEV, bias);
 
     // Shrink the regular pool by the bounty share.
@@ -966,15 +967,15 @@ function compileSingleEntry(
   };
 
   if (bountyFraction > 0 && isBattleRoyale && row.itmRate != null && row.itmRate > 0) {
-    // BR fixed-ITM exposes the full feasible cash/KO EV interval around a
-    // true 50/50 gross-EV midpoint. The slider center should read as
-    // "half the expected return comes from cash, half from KOs", regardless
-    // of what the fixed-ITM baseline shape looks like.
+    // BR fixed-ITM exposes the full feasible cash/KO EV interval around the
+    // configured KO-pool baseline. With the common 45% Battle Royale bounty
+    // pool, the neutral slider center must read as 45% KO EV, not 50%.
     const neutralBountyMean = entryCostSingle * bountyFraction;
     const neutralTargetRegular = Math.max(0.01, entryCostSingle - neutralBountyMean);
     const neutral = solveFinish(neutralTargetRegular);
     const neutralCashEV = cashEVFor(neutral.pmf, neutral.prizeByPlace);
-    const centerCashTarget = Math.max(0.01, totalWinningsEV * 0.5);
+    const centerBountyMean = clampBountyMean(defaultBountyMean, totalWinningsEV);
+    const centerCashTarget = Math.max(0.01, totalWinningsEV - centerBountyMean);
     const resolvedCash = resolveBattleRoyaleCashTarget({
       N,
       payouts,

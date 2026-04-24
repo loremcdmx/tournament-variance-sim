@@ -252,11 +252,12 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     row.itmRate > 0
   ) {
     // Same BR rule as the engine: bias walks the real feasible cash/KO EV
-    // interval around a true 50/50 gross-EV midpoint.
+    // interval around the configured KO-pool baseline.
     const neutralBountyMean = entryCostSingle * bountyFraction;
     const neutralTargetRegular = Math.max(0.01, entryCostSingle - neutralBountyMean);
     battleRoyaleNeutral = solveCashTarget(neutralTargetRegular);
-    const centerCashTarget = Math.max(0.01, totalWinningsEV * 0.5);
+    const centerBountyMean = clampBountyMean(defaultBountyMean, totalWinningsEV);
+    const centerCashTarget = Math.max(0.01, totalWinningsEV - centerBountyMean);
     const resolvedCash = resolveBattleRoyaleCashTarget({
       N,
       payouts,
