@@ -52,6 +52,7 @@ tmp_legacy*
 /data/variance-fits/
 /scripts/layout-audit-out/
 /scripts/smoke-out/
+/scripts/br_leaderboard_cache/
 /scripts/.fit_par_tmp/
 /scripts/fit_beta_*_200k_probe.json
 /scripts/fit_drift_report.json

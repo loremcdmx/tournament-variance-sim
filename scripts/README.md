@@ -44,12 +44,22 @@ These are the scripts that should back perf claims in commit messages and docs.
 
 Use these when validating user-visible behavior outside the main app flow:
 
+- `update_br_leaderboard_manual_data.ts`
 - `smoke.ts`
 - `smoke_fixed_itm.ts`
 - `smoke_cash_release.mjs`
 - `verify_convergence_tabs.ts`
 - `verify_rakeback.ts`
 - `check_primedope.ts`
+
+`update_br_leaderboard_manual_data.ts` refreshes the built-in Battle Royale
+leaderboard snapshots used by Manual mode. It reads GGPoker's public
+`pml.good-game-service.com` leaderboard API, writes resumable raw responses to
+`scripts/br_leaderboard_cache/`, and regenerates
+`src/lib/sim/battleRoyaleLeaderboardManualData.ts`. Run it through
+`npm run br:leaderboard:data -- --days=5`; it throttles live requests by
+default and resumes from cache. Add `--strict` when you want the script to fail
+if any selected stake/date is missing.
 
 `smoke_cash_release.mjs` is the canonical pre-release smoke for the advanced
 cash tab. It auto-detects a running local app when possible, otherwise tries
