@@ -394,23 +394,22 @@ function ResultsViewImpl({
     setHideJackpotsState(next);
   }, []);
   useEffect(() => {
+    // Mystery/BR tails are real data, but one early jackpot can make the
+    // default fan unreadable. Sync the default with the detected schedule
+    // format until the user explicitly toggles it (ref-guarded so we don't
+    // re-stomp their choice).
     if (hasMysteryRow && !hideJackpotsTouchedRef.current) {
-      // Mystery/BR tails are real data, but one early jackpot can make the
-      // default fan unreadable. Keep the raw run available behind the checkbox.
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes the default with the detected schedule format until the user touches it.
       setHideJackpotsState(true);
     }
   }, [hasMysteryRow]);
   // rbFrac change resets each region toggle back to default. Users can flip
   // individual regions after; a new rbFrac (e.g. rakeback % edit in controls)
-  // wipes those overrides. Four sets in one pass — React batches them.
+  // wipes those overrides. Three sets in one pass — React batches them.
   useEffect(() => {
     const on = rbFrac > 0;
-    /* eslint-disable react-hooks/set-state-in-effect */
     setRbTraj(on);
     setRbStats(on);
     setRbDist(on);
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [rbFrac]);
   // Build chart-facing variants separately from stats-facing variants so chart
   // filters like "hide jackpots" never leak into the scalar stats panels.
