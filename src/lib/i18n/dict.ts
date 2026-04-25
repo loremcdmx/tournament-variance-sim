@@ -634,7 +634,7 @@ export const DICT = {
   "controls.done.profit": { en: "Avg profit", ru: "Средний профит" },
   "controls.done.upChance": { en: "Up chance", ru: "Шанс в плюс" },
   "controls.done.ruin": { en: "Ruin risk", ru: "Риск разорения" },
-  "controls.done.worstDD": { en: "Max drawdown", ru: "Макс. просадка" },
+  "controls.done.worstDD": { en: "Drawdown p99", ru: "Просадка p99" },
   "controls.done.dryStreak": { en: "Longest cashless", ru: "Без ИТМ, макс" },
   "controls.totalTourneys": {
     en: "tournaments/sample",
