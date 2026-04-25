@@ -29,7 +29,6 @@ function buildInputFromScenario(
           ? controls.empiricalBuckets
           : undefined,
     },
-    compareWithPrimedope: controls.compareWithPrimedope,
     usePrimedopePayouts: controls.usePrimedopePayouts,
     usePrimedopeFinishModel: controls.usePrimedopeFinishModel,
     usePrimedopeRakeMath: controls.usePrimedopeRakeMath,

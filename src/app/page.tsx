@@ -116,7 +116,6 @@ const initialControls: ControlsState = {
   seed: 42,
   finishModelId: "powerlaw-realdata-influenced",
   alphaOverride: null,
-  compareWithPrimedope: true,
   usePrimedopePayouts: true,
   usePrimedopeFinishModel: true,
   usePrimedopeRakeMath: true,
@@ -244,7 +243,6 @@ export default function Home() {
           ...initialControls,
           ...fromLocal.controls,
           seed: freshSeed,
-          compareWithPrimedope: true,
         });
       } else {
         // No saved state — load the PrimeDope comparison scenario by default.
@@ -327,7 +325,6 @@ export default function Home() {
               ? effectiveControls.empiricalBuckets
               : undefined,
         },
-        compareWithPrimedope: effectiveControls.compareWithPrimedope,
         usePrimedopePayouts: effectiveControls.usePrimedopePayouts,
         usePrimedopeFinishModel: effectiveControls.usePrimedopeFinishModel,
         usePrimedopeRakeMath: effectiveControls.usePrimedopeRakeMath,

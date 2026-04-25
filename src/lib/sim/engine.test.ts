@@ -255,21 +255,26 @@ describe("engine", () => {
     expect(r.stats.itmRate).toBeLessThan(1);
   });
 
-  it("compareWithPrimedope returns a nested comparison result on the same seed", () => {
-    const r = runSimulation(baseInput({ compareWithPrimedope: true }));
-    expect(r.calibrationMode).toBe("alpha");
-    expect(r.comparison).toBeDefined();
-    expect(r.comparison!.calibrationMode).toBe("primedope-binary-itm");
+  it("twin alpha + primedope-binary-itm passes share schedule shape and EV target", () => {
+    // useSimulation dispatches twin runs as two independent calls — one per
+    // calibration. Reproduce that contract here so the engine guarantees the
+    // two passes stay comparable on the same seed.
+    const primary = runSimulation(baseInput({ calibrationMode: "alpha" }));
+    const comparison = runSimulation(
+      baseInput({ calibrationMode: "primedope-binary-itm" }),
+    );
+    expect(primary.calibrationMode).toBe("alpha");
+    expect(comparison.calibrationMode).toBe("primedope-binary-itm");
     // Same tournamentsPerSample — compile is deterministic re: schedule size.
-    expect(r.comparison!.tournamentsPerSample).toBe(r.tournamentsPerSample);
+    expect(comparison.tournamentsPerSample).toBe(primary.tournamentsPerSample);
     // Same ROI target — the comparison changes distribution assumptions, not EV.
-    expect(r.comparison!.totalBuyIn).toBeCloseTo(r.totalBuyIn, 12);
-    expect(r.comparison!.expectedProfit).toBeCloseTo(r.expectedProfit, 12);
+    expect(comparison.totalBuyIn).toBeCloseTo(primary.totalBuyIn, 12);
+    expect(comparison.expectedProfit).toBeCloseTo(primary.expectedProfit, 12);
     // Both calibrations aim at the same expected ROI. Binary-ITM is "no skill"
     // (uniform 1/N finish) but keeps the real top-heavy payout curve, so it
     // should still produce meaningful drawdown — just driven by pure luck.
-    expect(r.comparison!.stats.maxDrawdownMean).toBeGreaterThan(0);
-    expect(Number.isFinite(r.comparison!.stats.stdDev)).toBe(true);
+    expect(comparison.stats.maxDrawdownMean).toBeGreaterThan(0);
+    expect(Number.isFinite(comparison.stats.stdDev)).toBe(true);
   });
 
   it("keeps full-cost EV by default but honors primedopeStyleEV opt-in", () => {

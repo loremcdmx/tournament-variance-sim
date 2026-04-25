@@ -595,7 +595,6 @@ describe("persistence validation", () => {
       controls: {
         finishModelId: "empirical",
         empiricalBuckets: ["oops"],
-        compareWithPrimedope: "yes",
         usePrimedopePayouts: 1,
         usePrimedopeFinishModel: "true",
         usePrimedopeRakeMath: "true",
@@ -605,7 +604,6 @@ describe("persistence validation", () => {
 
     const loaded = state?.controls as unknown as Record<string, unknown>;
     expect(loaded.empiricalBuckets).toBeUndefined();
-    expect(loaded.compareWithPrimedope).toBeUndefined();
     expect(loaded.usePrimedopePayouts).toBeUndefined();
     expect(loaded.usePrimedopeFinishModel).toBeUndefined();
     expect(loaded.usePrimedopeRakeMath).toBeUndefined();

@@ -20,7 +20,6 @@ const baseState: ControlsState = {
   seed: 1,
   finishModelId: "power-law",
   alphaOverride: null,
-  compareWithPrimedope: false,
   usePrimedopePayouts: false,
   usePrimedopeFinishModel: false,
   usePrimedopeRakeMath: false,

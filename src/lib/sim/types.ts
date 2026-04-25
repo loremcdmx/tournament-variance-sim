@@ -456,18 +456,15 @@ export interface SimulationInput {
   seed: number;
   finishModel: FinishModelConfig;
   /**
-   * When true, the engine runs the simulation twice on the same seed — once
-   * with α calibration (primary) and once with PrimeDope's uniform-lift
-   * calibration (returned as `result.comparison`). Used for the side-by-side
-   * "we vs them" mode.
-   */
-  compareWithPrimedope?: boolean;
-  /**
    * Twin-run mode for the side-by-side trajectory view. "random" (default)
    * runs the same model twice with two different seeds — shows how much two
    * fresh draws diverge. "primedope" runs our α-calibrated model on the left
    * and PrimeDope's uniform-lift on the right with the same seed — shows
    * how the algorithm choice changes the answer on identical randomness.
+   *
+   * Twin dispatch lives in `useSimulation.buildPasses`; the engine runs one
+   * pass per call. Direct callers wanting both passes should run twice with
+   * explicit `calibrationMode` values.
    */
   compareMode?: "random" | "primedope";
   /**
@@ -478,7 +475,11 @@ export interface SimulationInput {
    * right pane runs our honest α algo.
    */
   modelPresetId?: string;
-  /** Internal dispatch; callers should set compareWithPrimedope instead. */
+  /**
+   * Picks the calibration to apply during a single pass. `useSimulation`
+   * sets this per-pass when dispatching the twin runs; tests/diagnostics
+   * call `runSimulation` directly with each calibration explicitly.
+   */
   calibrationMode?: CalibrationMode;
   /**
    * When true, the PrimeDope comparison pass (binary-ITM) also forcibly
@@ -780,9 +781,10 @@ export interface SimulationResult {
   /** Which calibration produced this result. */
   calibrationMode: CalibrationMode;
   /**
-   * Twin run with PrimeDope's uniform-lift calibration, on the same seed and
-   * the same schedule. Only present when SimulationInput.compareWithPrimedope
-   * is true on the top-level request. Nested comparison is never populated.
+   * Twin pass with the alternate calibration (typically PrimeDope's
+   * uniform-lift), merged in by `useSimulation` after running both passes
+   * on the same seed. The engine itself never populates this — it's a
+   * post-hoc sibling attached by the dispatch layer.
    */
   comparison?: SimulationResult;
 

@@ -1561,30 +1561,6 @@ export function runSimulation(
   const calibrationMode: CalibrationMode =
     input.calibrationMode ?? "alpha";
 
-  // Twin run for side-by-side: same seed, same schedule, only the finish
-  // distribution differs. Primary = α-calibration, comparison = uniform lift.
-  if (input.compareWithPrimedope && !input.calibrationMode) {
-    const half: ProgressCb | undefined = onProgress
-      ? (done, total) => onProgress(done, total * 2)
-      : undefined;
-    const primary = runSimulation(
-      { ...input, calibrationMode: "alpha", compareWithPrimedope: false },
-      half,
-    );
-    const secondHalf: ProgressCb | undefined = onProgress
-      ? (done, total) => onProgress(total + done, total * 2)
-      : undefined;
-    const comparison = runSimulation(
-      {
-        ...input,
-        calibrationMode: "primedope-binary-itm",
-        compareWithPrimedope: false,
-      },
-      secondHalf,
-    );
-    return { ...primary, comparison };
-  }
-
   const compiled = compileSchedule(input, calibrationMode);
   const N = compiled.tournamentsPerSample;
   const S = input.samples;

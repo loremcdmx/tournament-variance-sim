@@ -371,7 +371,6 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
   normalizeNumber("rakebackPct", 0, 100);
   normalizeNumber("itmGlobalPct", 0.5, 99);
   normalizeNumber("roiStdErr", 0, 5);
-  normalizeBoolean("compareWithPrimedope");
   normalizeBoolean("usePrimedopePayouts");
   normalizeBoolean("usePrimedopeFinishModel");
   normalizeBoolean("usePrimedopeRakeMath");

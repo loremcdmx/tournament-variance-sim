@@ -15,7 +15,6 @@ import type { DictKey } from "@/lib/i18n/dict";
 export type ModelFieldKey =
   | "finishModelId"
   | "alphaOverride"
-  | "compareWithPrimedope"
   | "usePrimedopePayouts"
   | "usePrimedopeFinishModel"
   | "usePrimedopeRakeMath"
@@ -45,7 +44,6 @@ export interface ModelPreset {
 const ZERO_SHOCKS: ModelPatch = {
   finishModelId: "powerlaw-realdata-influenced",
   alphaOverride: null,
-  compareWithPrimedope: true,
   usePrimedopePayouts: true,
   usePrimedopeFinishModel: true,
   usePrimedopeRakeMath: true,
@@ -73,7 +71,6 @@ export const STANDARD_PRESETS: ModelPreset[] = [
       // app's full buy-in+rake ROI basis; exact live-site EV parity is a
       // diagnostic script-only opt-in.
       finishModelId: "power-law",
-      compareWithPrimedope: true,
       usePrimedopePayouts: true,
     },
   },
@@ -148,7 +145,6 @@ export function extractModelPatch(state: ControlsState): ModelPatch {
   return {
     finishModelId: state.finishModelId,
     alphaOverride: state.alphaOverride,
-    compareWithPrimedope: state.compareWithPrimedope,
     usePrimedopePayouts: state.usePrimedopePayouts,
     usePrimedopeFinishModel: state.usePrimedopeFinishModel,
     usePrimedopeRakeMath: state.usePrimedopeRakeMath,

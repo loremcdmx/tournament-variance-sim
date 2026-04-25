@@ -30,7 +30,6 @@ export interface ControlsState {
   seed: number;
   finishModelId: FinishModelId;
   alphaOverride: number | null;
-  compareWithPrimedope: boolean;
   /**
    * When true, the PrimeDope comparison pass also substitutes PD's native
    * payout curve. Default true in PD mode, so the right pane reproduces

@@ -597,7 +597,7 @@ export function useSimulation() {
   // `seed` on the input passed in — every other twin/PD-compare decision must
   // stay identical so cached sibling runs are apples-to-apples.
   const buildPasses = useCallback((input: SimulationInput): PassPlan[] => {
-      const twin = !!input.compareWithPrimedope && !input.calibrationMode;
+      const twin = !input.calibrationMode;
       const mode2 = input.compareMode ?? "random";
       // The "primedope" model preset means "I want to see PD's ITM-distribution
       // model as the primary result, with our honest α algo on the right for
@@ -625,7 +625,7 @@ export function useSimulation() {
         ...si,
         schedule: si.schedule.map((r) => ({ ...r, bountyFraction: 0 })),
       });
-      let primaryInput: SimulationInput = { ...input, compareWithPrimedope: false };
+      let primaryInput: SimulationInput = input;
       if (pdPresetFlip && hasPko) primaryInput = stripBounties(primaryInput);
       const passes: PassPlan[] = [
         {
@@ -641,16 +641,12 @@ export function useSimulation() {
           // Strip bounties from every row so the secondary pass runs the
           // *same* schedule minus the KO component. Same seed keeps the
           // comparison aligned tournament-to-tournament.
-          secondInput = stripBounties({
-            ...input,
-            compareWithPrimedope: false,
-          });
+          secondInput = stripBounties(input);
         } else if (mode2 === "primedope") {
-          secondInput = { ...input, compareWithPrimedope: false };
+          secondInput = input;
         } else {
           secondInput = {
             ...input,
-            compareWithPrimedope: false,
             seed:
               (((input.seed ^ 0xa5a5a5a5) >>> 0) ^
                 ((Math.random() * 0xffffffff) >>> 0)) >>>
