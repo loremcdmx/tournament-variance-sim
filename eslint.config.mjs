@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Research scripts and legacy dumps — not shipped, looser typing is fine.
     "scripts/**",
     "tmp_legacy*",
+    // Local AI tooling sandboxes (git worktrees, launch configs, etc.).
+    ".claude/**",
   ]),
 ]);
 
