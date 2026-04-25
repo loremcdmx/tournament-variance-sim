@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  OBSERVED_USERNAMES_MAX_COUNT,
   OBSERVED_USERNAME_MAX_LEN,
   buildBattleRoyaleLeaderboardPromoConfig,
   isBattleRoyaleRow,
+  joinObservedResultHubUsernames,
   normalizeBattleRoyaleLeaderboardControls,
   normalizeObservedResultHubUsername,
+  parseObservedResultHubUsernames,
   scheduleHasBattleRoyaleRows,
 } from "./battleRoyaleLeaderboardUi";
 
@@ -51,17 +54,48 @@ describe("battleRoyaleLeaderboardUi", () => {
     expect(normalizeObservedResultHubUsername(null)).toBe("");
   });
 
-  it("populates observedResultHubUsername default when persisted state omits it", () => {
+  it("defaults observedResultHubUsernames to an empty array when persisted state omits it", () => {
     const normalized = normalizeBattleRoyaleLeaderboardControls({ mode: "observed" });
-    expect(normalized?.observedResultHubUsername).toBe("");
+    expect(normalized?.observedResultHubUsernames).toEqual([]);
   });
 
-  it("preserves a persisted observedResultHubUsername under normalization", () => {
+  it("preserves a persisted observedResultHubUsernames array under normalization", () => {
+    const normalized = normalizeBattleRoyaleLeaderboardControls({
+      mode: "observed",
+      observedResultHubUsernames: [" current ", "previous"],
+    });
+    expect(normalized?.observedResultHubUsernames).toEqual([
+      "current",
+      "previous",
+    ]);
+  });
+
+  it("migrates the legacy singular observedResultHubUsername field to the array shape", () => {
     const normalized = normalizeBattleRoyaleLeaderboardControls({
       mode: "observed",
       observedResultHubUsername: "  romeopro\n",
     });
-    expect(normalized?.observedResultHubUsername).toBe("romeopro");
+    expect(normalized?.observedResultHubUsernames).toEqual(["romeopro"]);
+  });
+
+  it("parses comma- and newline-separated free-form input into a deduped, capped array", () => {
+    expect(parseObservedResultHubUsernames("  nick1, nick2 ,nick1\nnick3 ")).toEqual([
+      "nick1",
+      "nick2",
+      "nick3",
+    ]);
+    const many = Array.from({ length: 50 }, (_, i) => `nick${i}`).join(",");
+    expect(parseObservedResultHubUsernames(many)).toHaveLength(
+      OBSERVED_USERNAMES_MAX_COUNT,
+    );
+    expect(parseObservedResultHubUsernames(undefined)).toEqual([]);
+    expect(parseObservedResultHubUsernames(42)).toEqual([]);
+  });
+
+  it("round-trips an array through join/parse", () => {
+    const names = ["currentNick", "old_nick", "ник_кириллица"];
+    expect(parseObservedResultHubUsernames(joinObservedResultHubUsernames(names)))
+      .toEqual(names);
   });
 
   it("detects battle royale rows from either game type or payout structure", () => {

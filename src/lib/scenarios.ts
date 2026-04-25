@@ -81,7 +81,7 @@ export const SCENARIOS: DemoScenario[] = [
         ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
         mode: "observed",
         observedTotalPrizes: 450,
-        observedTotalTournaments: 3000,
+        observedTotalTournaments: 0,
         observedPointsByStake: {
           "0.25": 0,
           "1": 0,
@@ -600,7 +600,7 @@ export const SCENARIOS: DemoScenario[] = [
         ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
         mode: "observed",
         observedTotalPrizes: 540,
-        observedTotalTournaments: 3600,
+        observedTotalTournaments: 0,
         observedPointsByStake: {
           "0.25": 0,
           "1": 0,

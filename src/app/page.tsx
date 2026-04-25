@@ -30,13 +30,14 @@ import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { inferGameType } from "@/lib/sim/gameType";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
-  OBSERVED_USERNAME_MAX_LEN,
   buildBattleRoyaleLeaderboardPromoConfig,
   isBattleRoyaleRow,
+  joinObservedResultHubUsernames,
+  parseObservedResultHubUsernames,
   scheduleHasBattleRoyaleRows,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
-  fetchResulthubGgBr,
+  fetchResulthubGgBrMany,
   ResulthubLookupError,
 } from "@/lib/sim/resulthubClient";
 import {
@@ -1640,33 +1641,34 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
     setLookupImportError(null);
   };
 
-  const setPoints = (
-    stake: keyof ControlsState["battleRoyaleLeaderboard"]["observedPointsByStake"],
-    nextValue: number,
-  ) =>
+  // Free-form input draft kept local: the persisted state is the parsed
+  // string[], but while the user is typing "nick1, nick2," we don't want
+  // to drop the trailing comma or eagerly dedupe. Reconcile to canonical
+  // join() whenever the persisted array changes from somewhere else.
+  const persistedUsernamesJoined = useMemo(
+    () => joinObservedResultHubUsernames(controls.observedResultHubUsernames),
+    [controls.observedResultHubUsernames],
+  );
+  const [usernamesDraft, setUsernamesDraft] = useState(persistedUsernamesJoined);
+  useEffect(() => {
+    setUsernamesDraft(persistedUsernamesJoined);
+  }, [persistedUsernamesJoined]);
+
+  const setObservedUsernamesDraft = (next: string) => {
+    setUsernamesDraft(next);
+    const parsed = parseObservedResultHubUsernames(next);
     onChange({
       ...value,
       battleRoyaleLeaderboard: {
         ...controls,
-        observedPointsByStake: {
-          ...controls.observedPointsByStake,
-          [stake]: Math.max(0, nextValue),
-        },
+        observedResultHubUsernames: parsed,
       },
     });
+  };
 
-  const setObservedUsername = (next: string) =>
-    onChange({
-      ...value,
-      battleRoyaleLeaderboard: {
-        ...controls,
-        observedResultHubUsername: next.slice(0, OBSERVED_USERNAME_MAX_LEN),
-      },
-    });
-
-  // ResultHub lookup: pulls per-stake LB points + total prizes for the
-  // saved username's current month and writes them into observed controls.
-  // Tournament count stays manual — the API doesn't expose it.
+  // ResultHub lookup: pulls per-stake LB points + total prizes for every
+  // saved nick (current + prior aliases) and sums them into observed
+  // controls. Tournament count stays manual — the API doesn't expose it.
   type LookupStatus =
     | { kind: "idle" }
     | { kind: "pending" }
@@ -1678,15 +1680,18 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
   const lookupAbortRef = useRef<AbortController | null>(null);
   useEffect(() => () => lookupAbortRef.current?.abort(), []);
 
-  const trimmedUsername = controls.observedResultHubUsername.trim();
+  const usernamesForLookup = controls.observedResultHubUsernames;
   const runResulthubLookup = useCallback(async () => {
-    if (!trimmedUsername) return;
+    if (usernamesForLookup.length === 0) return;
     lookupAbortRef.current?.abort();
     const ctrl = new AbortController();
     lookupAbortRef.current = ctrl;
     setLookupStatus({ kind: "pending" });
     try {
-      const summary = await fetchResulthubGgBr(trimmedUsername, ctrl.signal);
+      const summary = await fetchResulthubGgBrMany(
+        usernamesForLookup,
+        ctrl.signal,
+      );
       onChange({
         ...value,
         battleRoyaleLeaderboard: {
@@ -1702,7 +1707,7 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
         err instanceof ResulthubLookupError ? err.code : "network";
       setLookupStatus({ kind: "error", reason: code });
     }
-  }, [trimmedUsername, value, controls, onChange]);
+  }, [usernamesForLookup, value, controls, onChange]);
 
   const uiDisabled = disabled || !advanced;
 
@@ -2063,13 +2068,12 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
             <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
               <input
                 type="text"
-                value={controls.observedResultHubUsername}
+                value={usernamesDraft}
                 disabled={uiDisabled}
-                onChange={(e) => setObservedUsername(e.target.value)}
+                onChange={(e) => setObservedUsernamesDraft(e.target.value)}
                 placeholder={t(
                   "controls.brLeaderboard.observedUsernamePlaceholder",
                 )}
-                maxLength={OBSERVED_USERNAME_MAX_LEN}
                 autoComplete="off"
                 spellCheck={false}
                 className="flex-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 font-mono text-[12px] leading-relaxed text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
@@ -2078,7 +2082,7 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
                 type="button"
                 disabled={
                   uiDisabled ||
-                  trimmedUsername.length === 0 ||
+                  usernamesForLookup.length === 0 ||
                   lookupStatus.kind === "pending"
                 }
                 onClick={runResulthubLookup}
@@ -2106,22 +2110,9 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
               label={t("controls.brLeaderboard.prizes")}
               hint={t("controls.brLeaderboard.prizesHint")}
             >
-              <NumInput
-                value={controls.observedTotalPrizes}
-                min={0}
-                max={1_000_000_000}
-                step={10}
-                disabled={uiDisabled}
-                onChange={(v) =>
-                  onChange({
-                    ...value,
-                    battleRoyaleLeaderboard: {
-                      ...controls,
-                      observedTotalPrizes: v,
-                    },
-                  })
-                }
-              />
+              <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                {Math.round(controls.observedTotalPrizes).toLocaleString("ru-RU")}
+              </div>
             </Field>
             <Field
               label={t("controls.brLeaderboard.tournaments")}
@@ -2168,14 +2159,9 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
                 label={`pts $${stake}`}
                 hint={t("controls.brLeaderboard.pointsHint")}
               >
-                <NumInput
-                  value={controls.observedPointsByStake[stake]}
-                  min={0}
-                  max={10_000_000}
-                  step={100}
-                  disabled={uiDisabled}
-                  onChange={(v) => setPoints(stake, Math.floor(v))}
-                />
+                <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
+                  {Math.round(controls.observedPointsByStake[stake]).toLocaleString("ru-RU")}
+                </div>
               </Field>
             ))}
           </div>

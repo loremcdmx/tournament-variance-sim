@@ -20,12 +20,13 @@ import {
 export interface BattleRoyaleLeaderboardControls {
   mode: "off" | "observed" | "manual" | "lookup";
   /**
-   * ResultHub profile name. Free-form, capped at OBSERVED_USERNAME_MAX_LEN.
-   * Currently UI-only — persisted so future ResultHub lookups can resolve
-   * pts $0.25 / $1 / $3 / $10 / $25 and LB-prizes for this profile without
-   * a manual paste, but no engine path reads it yet.
+   * GGPoker nicks tied to this profile (current + any prior nicks the
+   * player rebranded to). Each entry is sanitized + capped at
+   * `OBSERVED_USERNAME_MAX_LEN`. Up to `OBSERVED_USERNAMES_MAX_COUNT`
+   * entries; ResultHub doesn't track GGPoker rename history, so the
+   * lookup fans out across all entries and sums the per-stake totals.
    */
-  observedResultHubUsername: string;
+  observedResultHubUsernames: string[];
   observedTotalPrizes: number;
   observedTotalTournaments: number;
   observedPointsByStake: BattleRoyaleLeaderboardObservedPointsByStake;
@@ -54,11 +55,12 @@ export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS: BattleRoyaleLeaderboardOb
   };
 
 export const OBSERVED_USERNAME_MAX_LEN = 64;
+export const OBSERVED_USERNAMES_MAX_COUNT = 10;
 
 export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS: BattleRoyaleLeaderboardControls =
   {
     mode: "off",
-    observedResultHubUsername: "",
+    observedResultHubUsernames: [],
     observedTotalPrizes: 0,
     observedTotalTournaments: 0,
     observedPointsByStake: DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS,
@@ -98,6 +100,48 @@ export function normalizeObservedResultHubUsername(value: unknown): string {
   return stripped.trim().slice(0, OBSERVED_USERNAME_MAX_LEN);
 }
 
+/**
+ * Parse a free-form input ("nick1, nick2, oldNick") into a deduped, capped
+ * array of clean nicks. Splits on comma or newline, drops empties, keeps
+ * GGPoker case sensitivity, drops duplicates by exact match.
+ */
+export function parseObservedResultHubUsernames(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return dedupeUsernames(
+      value
+        .map((v) => normalizeObservedResultHubUsername(v))
+        .filter((s) => s.length > 0),
+    );
+  }
+  if (typeof value !== "string") return [];
+  return dedupeUsernames(
+    value
+      .split(/[,\n]/)
+      .map((s) => normalizeObservedResultHubUsername(s))
+      .filter((s) => s.length > 0),
+  );
+}
+
+function dedupeUsernames(names: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const n of names) {
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+    if (out.length >= OBSERVED_USERNAMES_MAX_COUNT) break;
+  }
+  return out;
+}
+
+/**
+ * Render an array of nicks for editing in a single-line input. Comma+space
+ * keeps the source obvious if the user round-trips through the field.
+ */
+export function joinObservedResultHubUsernames(names: readonly string[]): string {
+  return names.join(", ");
+}
+
 function normalizePointsByStake(
   value: unknown,
 ): BattleRoyaleLeaderboardObservedPointsByStake {
@@ -123,11 +167,15 @@ export function normalizeBattleRoyaleLeaderboardControls(
       : value.mode === "manual"
         ? "manual"
         : "off";
+  // Migration: persisted state from before the multi-nick change had
+  // `observedResultHubUsername: string`. Accept either form, prefer array.
+  const usernames =
+    value.observedResultHubUsernames !== undefined
+      ? parseObservedResultHubUsernames(value.observedResultHubUsernames)
+      : parseObservedResultHubUsernames(value.observedResultHubUsername);
   return {
     mode,
-    observedResultHubUsername: normalizeObservedResultHubUsername(
-      value.observedResultHubUsername,
-    ),
+    observedResultHubUsernames: usernames,
     observedTotalPrizes: finiteOr(value.observedTotalPrizes, 0),
     observedTotalTournaments: Math.floor(
       finiteOr(value.observedTotalTournaments, 0, 0, 10_000_000),

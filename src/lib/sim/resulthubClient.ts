@@ -77,3 +77,71 @@ export async function fetchResulthubGgBr(
   }
   return body;
 }
+
+/**
+ * Fetch BR summaries for several nicks in parallel and sum them. Used when
+ * a player has rebranded on GGPoker — ResultHub doesn't link prior nicks
+ * to the current profile, so the caller passes every nick they want
+ * counted and we merge the per-stake totals.
+ *
+ * - Per-nick `no-data` failures are tolerated; we just skip that nick.
+ * - Any non-`no-data` failure (network/timeout/bad-status/bad-json) on at
+ *   least one nick still counts as a partial success as long as another
+ *   nick returned data.
+ * - If every nick fails or returns no data, throws the most informative
+ *   error from the batch.
+ */
+export async function fetchResulthubGgBrMany(
+  usernames: readonly string[],
+  signal?: AbortSignal,
+): Promise<ResulthubGgBrSummary> {
+  const cleaned = usernames.map((u) => u.trim()).filter((u) => u.length > 0);
+  if (cleaned.length === 0) throw new ResulthubLookupError("empty-username");
+
+  const settled = await Promise.allSettled(
+    cleaned.map((u) => fetchResulthubGgBr(u, signal)),
+  );
+
+  let totalPrizes = 0;
+  const points = { "0.25": 0, "1": 0, "3": 0, "10": 0, "25": 0 } as Record<
+    keyof ResulthubGgBrSummary["pointsByStake"],
+    number
+  >;
+  let firstWindow: ResulthubGgBrSummary["window"] | null = null;
+  let anyDataFound = false;
+  let firstNonDataError: ResulthubLookupError | null = null;
+
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      const summary = result.value;
+      anyDataFound = true;
+      totalPrizes += summary.totalPrizes;
+      for (const k of Object.keys(points) as Array<keyof typeof points>) {
+        points[k] += summary.pointsByStake[k] ?? 0;
+      }
+      if (!firstWindow) firstWindow = summary.window;
+    } else if (result.reason instanceof ResulthubLookupError) {
+      if (result.reason.code !== "no-data" && !firstNonDataError) {
+        firstNonDataError = result.reason;
+      }
+    } else if (
+      result.reason instanceof DOMException &&
+      result.reason.name === "AbortError"
+    ) {
+      throw result.reason;
+    } else if (!firstNonDataError) {
+      firstNonDataError = new ResulthubLookupError("network");
+    }
+  }
+
+  if (!anyDataFound) {
+    throw firstNonDataError ?? new ResulthubLookupError("no-data");
+  }
+  return {
+    totalPrizes,
+    pointsByStake: points,
+    // Window comes from the same server-side helper for every nick in a
+    // batch, so picking the first non-null one is safe.
+    window: firstWindow!,
+  };
+}

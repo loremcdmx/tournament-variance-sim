@@ -2166,16 +2166,16 @@ export const DICT = {
     ru: "Наблюдаемые лидербордные очки по лимитам в том же окне профиля.",
   },
   "controls.brLeaderboard.observedUsernameLabel": {
-    en: "ResultHub username",
-    ru: "Ник в ResultHub",
+    en: "GGPoker nicks",
+    ru: "Ники на GGPoker",
   },
   "controls.brLeaderboard.observedUsernameHint": {
-    en: "Press “Pull from ResultHub” to fill LB prizes and pts $0.25 / $1 / $3 / $10 / $25 from the player's current-month BR profile. Tournament count stays manual — the API doesn't expose it.",
-    ru: "Нажми «Подтянуть из ResultHub», чтобы заполнить LB-призы и pts $0.25 / $1 / $3 / $10 / $25 из BR-профиля игрока за текущий месяц. Количество турниров остаётся ручным — API его не отдаёт.",
+    en: "Comma-separated. Add prior nicks here too — ResultHub doesn't track GGPoker rename history, so the lookup pulls each one and sums the totals. “Tournaments in profile” stays manual — the API doesn't expose it.",
+    ru: "Через запятую. Добавь сюда и прежние ники — ResultHub не знает истории смены ника на GGPoker, поиск пройдёт по каждому и сложит итоги. «Турниров в профиле» остаётся ручным — API его не отдаёт.",
   },
   "controls.brLeaderboard.observedUsernamePlaceholder": {
-    en: "e.g. romeopro",
-    ru: "например, romeopro",
+    en: "e.g. currentNick, oldNick",
+    ru: "например, currentNick, oldNick",
   },
   "controls.brLeaderboard.lookupAction": {
     en: "Pull from ResultHub",
