@@ -19,6 +19,13 @@ import {
 
 export interface BattleRoyaleLeaderboardControls {
   mode: "off" | "observed" | "manual" | "lookup";
+  /**
+   * ResultHub profile name. Free-form, capped at OBSERVED_USERNAME_MAX_LEN.
+   * Currently UI-only — persisted so future ResultHub lookups can resolve
+   * pts $0.25 / $1 / $3 / $10 / $25 and LB-prizes for this profile without
+   * a manual paste, but no engine path reads it yet.
+   */
+  observedResultHubUsername: string;
   observedTotalPrizes: number;
   observedTotalTournaments: number;
   observedPointsByStake: BattleRoyaleLeaderboardObservedPointsByStake;
@@ -46,9 +53,12 @@ export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS: BattleRoyaleLeaderboardOb
     "25": 0,
   };
 
+export const OBSERVED_USERNAME_MAX_LEN = 64;
+
 export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS: BattleRoyaleLeaderboardControls =
   {
     mode: "off",
+    observedResultHubUsername: "",
     observedTotalPrizes: 0,
     observedTotalTournaments: 0,
     observedPointsByStake: DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS,
@@ -73,6 +83,19 @@ function finiteOr(
 ): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, value));
+}
+
+export function normalizeObservedResultHubUsername(value: unknown): string {
+  if (typeof value !== "string") return "";
+  // Strip control characters (codepoints < 32 and DEL), trim outer
+  // whitespace, cap length. We don't restrict to ASCII — ResultHub allows
+  // non-Latin nicks.
+  let stripped = "";
+  for (const ch of value) {
+    const cp = ch.codePointAt(0);
+    if (cp != null && cp >= 32 && cp !== 127) stripped += ch;
+  }
+  return stripped.trim().slice(0, OBSERVED_USERNAME_MAX_LEN);
 }
 
 function normalizePointsByStake(
@@ -102,6 +125,9 @@ export function normalizeBattleRoyaleLeaderboardControls(
         : "off";
   return {
     mode,
+    observedResultHubUsername: normalizeObservedResultHubUsername(
+      value.observedResultHubUsername,
+    ),
     observedTotalPrizes: finiteOr(value.observedTotalPrizes, 0),
     observedTotalTournaments: Math.floor(
       finiteOr(value.observedTotalTournaments, 0, 0, 10_000_000),

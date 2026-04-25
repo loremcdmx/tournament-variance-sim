@@ -30,6 +30,7 @@ import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { inferGameType } from "@/lib/sim/gameType";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  OBSERVED_USERNAME_MAX_LEN,
   buildBattleRoyaleLeaderboardPromoConfig,
   isBattleRoyaleRow,
   scheduleHasBattleRoyaleRows,
@@ -47,7 +48,6 @@ import {
   nearestBattleRoyaleLeaderboardManualStake,
   type BattleRoyaleLeaderboardManualStakeSelection,
 } from "@/lib/sim/battleRoyaleLeaderboardManual";
-import { parseBattleRoyaleLeaderboardObservedImport } from "@/lib/sim/battleRoyaleLeaderboardObservedImport";
 import {
   countScheduleTournaments,
   redistributeScheduleCounts,
@@ -1594,10 +1594,6 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
     previewTournaments * Math.max(0, lookupAnalysis.payoutPerTournament);
   const [lookupImportText, setLookupImportText] = useState("");
   const [lookupImportError, setLookupImportError] = useState<string | null>(null);
-  const [observedImportText, setObservedImportText] = useState("");
-  const [observedImportError, setObservedImportError] = useState<string | null>(
-    null,
-  );
   const fmtMoney = (n: number) =>
     Math.abs(n) >= 100
       ? `$${Math.round(n).toLocaleString("ru-RU")}`
@@ -1639,37 +1635,6 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
     setLookupImportError(null);
   };
 
-  const importObservedProfile = () => {
-    const parsed = parseBattleRoyaleLeaderboardObservedImport(observedImportText);
-    const hasAnyPoints = BR_STAKE_KEYS.some(
-      (stake) => (parsed.pointsByStake[stake] ?? 0) > 0,
-    );
-    if (
-      parsed.totalPrizes == null &&
-      parsed.totalTournaments == null &&
-      !hasAnyPoints
-    ) {
-      setObservedImportError(t("controls.brLeaderboard.observedImportParseError"));
-      return;
-    }
-    onChange({
-      ...value,
-      battleRoyaleLeaderboard: {
-        ...controls,
-        observedTotalPrizes:
-          parsed.totalPrizes ?? controls.observedTotalPrizes,
-        observedTotalTournaments:
-          parsed.totalTournaments ?? controls.observedTotalTournaments,
-        observedPointsByStake: {
-          ...controls.observedPointsByStake,
-          ...parsed.pointsByStake,
-        },
-      },
-    });
-    setObservedImportText("");
-    setObservedImportError(null);
-  };
-
   const setPoints = (
     stake: keyof ControlsState["battleRoyaleLeaderboard"]["observedPointsByStake"],
     nextValue: number,
@@ -1682,6 +1647,15 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
           ...controls.observedPointsByStake,
           [stake]: Math.max(0, nextValue),
         },
+      },
+    });
+
+  const setObservedUsername = (next: string) =>
+    onChange({
+      ...value,
+      battleRoyaleLeaderboard: {
+        ...controls,
+        observedResultHubUsername: next.slice(0, OBSERVED_USERNAME_MAX_LEN),
       },
     });
 
@@ -2037,35 +2011,23 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
       )}
       {controls.mode === "observed" && (
         <>
-          <div className="mb-3 grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_220px]">
-            <div>
-              <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
-                {t("controls.brLeaderboard.observedImportLabel")}
-              </div>
-              <textarea
-                value={observedImportText}
-                disabled={uiDisabled}
-                onChange={(e) => {
-                  setObservedImportText(e.target.value);
-                  setObservedImportError(null);
-                }}
-                placeholder={t("controls.brLeaderboard.observedImportPlaceholder")}
-                className="min-h-20 w-full resize-y rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
-              />
-              <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-                {observedImportError ??
-                  t("controls.brLeaderboard.observedImportHint")}
-              </div>
+          <div className="mb-3">
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+              {t("controls.brLeaderboard.observedUsernameLabel")}
             </div>
-            <div className="flex items-start">
-              <button
-                type="button"
-                disabled={uiDisabled || observedImportText.trim().length === 0}
-                onClick={importObservedProfile}
-                className="w-full rounded-md border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-black transition-opacity disabled:opacity-40"
-              >
-                {t("controls.brLeaderboard.observedImportApply")}
-              </button>
+            <input
+              type="text"
+              value={controls.observedResultHubUsername}
+              disabled={uiDisabled}
+              onChange={(e) => setObservedUsername(e.target.value)}
+              placeholder={t("controls.brLeaderboard.observedUsernamePlaceholder")}
+              maxLength={OBSERVED_USERNAME_MAX_LEN}
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 font-mono text-[12px] leading-relaxed text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+            />
+            <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+              {t("controls.brLeaderboard.observedUsernameHint")}
             </div>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">

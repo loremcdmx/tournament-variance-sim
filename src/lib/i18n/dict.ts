@@ -2165,25 +2165,17 @@ export const DICT = {
     en: "Observed leaderboard points by stake for the same profile window.",
     ru: "Наблюдаемые лидербордные очки по лимитам в том же окне профиля.",
   },
-  "controls.brLeaderboard.observedImportLabel": {
-    en: "ResultHub import",
-    ru: "Импорт ResultHub",
+  "controls.brLeaderboard.observedUsernameLabel": {
+    en: "ResultHub username",
+    ru: "Ник в ResultHub",
   },
-  "controls.brLeaderboard.observedImportHint": {
-    en: "Paste ResultHub extension output; LB prizes, tournaments, and pts by stake will be filled when labels are found.",
-    ru: "Вставь вывод расширения ResultHub; LB-призы, турниры и pts по лимитам заполнятся, если найдены подписи.",
+  "controls.brLeaderboard.observedUsernameHint": {
+    en: "Saved for future automatic ResultHub lookups (LB prizes, pts $0.25 / $1 / $3 / $10 / $25). Not yet wired to the engine — fill the fields below manually for now.",
+    ru: "Сохранится для будущего автоматического подтягивания из ResultHub (LB-призы, pts $0.25 / $1 / $3 / $10 / $25). Пока движок ничего не тянет — поля ниже заполни вручную.",
   },
-  "controls.brLeaderboard.observedImportPlaceholder": {
-    en: "LB prizes: 4016\nTournaments: 76238\npts $0.25: 219114\npts $1: 2202653",
-    ru: "LB prizes: 4016\nTournaments: 76238\npts $0.25: 219114\npts $1: 2202653",
-  },
-  "controls.brLeaderboard.observedImportApply": {
-    en: "Fill observed",
-    ru: "Заполнить observed",
-  },
-  "controls.brLeaderboard.observedImportParseError": {
-    en: "Could not find ResultHub totals or stake points in this paste.",
-    ru: "Не нашёл в этом пасте totals ResultHub или очки по лимитам.",
+  "controls.brLeaderboard.observedUsernamePlaceholder": {
+    en: "e.g. romeopro",
+    ru: "например, romeopro",
   },
   "controls.brLeaderboard.manualStake": {
     en: "Target stake",

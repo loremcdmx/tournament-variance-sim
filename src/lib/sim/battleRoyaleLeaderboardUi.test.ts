@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  OBSERVED_USERNAME_MAX_LEN,
   buildBattleRoyaleLeaderboardPromoConfig,
   isBattleRoyaleRow,
   normalizeBattleRoyaleLeaderboardControls,
+  normalizeObservedResultHubUsername,
   scheduleHasBattleRoyaleRows,
 } from "./battleRoyaleLeaderboardUi";
 
@@ -36,6 +38,30 @@ describe("battleRoyaleLeaderboardUi", () => {
         "25": 0,
       },
     });
+  });
+
+  it("normalizes observed ResultHub username: trims, drops control chars, caps length, rejects non-strings", () => {
+    expect(normalizeObservedResultHubUsername("  romeopro  ")).toBe("romeopro");
+    expect(normalizeObservedResultHubUsername("ник\nтест")).toBe("никтест");
+    expect(normalizeObservedResultHubUsername("a".repeat(200))).toHaveLength(
+      OBSERVED_USERNAME_MAX_LEN,
+    );
+    expect(normalizeObservedResultHubUsername(undefined)).toBe("");
+    expect(normalizeObservedResultHubUsername(42)).toBe("");
+    expect(normalizeObservedResultHubUsername(null)).toBe("");
+  });
+
+  it("populates observedResultHubUsername default when persisted state omits it", () => {
+    const normalized = normalizeBattleRoyaleLeaderboardControls({ mode: "observed" });
+    expect(normalized?.observedResultHubUsername).toBe("");
+  });
+
+  it("preserves a persisted observedResultHubUsername under normalization", () => {
+    const normalized = normalizeBattleRoyaleLeaderboardControls({
+      mode: "observed",
+      observedResultHubUsername: "  romeopro\n",
+    });
+    expect(normalized?.observedResultHubUsername).toBe("romeopro");
   });
 
   it("detects battle royale rows from either game type or payout structure", () => {
