@@ -2170,12 +2170,48 @@ export const DICT = {
     ru: "Ник в ResultHub",
   },
   "controls.brLeaderboard.observedUsernameHint": {
-    en: "Saved for future automatic ResultHub lookups (LB prizes, pts $0.25 / $1 / $3 / $10 / $25). Not yet wired to the engine — fill the fields below manually for now.",
-    ru: "Сохранится для будущего автоматического подтягивания из ResultHub (LB-призы, pts $0.25 / $1 / $3 / $10 / $25). Пока движок ничего не тянет — поля ниже заполни вручную.",
+    en: "Press “Pull from ResultHub” to fill LB prizes and pts $0.25 / $1 / $3 / $10 / $25 from the player's current-month BR profile. Tournament count stays manual — the API doesn't expose it.",
+    ru: "Нажми «Подтянуть из ResultHub», чтобы заполнить LB-призы и pts $0.25 / $1 / $3 / $10 / $25 из BR-профиля игрока за текущий месяц. Количество турниров остаётся ручным — API его не отдаёт.",
   },
   "controls.brLeaderboard.observedUsernamePlaceholder": {
     en: "e.g. romeopro",
     ru: "например, romeopro",
+  },
+  "controls.brLeaderboard.lookupAction": {
+    en: "Pull from ResultHub",
+    ru: "Подтянуть из ResultHub",
+  },
+  "controls.brLeaderboard.lookupPending": {
+    en: "Loading…",
+    ru: "Загрузка…",
+  },
+  "controls.brLeaderboard.lookupOk": {
+    en: "Filled from ResultHub for {from} → {to}.",
+    ru: "Заполнено из ResultHub за {from} → {to}.",
+  },
+  "controls.brLeaderboard.lookupError.network": {
+    en: "Could not reach our ResultHub proxy. Check your connection and try again.",
+    ru: "Не удалось достучаться до нашего ResultHub-прокси. Проверь сеть и попробуй ещё раз.",
+  },
+  "controls.brLeaderboard.lookupError.timeout": {
+    en: "ResultHub timed out. Try again in a moment.",
+    ru: "ResultHub не ответил вовремя. Попробуй ещё раз через секунду.",
+  },
+  "controls.brLeaderboard.lookupError.bad-status": {
+    en: "ResultHub returned an unexpected response. Their API may be down or rate-limited.",
+    ru: "ResultHub вернул неожиданный ответ. Возможно, их API лежит или сработал rate-limit.",
+  },
+  "controls.brLeaderboard.lookupError.bad-json": {
+    en: "ResultHub returned malformed data — they may have changed the API. Please report this.",
+    ru: "ResultHub вернул битый JSON — возможно, у них поменялся API. Сообщи об этом.",
+  },
+  "controls.brLeaderboard.lookupError.no-data": {
+    en: "ResultHub has no Battle Royale data for this username this month. Check the spelling or wait until you've played some BRs.",
+    ru: "У ResultHub нет данных Battle Royale по этому нику за текущий месяц. Проверь написание или сыграй пару BR.",
+  },
+  "controls.brLeaderboard.lookupError.empty-username": {
+    en: "Type a ResultHub username first.",
+    ru: "Сначала введи ник в ResultHub.",
   },
   "controls.brLeaderboard.manualStake": {
     en: "Target stake",

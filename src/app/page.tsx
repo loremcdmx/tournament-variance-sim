@@ -36,6 +36,10 @@ import {
   scheduleHasBattleRoyaleRows,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
+  fetchResulthubGgBr,
+  ResulthubLookupError,
+} from "@/lib/sim/resulthubClient";
+import {
   analyzeBattleRoyaleLeaderboardLookup,
   parseBattleRoyaleLeaderboardSnapshot,
 } from "@/lib/sim/battleRoyaleLeaderboardLookup";
@@ -53,6 +57,7 @@ import {
   redistributeScheduleCounts,
 } from "@/lib/sim/scheduleTarget";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import type { DictKey } from "@/lib/i18n/dict";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
@@ -1659,6 +1664,46 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
       },
     });
 
+  // ResultHub lookup: pulls per-stake LB points + total prizes for the
+  // saved username's current month and writes them into observed controls.
+  // Tournament count stays manual — the API doesn't expose it.
+  type LookupStatus =
+    | { kind: "idle" }
+    | { kind: "pending" }
+    | { kind: "ok"; at: number; window: { from: string; to: string } }
+    | { kind: "error"; reason: string };
+  const [lookupStatus, setLookupStatus] = useState<LookupStatus>({
+    kind: "idle",
+  });
+  const lookupAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => lookupAbortRef.current?.abort(), []);
+
+  const trimmedUsername = controls.observedResultHubUsername.trim();
+  const runResulthubLookup = useCallback(async () => {
+    if (!trimmedUsername) return;
+    lookupAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    lookupAbortRef.current = ctrl;
+    setLookupStatus({ kind: "pending" });
+    try {
+      const summary = await fetchResulthubGgBr(trimmedUsername, ctrl.signal);
+      onChange({
+        ...value,
+        battleRoyaleLeaderboard: {
+          ...controls,
+          observedTotalPrizes: summary.totalPrizes,
+          observedPointsByStake: { ...summary.pointsByStake },
+        },
+      });
+      setLookupStatus({ kind: "ok", at: Date.now(), window: summary.window });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      const code =
+        err instanceof ResulthubLookupError ? err.code : "network";
+      setLookupStatus({ kind: "error", reason: code });
+    }
+  }, [trimmedUsername, value, controls, onChange]);
+
   const uiDisabled = disabled || !advanced;
 
   return (
@@ -2015,19 +2060,45 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
             <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
               {t("controls.brLeaderboard.observedUsernameLabel")}
             </div>
-            <input
-              type="text"
-              value={controls.observedResultHubUsername}
-              disabled={uiDisabled}
-              onChange={(e) => setObservedUsername(e.target.value)}
-              placeholder={t("controls.brLeaderboard.observedUsernamePlaceholder")}
-              maxLength={OBSERVED_USERNAME_MAX_LEN}
-              autoComplete="off"
-              spellCheck={false}
-              className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 font-mono text-[12px] leading-relaxed text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
-            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <input
+                type="text"
+                value={controls.observedResultHubUsername}
+                disabled={uiDisabled}
+                onChange={(e) => setObservedUsername(e.target.value)}
+                placeholder={t(
+                  "controls.brLeaderboard.observedUsernamePlaceholder",
+                )}
+                maxLength={OBSERVED_USERNAME_MAX_LEN}
+                autoComplete="off"
+                spellCheck={false}
+                className="flex-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 font-mono text-[12px] leading-relaxed text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+              />
+              <button
+                type="button"
+                disabled={
+                  uiDisabled ||
+                  trimmedUsername.length === 0 ||
+                  lookupStatus.kind === "pending"
+                }
+                onClick={runResulthubLookup}
+                className="rounded-md border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-black transition-opacity disabled:opacity-40 sm:min-w-[180px]"
+              >
+                {lookupStatus.kind === "pending"
+                  ? t("controls.brLeaderboard.lookupPending")
+                  : t("controls.brLeaderboard.lookupAction")}
+              </button>
+            </div>
             <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-              {t("controls.brLeaderboard.observedUsernameHint")}
+              {lookupStatus.kind === "ok"
+                ? t("controls.brLeaderboard.lookupOk")
+                    .replace("{from}", lookupStatus.window.from)
+                    .replace("{to}", lookupStatus.window.to)
+                : lookupStatus.kind === "error"
+                  ? t(
+                      `controls.brLeaderboard.lookupError.${lookupStatus.reason}` as DictKey,
+                    )
+                  : t("controls.brLeaderboard.observedUsernameHint")}
             </div>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
