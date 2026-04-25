@@ -203,6 +203,24 @@ const useMoneyFmt = () => useContext(MoneyFmtContext);
 // without threading the scalar through every sub-component.
 const AbiContext = createContext<number>(1);
 
+function loadUnitMode(key: string): UnitMode {
+  if (typeof localStorage === "undefined") return "abi";
+  try {
+    const v = localStorage.getItem(key);
+    return v === "money" || v === "abi" ? v : "abi";
+  } catch {
+    return "abi";
+  }
+}
+function saveUnitMode(key: string, v: UnitMode): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(key, v);
+  } catch {}
+}
+
+const GLOBAL_UNIT_KEY = "tvs.unit.global.v1";
+
 /**
  * Per-widget unit toggle scope. Owns its own `money`/`abi` state, defaulting
  * to ABI, persisted under `tvs.unit.<id>.v1`. Any InlineUnitToggle rendered
@@ -211,31 +229,17 @@ const AbiContext = createContext<number>(1);
 function UnitScope({ id, children }: { id: string; children: ReactNode }) {
   const abi = useContext(AbiContext);
   const storageKey = `tvs.unit.${id}.v1`;
-  // Hydrate from localStorage lazily so SSR markup matches the first render
-  // (default "abi") and we don't need a setState-in-effect for persistence.
-  const [unit, setUnit] = useState<UnitMode>(() => {
-    if (typeof localStorage === "undefined") return "abi";
-    try {
-      const v = localStorage.getItem(storageKey);
-      return v === "money" || v === "abi" ? v : "abi";
-    } catch {
-      return "abi";
-    }
-  });
-  // Persist whenever the user flips the toggle. useState setter `setUnit` is
-  // referentially stable, so wrapping it in useCallback would be noise —
-  // instead the context value closes over the stable setter directly.
-  const persist = (v: UnitMode) => {
-    setUnit(v);
-    if (typeof localStorage === "undefined") return;
-    try {
-      localStorage.setItem(storageKey, v);
-    } catch {}
-  };
+  const [unit, setUnit] = useLocalStorageState<UnitMode>(
+    storageKey,
+    () => loadUnitMode(storageKey),
+    (v) => saveUnitMode(storageKey, v),
+    "abi",
+  );
   const value = useMemo<UnitCtxValue>(() => {
     const fmt = unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt;
-    return { ...fmt, unit, setUnit: persist };
-    // persist closes over `storageKey` + stable setter; safe to ignore.
+    return { ...fmt, unit, setUnit };
+    // setUnit identity rotates on every render of useLocalStorageState — depend
+    // on storageKey instead so the memo only refreshes when scope or unit change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit, abi, storageKey]);
   return (
@@ -544,10 +548,19 @@ function ResultsViewImpl({
     const lastX = xs[xs.length - 1] || 1;
     return result.totalBuyIn / lastX;
   }, [result]);
-  const [unit, setUnit] = useState<UnitMode>("abi");
+  const [unit, setUnit] = useLocalStorageState<UnitMode>(
+    GLOBAL_UNIT_KEY,
+    () => loadUnitMode(GLOBAL_UNIT_KEY),
+    (v) => saveUnitMode(GLOBAL_UNIT_KEY, v),
+    "abi",
+  );
   const moneyFmt = useMemo<UnitCtxValue>(() => {
     const fmt = unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt;
     return { ...fmt, unit, setUnit };
+    // setUnit identity rotates on every render of useLocalStorageState — see
+    // UnitScope's comment for why depending on it would re-create the memo each
+    // render and rerender the entire MoneyFmtContext subtree.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit, abi]);
   // Shadow the module-level formatter inside ResultsView so existing
   // money(...) call sites pick up the unit-aware pair.
@@ -909,6 +922,10 @@ function ResultsViewImpl({
           {t("chart.rakeback.fullSampleNote")}
         </div>
       )}
+
+      <div className="-mb-1 flex items-center justify-end">
+        <InlineUnitToggle />
+      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <BigStat
@@ -3471,7 +3488,6 @@ function CopyPdDiagButton({
       },
       settingsPdFlags: settings
         ? {
-            compareWithPrimedope: settings.compareWithPrimedope,
             usePrimedopePayouts: settings.usePrimedopePayouts,
             usePrimedopeFinishModel: settings.usePrimedopeFinishModel,
             usePrimedopeRakeMath: settings.usePrimedopeRakeMath,
