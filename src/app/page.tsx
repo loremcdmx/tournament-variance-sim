@@ -1049,6 +1049,95 @@ export default function Home() {
 
       {activeMode === "mtt" && (
       <>
+      {/* Schedule infeasibility — sticky-top blocking banner. Goes above
+          everything in the MTT tab so the user can't scroll past it, can't
+          miss it, and the offending rows are reachable in two clicks
+          (auto-fix or jump-to-row). Stays present as long as feasibility
+          is broken; disappears the instant fixes land. */}
+      {!feasibility.ok && (
+        <div
+          id="feasibility-banner"
+          className="sticky top-2 z-30 rounded-xl border-2 border-rose-500/70 bg-gradient-to-br from-rose-950/85 to-rose-900/70 p-4 shadow-[0_8px_24px_-6px_rgba(244,63,94,0.4)] backdrop-blur"
+          role="alert"
+          aria-live="assertive"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-500/30 text-base font-bold text-rose-100">
+              !
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-display text-base font-bold uppercase tracking-wider text-rose-50">
+                {t("shape.blockedTitle")}
+              </div>
+              <div className="mt-0.5 text-[13px] leading-snug text-rose-100/90">
+                {t("shape.blockedHint")}
+              </div>
+              <ul className="mt-3 space-y-2">
+                {feasibility.issues.map((iss) => (
+                  <li
+                    key={iss.rowId}
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-[12px]"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById(
+                          `schedule-row-${iss.rowId}`,
+                        );
+                        if (el) {
+                          el.scrollIntoView({ behavior: "smooth", block: "center" });
+                          el.classList.add("ring-2", "ring-rose-500/70");
+                          window.setTimeout(
+                            () => el.classList.remove("ring-2", "ring-rose-500/70"),
+                            1800,
+                          );
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 font-semibold text-rose-50 underline decoration-rose-400/50 underline-offset-2 hover:decoration-rose-200"
+                      title="Прокрутить к строке"
+                    >
+                      {t("shape.blockedRow")} #{iss.rowIdx + 1} — {iss.label}
+                    </button>
+                    <span className="font-mono text-[11px] text-rose-200/80">
+                      EW ${iss.currentEv.toFixed(2)} / ${iss.targetEv.toFixed(2)} (
+                      {t("shape.blockedGap")} {iss.gap >= 0 ? "+" : ""}
+                      {iss.gap.toFixed(2)})
+                    </span>
+                    <div className="ml-auto flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => fixRowAuto(iss.rowId)}
+                        className="rounded border border-rose-400/50 bg-rose-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-300 hover:bg-rose-500/30"
+                      >
+                        {t("shape.fixAuto")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fixRowPreset(iss.rowId)}
+                        className="rounded border border-rose-400/50 bg-rose-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-300 hover:bg-rose-500/30"
+                      >
+                        {t("shape.fixPreset")}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {feasibility.issues.length > 1 && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={fixAllAuto}
+                    className="rounded-md border border-rose-300/70 bg-rose-500/30 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/45"
+                  >
+                    {t("shape.fixAll")}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <Section
         number="01"
         suit="spade"
@@ -1116,6 +1205,9 @@ export default function Home() {
               tournamentsPerSession={tournamentsPerSession}
               activeSeed={activeSeed}
               doneSummary={doneSummary}
+              runBlockedReason={
+                feasibility.ok ? null : t("shape.blockedTitle")
+              }
             />
             <PayoutStructureCard schedule={deferredSchedule} />
           </div>
@@ -1152,56 +1244,6 @@ export default function Home() {
           )}
         </div>
       </Section>
-
-      {!feasibility.ok && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <div className="mb-1 font-semibold uppercase tracking-wider text-amber-100">
-            {t("shape.blockedTitle")}
-          </div>
-          <div className="mb-3 text-[12px] text-amber-200/90">
-            {t("shape.blockedHint")}
-          </div>
-          <ul className="mb-3 space-y-1.5">
-            {feasibility.issues.map((iss) => (
-              <li
-                key={iss.rowId}
-                className="flex flex-wrap items-center gap-2 font-mono text-[11px]"
-              >
-                <span className="text-amber-100">
-                  {t("shape.blockedRow")} #{iss.rowIdx + 1} — {iss.label}
-                </span>
-                <span className="text-amber-300/80">
-                  EW ${iss.currentEv.toFixed(2)} / ${iss.targetEv.toFixed(2)} ({t("shape.blockedGap")} {iss.gap >= 0 ? "+" : ""}
-                  {iss.gap.toFixed(2)})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => fixRowAuto(iss.rowId)}
-                  className="border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-100 transition-colors hover:border-amber-300 hover:bg-amber-500/20"
-                >
-                  {t("shape.fixAuto")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fixRowPreset(iss.rowId)}
-                  className="border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-100 transition-colors hover:border-amber-300 hover:bg-amber-500/20"
-                >
-                  {t("shape.fixPreset")}
-                </button>
-              </li>
-            ))}
-          </ul>
-          {feasibility.issues.length > 1 && (
-            <button
-              type="button"
-              onClick={fixAllAuto}
-              className="border border-amber-400/60 bg-amber-500/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-50 transition-colors hover:border-amber-300 hover:bg-amber-500/30"
-            >
-              {t("shape.fixAll")}
-            </button>
-          )}
-        </div>
-      )}
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">

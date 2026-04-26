@@ -635,8 +635,9 @@ const ScheduleRow = memo(function ScheduleRow({
 
   return (
     <div
+      id={`schedule-row-${r.id}`}
       className={
-        "group relative overflow-hidden rounded-lg border transition-colors focus-within:border-[color:var(--color-accent)]/40 " +
+        "group relative overflow-hidden rounded-lg border transition-all focus-within:border-[color:var(--color-accent)]/40 " +
         (currentDisabled
           ? "border-[color:var(--color-danger)]/55"
           : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]")

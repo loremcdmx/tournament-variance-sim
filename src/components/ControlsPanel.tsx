@@ -118,6 +118,13 @@ interface Props {
    * run button so the user sees *something* happened without scrolling to
    * the full results section below. Null while running or before first run. */
   doneSummary?: DoneSummary | null;
+  /**
+   * Non-null = something blocks the run (e.g. infeasible schedule shape).
+   * Drives the run-button into a visible disabled state with the reason
+   * inline, plus an arrow that scrolls back to the blocking banner.
+   * Null = ready to run.
+   */
+  runBlockedReason?: string | null;
 }
 
 function formatCount(n: number): string {
@@ -164,6 +171,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   // call-site contract, but the seed display below the run button was
   // removed (it's still shown in the result card + export-state copy).
   doneSummary,
+  runBlockedReason,
 }: Props) {
   const t = useT();
   const { advanced } = useAdvancedMode();
@@ -501,6 +509,31 @@ export const ControlsPanel = memo(function ControlsPanel({
                 <rect x="6" y="6" width="12" height="12" rx="1" />
               </svg>
               {t("controls.stop")} {progressPercent(progress)}%
+            </button>
+          ) : runBlockedReason ? (
+            // Schedule infeasibility (or any other blocker) → button is
+            // visibly disabled with the reason inline. Click scrolls back
+            // to the sticky banner so the user can act on it. Removing the
+            // silent "click does nothing" fallback that was tripping people
+            // up before this prop existed.
+            <button
+              type="button"
+              onClick={() => {
+                const banner = document.getElementById("feasibility-banner");
+                if (banner) banner.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="inline-flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-rose-500/70 bg-rose-950/55 px-5 text-sm font-semibold text-rose-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-rose-400 hover:bg-rose-900/65"
+              title={runBlockedReason}
+            >
+              <span className="inline-flex items-center gap-2 text-base font-bold">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L2 22h20L12 2zm0 6l7 12H5l7-12zm-1 4v3h2v-3h-2zm0 5v2h2v-2h-2z" />
+                </svg>
+                {runBlockedReason}
+              </span>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-rose-200/80">
+                ↑ к причине
+              </span>
             </button>
           ) : (
             <button
