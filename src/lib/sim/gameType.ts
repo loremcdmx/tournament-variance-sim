@@ -130,6 +130,17 @@ export function applyGameType(
     if ((row.players ?? 0) < min) patch.players = min;
   };
 
+  // Format-specific ITM knobs: previous format may have left a pinned
+  // `itmRate` (e.g. BR's structural 20 % or a hand-tuned freezeout 16 %)
+  // and / or `finishBuckets` shape pins behind. Carrying those into a
+  // different format is the most common reason a freshly-switched row
+  // immediately fails feasibility — the shape that was right for BR
+  // doesn't fit a $10 freezeout at +3 % ROI. Always reset on switch;
+  // the user can repin if they want format-specific override.
+  patch.itmRate = undefined;
+  patch.finishBuckets = undefined;
+  patch.itmTopHeavyBias = undefined;
+
   switch (next) {
     case "freezeout":
       patch.maxEntries = 1;
