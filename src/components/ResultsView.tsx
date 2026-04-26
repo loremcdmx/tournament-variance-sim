@@ -2177,6 +2177,36 @@ const TrajectoryCard = memo(function TrajectoryCard({
   }
 
   if (secondary) {
+    // Overlay-checkbox block — same JSX shape as the always-rendered one below
+    // the grid, used here to inject between the two stacked panes when the
+    // grid collapses to 1 column. Splitting into two render sites instead of
+    // moving on resize keeps the layout shift instant + flicker-free.
+    const overlayCheckbox = (
+      <label
+        className={`flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)] ${
+          pdPresetFlip ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={overlayPd && !pdPresetFlip}
+          disabled={pdPresetFlip}
+          onChange={(e) => setOverlayPd(e.target.checked)}
+          className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
+        />
+        <span className="font-semibold text-[color:var(--color-fg)]">
+          {pdPkoFallback
+            ? t("chart.trajectory.overlayNoKo")
+            : t("chart.trajectory.overlay")}
+        </span>
+        <span className="text-[color:var(--color-fg-dim)]">
+          —{" "}
+          {pdPkoFallback
+            ? t("chart.trajectory.overlayNoKoHint")
+            : t("chart.trajectory.overlayHint")}
+        </span>
+      </label>
+    );
     return (
       <Card className="p-5">
         <ChartHeader
@@ -2202,6 +2232,13 @@ const TrajectoryCard = memo(function TrajectoryCard({
           >
             <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
           </ChartPane>
+          {/* When the grid collapses to one column (below `lg`), inject the
+              overlay-checkbox here so it sits between the two panes — the
+              relationship "this toggle controls how A is overlaid by B" is
+              easier to read than an orphan toggle below the second pane. */}
+          <div className="lg:hidden -my-1 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-[color:var(--color-border)] bg-[color:var(--color-bg)]/40 px-3 py-2">
+            {overlayCheckbox}
+          </div>
           <ChartPane
             label={
               pdPresetFlip
@@ -2267,31 +2304,11 @@ const TrajectoryCard = memo(function TrajectoryCard({
             )}
           </ChartPane>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label
-            className={`flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)] ${
-              pdPresetFlip ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={overlayPd && !pdPresetFlip}
-              disabled={pdPresetFlip}
-              onChange={(e) => setOverlayPd(e.target.checked)}
-              className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
-            />
-            <span className="font-semibold text-[color:var(--color-fg)]">
-              {pdPkoFallback
-                ? t("chart.trajectory.overlayNoKo")
-                : t("chart.trajectory.overlay")}
-            </span>
-            <span className="text-[color:var(--color-fg-dim)]">
-              —{" "}
-              {pdPkoFallback
-                ? t("chart.trajectory.overlayNoKoHint")
-                : t("chart.trajectory.overlayHint")}
-            </span>
-          </label>
+        {/* On wide screens (lg+) the overlay-checkbox sits below the side-by-
+            side panes; on narrower viewports the inline copy above (between the
+            two stacked panes) takes over instead. Same state, different slot. */}
+        <div className="mt-3 hidden flex-wrap items-center gap-3 lg:flex">
+          {overlayCheckbox}
         </div>
       </Card>
     );
