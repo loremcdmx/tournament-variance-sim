@@ -2989,6 +2989,10 @@ export const DICT = {
     en: "Not enough observed point mix to compare ABI.",
     ru: "Недостаточно наблюдаемого point-mix, чтобы сравнить ABI.",
   },
+  "chart.brLeaderboardObserved.confidence.mismatchHint": {
+    en: "The schedule's stake mix differs heavily from the observed nick. Either edit the rows to match the limits you actually grind, or switch the leaderboard mode to Manual / Lookup so the EV doesn't lean on the wrong anchor.",
+    ru: "Микс лимитов в расписании заметно отличается от наблюдаемого ника. Либо подправь строки под лимиты, на которых реально играешь, либо переключи режим лидерборда на Manual / Lookup — иначе EV считается от неподходящего якоря.",
+  },
   "cash.empty": {
     en: "Press Run to simulate the cash session.",
     ru: "Нажми «Запустить», чтобы посчитать кэш-сессию.",

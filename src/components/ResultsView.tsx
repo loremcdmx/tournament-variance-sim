@@ -1694,7 +1694,25 @@ function BattleRoyaleLeaderboardPromoSection({
                         "{value}",
                         pct(promo.confidence.abiDriftPct),
                       )}
+                  {/* When ABI drift is large, the % alone isn't actionable —
+                      show both anchors inline so the user sees WHICH end is
+                      off, and offer the concrete next step (match schedule
+                      to observed mix, or switch to Manual / Lookup). */}
+                  {promo.current.abi != null &&
+                    promo.observed.reconstructedAbi != null && (
+                      <span className="ml-1 font-mono opacity-80">
+                        ({t("chart.brLeaderboardObserved.currentAbi")}{" "}
+                        {promo.current.abi.toFixed(2)} ABI →{" "}
+                        {t("chart.brLeaderboardObserved.observedAbi")}{" "}
+                        {promo.observed.reconstructedAbi.toFixed(2)} ABI)
+                      </span>
+                    )}
                 </div>
+                {promo.confidence.level === "mismatch" && (
+                  <div className="mt-2 text-[10.5px] opacity-90">
+                    {t("chart.brLeaderboardObserved.confidence.mismatchHint")}
+                  </div>
+                )}
               </div>
             </>
           ) : promo.mode === "manual" ? (
