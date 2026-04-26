@@ -633,10 +633,23 @@ export default function Home() {
 
   const fixRowAuto = useCallback(
     (rowId: string) => {
+      // Clear `finishBuckets` unconditionally. For BR / Mystery / Mystery-
+      // Royale also drop the row's explicit `itmRate`: BR's ITM is structural
+      // (set by the format), not a free skill knob, and a pinned ITM combined
+      // with the row's ROI / bounty configuration is the most common reason
+      // calibration can't reach the target — clearing finishBuckets alone
+      // leaves the row in the same infeasible state and the user perceives
+      // the fix button as broken.
       setSchedule((prev) =>
-        prev.map((r) =>
-          r.id === rowId ? { ...r, finishBuckets: undefined } : r,
-        ),
+        prev.map((r) => {
+          if (r.id !== rowId) return r;
+          const gt = inferGameType(r);
+          const isBountyEnvelope =
+            gt === "mystery" || gt === "mystery-royale" || gt === "pko";
+          return isBountyEnvelope
+            ? { ...r, itmRate: undefined, finishBuckets: undefined }
+            : { ...r, finishBuckets: undefined };
+        }),
       );
     },
     [],
@@ -654,23 +667,36 @@ export default function Home() {
   );
   const fixRowPreset = useCallback(
     (rowId: string) => {
+      // "Grinder" preset = 16 % ITM, no shell pins. Only meaningful on
+      // freezeout-shaped rows; on bounty-envelope formats (PKO / Mystery /
+      // BR) ITM is structural to the format, so the preset falls back to
+      // the auto-clear path instead of force-pinning a number that doesn't
+      // belong there. The button itself is also hidden in those rows.
       setSchedule((prev) =>
-        prev.map((r) =>
-          r.id === rowId
-            ? { ...r, itmRate: 0.16, finishBuckets: undefined }
-            : r,
-        ),
+        prev.map((r) => {
+          if (r.id !== rowId) return r;
+          const gt = inferGameType(r);
+          const isBountyEnvelope =
+            gt === "mystery" || gt === "mystery-royale" || gt === "pko";
+          return isBountyEnvelope
+            ? { ...r, itmRate: undefined, finishBuckets: undefined }
+            : { ...r, itmRate: 0.16, finishBuckets: undefined };
+        }),
       );
     },
     [],
   );
   const fixAllAuto = useCallback(() => {
     setSchedule((prev) =>
-      prev.map((r) =>
-        feasibility.issues.some((i) => i.rowId === r.id)
-          ? { ...r, finishBuckets: undefined }
-          : r,
-      ),
+      prev.map((r) => {
+        if (!feasibility.issues.some((i) => i.rowId === r.id)) return r;
+        const gt = inferGameType(r);
+        const isBountyEnvelope =
+          gt === "mystery" || gt === "mystery-royale" || gt === "pko";
+        return isBountyEnvelope
+          ? { ...r, itmRate: undefined, finishBuckets: undefined }
+          : { ...r, finishBuckets: undefined };
+      }),
     );
   }, [feasibility.issues]);
 
@@ -1049,92 +1075,39 @@ export default function Home() {
 
       {activeMode === "mtt" && (
       <>
-      {/* Schedule infeasibility — sticky-top blocking banner. Goes above
-          everything in the MTT tab so the user can't scroll past it, can't
-          miss it, and the offending rows are reachable in two clicks
-          (auto-fix or jump-to-row). Stays present as long as feasibility
-          is broken; disappears the instant fixes land. */}
-      {!feasibility.ok && (
+      {/* Schedule infeasibility — sticky-top banner only when MULTIPLE rows
+          are broken (single-row issues live inline inside the row card; see
+          ScheduleRow). The condensed banner just summarizes the count and
+          offers a one-click bulk fix; the run-button block in ControlsPanel
+          carries the precise reason for any single broken row. */}
+      {feasibility.issues.length > 1 && (
         <div
           id="feasibility-banner"
-          className="sticky top-2 z-30 rounded-xl border-2 border-rose-500/70 bg-gradient-to-br from-rose-950/85 to-rose-900/70 p-4 shadow-[0_8px_24px_-6px_rgba(244,63,94,0.4)] backdrop-blur"
+          className="sticky top-2 z-30 flex flex-wrap items-center gap-3 rounded-xl border-2 border-rose-500/70 bg-gradient-to-br from-rose-950/85 to-rose-900/70 px-4 py-3 shadow-[0_8px_24px_-6px_rgba(244,63,94,0.4)] backdrop-blur"
           role="alert"
           aria-live="assertive"
         >
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-500/30 text-base font-bold text-rose-100">
-              !
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-500/30 text-base font-bold text-rose-100">
+            !
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-sm font-bold uppercase tracking-wider text-rose-50">
+              {t("shape.blockedTitle")}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="font-display text-base font-bold uppercase tracking-wider text-rose-50">
-                {t("shape.blockedTitle")}
-              </div>
-              <div className="mt-0.5 text-[13px] leading-snug text-rose-100/90">
-                {t("shape.blockedHint")}
-              </div>
-              <ul className="mt-3 space-y-2">
-                {feasibility.issues.map((iss) => (
-                  <li
-                    key={iss.rowId}
-                    className="flex flex-wrap items-center gap-2 rounded-md border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-[12px]"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const el = document.getElementById(
-                          `schedule-row-${iss.rowId}`,
-                        );
-                        if (el) {
-                          el.scrollIntoView({ behavior: "smooth", block: "center" });
-                          el.classList.add("ring-2", "ring-rose-500/70");
-                          window.setTimeout(
-                            () => el.classList.remove("ring-2", "ring-rose-500/70"),
-                            1800,
-                          );
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 font-semibold text-rose-50 underline decoration-rose-400/50 underline-offset-2 hover:decoration-rose-200"
-                      title="Прокрутить к строке"
-                    >
-                      {t("shape.blockedRow")} #{iss.rowIdx + 1} — {iss.label}
-                    </button>
-                    <span className="font-mono text-[11px] text-rose-200/80">
-                      EW ${iss.currentEv.toFixed(2)} / ${iss.targetEv.toFixed(2)} (
-                      {t("shape.blockedGap")} {iss.gap >= 0 ? "+" : ""}
-                      {iss.gap.toFixed(2)})
-                    </span>
-                    <div className="ml-auto flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => fixRowAuto(iss.rowId)}
-                        className="rounded border border-rose-400/50 bg-rose-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-300 hover:bg-rose-500/30"
-                      >
-                        {t("shape.fixAuto")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => fixRowPreset(iss.rowId)}
-                        className="rounded border border-rose-400/50 bg-rose-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-300 hover:bg-rose-500/30"
-                      >
-                        {t("shape.fixPreset")}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              {feasibility.issues.length > 1 && (
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={fixAllAuto}
-                    className="rounded-md border border-rose-300/70 bg-rose-500/30 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/45"
-                  >
-                    {t("shape.fixAll")}
-                  </button>
-                </div>
-              )}
+            <div className="text-[12px] leading-snug text-rose-100/85">
+              {t("shape.blockedHint")} ·{" "}
+              <span className="font-mono text-rose-200/90">
+                {feasibility.issues.length} {t("shape.blockedRow").toLowerCase()}
+              </span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={fixAllAuto}
+            className="rounded-md border border-rose-300/70 bg-rose-500/30 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/45"
+          >
+            {t("shape.fixAll")}
+          </button>
         </div>
       )}
 
@@ -1169,6 +1142,9 @@ export default function Home() {
           globalItmPct={scheduleGlobalItmPct}
           globalRakebackPct={controls.rakebackPct}
           toolbarExtras={scheduleToolbarExtras}
+          feasibilityIssues={feasibility.issues}
+          onFixRowAuto={fixRowAuto}
+          onFixRowPreset={fixRowPreset}
         />
         {hasBattleRoyaleRows && (
           <div className="mt-3">
@@ -1207,6 +1183,13 @@ export default function Home() {
               doneSummary={doneSummary}
               runBlockedReason={
                 feasibility.ok ? null : t("shape.blockedTitle")
+              }
+              runBlockedScrollTarget={
+                feasibility.ok
+                  ? null
+                  : feasibility.issues.length === 1
+                    ? `schedule-row-${feasibility.issues[0].rowId}`
+                    : "feasibility-banner"
               }
             />
             <PayoutStructureCard schedule={deferredSchedule} />

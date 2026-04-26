@@ -303,6 +303,10 @@ export const DICT = {
     ru: "В одной или нескольких строках зафиксированные вероятности корзин не позволяют попасть в целевой ROI. Поправь ниже или авто-фикс всех сразу.",
   },
   "shape.blockedRow": { en: "Row", ru: "Строка" },
+  "shape.rowBlocked": {
+    en: "Pinned shells leave no room for ROI",
+    ru: "Зафиксированные вероятности не дают попасть в ROI",
+  },
   "shape.blockedGap": { en: "gap", ru: "разрыв" },
   "shape.fixAuto": { en: "Clear locks", ru: "Снять фиксации" },
   "shape.fixPreset": { en: "Grinder preset", ru: "Пресет «гриндер»" },

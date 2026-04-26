@@ -37,6 +37,7 @@ import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import type { RowFeasibilityIssue } from "@/lib/sim/validation";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 
@@ -135,6 +136,17 @@ interface Props {
   globalRakebackPct?: number;
   /** Optional extras rendered in the toolbar row (right of Add / Import). */
   toolbarExtras?: React.ReactNode;
+  /**
+   * Per-row infeasibility issues from `validateSchedule`. Keyed lookup
+   * inside the editor; each ScheduleRow gets its own `issue` if present
+   * and renders an inline mini-banner with auto-fix / preset-fix buttons
+   * — no need to scroll to a global banner to see what's wrong.
+   */
+  feasibilityIssues?: readonly RowFeasibilityIssue[];
+  /** Auto-fix handler — clears finishBuckets locks on the row. */
+  onFixRowAuto?: (rowId: string) => void;
+  /** Preset-fix handler — applies the "grinder" finishBuckets preset. */
+  onFixRowPreset?: (rowId: string) => void;
 }
 
 const IMPORT_PLACEHOLDER = `# label, players, buyIn (50+5 or plain), roi%, count, payout
@@ -344,6 +356,9 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   globalItmPct = null,
   globalRakebackPct = 0,
   toolbarExtras,
+  feasibilityIssues,
+  onFixRowAuto,
+  onFixRowPreset,
 }: Props) {
   const t = useT();
   const { advanced } = useAdvancedMode();
@@ -414,6 +429,18 @@ export const ScheduleEditor = memo(function ScheduleEditor({
     ]);
   };
   const canRemove = schedule.length > 1;
+  // Build the rowId → issue index once so each ScheduleRow does an O(1)
+  // lookup. The whole map is cheap to recompute (≤ schedule.length entries),
+  // but rebuilding on every keystroke would re-render every row through the
+  // memo barrier — keep it on `feasibilityIssues` identity, which only
+  // changes when validation actually re-runs.
+  const issueByRow = useMemo(() => {
+    const m = new Map<string, RowFeasibilityIssue>();
+    if (feasibilityIssues) {
+      for (const iss of feasibilityIssues) m.set(iss.rowId, iss);
+    }
+    return m;
+  }, [feasibilityIssues]);
 
   return (
     <Card>
@@ -436,6 +463,9 @@ export const ScheduleEditor = memo(function ScheduleEditor({
             remove={remove}
             duplicate={duplicate}
             toggleExpand={toggleExpand}
+            issue={issueByRow.get(r.id)}
+            onFixAuto={onFixRowAuto}
+            onFixPreset={onFixRowPreset}
           />
         ))}
       </div>
@@ -565,6 +595,11 @@ interface ScheduleRowProps {
   remove: (id: string) => void;
   duplicate: (id: string) => void;
   toggleExpand: (id: string) => void;
+  /** When set, this row failed feasibility validation; the inline mini-
+   *  banner with auto-fix / preset-fix buttons renders inside the row. */
+  issue?: RowFeasibilityIssue;
+  onFixAuto?: (rowId: string) => void;
+  onFixPreset?: (rowId: string) => void;
 }
 
 const ScheduleRow = memo(function ScheduleRow({
@@ -578,6 +613,9 @@ const ScheduleRow = memo(function ScheduleRow({
   remove,
   duplicate,
   toggleExpand,
+  issue,
+  onFixAuto,
+  onFixPreset,
 }: ScheduleRowProps) {
   const t = useT();
   const gt = inferGameType(r);
@@ -946,6 +984,47 @@ const ScheduleRow = memo(function ScheduleRow({
             row={r}
             onChange={(patch) => update(r.id, patch)}
           />
+        </div>
+      )}
+      {/* Inline infeasibility mini-banner. Lives inside the row card so the
+          fix is one click away from the inputs that caused it — same
+          colors as the global banner so the relationship is obvious. The
+          "Grinder" preset is hidden on bounty-envelope rows (PKO / Mystery
+          / BR), where ITM is structural and a fixed 16% number doesn't
+          belong. */}
+      {issue && (onFixAuto || onFixPreset) && (
+        <div className="border-t-2 border-rose-500/60 bg-rose-950/40 px-5 py-2.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-rose-50">
+              <span aria-hidden className="text-rose-300">!</span>
+              {t("shape.rowBlocked")}
+            </span>
+            <span className="font-mono text-[11px] text-rose-200/80">
+              EW ${issue.currentEv.toFixed(2)} / ${issue.targetEv.toFixed(2)} (
+              {t("shape.blockedGap")} {issue.gap >= 0 ? "+" : ""}
+              {issue.gap.toFixed(2)})
+            </span>
+            <div className="ml-auto flex flex-wrap gap-1.5">
+              {onFixAuto && (
+                <button
+                  type="button"
+                  onClick={() => onFixAuto(r.id)}
+                  className="rounded border border-rose-400/50 bg-rose-500/15 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-300 hover:bg-rose-500/30"
+                >
+                  {t("shape.fixAuto")}
+                </button>
+              )}
+              {onFixPreset && !showBounty && (
+                <button
+                  type="button"
+                  onClick={() => onFixPreset(r.id)}
+                  className="rounded border border-rose-400/50 bg-rose-500/15 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-300 hover:bg-rose-500/30"
+                >
+                  {t("shape.fixPreset")}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

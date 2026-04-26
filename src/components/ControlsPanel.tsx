@@ -125,6 +125,13 @@ interface Props {
    * Null = ready to run.
    */
   runBlockedReason?: string | null;
+  /**
+   * `id` of the element to scroll-into-view when the user clicks the
+   * blocked run button. Single-issue schedules scroll to the offending
+   * `schedule-row-<rowId>`; multi-issue schedules scroll to the global
+   * `feasibility-banner`.
+   */
+  runBlockedScrollTarget?: string | null;
 }
 
 function formatCount(n: number): string {
@@ -172,6 +179,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   // removed (it's still shown in the result card + export-state copy).
   doneSummary,
   runBlockedReason,
+  runBlockedScrollTarget,
 }: Props) {
   const t = useT();
   const { advanced } = useAdvancedMode();
@@ -519,8 +527,18 @@ export const ControlsPanel = memo(function ControlsPanel({
             <button
               type="button"
               onClick={() => {
-                const banner = document.getElementById("feasibility-banner");
-                if (banner) banner.scrollIntoView({ behavior: "smooth", block: "start" });
+                const targetId = runBlockedScrollTarget ?? "feasibility-banner";
+                const el = document.getElementById(targetId);
+                if (!el) return;
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                // Brief rose-ring pulse on the target so the user sees where
+                // attention should land — especially for an inline row where
+                // the inline mini-banner is the actual fix surface.
+                el.classList.add("ring-2", "ring-rose-500/70");
+                window.setTimeout(
+                  () => el.classList.remove("ring-2", "ring-rose-500/70"),
+                  1800,
+                );
               }}
               className="inline-flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-rose-500/70 bg-rose-950/55 px-5 text-sm font-semibold text-rose-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-rose-400 hover:bg-rose-900/65"
               title={runBlockedReason}
