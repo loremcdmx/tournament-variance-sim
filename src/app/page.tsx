@@ -816,6 +816,19 @@ export default function Home() {
               {APP_VERSION}
             </a>
           </div>
+          {/* Live status — Live = the page is reactive (always true on mount);
+              ResultHub = the same-origin proxy is wired up. Both are static
+              "configured/ready" indicators, not health checks. */}
+          <div className="hidden flex-1 items-center justify-center gap-2 md:flex">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-success)]/35 bg-[color:var(--color-success)]/10 px-3 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--color-success)] shadow-[0_0_6px_var(--color-success)]" />
+              Live
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+              ResultHub
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--color-success)]" />
+            </span>
+          </div>
           <CornerToggles />
         </div>
 

@@ -160,7 +160,9 @@ export const ControlsPanel = memo(function ControlsPanel({
   estimatedMs,
   tournamentsPerSchedule,
   tournamentsPerSession,
-  activeSeed,
+  // activeSeed prop intentionally not destructured — kept on Props for
+  // call-site contract, but the seed display below the run button was
+  // removed (it's still shown in the result card + export-state copy).
   doneSummary,
 }: Props) {
   const t = useT();
@@ -213,12 +215,6 @@ export const ControlsPanel = memo(function ControlsPanel({
   const scheduleTournaments = Math.max(1, Math.round(tournamentsPerSchedule));
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const maxTournamentsPerSample = scheduleTournaments * 100_000;
-  const shownSeed = activeSeed ?? value.seed;
-  const seedLabel = `0x${(shownSeed >>> 0).toString(16).padStart(8, "0")}`;
-  const showSeedLabel = running || !!doneSummary;
-  const shownSeedLabel = showSeedLabel
-    ? t("controls.seedCurrent").replace("{seed}", seedLabel)
-    : t("controls.seedAuto");
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
   const setTournamentTarget = (target: number) => {
@@ -510,14 +506,28 @@ export const ControlsPanel = memo(function ControlsPanel({
             <button
               type="button"
               onClick={onRun}
-              className="primary-run-button inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(99,102,241,0.5)] transition-all hover:from-indigo-400 hover:to-indigo-500 active:translate-y-px"
+              className="primary-run-button inline-flex h-12 w-full items-center justify-center gap-3 rounded-lg px-5 text-base font-semibold transition-all active:translate-y-px"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path d="M6 4l14 8-14 8V4z" fill="currentColor" />
               </svg>
-              {t("controls.run")}
+              <span>{t("controls.run")}</span>
+              {/* ETA tucked inside the button as a darker pill — keeps "how
+                  long this will take" attached to the action that triggers it.
+                  Removes the second status line below the button. */}
+              {estimatedMs != null && estimatedMs > 0 && (
+                <span className="inline-flex items-center gap-0.5 rounded-full border border-black/25 bg-black/15 px-2 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums text-black/75">
+                  <span className="relative -top-px leading-none">≈</span>
+                  <span>{formatRoughDuration(estimatedMs)}</span>
+                </span>
+              )}
             </button>
           )}
+          {/* Below the button: only running-state hint + totals counter.
+              The static seed line moved out of this block — seed is already
+              in the result card and the export-state copy button, so
+              repeating it here above the bar created visual noise.
+              ETA itself migrated into the run button as an inline pill. */}
           <div className="flex w-full items-center justify-center gap-4 font-mono text-[12px] font-semibold tabular-nums text-[color:var(--color-fg-muted)]">
             <span className="inline-flex min-h-[1em] items-center gap-1">
               {running
@@ -534,30 +544,11 @@ export const ControlsPanel = memo(function ControlsPanel({
                       <span>{formatDuration(remainingMs)}</span>
                     </>
                   )
-                : estimatedMs != null && estimatedMs > 0
-                ? (
-                  <>
-                    <span>{t("controls.eta")}</span>
-                    <span className="relative -top-px text-[11px] leading-none">
-                      ≈
-                    </span>
-                    <span>{formatRoughDuration(estimatedMs)}</span>
-                  </>
-                )
                 : "\u00A0"}
             </span>
             <span className="text-[color:var(--color-fg-dim)]">·</span>
             <span>
               {formatCount(totalTournaments)} {t("controls.totalTourneys")}
-            </span>
-          </div>
-          <div
-            className="text-[10px] tracking-[0.08em] text-[color:var(--color-fg-dim)]"
-            title={t("help.seed")}
-          >
-            {t("controls.seed")}:{" "}
-            <span className="font-mono tracking-normal text-[color:var(--color-fg-muted)]">
-              {shownSeedLabel}
             </span>
           </div>
         </div>

@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>tvs · что менять дальше · before/after</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08111a;
+    --bg-elev: #0f1d28;
+    --bg-elev-2: #16293a;
+    --bg-elev-3: #1f3a52;
+    --border: #1f3a4a;
+    --border-strong: #345f7a;
+    --border-glow: #4a8cb8;
+
+    --fg: #f3ece0;
+    --fg-muted: #b6c4d1;
+    --fg-dim: #6b7c8a;
+
+    --gold: #f5cb5c;
+    --gold-strong: #e1b13b;
+    --gold-glow: rgba(245,203,92,.32);
+    --green: #4ade80;
+    --green-strong: #22c55e;
+    --red: #fb7185;
+    --rival: #60a5fa;
+
+    --spade: #94a3b8;
+    --heart: #ef4444;
+    --diamond: #fbbf24;
+    --club: #34d399;
+
+    --grid: rgba(255,255,255,.04);
+
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  html, body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
+  body {
+    background:
+      radial-gradient(1200px 600px at 20% -20%, rgba(74,140,184,.12), transparent 60%),
+      radial-gradient(800px 500px at 100% 0%, rgba(245,203,92,.08), transparent 60%),
+      var(--bg);
+    min-height: 100vh;
+  }
+  .font-display { font-family: var(--font-display); }
+  .font-mono { font-family: var(--font-mono); }
+  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .card-2 { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 10px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--bg-elev-2);
+  }
+  .pill-gold { background: linear-gradient(135deg, rgba(245,203,92,.18), rgba(245,203,92,.06)); border-color: rgba(245,203,92,.45); color: var(--gold); }
+  .pill-green { background: rgba(74,222,128,.12); border-color: rgba(74,222,128,.4); color: var(--green); }
+  .pill-rival { background: rgba(96,165,250,.12); border-color: rgba(96,165,250,.4); color: var(--rival); }
+  .pill-red { background: rgba(251,113,133,.12); border-color: rgba(251,113,133,.4); color: var(--red); }
+  .label-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--fg-dim); }
+  .field {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--fg);
+  }
+  .field-readonly {
+    background: linear-gradient(180deg, var(--bg) 0%, var(--bg-elev) 100%);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--fg-muted);
+  }
+
+  /* Marker for "current" vs "proposed" frames */
+  .frame-now {
+    border: 1px dashed color-mix(in srgb, var(--fg-dim) 60%, transparent);
+    border-radius: 14px;
+    padding: 16px;
+    position: relative;
+  }
+  .frame-now::before {
+    content: 'СЕЙЧАС';
+    position: absolute; top: -10px; left: 16px;
+    font-size: 10px; font-weight: 700; letter-spacing: .14em;
+    background: var(--bg); padding: 2px 8px;
+    color: var(--fg-dim);
+  }
+  .frame-next {
+    border: 1px solid color-mix(in srgb, var(--gold) 65%, transparent);
+    border-radius: 14px;
+    padding: 16px;
+    position: relative;
+    background: linear-gradient(180deg, rgba(245,203,92,.025) 0%, transparent 100%);
+  }
+  .frame-next::before {
+    content: 'ПРЕДЛАГАЮ';
+    position: absolute; top: -10px; left: 16px;
+    font-size: 10px; font-weight: 700; letter-spacing: .14em;
+    background: var(--bg); padding: 2px 8px;
+    color: var(--gold);
+  }
+
+  .badge-S { background: rgba(74,222,128,.15); color: var(--green); border-color: rgba(74,222,128,.45); }
+  .badge-M { background: rgba(245,203,92,.15); color: var(--gold); border-color: rgba(245,203,92,.45); }
+  .badge-L { background: rgba(251,113,133,.15); color: var(--red); border-color: rgba(251,113,133,.45); }
+
+  .section-num {
+    font-family: var(--font-display);
+    font-weight: 900; font-size: 56px; line-height: .85; letter-spacing: -.02em;
+    background: linear-gradient(180deg, var(--fg) 0%, var(--fg-dim) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  .room-pill { padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 10px; letter-spacing: .08em; color: white; }
+  .room-gg { background: linear-gradient(135deg, #dc2626, #991b1b); }
+  .room-stars { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+  .room-pp { background: linear-gradient(135deg, #f59e0b, #b45309); }
+  .room-wn { background: linear-gradient(135deg, #6366f1, #4338ca); }
+
+  .btn-primary {
+    background: linear-gradient(180deg, var(--gold) 0%, var(--gold-strong) 100%);
+    color: #1a1305;
+    border: 1px solid var(--gold-strong);
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-weight: 700;
+    box-shadow: 0 6px 16px var(--gold-glow), inset 0 1px 0 rgba(255,255,255,.4);
+  }
+  .btn-ghost {
+    background: var(--bg-elev-2);
+    border: 1px solid var(--border);
+    padding: 8px 14px;
+    border-radius: 8px;
+    color: var(--fg-muted);
+    font-size: 12px;
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .spark-chart {
+    height: 44px;
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+  .spark-chart::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, var(--green) 0%, var(--gold) 60%, var(--red) 100%);
+    clip-path: polygon(0% 60%, 8% 50%, 16% 70%, 24% 40%, 32% 55%, 40% 30%, 48% 45%, 56% 25%, 64% 50%, 72% 35%, 80% 20%, 88% 30%, 100% 15%);
+    opacity: .7;
+  }
+  .traj-fan {
+    height: 100%;
+    background:
+      repeating-linear-gradient(
+        to right,
+        transparent 0,
+        transparent 7px,
+        rgba(74,222,128,.06) 7px,
+        rgba(74,222,128,.06) 8px
+      ),
+      linear-gradient(180deg, transparent 0%, rgba(74,222,128,.08) 100%);
+    border-radius: 6px;
+  }
+
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 999px;
+    display: inline-block;
+  }
+
+  .chunk-h2 {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700; letter-spacing: -.01em;
+  }
+
+  .pick {
+    margin-top: 14px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(245,203,92,.06), rgba(245,203,92,.02));
+    border: 1px solid rgba(245,203,92,.25);
+    font-size: 12px;
+    color: var(--fg-muted);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .pick code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 2px 6px; border-radius: 4px;
+    font-family: var(--font-mono); color: var(--gold);
+    font-size: 11px;
+  }
+</style>
+</head>
+<body class="antialiased">
+
+<header class="border-b border-[color:var(--border)]" style="background: linear-gradient(180deg, rgba(245,203,92,.04) 0%, transparent 100%);">
+  <div class="max-w-[1320px] mx-auto px-6 py-5 flex items-end gap-5">
+    <div class="section-num">∅</div>
+    <div class="pb-2">
+      <div class="font-display text-3xl tracking-tight">Что менять дальше</div>
+      <p class="text-sm text-[color:var(--fg-muted)] mt-1">
+        5 кусков, отсортированы от наибольшего визуального impact к polish'у.
+        Каждый — отдельный коммит.
+      </p>
+    </div>
+    <div class="flex-1"></div>
+    <span class="pill"><span class="text-[color:var(--fg-dim)]">база</span> <span class="text-[color:var(--fg)]">822037b · main</span></span>
+  </div>
+</header>
+
+<main class="max-w-[1320px] mx-auto px-6 py-8 space-y-12">
+
+  <!-- ============== CHUNK 1: Schedule row ============== -->
+  <section>
+    <div class="flex items-baseline gap-3 mb-4">
+      <span class="font-display text-3xl text-[color:var(--gold)]">①</span>
+      <h2 class="chunk-h2">Schedule row → карточки с room-цветом</h2>
+      <span class="pill badge-M">M · 2-3 ч</span>
+      <span class="pill">структурный</span>
+    </div>
+    <p class="text-sm text-[color:var(--fg-muted)] mb-5 max-w-3xl">
+      Сейчас каждый турнир в расписании — плотная табличная строка с одинаковым весом всех полей.
+      Главное (бай-ин и room) теряется среди 6 input'ов в ряд.
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- BEFORE -->
+      <div class="frame-now">
+        <div class="space-y-2">
+          <div class="card-2 p-3 text-[11px] font-mono text-[color:var(--fg-dim)] grid grid-cols-[1fr_repeat(7,auto)] gap-2 items-center">
+            <span>ТУРНИР</span><span>БАЙ-ИН</span><span>ROI</span><span>ITM</span><span>НОКИ</span><span>ВЫПЛАТЫ</span><span>AFS</span><span>×</span>
+          </div>
+          <div class="card-2 p-3 grid grid-cols-[1fr_repeat(7,auto)] gap-2 items-center text-[12px]">
+            <input class="field text-xs" value="GG Battle Royale $3"/>
+            <input class="field text-xs num w-[70px]" value="2.76"/>
+            <input class="field text-xs num w-[55px]" value="5%"/>
+            <input class="field text-xs num w-[55px]" value="20%"/>
+            <input class="field text-xs num w-[55px]" value="45%"/>
+            <select class="field text-xs"><option>BR</option></select>
+            <input class="field text-xs num w-[55px]" value="18"/>
+            <button class="btn-ghost text-xs px-2">×</button>
+          </div>
+          <div class="card-2 p-3 grid grid-cols-[1fr_repeat(7,auto)] gap-2 items-center text-[12px]">
+            <input class="field text-xs" value="Sunday Million $215"/>
+            <input class="field text-xs num w-[70px]" value="215"/>
+            <input class="field text-xs num w-[55px]" value="8%"/>
+            <input class="field text-xs num w-[55px]" value="15%"/>
+            <input class="field text-xs num w-[55px]" value="—"/>
+            <select class="field text-xs"><option>STD</option></select>
+            <input class="field text-xs num w-[55px]" value="6.5"/>
+            <button class="btn-ghost text-xs px-2">×</button>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-dim)]">Все поля одного веса · нет иерархии · room прячется в селекте</p>
+      </div>
+
+      <!-- AFTER -->
+      <div class="frame-next">
+        <div class="space-y-3">
+          <div class="card p-4 relative overflow-hidden">
+            <div class="absolute left-0 top-0 bottom-0 w-1" style="background: linear-gradient(180deg, #b91c1c, #7f1d1d);"></div>
+            <div class="ml-3 flex items-start gap-4">
+              <div class="room-pill room-gg">GG</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline gap-3">
+                  <input class="bg-transparent outline-none font-semibold text-base text-[color:var(--fg)] flex-1 min-w-0" value="GG Battle Royale $3"/>
+                  <span class="pill pill-rival">battle-royale</span>
+                </div>
+                <div class="mt-1 flex items-center gap-3 text-[11px] text-[color:var(--fg-dim)] flex-wrap">
+                  <span><span class="num text-[color:var(--fg-muted)]">100</span> турниров</span><span>·</span>
+                  <span>AFS <span class="num text-[color:var(--fg-muted)]">18</span></span><span>·</span>
+                  <span>ROI <span class="num text-[color:var(--green)]">+5.0%</span></span><span>·</span>
+                  <span>фикс. ITM <span class="num text-[color:var(--fg-muted)]">20%</span></span><span>·</span>
+                  <span>ноки <span class="num text-[color:var(--fg-muted)]">45%</span></span>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2 w-[200px]">
+                <div>
+                  <div class="label-eyebrow mb-1">Бай-ин</div>
+                  <div class="field text-sm flex items-baseline gap-1">
+                    <span class="num">2.76</span><span class="text-[color:var(--fg-dim)]">+</span><span class="num text-[color:var(--fg-muted)]">0.24</span>
+                  </div>
+                </div>
+                <div>
+                  <div class="label-eyebrow mb-1">Поле</div>
+                  <div class="field text-sm"><span class="num">5 000</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card p-4 relative overflow-hidden">
+            <div class="absolute left-0 top-0 bottom-0 w-1" style="background: linear-gradient(180deg, #ef4444, #b91c1c);"></div>
+            <div class="ml-3 flex items-start gap-4">
+              <div class="room-pill room-stars">PS</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline gap-3">
+                  <input class="bg-transparent outline-none font-semibold text-base text-[color:var(--fg)] flex-1 min-w-0" value="Sunday Million $215"/>
+                  <span class="pill pill-green">freezeout</span>
+                </div>
+                <div class="mt-1 flex items-center gap-3 text-[11px] text-[color:var(--fg-dim)] flex-wrap">
+                  <span><span class="num text-[color:var(--fg-muted)]">12</span> турниров</span><span>·</span>
+                  <span>AFS <span class="num text-[color:var(--fg-muted)]">6.5</span></span><span>·</span>
+                  <span>ROI <span class="num text-[color:var(--green)]">+8.0%</span></span><span>·</span>
+                  <span>ITM <span class="num text-[color:var(--fg-muted)]">15%</span></span>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2 w-[200px]">
+                <div>
+                  <div class="label-eyebrow mb-1">Бай-ин</div>
+                  <div class="field text-sm flex items-baseline gap-1">
+                    <span class="num">200</span><span class="text-[color:var(--fg-dim)]">+</span><span class="num text-[color:var(--fg-muted)]">15</span>
+                  </div>
+                </div>
+                <div>
+                  <div class="label-eyebrow mb-1">Поле</div>
+                  <div class="field text-sm"><span class="num">8 000</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-muted)]">Цветной accent-bar по room · room-pill на видном месте · название и бай-ин крупные · второстепенное (AFS, ROI, ITM, ноки) уехало в inline meta-строку</p>
+      </div>
+    </div>
+    <div class="pick"><span class="text-[color:var(--gold)]">✓</span> Тронет: <code>ScheduleEditor.tsx</code> · сложность M (нужны room-цвет дефолты + meta-row)</div>
+  </section>
+
+  <!-- ============== CHUNK 2: Header + status pills ============== -->
+  <section>
+    <div class="flex items-baseline gap-3 mb-4">
+      <span class="font-display text-3xl text-[color:var(--gold)]">②</span>
+      <h2 class="chunk-h2">Header — статус-pills + лучше mode-tabs</h2>
+      <span class="pill badge-S">S · 30-40 мин</span>
+      <span class="pill">visual</span>
+    </div>
+    <p class="text-sm text-[color:var(--fg-muted)] mb-5 max-w-3xl">
+      Header сейчас — wordmark + EN/RU/ADV. Никаких индикаторов того, в каком состоянии приложение
+      (живой режим, текущий seed, ResultHub доступен/нет, сколько worker'ов в пуле).
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- BEFORE -->
+      <div class="frame-now">
+        <div class="card p-4 flex items-center gap-3">
+          <div class="text-base font-bold">PrimeDope <span class="italic text-[color:var(--gold)]">but better</span> <span class="text-[10px] text-[color:var(--fg-dim)]">v0.7.4</span></div>
+          <div class="flex-1"></div>
+          <div class="flex gap-1 p-1 rounded-full border border-[color:var(--border)]">
+            <button class="px-2 text-[11px] text-[color:var(--fg-dim)]">EN</button>
+            <button class="px-2 text-[11px] font-semibold bg-[color:var(--bg-elev-2)] rounded-full">RU</button>
+            <button class="px-2 text-[10px] text-[color:var(--fg-dim)]">ADV</button>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-dim)]">Только wordmark · никакой обратной связи о live-state</p>
+      </div>
+
+      <!-- AFTER -->
+      <div class="frame-next">
+        <div class="card p-4 flex items-center gap-4 flex-wrap">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-[#1a1305] font-bold"
+                 style="background: linear-gradient(135deg, var(--gold), var(--gold-strong)); box-shadow: 0 4px 12px var(--gold-glow);">♠</div>
+            <div>
+              <div class="font-display text-base leading-none">PrimeDope <span class="italic text-[color:var(--gold)]">but better</span></div>
+              <div class="text-[10px] text-[color:var(--fg-dim)] mt-0.5">Monte Carlo MTT lab · v0.7.4</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="pill pill-green">● Live</span>
+            <span class="pill"><span class="text-[color:var(--fg-dim)]">seed</span> <span class="num">0xca9e8c52</span></span>
+            <span class="pill"><span class="text-[color:var(--fg-dim)]">workers</span> <span class="num">8</span></span>
+            <span class="pill"><span class="text-[color:var(--fg-dim)]">ResultHub</span> <span class="text-[color:var(--green)]">●</span></span>
+          </div>
+          <div class="flex-1"></div>
+          <div class="flex items-center gap-1 p-1 rounded-full border border-[color:var(--border)]">
+            <button class="px-2 text-[11px] text-[color:var(--fg-dim)]">EN</button>
+            <button class="px-2 text-[11px] font-semibold rounded-full" style="background: var(--bg-elev-2);">RU</button>
+            <button class="px-2 text-[10px] text-[color:var(--fg-dim)]">ADV</button>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-muted)]">Gold-foil логотип-square · live-status pill · seed одним кликом для копи · pool-size · ResultHub-доступность</p>
+      </div>
+    </div>
+    <div class="pick"><span class="text-[color:var(--gold)]">✓</span> Тронет: <code>page.tsx</code> (header) + <code>CornerToggles.tsx</code> · сложность S (только новые pills, состояние уже всё есть)</div>
+  </section>
+
+  <!-- ============== CHUNK 3: Run CTA + EV preview ============== -->
+  <section>
+    <div class="flex items-baseline gap-3 mb-4">
+      <span class="font-display text-3xl text-[color:var(--gold)]">③</span>
+      <h2 class="chunk-h2">Run CTA + EV preview слева/справа</h2>
+      <span class="pill badge-M">M · 1-1.5 ч</span>
+      <span class="pill">visual + LayoutShift</span>
+    </div>
+    <p class="text-sm text-[color:var(--fg-muted)] mb-5 max-w-3xl">
+      «Запустить» сейчас — да, золотая кнопка, но прячется в углу controls panel.
+      EV preview одного турнира — отдельная карта где-то ниже. Они логически связаны и должны жить рядом.
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- BEFORE -->
+      <div class="frame-now">
+        <div class="card p-4 space-y-3">
+          <div>
+            <div class="label-eyebrow mb-1">Турниров в сэмпле</div>
+            <div class="field flex justify-between">
+              <input class="bg-transparent outline-none num text-sm flex-1" value="10 000"/>
+            </div>
+          </div>
+          <div>
+            <div class="label-eyebrow mb-1">Симуляций</div>
+            <div class="field flex justify-between">
+              <input class="bg-transparent outline-none num text-sm flex-1" value="10 000"/>
+            </div>
+          </div>
+          <button class="btn-primary w-full text-sm">▶ Запустить</button>
+          <div class="text-[10px] text-[color:var(--fg-dim)] text-center">прогноз ≈ ~1 с · 10k турниров в сэмпле</div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-dim)]">Кнопка снизу · ETA отдельной строкой · seed где-то ещё дальше</p>
+      </div>
+
+      <!-- AFTER -->
+      <div class="frame-next">
+        <div class="card p-5 grid grid-cols-[1.1fr_1fr] gap-4">
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <div class="label-eyebrow mb-1">Сэмпл</div>
+                <div class="field text-sm"><span class="num">10 000</span></div>
+                <input type="range" min="1000" max="200000" value="10000" class="w-full mt-2 accent-[color:var(--gold)]">
+              </div>
+              <div>
+                <div class="label-eyebrow mb-1">Симуляций</div>
+                <div class="field text-sm"><span class="num">10 000</span></div>
+                <input type="range" min="500" max="200000" value="10000" class="w-full mt-2 accent-[color:var(--gold)]">
+              </div>
+            </div>
+            <div class="flex items-center gap-2 pt-1">
+              <button class="btn-primary text-sm flex-1 flex items-center justify-center gap-2">
+                <span>▶</span> Запустить
+                <span class="pill" style="background: rgba(0,0,0,.18); border-color: rgba(0,0,0,.25); color: rgba(0,0,0,.7);">~1.7 с</span>
+              </button>
+              <button class="btn-ghost text-xs flex items-center gap-1">
+                seed <span class="num text-[10px]">8c52</span> ↺
+              </button>
+            </div>
+          </div>
+          <div class="rounded-xl border border-[color:var(--border)] p-4 grid-bg">
+            <div class="flex items-center justify-between mb-2">
+              <div class="label-eyebrow">🔬 EV / турнир</div>
+              <span class="pill pill-gold">live</span>
+            </div>
+            <div class="font-display text-3xl text-[color:var(--green)]">+$5.50</div>
+            <div class="text-[10px] text-[color:var(--fg-dim)] mt-0.5">EV профит на вход</div>
+            <div class="grid grid-cols-3 gap-2 mt-3 text-xs">
+              <div><div class="text-[color:var(--fg-dim)]">EV</div><div class="num">$60.50</div></div>
+              <div><div class="text-[color:var(--fg-dim)]">ROI</div><div class="num text-[color:var(--green)]">+10.0%</div></div>
+              <div><div class="text-[color:var(--fg-dim)]">ITM</div><div class="num">15.0%</div></div>
+            </div>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-muted)]">Ввод сэмплов слева · CTA с встроенным ETA + seed-pill справа · EV-preview одного турнира тут же — мгновенный sanity-check перед запуском</p>
+      </div>
+    </div>
+    <div class="pick"><span class="text-[color:var(--gold)]">✓</span> Тронет: <code>ControlsPanel.tsx</code> + переезд EV-preview из page.tsx · сложность M (LayoutShift внутри controls + EV-preview уже компонент)</div>
+  </section>
+
+  <!-- ============== CHUNK 4: Compare trajectory panes ============== -->
+  <section>
+    <div class="flex items-baseline gap-3 mb-4">
+      <span class="font-display text-3xl text-[color:var(--gold)]">④</span>
+      <h2 class="chunk-h2">Compare panes — color-dot legend + PD-toggles в шапке</h2>
+      <span class="pill badge-S">S · 40 мин</span>
+      <span class="pill">visual</span>
+    </div>
+    <p class="text-sm text-[color:var(--fg-muted)] mb-5 max-w-3xl">
+      Trajectory сейчас идёт двумя панелями («стандартный» / «PrimeDope») с метаинфой в виде текста сверху каждой.
+      Clean color-dot legend + PD-toggles прямо в header правой панели читаются быстрее, чем длинные подписи.
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- BEFORE -->
+      <div class="frame-now">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="card p-3">
+            <div class="text-[11px] text-[color:var(--fg-muted)] mb-2">Стандартный режим · ITM 15.0% · Пунктир: PrimeDope-сравнение · 100 ранов · интервалы 70/95/99.7%</div>
+            <div class="traj-fan h-32"></div>
+          </div>
+          <div class="card p-3">
+            <div class="text-[11px] text-[color:var(--fg-muted)] mb-2">PrimeDope · ITM 20.2% · Пейауты ПД? · Финиш-модель ПД? · Рейк-арифметика ПД? · 100 ранов</div>
+            <div class="traj-fan h-32"></div>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-dim)]">Длинная meta-строка съедает высоту · ПД-чекбоксы — отдельной строкой · легенда сливается</p>
+      </div>
+
+      <!-- AFTER -->
+      <div class="frame-next">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="card p-3">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span class="legend-dot" style="background: var(--green);"></span>
+                <span class="font-semibold text-sm">Стандартный</span>
+                <span class="pill pill-green">ITM 15.0%</span>
+              </div>
+              <span class="text-[10px] text-[color:var(--fg-dim)]"><span class="text-[color:var(--rival)]">- - -</span> PD overlay</span>
+            </div>
+            <div class="traj-fan h-32"></div>
+          </div>
+          <div class="card p-3">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span class="legend-dot" style="background: var(--rival);"></span>
+                <span class="font-semibold text-sm">PrimeDope</span>
+                <span class="pill pill-rival">ITM 20.2%</span>
+              </div>
+              <div class="flex items-center gap-1.5 text-[10px]">
+                <label class="flex items-center gap-1"><input type="checkbox" checked class="w-3 h-3 accent-[color:var(--rival)]"> Пейауты</label>
+                <label class="flex items-center gap-1"><input type="checkbox" checked class="w-3 h-3 accent-[color:var(--rival)]"> Финиш</label>
+                <label class="flex items-center gap-1"><input type="checkbox" checked class="w-3 h-3 accent-[color:var(--rival)]"> Рейк</label>
+              </div>
+            </div>
+            <div class="traj-fan h-32"></div>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-muted)]">Color-dot вместо текстовой легенды · ITM в pill цветом своей модели · PD-toggles — компактные inline в шапке правой панели</p>
+      </div>
+    </div>
+    <div class="pick"><span class="text-[color:var(--gold)]">✓</span> Тронет: <code>ResultsView.tsx</code> (TrajectoryCard) · сложность S (только chrome вокруг существующего)</div>
+  </section>
+
+  <!-- ============== CHUNK 5: Global controls strip ============== -->
+  <section>
+    <div class="flex items-baseline gap-3 mb-4">
+      <span class="font-display text-3xl text-[color:var(--gold)]">⑤</span>
+      <h2 class="chunk-h2">Global controls (ITM% · Рейкбек · Банкролл) — distinct cards</h2>
+      <span class="pill badge-S">S · 30 мин</span>
+      <span class="pill">polish</span>
+    </div>
+    <p class="text-sm text-[color:var(--fg-muted)] mb-5 max-w-3xl">
+      Полоса ITM% / Рейкбек / Банкролл сейчас — три одинаковых input'а в ряд.
+      Каждый — это разный slot в модели (cap на ROI, бонус сверху, capacity для risk-of-ruin).
+      Можно дать визуальные подсказки: суит-цвет, иконка, опциональный «overflow» хинт.
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- BEFORE -->
+      <div class="frame-now">
+        <div class="card p-4 grid grid-cols-3 gap-3">
+          <div>
+            <div class="label-eyebrow mb-1">Глоб. ITM%</div>
+            <div class="field text-sm flex justify-between"><input class="bg-transparent outline-none num flex-1" value="20"/><span class="text-[color:var(--fg-dim)]">%</span></div>
+          </div>
+          <div>
+            <div class="label-eyebrow mb-1">Рейкбек</div>
+            <div class="field text-sm flex justify-between"><input class="bg-transparent outline-none num flex-1" value="40"/><span class="text-[color:var(--fg-dim)]">%</span></div>
+          </div>
+          <div>
+            <div class="label-eyebrow mb-1">Банкролл</div>
+            <div class="field text-sm flex justify-between"><span class="text-[color:var(--fg-dim)]">$</span><input class="bg-transparent outline-none num text-right flex-1" value="300"/></div>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-dim)]">Три одинаковых input'а · нет иерархии · нет вторичной информации</p>
+      </div>
+
+      <!-- AFTER -->
+      <div class="frame-next">
+        <div class="grid grid-cols-3 gap-3">
+          <div class="card p-4 relative overflow-hidden">
+            <div class="absolute top-0 left-0 right-0 h-0.5" style="background: var(--diamond);"></div>
+            <div class="flex items-center justify-between mb-2">
+              <div class="label-eyebrow flex items-center gap-1.5"><span class="text-[color:var(--diamond)]">♦</span> Глоб. ITM%</div>
+              <input type="checkbox" checked class="w-3.5 h-3.5 accent-[color:var(--gold)]">
+            </div>
+            <div class="flex items-baseline gap-1">
+              <input class="bg-transparent outline-none num text-2xl font-display font-bold w-full" value="20"/>
+              <span class="text-[color:var(--fg-dim)] text-sm">%</span>
+            </div>
+            <div class="text-[10px] text-[color:var(--fg-dim)] mt-1">cap для всех ROI-расчётов</div>
+          </div>
+          <div class="card p-4 relative overflow-hidden">
+            <div class="absolute top-0 left-0 right-0 h-0.5" style="background: var(--gold);"></div>
+            <div class="flex items-center justify-between mb-2">
+              <div class="label-eyebrow flex items-center gap-1.5"><span class="text-[color:var(--gold)]">★</span> Рейкбек</div>
+              <span class="pill pill-gold">ResultHub ✓</span>
+            </div>
+            <div class="flex items-baseline gap-1">
+              <input class="bg-transparent outline-none num text-2xl font-display font-bold w-full" value="40"/>
+              <span class="text-[color:var(--fg-dim)] text-sm">%</span>
+            </div>
+            <div class="text-[10px] text-[color:var(--gold)] mt-1">подтверждено по нику</div>
+          </div>
+          <div class="card p-4 relative overflow-hidden">
+            <div class="absolute top-0 left-0 right-0 h-0.5" style="background: var(--heart);"></div>
+            <div class="flex items-center justify-between mb-2">
+              <div class="label-eyebrow flex items-center gap-1.5"><span class="text-[color:var(--heart)]">♥</span> Банкролл</div>
+              <span class="pill pill-red">высокий риск</span>
+            </div>
+            <div class="flex items-baseline gap-1">
+              <span class="text-[color:var(--fg-dim)] text-sm">$</span>
+              <input class="bg-transparent outline-none num text-2xl font-display font-bold w-full" value="300"/>
+            </div>
+            <div class="text-[10px] text-[color:var(--fg-dim)] mt-1">≈ <span class="num">109</span> ABI · 0.04× от 1% RoR</div>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-[color:var(--fg-muted)]">Каждый input — карточка с suit-полосой сверху · крупное число display-шрифтом · вторичная инфа: статусы и derived-метрики</p>
+      </div>
+    </div>
+    <div class="pick"><span class="text-[color:var(--gold)]">✓</span> Тронет: <code>page.tsx</code> (controls strip) · сложность S (всё derived data уже считается, только chrome)</div>
+  </section>
+
+  <!-- =================== Recommendation =================== -->
+  <aside class="card p-6 border-l-4" style="border-left-color: var(--gold);">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="font-display text-3xl text-[color:var(--gold)]">▸</span>
+      <h3 class="font-display text-2xl">Рекомендованный порядок</h3>
+    </div>
+    <ol class="space-y-3 text-sm text-[color:var(--fg-muted)]">
+      <li class="flex items-start gap-3">
+        <span class="num text-[color:var(--gold)] font-bold mt-0.5">①</span>
+        <div>
+          <b class="text-[color:var(--fg)]">Schedule row → cards</b> — главное визуальное «вау». Каждый турнир станет различимым с первого взгляда. <span class="pill badge-M">M</span>
+        </div>
+      </li>
+      <li class="flex items-start gap-3">
+        <span class="num text-[color:var(--gold)] font-bold mt-0.5">②</span>
+        <div>
+          <b class="text-[color:var(--fg)]">Header status pills</b> — мелкий, но каждый раз видишь при открытии. live + seed копируются. <span class="pill badge-S">S</span>
+        </div>
+      </li>
+      <li class="flex items-start gap-3">
+        <span class="num text-[color:var(--gold)] font-bold mt-0.5">③</span>
+        <div>
+          <b class="text-[color:var(--fg)]">Run CTA + EV preview слева/справа</b> — рукояти запуска и sanity-check бок о бок. Sequence improvement. <span class="pill badge-M">M</span>
+        </div>
+      </li>
+      <li class="flex items-start gap-3">
+        <span class="num text-[color:var(--gold)] font-bold mt-0.5">④</span>
+        <div>
+          <b class="text-[color:var(--fg)]">Compare panes legend</b> — color-dot + inline PD-toggles. Polish после трёх structural'ных. <span class="pill badge-S">S</span>
+        </div>
+      </li>
+      <li class="flex items-start gap-3">
+        <span class="num text-[color:var(--gold)] font-bold mt-0.5">⑤</span>
+        <div>
+          <b class="text-[color:var(--fg)]">Global controls cards</b> — мелкий polish, но даёт «cohesive» чувство всему controls-стрипу. <span class="pill badge-S">S</span>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-5 p-4 rounded-md border border-[color:var(--border)] bg-[color:var(--bg)] text-[12px] text-[color:var(--fg-dim)]">
+      Отвечай номером (или несколькими через запятую) — пройдусь по выбранным
+      кускам в указанном порядке. Каждый — отдельный коммит.
+    </div>
+  </aside>
+
+</main>
+
+</body>
+</html>

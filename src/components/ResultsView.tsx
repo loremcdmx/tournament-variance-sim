@@ -3199,9 +3199,17 @@ function ChartPane({
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30 p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {/* Pane identity: colored dot tinted with the pane's hue, the model
+            label, and (if known) an ITM-rate pill in the same hue. The pill
+            replaces the older inline "ITM 15.0% [bar]" combo — the model the
+            number belongs to is now read from the pill color, not from a
+            separate legend strip. */}
         <span
-          className="inline-block h-2 w-2 rounded-full"
-          style={{ background: hueDot }}
+          className="inline-block h-2.5 w-2.5 rounded-full"
+          style={{
+            background: hueDot,
+            boxShadow: `0 0 8px ${hueDot}`,
+          }}
         />
         <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
           {label}
@@ -3213,19 +3221,15 @@ function ChartPane({
         )}
         {itmRate != null && (
           <span
-            className="flex items-center gap-1.5 text-[10px] tabular-nums text-[color:var(--color-fg-dim)]"
+            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tabular-nums"
+            style={{
+              borderColor: `color-mix(in srgb, ${hueDot} 45%, transparent)`,
+              background: `color-mix(in srgb, ${hueDot} 12%, transparent)`,
+              color: hueDot,
+            }}
             title={itmTitle}
           >
-            <span>{itmLabel} {(itmRate * 100).toFixed(1)}%</span>
-            <span className="relative inline-block h-1.5 w-14 overflow-hidden rounded bg-[color:var(--color-border)]">
-              <span
-                className="absolute inset-y-0 left-0"
-                style={{
-                  width: `${Math.min(100, itmRate * 100 * 3)}%`,
-                  background: hueDot,
-                }}
-              />
-            </span>
+            {itmLabel} {(itmRate * 100).toFixed(1)}%
           </span>
         )}
         {action && <div className="ml-auto">{action}</div>}
