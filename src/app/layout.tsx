@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
@@ -18,6 +18,16 @@ const geistMono = Geist_Mono({
   preload: false,
 });
 
+// Fraunces — display serif for section numerals + KPI hero numbers.
+// Latin only (cyrillic isn't available in this family); we only use it for
+// digits + section titles, both of which are language-agnostic.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  weight: ["700", "900"],
+  preload: false,
+});
+
 export const metadata: Metadata = {
   title: "Tournament Variance Simulator",
   description: "Monte Carlo variance simulator for MTT / SNG schedules",
@@ -33,7 +43,7 @@ export default function RootLayout({
       lang="en"
       data-theme="dark"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full`}
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full`}
     >
       <body className="min-h-full">
         <ThemeProvider>

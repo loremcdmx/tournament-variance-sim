@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>tournament-variance-sim · redesign mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* "Felt + Foil" — warmer dark base, champagne accent, suit colors as data */
+    --bg:           #08111a;        /* deep ink, slight teal */
+    --bg-elev:      #0f1d28;        /* felt */
+    --bg-elev-2:    #16293a;
+    --bg-elev-3:    #1f3a52;
+    --border:       #1f3a4a;
+    --border-strong:#345f7a;
+    --border-glow:  #4a8cb8;
+
+    --fg:           #f3ece0;        /* warm cream */
+    --fg-muted:     #b6c4d1;
+    --fg-dim:       #6b7c8a;
+
+    --gold:         #f5cb5c;        /* champagne — primary action */
+    --gold-strong:  #e1b13b;
+    --gold-glow:    rgba(245,203,92,.32);
+
+    --green:        #4ade80;
+    --green-strong: #22c55e;
+    --red:          #fb7185;
+    --rival:        #60a5fa;        /* PrimeDope blue */
+
+    --spade:        #94a3b8;
+    --heart:        #ef4444;
+    --diamond:      #fbbf24;
+    --club:         #34d399;
+
+    --grid:         rgba(255,255,255,.04);
+
+    /* Type */
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-display: 'Fraunces', 'Inter', serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  html, body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
+  body {
+    background:
+      radial-gradient(1200px 600px at 20% -20%, rgba(74,140,184,.12), transparent 60%),
+      radial-gradient(800px 500px at 100% 0%, rgba(245,203,92,.08), transparent 60%),
+      var(--bg);
+    min-height: 100vh;
+  }
+  .font-display { font-family: var(--font-display); }
+  .font-mono { font-family: var(--font-mono); }
+  .card {
+    background: linear-gradient(180deg, var(--bg-elev) 0%, var(--bg-elev) 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .card-hover:hover { border-color: var(--border-strong); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--bg-elev-2);
+  }
+  .pill-gold {
+    background: linear-gradient(135deg, rgba(245,203,92,.18), rgba(245,203,92,.06));
+    border-color: rgba(245,203,92,.45);
+    color: var(--gold);
+  }
+  .pill-green {
+    background: rgba(74,222,128,.12); border-color: rgba(74,222,128,.4); color: var(--green);
+  }
+  .pill-rival {
+    background: rgba(96,165,250,.12); border-color: rgba(96,165,250,.4); color: var(--rival);
+  }
+  .pill-red {
+    background: rgba(251,113,133,.12); border-color: rgba(251,113,133,.4); color: var(--red);
+  }
+  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .glow-gold { box-shadow: 0 0 24px var(--gold-glow), inset 0 1px 0 rgba(255,255,255,.08); }
+  .label-eyebrow {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--fg-dim);
+  }
+  .field {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--fg);
+  }
+  .field:focus-within { border-color: var(--border-glow); box-shadow: 0 0 0 3px rgba(74,140,184,.15); }
+  .field-readonly {
+    background: linear-gradient(180deg, var(--bg) 0%, var(--bg-elev) 100%);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--fg-muted);
+  }
+  .ring-cell { position: relative; }
+  .ring-cell::before {
+    content: ''; position: absolute; inset: 0;
+    border-radius: 12px; padding: 1px;
+    background: linear-gradient(135deg, rgba(245,203,92,.5), transparent 60%);
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude; pointer-events: none;
+  }
+  .section-num {
+    font-family: var(--font-display);
+    font-weight: 900; font-size: 88px; line-height: .9; letter-spacing: -.02em;
+    background: linear-gradient(180deg, #f3ece0 0%, #6b7c8a 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .grid-bg {
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .stat-spark {
+    height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--green) 0%, var(--gold) 100%);
+  }
+  .room-pill { padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 10px; letter-spacing: .08em; }
+  .btn-primary {
+    background: linear-gradient(180deg, var(--gold) 0%, var(--gold-strong) 100%);
+    color: #1a1305;
+    border: 1px solid var(--gold-strong);
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-weight: 700;
+    box-shadow: 0 6px 16px var(--gold-glow), inset 0 1px 0 rgba(255,255,255,.4);
+    transition: transform .08s ease;
+  }
+  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-ghost {
+    background: var(--bg-elev-2);
+    border: 1px solid var(--border);
+    padding: 10px 16px;
+    border-radius: 10px;
+    color: var(--fg-muted);
+  }
+  .suit { font-size: 13px; }
+  .suit-spade { color: var(--spade); }
+  .suit-heart { color: var(--heart); }
+  .suit-diamond { color: var(--diamond); }
+  .suit-club { color: var(--club); }
+
+  /* tiny chart placeholder */
+  .spark-chart {
+    height: 48px;
+    background:
+      linear-gradient(180deg, transparent 0%, rgba(74,222,128,.12) 100%),
+      linear-gradient(90deg, transparent 0%, transparent 100%);
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+  .spark-chart::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 30% 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--green) 0%, var(--gold) 60%, var(--red) 100%);
+    clip-path: polygon(0% 60%, 8% 50%, 16% 70%, 24% 40%, 32% 55%, 40% 30%, 48% 45%, 56% 25%, 64% 50%, 72% 35%, 80% 20%, 88% 30%, 100% 15%);
+  }
+  .compare-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+  .compare-strip .vs {
+    align-self: center; justify-self: center;
+    width: 28px; height: 28px;
+    border-radius: 999px; background: var(--bg-elev-2); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--fg-dim); font-weight: 700;
+  }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- ===== Top hero ===== -->
+<header class="border-b border-[color:var(--border)]" style="background: linear-gradient(180deg, rgba(245,203,92,.04) 0%, transparent 100%);">
+  <div class="max-w-[1320px] mx-auto px-6 py-5 flex items-center gap-6">
+    <!-- Brand -->
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-lg flex items-center justify-center text-[#1a1305] font-bold text-base"
+           style="background: linear-gradient(135deg, var(--gold) 0%, var(--gold-strong) 100%); box-shadow: 0 4px 12px var(--gold-glow);">
+        ♠
+      </div>
+      <div>
+        <div class="font-display text-xl leading-none tracking-tight">PrimeDope <span class="text-[color:var(--gold)] italic">but better</span></div>
+        <div class="text-[11px] text-[color:var(--fg-dim)] mt-1">Monte Carlo MTT variance lab · v0.7.4</div>
+      </div>
+    </div>
+
+    <!-- Live status badges -->
+    <div class="hidden md:flex items-center gap-2 ml-4">
+      <span class="pill pill-green">● Live</span>
+      <span class="pill"><span class="text-[color:var(--fg-dim)]">seed</span> <span class="num text-[color:var(--fg)]">0xca9e8c52</span></span>
+      <span class="pill"><span class="text-[color:var(--fg-dim)]">ResultHub</span> <span class="text-[color:var(--green)]">●</span></span>
+    </div>
+
+    <div class="flex-1"></div>
+
+    <!-- Mode tabs -->
+    <div class="flex items-center gap-1 p-1 rounded-full border border-[color:var(--border)] bg-[color:var(--bg-elev)]">
+      <button class="px-4 py-1.5 rounded-full text-xs font-semibold text-[#1a1305]"
+              style="background: var(--gold);">Турниры</button>
+      <button class="px-4 py-1.5 rounded-full text-xs font-medium text-[color:var(--fg-muted)]">Кэш</button>
+    </div>
+
+    <!-- Locale + theme -->
+    <div class="flex items-center gap-1 p-1 rounded-full border border-[color:var(--border)] bg-[color:var(--bg-elev)]">
+      <button class="px-2.5 py-1 rounded-full text-[11px] text-[color:var(--fg-dim)]">EN</button>
+      <button class="px-2.5 py-1 rounded-full text-[11px] font-semibold text-[color:var(--fg)] bg-[color:var(--bg-elev-2)]">RU</button>
+      <button class="px-2 py-1 rounded-full text-[10px] text-[color:var(--fg-dim)]">ADV</button>
+      <button class="w-6 h-6 rounded-full text-[color:var(--fg-muted)] flex items-center justify-center hover:bg-[color:var(--bg-elev-2)]">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ===== Main column ===== -->
+<main class="max-w-[1320px] mx-auto px-6 py-8 space-y-10">
+
+  <!-- ===== Section 01 — Schedule ===== -->
+  <section>
+    <!-- Section hero -->
+    <div class="flex items-end gap-5 mb-5">
+      <div class="section-num">01</div>
+      <div class="pb-2">
+        <div class="flex items-center gap-2">
+          <span class="suit suit-spade text-2xl">♠</span>
+          <h2 class="font-display text-2xl tracking-tight">Расписание</h2>
+        </div>
+        <p class="text-sm text-[color:var(--fg-muted)] mt-1 max-w-xl">
+          Из чего состоит ваша сессия — поле, бай-ин, рейк, ROI.
+          Микс форматов, AFS, фикс-ITM и ноки задаются на каждой строке.
+        </p>
+      </div>
+      <div class="flex-1"></div>
+      <div class="flex gap-2">
+        <button class="btn-ghost text-xs">↑ Импорт</button>
+        <button class="btn-ghost text-xs">↓ Экспорт</button>
+        <button class="btn-ghost text-xs">+ Сохранить пресет</button>
+      </div>
+    </div>
+
+    <!-- Global controls strip -->
+    <div class="card p-5 mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="label-eyebrow">Глобальный ITM%</label>
+            <input type="checkbox" checked class="w-3.5 h-3.5 accent-[color:var(--gold)]">
+          </div>
+          <div class="field flex items-center justify-between">
+            <input class="bg-transparent outline-none num text-base flex-1" value="20"/>
+            <span class="text-[color:var(--fg-dim)] text-sm">%</span>
+          </div>
+        </div>
+        <div>
+          <label class="label-eyebrow block mb-1.5">Рейкбек</label>
+          <div class="field flex items-center justify-between">
+            <input class="bg-transparent outline-none num text-base flex-1" value="40"/>
+            <span class="text-[color:var(--fg-dim)] text-sm">%</span>
+          </div>
+          <div class="mt-1.5 text-[11px] text-[color:var(--gold)]">✓ 40% BR · подтверждено по нику</div>
+        </div>
+        <div>
+          <label class="label-eyebrow block mb-1.5">Банкролл</label>
+          <div class="field flex items-center justify-between">
+            <span class="text-[color:var(--fg-dim)] text-sm">$</span>
+            <input class="bg-transparent outline-none num text-base text-right flex-1" value="300"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tournament card (redesigned row) -->
+    <div class="card p-5 mb-3 relative overflow-hidden">
+      <!-- Left accent bar (room-color) -->
+      <div class="absolute left-0 top-0 bottom-0 w-1" style="background: linear-gradient(180deg, #b91c1c 0%, #7f1d1d 100%);"></div>
+
+      <div class="flex items-start gap-5 ml-3">
+        <!-- Room badge -->
+        <div class="room-pill text-white" style="background: linear-gradient(135deg, #dc2626, #991b1b);">GG</div>
+
+        <!-- Title + buy-in -->
+        <div class="min-w-0 flex-1">
+          <div class="flex items-baseline gap-3">
+            <input class="bg-transparent outline-none font-semibold text-base text-[color:var(--fg)] min-w-0 max-w-[18rem]" value="GG Battle Royale $3"/>
+            <span class="pill pill-rival">battle-royale</span>
+          </div>
+          <div class="mt-1 flex items-center gap-3 text-[11px] text-[color:var(--fg-dim)]">
+            <span><span class="text-[color:var(--fg-muted)] num">100</span> турниров</span>
+            <span class="text-[color:var(--border-strong)]">·</span>
+            <span>AFS <span class="num text-[color:var(--fg-muted)]">18</span></span>
+            <span class="text-[color:var(--border-strong)]">·</span>
+            <span>ROI <span class="num text-[color:var(--green)]">+5.0%</span></span>
+            <span class="text-[color:var(--border-strong)]">·</span>
+            <span>фикс. ITM <span class="num text-[color:var(--fg-muted)]">20%</span></span>
+          </div>
+        </div>
+
+        <!-- Inputs grouped (compact) -->
+        <div class="grid grid-cols-3 gap-2 w-[420px]">
+          <div>
+            <div class="label-eyebrow mb-1">Бай-ин</div>
+            <div class="field text-sm flex items-baseline gap-1">
+              <span class="num">2.76</span><span class="text-[color:var(--fg-dim)]">+</span><span class="num text-[color:var(--fg-muted)]">0.24</span>
+            </div>
+          </div>
+          <div>
+            <div class="label-eyebrow mb-1">Ноки</div>
+            <div class="field text-sm">
+              <span class="num">45</span><span class="text-[color:var(--fg-dim)]">%</span>
+            </div>
+          </div>
+          <div>
+            <div class="label-eyebrow mb-1">Поле</div>
+            <div class="field text-sm">
+              <span class="num">5 000</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row actions -->
+        <div class="flex flex-col gap-2">
+          <button class="w-7 h-7 rounded-md border border-[color:var(--border)] text-[color:var(--fg-dim)] hover:text-[color:var(--fg)] hover:border-[color:var(--border-strong)]" title="Дублировать">⎘</button>
+          <button class="w-7 h-7 rounded-md border border-[color:var(--border)] text-[color:var(--fg-dim)] hover:text-[color:var(--red)] hover:border-[color:var(--red)]" title="Удалить">×</button>
+        </div>
+      </div>
+
+      <!-- Distribution mini-strip (the "Откуда EV" preview) -->
+      <div class="ml-3 mt-4 pt-4 border-t border-[color:var(--border)] grid grid-cols-5 gap-3 text-[11px]">
+        <div>
+          <div class="text-[color:var(--fg-dim)] mb-1">Top-1</div>
+          <div class="flex items-baseline gap-1">
+            <span class="num text-[color:var(--green)]">+$10.22</span>
+            <span class="text-[10px] text-[color:var(--fg-dim)]">17%</span>
+          </div>
+        </div>
+        <div>
+          <div class="text-[color:var(--fg-dim)] mb-1">Top 2-3</div>
+          <div class="flex items-baseline gap-1">
+            <span class="num text-[color:var(--green)]">+$11.83</span>
+            <span class="text-[10px] text-[color:var(--fg-dim)]">20%</span>
+          </div>
+        </div>
+        <div>
+          <div class="text-[color:var(--fg-dim)] mb-1">Top 4-9</div>
+          <div class="flex items-baseline gap-1">
+            <span class="num text-[color:var(--green)]">+$10.07</span>
+            <span class="text-[10px] text-[color:var(--fg-dim)]">17%</span>
+          </div>
+        </div>
+        <div>
+          <div class="text-[color:var(--fg-dim)] mb-1">ITM mass</div>
+          <div class="flex items-baseline gap-1">
+            <span class="num text-[color:var(--diamond)]">+$12.50</span>
+            <span class="text-[10px] text-[color:var(--fg-dim)]">34%</span>
+          </div>
+        </div>
+        <div>
+          <div class="text-[color:var(--fg-dim)] mb-1">Не ITM</div>
+          <div class="flex items-baseline gap-1">
+            <span class="num text-[color:var(--red)]">−$46.74</span>
+            <span class="text-[10px] text-[color:var(--fg-dim)]">85%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add row & presets -->
+    <div class="flex items-center justify-between gap-3">
+      <button class="btn-ghost text-xs flex items-center gap-2">
+        <span class="w-5 h-5 rounded-full border border-dashed border-[color:var(--border-strong)] flex items-center justify-center text-[color:var(--fg-dim)]">+</span>
+        Добавить турнир
+      </button>
+      <div class="flex items-center gap-2 text-xs">
+        <span class="text-[color:var(--fg-dim)]">Готовое расписание:</span>
+        <select class="field text-xs py-1.5 pr-8">
+          <option>BR leaderboard promo</option>
+          <option>Режим Ромеопро</option>
+          <option>Daily mix · фриз+PKO+Mystery</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Section 02 — Run ===== -->
+  <section>
+    <div class="flex items-end gap-5 mb-5">
+      <div class="section-num">02</div>
+      <div class="pb-2">
+        <div class="flex items-center gap-2">
+          <span class="suit suit-diamond text-2xl">♦</span>
+          <h2 class="font-display text-2xl tracking-tight">Запуск симуляции</h2>
+        </div>
+        <p class="text-sm text-[color:var(--fg-muted)] mt-1 max-w-xl">
+          Сколько турниров в одной «жизни» (сэмпле) и сколько таких жизней прокрутить.
+        </p>
+      </div>
+    </div>
+
+    <div class="card p-6 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6">
+      <!-- Run inputs -->
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="label-eyebrow block mb-1.5">Турниров в сэмпле</label>
+            <div class="field flex items-center gap-2">
+              <input class="bg-transparent outline-none num text-base flex-1" value="10 000"/>
+            </div>
+            <input type="range" min="1000" max="200000" value="10000" class="w-full mt-2 accent-[color:var(--gold)]">
+          </div>
+          <div>
+            <label class="label-eyebrow block mb-1.5">Симуляций</label>
+            <div class="field flex items-center gap-2">
+              <input class="bg-transparent outline-none num text-base flex-1" value="10 000"/>
+            </div>
+            <input type="range" min="500" max="200000" value="10000" class="w-full mt-2 accent-[color:var(--gold)]">
+          </div>
+        </div>
+
+        <!-- CTA + ETA -->
+        <div class="flex items-center gap-3 pt-1">
+          <button class="btn-primary glow-gold text-base flex-1 flex items-center justify-center gap-3">
+            <span>▶</span>
+            <span>Запустить симуляцию</span>
+            <span class="pill" style="background: rgba(0,0,0,.18); border-color: rgba(0,0,0,.25); color: rgba(0,0,0,.7);">~1.7 с</span>
+          </button>
+          <button class="btn-ghost flex items-center gap-2" title="Изменить сид">
+            <span class="text-[color:var(--fg-dim)]">seed</span>
+            <span class="num text-xs">0xca9e8c52</span>
+            <span class="text-[color:var(--fg-dim)]">↺</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Single-tournament EV preview -->
+      <div class="rounded-xl border border-[color:var(--border)] p-4 grid-bg">
+        <div class="flex items-center justify-between mb-3">
+          <div class="label-eyebrow">🔬 EV одного турнира</div>
+          <span class="pill pill-gold">live</span>
+        </div>
+        <div class="flex items-baseline gap-3 mb-2">
+          <span class="num font-display text-3xl text-[color:var(--green)]">+$5.50</span>
+          <span class="text-xs text-[color:var(--fg-muted)]">EV профит на вход</span>
+        </div>
+        <div class="grid grid-cols-3 gap-3 text-xs mt-3">
+          <div>
+            <div class="text-[color:var(--fg-dim)]">EV</div>
+            <div class="num text-[color:var(--fg)]">$60.50</div>
+          </div>
+          <div>
+            <div class="text-[color:var(--fg-dim)]">ROI</div>
+            <div class="num text-[color:var(--green)]">+10.0%</div>
+          </div>
+          <div>
+            <div class="text-[color:var(--fg-dim)]">ITM</div>
+            <div class="num text-[color:var(--fg)]">15.0%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Section 03 — Results (preview of KPI strip) ===== -->
+  <section>
+    <div class="flex items-end gap-5 mb-5">
+      <div class="section-num">03</div>
+      <div class="pb-2">
+        <div class="flex items-center gap-2">
+          <span class="suit suit-club text-2xl">♣</span>
+          <h2 class="font-display text-2xl tracking-tight">Результаты</h2>
+        </div>
+        <p class="text-sm text-[color:var(--fg-muted)] mt-1 max-w-xl">
+          10 000 симуляций по 10 000 турниров. Распределение, просадки, сходимость.
+        </p>
+      </div>
+      <div class="flex-1"></div>
+      <!-- Single global $/ABI toggle -->
+      <div class="flex items-center gap-2">
+        <span class="label-eyebrow">Юниты</span>
+        <div class="inline-flex rounded-md border border-[color:var(--border)] overflow-hidden">
+          <button class="px-3 py-1 text-xs font-semibold" style="background: var(--gold); color: #1a1305;">$</button>
+          <button class="px-3 py-1 text-xs text-[color:var(--fg-dim)]">ABI</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI strip — three big cards with sparklines -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+
+      <!-- Expected profit -->
+      <div class="card p-5 relative overflow-hidden">
+        <div class="absolute -top-12 -right-12 w-40 h-40 rounded-full opacity-30" style="background: radial-gradient(circle, rgba(74,222,128,.4), transparent 70%);"></div>
+        <div class="flex items-center justify-between mb-2">
+          <div class="label-eyebrow flex items-center gap-1.5"><span class="suit-club">♣</span> Ожидаемый профит</div>
+          <span class="pill pill-rival">PD ±1%</span>
+        </div>
+        <div class="font-display text-4xl text-[color:var(--green)]">+$56k</div>
+        <div class="mt-2 text-xs text-[color:var(--fg-dim)]">
+          Разброс <span class="num text-[color:var(--fg-muted)]">−$233k</span> · <span class="num text-[color:var(--fg-muted)]">+$561k</span>
+        </div>
+        <div class="mt-3 spark-chart"></div>
+      </div>
+
+      <!-- Probability of profit -->
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="label-eyebrow flex items-center gap-1.5"><span class="suit-spade">♠</span> Шанс выйти в плюс</div>
+          <span class="pill pill-rival">PD ±1%</span>
+        </div>
+        <div class="font-display text-4xl text-[color:var(--fg)]">73.5%</div>
+        <!-- Probability bar -->
+        <div class="mt-3 flex items-center gap-1">
+          <div class="flex-1 h-2 rounded-full overflow-hidden bg-[color:var(--bg-elev-2)]">
+            <div class="h-full" style="width: 73.5%; background: linear-gradient(90deg, var(--green), var(--gold));"></div>
+          </div>
+          <span class="num text-[10px] text-[color:var(--fg-dim)]">73.5</span>
+        </div>
+        <div class="mt-3 text-xs text-[color:var(--fg-dim)]">378 490 турниров до точного ROI ±5%</div>
+      </div>
+
+      <!-- Risk of ruin -->
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="label-eyebrow flex items-center gap-1.5"><span class="suit-heart">♥</span> Риск разорения</div>
+          <span class="pill pill-red">Высокий</span>
+        </div>
+        <div class="font-display text-4xl text-[color:var(--red)]">97.8%</div>
+        <div class="mt-3 text-xs text-[color:var(--fg-dim)]">
+          5% риск <span class="num text-[color:var(--fg-muted)]">$103k</span> · 1% <span class="num text-[color:var(--fg-muted)]">$140k</span>
+        </div>
+        <div class="mt-3 h-1.5 rounded-full bg-[color:var(--bg-elev-2)] overflow-hidden">
+          <div class="h-full" style="width: 97.8%; background: linear-gradient(90deg, var(--red), #b91c1c);"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trajectory compare strip header -->
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-base">График разброса возможных ранов</h3>
+        <div class="flex items-center gap-2">
+          <span class="pill"><span class="text-[color:var(--fg-dim)]">100/1000</span> ранов</span>
+          <span class="pill">случайные</span>
+          <div class="inline-flex rounded-md border border-[color:var(--border)] overflow-hidden text-[10px]">
+            <button class="px-2 py-1 text-[color:var(--fg-dim)]">$</button>
+            <button class="px-2 py-1 font-semibold" style="background: var(--gold); color: #1a1305;">ABI</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="compare-strip">
+        <!-- Our model pane -->
+        <div class="rounded-xl border border-[color:var(--border)] p-3 grid-bg">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full" style="background: var(--green);"></span>
+              <span class="font-semibold text-sm">Стандартный режим</span>
+              <span class="pill pill-green">ITM 15.0%</span>
+            </div>
+            <span class="pill"><span class="text-[color:var(--rival)]">- - -</span> PrimeDope overlay</span>
+          </div>
+          <div class="spark-chart" style="height: 220px;"></div>
+        </div>
+
+        <!-- PrimeDope pane -->
+        <div class="rounded-xl border border-[color:var(--border)] p-3 grid-bg">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full" style="background: var(--rival);"></span>
+              <span class="font-semibold text-sm">PrimeDope</span>
+              <span class="pill pill-rival">ITM 20.2%</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-[10px]">
+              <label class="flex items-center gap-1"><input type="checkbox" checked class="w-3 h-3 accent-[color:var(--rival)]"> Пейауты</label>
+              <label class="flex items-center gap-1"><input type="checkbox" checked class="w-3 h-3 accent-[color:var(--rival)]"> Финиш</label>
+              <label class="flex items-center gap-1"><input type="checkbox" checked class="w-3 h-3 accent-[color:var(--rival)]"> Рейк</label>
+            </div>
+          </div>
+          <div class="spark-chart" style="height: 220px;"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Notes / "what would change" sidebar at the bottom ===== -->
+  <aside class="card p-6 mt-12 border-l-4" style="border-left-color: var(--gold);">
+    <h3 class="font-display text-xl mb-3 text-[color:var(--gold)]">Что сменилось — коротко</h3>
+    <ul class="space-y-2 text-sm text-[color:var(--fg-muted)]">
+      <li><span class="text-[color:var(--gold)]">▸</span> <b>Палитра:</b> dark-felt teal + champagne gold вместо холодного серого. Suits (♠♥♦♣) подсвечены каждый своим цветом — и в стате, и в section heroes.</li>
+      <li><span class="text-[color:var(--gold)]">▸</span> <b>Section heroes:</b> большой цифровой номер (88px Fraunces) + suit + 1-2 строки описания. Нет больше «01 РАСПИСАНИЕ» строчкой capslock — структура сразу читается.</li>
+      <li><span class="text-[color:var(--gold)]">▸</span> <b>Карточные ряды:</b> каждый турнир — своя карта с room-цветом (GG красный, PS красный, Stars black и т.д.), бай-ин крупно, остальные поля сжаты в 3-колоночный блок справа.</li>
+      <li><span class="text-[color:var(--gold)]">▸</span> <b>Run CTA:</b> большая золотая кнопка с glow и встроенным ETA. seed-pill отдельно справа. Не теряется на дне 02.</li>
+      <li><span class="text-[color:var(--gold)]">▸</span> <b>KPI cards:</b> крупный display-шрифт (Fraunces) для главного числа, sparkline под ним, suit-marker рядом с лейблом, цвет карты совпадает со знаком (зелёный/красный).</li>
+      <li><span class="text-[color:var(--gold)]">▸</span> <b>Compare panes:</b> чёткая «vs» структура, color dot вместо легенды, PD-toggles тут же в шапке правой панели.</li>
+      <li><span class="text-[color:var(--gold)]">▸</span> <b>Header status:</b> live indicator + ResultHub статус + seed pill сразу видны — раньше в шапке был только wordmark.</li>
+      <li><span class="text-[color:var(--gold)]">▸</span> <b>Шрифты:</b> Fraunces (display) для номеров + заголовков добавляет журнальной серьёзности; JetBrains Mono для всех чисел вместо Geist Mono — более «терминальный» характер.</li>
+    </ul>
+  </aside>
+
+</main>
+
+</body>
+</html>

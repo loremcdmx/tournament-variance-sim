@@ -3,6 +3,7 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-fraunces);
 
   /* Custom breakpoints for FullHD (1920) and 4K (2560+) displays. Default
      Tailwind caps at 2xl=1536px; without these, 4K users see a narrow
@@ -26,29 +27,31 @@
 
 :root,
 :root[data-theme="dark"] {
-  /* FirstFund palette — darkened one notch for more ink contrast. */
-  --c-bg: #060609;
-  --c-bg-elev: #100f15;
-  --c-bg-elev-2: #181720;
-  --c-border: #2b2936;
-  --c-border-strong: #4a465c;
-  --c-fg: #f6f4ef;
-  --c-fg-muted: #b3b0bd;
-  --c-fg-dim: #747080;
+  /* "Felt + Foil" — warm teal-ink base, champagne gold accent. Replaces the
+     FirstFund cool grey palette with a slightly greener, warmer tone so the
+     UI doesn't read as "default AI dashboard" grey. */
+  --c-bg: #08111a;
+  --c-bg-elev: #0f1d28;
+  --c-bg-elev-2: #16293a;
+  --c-border: #1f3a4a;
+  --c-border-strong: #345f7a;
+  --c-fg: #f3ece0;
+  --c-fg-muted: #b6c4d1;
+  --c-fg-dim: #6b7c8a;
 
-  /* Suit palette — desaturated for structural use; only accent pops. */
-  --c-spade: #8b8d92;
-  --c-heart: #d9684a;
-  --c-diamond: #c8a04a;
-  --c-club: #6a8a6c;
+  /* Suit palette — saturated enough to read as data colors, not grey decor. */
+  --c-spade: #94a3b8;
+  --c-heart: #ef4444;
+  --c-diamond: #fbbf24;
+  --c-club: #34d399;
 
-  /* FF yellow as primary accent, purple as secondary. */
-  --c-accent: #f2cf45;
-  --c-accent-strong: #d9b837;
+  /* Champagne gold as primary accent, deep purple as secondary. */
+  --c-accent: #f5cb5c;
+  --c-accent-strong: #e1b13b;
   --c-accent-2: #491b8a;
   --c-accent-2-soft: #dad5ed;
-  --c-success: #7dc98a;
-  --c-danger: #ff6b6b;
+  --c-success: #4ade80;
+  --c-danger: #fb7185;
 
   /* PrimeDope's color — cool steel blue, contrasts against orange. */
   --c-rival: #4a8bd9;
@@ -175,13 +178,25 @@ body {
   border-color: var(--c-diamond);
 }
 
-/* Section number — oversized numeral in the gutter, sans stack. */
+/* Section number — oversized display numeral in the gutter. Fraunces for
+   a touch of editorial weight; subtle silver-foil gradient across the glyph
+   pulls the eye without being decorative. */
 .section-num {
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 0.85;
+  background: linear-gradient(180deg, var(--c-fg) 0%, var(--c-fg-dim) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Display class for KPI hero numbers (BigStat values) and similar. */
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
   font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 0.8;
-  color: var(--c-fg-dim);
+  letter-spacing: -0.015em;
 }
 
 /* Tiny "tag" pill — mono, uppercase, used for eyebrow labels */

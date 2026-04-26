@@ -130,7 +130,7 @@ export function BigStat({
         {tip && <InfoTooltip content={tip} />}
       </div>
       <div
-        className="display text-[26px] font-semibold leading-none tabular-nums sm:text-[28px]"
+        className="font-display text-[30px] font-bold leading-none tabular-nums sm:text-[36px]"
         style={{ color: toneColor }}
       >
         {value}

@@ -34,34 +34,43 @@ export function Section({
 }: Props) {
   const meta = SUIT_META[suit];
   return (
-    <section id={anchorId} className="flex flex-col gap-3 scroll-mt-24">
-      {/* Editorial masthead: numeral / eyebrow / title sit on one baseline,
-          with a heavy double-rule divider beneath. */}
-      <header className="flex flex-col gap-2">
+    <section id={anchorId} className="flex flex-col gap-4 scroll-mt-24">
+      {/* Editorial masthead: oversized display numeral on the left, suit +
+          mixed-case title with descriptive subtitle, optional right-side
+          actions. Heavy double-rule divider beneath keeps the newsroom feel.
+          Items align on the bottom baseline so the numeral sits flush with
+          the subtitle's last line — vertical centering would let the title
+          float above the description. */}
+      <header className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex items-end gap-4">
+          <div className="flex items-end gap-5 min-w-0">
             {number && (
               <span
-                className="section-num text-[44px] sm:text-[64px]"
-                style={{ color: meta.colorVar }}
+                className="section-num text-[56px] sm:text-[80px]"
                 aria-hidden
               >
                 {number}
               </span>
             )}
-            <div className="flex flex-col gap-1 pb-1">
-              <h2 className="flex items-center gap-2 text-[20px] font-bold uppercase leading-[1.05] tracking-[-0.01em] text-[color:var(--color-fg)] sm:text-[24px]">
-                <span className="text-[14px] leading-none" style={{ color: meta.colorVar }}>{meta.glyph}</span>
-                {title}
+            <div className="flex flex-col gap-1 pb-1.5 min-w-0">
+              <h2 className="flex items-center gap-2.5 text-[22px] leading-[1.05] tracking-[-0.015em] text-[color:var(--color-fg)] sm:text-[28px]">
+                <span
+                  className="text-[20px] leading-none sm:text-[24px]"
+                  style={{ color: meta.colorVar }}
+                  aria-hidden
+                >
+                  {meta.glyph}
+                </span>
+                <span className="font-display font-bold">{title}</span>
               </h2>
               {subtitle && (
-                <p className="mt-0.5 max-w-xl text-[12px] leading-relaxed text-[color:var(--color-fg-muted)]">
+                <p className="mt-0.5 max-w-xl text-[13px] leading-relaxed text-[color:var(--color-fg-muted)]">
                   {subtitle}
                 </p>
               )}
             </div>
           </div>
-          {actions && <div className="pb-1">{actions}</div>}
+          {actions && <div className="pb-2 self-end">{actions}</div>}
         </div>
         <div
           className="masthead-rule"
