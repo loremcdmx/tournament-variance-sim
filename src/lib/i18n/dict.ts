@@ -2997,6 +2997,14 @@ export const DICT = {
     en: "The schedule's stake mix differs heavily from the observed nick. Either edit the rows to match the limits you actually grind, or switch the leaderboard mode to Manual / Lookup so the EV doesn't lean on the wrong anchor.",
     ru: "Микс лимитов в расписании заметно отличается от наблюдаемого ника. Либо подправь строки под лимиты, на которых реально играешь, либо переключи режим лидерборда на Manual / Lookup — иначе EV считается от неподходящего якоря.",
   },
+  "chart.lbCashflow": {
+    en: "with LB cashflow",
+    ru: "с LB-промо в графиках",
+  },
+  "chart.lbCashflow.title": {
+    en: "Fold the BR leaderboard EV into the trajectory + scalar mean / probProfit / VaR. Drawdown / streaks / risk-of-ruin stay game-only — a positive monotone shift doesn't change drawdown, and recomputing RoR needs the full N-sample raw which isn't kept post-engine.",
+    ru: "Включить EV лидерборда BR в траекторию + скаляры (среднее / шанс плюса / VaR). Просадки / стрики / RoR остаются game-only: монотонная положительная добавка не меняет просадки, а пересчёт RoR требует полного N-сэмплового исходника, который после движка не хранится.",
+  },
   "cash.empty": {
     en: "Press Run to simulate the cash session.",
     ru: "Нажми «Запустить», чтобы посчитать кэш-сессию.",

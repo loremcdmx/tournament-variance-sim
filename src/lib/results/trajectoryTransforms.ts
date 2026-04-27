@@ -69,6 +69,38 @@ export function computeExpectedRakebackCurve(
   return out;
 }
 
+/**
+ * Cumulative BR leaderboard cashflow curve aligned to `xCheckpoints`. The
+ * leaderboard pays out at the end of the tracking period, but the promo
+ * EV is deterministic in expectation — distributing it linearly across
+ * the schedule's tournaments keeps the path / drawdown metrics aware of
+ * the side-channel without needing a stochastic LB-tier draw per path.
+ *
+ * Returns null when there's no LB promo or the EV is zero / negative —
+ * caller can short-circuit the shift.
+ */
+export function computeExpectedLeaderboardCurve(
+  expectedPayout: number,
+  totalTournaments: number,
+  xCheckpoints: number[],
+): Float64Array | null {
+  if (
+    !Number.isFinite(expectedPayout) ||
+    expectedPayout <= 0 ||
+    totalTournaments <= 0
+  ) {
+    return null;
+  }
+  const perTournament = expectedPayout / totalTournaments;
+  const out = new Float64Array(xCheckpoints.length);
+  for (let i = 0; i < xCheckpoints.length; i++) {
+    const checkpoint = Number.isFinite(xCheckpoints[i]) ? xCheckpoints[i] : 0;
+    const idx = Math.max(0, Math.min(totalTournaments, checkpoint));
+    out[i] = idx * perTournament;
+  }
+  return out;
+}
+
 export function shiftResultByRakeback(
   result: SimulationResult,
   curve: Float64Array,

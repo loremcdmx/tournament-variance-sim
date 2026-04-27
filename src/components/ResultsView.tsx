@@ -61,6 +61,7 @@ import {
   isSatelliteOnlySchedule,
 } from "@/lib/results/satellite";
 import {
+  computeExpectedLeaderboardCurve,
   computeExpectedRakebackCurve,
   shiftResultByRakeback,
   stripJackpots,
@@ -373,6 +374,43 @@ function ResultsViewImpl({
   const [rbTraj, setRbTraj] = useState<boolean>(rbFrac > 0);
   const [rbStats, setRbStats] = useState<boolean>(rbFrac > 0);
   const [rbDist, setRbDist] = useState<boolean>(rbFrac > 0);
+  // BR-leaderboard cashflow shift: LB EV is computed and shown in the BR
+  // widget but the engine's trajectory / mean / VaR don't see it. Add it
+  // via a deterministic monotone curve (linear over tournaments) so paths
+  // visually include the side-channel. Default-on when promo exists; user
+  // can flip off to see the pure-game view.
+  // NB: drawdown / longest-cashless / RoR are intentionally NOT shifted.
+  // For a monotone-non-decreasing add-on curve, drawdowns are invariant
+  // (running_max and path shift by the same amount), and RoR would
+  // decrease but recomputing it needs the full N-sample raw — kept as
+  // game-only to avoid silent bias.
+  const lbExpectedPayout =
+    result.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
+  const lbCurve = useMemo(
+    () =>
+      computeExpectedLeaderboardCurve(
+        lbExpectedPayout,
+        result.tournamentsPerSample,
+        Array.from(result.samplePaths.x),
+      ),
+    [lbExpectedPayout, result.tournamentsPerSample, result.samplePaths.x],
+  );
+  const pdLbCurve = useMemo(
+    () =>
+      pdChart
+        ? computeExpectedLeaderboardCurve(
+            pdChart.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0,
+            pdChart.tournamentsPerSample,
+            Array.from(pdChart.samplePaths.x),
+          )
+        : null,
+    [pdChart],
+  );
+  const [lbIncluded, setLbIncluded] = useState<boolean>(lbExpectedPayout > 0);
+  // Reset the LB toggle when a fresh run flips whether promo is configured.
+  useEffect(() => {
+    setLbIncluded(lbExpectedPayout > 0);
+  }, [lbExpectedPayout]);
   // Mystery / mystery-royale jackpot runs are a handful of samples out of
   // hundreds of thousands, but their ratio ≥ 100× mean envelope blows up
   // the distribution x-axis and the trajectory y-axis. Toggle strips them
@@ -412,15 +450,40 @@ function ResultsViewImpl({
     setRbStats(on);
     setRbDist(on);
   }, [rbFrac]);
+  // LB-cashflow-adjusted bases. Trajectory / dist / scalar-mean / probProfit
+  // pipelines source from these so the deterministic LB EV folds into the
+  // user-visible curve and into VaR / probProfit. drawdown / streak / RoR
+  // KPIs read from raw `result.stats` directly — see comment on `lbCurve`
+  // for why those stats are intentionally left at the engine output.
+  const lbAdjustedResult = useMemo(
+    () =>
+      lbIncluded && lbCurve
+        ? shiftResultByRakeback(result, lbCurve, 1)
+        : result,
+    [result, lbIncluded, lbCurve],
+  );
+  const lbAdjustedPdChart = useMemo(
+    () =>
+      pdChart && lbIncluded && pdLbCurve
+        ? shiftResultByRakeback(pdChart, pdLbCurve, 1)
+        : pdChart,
+    [pdChart, lbIncluded, pdLbCurve],
+  );
   // Build chart-facing variants separately from stats-facing variants so chart
   // filters like "hide jackpots" never leak into the scalar stats panels.
   const resultForCharts = useMemo(
-    () => (deferredHideJackpots ? stripJackpots(result) : result),
-    [result, deferredHideJackpots],
+    () =>
+      deferredHideJackpots
+        ? stripJackpots(lbAdjustedResult)
+        : lbAdjustedResult,
+    [lbAdjustedResult, deferredHideJackpots],
   );
   const pdChartForCharts = useMemo(
-    () => (deferredHideJackpots && pdChart ? stripJackpots(pdChart) : pdChart),
-    [pdChart, deferredHideJackpots],
+    () =>
+      deferredHideJackpots && lbAdjustedPdChart
+        ? stripJackpots(lbAdjustedPdChart)
+        : lbAdjustedPdChart,
+    [lbAdjustedPdChart, deferredHideJackpots],
   );
   const resultChartsNoRb = useMemo(
     () =>
@@ -437,15 +500,18 @@ function ResultsViewImpl({
     [pdChartForCharts, pdRakebackCurve],
   );
   const resultStatsNoRb = useMemo(
-    () => (rakebackCurve ? shiftResultByRakeback(result, rakebackCurve, -1) : result),
-    [result, rakebackCurve],
+    () =>
+      rakebackCurve
+        ? shiftResultByRakeback(lbAdjustedResult, rakebackCurve, -1)
+        : lbAdjustedResult,
+    [lbAdjustedResult, rakebackCurve],
   );
   const pdChartStatsNoRb = useMemo(
     () =>
-      pdChart && pdRakebackCurve
-        ? shiftResultByRakeback(pdChart, pdRakebackCurve, -1)
-        : pdChart,
-    [pdChart, pdRakebackCurve],
+      lbAdjustedPdChart && pdRakebackCurve
+        ? shiftResultByRakeback(lbAdjustedPdChart, pdRakebackCurve, -1)
+        : lbAdjustedPdChart,
+    [lbAdjustedPdChart, pdRakebackCurve],
   );
   const pickChartResult = (on: boolean) =>
     on ? resultForCharts : resultChartsNoRb;
@@ -453,8 +519,8 @@ function ResultsViewImpl({
     on ? pdChartForCharts : pdChartChartsNoRb;
   const displayResultTraj = pickChartResult(rbTraj);
   const displayPdChartTraj = pickChartPd(rbTraj);
-  const displayResultStats = rbStats ? result : resultStatsNoRb;
-  const displayPdChartStats = rbStats ? pdChart : pdChartStatsNoRb;
+  const displayResultStats = rbStats ? lbAdjustedResult : resultStatsNoRb;
+  const displayPdChartStats = rbStats ? lbAdjustedPdChart : pdChartStatsNoRb;
   const displayResultDist = pickChartResult(rbDist);
   const displayPdChartDist = pickChartPd(rbDist);
   // Keep drawdown / streak / recovery views on the engine's full-sample
@@ -755,7 +821,7 @@ function ResultsViewImpl({
           ) : null}
         </div>
       ) : null}
-      {(rakebackCurve || hasMysteryRow || rbRecomputing) && (
+      {(rakebackCurve || hasMysteryRow || rbRecomputing || lbCurve) && (
         <div className="flex items-center justify-between gap-4 -mb-1">
           <div
             className={`flex items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)] transition-opacity duration-150 ${
@@ -801,6 +867,22 @@ function ResultsViewImpl({
               />
               <span className="uppercase tracking-wider text-lime-400/80">
                 {t("chart.trajectory.withRakeback")}
+              </span>
+            </label>
+          )}
+          {lbCurve && (
+            <label
+              className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
+              title={t("chart.lbCashflow.title")}
+            >
+              <input
+                type="checkbox"
+                checked={lbIncluded}
+                onChange={(e) => setLbIncluded(e.target.checked)}
+                className="h-3.5 w-3.5 accent-cyan-400"
+              />
+              <span className="uppercase tracking-wider text-cyan-300/80">
+                {t("chart.lbCashflow")}
               </span>
             </label>
           )}
