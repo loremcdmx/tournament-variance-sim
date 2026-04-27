@@ -1,6 +1,7 @@
 import {
   evalSigma,
   FIT_RAKE_BY_FORMAT,
+  SIGMA_COEF_BY_FORMAT,
   SIGMA_ROI_FREEZE,
   SIGMA_ROI_MYSTERY,
   SIGMA_ROI_MYSTERY_RUNTIME_RESID,
@@ -17,6 +18,7 @@ import {
   CONVERGENCE_MBR_ROI_MAX,
   CONVERGENCE_MBR_ROI_MIN,
   inferRowFormat,
+  isInsideFitBox,
   type ConvergenceRowFormat,
 } from "./convergencePolicy";
 import type { CalibrationMode, SimulationInput, TournamentRow } from "./types";
@@ -234,15 +236,45 @@ export function buildExactBreakdown(
           0,
         )
       : 0;
-  return {
-    perRow: perRowWithoutShare.map((r) => ({
+  // Schedule-mode residual band: gate on every row sitting inside its
+  // format's validated fit-box, then take the variance-share-weighted
+  // average of per-format residuals. Single-format mode is already a
+  // 1-row case of this formula (varShare = 1 → weightedResid = resid_fmt).
+  // If any row is outside its box the schedule estimate stays point-only,
+  // matching the single-format `outside-fit-box` policy.
+  const allInsideBox = perRowWithoutShare.every((r) =>
+    isInsideFitBox({ format: r.format, field: r.afs, roi: r.roi }),
+  );
+  const perRowWithShare = perRowWithoutShare.map((r) => ({
+    ...r,
+    varShare: totalVar > 0 ? r.varContribution / totalVar : 0,
+  }));
+  const weightedResid = allInsideBox
+    ? perRowWithShare.reduce(
+        (acc, r) => acc + r.varShare * SIGMA_COEF_BY_FORMAT[r.format].resid,
+        0,
+      )
+    : 0;
+  // Apply weighted residual to every row's sigma so per-row sigmaLo/Hi
+  // reflect the same band the total uses, and to sigmaEff.
+  const decoratedPerRow = perRowWithShare.map((r) => {
+    const rResid = allInsideBox
+      ? SIGMA_COEF_BY_FORMAT[r.format].resid
+      : 0;
+    return {
       ...r,
-      varShare: totalVar > 0 ? r.varContribution / totalVar : 0,
-    })),
+      sigmaLo: r.sigma * (1 - rResid),
+      sigmaHi: r.sigma * (1 + rResid),
+      varContributionLo: r.varContribution * Math.pow(1 - rResid, 2),
+      varContributionHi: r.varContribution * Math.pow(1 + rResid, 2),
+    };
+  });
+  return {
+    perRow: decoratedPerRow,
     avgField,
     sigmaEff: analytic.sigmaRoiPerTourney,
-    sigmaEffLo: analytic.sigmaRoiPerTourney,
-    sigmaEffHi: analytic.sigmaRoiPerTourney,
+    sigmaEffLo: analytic.sigmaRoiPerTourney * (1 - weightedResid),
+    sigmaEffHi: analytic.sigmaRoiPerTourney * (1 + weightedResid),
   };
 }
 

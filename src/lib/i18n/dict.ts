@@ -1309,6 +1309,10 @@ export const DICT = {
     en: "Schedule mode is point-only: CI still changes the confidence target, and 'AFS played' uses the compiled mean field of the schedule:",
     ru: "Режим Расписание даёт точечную оценку: CI по-прежнему меняет доверительность, а «Сыграно AFS» считается по скомпилированному среднему полю расписания:",
   },
+  "chart.convergence.exact.bandedBox": {
+    en: "Every row is inside its format's validated fit-box — schedule shows a numeric ±band weighted by per-row variance contribution. AFS played uses the compiled mean field:",
+    ru: "Все строки внутри провалидированных fit-boxов своих форматов — расписание показывает численный ±диапазон, взвешенный по вкладам в дисперсию. «Сыграно AFS» считается по скомпилированному среднему полю:",
+  },
   "chart.convergence.exact.rowCol.row": { en: "Row", ru: "Ряд" },
   "chart.convergence.exact.rowCol.afs": { en: "AFS", ru: "AFS" },
   "chart.convergence.exact.rowCol.roi": { en: "ROI", ru: "ROI" },

@@ -485,7 +485,18 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   ]);
 
   const fitBoxSamples = useMemo<readonly FitBoxSample[]>(() => {
-    if (effectiveMode === "exact") return [];
+    if (effectiveMode === "exact") {
+      // Schedule mode: each row contributes its own (format, afs, roi) sample.
+      // The band policy is "numeric" only when *every* row sits inside its
+      // format's validated fit-box; if any row is out of box, the schedule
+      // estimate stays point-only — same gate as single-format mode.
+      if (!exactBreakdown) return [];
+      return exactBreakdown.perRow.map((r) => ({
+        format: r.format,
+        field: r.afs,
+        roi: r.roi,
+      }));
+    }
     if (
       format === "freeze" ||
       format === "pko" ||
@@ -506,10 +517,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       list.push({ format: "mystery", field: effectiveAfs, roi: effectiveRoi });
     }
     return list;
-  }, [effectiveMode, format, mix, effectiveAfs, effectiveRoi]);
+  }, [effectiveMode, exactBreakdown, format, mix, effectiveAfs, effectiveRoi]);
   const bandPolicy = useMemo(
-    () => (effectiveMode === "exact" ? null : getConvergenceBandPolicy(fitBoxSamples)),
-    [effectiveMode, fitBoxSamples],
+    () => getConvergenceBandPolicy(fitBoxSamples),
+    [fitBoxSamples],
   );
   const showBand = bandPolicy?.kind === "numeric";
 
@@ -894,7 +905,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       </div>
       {effectiveMode === "exact" && exactBreakdown && (
         <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 px-2 py-1.5 text-[11px] leading-snug text-emerald-200">
-          {t("chart.convergence.exact.pointOnly")}{" "}
+          {t(
+            showBand
+              ? "chart.convergence.exact.bandedBox"
+              : "chart.convergence.exact.pointOnly",
+          )}{" "}
           <span className="font-mono text-emerald-100">
             {fmtAfs(exactBreakdown.avgField, numberLocale)}
           </span>
