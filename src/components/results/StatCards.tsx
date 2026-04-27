@@ -29,9 +29,9 @@ const BIG_STAT_PANEL_VALUE =
 const BIG_STAT_PANEL_CAPTION =
   "text-[11px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]";
 const MINI_STAT_CHROME =
-  "flex h-full flex-col rounded-md border border-l-2 border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/55 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]";
+  "flex h-full flex-col items-center rounded-md border border-l-2 border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/55 px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]";
 const MINI_STAT_TITLE =
-  "flex min-w-0 items-start gap-1 text-[12px] font-semibold leading-[1.08] tracking-[0.01em] sm:text-[13px]";
+  "flex min-w-0 items-center justify-center gap-1 text-[14px] font-semibold leading-[1.15] tracking-[0.01em] sm:text-[15px]";
 const MINI_STAT_VALUE =
   "font-display whitespace-normal break-words text-[22px] font-bold leading-[1.05] tabular-nums sm:text-[26px]";
 const MINI_STAT_DETAIL =
@@ -123,7 +123,7 @@ export function BigStat({
         {SUIT_GLYPH[suit]}
       </span>
       <div
-        className="flex items-center gap-1.5 text-[13px] font-semibold leading-[1.08] tracking-[0.01em] sm:text-[14px]"
+        className="flex items-center gap-1.5 text-[15px] font-semibold leading-[1.15] tracking-[0.01em] sm:text-[16px]"
         style={{ color: titleColor }}
       >
         {label}
@@ -634,9 +634,9 @@ export function StatGroup({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <div className="h-px flex-1 bg-[color:var(--color-border)]" />
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--color-fg-dim)]">
+        <span className="font-display text-[14px] font-bold uppercase tracking-[0.2em] text-[color:var(--color-fg-muted)] sm:text-[15px]">
           {title}
         </span>
         <div className="h-px flex-1 bg-[color:var(--color-border)]" />

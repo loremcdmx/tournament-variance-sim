@@ -3583,12 +3583,12 @@ function ChartHeader({
     <div className="mb-3 flex w-full items-start justify-between gap-3">
       <div>
         <div className="flex items-center gap-1.5">
-          <div className="text-sm font-semibold text-[color:var(--color-fg)]">
+          <div className="font-display text-[16px] font-bold leading-[1.15] tracking-[-0.005em] text-[color:var(--color-fg)] sm:text-[18px]">
             {title}
           </div>
           {tip && <InfoTooltip content={tip} />}
         </div>
-        {subtitle && <div className="text-xs text-[color:var(--color-fg-dim)]">{subtitle}</div>}
+        {subtitle && <div className="mt-0.5 text-xs text-[color:var(--color-fg-dim)]">{subtitle}</div>}
       </div>
       {showUnitToggle && <InlineUnitToggle />}
     </div>
