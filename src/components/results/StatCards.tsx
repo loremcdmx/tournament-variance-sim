@@ -85,6 +85,26 @@ interface MiniStatProps {
   pdDelta?: number | null;
   emphasizeTail?: boolean;
   pdLabel?: string;
+  /**
+   * Tail-fragility hint: how many sample observations back this estimate.
+   * Rendered as a small mono badge `n ≈ K of N` under the value, with the
+   * worst-case extreme (`backing: 1`) tinted amber to read as "1 sample,
+   * read as scenario". Used on Worst / P95 / P99 metrics so the user sees
+   * the noise floor at a glance instead of trusting "$152k" as a point.
+   */
+  sampleSupport?: { backing: number; total: number };
+}
+
+/**
+ * Number of samples in the tail beyond a given quantile, given total
+ * sample count. For p95 and N=10000 → ~500 samples; for p99 → ~100;
+ * for "worst" (the maximum) → 1. Used as the fragility indicator under
+ * tail KPIs.
+ */
+export function tailSampleBacking(p: number, totalSamples: number): number {
+  if (!Number.isFinite(p) || totalSamples <= 0) return 0;
+  if (p >= 1) return 1; // "worst" / "max" uses a single sample
+  return Math.max(1, Math.round(totalSamples * (1 - p)));
 }
 
 export function BigStat({
@@ -443,6 +463,7 @@ export function MiniStat({
   pdDelta,
   emphasizeTail,
   pdLabel,
+  sampleSupport,
 }: MiniStatProps) {
   const accentColor = SUIT_COLOR[suit];
   const toneColor =
@@ -470,6 +491,26 @@ export function MiniStat({
           {value}
         </div>
         {detail && <div className={MINI_STAT_DETAIL}>{detail}</div>}
+        {/* Tail-fragility badge: surfaces how many samples back this
+            estimate so an extreme single-sample number reads as
+            "scenario" rather than "promise". 1 sample → amber pill. */}
+        {sampleSupport && (
+          <div
+            className={`mt-1 inline-flex items-center justify-center self-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] tabular-nums ${
+              sampleSupport.backing <= 3
+                ? "border-amber-400/40 bg-amber-400/10 text-amber-200/85"
+                : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-[color:var(--color-fg-dim)]"
+            }`}
+            title={
+              sampleSupport.backing <= 3
+                ? "Самая редкая часть распределения — числа очень шумные"
+                : "Сколько симуляций реально дотянулись до этого процентиля"
+            }
+          >
+            n ≈ {sampleSupport.backing.toLocaleString("ru-RU")} из{" "}
+            {sampleSupport.total.toLocaleString("ru-RU")}
+          </div>
+        )}
       </div>
       {pdValue != null && (
         <div className="mt-auto pt-2">

@@ -73,6 +73,7 @@ import {
   BigStat,
   MiniStat,
   StatGroup,
+  tailSampleBacking,
 } from "./results/StatCards";
 import {
   OurModelWeaknessCard,
@@ -1048,6 +1049,9 @@ function ResultsViewImpl({
           }
           emphasizeTail
           pdLabel={pdBadgeLabel}
+          // "Worst" is the single most extreme sample. Backing = 1, by
+          // definition fragile — read as scenario, not promise.
+          sampleSupport={{ backing: 1, total: result.samples }}
         />
         <MiniStat
           suit="heart"
@@ -1074,6 +1078,10 @@ function ResultsViewImpl({
           }
           emphasizeTail
           pdLabel={pdBadgeLabel}
+          sampleSupport={{
+            backing: tailSampleBacking(0.95, result.samples),
+            total: result.samples,
+          }}
         />
         <MiniStat
           suit="heart"
@@ -1087,6 +1095,10 @@ function ResultsViewImpl({
           }
           emphasizeTail
           pdLabel={pdBadgeLabel}
+          sampleSupport={{
+            backing: tailSampleBacking(0.99, result.samples),
+            total: result.samples,
+          }}
         />
       </StatGroup>
 
