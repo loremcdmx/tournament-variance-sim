@@ -33,7 +33,7 @@ const MINI_STAT_CHROME =
 const MINI_STAT_TITLE =
   "flex min-w-0 items-start gap-1 text-[12px] font-semibold leading-[1.08] tracking-[0.01em] sm:text-[13px]";
 const MINI_STAT_VALUE =
-  "display whitespace-normal break-words text-[15px] font-semibold leading-[1.05] tabular-nums sm:text-[16px]";
+  "font-display whitespace-normal break-words text-[22px] font-bold leading-[1.05] tabular-nums sm:text-[26px]";
 const MINI_STAT_DETAIL =
   "mt-1 text-[11px] font-medium leading-snug text-[color:var(--color-fg-dim)]";
 
@@ -459,13 +459,13 @@ export function MiniStat({
       style={{ borderLeftColor: accentColor }}
     >
       <div
-        className={`${MINI_STAT_TITLE} min-h-[1.85rem]`}
+        className={`${MINI_STAT_TITLE} min-h-[1.6rem]`}
         style={{ color: titleColor }}
       >
         {label}
         {tip && <InfoTooltip content={tip} />}
       </div>
-      <div className="mt-1 flex min-h-[3.7rem] flex-col justify-end">
+      <div className="mt-1.5 flex min-h-[2.9rem] flex-col justify-end">
         <div className={MINI_STAT_VALUE} style={{ color: toneColor }}>
           {value}
         </div>
