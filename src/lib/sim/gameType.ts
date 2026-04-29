@@ -171,7 +171,10 @@ export function applyGameType(
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-gg-bounty";
-      snapAfs(500);
+      // 50 (not 500) — small-field PKO turbos (50-200 players) are real
+      // schedules; previous 500-floor auto-bumped users out of their
+      // intended spot on every format switch.
+      snapAfs(50);
       break;
     case "mystery":
       patch.maxEntries = 1;
@@ -187,7 +190,9 @@ export function applyGameType(
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-gg-mystery";
-      snapAfs(500);
+      // See PKO branch — 50 matches the rest of the format floors and
+      // unblocks small-field Mystery turbos.
+      snapAfs(50);
       break;
     case "mystery-royale": {
       const brDefault = battleRoyaleRowFromTotalTicket(10);

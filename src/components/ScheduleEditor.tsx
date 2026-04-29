@@ -173,8 +173,13 @@ const PAYOUT_COMPAT: Partial<Record<PayoutStructureId, CompatRange>> = {
   "mtt-pokerstars": { min: 50, max: Infinity },
   "mtt-gg": { min: 50, max: Infinity },
   "mtt-sunday-million": { min: 2000, max: Infinity },
-  "mtt-gg-bounty": { min: 500, max: Infinity },
-  "mtt-gg-mystery": { min: 500, max: Infinity },
+  // PKO / Mystery were originally floored at 500 because the GG-side payout
+  // curves were tuned for big fields. The math actually works at smaller
+  // field sizes — the curve just gets a coarser tail — and small-stakes
+  // turbo PKOs (50-200 players) are real schedules users want to model.
+  // 50 matches the freezeout/standard MTT floor.
+  "mtt-gg-bounty": { min: 50, max: Infinity },
+  "mtt-gg-mystery": { min: 50, max: Infinity },
   "satellite-ticket": { min: 10, max: Infinity },
   "sng-50-30-20": { min: 3, max: 18 },
   "sng-65-35": { min: 2, max: 2 },
