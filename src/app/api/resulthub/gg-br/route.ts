@@ -5,49 +5,17 @@ import {
   allTimeBrLeaderboardWindow,
   parseGgBrStakeResponse,
   sanitizeUsernameForLookup,
-  type ResulthubGgBrSummary,
 } from "@/lib/sim/resulthubLookup";
 
 // Server-side proxy for the ResultHub GG Battle Royale per-stake aggregate.
 // Lives on our origin so the browser can call it without tripping resulthub's
 // CORS lock (verified 2026-04: Origin header from non-resulthub.org → 403).
 //
-// Caching: per-username 5-min in-process map. Resulthub doesn't publish rate
-// limits or T&C for third-party use, so we err on the polite side and avoid
-// hammering them on every UI re-render.
-
-interface CacheEntry {
-  expiresAt: number;
-  payload: ResulthubGgBrSummary;
-}
-const CACHE_TTL_MS = 5 * 60 * 1000;
-const cache = new Map<string, CacheEntry>();
-// Prevent unbounded growth in long-lived dev sessions.
-const CACHE_MAX_ENTRIES = 200;
-
-function cacheKey(username: string, window: { from: string; to: string }): string {
-  return `${username}|${window.from}|${window.to}`;
-}
-
-function readCache(key: string): ResulthubGgBrSummary | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (entry.expiresAt < Date.now()) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.payload;
-}
-
-function writeCache(key: string, payload: ResulthubGgBrSummary): void {
-  if (cache.size >= CACHE_MAX_ENTRIES) {
-    // Drop the oldest insertion to keep the map bounded. Map iteration is
-    // insertion-ordered.
-    const firstKey = cache.keys().next().value;
-    if (firstKey != null) cache.delete(firstKey);
-  }
-  cache.set(key, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
-}
+// No process-local caching. Vercel functions are short-lived enough that a
+// per-instance Map cache barely warms up, and on the rare hit it instead
+// makes the user feel like "click twice → nothing changed" (a stuck cached
+// response from before a code change can outlive an instance and survive a
+// click). Resulthub answers in ~300 ms; just go upstream every time.
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -61,14 +29,6 @@ export async function GET(request: Request) {
   }
 
   const window = allTimeBrLeaderboardWindow();
-  const key = cacheKey(username, window);
-  const cached = readCache(key);
-  if (cached) {
-    return NextResponse.json(cached, {
-      headers: { "x-cache": "hit" },
-    });
-  }
-
   const upstream = new URL(
     `${RESULTHUB_GG_BR_BASE}/aggregate/result/player/game-type/stake`,
   );
@@ -86,8 +46,8 @@ export async function GET(request: Request) {
         accept: "application/json",
         "user-agent": "tournament-variance-sim/0.7 (+https://tournament-variance-sim.vercel.app)",
       },
-      // Next.js gives fetch a default cache; opt out so the in-process map
-      // is the single source of truth.
+      // Next.js gives fetch a default cache; opt out — we want every hit
+      // to roundtrip upstream so a fresh click reflects fresh data.
       cache: "no-store",
       // 12s upper bound — resulthub usually answers in ~300ms.
       signal: AbortSignal.timeout(12_000),
@@ -121,9 +81,13 @@ export async function GET(request: Request) {
   }
 
   const summary = parseGgBrStakeResponse(json, window);
-  writeCache(key, summary);
   return NextResponse.json(summary, {
-    headers: { "x-cache": "miss" },
+    headers: {
+      // Browser / CDN caches must not stash this — every click should
+      // be a fresh roundtrip. `force-dynamic` already does this on the
+      // Vercel side, the explicit header covers intermediaries.
+      "cache-control": "no-store, max-age=0",
+    },
   });
 }
 
