@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   RESULTHUB_GG_BR_BASE,
-  currentBrLeaderboardWindow,
+  allTimeBrLeaderboardWindow,
   parseGgBrStakeResponse,
   sanitizeUsernameForLookup,
   type ResulthubGgBrSummary,
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const window = currentBrLeaderboardWindow();
+  const window = allTimeBrLeaderboardWindow();
   const key = cacheKey(username, window);
   const cached = readCache(key);
   if (cached) {

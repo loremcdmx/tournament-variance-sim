@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  currentBrLeaderboardWindow,
+  allTimeBrLeaderboardWindow,
   parseGgBrStakeResponse,
   sanitizeUsernameForLookup,
 } from "./resulthubLookup";
@@ -97,16 +97,16 @@ describe("parseGgBrStakeResponse", () => {
   });
 });
 
-describe("currentBrLeaderboardWindow", () => {
-  it("returns YYYY-MM-01 → YYYY-MM-DD anchored to UTC", () => {
-    const w = currentBrLeaderboardWindow(new Date(Date.UTC(2026, 3, 25, 14, 0)));
-    expect(w.from).toBe("2026-04-01");
+describe("allTimeBrLeaderboardWindow", () => {
+  it("anchors `from` at the pre-launch sentinel and `to` at today (UTC)", () => {
+    const w = allTimeBrLeaderboardWindow(new Date(Date.UTC(2026, 3, 25, 14, 0)));
+    expect(w.from).toBe("2020-01-01");
     expect(w.to).toBe("2026-04-25");
   });
 
   it("uses UTC day on early-morning local times near month boundary", () => {
-    const w = currentBrLeaderboardWindow(new Date(Date.UTC(2026, 4, 1, 0, 30)));
-    expect(w.from).toBe("2026-05-01");
+    const w = allTimeBrLeaderboardWindow(new Date(Date.UTC(2026, 4, 1, 0, 30)));
+    expect(w.from).toBe("2020-01-01");
     expect(w.to).toBe("2026-05-01");
   });
 });

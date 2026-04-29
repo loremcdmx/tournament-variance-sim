@@ -118,11 +118,15 @@ export function parseGgBrStakeResponse(
 }
 
 /**
- * Current-month-so-far ISO date range, anchored to UTC. GG runs the BR
- * leaderboard on UTC-8 (Pacific), but the API accepts a generous date
- * window — UTC bounds keep the server-side route deterministic.
+ * All-time ISO date range, anchored to UTC. The API requires both
+ * bounds, but accepts a generous span; we anchor `from` well before GG
+ * Battle Royale launched (2020-01-01) so the response covers the full
+ * recorded history of the requested nick. Returning the current
+ * month-to-date used to under-count anyone with tournament volume in
+ * earlier months — for the BR leaderboard observed model the user
+ * cares about the cumulative profile, not just the running month.
  */
-export function currentBrLeaderboardWindow(now: Date = new Date()): {
+export function allTimeBrLeaderboardWindow(now: Date = new Date()): {
   from: string;
   to: string;
 } {
@@ -131,7 +135,7 @@ export function currentBrLeaderboardWindow(now: Date = new Date()): {
   const day = now.getUTCDate();
   const fmt = (yy: number, mm: number, dd: number) =>
     `${yy}-${String(mm + 1).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-  return { from: fmt(y, m, 1), to: fmt(y, m, day) };
+  return { from: "2020-01-01", to: fmt(y, m, day) };
 }
 
 /**
