@@ -1340,6 +1340,37 @@ export const DICT = {
     en: "Schedule",
     ru: "Расписание",
   },
+  "proveEdge.title": {
+    en: "Distinguish edge from zero",
+    ru: "Отличить edge от нуля",
+  },
+  "proveEdge.question": {
+    en: "«when can I prove I'm not break-even?»",
+    ru: "«когда я смогу доказать, что я не нулевой?»",
+  },
+  "proveEdge.intro": {
+    en: "How many tournaments to statistically distinguish your true ROI from zero. Different question from the convergence table above: there N grows with σ (lower ROI → fewer tournaments to bound the mean); here N grows with σ AND with 1/|ROI|² — the smaller your edge, the harder to prove.",
+    ru: "Сколько турниров нужно, чтобы статистически отличить твой истинный ROI от нуля. Это другой вопрос — не про устойчивость средней оценки, а про различимость edge. Здесь меньший edge доказывать сложнее, а не легче, и зависимость квадратичная.",
+  },
+  "proveEdge.label.rake": { en: "Rake", ru: "Рейк" },
+  "proveEdge.label.yourRoi": { en: "ROI", ru: "ROI" },
+  "proveEdge.afs.lockedBR": {
+    en: "Battle Royale is locked at AFS = 18 by structure.",
+    ru: "Battle Royale структурно зафиксирован на AFS = 18.",
+  },
+  "proveEdge.anchor.prefix": { en: "At your ROI:", ru: "На твоём ROI:" },
+  "proveEdge.anchor.body": {
+    en: "if true ROI = {roi}, you need ≈ {tourneys} tournaments at CI {ci}% (≈ {fields} fields of {afs}).",
+    ru: "если истинный ROI = {roi}, нужно ≈ {tourneys} турниров на CI {ci}% (≈ {fields} филдов по {afs}).",
+  },
+  "proveEdge.col.roi": { en: "If true ROI =", ru: "Если истинный ROI =" },
+  "proveEdge.col.sigma": { en: "σ_ROI", ru: "σ_ROI" },
+  "proveEdge.col.tourneys": { en: "Tourneys", ru: "Турниров" },
+  "proveEdge.col.fields": { en: "Fields", ru: "Филдов" },
+  "proveEdge.footnote": {
+    en: "Reading: at edge +5 % the answer is around 13 000; at edge +0.5 % it's already over a million. Around ROI = 0 the answer formally goes to infinity — you can never prove zero edge isn't actually a tiny edge.",
+    ru: "Как читать: при edge +5 % ответ около 13 000, при +0.5 % — уже за миллион. У нуля задача формально расходится — нельзя доказать, что нулевой edge не является крошечным.",
+  },
   "chart.convergence.mode.averaged": { en: "Averaged", ru: "Усреднённо" },
   "chart.convergence.mode.exact": {
     en: "Schedule",

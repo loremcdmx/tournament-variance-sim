@@ -24,6 +24,7 @@ import { Section, Card } from "@/components/ui/Section";
 import { CornerToggles } from "@/components/ui/CornerToggles";
 import { FinishPMFPreview } from "@/components/charts/FinishPMFPreview";
 import { ConvergenceChart } from "@/components/charts/ConvergenceChart";
+import { ProveEdgeCard } from "@/components/charts/ProveEdgeCard";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import { checkInputSanity } from "@/lib/sim/inputSanity";
@@ -1305,6 +1306,12 @@ export default function Home() {
             schedule={deferredSchedule}
             finishModel={deferredPreviewModel}
           />
+        </Card>
+      )}
+
+      {!result && (
+        <Card className="p-5">
+          <ProveEdgeCard />
         </Card>
       )}
 
