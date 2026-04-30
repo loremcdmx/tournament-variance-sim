@@ -160,6 +160,47 @@ Not every dirty worktree is debt; sometimes it is just active feature work.
 The question is whether the current state is misleading, fragile, or expensive
 to safely continue from.
 
+## Stale Copy Trap
+
+`src/components/results/ResultsPanels.tsx` (`OurModelWeaknessCard` and
+`PrimeDopeWeaknessCard`) has hard-coded Russian explanatory text — not i18n
+keyed, not type-enforced. Nothing in the build will catch when a recent
+commit closes a gap that the card still claims is open.
+
+Whenever you touch convergence policy, schedule-mode bands, or path-metric
+inclusion (BR leaderboard, rakeback, etc.), re-read both cards and update
+the wording in the same change. Treat these cards the same way you'd treat
+docs that drift: code wins, fix the copy.
+
+Recent examples that drifted before being caught: the SCHEDULE block
+claiming schedule-mode is point-only after `99c5f2d` already shipped a
+banded mode; the PATHS block claiming BR leaderboard hadn't been folded
+into trajectory after `43ff237` did exactly that.
+
+## Three Validation Layers
+
+Inputs to the simulator pass through three independent guards. Don't
+confuse them:
+
+1. **`validateSchedule`** (`src/lib/sim/validation.ts`) — engine-blocking.
+   Catches inputs the α-calibration physically can't satisfy (e.g. a
+   fixed-ITM row whose pinned shells leave no room to hit the ROI). Run is
+   gated on `feasibility.ok`.
+2. **`getConvergenceBandPolicy`** (`src/lib/sim/convergencePolicy.ts`) —
+   band-only. Suppresses the convergence numeric ±band when any sample
+   sits outside the per-format fit-box. The point estimate stays.
+3. **`checkInputSanity`** (`src/lib/sim/inputSanity.ts`) — soft warnings.
+   Catches *internally inconsistent* inputs the engine would compute
+   honestly but the user almost certainly didn't mean (PKO row with
+   `bountyFraction = 0`, tilt with `gain ≠ 0` and `scale = 0`, empirical
+   model with too few buckets, etc.). Never blocks a run.
+
+When adding a new input field, decide which layer it belongs in. A new
+"my edge is genuinely uncertain" handle goes in sanity if it has a
+coherent dead-handle case. A new ROI calibration target may need
+feasibility coverage. A new convergence channel needs its own fit-box and
+residual coefficient before being band-eligible.
+
 ## Cash-Mode Release Wisdom
 
 - `npm run smoke:cash` is now the canonical pre-release smoke for the advanced
