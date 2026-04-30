@@ -273,8 +273,142 @@ tr:focus-within td {
   background-color: rgba(255, 255, 255, 0.018);
 }
 
+/* Range sliders — full cross-browser custom styling.
+   `accent-color` alone gives inconsistent results across platforms
+   (Windows Chrome leaves a flat grey track + tiny black thumb that
+   ignores the accent on the unfilled portion), so we restyle the
+   track and thumb explicitly via vendor pseudo-elements. */
 input[type="range"] {
-  accent-color: var(--c-accent);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  vertical-align: middle;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--c-bg-elev-2), black 12%),
+    color-mix(in oklab, var(--c-bg-elev-2), black 4%)
+  );
+  border: 1px solid color-mix(in oklab, var(--c-border), black 6%);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--c-bg-elev-2), black 12%),
+    color-mix(in oklab, var(--c-bg-elev-2), black 4%)
+  );
+  border: 1px solid color-mix(in oklab, var(--c-border), black 6%);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--c-accent), white 8%),
+    var(--c-accent-strong)
+  );
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  margin-top: -6px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--c-accent), white 18%),
+    var(--c-accent-strong)
+  );
+  border: 1px solid color-mix(in oklab, var(--c-accent-strong), black 22%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--c-accent), white 18%),
+    var(--c-accent-strong)
+  );
+  border: 1px solid color-mix(in oklab, var(--c-accent-strong), black 22%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+input[type="range"]:hover::-webkit-slider-thumb {
+  transform: scale(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 4px color-mix(in oklab, var(--c-accent), transparent 80%),
+    0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+input[type="range"]:hover::-moz-range-thumb {
+  transform: scale(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 4px color-mix(in oklab, var(--c-accent), transparent 80%),
+    0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+input[type="range"]:focus-visible {
+  outline: none;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 4px color-mix(in oklab, var(--c-accent), transparent 65%),
+    0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 4px color-mix(in oklab, var(--c-accent), transparent 65%),
+    0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+input[type="range"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background: var(--c-fg-dim);
+  border-color: color-mix(in oklab, var(--c-fg-dim), black 30%);
+  box-shadow: none;
+  transform: none;
+}
+
+input[type="range"]:disabled::-moz-range-thumb {
+  background: var(--c-fg-dim);
+  border-color: color-mix(in oklab, var(--c-fg-dim), black 30%);
+  box-shadow: none;
 }
 
 .primary-run-button {
