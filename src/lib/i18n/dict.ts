@@ -311,6 +311,54 @@ export const DICT = {
   "shape.fixAuto": { en: "Clear locks", ru: "Снять фиксации" },
   "shape.fixPreset": { en: "Grinder preset", ru: "Пресет «гриндер»" },
   "shape.fixAll": { en: "Clear locks on all", ru: "Снять фиксации со всех" },
+  "sanity.title": {
+    en: "Input sanity checks",
+    ru: "Внутренняя проверка входов",
+  },
+  "sanity.subtitle": {
+    en: "Soft warnings for inputs that contradict themselves — the engine still runs, but the result probably isn't what you meant.",
+    ru: "Мягкие предупреждения о входах, которые сами себе противоречат — движок всё равно посчитает, но результат, скорее всего, не то, что вы имели в виду.",
+  },
+  "sanity.tilt-fast-no-scale": {
+    en: "Fast tilt has gain set but scale = 0 — tanh saturates instantly, so any non-zero drawdown jumps straight to the full ROI shift instead of ramping up.",
+    ru: "У быстрого тильта задан gain, но scale = 0 — tanh saturates моментально, поэтому любая просадка сразу даёт полный сдвиг ROI без плавного нарастания.",
+  },
+  "sanity.tilt-slow-no-threshold": {
+    en: "Slow tilt has gain set but threshold ≤ 0 — the down/up state triggers on any non-zero drawdown instead of waiting for the configured depth.",
+    ru: "У медленного тильта задан gain, но threshold ≤ 0 — состояние «вниз/вверх» срабатывает при любой ненулевой просадке, а не на заданной глубине.",
+  },
+  "sanity.zero-bankroll": {
+    en: "Bankroll is 0 — risk-of-ruin and bankroll-conditional drawdown stats won't be meaningful (RoR collapses to 1 by definition).",
+    ru: "Банкролл = 0 — risk-of-ruin и связанные с банкроллом просадки не имеют смысла (RoR по определению равен 1).",
+  },
+  "sanity.empirical-too-few-buckets": {
+    en: "Empirical model is active but the histogram has fewer than 50 buckets — resampling will be too coarse to be informative.",
+    ru: "Включена эмпирическая модель, но в гистограмме меньше 50 корзин — ресэмплинг будет слишком грубым, чтобы быть полезным.",
+  },
+  "sanity.row-bounty-format-no-bounty": {
+    en: "Row {row}: format is PKO / Mystery / Battle Royale, but bountyFraction = 0 — the bounty channel is silently off.",
+    ru: "Ряд {row}: формат PKO / Mystery / Battle Royale, но bountyFraction = 0 — bounty-канал молча выключен.",
+  },
+  "sanity.row-mystery-no-variance": {
+    en: "Row {row}: Mystery / MBR with mysteryBountyVariance = 0 — envelope size never varies, so the format collapses to plain PKO.",
+    ru: "Ряд {row}: Mystery / MBR с mysteryBountyVariance = 0 — конверты не различаются по размеру, формат вырождается в обычный ПКО.",
+  },
+  "sanity.row-pko-heat-no-bounty": {
+    en: "Row {row}: PKO heat is set but bountyFraction = 0 — heat reshapes the bounty distribution, so without a bounty channel it has no effect.",
+    ru: "Ряд {row}: задан PKO heat, но bountyFraction = 0 — heat меняет форму распределения bounty, без bounty-канала эффект нулевой.",
+  },
+  "sanity.row-reentry-slots-no-rate": {
+    en: "Row {row}: re-entry maxEntries > 1 but reentryRate = 0 — extra slots are configured but the player never re-enters, so the handle is dead.",
+    ru: "Ряд {row}: maxEntries > 1, но reentryRate = 0 — слоты для повторных входов есть, но игрок их не использует, ручка мёртвая.",
+  },
+  "sanity.row-reentry-rate-no-slots": {
+    en: "Row {row}: reentryRate > 0 but maxEntries ≤ 1 — re-entry probability is set but there are no slots to re-enter into.",
+    ru: "Ряд {row}: reentryRate > 0, но maxEntries ≤ 1 — задана вероятность повторного входа, но слотов для него нет.",
+  },
+  "sanity.row-zero-count": {
+    en: "Row {row}: count = 0 — this row is never played, so its inputs don't affect the simulation.",
+    ru: "Ряд {row}: count = 0 — этот ряд никогда не разыгрывается, его настройки на симуляцию не влияют.",
+  },
   "row.fixedItm": { en: "Fixed ITM %", ru: "Фикс. ITM %" },
   "row.fixedItmHint": {
     en: "Pin the in-the-money rate at a constant value regardless of ROI. All skill concentrates WITHIN the cashed band — a grinder doesn't cash more often than a no-skill player, they just run deeper when they do. Empty = auto (classic α-calibration, ITM rate scales with ROI). Typical: 15–18 % for a solid grinder.",
