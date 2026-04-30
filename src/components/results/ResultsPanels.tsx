@@ -264,25 +264,49 @@ export function OurModelWeaknessCard() {
             <WeakBlock
               tag="SCHEDULE"
               tone="#f59e0b"
-              title="Режим Расписание для сходимости пока point-only"
+              title="Schedule-band есть, но он жёстко привязан к format-level fit-box"
             >
-              Для schedule-mode мы умеем собрать schedule-aware σ из реальных
-              строк, field variability, payout-shape, рейка и bounty-структуры.
-              Но числовую residual-полосу мы там пока не показываем: режим даёт
-              точечную оценку и breakdown по рядам, а не полноценный validated
-              диапазон, как во вкладках single-format.
+              <div className="space-y-2">
+                <p>
+                  Для schedule-mode мы теперь показываем числовой residual-band,
+                  но только когда каждая строка расписания сидит внутри своего
+                  format fit-box. Стоит хотя бы одной строке выйти за box —
+                  чужой AFS, экстремальный ROI — и полоса для всего расписания
+                  скрывается, режим возвращается к point-only. Это тот же gate,
+                  что и в single-format, и он намеренно строгий.
+                </p>
+                <p>
+                  Сама полоса — variance-share-weighted среднее format-level
+                  residual коэффициентов, а не отдельно подогнанный под ваше
+                  конкретное расписание остаток. Это честно отражает
+                  неопределённость σ-фитов, но не учитывает, насколько ваш
+                  конкретный mix мог бы отклоняться от этих фитов в ансамбле.
+                </p>
+              </div>
             </WeakBlock>
 
             <WeakBlock
               tag="PATHS"
               tone="#f59e0b"
-              title="Не каждый боковой денежный слой прошит через все path-метрики"
+              title="EV BR leaderboard уже в trajectory, но drawdown и risk-of-ruin — пока нет"
             >
-              Самый явный пример — BR leaderboard promo. Он моделируется и
-              отдельно показывается в breakdown/summary, но trajectory,
-              drawdown и risk-of-ruin выше остаются game-only, пока эти
-              cashflows не проведены через полные path-траектории. То есть EV
-              слоя уже видно, а часть path-risk ещё нет.
+              <div className="space-y-2">
+                <p>
+                  BR leaderboard cashflow теперь честно проложен через
+                  trajectory и скалярную статистику — mean, median, probProfit,
+                  VaR, CVaR, гистограмма. Игроку больше не нужно складывать в
+                  голове &quot;+$200 LB-промо&quot; из BR-виджета и
+                  &quot;+$300 EV&quot; с траектории.
+                </p>
+                <p>
+                  Но drawdown, серии минусов и risk-of-ruin остаются game-only.
+                  Причина прозрачная: LB EV в модели — детерминированная
+                  monotone-non-decreasing надбавка к выплатам (она не уходит в
+                  минус), drawdowns под такой надбавкой инвариантны, а RoR
+                  потребовал бы пересчёта по полному N-sample raw, которого мы
+                  после stat-pass не держим.
+                </p>
+              </div>
             </WeakBlock>
           </div>
         </div>
