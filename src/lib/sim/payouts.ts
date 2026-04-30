@@ -207,8 +207,18 @@ function sundayMillionTable(players: number): number[] {
  *      the regular column.
  *
  * Anchored to the Mini CoinHunter PKO sample in `data/payout-samples/`.
+ *
+ * Below ~50 runners the big-field shape is wrong: the formula's
+ * `Math.max(9, …)` floor would force 9 paid even at N=10 (paying 90 %
+ * of the field), and the 6.9 % flat-top winner-share assumes deep-FT
+ * bounty muting that doesn't apply at single-table sizes. A
+ * single-table PKO regular column behaves like an SNG: top 1–3 paid,
+ * winner takes a much bigger fraction of regular. So at small N we
+ * delegate to a hard-coded SNG-style payout that matches what real
+ * single-table / sub-50 bounty turbos look like on CoinPoker / GG.
  */
 function ggBountyTable(players: number): number[] {
+  if (players < 50) return smallFieldBountyTable(players);
   const paid = Math.max(9, Math.floor(players * 0.115));
   // ftRatio=1.26 rather than 1.40: a bounty FT with 1st=6.9 % and a
   // 1.40 cascade leaves ft[8]≈0.65 %, which caps the tail too low to
@@ -220,6 +230,39 @@ function ggBountyTable(players: number): number[] {
     ftRatio: 1.26,
     minCashBuyIns: 1.71,
     flatTop2: true,
+  });
+}
+
+/**
+ * SNG-style PKO/Mystery regular-column shape for sub-50-runner fields.
+ * Hard-coded for the small bands where the realistic-curve solver
+ * can't honor both 1st-share and min-cash constraints simultaneously.
+ *
+ * Bounty mechanics (split, KO bounties, mystery envelopes) are
+ * orthogonal — they're applied by the engine on top of whatever
+ * regular-column distribution this returns. Here we only pin the
+ * regular-column shape that a real CoinPoker / GG single-table bounty
+ * turbo actually pays. PKO and Mystery use the same buckets at this
+ * scale; the format difference lives in the envelope channel, not the
+ * cash column.
+ *
+ *   N ≤ 2     → winner-take-all          [1.00]
+ *   N ≤ 6     → 6-max single-table top 2 [0.65 / 0.35]
+ *   N ≤ 18    → sit-and-go top 3         [0.50 / 0.30 / 0.20]
+ *   19..49    → 3–4 paid, looser cascade
+ */
+function smallFieldBountyTable(players: number): number[] {
+  if (players <= 2) return [1];
+  if (players <= 6) return [0.65, 0.35];
+  if (players <= 18) return [0.50, 0.30, 0.20];
+  // 19..49: small MTT regular column, 3–4 paid, mid-steep cascade.
+  // No flatTop2 — winner-edge isn't muted by deep-FT bounty cascade
+  // at this scale.
+  const paid = Math.max(3, Math.min(4, Math.floor(players * 0.10)));
+  return buildRealisticCurve(paid, players, {
+    firstShare: 0.42,
+    ftRatio: 1.45,
+    minCashBuyIns: 1.4,
   });
 }
 
@@ -246,6 +289,8 @@ function ggBountyTable(players: number): number[] {
  * tables and will be retuned when real samples land (#data-plan).
  */
 function ggMysteryTable(players: number): number[] {
+  // Same small-field reasoning as ggBountyTable — see its comment.
+  if (players < 50) return smallFieldBountyTable(players);
   const paid = Math.max(9, Math.floor(players * 0.13));
   return buildRealisticCurve(paid, players, {
     firstShare: firstShareForField(0.125, 0.09, players),

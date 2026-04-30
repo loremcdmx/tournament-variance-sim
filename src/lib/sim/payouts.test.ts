@@ -95,6 +95,86 @@ describe("payout tables", () => {
     expect(table).toHaveLength(3);
     expect(table.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 12);
   });
+
+  describe("small-field PKO / Mystery", () => {
+    it("HU PKO pays winner-take-all", () => {
+      const t = getPayoutTable("mtt-gg-bounty", 2);
+      expect(t).toEqual([1]);
+    });
+
+    it("HU Mystery pays winner-take-all", () => {
+      const t = getPayoutTable("mtt-gg-mystery", 2);
+      expect(t).toEqual([1]);
+    });
+
+    it("6-max single-table PKO pays top 2 (65/35)", () => {
+      const t = getPayoutTable("mtt-gg-bounty", 6);
+      expect(t).toHaveLength(2);
+      expect(t[0]).toBeCloseTo(0.65, 9);
+      expect(t[1]).toBeCloseTo(0.35, 9);
+    });
+
+    it("9-max single-table PKO pays top 3 (50/30/20)", () => {
+      const t = getPayoutTable("mtt-gg-bounty", 9);
+      expect(t).toEqual([0.5, 0.3, 0.2]);
+    });
+
+    it("AFS=10 PKO no longer forces 9 paid", () => {
+      const t = getPayoutTable("mtt-gg-bounty", 10);
+      expect(t.length).toBeLessThan(10);
+      expect(t.length).toBeLessThanOrEqual(3);
+      expect(t[0]).toBeGreaterThan(0.4);
+    });
+
+    it("Mystery at AFS=10 also pays sane top-3 distribution", () => {
+      const t = getPayoutTable("mtt-gg-mystery", 10);
+      expect(t.length).toBeLessThanOrEqual(3);
+      expect(t[0]).toBeGreaterThan(0.4);
+    });
+
+    it("18-max sit-and-go PKO still uses top 3 split", () => {
+      const t = getPayoutTable("mtt-gg-bounty", 18);
+      expect(t).toEqual([0.5, 0.3, 0.2]);
+    });
+
+    it("transition band 19-49 stays SNG-style with 3-4 paid", () => {
+      for (const N of [19, 25, 35, 45, 49]) {
+        const t = getPayoutTable("mtt-gg-bounty", N);
+        expect(t.length).toBeGreaterThanOrEqual(3);
+        expect(t.length).toBeLessThanOrEqual(4);
+        expect(t[0]).toBeGreaterThan(0.3);
+        for (let i = 1; i < t.length; i++) {
+          expect(t[i]).toBeLessThanOrEqual(t[i - 1] + 1e-12);
+        }
+      }
+    });
+
+    it("crosses to big-field shape at exactly N=50", () => {
+      const small = getPayoutTable("mtt-gg-bounty", 49);
+      const big = getPayoutTable("mtt-gg-bounty", 50);
+      expect(small.length).toBeLessThan(big.length);
+      expect(big.length).toBeGreaterThanOrEqual(9);
+      expect(big[0]).toBeLessThan(small[0]);
+    });
+
+    it("real-world 911-runner Mini CoinHunter sample is unchanged", () => {
+      const t = getPayoutTable("mtt-gg-bounty", 911);
+      expect(t.length).toBeGreaterThan(100);
+      expect(t[0]).toBeCloseTo(0.069, 2);
+      expect(t[1]).toBeCloseTo(t[0], 2);
+    });
+
+    it("small-field PKO sums to 1 and is monotonic", () => {
+      for (const N of [2, 3, 6, 9, 10, 18, 27, 49]) {
+        const t = getPayoutTable("mtt-gg-bounty", N);
+        const sum = t.reduce((a, b) => a + b, 0);
+        expect(sum).toBeCloseTo(1, 9);
+        for (let i = 1; i < t.length; i++) {
+          expect(t[i]).toBeLessThanOrEqual(t[i - 1] + 1e-12);
+        }
+      }
+    });
+  });
 });
 
 describe("parsePayoutString", () => {

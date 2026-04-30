@@ -171,10 +171,12 @@ export function applyGameType(
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-gg-bounty";
-      // 50 (not 500) — small-field PKO turbos (50-200 players) are real
-      // schedules; previous 500-floor auto-bumped users out of their
-      // intended spot on every format switch.
-      snapAfs(50);
+      // 2 (not 50) — single-table PKO bounty turbos (HU, 6-max,
+      // 9-max sit-and-go) are real formats; `payouts.ts` has a
+      // small-field branch that produces SNG-style top-1-3 paid for
+      // sub-50 fields. Format switch should respect the user's chosen
+      // field size instead of bumping it to a multi-table floor.
+      snapAfs(2);
       break;
     case "mystery":
       patch.maxEntries = 1;
@@ -190,9 +192,8 @@ export function applyGameType(
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-gg-mystery";
-      // See PKO branch — 50 matches the rest of the format floors and
-      // unblocks small-field Mystery turbos.
-      snapAfs(50);
+      // See PKO branch — small-field Mystery sit-and-go is also real.
+      snapAfs(2);
       break;
     case "mystery-royale": {
       const brDefault = battleRoyaleRowFromTotalTicket(10);
