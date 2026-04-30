@@ -1367,9 +1367,33 @@ export const DICT = {
   "proveEdge.col.sigma": { en: "σ_ROI", ru: "σ_ROI" },
   "proveEdge.col.tourneys": { en: "Tourneys", ru: "Турниров" },
   "proveEdge.col.fields": { en: "Fields", ru: "Филдов" },
-  "proveEdge.footnote": {
-    en: "Reading: at edge +5 % the answer is around 13 000; at edge +0.5 % it's already over a million. Around ROI = 0 the answer formally goes to infinity — you can never prove zero edge isn't actually a tiny edge.",
-    ru: "Как читать: при edge +5 % ответ около 13 000, при +0.5 % — уже за миллион. У нуля задача формально расходится — нельзя доказать, что нулевой edge не является крошечным.",
+  "proveEdge.footnote.banded": {
+    en: "Number ranges show ± the σ residual band of the underlying fit (≈6 % for freeze, 12 % PKO, 17 % Mystery, 10 % MBR). Around ROI = 0 the formula formally diverges — you can never prove a zero edge isn't a tiny one.",
+    ru: "Диапазоны учитывают ± остаточную ошибку σ-фита (≈6 % фриз, 12 % ПКО, 17 % Мистери, 10 % MBR). У нуля задача формально расходится — нельзя доказать, что нулевой edge не является крошечным.",
+  },
+  "proveEdge.footnote.point": {
+    en: "Point estimate only — current AFS / ROI sits outside the validated σ fit-box for this format, so the residual band is suppressed (extrapolation territory). The directional N is still useful as a ballpark.",
+    ru: "Только точка — текущие AFS / ROI выходят за provalidированный σ-fit-box формата, поэтому остаточный диапазон скрыт (экстраполяция). Точечная оценка N всё ещё пригодна как ориентир.",
+  },
+  "proveEdge.outOfBox.single": {
+    en: "Current AFS / ROI sits outside the validated σ fit-box (freeze & PKO / Mystery field 50–50 000, KO ROI −20..+80 %, MBR field strict 18 with ROI ±10 %). σ is extrapolated.",
+    ru: "Текущие AFS / ROI выходят за provalidированный σ-fit-box (фриз и ПКО / Мистери поле 50–50 000, KO ROI −20..+80 %, MBR поле строго 18 и ROI ±10 %). σ экстраполируется.",
+  },
+  "proveEdge.outOfBox.exact": {
+    en: "At least one schedule row sits outside its format's validated σ fit-box, so the schedule-aware σ is extrapolated and the residual range is hidden.",
+    ru: "Минимум один ряд расписания выходит за provalidированный σ-fit-box своего формата, поэтому schedule-aware σ экстраполируется, диапазон скрыт.",
+  },
+  "proveEdge.schedule.empty": {
+    en: "Schedule mode needs at least one row in the schedule above. Add a row or pick a single-format tab.",
+    ru: "Режим Расписание требует хотя бы одного ряда выше. Добавь ряд или выбери single-format вкладку.",
+  },
+  "proveEdge.schedule.effective": {
+    en: "Schedule",
+    ru: "Расписание",
+  },
+  "proveEdge.showLosing": {
+    en: "Include losing-edge candidates",
+    ru: "Включить лузер-edge",
   },
   "chart.convergence.mode.averaged": { en: "Averaged", ru: "Усреднённо" },
   "chart.convergence.mode.exact": {

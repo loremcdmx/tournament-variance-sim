@@ -1311,7 +1311,10 @@ export default function Home() {
 
       {!result && (
         <Card className="p-5">
-          <ProveEdgeCard />
+          <ProveEdgeCard
+            schedule={deferredSchedule}
+            finishModel={deferredPreviewModel}
+          />
         </Card>
       )}
 
