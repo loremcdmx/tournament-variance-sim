@@ -26,6 +26,7 @@ import { FinishPMFPreview } from "@/components/charts/FinishPMFPreview";
 import { ConvergenceChart } from "@/components/charts/ConvergenceChart";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
+import { checkInputSanity } from "@/lib/sim/inputSanity";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { inferGameType } from "@/lib/sim/gameType";
 import {
@@ -419,6 +420,32 @@ export default function Home() {
   const feasibility = useMemo(
     () => validateSchedule(deferredSchedule, previewModel),
     [deferredSchedule, previewModel],
+  );
+
+  const sanityFindings = useMemo(
+    () =>
+      checkInputSanity(
+        {
+          tiltFastGain: deferredControls.tiltFastGain,
+          tiltFastScale: deferredControls.tiltFastScale,
+          tiltSlowGain: deferredControls.tiltSlowGain,
+          tiltSlowThreshold: deferredControls.tiltSlowThreshold,
+          bankroll: deferredControls.bankroll,
+          finishModelId: deferredControls.finishModelId,
+          empiricalBuckets: deferredControls.empiricalBuckets,
+        },
+        deferredSchedule,
+      ),
+    [
+      deferredControls.tiltFastGain,
+      deferredControls.tiltFastScale,
+      deferredControls.tiltSlowGain,
+      deferredControls.tiltSlowThreshold,
+      deferredControls.bankroll,
+      deferredControls.finishModelId,
+      deferredControls.empiricalBuckets,
+      deferredSchedule,
+    ],
   );
 
   const onRun = useCallback(() => {
@@ -1167,6 +1194,38 @@ export default function Home() {
       >
         <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(420px,0.95fr)]">
           <div className="flex min-w-0 flex-col gap-4">
+            {sanityFindings.length > 0 && (
+              <Card className="border-amber-400/40 bg-amber-400/5 p-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/30 text-[11px] font-bold text-amber-100">
+                    !
+                  </span>
+                  <span className="font-display text-[12px] font-bold uppercase tracking-wider text-amber-100">
+                    {t("sanity.title")}
+                  </span>
+                </div>
+                <div className="mb-2 text-[10px] leading-snug text-amber-100/70">
+                  {t("sanity.subtitle")}
+                </div>
+                <ul className="flex flex-col gap-1.5 text-[11px] leading-snug text-amber-200/95">
+                  {sanityFindings.map((f, i) => {
+                    const raw = t(`sanity.${f.id}`);
+                    const msg = f.rowLabel
+                      ? raw.replace("{row}", f.rowLabel)
+                      : raw;
+                    return (
+                      <li
+                        key={`${f.id}-${f.rowIdx ?? "g"}-${i}`}
+                        className="flex gap-2"
+                      >
+                        <span className="mt-[3px] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                        <span>{msg}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            )}
             <ControlsPanel
               value={controls}
               onChange={handleControlsChange}
