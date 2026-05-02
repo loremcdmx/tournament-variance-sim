@@ -165,6 +165,12 @@ export function CashResultsView({ result }: { result: CashResult }) {
       value: fmtPct(s.probBelowThresholdEver),
       tone: s.probBelowThresholdEver > 0.05 ? "neg" : undefined,
     },
+    {
+      accent: "club",
+      label: t("cash.summary.riskOfRuinAsymptotic"),
+      value: fmtPct(s.riskOfRuinAsymptotic),
+      tone: s.riskOfRuinAsymptotic > 0.05 ? "neg" : undefined,
+    },
   ];
 
   const streakSummary: SummaryStat[] = [
