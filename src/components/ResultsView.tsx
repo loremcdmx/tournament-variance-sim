@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  createContext,
   memo,
   useCallback,
   useContext,
@@ -77,9 +76,15 @@ import {
   pct,
   pctDelta,
   saveUnitMode,
-  type MoneyFmt,
   type UnitMode,
 } from "@/lib/results/formatters";
+import {
+  AbiContext,
+  MoneyFmtContext,
+  UnitScope,
+  useMoneyFmt,
+  type UnitCtxValue,
+} from "./results/UnitContext";
 import type { ControlsState } from "./ControlsPanel";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
@@ -149,54 +154,10 @@ interface Props {
   pdOverrideProgress?: number;
 }
 
-// Pure formatters live in `src/lib/results/formatters.ts`. The
-// React-coupled bits (MoneyFmtContext, useMoneyFmt, AbiContext,
-// UnitScope) stay here because they're consumed by deeply nested cards
-// and extracting them needs a separate pass.
-interface UnitCtxValue extends MoneyFmt {
-  unit: UnitMode;
-  setUnit: (v: UnitMode) => void;
-}
+// Pure formatters live in `src/lib/results/formatters.ts`.
+// React-coupled unit machinery (MoneyFmtContext, useMoneyFmt,
+// AbiContext, UnitScope) lives in `./results/UnitContext.tsx`.
 
-const MoneyFmtContext = createContext<UnitCtxValue>({
-  ...defaultMoneyFmt,
-  unit: "abi",
-  setUnit: () => {},
-});
-const useMoneyFmt = () => useContext(MoneyFmtContext);
-
-// ABI value for the current result — exposed via context so per-widget
-// UnitScope providers can build their own ABI-denominated formatters
-// without threading the scalar through every sub-component.
-const AbiContext = createContext<number>(1);
-
-/**
- * Per-widget unit toggle scope. Owns its own `money`/`abi` state, defaulting
- * to ABI, persisted under `tvs.unit.<id>.v1`. Any InlineUnitToggle rendered
- * inside will flip only this scope — sibling widgets stay independent.
- */
-function UnitScope({ id, children }: { id: string; children: ReactNode }) {
-  const abi = useContext(AbiContext);
-  const storageKey = `tvs.unit.${id}.v1`;
-  const [unit, setUnit] = useLocalStorageState<UnitMode>(
-    storageKey,
-    () => loadUnitMode(storageKey),
-    (v) => saveUnitMode(storageKey, v),
-    "abi",
-  );
-  const value = useMemo<UnitCtxValue>(() => {
-    const fmt = unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt;
-    return { ...fmt, unit, setUnit };
-    // setUnit identity rotates on every render of useLocalStorageState — depend
-    // on storageKey instead so the memo only refreshes when scope or unit change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit, abi, storageKey]);
-  return (
-    <MoneyFmtContext.Provider value={value}>
-      {children}
-    </MoneyFmtContext.Provider>
-  );
-}
 function ResultsViewImpl({
   result,
   compareResult,
