@@ -38,10 +38,7 @@ import {
   parseObservedResultHubUsernames,
   scheduleHasBattleRoyaleRows,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
-import {
-  fetchResulthubGgBrMany,
-  ResulthubLookupError,
-} from "@/lib/sim/resulthubClient";
+import { useResulthubLookup } from "@/lib/sim/useResulthubLookup";
 import {
   analyzeBattleRoyaleLeaderboardLookup,
   parseBattleRoyaleLeaderboardSnapshot,
@@ -1776,45 +1773,24 @@ const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderboardCont
   // ResultHub lookup: pulls per-stake LB points + total prizes for every
   // saved nick (current + prior aliases) and sums them into observed
   // controls. Tournament count stays manual — the API doesn't expose it.
-  type LookupStatus =
-    | { kind: "idle" }
-    | { kind: "pending" }
-    | { kind: "ok"; at: number; window: { from: string; to: string } }
-    | { kind: "error"; reason: string };
-  const [lookupStatus, setLookupStatus] = useState<LookupStatus>({
-    kind: "idle",
-  });
-  const lookupAbortRef = useRef<AbortController | null>(null);
-  useEffect(() => () => lookupAbortRef.current?.abort(), []);
-
+  // The hook owns the abort controller + status state machine; we just
+  // tell it which nicks to fetch and how to merge the resulting summary.
+  const { status: lookupStatus, run: runLookup } = useResulthubLookup();
   const usernamesForLookup = controls.observedResultHubUsernames;
-  const runResulthubLookup = useCallback(async () => {
-    if (usernamesForLookup.length === 0) return;
-    lookupAbortRef.current?.abort();
-    const ctrl = new AbortController();
-    lookupAbortRef.current = ctrl;
-    setLookupStatus({ kind: "pending" });
-    try {
-      const summary = await fetchResulthubGgBrMany(
-        usernamesForLookup,
-        ctrl.signal,
-      );
-      onChange({
-        ...value,
-        battleRoyaleLeaderboard: {
-          ...controls,
-          observedTotalPrizes: summary.totalPrizes,
-          observedPointsByStake: { ...summary.pointsByStake },
-        },
-      });
-      setLookupStatus({ kind: "ok", at: Date.now(), window: summary.window });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      const code =
-        err instanceof ResulthubLookupError ? err.code : "network";
-      setLookupStatus({ kind: "error", reason: code });
-    }
-  }, [usernamesForLookup, value, controls, onChange]);
+  const runResulthubLookup = useCallback(
+    () =>
+      runLookup(usernamesForLookup, (summary) => {
+        onChange({
+          ...value,
+          battleRoyaleLeaderboard: {
+            ...controls,
+            observedTotalPrizes: summary.totalPrizes,
+            observedPointsByStake: { ...summary.pointsByStake },
+          },
+        });
+      }),
+    [runLookup, usernamesForLookup, value, controls, onChange],
+  );
 
   const uiDisabled = disabled || !advanced;
 
