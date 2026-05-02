@@ -66,6 +66,20 @@ import {
   shiftResultByRakeback,
   stripJackpots,
 } from "@/lib/results/trajectoryTransforms";
+import {
+  GLOBAL_UNIT_KEY,
+  defaultMoneyFmt,
+  fmt,
+  intFmt,
+  loadUnitMode,
+  makeAbiMoney,
+  mergedHistogramDomain,
+  pct,
+  pctDelta,
+  saveUnitMode,
+  type MoneyFmt,
+  type UnitMode,
+} from "@/lib/results/formatters";
 import type { ControlsState } from "./ControlsPanel";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
@@ -135,64 +149,15 @@ interface Props {
   pdOverrideProgress?: number;
 }
 
-function fmt(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
-}
-
-const compactMoney = (v: number) => {
-  const sign = v < 0 ? "−" : "";
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
-  if (abs === 0) return "$0";
-  return `${sign}$${abs.toFixed(0)}`;
-};
-const money = (v: number) => {
-  const sign = v < 0 ? "−" : "";
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 10_000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
-  return `${sign}$${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-};
-const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
-
-// Unit-aware money formatters. The module-level `money` / `compactMoney`
-// defined above stay as the USD defaults; the Context lets ResultsView
-// swap them for ABI-denominated versions without threading props through
-// every helper card.
-function makeAbiMoney(abi: number) {
-  const safe = abi > 0 ? abi : 1;
-  const fmt = (v: number, digits: number) => {
-    const sign = v < 0 ? "−" : "";
-    const n = Math.abs(v) / safe;
-    return `${sign}${n.toFixed(digits)} ABI`;
-  };
-  return {
-    money: (v: number) => fmt(v, Math.abs(v) / safe >= 100 ? 0 : 1),
-    compactMoney: (v: number) => {
-      const sign = v < 0 ? "−" : "";
-      const n = Math.abs(v) / safe;
-      if (n >= 1000) return `${sign}${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k ABI`;
-      if (n >= 100) return `${sign}${n.toFixed(0)} ABI`;
-      if (n === 0) return "0 ABI";
-      return `${sign}${n.toFixed(1)} ABI`;
-    },
-  };
-}
-
-interface MoneyFmt {
-  money: (v: number) => string;
-  compactMoney: (v: number) => string;
-}
-
-type UnitMode = "money" | "abi";
-
+// Pure formatters live in `src/lib/results/formatters.ts`. The
+// React-coupled bits (MoneyFmtContext, useMoneyFmt, AbiContext,
+// UnitScope) stay here because they're consumed by deeply nested cards
+// and extracting them needs a separate pass.
 interface UnitCtxValue extends MoneyFmt {
   unit: UnitMode;
   setUnit: (v: UnitMode) => void;
 }
 
-const defaultMoneyFmt: MoneyFmt = { money, compactMoney };
 const MoneyFmtContext = createContext<UnitCtxValue>({
   ...defaultMoneyFmt,
   unit: "abi",
@@ -204,24 +169,6 @@ const useMoneyFmt = () => useContext(MoneyFmtContext);
 // UnitScope providers can build their own ABI-denominated formatters
 // without threading the scalar through every sub-component.
 const AbiContext = createContext<number>(1);
-
-function loadUnitMode(key: string): UnitMode {
-  if (typeof localStorage === "undefined") return "abi";
-  try {
-    const v = localStorage.getItem(key);
-    return v === "money" || v === "abi" ? v : "abi";
-  } catch {
-    return "abi";
-  }
-}
-function saveUnitMode(key: string, v: UnitMode): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(key, v);
-  } catch {}
-}
-
-const GLOBAL_UNIT_KEY = "tvs.unit.global.v1";
 
 /**
  * Per-widget unit toggle scope. Owns its own `money`/`abi` state, defaulting
@@ -250,36 +197,6 @@ function UnitScope({ id, children }: { id: string; children: ReactNode }) {
     </MoneyFmtContext.Provider>
   );
 }
-const intFmt = (v: number) =>
-  v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-
-/**
- * Delta displayed on the PD-badge row: how much PD's value differs from ours,
- * relative to ours. Positive ⇒ PD is higher (PD row shows ▲X%, matching how a
- * reader naturally parses "freezeouts are 13% more").
- */
-function pctDelta(cur: number, pd: number): number | null {
-  if (!Number.isFinite(cur) || !Number.isFinite(pd)) return null;
-  const anchor = Math.abs(cur) > 1e-9 ? Math.abs(cur) : Math.abs(pd);
-  if (anchor < 1e-9) return null;
-  return (pd - cur) / anchor;
-}
-
-function mergedHistogramDomain(
-  ...histograms: Array<{ binEdges: readonly number[] } | null | undefined>
-): [number, number] | undefined {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const hist of histograms) {
-    const edges = hist?.binEdges;
-    if (!edges || edges.length < 2) continue;
-    lo = Math.min(lo, edges[0]);
-    hi = Math.max(hi, edges[edges.length - 1]);
-  }
-  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return undefined;
-  return [lo, hi];
-}
-
 function ResultsViewImpl({
   result,
   compareResult,
