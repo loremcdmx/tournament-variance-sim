@@ -385,6 +385,26 @@ export function buildSchedulePassOrder(counts: readonly number[]): number[] {
   return order;
 }
 
+// =====================================================================
+// Compile phase
+// ---------------------------------------------------------------------
+// `compileSchedule` walks the user's TournamentRow[], picks effective
+// field sizes (handling field variability), runs α-calibration or the
+// fixed-ITM solver to produce a finish PMF that hits the per-row ROI
+// target, builds alias tables for fast sampling, and assembles the
+// flat CompiledEntry[] consumed by the hot loop.
+//
+// Per-format calibration paths:
+//   - α-adjustable (free finish PMF) → calibrateAlpha
+//   - fixed-ITM rows → calibrateShelledItm
+//   - PrimeDope compare → calibrateShelledItm with PD shell + curves
+//   - Battle Royale fixed-ITM → battleRoyaleWinnerFirst
+//
+// `buildScheduleAnalyticBreakdown` (further down) reuses this same
+// compile path to produce per-row dollar variance for the convergence
+// widget without running the simulator.
+// =====================================================================
+
 export function compileSchedule(
   input: SimulationInput,
   calibrationMode: CalibrationMode = "alpha",
@@ -1554,6 +1574,19 @@ function makeGauss(rng: () => number): () => number {
   };
 }
 
+// =====================================================================
+// Top-level entry: runSimulation + buildResult
+// ---------------------------------------------------------------------
+// `runSimulation` is the synchronous entry point used by the worker
+// pool. It compiles the schedule, runs the sharded hot loop in-process
+// (workers wrap this with their own dispatch), then calls `buildResult`
+// to assemble the SimulationResult that React consumes.
+//
+// `buildResult` does post-processing only — percentile envelopes,
+// downswing catalog, row decomposition, risk-of-ruin integration,
+// convergence curves. No new RNG draws, no calibration. Pure.
+// =====================================================================
+
 export function runSimulation(
   input: SimulationInput,
   onProgress?: ProgressCb,
@@ -2348,6 +2381,13 @@ export function buildResult(
     },
   };
 }
+
+// =====================================================================
+// Statistical utilities
+// ---------------------------------------------------------------------
+// Pure helpers — normal CDF (PD-bit-compatible), histogram bucketing
+// for the result distribution chart, no RNG, no engine state.
+// =====================================================================
 
 /**
  * Hastings approximation for the standard normal CDF Φ(z). Same algorithm
