@@ -22,6 +22,7 @@ import { computeNextRate } from "@/lib/ui/rateUpdate";
 const EMPTY_BUILD_FRACS: ReadonlyMap<number, number> = new Map();
 import type {
   CalibrationMode,
+  GameType,
   SimulationInput,
   SimulationResult,
 } from "./types";
@@ -110,8 +111,52 @@ interface ShardSlot {
 
 const RATE_KEY = "tvs.lastRateMsPerWork.v1";
 
-function workUnits(samples: number, scheduleRepeats: number, rowCount: number) {
-  return Math.max(1, samples * scheduleRepeats * Math.max(1, rowCount));
+/**
+ * Per-row format weights for the work-units calculation. Measured on
+ * AFS={50, 200, 500, 2000} with 5000 samples × 100 repeats; medians
+ * across AFS:
+ *   - freeze / freeze-reentry → 1.00 (baseline)
+ *   - mystery → 1.10  (small lift, log-normal envelope draw is cheap)
+ *   - mystery-royale → 1.30  (BR tier sampler + bounty cap loop)
+ *   - pko → 1.35  (per-tournament bounty distribution + heat reshape)
+ *
+ * Without these weights, a freeze-only schedule's recorded rate would
+ * forecast bounty-heavy schedules ~30 % shorter than reality, and vice
+ * versa. With them, work-units and wall-clock stay roughly proportional
+ * across schedule mixes.
+ */
+function rowCostWeight(gameType?: GameType): number {
+  switch (gameType) {
+    case "pko": return 1.35;
+    case "mystery": return 1.10;
+    case "mystery-royale": return 1.30;
+    case "freezeout":
+    case "freezeout-reentry":
+    default: return 1.00;
+  }
+}
+
+/**
+ * Cost-weighted schedule work per pass. Each row contributes
+ * `count × rowCostWeight(format)`; the sum is the schedule's effective
+ * tournament-equivalent count.
+ */
+export function scheduleCostWeight(
+  schedule: ReadonlyArray<{ count: number; gameType?: GameType }>,
+): number {
+  let total = 0;
+  for (const r of schedule) {
+    total += Math.max(1, Math.floor(r.count)) * rowCostWeight(r.gameType);
+  }
+  return Math.max(1, total);
+}
+
+function workUnits(
+  samples: number,
+  scheduleRepeats: number,
+  costWeight: number,
+) {
+  return Math.max(1, samples * scheduleRepeats * Math.max(1, costWeight));
 }
 
 function loadRate(): number | null {
@@ -173,11 +218,20 @@ export function useSimulation() {
   }, []);
 
   // Project a run's duration for the given work size. Returns null when
-  // no prior run has been recorded — caller can hide the hint.
+  // no prior run has been recorded — caller can hide the hint. Schedule
+  // is passed (not just rowCount) so format-specific cost weights apply
+  // — bounty-heavy rows take ~30 % longer per tournament than freeze.
   const estimateMs = useCallback(
-    (samples: number, scheduleRepeats: number, rowCount: number) => {
+    (
+      samples: number,
+      scheduleRepeats: number,
+      schedule: ReadonlyArray<{ count: number; gameType?: GameType }>,
+    ) => {
       if (lastRateMs == null) return null;
-      return workUnits(samples, scheduleRepeats, rowCount) * lastRateMs;
+      return (
+        workUnits(samples, scheduleRepeats, scheduleCostWeight(schedule)) *
+        lastRateMs
+      );
     },
     [lastRateMs],
   );
@@ -342,10 +396,31 @@ export function useSimulation() {
         // runs because its `totalAll * 0.02` wall-time estimate was 5× off.
         const buildFracs = new Map<number, number>();
         let totalBuildsExpected = 0;
-        // Latest reported build stage — we surface whichever phase the most
-        // recent build-progress message was tagged with, so the UI follows
-        // the leading edge rather than averaging across passes.
-        let latestBuildStage: BuildStage = "stats";
+        // Track build stage per in-flight buildId. The displayed stage is
+        // the MIN-progressed across all builds (in stage order: stats →
+        // envelopes → streaks → convergence) so the label monotonically
+        // advances and doesn't flicker between passes when one pass moves
+        // to "envelopes" while the other is still in "stats".
+        const buildStages = new Map<number, BuildStage>();
+        const STAGE_ORDER: readonly BuildStage[] = [
+          "stats",
+          "envelopes",
+          "streaks",
+          "convergence",
+        ];
+        const displayStage = (): BuildStage => {
+          if (buildStages.size === 0) return "stats";
+          let minIdx = STAGE_ORDER.length;
+          let result: BuildStage = "stats";
+          for (const s of buildStages.values()) {
+            const i = STAGE_ORDER.indexOf(s);
+            if (i >= 0 && i < minIdx) {
+              minIdx = i;
+              result = s;
+            }
+          }
+          return result;
+        };
         const emitBuildProgress = () => {
           if (totalBuildsExpected === 0) return;
           onProgress(
@@ -356,7 +431,7 @@ export function useSimulation() {
               buildFracs,
               totalBuildsExpected,
             }),
-            latestBuildStage,
+            displayStage(),
           );
         };
         const onAbort = () => {
@@ -483,7 +558,7 @@ export function useSimulation() {
               // from the build-result handler, not from build-progress
               // overshooting into the "done" slot.
               buildFracs.set(msg.buildId, Math.min(BUILD_PROGRESS_CAP, msg.frac));
-              latestBuildStage = msg.stage;
+              buildStages.set(msg.buildId, msg.stage);
               emitBuildProgress();
             }
             return;
@@ -497,7 +572,7 @@ export function useSimulation() {
             if (buildsRemaining === 0) {
               settled = true;
               detach();
-              onProgress(1, latestBuildStage);
+              onProgress(1, displayStage());
               const out: Record<PassPlan["key"], SimulationResult> =
                 {} as never;
               for (const k of Object.keys(ctxs) as PassPlan["key"][]) {
@@ -749,14 +824,10 @@ export function useSimulation() {
         // observations (≥2.5× change vs cached) are dropped entirely so a
         // single throttled tab can't poison the cache for the next clean
         // run. See `src/lib/ui/rateUpdate.ts` for the math.
-        const rowCountTotal = input.schedule.reduce(
-          (a, r) => a + Math.max(1, Math.floor(r.count)),
-          0,
-        );
         const work = workUnits(
           input.samples,
           Math.max(1, input.scheduleRepeats),
-          rowCountTotal,
+          scheduleCostWeight(input.schedule),
         );
         const update = computeNextRate({
           elapsedMs: elapsed,

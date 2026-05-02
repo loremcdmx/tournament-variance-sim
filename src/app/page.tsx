@@ -572,9 +572,9 @@ export default function Home() {
       estimateMs(
         controls.samples,
         controls.scheduleRepeats,
-        tournamentsPerSchedule,
+        deferredSchedule,
       ),
-    [estimateMs, controls.samples, controls.scheduleRepeats, tournamentsPerSchedule],
+    [estimateMs, controls.samples, controls.scheduleRepeats, deferredSchedule],
   );
   const scheduleGlobalItmPct = useMemo(
     () => (controls.itmGlobalEnabled ? controls.itmGlobalPct : null),

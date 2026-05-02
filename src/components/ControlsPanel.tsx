@@ -609,7 +609,14 @@ export const ControlsPanel = memo(function ControlsPanel({
               <div
                 key={runToken}
                 className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300"
-                style={{ width: barFillPercent(barState, progress) }}
+                style={{
+                  width: barFillPercent(barState, progress),
+                  // Glide between progress updates so build-progress message
+                  // bursts (~10 messages with 100-300 ms gaps during heavy
+                  // envelope sorts) don't visually stall the bar between
+                  // bursts. CSS-only — zero JS / re-render cost.
+                  transition: "width 220ms ease-out",
+                }}
               />
             </div>
             {barState === "running" && stage && (
