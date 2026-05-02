@@ -32,10 +32,14 @@ interface CashRef {
   wr: number;
   sd: number;
   hands: number;
+  /** Bankroll for asymptotic RoR check, in BB. */
+  bankrollBB: number;
   /** Analytic Gaussian closed-form values — Galfond's calc reports these. */
   muBB: number;
   sigBB: number;
   probProfit: number;
+  /** Galfond closed-form infinite-horizon RoR. */
+  ror: number;
 }
 
 // Standard normal CDF (Hastings approximation, ≤7e-8 max error)
@@ -53,28 +57,39 @@ function normCdf(z: number): number {
   return p;
 }
 
-function gaussRef(wr: number, sd: number, hands: number): CashRef {
+function gaussRef(
+  wr: number,
+  sd: number,
+  hands: number,
+  bankrollBB = 5000,
+): CashRef {
   const muBB = (wr * hands) / 100;
   const sigBB = sd * Math.sqrt(hands / 100);
+  // Galfond RoR: closed-form Brownian absorbing barrier
+  // exp(-2 × br × wr_bb100 / sd_bb100²); RoR = 1 when wr ≤ 0.
+  const ror =
+    wr <= 0 ? 1 : Math.exp((-2 * bankrollBB * wr) / (sd * sd));
   return {
-    label: `wr=${wr} sd=${sd} hands=${hands}`,
+    label: `wr=${wr} sd=${sd} hands=${hands} br=${bankrollBB}BB`,
     wr,
     sd,
     hands,
+    bankrollBB,
     muBB,
     sigBB,
     probProfit: sigBB > 0 ? normCdf(muBB / sigBB) : muBB > 0 ? 1 : 0,
+    ror,
   };
 }
 
 const REFERENCE: CashRef[] = [
-  gaussRef(5, 100, 50_000), // Galfond default
-  gaussRef(2, 100, 50_000),
-  gaussRef(10, 80, 50_000),
-  gaussRef(0, 100, 50_000),
-  gaussRef(-2, 100, 50_000),
-  gaussRef(7, 90, 100_000), // longer horizon
-  gaussRef(3, 120, 25_000), // higher variance
+  gaussRef(5, 100, 50_000, 5000), // Galfond default
+  gaussRef(2, 100, 50_000, 5000),
+  gaussRef(10, 80, 50_000, 3000),
+  gaussRef(0, 100, 50_000, 5000),
+  gaussRef(-2, 100, 50_000, 5000),
+  gaussRef(7, 90, 100_000, 4000), // longer horizon
+  gaussRef(3, 120, 25_000, 6000), // higher variance
 ];
 
 function runOurCash(ref: CashRef) {
@@ -91,7 +106,7 @@ function runOurCash(ref: CashRef) {
       advertisedRbPct: 0,
       pvi: 1,
     },
-    riskBlock: { thresholdBb: 5000 },
+    riskBlock: { thresholdBb: ref.bankrollBB },
     baseSeed: 42,
   };
   return simulateCash(input);
@@ -124,6 +139,11 @@ describe("simulateCash matches Galfond's variance-calculator math", () => {
       it("meanFinalBb sample mean within 5 SE of true μ", () => {
         const se = ref.sigBB / Math.sqrt(30_000);
         expect(Math.abs(out.stats.meanFinalBb - ref.muBB)).toBeLessThan(5 * se);
+      });
+
+      it("riskOfRuinAsymptotic matches Galfond's closed-form Brownian RoR", () => {
+        // No MC noise on this — pure closed-form. Should match to ~1e-12.
+        expect(out.stats.riskOfRuinAsymptotic).toBeCloseTo(ref.ror, 9);
       });
     },
   );

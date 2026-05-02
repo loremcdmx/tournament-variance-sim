@@ -209,8 +209,30 @@ export interface CashResult {
     probProfit: number;
     /** P(final < 0). */
     probLoss: number;
-    /** Share of paths whose running minimum touched `<= -thresholdBb`. */
+    /** Share of paths whose running minimum touched `<= -thresholdBb`
+     *  WITHIN the simulated horizon. This is finite-horizon RoR and
+     *  underestimates the asymptotic risk on short samples. See
+     *  `riskOfRuinAsymptotic` for the long-run closed-form. */
     probBelowThresholdEver: number;
+    /**
+     * Closed-form infinite-horizon Risk of Ruin for the schedule's
+     * effective drift / variance per hand. Standard Brownian-motion
+     * absorbing-barrier formula:
+     *   - `wr_per_hand <= 0` → RoR = 1 (eventual ruin certain)
+     *   - else → `exp(-2 · thresholdBb · wr_per_hand / var_per_hand)`
+     *
+     * Effective drift includes rakeback (deterministic add). Variance
+     * is the random component only. In single-stake mode this reduces
+     * to Galfond's closed form `exp(-2 · br · wr_bb100 / sd_bb100²)`;
+     * in mix mode it uses the cost-weighted aggregate per-hand
+     * statistics from `compileStakeSchedule`.
+     *
+     * Reference for the user: `probBelowThresholdEver` is what they
+     * actually saw in the `hands`-long sample; `riskOfRuinAsymptotic`
+     * is what they would see if the same edge / variance kept playing
+     * forever. The first is observation, the second is asymptote.
+     */
+    riskOfRuinAsymptotic: number;
     /** Distribution landmarks for max drawdown. */
     maxDrawdownMedian: number;
     maxDrawdownP95: number;

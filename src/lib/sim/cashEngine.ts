@@ -719,6 +719,21 @@ export function buildCashResult(
   const hourlyEvUsd = input.hoursBlock
     ? (expectedEvUsd / input.hands) * input.hoursBlock.handsPerHour
     : undefined;
+  // Closed-form infinite-horizon RoR (Brownian motion absorbing
+  // barrier). Uses cost-weighted aggregate drift / variance per hand
+  // — collapses to Galfond's `exp(-2·br·wr/sd²)` in single-stake.
+  const wrPerHandRefBb =
+    input.hands > 0 ? expectedEvBb / input.hands : 0;
+  const varPerHandRefBb =
+    input.hands > 0 ? totalVarianceBb2 / input.hands : 0;
+  const riskOfRuinAsymptotic =
+    wrPerHandRefBb <= 0
+      ? 1
+      : varPerHandRefBb <= 0
+        ? 0
+        : Math.exp(
+            -2 * thresholdBb * wrPerHandRefBb / varPerHandRefBb,
+          );
   const mixBreakdown =
     input.stakes && input.stakes.length > 1
       ? {
@@ -828,6 +843,7 @@ export function buildCashResult(
       probProfit: profitCount / S,
       probLoss: lossCount / S,
       probBelowThresholdEver: belowThresholdEver / S,
+      riskOfRuinAsymptotic,
       maxDrawdownMedian: quantileOfSorted(maxDdSorted, 0.5),
       maxDrawdownP95: quantileOfSorted(maxDdSorted, 0.95),
       longestBreakevenMedian: quantileOfSorted(longestBeSorted, 0.5),

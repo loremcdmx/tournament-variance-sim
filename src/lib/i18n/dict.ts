@@ -2884,6 +2884,10 @@ export const DICT = {
     en: "Ever ≤ {threshold}",
     ru: "Хотя бы раз ≤ {threshold}",
   },
+  "cash.summary.riskOfRuinAsymptotic": {
+    en: "RoR (∞ horizon)",
+    ru: "RoR (∞ горизонт)",
+  },
   "cash.summary.oddsSub100Now": {
     en: "≤ −100 BB now",
     ru: "Сейчас ≤ −100 BB",
