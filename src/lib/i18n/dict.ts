@@ -3112,6 +3112,270 @@ export const DICT = {
     en: "Press Run to simulate the cash session.",
     ru: "Нажми «Запустить», чтобы посчитать кэш-сессию.",
   },
+
+  "weakness.pd.intro": {
+    en: "PrimeDope is useful as a baseline for one simple freezeout spot. As a tournament model it's too thin: a single paid-zone probability, almost no separate format structure, and almost no uncertainty model.",
+    ru: "PrimeDope полезен как baseline для одного простого freezeout-спота. Но как турнирная модель он слишком тонкий: одна paid-zone вероятность, почти никакой отдельной структуры формата и почти нулевая модель неопределённости.",
+  },
+  "weakness.pd.section.text": {
+    en: "Plain-text walk-through",
+    ru: "Понятно текстом",
+  },
+  "weakness.pd.tag.finishes.title": {
+    en: "It models the chance of cashing, not the shape of real finishes",
+    ru: "Он моделирует шанс попасть в деньги, а не форму реальных финишей",
+  },
+  "weakness.pd.tag.finishes.body": {
+    en: "After ROI calibration PrimeDope leaves a binary paid-shell: cashed or not. Inside the paid zone every place gets the same baseline probability. Real MTTs aren't shaped that way — min-cashes are common, final tables and top-3 finishes are rare, so drawdown depth and recovery time drift away from reality.",
+    ru: "После калибровки ROI у PrimeDope остаётся бинарный paid-shell: попал в деньги или нет. Внутри оплачиваемой зоны все места получают одинаковую базовую вероятность. Реальные MTT так не устроены: мин-кэшей много, финалок и топ-3 мало, поэтому глубина просадок и время восстановления уезжают.",
+  },
+  "weakness.pd.tag.formats.title": {
+    en: "It folds re-entry, PKO and envelope formats into a freezeout problem",
+    ru: "Re-entry, PKO и envelope-форматы он сводит к фризаутной задаче",
+  },
+  "weakness.pd.tag.formats.body": {
+    en: "For us multi-bullet re-entry is independent bullets with an inflated prize pool; PKO is a separate bounty channel; Mystery and Battle Royale are separate envelope / jackpot tails. PrimeDope doesn't keep these channels separate, so it can't tell what part of swing comes from format and what from finish-PMF.",
+    ru: "Multi-bullet re-entry у нас — это независимые пули с раздутым призовым; PKO — отдельный bounty-channel; Mystery и Battle Royale — отдельные envelope / jackpot tails. PrimeDope не держит эти каналы по отдельности, поэтому не различает, какой кусок swing идёт от формата, а какой от finish-PMF.",
+  },
+  "weakness.pd.tag.roi.title": {
+    en: "It treats ROI as known and almost stationary",
+    ru: "Он считает ROI известным и почти стационарным",
+  },
+  "weakness.pd.tag.roi.body": {
+    en: "It has no field variability, no per-tournament / per-session ROI noise, no drift / tilt layers, and no \"today the field is harder / I'm playing worse / mixed schedule\" model at all. Fine for a back-of-the-envelope estimate; for bankroll tails it's already too optimistic.",
+    ru: "У него нет field variability, per-tournament / per-session ROI-noise, drift/tilt-слоёв и вообще нет модели «сегодня поле жёстче / я играю хуже / расписание смешанное». Для салфеточной оценки этого хватает, но для bankroll tails это уже чересчур оптимистично.",
+  },
+  "weakness.pd.tag.trap.title": {
+    en: "Sometimes the number is close, but it's offsetting errors, not a model fit",
+    ru: "Иногда цифра близка, но это компенсация ошибок, а не попадание в модель",
+  },
+  "weakness.pd.tag.trap.body": {
+    en: "A flat paid-PMF usually shrinks deep-run depth and recovery tails, while top-heavy payouts can accidentally re-inflate the resulting sigma. So on a simple freezeout PrimeDope can land \"close\" not because it understood the tournament, but because two skews briefly cancelled.",
+    ru: "Плоская paid-PMF обычно сжимает глубину прохода и recovery tails, а top-heavy выплаты иногда случайно раздувают итоговую sigma обратно. Поэтому на простом фризауте PrimeDope может оказаться «рядом» не потому, что понял турнир, а потому что два перекоса временно совпали.",
+  },
+  "weakness.pd.section.math": {
+    en: "Boring math",
+    ru: "Занудная математика",
+  },
+  "weakness.pd.tag.converge.title": {
+    en: "When our model actually converges to PrimeDope",
+    ru: "Когда наша модель действительно приближается к PrimeDope",
+  },
+  "weakness.pd.tag.converge.intro": {
+    en: "Compare-mode here doesn't just \"draw a similar picture\" — it can fit PrimeDope's three layers separately:",
+    ru: "Compare-mode у нас не «рисует похожую картинку», а умеет по отдельности подогнать три слоя PrimeDope:",
+  },
+  "weakness.pd.tag.converge.bullet.finish": {
+    en: "their paid-vs-non-paid shell instead of our finish PMF",
+    ru: "их paid-vs-nonpaid shell вместо нашей PMF финишей",
+  },
+  "weakness.pd.tag.converge.bullet.payouts": {
+    en: "their payout structure",
+    ru: "их структура выплат",
+  },
+  "weakness.pd.tag.converge.bullet.rake": {
+    en: "their rake-to-SD quirk without changing the UI's ROI basis",
+    ru: "их rake-to-SD quirk без смены ROI-базы UI",
+  },
+  "weakness.pd.tag.converge.body": {
+    en: "So on one simple freezeout spot the two models really can converge. Example: an ordinary MTT with no re-entry / bounty, an even field, and a standard payout curve. Once finish-shell, payouts and the rake convention are pinned to PD's regime, EV / probability of profit / and the central trajectory band usually sit pretty close.",
+    ru: "Поэтому на одном простом freezeout-споте модели реально могут сблизиться. Пример: один обычный MTT без re-entry и bounty, с ровным полем и стандартными выплатами. Если привести finish-shell, payouts и rake-конвенцию к режиму PD, то EV, шанс выйти в плюс и центральная часть траекторий обычно уже стоят довольно близко.",
+  },
+  "weakness.pd.tag.converge.reading": {
+    en: "What this mode usefully shows: not just where we diverge from PD, but how fast that divergence disappears as you peel modern MTT layers off and end up with a \"napkin freezeout.\"",
+    ru: "Полезное чтение этого режима такое: он показывает не только где мы расходимся с PD, но и как быстро разница исчезает, если шаг за шагом убрать современные MTT-слои и оставить «салфеточный freezeout».",
+  },
+  "weakness.pd.tag.precision.title": {
+    en: "How accurately we reproduce PrimeDope itself",
+    ru: "Насколько точно мы воспроизводим сам сайт PrimeDope",
+  },
+  "weakness.pd.tag.precision.intro": {
+    en: "Compare-mode here doesn't reproduce an abstract \"PrimeDope-style\" — it reproduces the layers PD actually ships on the live site: binary paid-shell, their live payout curves, and their rake-to-SD math. The UI's ROI stays on our full buy-in+rake basis so the comparison shows the model difference, not a different edge.",
+    ru: "В compare-mode мы воспроизводим не абстрактный «PrimeDope-стиль», а именно те слои, которые у них реально живут на сайте: binary paid-shell, их live payout-curves и их rake-to-SD механику. ROI в UI остаётся на нашей полной базе buy-in+rake, чтобы сравнение показывало модельную разницу, а не другой edge.",
+  },
+  "weakness.pd.tag.precision.bullet.shell": {
+    en: "Our finish-shell mirrors their two-zone paid / non-paid logic against the verified legacy source.",
+    ru: "Finish-shell у нас повторяет их двухзонную логику paid / non-paid по проверенному legacy-source.",
+  },
+  "weakness.pd.tag.precision.bullet.curves": {
+    en: "Payouts come from live curves scraped from their payout_info endpoint, not a \"similar\" home-baked table.",
+    ru: "Выплаты берутся из live curves, снятых с их payout_info endpoint, а не из «похожей» домашней таблицы.",
+  },
+  "weakness.pd.tag.precision.bullet.byteForByte": {
+    en: "For 100 players / 15 paid our mtt-primedope payout curve matches their current live curve byte-for-byte.",
+    ru: "Для 100 игроков и 15 paid наша mtt-primedope кривая выплат совпадает с их текущей live-кривой byte-for-byte.",
+  },
+  "weakness.pd.tag.precision.bullet.sigma": {
+    en: "On the 100p / $50 / 10 % ROI reference our σ₁₀₀₀ under the PD shell lands in the same band their site shows: math ≈ $5,607 and sim ≈ $5,789.",
+    ru: "На референсе 100p / $50 / 10% ROI наша σ₁₀₀₀ под PrimeDope-shell попадает в тот же коридор, который показывает их сайт: math около $5607 и sim около $5789.",
+  },
+  "weakness.pd.tag.precision.body": {
+    en: "So for a simple freezeout spot our PD mode is pretty close to what the user would see on PrimeDope. But that accuracy honestly stops where the site itself stops being a model of the problem: PKO, Mystery, Battle Royale, multi-bullet re-entry, and schedule-level uncertainty all need separate layers PD doesn't have.",
+    ru: "То есть для простого freezeout-спота наш PD-режим довольно близок к тому, что пользователь увидит на PrimeDope. Но эта точность честно заканчивается там, где сам сайт перестаёт быть моделью задачи: PKO, Mystery, Battle Royale, multi-bullet re-entry и schedule-level uncertainty уже требуют отдельных слоёв, которых у PD нет.",
+  },
+  "weakness.pd.tag.boundary.title": {
+    en: "Where the similarity ends and why",
+    ru: "Где сходство заканчивается и почему",
+  },
+  "weakness.pd.tag.boundary.intro": {
+    en: "As soon as a separate variance channel shows up in the problem, the resemblance to PrimeDope stops being \"a question of coefficients.\" It becomes a difference in the model itself.",
+    ru: "Как только в задаче появляется отдельный variance-channel, сходство с PrimeDope перестаёт быть «вопросом коэффициентов». Это уже разница в самой модели.",
+  },
+  "weakness.pd.tag.boundary.bullet.freeze": {
+    en: "On a plain freezeout the difference usually shows up in the tails: PrimeDope can be close on the mean but still under-call drawdown depth and recovery time.",
+    ru: "На простом freezeout различие чаще всего уходит в tails: PrimeDope может быть близок по среднему, но всё ещё недооценивать глубину просадок и время восстановления.",
+  },
+  "weakness.pd.tag.boundary.bullet.pko": {
+    en: "In PKO the difference isn't only in the finish-PMF: we have a separate bounty channel that PrimeDope doesn't.",
+    ru: "В PKO различие уже не только в finish-PMF: у нас есть отдельный bounty-channel, которого у PrimeDope нет.",
+  },
+  "weakness.pd.tag.boundary.bullet.mystery": {
+    en: "In Mystery and Battle Royale we add envelope / jackpot tails that can't be honestly squeezed into one paid-shell.",
+    ru: "В Mystery и Battle Royale добавляются envelope / jackpot tails, которые нельзя честно свернуть в один paid-shell.",
+  },
+  "weakness.pd.tag.boundary.bullet.schedule": {
+    en: "In schedule / mixed-grind mode we still layer field variability and ROI noise on top of all that, and PrimeDope has no such layer at all.",
+    ru: "В schedule / mixed-grind режиме у нас ещё поверх этого живут field variability и ROI-noise, а у PrimeDope такого слоя вообще нет.",
+  },
+  "weakness.pd.tag.boundary.body": {
+    en: "Boundary example: take the same baseline freezeout — top-line numbers can sit close. Add re-entry, PKO bounty EV or a Mystery tail, and the difference no longer comes from fine PMF tuning, it comes from PrimeDope simply not carrying those channels inside the model.",
+    ru: "Пример границы: если взять тот же базовый freezeout, модели могут быть близки по top-line. Но стоит добавить re-entry, PKO bounty EV или Mystery-хвост, и разница уже идёт не из тонкой подстройки PMF, а из того, что PrimeDope просто не держит эти каналы внутри модели.",
+  },
+  "weakness.pd.summary": {
+    en: "Short version: PrimeDope is useful as a baseline where the tournament is already almost reduced to a single simple freezeout-shell. The more format-specific EV and uncertainty layers there are in the problem, the faster our model stops just \"differing\" and starts describing a different class of risk.",
+    ru: "Коротко: PrimeDope полезен как baseline там, где турнир уже почти сведён к одному простому freezeout-shell. Чем больше в задаче format-specific EV и uncertainty layers, тем быстрее наша модель перестаёт «просто отличаться» и начинает описывать другой класс риска.",
+  },
+
+  "weakness.ours.intro": {
+    en: "Our model is wider than PrimeDope and more honest in modern formats, but it's still a model, not an oracle. It decomposes a tournament well into finish-shape, payouts, rake, bounty channels and uncertainty layers — but some of those layers stay parametric, and some are deliberately constrained by policy so the model doesn't pretend to be more accurate than it is.",
+    ru: "Наша модель шире PrimeDope и честнее в современных форматах, но это всё ещё модель, а не оракул. Она хорошо раскладывает турнир на finish-shape, payouts, rake, bounty-каналы и uncertainty-слои, но часть этих слоёв остаётся параметрической, а часть специально ограничена policy, чтобы не притворяться точнее, чем она есть.",
+  },
+  "weakness.ours.section.ui": {
+    en: "Boundaries already wired into the UI",
+    ru: "Где граница уже встроена в UI",
+  },
+  "weakness.ours.tag.bands.title": {
+    en: "Numeric bands aren't shown everywhere — and that's a deliberate limit",
+    ru: "Числовые диапазоны показываются не везде — и это осознанное ограничение",
+  },
+  "weakness.ours.tag.bands.body": {
+    en: "On the convergence widget the numeric ±band is allowed only inside a validated fit-box. Outside it, only the point estimate stays; the band is hidden. Honest protection from extrapolation, but the side effect is that the user doesn't always get a full range exactly where they want it most — at the ROI / AFS edges.",
+    ru: "У convergence-виджета numeric ±band разрешён только внутри провалидированных fit-boxов. За пределами этого box-а остаётся точка, а полоса скрывается. Это честная защита от экстраполяции, но побочный эффект такой: пользователь не всегда получает полноценный диапазон именно там, где вопрос ему интереснее всего — на краях ROI / AFS.",
+  },
+  "weakness.ours.tag.schedule.title": {
+    en: "Schedule-mode band exists but it's locked to format-level fit-boxes",
+    ru: "Schedule-band есть, но он жёстко привязан к format-level fit-box",
+  },
+  "weakness.ours.tag.schedule.p1": {
+    en: "Schedule mode now shows a numeric residual band, but only when every row sits inside its format fit-box. As soon as one row leaves the box — odd AFS, extreme ROI — the schedule-wide band hides and the mode falls back to point-only. Same gate as single-format, deliberately strict.",
+    ru: "Для schedule-mode мы теперь показываем числовой residual-band, но только когда каждая строка расписания сидит внутри своего format fit-box. Стоит хотя бы одной строке выйти за box — чужой AFS, экстремальный ROI — и полоса для всего расписания скрывается, режим возвращается к point-only. Это тот же gate, что и в single-format, и он намеренно строгий.",
+  },
+  "weakness.ours.tag.schedule.p2": {
+    en: "The band itself is a variance-share-weighted average of format-level residual coefficients, not a residual fit specifically to your schedule. It honestly reflects σ-fit uncertainty, but it doesn't capture how your specific mix could deviate from those fits in ensemble.",
+    ru: "Сама полоса — variance-share-weighted среднее format-level residual коэффициентов, а не отдельно подогнанный под ваше конкретное расписание остаток. Это честно отражает неопределённость σ-фитов, но не учитывает, насколько ваш конкретный mix мог бы отклоняться от этих фитов в ансамбле.",
+  },
+  "weakness.ours.tag.paths.title": {
+    en: "BR leaderboard EV is already in trajectory, but drawdown / risk-of-ruin aren't",
+    ru: "EV BR leaderboard уже в trajectory, но drawdown и risk-of-ruin — пока нет",
+  },
+  "weakness.ours.tag.paths.p1": {
+    en: "BR leaderboard cashflow now flows honestly through trajectory and the scalar stats — mean, median, probProfit, VaR, CVaR, histogram. The user no longer has to mentally add \"+$200 LB promo\" from the BR widget to \"+$300 EV\" from the trajectory.",
+    ru: "BR leaderboard cashflow теперь честно проложен через trajectory и скалярную статистику — mean, median, probProfit, VaR, CVaR, гистограмма. Игроку больше не нужно складывать в голове «+$200 LB-промо» из BR-виджета и «+$300 EV» с траектории.",
+  },
+  "weakness.ours.tag.paths.p2": {
+    en: "But drawdown, breakeven streaks and risk-of-ruin stay game-only. The reason is upfront: LB EV is a deterministic monotone-non-decreasing add-on (it never goes negative), drawdowns are invariant under such an add-on, and recomputing RoR would need full N-sample raw data that we don't keep after the stat pass.",
+    ru: "Но drawdown, серии минусов и risk-of-ruin остаются game-only. Причина прозрачная: LB EV в модели — детерминированная monotone-non-decreasing надбавка к выплатам (она не уходит в минус), drawdowns под такой надбавкой инвариантны, а RoR потребовал бы пересчёта по полному N-sample raw, которого мы после stat-pass не держим.",
+  },
+  "weakness.ours.section.model": {
+    en: "What's still simplified inside the model itself",
+    ru: "Что всё ещё упрощено в самой модели",
+  },
+  "weakness.ours.tag.roi.title": {
+    en: "Uncertainty layers are good knobs, but not learned truth",
+    ru: "Uncertainty-слои — это хорошие ручки, но не learned truth",
+  },
+  "weakness.ours.tag.roi.p1": {
+    en: "ROI std-err, per-tournament shock, per-session shock, drift and tilt are already there, but they're set as model parameters, not auto-extracted from your history.",
+    ru: "ROI std err, per-tournament shock, per-session shock, drift и tilt у нас уже есть, но они задаются как параметры модели, а не автоматически извлекаются из вашей истории.",
+  },
+  "weakness.ours.tag.roi.p2": {
+    en: "So they answer the question \"what if my reality is noisier / harsher than it looks?\" perfectly, but they don't yet answer \"what specific noise did I actually run last year?\" without a separate fit on the data.",
+    ru: "Поэтому они отлично отвечают на вопрос «что будет, если моя реальность шумнее/жёстче, чем кажется», но пока не отвечают на вопрос «какой именно шум у меня реально был в прошлом году» без отдельной подгонки по данным.",
+  },
+  "weakness.ours.tag.formats.title": {
+    en: "Format-specific channels are modeled, but they don't cover the whole real room",
+    ru: "Format-specific каналы смоделированы, но не исчерпывают реальный рум целиком",
+  },
+  "weakness.ours.tag.formats.p1": {
+    en: "PKO, Mystery and Battle Royale aren't reduced to freezeout here — there are separate bounty / envelope / leaderboard channels. But those channels still rest on a house model, buy-in profiles, runtime estimates and fit-policy, not on full knowledge of a specific room's ecosystem, time slot and field on a specific day.",
+    ru: "PKO, Mystery и Battle Royale у нас уже не сведены к фризауту: есть отдельные bounty / envelope / leaderboard-каналы. Но эти каналы всё ещё держатся на house-модели, buy-in-профилях, runtime-оценках и fit-policy, а не на полном знании экосистемы конкретного рума, временного слота и поля в конкретный день.",
+  },
+  "weakness.ours.tag.formats.p2": {
+    en: "Much better than \"no format at all,\" but still doesn't mean the model knows every real promo rule, reg pool and meta-shift automatically.",
+    ru: "Это сильно лучше «вообще без формата», но всё ещё не означает, что модель знает все реальные промо-правила, рег-пулы и мета-сдвиги автоматически.",
+  },
+  "weakness.ours.tag.empirical.title": {
+    en: "Empirical mode replays finishes, not your full poker reality",
+    ru: "Эмпирический режим переигрывает финиши, а не всю вашу покерную реальность",
+  },
+  "weakness.ours.tag.empirical.p1": {
+    en: "Empirical mode honestly resamples finish history without an α-fit, but it still only works with what's actually in the finishes themselves.",
+    ru: "Empirical mode честно ресэмплит историю финишей без α-fit, но он всё равно работает только с тем, что есть в самих финишах.",
+  },
+  "weakness.ours.tag.empirical.p2": {
+    en: "It doesn't reconstruct the hidden causes behind those places: limit changes, field-quality drift over time, late-reg decisions, style switches, ICM deviations, table draw and other hidden states. So it's a very useful mode, but not a full causal reconstruction of your grind.",
+    ru: "Он не восстанавливает скрытые причины этих мест: пересевки по лимитам, изменение качества поля по времени, решение late-reg, смену стиля игры, ICM-отклонения, table-draw и прочие скрытые состояния. То есть это очень полезный режим, но не полная causal-реконструкция вашего грина.",
+  },
+  "weakness.ours.tag.input.title": {
+    en: "The answer's quality still depends heavily on the input's quality",
+    ru: "Качество ответа по-прежнему сильно зависит от качества входа",
+  },
+  "weakness.ours.tag.input.p1": {
+    en: "The model can be more honest than PrimeDope precisely because it asks for more inputs: field, ROI, rake, payout structure, mix, uncertainty, tilt, promo regimes.",
+    ru: "Модель умеет быть честнее PrimeDope именно потому, что просит больше входных допущений: поле, ROI, рейк, структуру выплат, mix, uncertainty, tilt, promo-режимы.",
+  },
+  "weakness.ours.tag.input.p2": {
+    en: "But that has a flip side: if the user feeds in an optimistic ROI, a wrong field-size, or turns on pretty noise knobs unrelated to reality, the engine honestly computes an already-wrong problem. The limit isn't only in the code — it's in the information quality of the input itself.",
+    ru: "Но это значит и обратную сторону: если пользователь даёт оптимистичный ROI, неверный field-size или включает красивые шумовые ручки без связи с реальностью, движок честно посчитает уже неверную постановку задачи. Здесь предел не только в коде, а в информационном качестве самого ввода.",
+  },
+  "weakness.ours.tag.tails.title": {
+    en: "Tails read better than the average, but they don't become truth automatically",
+    ru: "Хвосты читаются лучше среднего, но всё равно не становятся истиной автоматически",
+  },
+  "weakness.ours.tag.tails.p1": {
+    en: "The biggest improvement here is that tails, drawdowns, recovery and ruin no longer pretend to be smooth. But as soon as the question is about the rarest events, the answer's quality still hangs on whether the finish-shape and uncertainty layers were chosen correctly.",
+    ru: "Наше главное улучшение — хвосты, просадки, recovery и ruin больше не притворяются гладкими. Но как только речь идёт о самых редких событиях, качество ответа по-прежнему зависит от того, насколько верно выбраны finish-shape и uncertainty-слои.",
+  },
+  "weakness.ours.tag.tails.p2": {
+    en: "In other words: the model has gotten much more honest about bad tails, but tails are still the most fragile numbers in the whole app and they should be read as a range of scenarios, not as a promise.",
+    ru: "Иначе говоря: модель стала гораздо честнее про bad tails, но tails всё ещё самые хрупкие числа во всём приложении и именно их надо читать как диапазон сценариев, а не как обещание.",
+  },
+  "weakness.ours.summary": {
+    en: "Short version: our model is now strong enough to honestly show where PrimeDope is too thin. But its own weak spots aren't \"one wrong formula\" — they're validation boundaries, parametric uncertainty layers, partially separated side-channels, and dependence on the quality of the input assumptions.",
+    ru: "Коротко: сейчас наша модель уже достаточно сильная, чтобы честно показывать, где PrimeDope слишком тонкий. Но её собственные слабые места — это не «одна неверная формула», а границы валидации, параметрические uncertainty-слои, частично отдельные side-channels и зависимость от качества входных допущений.",
+  },
+
+  "settingsDump.title": {
+    en: "Snapshot · settings",
+    ru: "Снимок · настройки",
+  },
+
+  "finishModel.power-law": { en: "Power-law", ru: "Степенной" },
+  "finishModel.linear-skill": { en: "Linear skill", ru: "Линейный скилл" },
+  "finishModel.stretched-exp": { en: "Stretched-exp", ru: "Растянутая экспонента" },
+  "finishModel.plackett-luce": { en: "Plackett-Luce", ru: "Плакетт–Льюс" },
+  "finishModel.uniform": { en: "Uniform", ru: "Равномерно" },
+  "finishModel.empirical": { en: "Empirical (CSV)", ru: "Эмпирический (CSV)" },
+  "finishModel.freeze-realdata-step": { en: "Freeze / real-data — step", ru: "Фриз / real-data — ступень" },
+  "finishModel.freeze-realdata-linear": { en: "Freeze / real-data — linear", ru: "Фриз / real-data — линейно" },
+  "finishModel.freeze-realdata-tilt": { en: "Freeze / real-data — tilt (α)", ru: "Фриз / real-data — наклон (α)" },
+  "finishModel.pko-realdata-step": { en: "PKO / real-data — step", ru: "PKO / real-data — ступень" },
+  "finishModel.pko-realdata-linear": { en: "PKO / real-data — linear", ru: "PKO / real-data — линейно" },
+  "finishModel.pko-realdata-tilt": { en: "PKO / real-data — tilt (α)", ru: "PKO / real-data — наклон (α)" },
+  "finishModel.mystery-realdata-step": { en: "Mystery / real-data — step", ru: "Mystery / real-data — ступень" },
+  "finishModel.mystery-realdata-linear": { en: "Mystery / real-data — linear", ru: "Mystery / real-data — линейно" },
+  "finishModel.mystery-realdata-tilt": { en: "Mystery / real-data — tilt (α)", ru: "Mystery / real-data — наклон (α)" },
+  "finishModel.powerlaw-realdata-influenced": { en: "Power-law — real-data α", ru: "Степенной — real-data α" },
 } as const satisfies Record<string, Entry>;
 
 export type DictKey = keyof typeof DICT;

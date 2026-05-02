@@ -381,22 +381,22 @@ export const ControlsPanel = memo(function ControlsPanel({
             }
             className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
           >
-            <option value="power-law">Power-law</option>
-            <option value="linear-skill">Linear skill</option>
-            <option value="stretched-exp">Stretched-exp</option>
-            <option value="plackett-luce">Plackett-Luce</option>
-            <option value="uniform">Uniform</option>
-            <option value="empirical">Empirical (CSV)</option>
-            <option value="freeze-realdata-step">Freeze / real-data — step</option>
-            <option value="freeze-realdata-linear">Freeze / real-data — linear</option>
-            <option value="freeze-realdata-tilt">Freeze / real-data — tilt (α)</option>
-            <option value="pko-realdata-step">PKO / real-data — step</option>
-            <option value="pko-realdata-linear">PKO / real-data — linear</option>
-            <option value="pko-realdata-tilt">PKO / real-data — tilt (α)</option>
-            <option value="mystery-realdata-step">Mystery / real-data — step</option>
-            <option value="mystery-realdata-linear">Mystery / real-data — linear</option>
-            <option value="mystery-realdata-tilt">Mystery / real-data — tilt (α)</option>
-            <option value="powerlaw-realdata-influenced">Power-law — real-data α</option>
+            <option value="power-law">{t("finishModel.power-law")}</option>
+            <option value="linear-skill">{t("finishModel.linear-skill")}</option>
+            <option value="stretched-exp">{t("finishModel.stretched-exp")}</option>
+            <option value="plackett-luce">{t("finishModel.plackett-luce")}</option>
+            <option value="uniform">{t("finishModel.uniform")}</option>
+            <option value="empirical">{t("finishModel.empirical")}</option>
+            <option value="freeze-realdata-step">{t("finishModel.freeze-realdata-step")}</option>
+            <option value="freeze-realdata-linear">{t("finishModel.freeze-realdata-linear")}</option>
+            <option value="freeze-realdata-tilt">{t("finishModel.freeze-realdata-tilt")}</option>
+            <option value="pko-realdata-step">{t("finishModel.pko-realdata-step")}</option>
+            <option value="pko-realdata-linear">{t("finishModel.pko-realdata-linear")}</option>
+            <option value="pko-realdata-tilt">{t("finishModel.pko-realdata-tilt")}</option>
+            <option value="mystery-realdata-step">{t("finishModel.mystery-realdata-step")}</option>
+            <option value="mystery-realdata-linear">{t("finishModel.mystery-realdata-linear")}</option>
+            <option value="mystery-realdata-tilt">{t("finishModel.mystery-realdata-tilt")}</option>
+            <option value="powerlaw-realdata-influenced">{t("finishModel.powerlaw-realdata-influenced")}</option>
           </select>
           {!finishModelSupportsTargetRoi(value.finishModelId) && (
             <div className="mt-1 text-[10px] uppercase tracking-wider text-amber-400/80">
