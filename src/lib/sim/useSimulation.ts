@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RawShard } from "./engine";
 import { BUILD_PROGRESS_CAP, shardProgressFracFor } from "./progressConstants";
 import { composeProgress } from "./progressAggregation";
+import { computeNextRate } from "@/lib/ui/rateUpdate";
 
 const EMPTY_BUILD_FRACS: ReadonlyMap<number, number> = new Map();
 import type {
@@ -744,8 +745,10 @@ export function useSimulation() {
         setElapsedMs(elapsed);
         setStatus("done");
         // Record a smoothed rate (ms per work unit) so the next run can
-        // show an ETA. Weight is on *this* run at 60 % so a single slow
-        // tab doesn't permanently bias the estimate.
+        // show an ETA. EMA blend at 0.6 of new observation; outlier
+        // observations (≥2.5× change vs cached) are dropped entirely so a
+        // single throttled tab can't poison the cache for the next clean
+        // run. See `src/lib/ui/rateUpdate.ts` for the math.
         const rowCountTotal = input.schedule.reduce(
           (a, r) => a + Math.max(1, Math.floor(r.count)),
           0,
@@ -755,12 +758,14 @@ export function useSimulation() {
           Math.max(1, input.scheduleRepeats),
           rowCountTotal,
         );
-        const rate = elapsed / work;
-        if (Number.isFinite(rate) && rate > 0) {
-          const prev = loadRate();
-          const next = prev == null ? rate : 0.4 * prev + 0.6 * rate;
-          saveRate(next);
-          setLastRateMs(next);
+        const update = computeNextRate({
+          elapsedMs: elapsed,
+          work,
+          prevRate: loadRate(),
+        });
+        if (update.nextRate != null) {
+          saveRate(update.nextRate);
+          setLastRateMs(update.nextRate);
         }
       } catch (err) {
         if (jobIdRef.current !== jobId) return;
