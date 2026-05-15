@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  battleRoyaleLeaderboardPromoPerTournament,
   OBSERVED_USERNAMES_MAX_COUNT,
   OBSERVED_USERNAME_MAX_LEN,
   buildBattleRoyaleLeaderboardPromoConfig,
@@ -268,5 +269,38 @@ describe("battleRoyaleLeaderboardUi", () => {
       totalTournaments: 76238,
       pointsByStake: controls.observedPointsByStake,
     });
+  });
+
+  it("exposes promo EV per BR tournament for preview and smoke checks", () => {
+    const controls = {
+      ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+      mode: "observed" as const,
+      observedTotalPrizes: 350,
+      observedTotalTournaments: 7000,
+      observedPointsByStake: {
+        "0.25": 0,
+        "1": 10_000,
+        "3": 0,
+        "10": 0,
+        "25": 0,
+      },
+    };
+    const brSchedule = [
+      {
+        id: "br",
+        payoutStructure: "battle-royale",
+        gameType: "mystery-royale",
+      },
+    ] as const;
+    const freezeSchedule = [
+      { id: "fr", payoutStructure: "mtt-standard", gameType: "freezeout" },
+    ] as const;
+
+    expect(
+      battleRoyaleLeaderboardPromoPerTournament(controls, brSchedule),
+    ).toBeCloseTo(0.05, 12);
+    expect(
+      battleRoyaleLeaderboardPromoPerTournament(controls, freezeSchedule),
+    ).toBe(0);
   });
 });

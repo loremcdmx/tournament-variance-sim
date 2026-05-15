@@ -328,3 +328,17 @@ export function buildBattleRoyaleLeaderboardPromoConfig(
     buildLookupConfig(cfg)
   );
 }
+
+export function battleRoyaleLeaderboardPromoPerTournament(
+  controls: BattleRoyaleLeaderboardControls | null | undefined,
+  schedule: readonly BattleRoyaleLeaderboardScheduleRow[],
+): number {
+  const config = buildBattleRoyaleLeaderboardPromoConfig(controls, schedule);
+  if (!config) return 0;
+  if (config.mode === "observed") {
+    return config.totalTournaments > 0
+      ? Math.max(0, config.totalPrizes) / config.totalTournaments
+      : 0;
+  }
+  return Math.max(0, config.payoutPerTournament);
+}

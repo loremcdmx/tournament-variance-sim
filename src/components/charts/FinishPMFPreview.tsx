@@ -44,6 +44,7 @@ interface Props {
   row: TournamentRow;
   model: FinishModelConfig;
   rakebackPct?: number;
+  leaderboardPromoPerEntry?: number;
   /** If provided, the fixed-ITM shape controls panel is shown below the
    *  tier breakdown and can edit row.itmRate / row.finishBuckets. */
   onRowChange?: (updates: Partial<TournamentRow>) => void;
@@ -57,6 +58,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   row,
   model,
   rakebackPct = 0,
+  leaderboardPromoPerEntry = 0,
   onRowChange,
   itmLocked,
 }: Props) {
@@ -100,9 +102,9 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     row.rake *
     row.buyIn *
     previewEconomics.expectedBullets;
-  const leaderboardPromoPerEntry = 0;
+  const safeLeaderboardPromoPerEntry = Math.max(0, leaderboardPromoPerEntry);
   const totalEvPerEntry =
-    stats.evPerEntry + directRakebackPerEntry + leaderboardPromoPerEntry;
+    stats.evPerEntry + directRakebackPerEntry + safeLeaderboardPromoPerEntry;
   const committedBountyShare = clampUnit(stats.bountyShare);
   const shareProbeBaseRow = useMemo<TournamentRow>(
     () => ({
@@ -273,7 +275,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
         </div>
         {(stats.bountyEvPerEntry > 0 ||
           directRakebackPerEntry > 1e-6 ||
-          leaderboardPromoPerEntry > 1e-6) &&
+          safeLeaderboardPromoPerEntry > 1e-6) &&
           (() => {
           const jp = stats.jackpotBountyEvPerEntry;
           const hasJp = jp > 0 && jp / stats.bountyEvPerEntry > 0.001;
@@ -294,7 +296,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
               : 0;
           const promoShare =
             totalEvPerEntry > 1e-9
-              ? leaderboardPromoPerEntry / totalEvPerEntry
+              ? safeLeaderboardPromoPerEntry / totalEvPerEntry
               : 0;
           const thresholdStr = String(stats.jackpotThreshold);
           const jpLabel = t("preview.evSplit.bountyJackpot").replace(
@@ -344,10 +346,10 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                     color="var(--color-club)"
                   />
                 )}
-                {leaderboardPromoPerEntry > 1e-6 && (
+                {safeLeaderboardPromoPerEntry > 1e-6 && (
                   <PreviewSplitStat
                     label={t("chart.brLeaderboard.meanPayout")}
-                    value={moneyFmt(leaderboardPromoPerEntry)}
+                    value={moneyFmt(safeLeaderboardPromoPerEntry)}
                     share={promoShare}
                     color="var(--color-rival)"
                   />
@@ -418,13 +420,13 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                     netDollars: directRakebackPerEntry,
                   }
                 : null,
-              leaderboardPromoPerEntry > 1e-6
+              safeLeaderboardPromoPerEntry > 1e-6
                 ? {
                     key: "__promo__",
                     label: t("chart.brLeaderboard.meanPayout"),
                     color: "var(--color-rival)",
-                    evShare: leaderboardPromoPerEntry / evTotal,
-                    netDollars: leaderboardPromoPerEntry,
+                    evShare: safeLeaderboardPromoPerEntry / evTotal,
+                    netDollars: safeLeaderboardPromoPerEntry,
                   }
                 : null,
             ].filter(Boolean) as Array<{
@@ -513,10 +515,10 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                 key="__footer__"
                 label={t("preview.evBreakdownTotal")}
                 netDollars={
-                  tierNetSum + directRakebackPerEntry + leaderboardPromoPerEntry
+                  tierNetSum + directRakebackPerEntry + safeLeaderboardPromoPerEntry
                 }
                 eqNetDollars={
-                  tierEqNetSum + directRakebackPerEntry + leaderboardPromoPerEntry
+                  tierEqNetSum + directRakebackPerEntry + safeLeaderboardPromoPerEntry
                 }
               />,
             );

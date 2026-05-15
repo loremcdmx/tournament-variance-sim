@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "br:leaderboard:data": "tsx scripts/update_br_leaderboard_manual_data.ts",
+    "smoke:br": "tsx scripts/smoke_br_leaderboard.ts",
     "smoke:cash": "node scripts/smoke_cash_release.mjs",
     "postinstall": "git config core.hooksPath .githooks || true",
     "bench:convergence": "tsx scripts/bench_convergence.ts"

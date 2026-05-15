@@ -45,6 +45,7 @@ These are the scripts that should back perf claims in commit messages and docs.
 Use these when validating user-visible behavior outside the main app flow:
 
 - `update_br_leaderboard_manual_data.ts`
+- `smoke_br_leaderboard.ts`
 - `smoke.ts`
 - `smoke_fixed_itm.ts`
 - `smoke_cash_release.mjs`
@@ -60,6 +61,11 @@ leaderboard snapshots used by Manual mode. It reads GGPoker's public
 `npm run br:leaderboard:data -- --days=5`; it throttles live requests by
 default and resumes from cache. Add `--strict` when you want the script to fail
 if any selected stake/date is missing.
+
+`smoke_br_leaderboard.ts` is the cheap arithmetic guard for the high-value BR
+leaderboard path: observed `$0.05` per tournament over `7000` BR tournaments
+must surface as a separate `$350` promo layer and as the per-tournament preview
+input. Run it with `npm run smoke:br`.
 
 `smoke_cash_release.mjs` is the canonical pre-release smoke for the advanced
 cash tab. It auto-detects a running local app when possible, otherwise tries
