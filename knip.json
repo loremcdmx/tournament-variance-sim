@@ -9,7 +9,6 @@
     "scripts/**/*.{ts,mjs,js}"
   ],
   "ignoreDependencies": [
-    "postcss",
     "tailwindcss"
   ],
   "ignoreExportsUsedInFile": true
