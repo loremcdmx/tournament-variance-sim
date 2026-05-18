@@ -18,9 +18,9 @@
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
     "lz-string": "^1.5.0",
-    "next": "16.2.3",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
     "uplot": "^1.6.32"
   },
   "devDependencies": {
@@ -30,7 +30,7 @@
     "@types/react-dom": "^19",
     "@vitest/ui": "^4.1.4",
     "eslint": "^9",
-    "eslint-config-next": "16.2.3",
+    "eslint-config-next": "16.2.6",
     "playwright": "^1.59.1",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
