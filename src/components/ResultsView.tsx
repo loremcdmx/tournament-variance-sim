@@ -131,7 +131,6 @@ const FINISH_MODEL_LABEL_KEY: Record<FinishModelId, DictKey> = {
 
 interface Props {
   result: SimulationResult;
-  compareResult?: SimulationResult | null;
   bankroll?: number;
   schedule?: TournamentRow[];
   scheduleRepeats?: number;
@@ -159,7 +158,6 @@ interface Props {
 
 function ResultsViewImpl({
   result,
-  compareResult,
   bankroll = 0,
   schedule,
   scheduleRepeats,
@@ -768,13 +766,11 @@ function ResultsViewImpl({
           settings={settings}
           result={result}
           displayResult={displayResultTraj}
-          compareResult={compareResult ?? null}
           bankroll={bankroll}
           overlayPd={overlayPd}
           setOverlayPd={setOverlayPd}
           pdChart={pdChart ?? null}
           displayPdChart={displayPdChartTraj ?? null}
-          showWithRakeback={rbTraj}
           pdPkoFallback={pdPkoFallback}
           compareMode={compareMode}
           schedule={schedule}
@@ -1862,13 +1858,11 @@ const TrajectoryCard = memo(function TrajectoryCard({
   settings,
   result,
   displayResult,
-  compareResult,
   bankroll,
   overlayPd,
   setOverlayPd,
   pdChart,
   displayPdChart,
-  showWithRakeback,
   pdPkoFallback,
   compareMode,
   schedule,
@@ -1897,13 +1891,11 @@ const TrajectoryCard = memo(function TrajectoryCard({
   settings?: ControlsState;
   result: SimulationResult;
   displayResult: SimulationResult;
-  compareResult: SimulationResult | null;
   bankroll: number;
   overlayPd: boolean;
   setOverlayPd: (v: boolean) => void;
   pdChart: SimulationResult | null;
   displayPdChart: SimulationResult | null;
-  showWithRakeback: boolean;
   pdPkoFallback: boolean;
   compareMode: "random" | "primedope" | undefined;
   schedule: TournamentRow[] | undefined;
@@ -1995,30 +1987,6 @@ const TrajectoryCard = memo(function TrajectoryCard({
   // uPlot reads this during paint, not React render — the ref indirection is
   // intentional so a unit-mode toggle doesn't rebuild the whole chart.
   const stableAxisFmt = useMemo(() => (v: number) => axisFmtRef.current(v), []);
-  // `displayResult` / `displayPdChart` / `showWithRakeback` are owned by the
-  // parent (ResultsView) so the toggle is shared with BigStats + profit
-  // histogram. Only `compareResult` (an internal twin-run input) needs its
-  // own shift pipeline here.
-  const rbFrac = Math.max(0, (settings?.rakebackPct ?? 0) / 100);
-  const compareRakebackCurve = useMemo(
-    () =>
-      compareResult && schedule && scheduleRepeats != null
-        ? computeExpectedRakebackCurve(
-            schedule,
-            scheduleRepeats,
-            rbFrac,
-            compareResult.samplePaths.x,
-          )
-        : null,
-    [compareResult, schedule, scheduleRepeats, rbFrac],
-  );
-  const displayCompareResult = useMemo(
-    () =>
-      compareResult && !showWithRakeback && compareRakebackCurve
-        ? shiftResultByRakeback(compareResult, compareRakebackCurve, -1)
-        : compareResult,
-    [compareResult, showWithRakeback, compareRakebackCurve],
-  );
   const maxPathCount = Math.min(1000, displayResult.samplePaths.paths.length);
   const primary = useMemo(
     () =>
@@ -2063,30 +2031,6 @@ const TrajectoryCard = memo(function TrajectoryCard({
         : null,
     [displayPdChart, effectiveYRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
   );
-  const compareMaxPathCount = displayCompareResult
-    ? Math.min(500, displayCompareResult.samplePaths.paths.length)
-    : 0;
-  const slotOverlay = useMemo(
-    () =>
-      displayCompareResult
-        ? buildTrajectoryAssets(
-            displayCompareResult,
-            "magenta",
-            undefined,
-            undefined,
-            // eslint-disable-next-line react-hooks/refs
-            stableAxisFmt,
-            pdPanePreset,
-            compareMaxPathCount,
-            refLines,
-            lineOverrides,
-            runMode,
-            extremeStyles,
-          )
-        : null,
-    [displayCompareResult, stableAxisFmt, pdPanePreset, compareMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
-  );
-
   const extremeRows: Array<{ key: ExtremeKey; labelKey: DictKey }> = [
     { key: "realBest", labelKey: "chart.traj.extreme.realBest" },
     { key: "realWorst", labelKey: "chart.traj.extreme.realWorst" },
@@ -2284,7 +2228,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
         </div>
         {/* On wide screens (lg+) the overlay-checkbox sits below the side-by-
             side panes; on narrower viewports the inline copy above (between the
-            two stacked panes) takes over instead. Same state, different slot. */}
+            two stacked panes) takes over instead. Same state, different placement. */}
         <div className="mt-3 hidden flex-wrap items-center gap-3 lg:flex">
           {overlayCheckbox}
         </div>
@@ -2316,15 +2260,6 @@ const TrajectoryCard = memo(function TrajectoryCard({
         </div>
       ) : null}
       <TrajectoryPlot assets={primary} height={440} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
-      {slotOverlay && (
-        <div className="mt-4">
-          <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-            <span className="inline-block h-1.5 w-3 rounded-sm bg-[#60a5fa]" />
-            {t("slot.saved")}
-          </div>
-          <TrajectoryPlot assets={slotOverlay} height={240} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
-        </div>
-      )}
     </Card>
   );
 });

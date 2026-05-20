@@ -706,21 +706,6 @@ export const DICT = {
     en: "Failed to read file",
     ru: "Не удалось прочитать файл",
   },
-
-  // Compare slot
-  "slot.title": { en: "Compare slot", ru: "Слот сравнения" },
-  "slot.saveCurrent": { en: "Save current", ru: "Сохранить" },
-  "slot.load": { en: "Load into editor", ru: "Загрузить" },
-  "slot.clear": { en: "Clear", ru: "Очистить" },
-  "slot.empty": {
-    en: "No saved slot. Save the current run to overlay it with new tweaks.",
-    ru: "Слот пуст. Сохрани текущий ран — новые изменения лягут сверху.",
-  },
-  "slot.saved": { en: "Saved", ru: "Сохранено" },
-  "slot.rows": { en: "rows", ru: "строк" },
-  "slot.mean": { en: "mean", ru: "среднее" },
-  "slot.comparing": { en: "Comparing with saved slot", ru: "Сравнение со слотом" },
-
   // Results — stat labels
   "stat.expectedProfit": { en: "Expected profit", ru: "Ожидаемый профит" },
   "stat.expectedProfit.sub": {

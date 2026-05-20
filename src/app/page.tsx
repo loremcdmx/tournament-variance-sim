@@ -65,7 +65,6 @@ const scenarioDerived = new Map(
 const APP_VERSION = "v0.7.4";
 import type {
   SimulationInput,
-  SimulationResult,
   TournamentRow,
 } from "@/lib/sim/types";
 import {
@@ -78,7 +77,6 @@ import {
   removeUserPreset,
   saveLocal,
   saveUserPresets,
-  type PersistedState,
   type UserPreset,
 } from "@/lib/persistence";
 
@@ -135,19 +133,12 @@ function isPureBattleRoyaleSchedule(schedule: TournamentRow[]): boolean {
   );
 }
 
-interface CompareSlot {
-  label: string;
-  state: PersistedState;
-  result: SimulationResult | null;
-}
-
 export default function Home() {
   const t = useT();
   const { locale } = useLocale();
   const { advanced } = useAdvancedMode();
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
-  const [compareSlot, setCompareSlot] = useState<CompareSlot | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
@@ -182,7 +173,6 @@ export default function Home() {
   const prevPureBattleRoyaleRef = useRef(pureBattleRoyaleSchedule);
   // Advanced mode off → force MTT view regardless of persisted state.
   const activeMode: "mtt" | "cash" = advanced ? mode : "mtt";
-  const activeCompareSlot = advanced ? compareSlot : null;
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
   const abi = useMemo(() => {
     const totalCount = schedule.reduce((a, r) => a + Math.max(0, r.count), 0);
@@ -694,24 +684,6 @@ export default function Home() {
     setActiveScenarioId(null);
   }, [itmTargetCfg, previewModel, queueInterruptBackground]);
 
-  const onSaveSlot = () => {
-    if (!result) return;
-    setCompareSlot({
-      label: t("slot.saved"),
-      state: { v: 1, schedule, controls },
-      result,
-    });
-  };
-
-  const onClearSlot = () => setCompareSlot(null);
-
-  const onLoadSlot = () => {
-    if (!compareSlot) return;
-    queueInterruptBackground();
-    setSchedule(compareSlot.state.schedule);
-    setControls({ ...initialControls, ...compareSlot.state.controls });
-  };
-
   const onSaveUserPreset = () => {
     const name = window.prompt(t("userPreset.promptName"));
     if (name == null) return;
@@ -838,15 +810,6 @@ export default function Home() {
           </div>
           <CornerToggles />
         </div>
-
-        {activeCompareSlot && (
-          <div className="flex justify-end">
-            <span className="inline-flex items-center gap-1.5 border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)]">
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--color-accent)]" />
-              {t("slot.comparing")}
-            </span>
-          </div>
-        )}
 
         {/* User-saved presets — collapsible so they don't push the schedule below the fold */}
         <details className="group border-t border-[color:var(--color-border)] pt-2">
@@ -1283,28 +1246,6 @@ export default function Home() {
 
       {result && (
         <>
-          {advanced && (
-            <Card className="flex flex-wrap items-center gap-3 p-3">
-              <div className="text-xs uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                {t("slot.title")}
-              </div>
-              <div className="flex-1 text-sm text-[color:var(--color-fg-muted)]">
-                {compareSlot
-                  ? `${t("slot.saved")} · ${compareSlot.state.schedule.length} ${t("slot.rows")} · ${compareSlot.state.controls.samples.toLocaleString()} ${t("app.samples")} · ${t("slot.mean")} ${compareSlot.result ? `$${compareSlot.result.stats.mean.toFixed(0)}` : "—"}`
-                  : t("slot.empty")}
-              </div>
-              <div className="flex gap-2">
-                <TextBtn onClick={onSaveSlot}>{t("slot.saveCurrent")}</TextBtn>
-                {compareSlot && (
-                  <>
-                    <TextBtn onClick={onLoadSlot}>{t("slot.load")}</TextBtn>
-                    <TextBtn onClick={onClearSlot}>{t("slot.clear")}</TextBtn>
-                  </>
-                )}
-              </div>
-            </Card>
-          )}
-
           <Section
             number="03"
             suit="club"
@@ -1316,7 +1257,6 @@ export default function Home() {
           >
             <ResultsView
               result={result}
-              compareResult={activeCompareSlot?.result ?? null}
               bankroll={deferredResultsControls.bankroll}
               schedule={deferredSchedule}
               scheduleRepeats={deferredScheduleRepeats}
@@ -1385,27 +1325,6 @@ export default function Home() {
         </details>
       </footer>
     </div>
-  );
-}
-
-function TextBtn({
-  children,
-  onClick,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
-    >
-      {children}
-    </button>
   );
 }
 
