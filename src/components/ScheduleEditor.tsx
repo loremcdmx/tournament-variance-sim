@@ -696,7 +696,7 @@ const ScheduleRow = memo(function ScheduleRow({
         className="absolute inset-y-0 left-0 w-[3px]"
         style={{ background: GAME_TYPE_TINT[uiGt] }}
       />
-      <div className="grid grid-cols-1 gap-3 py-3 pl-5 pr-3 lg:grid-cols-[minmax(11rem,1.25fr)_minmax(10rem,1fr)] 2xl:grid-cols-[minmax(11rem,1.5fr)_minmax(10rem,1.1fr)_minmax(11rem,1.1fr)_auto]">
+      <div className="grid grid-cols-1 gap-3 py-3 pl-5 pr-3 md:grid-cols-[minmax(10rem,1.35fr)_minmax(12rem,1.15fr)_minmax(10rem,1fr)_auto]">
         {/* IDENTITY — label + game type */}
         <div className="flex min-w-0 flex-col gap-1.5">
           <SectionLabel hint={t("help.row.label")}>{t("row.label")}</SectionLabel>
@@ -900,7 +900,7 @@ const ScheduleRow = memo(function ScheduleRow({
         </div>
 
         {/* ACTIONS */}
-        <div className="flex flex-col items-center gap-1 self-start pt-5">
+        <div className="flex justify-end gap-1 self-end md:flex-col md:items-center md:self-start md:pt-5">
           <button
             type="button"
             onClick={() => advanced && toggleExpand(r.id)}

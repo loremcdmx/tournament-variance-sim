@@ -1126,7 +1126,7 @@ export default function Home() {
 
       <section className="flex min-w-0 flex-col gap-3">
         <Card className="p-3">
-          <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(360px,0.9fr)]">
+          <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-3">
             <GlobalItmControl
               value={controls}
               onChange={handleControlsChange}
@@ -1144,95 +1144,72 @@ export default function Home() {
               disabled={running}
               abi={abi}
             />
-            <div className="grid min-w-0 grid-cols-2 gap-2">
-              <CompactMetric
-                label={t("controls.scheduleRepeats")}
-                value={tournamentsPerSession.toLocaleString(
-                  locale === "ru" ? "ru-RU" : "en-US",
-                )}
-              />
-              <CompactMetric
-                label={t("app.samples")}
-                value={controls.samples.toLocaleString(
-                  locale === "ru" ? "ru-RU" : "en-US",
-                )}
-              />
-            </div>
           </div>
         </Card>
 
         <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(360px,400px)]">
           <div className="flex min-w-0 flex-col gap-3">
-            <Card className="overflow-hidden">
-              <CompactPanelHeader
-                number="01"
-                title={t("section.schedule.title")}
-                accent="var(--color-spade)"
-                actions={scheduleToolbarExtras}
+            <CompactPanelHeader
+              number="01"
+              title={t("section.schedule.title")}
+              accent="var(--color-spade)"
+            />
+            <ScheduleEditor
+              schedule={schedule}
+              onChange={handleScheduleChange}
+              disabled={running}
+              globalItmPct={scheduleGlobalItmPct}
+              globalRakebackPct={controls.rakebackPct}
+              toolbarExtras={scheduleToolbarExtras}
+              feasibilityIssues={feasibility.issues}
+              onFixRowAuto={fixRowAuto}
+              onFixRowPreset={fixRowPreset}
+            />
+            {hasBattleRoyaleRows && (
+              <BattleRoyaleLeaderboardControl
+                value={controls}
+                onChange={handleControlsChange}
+                disabled={running}
+                advanced={advanced}
+                previewTournaments={brLeaderboardPreview.tournaments}
+                previewBuyIn={brLeaderboardPreview.totalBuyIn}
               />
-              <div className="min-w-0">
-                <ScheduleEditor
-                  schedule={schedule}
-                  onChange={handleScheduleChange}
-                  disabled={running}
-                  globalItmPct={scheduleGlobalItmPct}
-                  globalRakebackPct={controls.rakebackPct}
-                  toolbarExtras={null}
-                  feasibilityIssues={feasibility.issues}
-                  onFixRowAuto={fixRowAuto}
-                  onFixRowPreset={fixRowPreset}
-                />
-              </div>
-              {hasBattleRoyaleRows && (
-                <div className="border-t border-[color:var(--color-border)] p-3">
-                  <BattleRoyaleLeaderboardControl
-                    value={controls}
-                    onChange={handleControlsChange}
-                    disabled={running}
-                    advanced={advanced}
-                    previewTournaments={brLeaderboardPreview.tournaments}
-                    previewBuyIn={brLeaderboardPreview.totalBuyIn}
-                  />
-                </div>
-              )}
-            </Card>
+            )}
 
             <PayoutStructureCard schedule={deferredSchedule} />
           </div>
 
           <aside className="flex min-w-0 flex-col gap-3 xl:sticky xl:top-3 xl:self-start">
-            <Card className="overflow-hidden">
-              <CompactPanelHeader
-                number="02"
-                title={t("section.controls.title")}
-                accent="var(--color-diamond)"
-              />
-              <ControlsPanel
-                value={controls}
-                onChange={handleControlsChange}
-                onTournamentTargetChange={handleTournamentTargetChange}
-                onRun={onRun}
-                onCancel={cancel}
-                running={running}
-                progress={progress}
-                stage={stage}
-                estimatedMs={estimatedMs}
-                tournamentsPerSchedule={tournamentsPerSchedule}
-                tournamentsPerSession={tournamentsPerSession}
-                activeSeed={activeSeed}
-                doneSummary={doneSummary}
-                runBlockedReason={
-                  feasibility.ok ? null : t("shape.blockedTitle")
-                }
-                runBlockedScrollTarget={
-                  feasibility.ok
-                    ? null
-                    : feasibility.issues.length === 1
-                      ? `schedule-row-${feasibility.issues[0].rowId}`
-                      : "feasibility-banner"
-                }
-              />
-            </Card>
+            <CompactPanelHeader
+              number="02"
+              title={t("section.controls.title")}
+              accent="var(--color-diamond)"
+            />
+            <ControlsPanel
+              value={controls}
+              onChange={handleControlsChange}
+              onTournamentTargetChange={handleTournamentTargetChange}
+              onRun={onRun}
+              onCancel={cancel}
+              running={running}
+              progress={progress}
+              stage={stage}
+              estimatedMs={estimatedMs}
+              tournamentsPerSchedule={tournamentsPerSchedule}
+              tournamentsPerSession={tournamentsPerSession}
+              activeSeed={activeSeed}
+              doneSummary={doneSummary}
+              runBlockedReason={
+                feasibility.ok ? null : t("shape.blockedTitle")
+              }
+              runBlockedScrollTarget={
+                feasibility.ok
+                  ? null
+                  : feasibility.issues.length === 1
+                    ? `schedule-row-${feasibility.issues[0].rowId}`
+                    : "feasibility-banner"
+              }
+            />
 
             {sanityFindings.length > 0 && (
               <Card className="border-amber-400/40 bg-amber-400/5 p-3">
@@ -1471,7 +1448,7 @@ function CompactPanelHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/35 px-3 py-2.5">
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/35 px-3 py-2.5">
       <div className="flex min-w-0 items-center gap-3">
         <span className="font-mono text-[26px] font-black leading-none tabular-nums text-[color:var(--color-fg)]">
           {number}
@@ -1487,25 +1464,6 @@ function CompactPanelHeader({
         </div>
       </div>
       {actions && <div className="min-w-0">{actions}</div>}
-    </div>
-  );
-}
-
-function CompactMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col justify-center rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
-      <span className="truncate text-center text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
-        {label}
-      </span>
-      <span className="mt-1 truncate text-center font-mono text-[13px] font-semibold tabular-nums text-[color:var(--color-fg)]">
-        {value}
-      </span>
     </div>
   );
 }
