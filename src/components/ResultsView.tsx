@@ -88,7 +88,6 @@ import {
 import type { ControlsState } from "./ControlsPanel";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
-import { DecompositionChart } from "./charts/DecompositionChart";
 import {
   BigStat,
   MiniStat,
@@ -1375,20 +1374,6 @@ function ResultsViewImpl({
         )}
       </div>
 
-
-      {advanced && (
-        <CollapsibleSection id="decomp" title={t("chart.decomp")} showUnitToggle={false}>
-          <Card className="p-5">
-            <ChartHeader
-              title={t("chart.decomp")}
-              subtitle={t("chart.decomp.sub")}
-              showUnitToggle={false}
-            />
-            <DecompositionChart rows={result.decomposition} />
-            <ChartHelp text={t("chart.decomp.help")} />
-          </Card>
-        </CollapsibleSection>
-      )}
 
       {hasPrimeDopeCompare && (
         <CollapsibleSection
@@ -2995,14 +2980,6 @@ function UnitToggle({
     <div className="inline-flex shrink-0 items-stretch overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 shadow-sm">
       {btn("money", t("unit.money"))}
       {btn("abi", t("unit.abi"))}
-    </div>
-  );
-}
-
-function ChartHelp({ text }: { text: string }) {
-  return (
-    <div className="mt-3 rounded border border-[color:var(--color-border)]/50 bg-[color:var(--color-bg-elev-2)]/30 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
-      {text}
     </div>
   );
 }

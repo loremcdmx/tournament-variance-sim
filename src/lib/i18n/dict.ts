@@ -1471,20 +1471,6 @@ export const DICT = {
     en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, Mystery, and Battle Royale use runtime format-specific estimates; PKO uses a validated fitted model, and Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where they are validated; outside that safe zone the table falls back to a point estimate.",
     ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, Мистери и Battle Royale считают это через runtime-модель своего формата; ПКО использует проверенную аппроксимацию, а Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где он провалидирован; вне безопасной зоны таблица оставляет только точечную оценку.",
   },
-  "chart.decomp": { en: "Per-row EV decomposition", ru: "Декомпозиция EV по строкам" },
-  "chart.decomp.sub": {
-    en: "How much each row contributes to expected profit and to total variance",
-    ru: "Вклад каждой строки в ожидаемую прибыль и общую дисперсию",
-  },
-  "chart.decomp.bountyLabel": { en: "bty", ru: "ноки" },
-  "chart.decomp.bountyTip": {
-    en: "Mean bounty winnings per sample — the knockout portion of this row's profit",
-    ru: "Средние баунти за прогон — вклад ноков в профит этой строки",
-  },
-  "chart.decomp.cashTip": {
-    en: "Cash portion of this row's mean profit (prize payouts − rake − buy-in + rakeback)",
-    ru: "Кэш-часть среднего профита строки (призовые − рейк − бай-ин + рейкбек)",
-  },
   "chart.sensitivity": { en: "ROI sensitivity", ru: "Чувствительность к ROI" },
   "chart.sensitivity.sub": {
     en: "Expected profit if true ROI differs from configured value",
@@ -1792,11 +1778,6 @@ export const DICT = {
     en: "X = how wrong your ROI input is in percentage points (e.g. −2pp means real ROI is 2pp lower than configured). Y = expected profit at that real ROI. Use this to ask: 'if my edge is actually 1–2pp worse than I think, am I still profitable?' Slope shows how much each pp of ROI is worth in $. A steep curve means your bottom line is very sensitive to whether your ROI estimate is right.",
     ru: "X — насколько ваш ROI ошибочен (в процентных пунктах: −2пп = реальный ROI на 2пп ниже заданного). Y — ожидаемая прибыль при таком реальном ROI. Смысл: 'если мой эдж реально на 1–2пп хуже, чем я думаю, я ещё в плюсе?'. Наклон показывает, сколько $ стоит каждый пп ROI. Крутая кривая — итог сильно зависит от точности оценки ROI.",
   },
-  "chart.decomp.help": {
-    en: "Each row of your schedule contributes some chunk of the total expected profit AND some chunk of the total variance. The bars compare these two contributions side-by-side. Rows where variance share >> EV share are the ones swinging your bankroll without proportionally rewarding you — they're high-variance, low-edge slots. Rows where EV share >> variance share are your stable money-makers.",
-    ru: "Каждая строка расписания вносит вклад и в общую ожидаемую прибыль, И в общую дисперсию. Столбики сравнивают эти два вклада бок-о-бок. Строки, где доля дисперсии >> доли EV — это турниры, которые шатают банкролл без пропорционального вознаграждения (высокая дисперсия, низкий эдж). Строки, где доля EV >> доли дисперсии — ваши стабильные кормильцы.",
-  },
-
   // PrimeDope diff
   "pd.title": {
     en: "Us vs PrimeDope",
