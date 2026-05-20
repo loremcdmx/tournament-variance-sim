@@ -317,12 +317,12 @@ export const DICT = {
   },
   "shape.fixAll": { en: "Clear locks on all", ru: "Снять фиксации со всех" },
   "sanity.title": {
-    en: "Input sanity checks",
-    ru: "Внутренняя проверка входов",
+    en: "Check settings",
+    ru: "Проверь настройки",
   },
   "sanity.subtitle": {
-    en: "Soft warnings for inputs that contradict themselves — the engine still runs, but the result probably isn't what you meant.",
-    ru: "Мягкие предупреждения о входах, которые сами себе противоречат — движок всё равно посчитает, но результат, скорее всего, не то, что вы имели в виду.",
+    en: "The simulation can run, but these settings disable or distort some secondary metrics.",
+    ru: "Симуляция запустится, но из-за этих настроек часть дополнительных метрик будет отключена или бесполезна.",
   },
   "sanity.tilt-fast-no-scale": {
     en: "Fast tilt has gain set but scale = 0 — tanh saturates instantly, so any non-zero drawdown jumps straight to the full ROI shift instead of ramping up.",
@@ -333,8 +333,8 @@ export const DICT = {
     ru: "У медленного тильта задан gain, но threshold ≤ 0 — состояние «вниз/вверх» срабатывает при любой ненулевой просадке, а не на заданной глубине.",
   },
   "sanity.zero-bankroll": {
-    en: "Bankroll is 0 — risk-of-ruin and bankroll-conditional drawdown stats won't be meaningful (RoR collapses to 1 by definition).",
-    ru: "Банкролл = 0 — risk-of-ruin и связанные с банкроллом просадки не имеют смысла (RoR по определению равен 1).",
+    en: "Bankroll is not set. Profit, ROI and variance still calculate normally, but bankroll risk metrics are skipped. Enter bankroll above if you want risk-of-ruin and required-bankroll estimates.",
+    ru: "Банкролл не задан. Профит, ROI и дисперсия считаются нормально, но риск банкролла сейчас не считается. Введи банкролл сверху, если хочешь видеть риск разорения и сколько БР нужно.",
   },
   "sanity.empirical-too-few-buckets": {
     en: "Empirical model is active but the histogram has fewer than 50 buckets — resampling will be too coarse to be informative.",
