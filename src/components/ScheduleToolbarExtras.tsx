@@ -67,19 +67,19 @@ export function ScheduleToolbarExtras({
   const activeTint = active ? tintFor(active.id) : "var(--c-fg-dim)";
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
       <span className="eyebrow whitespace-nowrap text-[color:var(--color-fg-dim)]">
         {t("demo.label")}
       </span>
 
-      <div ref={wrapRef} className="relative">
+      <div ref={wrapRef} className="relative min-w-0">
         <button
           type="button"
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
           aria-haspopup="listbox"
           aria-expanded={open}
-          className="inline-flex h-8 w-[220px] items-center gap-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 text-left text-xs text-[color:var(--color-fg)] transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] focus:outline-none disabled:opacity-40"
+          className="inline-flex h-8 max-w-full items-center gap-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 text-left text-xs text-[color:var(--color-fg)] transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] focus:outline-none disabled:opacity-40 sm:w-[220px]"
         >
           <span
             aria-hidden
@@ -116,7 +116,7 @@ export function ScheduleToolbarExtras({
         {open && (
           <div
             role="listbox"
-            className="absolute right-0 top-full z-20 mt-1 w-[320px] overflow-hidden rounded-lg border shadow-[0_18px_42px_-20px_rgba(0,0,0,0.7)]"
+            className="absolute right-0 top-full z-20 mt-1 w-[min(320px,calc(100vw-2rem))] overflow-hidden rounded-lg border shadow-[0_18px_42px_-20px_rgba(0,0,0,0.7)]"
             style={{
               borderColor: "var(--c-border)",
               background:
@@ -214,7 +214,7 @@ export function ScheduleToolbarExtras({
         }}
         title={t("schedule.resetHint")}
         aria-label={t("schedule.reset")}
-        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 text-xs text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-heart)]/55 hover:bg-[color:var(--color-heart)]/10 hover:text-[color:var(--color-heart)] disabled:opacity-40"
+        className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 text-xs text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-heart)]/55 hover:bg-[color:var(--color-heart)]/10 hover:text-[color:var(--color-heart)] disabled:opacity-40"
       >
         <svg
           width="12"

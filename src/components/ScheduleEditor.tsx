@@ -696,13 +696,7 @@ const ScheduleRow = memo(function ScheduleRow({
         className="absolute inset-y-0 left-0 w-[3px]"
         style={{ background: GAME_TYPE_TINT[uiGt] }}
       />
-      <div
-        className="grid gap-4 py-3 pl-5 pr-3"
-        style={{
-          gridTemplateColumns:
-            "minmax(11rem,1.5fr) minmax(10rem,1.1fr) minmax(11rem,1.1fr) auto",
-        }}
-      >
+      <div className="grid grid-cols-1 gap-3 py-3 pl-5 pr-3 lg:grid-cols-[minmax(11rem,1.25fr)_minmax(10rem,1fr)] 2xl:grid-cols-[minmax(11rem,1.5fr)_minmax(10rem,1.1fr)_minmax(11rem,1.1fr)_auto]">
         {/* IDENTITY — label + game type */}
         <div className="flex min-w-0 flex-col gap-1.5">
           <SectionLabel hint={t("help.row.label")}>{t("row.label")}</SectionLabel>

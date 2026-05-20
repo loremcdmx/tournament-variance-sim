@@ -142,9 +142,9 @@ export function EvBreakdownRow({
   }, []);
 
   return (
-      <div className="relative">
+    <div className="relative">
       <div
-        className={`relative grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center py-1.5 text-[10px] sm:text-[11px] hover:bg-[color:var(--color-bg-elev)]/30 ${
+        className={`relative grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center py-1.5 text-[9px] sm:text-[11px] hover:bg-[color:var(--color-bg-elev)]/30 ${
           breakdown ? "cursor-default sm:cursor-help" : ""
         }`}
         onMouseEnter={() => {
@@ -416,7 +416,7 @@ export function EvBreakdownFooter({
         : "text-[color:var(--color-fg-dim)]";
   return (
     <div
-      className={`mt-0.5 grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center border-t border-[color:var(--color-border)] pt-1.5 text-[10px] font-semibold sm:text-[11px]`}
+      className={`mt-0.5 grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center border-t border-[color:var(--color-border)] pt-1.5 text-[9px] font-semibold sm:text-[11px]`}
     >
       <span />
       <span className="col-span-4 text-[9px] uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)] sm:text-[10px]">
@@ -485,7 +485,7 @@ export const PREVIEW_SLIDER_VALUE_INPUT =
 export const PREVIEW_SLIDER_VALUE_SUFFIX =
   "ml-1 font-mono font-semibold leading-none text-[color:var(--color-fg-dim)]";
 export const EV_BREAKDOWN_GRID =
-  "grid-cols-[8px_minmax(4.5rem,0.95fr)_minmax(28px,1fr)_3.25rem_4.2rem_4.2rem_5rem] sm:grid-cols-[10px_minmax(5.75rem,1fr)_minmax(48px,1fr)_3.4rem_4.5rem_4.5rem_5.2rem]";
+  "grid-cols-[8px_minmax(3rem,0.75fr)_minmax(16px,1fr)_2.4rem_2.75rem_2.75rem_3.75rem] sm:grid-cols-[8px_minmax(4.25rem,0.9fr)_minmax(24px,1fr)_2.75rem_3.25rem_3.25rem_4rem] 2xl:grid-cols-[10px_minmax(5.75rem,1fr)_minmax(48px,1fr)_3.4rem_4.5rem_4.5rem_5.2rem]";
 export const EV_BREAKDOWN_GAP = "gap-x-1 sm:gap-x-1.5";
 export const EV_BREAKDOWN_NUM =
   "min-w-0 whitespace-nowrap text-right font-mono tabular-nums";
