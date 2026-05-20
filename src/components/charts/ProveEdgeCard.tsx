@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Companion to the convergence widget. Answers a different statistical
- * question — "how many tournaments to distinguish my true ROI from
- * zero?" — using the same per-format σ fits and the same schedule-aware
- * `buildExactBreakdown` machinery for schedule mode.
+ * Companion to the convergence widget. Answers a planning question:
+ * "how many tournaments are needed before a non-zero ROI is likely
+ * distinguishable from normal variance?" It uses the same per-format σ
+ * fits and the same schedule-aware `buildExactBreakdown` machinery for
+ * schedule mode.
  *
  * Self-contained: own format / mode controls. Reads the user's schedule
  * via prop only when the Schedule tab is active. Does not modify
@@ -168,7 +169,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
         ))}
       </div>
 
-      {/* Compact controls strip — hidden in schedule mode where σ comes
+      {/* Compact controls strip — hidden in schedule mode where variance comes
           from the breakdown of the actual schedule. */}
       {!isExact && (
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
@@ -176,8 +177,8 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
             className={`flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)] ${isMbr ? "opacity-60" : ""}`}
             title={isMbr ? t("proveEdge.afs.lockedBR") : undefined}
           >
-            <span className="w-10 shrink-0 uppercase tracking-wider text-emerald-400/80">
-              AFS
+            <span className="w-24 shrink-0 uppercase tracking-wider text-emerald-400/80">
+              {t("proveEdge.label.fieldSize")}
             </span>
             <input
               type="range"
@@ -188,7 +189,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
               onChange={(e) => setAfsPos(Number(e.target.value))}
               disabled={isMbr}
               className="flex-1"
-              aria-label="AFS"
+              aria-label={t("proveEdge.label.fieldSize")}
             />
             <input
               type="number"
@@ -206,12 +207,12 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
               }}
               disabled={isMbr}
               className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed"
-              aria-label="AFS value"
+              aria-label={t("proveEdge.label.fieldSize")}
             />
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-10 shrink-0 uppercase tracking-wider text-orange-400/80">
+            <span className="w-24 shrink-0 uppercase tracking-wider text-orange-400/80">
               {t("proveEdge.label.rake")}
             </span>
             <input
@@ -240,8 +241,8 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-10 shrink-0 uppercase tracking-wider text-sky-400/80">
-              CI
+            <span className="w-24 shrink-0 uppercase tracking-wider text-sky-400/80">
+              {t("proveEdge.label.confidence")}
             </span>
             <input
               type="range"
@@ -251,7 +252,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
               value={ciPct}
               onChange={(e) => setCiPct(Number(e.target.value))}
               className="flex-1"
-              aria-label="Confidence percent"
+              aria-label={t("proveEdge.label.confidence")}
             />
             <input
               type="number"
@@ -264,12 +265,12 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
                 if (Number.isFinite(n)) setCiPct(Math.max(50, Math.min(99.99, n)));
               }}
               className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
-              aria-label="CI value"
+              aria-label={t("proveEdge.label.confidence")}
             />
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-10 shrink-0 uppercase tracking-wider text-[color:var(--color-accent)]/85">
+            <span className="w-24 shrink-0 uppercase tracking-wider text-[color:var(--color-accent)]/85">
               {t("proveEdge.label.yourRoi")}
             </span>
             <input
@@ -301,12 +302,12 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
         </div>
       )}
 
-      {/* Schedule mode — show CI + (read-only) effective AFS/ROI hints */}
+      {/* Schedule mode — show confidence + read-only effective schedule hints. */}
       {isExact && (
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-10 shrink-0 uppercase tracking-wider text-sky-400/80">
-              CI
+            <span className="w-24 shrink-0 uppercase tracking-wider text-sky-400/80">
+              {t("proveEdge.label.confidence")}
             </span>
             <input
               type="range"
@@ -316,7 +317,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
               value={ciPct}
               onChange={(e) => setCiPct(Number(e.target.value))}
               className="flex-1"
-              aria-label="Confidence percent"
+              aria-label={t("proveEdge.label.confidence")}
             />
             <input
               type="number"
@@ -329,7 +330,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
                 if (Number.isFinite(n)) setCiPct(Math.max(50, Math.min(99.99, n)));
               }}
               className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
-              aria-label="CI value"
+              aria-label={t("proveEdge.label.confidence")}
             />
           </div>
           {!scheduleEmpty && (
@@ -338,8 +339,10 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
                 {t("proveEdge.schedule.effective")}
               </span>
               <span className="font-mono text-[color:var(--color-fg)]">
-                AFS {fmtAfs(result.effectiveAfs, numberLocale)} · ROI{" "}
-                {fmtRoi(result.anchor.roi)} · σ {result.anchor.sigma.toFixed(2)}
+                {t("proveEdge.schedule.field")}{" "}
+                {fmtAfs(result.effectiveAfs, numberLocale)} ·{" "}
+                {t("proveEdge.schedule.roi")} {fmtRoi(result.anchor.roi)} ·{" "}
+                {t("proveEdge.schedule.noise")} {result.anchor.sigma.toFixed(2)}
               </span>
             </div>
           )}

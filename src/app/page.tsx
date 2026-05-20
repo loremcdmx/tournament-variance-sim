@@ -1235,14 +1235,12 @@ export default function Home() {
         </Card>
       )}
 
-      {!result && (
-        <Card className="p-5">
-          <ProveEdgeCard
-            schedule={deferredSchedule}
-            finishModel={deferredPreviewModel}
-          />
-        </Card>
-      )}
+      <Card className="p-5">
+        <ProveEdgeCard
+          schedule={deferredSchedule}
+          finishModel={deferredPreviewModel}
+        />
+      </Card>
 
       {result && (
         <>
