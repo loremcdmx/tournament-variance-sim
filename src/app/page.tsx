@@ -1402,7 +1402,7 @@ function CompactPanelHeader({
                   {mark}
                 </span>
               )}
-              <h2 className="min-w-0 text-[21px] font-black uppercase leading-none tracking-[0.105em] text-[color:var(--color-fg)] sm:text-[28px]">
+              <h2 className="min-w-0 bg-transparent text-[21px] font-black uppercase leading-none tracking-[0.105em] text-[color:var(--color-fg)] [background:none] [box-shadow:none] sm:text-[28px]">
                 {title}
               </h2>
             </div>
