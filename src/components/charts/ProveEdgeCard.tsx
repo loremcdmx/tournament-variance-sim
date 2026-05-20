@@ -47,6 +47,21 @@ const FORMATS: { id: ProveEdgeFormat; labelKey: DictKey }[] = [
   { id: "exact", labelKey: "chart.convergence.format.exact" },
 ];
 
+const READING_GUIDE: { titleKey: DictKey; bodyKey: DictKey }[] = [
+  {
+    titleKey: "proveEdge.guide.settings.title",
+    bodyKey: "proveEdge.guide.settings.body",
+  },
+  {
+    titleKey: "proveEdge.guide.current.title",
+    bodyKey: "proveEdge.guide.current.body",
+  },
+  {
+    titleKey: "proveEdge.guide.answer.title",
+    bodyKey: "proveEdge.guide.answer.body",
+  },
+];
+
 const MBR_FIXED_AFS = 18;
 
 function fmtTourneys(n: number, locale: Intl.LocalesArgument): string {
@@ -151,8 +166,27 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
         {t("proveEdge.intro")}
       </div>
 
+      <div className="grid gap-2 md:grid-cols-3">
+        {READING_GUIDE.map((item) => (
+          <div
+            key={item.titleKey}
+            className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/35 px-3 py-2"
+          >
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-accent)]">
+              {t(item.titleKey)}
+            </div>
+            <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-muted)]">
+              {t(item.bodyKey)}
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Format tabs */}
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--color-fg-dim)]">
+          {t("proveEdge.format.label")}
+        </span>
         {FORMATS.map((f) => (
           <button
             key={f.id}
@@ -177,7 +211,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
             className={`flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)] ${isMbr ? "opacity-60" : ""}`}
             title={isMbr ? t("proveEdge.afs.lockedBR") : undefined}
           >
-            <span className="w-24 shrink-0 uppercase tracking-wider text-emerald-400/80">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-emerald-400/80">
               {t("proveEdge.label.fieldSize")}
             </span>
             <input
@@ -212,7 +246,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-24 shrink-0 uppercase tracking-wider text-orange-400/80">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-orange-400/80">
               {t("proveEdge.label.rake")}
             </span>
             <input
@@ -223,7 +257,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
               value={rakePct}
               onChange={(e) => setRakePct(Number(e.target.value))}
               className="flex-1"
-              aria-label="Rake percent"
+              aria-label={t("proveEdge.label.rake")}
             />
             <input
               type="number"
@@ -236,12 +270,12 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
                 if (Number.isFinite(n)) setRakePct(Math.max(0, Math.min(50, n)));
               }}
               className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-orange-400 focus:outline-none"
-              aria-label="Rake percent value"
+              aria-label={t("proveEdge.label.rake")}
             />
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-24 shrink-0 uppercase tracking-wider text-sky-400/80">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
               {t("proveEdge.label.confidence")}
             </span>
             <input
@@ -270,7 +304,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-24 shrink-0 uppercase tracking-wider text-[color:var(--color-accent)]/85">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--color-accent)]/85">
               {t("proveEdge.label.yourRoi")}
             </span>
             <input
@@ -281,7 +315,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
               value={currentRoiPct}
               onChange={(e) => setCurrentRoiPct(Number(e.target.value))}
               className="flex-1"
-              aria-label="Your ROI percent"
+              aria-label={t("proveEdge.label.yourRoi")}
             />
             <input
               type="number"
@@ -296,7 +330,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
                 }
               }}
               className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
-              aria-label="Your ROI percent value"
+              aria-label={t("proveEdge.label.yourRoi")}
             />
           </div>
         </div>
@@ -306,7 +340,7 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
       {isExact && (
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-24 shrink-0 uppercase tracking-wider text-sky-400/80">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
               {t("proveEdge.label.confidence")}
             </span>
             <input
@@ -409,9 +443,6 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
                   {t("proveEdge.col.roi")}
                 </th>
                 <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right">
-                  {t("proveEdge.col.sigma")}
-                </th>
-                <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right">
                   {t("proveEdge.col.tourneys")}
                 </th>
                 <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right">
@@ -453,11 +484,6 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
                         <span className="mr-1 text-[color:var(--color-accent)]">▸</span>
                       )}
                       {fmtRoi(r.roi)}
-                    </td>
-                    <td
-                      className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 text-right font-mono ${cellTone}`}
-                    >
-                      {r.sigma.toFixed(2)}
                     </td>
                     <td
                       className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 text-right font-mono ${cellTone}`}
