@@ -204,15 +204,6 @@ body {
   color: color-mix(in oklab, var(--c-fg-dim), var(--c-fg-muted) 28%);
 }
 
-/* Masthead rule — the double horizontal rule that sits under section heads.
-   Thick line over hairline. Uses currentColor so suit tinting works. */
-.masthead-rule {
-  border-top: 2px solid currentColor;
-  border-bottom: 1px solid currentColor;
-  height: 4px;
-  opacity: 0.82;
-}
-
 input,
 select,
 textarea {

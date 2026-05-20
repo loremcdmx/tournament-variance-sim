@@ -1,3 +1,5 @@
+import type { CSSProperties, ReactNode } from "react";
+
 type Suit = "spade" | "heart" | "diamond" | "club";
 
 const SUIT_META: Record<
@@ -13,8 +15,8 @@ const SUIT_META: Record<
 interface Props {
   title: string;
   subtitle?: string;
-  children: React.ReactNode;
-  actions?: React.ReactNode;
+  children: ReactNode;
+  actions?: ReactNode;
   /** Editorial section number — rendered as big mono numeral in the gutter. */
   number?: string;
   /** Suit accent — drives the color of the number, eyebrow, and underline. */
@@ -33,49 +35,85 @@ export function Section({
   anchorId,
 }: Props) {
   const meta = SUIT_META[suit];
+  const headerStyle = {
+    "--section-accent": meta.colorVar,
+    background:
+      "linear-gradient(135deg, color-mix(in oklab, var(--c-bg-elev-2) 86%, transparent), color-mix(in oklab, var(--c-bg) 72%, transparent))",
+  } as CSSProperties;
+
   return (
     <section id={anchorId} className="flex flex-col gap-4 scroll-mt-24">
-      {/* Editorial masthead: oversized display numeral on the left, suit +
-          mixed-case title with descriptive subtitle, optional right-side
-          actions. Heavy double-rule divider beneath keeps the newsroom feel.
-          Items align on the bottom baseline so the numeral sits flush with
-          the subtitle's last line — vertical centering would let the title
-          float above the description. */}
-      <header className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex items-end gap-5 min-w-0">
-            {number && (
+      <header
+        className="relative isolate flex min-w-0 flex-wrap items-stretch justify-between overflow-hidden rounded-xl border border-[color:var(--color-border)] shadow-[inset_0_1px_0_rgba(255,255,255,0.055),0_12px_34px_rgba(0,0,0,0.16)]"
+        style={headerStyle}
+      >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--section-accent),color-mix(in_srgb,var(--section-accent)_18%,transparent),transparent)] opacity-80"
+        />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-[color:var(--section-accent)] opacity-90"
+        />
+
+        <div className="flex min-w-0 flex-1 items-stretch">
+          {number && (
+            <div className="relative flex w-[6.5rem] shrink-0 items-center justify-center pl-3 pr-4 sm:w-[8rem] sm:pl-4 sm:pr-5">
               <span
-                className="section-num text-[56px] sm:text-[80px]"
+                className="section-num text-[48px] tabular-nums sm:text-[58px]"
                 aria-hidden
               >
                 {number}
               </span>
-            )}
-            <div className="flex flex-col gap-1 pb-1.5 min-w-0">
-              <h2 className="flex items-center gap-2.5 text-[22px] leading-[1.05] tracking-[-0.015em] text-[color:var(--color-fg)] sm:text-[28px]">
+              <span
+                aria-hidden
+                className="absolute right-0 top-1/2 h-14 w-px -translate-y-1/2 bg-[linear-gradient(180deg,transparent,color-mix(in_srgb,var(--section-accent)_54%,var(--color-border-strong)),transparent)]"
+              />
+            </div>
+          )}
+
+          <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-4 sm:gap-4 sm:px-5">
+            <div className="relative hidden h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[color:var(--color-border-strong)]/80 bg-[color:var(--color-bg)]/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_0_1px_color-mix(in_srgb,var(--section-accent)_9%,transparent)] sm:flex">
+              <span
+                aria-hidden
+                className="text-[23px] font-black leading-none text-[color:var(--section-accent)] drop-shadow-[0_0_14px_color-mix(in_srgb,var(--section-accent)_28%,transparent)]"
+              >
+                {meta.glyph}
+              </span>
+              <span
+                aria-hidden
+                className="absolute -bottom-1 left-1/2 h-[3px] w-7 -translate-x-1/2 rounded-full bg-[color:var(--section-accent)]"
+              />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2.5">
                 <span
-                  className="text-[20px] leading-none sm:text-[24px]"
-                  style={{ color: meta.colorVar }}
                   aria-hidden
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[color:var(--color-border-strong)]/75 bg-[color:var(--color-bg)]/55 text-[15px] font-black leading-none text-[color:var(--section-accent)] sm:hidden"
                 >
                   {meta.glyph}
                 </span>
-                <span className="font-display font-bold">{title}</span>
-              </h2>
+                <h2 className="min-w-0 text-[21px] font-black uppercase leading-none tracking-[0.105em] text-[color:var(--color-fg)] sm:text-[28px]">
+                  {title}
+                </h2>
+              </div>
               {subtitle && (
-                <p className="mt-0.5 max-w-xl text-[13px] leading-relaxed text-[color:var(--color-fg-muted)]">
+                <p className="mt-2 max-w-[72rem] text-[13px] leading-relaxed text-[color:var(--color-fg-muted)] sm:text-sm">
                   {subtitle}
                 </p>
               )}
+              <div className="mt-3 flex max-w-[24rem] items-center gap-3">
+                <span className="h-[4px] w-[min(10rem,42%)] shrink-0 rounded-full bg-[color:var(--section-accent)] shadow-[0_0_22px_color-mix(in_srgb,var(--section-accent)_30%,transparent)]" />
+                <span className="h-[2px] min-w-12 flex-1 rounded-full bg-[color:var(--section-accent)] opacity-30" />
+              </div>
             </div>
           </div>
-          {actions && <div className="pb-2 self-end">{actions}</div>}
         </div>
-        <div
-          className="masthead-rule"
-          style={{ color: meta.colorVar }}
-        />
+
+        {actions && (
+          <div className="flex min-w-0 items-center px-4 py-3">{actions}</div>
+        )}
       </header>
       {children}
     </section>
@@ -86,7 +124,7 @@ export function Card({
   children,
   className = "",
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }) {
   return (
