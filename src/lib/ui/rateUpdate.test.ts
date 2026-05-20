@@ -3,6 +3,7 @@ import {
   computeNextRate,
   RATE_EMA_WEIGHT,
   RATE_OUTLIER_FACTOR,
+  RATE_MIN_OBSERVATION_MS,
 } from "./rateUpdate";
 
 describe("computeNextRate — fresh runs", () => {
@@ -11,9 +12,22 @@ describe("computeNextRate — fresh runs", () => {
     expect(out.nextRate).toBeCloseTo(0.02, 9);
   });
 
-  it("first-ever with weird small work returns the raw observed rate", () => {
+  it("first-ever with weird small work returns the raw observed rate when the run is long enough", () => {
     const out = computeNextRate({ elapsedMs: 100, work: 1, prevRate: null });
-    expect(out.nextRate).toBe(100);
+    expect(out.nextRate).toBeNull();
+    expect(out.reason).toBe("too-short");
+    const longEnough = computeNextRate({ elapsedMs: 1000, work: 1, prevRate: null });
+    expect(longEnough.nextRate).toBe(1000);
+  });
+
+  it("ignores very short runs because startup overhead dominates their rate", () => {
+    const out = computeNextRate({
+      elapsedMs: RATE_MIN_OBSERVATION_MS - 1,
+      work: 50_000,
+      prevRate: null,
+    });
+    expect(out.nextRate).toBeNull();
+    expect(out.reason).toBe("too-short");
   });
 });
 
@@ -102,15 +116,15 @@ describe("computeNextRate — outlier rejection", () => {
     expect(out.reason).toBe("outlier-high");
   });
 
-  it("rejects 3x speedup as outlier-low (e.g. caching artifact)", () => {
+  it("accepts a confirmed fast run so a poisoned high cache can heal", () => {
     // prev=0.060, observed=0.020 → ratio=1/3 < 1/2.5
     const out = computeNextRate({
       elapsedMs: 1000,
       work: 50_000,
       prevRate: 0.060,
     });
-    expect(out.nextRate).toBeNull();
-    expect(out.reason).toBe("outlier-low");
+    expect(out.nextRate).toBeCloseTo(0.020, 9);
+    expect(out.reason).toBeUndefined();
   });
 
   it("custom outlierFactor allows tighter / looser caps", () => {
@@ -146,7 +160,7 @@ describe("computeNextRate — convergence under repeated observations", () => {
     expect(rate).toBeCloseTo(0.020, 4);
   });
 
-  it("a single outlier doesn't poison the cache", () => {
+  it("a single slow outlier doesn't poison the cache", () => {
     let rate: number | null = 0.020;
     // 5 normal observations
     for (let i = 0; i < 5; i++) {
@@ -167,6 +181,15 @@ describe("computeNextRate — convergence under repeated observations", () => {
     // Outlier rejected — rate unchanged
     expect(outlier.nextRate).toBeNull();
     expect(rate).toBe(beforeOutlier);
+  });
+
+  it("a bad high cache is corrected by the next clean foreground run", () => {
+    const out = computeNextRate({
+      elapsedMs: 10_000,
+      work: 1_000_000,
+      prevRate: 0.072, // would forecast the same work at 72s
+    });
+    expect(out.nextRate).toBeCloseTo(0.010, 9);
   });
 
   it("a sustained shift catches up over a few runs", () => {

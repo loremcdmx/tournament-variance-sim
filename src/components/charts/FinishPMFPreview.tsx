@@ -461,6 +461,11 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
               const fieldShare = tier.field;
               const bountyShareOfTier =
                 tier.ev > 1e-9 ? tier.bountyEv / tier.ev : 0;
+              const hasUsefulBreakdown =
+                hasBounty &&
+                (tier.bountyGivenFinish > 0.005 ||
+                  tier.bountyEv > 0.005 ||
+                  tier.bustsGivenFinish > 0.005);
               rows.push(
                 <EvBreakdownRow
                   key={tier.key}
@@ -473,15 +478,19 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                   maxEvShare={maxEv}
                   bountyShareOfTier={bountyShareOfTier}
                   bountyColor={bountyAccent}
-                  breakdown={{
-                    tier,
-                    hasBounty,
-                    bountyColor: bountyAccent,
-                    posRangeLabel:
-                      tier.posLo === tier.posHi
-                        ? `${tier.posLo}`
-                        : `${tier.posLo}–${tier.posHi}`,
-                  }}
+                  breakdown={
+                    hasUsefulBreakdown
+                      ? {
+                          tier,
+                          hasBounty,
+                          bountyColor: bountyAccent,
+                          posRangeLabel:
+                            tier.posLo === tier.posHi
+                              ? `${tier.posLo}`
+                              : `${tier.posLo}–${tier.posHi}`,
+                        }
+                      : undefined
+                  }
                 />,
               );
             }

@@ -598,6 +598,7 @@ describe("persistence validation", () => {
         usePrimedopePayouts: 1,
         usePrimedopeFinishModel: "true",
         usePrimedopeRakeMath: "true",
+        compareEnabled: "true",
         itmGlobalEnabled: "true",
       },
     });
@@ -607,6 +608,7 @@ describe("persistence validation", () => {
     expect(loaded.usePrimedopePayouts).toBeUndefined();
     expect(loaded.usePrimedopeFinishModel).toBeUndefined();
     expect(loaded.usePrimedopeRakeMath).toBeUndefined();
+    expect(loaded.compareEnabled).toBeUndefined();
     expect(loaded.itmGlobalEnabled).toBeUndefined();
   });
 

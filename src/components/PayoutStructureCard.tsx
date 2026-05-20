@@ -137,7 +137,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
   const isBr = row.payoutStructure === "battle-royale";
 
   return (
-    <Card className="data-surface-card flex h-full flex-col p-5">
+    <Card className="data-surface-card flex shrink-0 flex-col p-5">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <div className="text-sm font-semibold text-[color:var(--color-fg)]">

@@ -23,6 +23,7 @@ const baseState: ControlsState = {
   usePrimedopePayouts: false,
   usePrimedopeFinishModel: false,
   usePrimedopeRakeMath: false,
+  compareEnabled: false,
   compareMode: "primedope",
   roiStdErr: 0.02,
   roiShockPerTourney: 0.01,

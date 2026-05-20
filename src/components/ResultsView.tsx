@@ -164,7 +164,7 @@ function ResultsViewImpl({
   bankroll = 0,
   schedule,
   scheduleRepeats,
-  compareMode = "primedope",
+  compareMode,
   modelPresetId,
   finishModelId,
   finishModel,
@@ -184,7 +184,11 @@ function ResultsViewImpl({
   const t = useT();
   const { advanced } = useAdvancedMode();
 
-  const pdChart = pdOverrideResult ?? result.comparison;
+  const isPrimeDopeCompare = compareMode === "primedope";
+  const pdChart = isPrimeDopeCompare
+    ? (pdOverrideResult ?? result.comparison ?? null)
+    : null;
+  const hasPrimeDopeCompare = isPrimeDopeCompare && pdChart != null;
   // When comparing against PrimeDope on a PKO schedule, the right pane
   // actually shows "same schedule, bounties stripped" because PrimeDope
   // has no PKO support — useSimulation swaps the pass. Detect from the
@@ -192,7 +196,7 @@ function ResultsViewImpl({
   const hasPko = (schedule ?? []).some(
     (r) => (r.bountyFraction ?? 0) > 0,
   );
-  const pdPkoFallback = compareMode === "primedope" && hasPko;
+  const pdPkoFallback = isPrimeDopeCompare && hasPko;
   const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
 
   // Default ON in compare mode: the whole point of the side-by-side view is
@@ -470,13 +474,6 @@ function ResultsViewImpl({
     Math.abs(totalMax - totalMin) > 1e-9
       ? (totalExpectedProfit - totalMin) /
         (totalMax - totalMin)
-      : 0.5;
-  const bankrollSafetyRatio =
-    Number.isFinite(s.minBankrollRoR5pct) &&
-    Number.isFinite(s.minBankrollRoR1pct) &&
-    s.minBankrollRoR1pct > s.minBankrollRoR5pct
-      ? (bankroll - s.minBankrollRoR5pct) /
-        (s.minBankrollRoR1pct - s.minBankrollRoR5pct)
       : 0.5;
   const modelPreset = modelPresetId
     ? STANDARD_PRESETS.find((p) => p.id === modelPresetId)
@@ -792,7 +789,7 @@ function ResultsViewImpl({
           trimBotPct={deferredTrimBotPct}
           refLines={refLines}
           toolbar={trajectoryToolbar}
-          pdPresetFlip={modelPresetId === "primedope" && compareMode === "primedope"}
+          pdPresetFlip={modelPresetId === "primedope" && isPrimeDopeCompare}
           honestLabel={
             finishModelId
               ? t(FINISH_MODEL_LABEL_KEY[finishModelId])
@@ -823,7 +820,7 @@ function ResultsViewImpl({
         )}
 
 
-      {advanced && (
+      {advanced && hasPrimeDopeCompare && (
         <CollapsibleSection
           id="pdReport"
           title={t("section.primedopeReport")}
@@ -843,7 +840,7 @@ function ResultsViewImpl({
         </CollapsibleSection>
       )}
 
-      {advanced && result.comparison && compareMode === "primedope" && (
+      {advanced && hasPrimeDopeCompare && result.comparison && (
         <CollapsibleSection
           id="pdDiff"
           title={pdPkoFallback ? t("section.pdDiff.freezeouts") : t("section.pdDiff")}
@@ -947,18 +944,21 @@ function ResultsViewImpl({
           suit="heart"
           label={t("stat.riskOfRuin")}
           value={pct(s.riskOfRuin)}
-          rangeSubline={
+          riskSubline={
             s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
               ? undefined
               : {
-                  label: t("stat.riskOfRuin.range"),
+                  label: t("stat.riskOfRuin.scale"),
+                  pointLabel: t("stat.riskOfRuin.scale.point"),
+                  pointHint: t("stat.riskOfRuin.scale.hint"),
+                  pointValue: pct(s.riskOfRuin),
+                  leftScaleLabel: t("stat.riskOfRuin.scale.safe"),
+                  rightScaleLabel: t("stat.riskOfRuin.scale.danger"),
                   fromLabel: t("stat.riskOfRuin.range.from"),
                   toLabel: t("stat.riskOfRuin.range.to"),
-                  pointLabel: t("stat.riskOfRuin.range.point"),
-                  pointHint: t("stat.riskOfRuin.range.hint"),
                   minValue: money(s.minBankrollRoR5pct),
                   maxValue: money(s.minBankrollRoR1pct),
-                  anchorRatio: bankrollSafetyRatio,
+                  riskRatio: s.riskOfRuin,
                 }
           }
           sub={
@@ -1390,13 +1390,15 @@ function ResultsViewImpl({
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection
-        id="pdWeakness"
-        title={t("section.pdWeakness")}
-        showUnitToggle={false}
-      >
-        <PrimeDopeWeaknessCard />
-      </CollapsibleSection>
+      {hasPrimeDopeCompare && (
+        <CollapsibleSection
+          id="pdWeakness"
+          title={t("section.pdWeakness")}
+          showUnitToggle={false}
+        >
+          <PrimeDopeWeaknessCard />
+        </CollapsibleSection>
+      )}
 
       <CollapsibleSection
         id="ourWeakness"
@@ -1918,7 +1920,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
   displayPdChart: SimulationResult | null;
   showWithRakeback: boolean;
   pdPkoFallback: boolean;
-  compareMode: "random" | "primedope";
+  compareMode: "random" | "primedope" | undefined;
   schedule: TournamentRow[] | undefined;
   scheduleRepeats: number | undefined;
   modelLabel: string;
@@ -1945,10 +1947,11 @@ const TrajectoryCard = memo(function TrajectoryCard({
   const t = useT();
   const { compactMoney } = useMoneyFmt();
   const { advanced } = useAdvancedMode();
+  const hasPrimeDopePane = compareMode === "primedope" && pdChart != null;
   const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
   const overlayLegendKey: DictKey = pdPkoFallback
     ? "chart.legend.noKoOverlay"
-    : compareMode === "primedope"
+    : hasPrimeDopePane
       ? "chart.legend.pdOverlay"
       : "chart.legend.genericOverlay";
   const overlayLegend =
@@ -2214,7 +2217,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
             itmRate={result.stats.itmRate}
             itmCashOnly={hasBounty}
             caption={
-              compareMode === "primedope"
+              hasPrimeDopePane
                 ? t(oursCapKey)
                 : t("twin.runA.cap")
             }
@@ -2245,12 +2248,12 @@ const TrajectoryCard = memo(function TrajectoryCard({
                 ? t("twin.runB.cap")
                 : pdPkoFallback
                 ? t("chart.trajectory.noKoCap")
-                : compareMode === "primedope"
+                : hasPrimeDopePane
                 ? t("chart.trajectory.theirs.cap")
                 : t("twin.runB.cap")
             }
             action={
-              compareMode === "primedope" &&
+              hasPrimeDopePane &&
               !pdPkoFallback &&
               schedule &&
               scheduleRepeats ? (
@@ -2284,7 +2287,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
             }
           >
             <TrajectoryPlot assets={secondary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
-            {compareMode === "primedope" && !pdPkoFallback && schedule && scheduleRepeats != null && scheduleRepeats > 0 && (
+            {hasPrimeDopePane && !pdPkoFallback && schedule && scheduleRepeats != null && scheduleRepeats > 0 && (
               <div className="mt-1 flex justify-start">
                 <PrimedopeReproduceButton
                   schedule={schedule}
@@ -2313,7 +2316,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
       />
       {toolbar}
       {extremesToggles}
-      {compareMode === "primedope" && !pdPkoFallback && schedule && scheduleRepeats ? (
+      {hasPrimeDopePane && !pdPkoFallback && schedule && scheduleRepeats ? (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <PdCompareToggles
             usePdPayouts={usePdPayouts}
@@ -3501,6 +3504,7 @@ function CopyPdDiagButton({
             usePrimedopePayouts: settings.usePrimedopePayouts,
             usePrimedopeFinishModel: settings.usePrimedopeFinishModel,
             usePrimedopeRakeMath: settings.usePrimedopeRakeMath,
+            compareEnabled: settings.compareEnabled,
             compareMode: settings.compareMode,
             modelPresetId: settings.modelPresetId,
             samples: settings.samples,

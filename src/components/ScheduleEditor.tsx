@@ -143,6 +143,8 @@ interface Props {
    * — no need to scroll to a global banner to see what's wrong.
    */
   feasibilityIssues?: readonly RowFeasibilityIssue[];
+  /** Closest-fit handler — adjusts the smallest viable input set for this row. */
+  onFixRowClosest?: (rowId: string) => void;
   /** Auto-fix handler — clears finishBuckets locks on the row. */
   onFixRowAuto?: (rowId: string) => void;
   /** Preset-fix handler — applies the "grinder" finishBuckets preset. */
@@ -363,6 +365,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   globalRakebackPct = 0,
   toolbarExtras,
   feasibilityIssues,
+  onFixRowClosest,
   onFixRowAuto,
   onFixRowPreset,
 }: Props) {
@@ -449,34 +452,64 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   }, [feasibilityIssues]);
 
   return (
-    <Card>
+    <Card className="shrink-0 overflow-hidden">
       <fieldset
         disabled={disabled}
-        className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
+        className="m-0 min-w-0 border-0 p-0 disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      <div className="dense-control-table flex flex-col gap-2 p-2">
-        {schedule.map((r, i) => (
-          <ScheduleRow
-            key={r.id}
-            row={r}
-            rowIndex={i}
-            advanced={advanced}
-            isOpen={advanced && expanded.has(r.id)}
-            globalItmPct={globalItmPct}
-            globalRakebackPct={globalRakebackPct}
-            canRemove={canRemove}
-            update={update}
-            remove={remove}
-            duplicate={duplicate}
-            toggleExpand={toggleExpand}
-            issue={issueByRow.get(r.id)}
-            onFixAuto={onFixRowAuto}
-            onFixPreset={onFixRowPreset}
-          />
-        ))}
-      </div>
-      <div className="border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/40 px-4 py-2.5">
-        <div className="flex flex-wrap items-center gap-2">
+        <div
+          className={
+            "hidden border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/55 px-3 py-2 2xl:grid " +
+            SCHEDULE_GRID_CLASS
+          }
+        >
+          <ScheduleHeaderCell hint={t("help.row.label")}>
+            {t("row.label")}
+          </ScheduleHeaderCell>
+          <ScheduleHeaderCell hint={t("help.row.buyIn")}>
+            {t("row.buyIn")}
+          </ScheduleHeaderCell>
+          <ScheduleHeaderCell hint={t("help.row.players")}>
+            {t("row.players")}
+          </ScheduleHeaderCell>
+          <ScheduleHeaderCell hint={t("help.row.roi")}>
+            {t("row.roi")}
+          </ScheduleHeaderCell>
+          <ScheduleHeaderCell hint={t("row.fixedItmHint")}>
+            {t("row.fixedItm")}
+          </ScheduleHeaderCell>
+          <ScheduleHeaderCell hint={t("help.row.payouts")}>
+            {t("row.payouts")}
+          </ScheduleHeaderCell>
+          <ScheduleHeaderCell hint={t("help.row.count")}>
+            {t("row.count")}
+          </ScheduleHeaderCell>
+          <span aria-hidden />
+        </div>
+        <div className="dense-control-table flex flex-col gap-2 p-2">
+          {schedule.map((r, i) => (
+            <ScheduleRow
+              key={r.id}
+              row={r}
+              rowIndex={i}
+              advanced={advanced}
+              isOpen={advanced && expanded.has(r.id)}
+              globalItmPct={globalItmPct}
+              globalRakebackPct={globalRakebackPct}
+              canRemove={canRemove}
+              update={update}
+              remove={remove}
+              duplicate={duplicate}
+              toggleExpand={toggleExpand}
+              issue={issueByRow.get(r.id)}
+              onFixClosest={onFixRowClosest}
+              onFixAuto={onFixRowAuto}
+              onFixPreset={onFixRowPreset}
+            />
+          ))}
+        </div>
+        <div className="border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/40 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={add}
@@ -498,10 +531,12 @@ export const ScheduleEditor = memo(function ScheduleEditor({
             {t("row.import")}
           </button>
           {toolbarExtras && (
-            <div className="ml-auto flex items-center gap-2">{toolbarExtras}</div>
+            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+              {toolbarExtras}
+            </div>
           )}
-        </div>
-        {importOpen && (
+          </div>
+          {importOpen && (
           <div className="mt-3 flex flex-col gap-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">
             <div className="flex items-center justify-between">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
@@ -572,8 +607,8 @@ export const ScheduleEditor = memo(function ScheduleEditor({
               </button>
             </div>
           </div>
-        )}
-      </div>
+          )}
+        </div>
       </fieldset>
     </Card>
   );
@@ -588,6 +623,24 @@ const GAME_TYPE_TINT: Record<VisibleGameType, string> = {
   mystery: "var(--c-diamond)",
   "mystery-royale": "var(--c-club)",
 };
+
+const SCHEDULE_GRID_CLASS =
+  "grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(7rem,0.68fr)_minmax(5rem,0.5fr)_minmax(5.4rem,0.54fr)] 2xl:grid-cols-[minmax(0,1.45fr)_minmax(4.8rem,0.65fr)_minmax(4.5rem,0.55fr)_minmax(4.2rem,0.48fr)_minmax(5.2rem,0.58fr)_minmax(0,1.05fr)_minmax(4.6rem,0.52fr)_2rem] 2xl:gap-2";
+
+function ScheduleHeaderCell({
+  children,
+  hint,
+}: {
+  children: React.ReactNode;
+  hint?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[color:var(--color-accent)]/90">
+      <span className="truncate">{children}</span>
+      {hint && <InfoTooltip content={hint} />}
+    </div>
+  );
+}
 
 interface ScheduleRowProps {
   row: TournamentRow;
@@ -604,6 +657,7 @@ interface ScheduleRowProps {
   /** When set, this row failed feasibility validation; the inline mini-
    *  banner with auto-fix / preset-fix buttons renders inside the row. */
   issue?: RowFeasibilityIssue;
+  onFixClosest?: (rowId: string) => void;
   onFixAuto?: (rowId: string) => void;
   onFixPreset?: (rowId: string) => void;
 }
@@ -620,6 +674,7 @@ const ScheduleRow = memo(function ScheduleRow({
   duplicate,
   toggleExpand,
   issue,
+  onFixClosest,
   onFixAuto,
   onFixPreset,
 }: ScheduleRowProps) {
@@ -696,10 +751,16 @@ const ScheduleRow = memo(function ScheduleRow({
         className="absolute inset-y-0 left-0 w-[3px]"
         style={{ background: GAME_TYPE_TINT[uiGt] }}
       />
-      <div className="grid grid-cols-1 gap-3 py-3 pl-5 pr-3 md:grid-cols-[minmax(10rem,1.35fr)_minmax(12rem,1.15fr)_minmax(10rem,1fr)_auto]">
-        {/* IDENTITY — label + game type */}
+      <div
+        className={
+          "grid py-3 pl-5 pr-3 md:items-start md:px-3 md:py-2.5 " +
+          SCHEDULE_GRID_CLASS
+        }
+      >
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel hint={t("help.row.label")}>{t("row.label")}</SectionLabel>
+          <SectionLabel className="2xl:hidden" hint={t("help.row.label")}>
+            {t("row.label")}
+          </SectionLabel>
           <div className="flex min-w-0 items-center gap-2">
             <RoomBadge payoutId={r.payoutStructure} />
             <TextInput
@@ -709,7 +770,7 @@ const ScheduleRow = memo(function ScheduleRow({
               className="w-full min-w-0"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex min-w-0 flex-col gap-1.5">
             <GameTypeSelect
               value={uiGt}
               onChange={(next) =>
@@ -725,79 +786,63 @@ const ScheduleRow = memo(function ScheduleRow({
               />
             )}
           </div>
+          {showBounty && (
+            <div className="flex min-w-0 flex-col gap-1">
+              <SectionLabel hint={t("row.bountyHint")}>
+                {t("row.bounty")}
+              </SectionLabel>
+              <PercentNumInput
+                value={+(((r.bountyFraction ?? 0) * 100).toFixed(1))}
+                onChange={(v) =>
+                  update(r.id, {
+                    bountyFraction: Math.max(0, Math.min(90, v)) / 100,
+                  })
+                }
+                min={0}
+                max={90}
+                step={5}
+              />
+            </div>
+          )}
         </div>
 
-        {/* MONEY — buy-in + ROI + ITM */}
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel hint={t("help.row.buyIn")}>{t("row.buyIn")}</SectionLabel>
+          <SectionLabel className="2xl:hidden" hint={t("help.row.buyIn")}>
+            {t("row.buyIn")}
+          </SectionLabel>
           <BuyInInput
             gameType={uiGt}
             buyIn={r.buyIn}
             rake={r.rake}
             onChange={(buyIn, rake) => update(r.id, { buyIn, rake })}
           />
-          <div
-            className={`grid gap-2 ${showBounty ? "grid-cols-3" : "grid-cols-2"}`}
-          >
-            <div className="flex flex-col gap-1">
-              <SectionLabel hint={t("help.row.roi")}>{t("row.roi")}</SectionLabel>
-              <PercentNumInput
-                value={Math.round(r.roi * 100)}
-                onChange={(v) => update(r.id, { roi: v / 100 })}
-                min={-99}
-                max={10_000}
-                step={1}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <SectionLabel hint={t("row.fixedItmHint")}>
-                {t("row.fixedItm")}
-              </SectionLabel>
-              <PercentDraftInput
-                min={0}
-                max={100}
-                step={0.5}
-                disabled={globalItmPct != null}
-                value={
-                  globalItmPct != null
-                    ? +(globalItmPct).toFixed(1)
-                    : r.itmRate != null
-                      ? +(r.itmRate * 100).toFixed(2)
-                      : ""
-                }
-                placeholder={globalItmPct != null ? "" : "auto"}
-                lockedLabel={
-                  globalItmPct != null ? t("row.inheritedShort") : undefined
-                }
-                onChange={(raw) => {
-                  if (globalItmPct != null) return;
-                  if (raw === "") {
-                    update(r.id, { itmRate: undefined });
-                    return;
-                  }
-                  const v = Number(raw);
-                  if (!Number.isFinite(v) || v < 0 || v > 100) return;
-                  update(r.id, { itmRate: v / 100 });
-                }}
-              />
-            </div>
-            {showBounty && (
-              <div className="flex flex-col gap-1">
-                <SectionLabel hint={t("row.bountyHint")}>
-                  {t("row.bounty")}
-                </SectionLabel>
-                <PercentNumInput
-                  value={+(((r.bountyFraction ?? 0) * 100).toFixed(1))}
-                  onChange={(v) =>
-                    update(r.id, { bountyFraction: Math.max(0, Math.min(90, v)) / 100 })
-                  }
-                  min={0}
-                  max={90}
-                  step={5}
-                />
-              </div>
-            )}
-          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <SectionLabel className="2xl:hidden" hint={t("help.row.players")}>
+            {t("row.players")}
+          </SectionLabel>
+          <NumInput
+            value={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : r.players}
+            onChange={(v) => update(r.id, { players: Math.floor(v) })}
+            min={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 2}
+            max={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 1_000_000}
+            step={1}
+            disabled={isBattleRoyale}
+          />
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <SectionLabel className="2xl:hidden" hint={t("help.row.roi")}>
+            {t("row.roi")}
+          </SectionLabel>
+          <PercentNumInput
+            value={Math.round(r.roi * 100)}
+            onChange={(v) => update(r.id, { roi: v / 100 })}
+            min={-99}
+            max={10_000}
+            step={1}
+          />
           {gt === "mystery-royale" && (
             <BrReportedRoiControl
               row={r}
@@ -807,100 +852,115 @@ const ScheduleRow = memo(function ScheduleRow({
           )}
         </div>
 
-        {/* META — AFS, payout, count (label stacked on top of each field so
-             the connection between the two reads at a glance, same pattern
-             as the identity/money columns). */}
         <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-col gap-1">
-            <SectionLabel hint={t("help.row.players")}>
-              {t("row.players")}
-            </SectionLabel>
-            <NumInput
-              value={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : r.players}
-              onChange={(v) => update(r.id, { players: Math.floor(v) })}
-              min={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 2}
-              max={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 1_000_000}
-              step={1}
-              disabled={isBattleRoyale}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <SectionLabel hint={t("help.row.payouts")}>
-              {t("row.payouts")}
-            </SectionLabel>
-            <select
-              value={r.payoutStructure}
-              title={current?.s.full ?? ""}
-              onChange={(e) => {
-                const next = e.target.value as PayoutStructureId;
-                update(r.id, { payoutStructure: next });
-              }}
-              className={
-                "h-8 w-full min-w-0 rounded-md border px-2 text-[11px] outline-none transition-colors focus:border-[color:var(--color-accent)] " +
-                (currentDisabled
-                  ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
-                  : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
+          <SectionLabel className="2xl:hidden" hint={t("row.fixedItmHint")}>
+            {t("row.fixedItm")}
+          </SectionLabel>
+          <PercentDraftInput
+            min={0}
+            max={100}
+            step={0.5}
+            disabled={globalItmPct != null}
+            value={
+              globalItmPct != null
+                ? +(globalItmPct).toFixed(1)
+                : r.itmRate != null
+                  ? +(r.itmRate * 100).toFixed(2)
+                  : ""
+            }
+            placeholder=""
+            lockedLabel={
+              globalItmPct != null ? t("row.inheritedShort") : undefined
+            }
+            onChange={(raw) => {
+              if (globalItmPct != null) return;
+              if (raw === "") {
+                update(r.id, { itmRate: undefined });
+                return;
               }
-            >
-              {dropdownData.availableReal.length > 0 && (
-                <optgroup label={`— ${t("row.payoutGroup.real2026")} —`}>
-                  {dropdownData.availableReal.map(({ s }) => (
-                    <option key={s.id} value={s.id} title={s.full}>
-                      {s.short}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {dropdownData.availableGeneric.length > 0 && (
-                <optgroup label={`— ${t("row.payoutGroup.generic")} —`}>
-                  {dropdownData.availableGeneric.map(({ s }) => (
-                    <option key={s.id} value={s.id} title={s.full}>
-                      {s.short}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {legacyCustom && (
-                <optgroup label="— Legacy —">
-                  <option value="custom">Legacy custom (read-only)</option>
-                </optgroup>
-              )}
-              {dropdownData.unavailable.length > 0 && (
-                <optgroup label={`— ${t("row.payoutCompat.unavailable")} —`}>
-                  {dropdownData.unavailable.map((g) => {
-                    const reasonText = describe(g);
-                    return (
-                      <option
-                        key={g.s.id}
-                        value={g.s.id}
-                        disabled
-                        title={`${g.s.full} — ${reasonText}`}
-                      >
-                        {`✕ ${g.s.short} — ${reasonText}`}
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              )}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <SectionLabel hint={t("help.row.count")}>
-              {t("row.count")}
-            </SectionLabel>
-            <NumInput
-              value={r.count}
-              onChange={(v) => update(r.id, { count: Math.floor(v) })}
-              min={1}
-              max={100_000}
-              step={1}
-              commitMode="blur"
-            />
-          </div>
+              const v = Number(raw);
+              if (!Number.isFinite(v) || v < 0 || v > 100) return;
+              update(r.id, { itmRate: v / 100 });
+            }}
+          />
         </div>
 
-        {/* ACTIONS */}
-        <div className="flex justify-end gap-1 self-end md:flex-col md:items-center md:self-start md:pt-5">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <SectionLabel className="2xl:hidden" hint={t("help.row.payouts")}>
+            {t("row.payouts")}
+          </SectionLabel>
+          <select
+            value={r.payoutStructure}
+            title={current?.s.full ?? ""}
+            onChange={(e) => {
+              const next = e.target.value as PayoutStructureId;
+              update(r.id, { payoutStructure: next });
+            }}
+            className={
+              "h-8 w-full min-w-0 rounded-md border px-2 text-[11px] outline-none transition-colors focus:border-[color:var(--color-accent)] " +
+              (currentDisabled
+                ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
+                : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
+            }
+          >
+            {dropdownData.availableReal.length > 0 && (
+              <optgroup label={`— ${t("row.payoutGroup.real2026")} —`}>
+                {dropdownData.availableReal.map(({ s }) => (
+                  <option key={s.id} value={s.id} title={s.full}>
+                    {s.short}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {dropdownData.availableGeneric.length > 0 && (
+              <optgroup label={`— ${t("row.payoutGroup.generic")} —`}>
+                {dropdownData.availableGeneric.map(({ s }) => (
+                  <option key={s.id} value={s.id} title={s.full}>
+                    {s.short}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {legacyCustom && (
+              <optgroup label="— Legacy —">
+                <option value="custom">Legacy custom (read-only)</option>
+              </optgroup>
+            )}
+            {dropdownData.unavailable.length > 0 && (
+              <optgroup label={`— ${t("row.payoutCompat.unavailable")} —`}>
+                {dropdownData.unavailable.map((g) => {
+                  const reasonText = describe(g);
+                  return (
+                    <option
+                      key={g.s.id}
+                      value={g.s.id}
+                      disabled
+                      title={`${g.s.full} — ${reasonText}`}
+                    >
+                      {`✕ ${g.s.short} — ${reasonText}`}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            )}
+          </select>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <SectionLabel className="2xl:hidden" hint={t("help.row.count")}>
+            {t("row.count")}
+          </SectionLabel>
+          <NumInput
+            value={r.count}
+            onChange={(v) => update(r.id, { count: Math.floor(v) })}
+            min={1}
+            max={100_000}
+            step={1}
+            commitMode="blur"
+          />
+        </div>
+
+        <div className="flex justify-end gap-1 self-end 2xl:flex-col 2xl:items-center 2xl:self-stretch 2xl:justify-center">
           <button
             type="button"
             onClick={() => advanced && toggleExpand(r.id)}
@@ -992,7 +1052,7 @@ const ScheduleRow = memo(function ScheduleRow({
           "Grinder" preset is hidden on bounty-envelope rows (PKO / Mystery
           / BR), where ITM is structural and a fixed 16% number doesn't
           belong. */}
-      {issue && (onFixAuto || onFixPreset) && (
+      {issue && (onFixClosest || onFixAuto || onFixPreset) && (
         <div className="border-t-2 border-rose-500/60 bg-rose-950/40 px-5 py-2.5">
           <div className="flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-rose-50">
@@ -1005,7 +1065,15 @@ const ScheduleRow = memo(function ScheduleRow({
               {issue.gap.toFixed(2)})
             </span>
             <div className="ml-auto flex flex-wrap gap-1.5">
-              {onFixAuto && (
+              {onFixClosest ? (
+                <button
+                  type="button"
+                  onClick={() => onFixClosest(r.id)}
+                  className="rounded border border-rose-300/70 bg-rose-500/25 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/40"
+                >
+                  {t("shape.fixClosest")}
+                </button>
+              ) : onFixAuto ? (
                 <button
                   type="button"
                   onClick={() => onFixAuto(r.id)}
@@ -1013,8 +1081,8 @@ const ScheduleRow = memo(function ScheduleRow({
                 >
                   {t("shape.fixAuto")}
                 </button>
-              )}
-              {onFixPreset && !showBounty && (
+              ) : null}
+              {!onFixClosest && onFixPreset && !showBounty && (
                 <button
                   type="button"
                   onClick={() => onFixPreset(r.id)}
@@ -1034,12 +1102,19 @@ const ScheduleRow = memo(function ScheduleRow({
 function SectionLabel({
   children,
   hint,
+  className = "",
 }: {
   children: React.ReactNode;
   hint?: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+    <label
+      className={
+        "inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--color-accent)]/90 " +
+        className
+      }
+    >
       {children}
       {hint && <InfoTooltip content={hint} />}
     </label>
@@ -1199,7 +1274,7 @@ function FieldSmall({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+      <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-accent)]/90">
         {label}
       </span>
       {children}

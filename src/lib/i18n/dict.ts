@@ -308,8 +308,13 @@ export const DICT = {
     ru: "Зафиксированные вероятности не дают попасть в ROI",
   },
   "shape.blockedGap": { en: "gap", ru: "разрыв" },
+  "shape.fixClosest": { en: "Fit closest inputs", ru: "Подогнать вводные" },
   "shape.fixAuto": { en: "Clear locks", ru: "Снять фиксации" },
   "shape.fixPreset": { en: "Grinder preset", ru: "Пресет «гриндер»" },
+  "shape.fixAllClosest": {
+    en: "Fit closest inputs",
+    ru: "Подогнать вводные",
+  },
   "shape.fixAll": { en: "Clear locks on all", ru: "Снять фиксации со всех" },
   "sanity.title": {
     en: "Input sanity checks",
@@ -761,6 +766,26 @@ export const DICT = {
   "stat.riskOfRuin.range": {
     en: "Bankroll cushion",
     ru: "Запас БР",
+  },
+  "stat.riskOfRuin.scale": {
+    en: "Current risk",
+    ru: "Текущий риск",
+  },
+  "stat.riskOfRuin.scale.point": {
+    en: "Risk",
+    ru: "Риск",
+  },
+  "stat.riskOfRuin.scale.safe": {
+    en: "0% risk",
+    ru: "0% риск",
+  },
+  "stat.riskOfRuin.scale.danger": {
+    en: "100% risk",
+    ru: "100% риск",
+  },
+  "stat.riskOfRuin.scale.hint": {
+    en: "The dot shows the current risk of ruin on a 0–100% scale. The bankroll thresholds below show how much bankroll is needed to get down to about 5% and 1% risk.",
+    ru: "Точка показывает текущий риск разорения на шкале 0–100%. Пороги БР ниже показывают, сколько банкролла нужно, чтобы опуститься примерно до 5% и 1% риска.",
   },
   "stat.riskOfRuin.range.from": {
     en: "5% risk",

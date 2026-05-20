@@ -296,7 +296,7 @@ function TierHoverPopup({
       role="tooltip"
       className={`pointer-events-none z-50 rounded-md border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3 py-2.5 text-left text-[11px] leading-relaxed text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] ${
         placement === "below"
-          ? "relative mt-2 w-full max-w-full overflow-x-hidden"
+          ? "absolute left-0 top-full mt-1.5 w-full max-w-full overflow-x-hidden"
           : placement === "left"
             ? "absolute right-full top-0 mr-2 w-72 max-w-[85vw]"
             : "absolute left-full top-0 ml-2 w-72 max-w-[85vw]"
@@ -485,7 +485,7 @@ export const PREVIEW_SLIDER_VALUE_INPUT =
 export const PREVIEW_SLIDER_VALUE_SUFFIX =
   "ml-1 font-mono font-semibold leading-none text-[color:var(--color-fg-dim)]";
 export const EV_BREAKDOWN_GRID =
-  "grid-cols-[8px_minmax(3rem,0.75fr)_minmax(16px,1fr)_2.4rem_2.75rem_2.75rem_3.75rem] sm:grid-cols-[8px_minmax(4.25rem,0.9fr)_minmax(24px,1fr)_2.75rem_3.25rem_3.25rem_4rem] 2xl:grid-cols-[10px_minmax(5.75rem,1fr)_minmax(48px,1fr)_3.4rem_4.5rem_4.5rem_5.2rem]";
+  "grid-cols-[8px_minmax(3rem,0.75fr)_minmax(16px,1fr)_2.4rem_2.75rem_2.75rem_3.75rem] sm:grid-cols-[8px_minmax(4.25rem,0.9fr)_minmax(24px,1fr)_2.75rem_3.25rem_3.25rem_4rem] 3xl:grid-cols-[10px_minmax(5.75rem,1fr)_minmax(48px,1fr)_3.4rem_4.5rem_4.5rem_5.2rem]";
 export const EV_BREAKDOWN_GAP = "gap-x-1 sm:gap-x-1.5";
 export const EV_BREAKDOWN_NUM =
   "min-w-0 whitespace-nowrap text-right font-mono tabular-nums";

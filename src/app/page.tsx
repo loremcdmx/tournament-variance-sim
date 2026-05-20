@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   memo,
   startTransition,
   useCallback,
@@ -23,6 +24,7 @@ import { ConvergenceChart } from "@/components/charts/ConvergenceChart";
 import { ProveEdgeCard } from "@/components/charts/ProveEdgeCard";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
+import { chooseClosestFeasibilityFix } from "@/lib/sim/feasibilityFix";
 import { checkInputSanity } from "@/lib/sim/inputSanity";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { inferGameType } from "@/lib/sim/gameType";
@@ -104,6 +106,7 @@ const initialControls: ControlsState = {
   usePrimedopePayouts: true,
   usePrimedopeFinishModel: true,
   usePrimedopeRakeMath: true,
+  compareEnabled: false,
   compareMode: "primedope",
   roiStdErr: 0,
   roiShockPerTourney: 0,
@@ -230,15 +233,8 @@ export default function Home() {
           seed: freshSeed,
         });
       } else {
-        // No saved state — load the PrimeDope comparison scenario by default.
-        const defaultScenario = SCENARIOS.find((s) => s.id === "primedope-reference");
-        if (defaultScenario) {
-          setSchedule(defaultScenario.schedule);
-          setControls({ ...initialControls, ...defaultScenario.controls, seed: freshSeed });
-          setActiveScenarioId("primedope-reference");
-        } else {
-          setControls((c) => ({ ...c, seed: freshSeed }));
-        }
+        // No saved state — start from the neutral one-chart app state.
+        setControls((c) => ({ ...c, seed: freshSeed }));
       }
       setHydrated(true);
     });
@@ -313,7 +309,9 @@ export default function Home() {
         usePrimedopePayouts: effectiveControls.usePrimedopePayouts,
         usePrimedopeFinishModel: effectiveControls.usePrimedopeFinishModel,
         usePrimedopeRakeMath: effectiveControls.usePrimedopeRakeMath,
-        compareMode: effectiveControls.compareMode,
+        compareMode: effectiveControls.compareEnabled
+          ? effectiveControls.compareMode
+          : undefined,
         modelPresetId: effectiveControls.modelPresetId,
         roiStdErr: effectiveControls.roiStdErr,
         roiShockPerTourney: effectiveControls.roiShockPerTourney,
@@ -644,29 +642,6 @@ export default function Home() {
     return found ?? deferredSchedule[0];
   }, [deferredSchedule, previewRowId]);
 
-  const fixRowAuto = useCallback(
-    (rowId: string) => {
-      // Clear `finishBuckets` unconditionally. For BR / Mystery / Mystery-
-      // Royale also drop the row's explicit `itmRate`: BR's ITM is structural
-      // (set by the format), not a free skill knob, and a pinned ITM combined
-      // with the row's ROI / bounty configuration is the most common reason
-      // calibration can't reach the target — clearing finishBuckets alone
-      // leaves the row in the same infeasible state and the user perceives
-      // the fix button as broken.
-      setSchedule((prev) =>
-        prev.map((r) => {
-          if (r.id !== rowId) return r;
-          const gt = inferGameType(r);
-          const isBountyEnvelope =
-            gt === "mystery" || gt === "mystery-royale" || gt === "pko";
-          return isBountyEnvelope
-            ? { ...r, itmRate: undefined, finishBuckets: undefined }
-            : { ...r, finishBuckets: undefined };
-        }),
-      );
-    },
-    [],
-  );
   const previewRowId_ = previewRow?.id;
   const onPreviewRowChange = useCallback(
     (updates: Partial<TournamentRow>) => {
@@ -678,40 +653,46 @@ export default function Home() {
     },
     [previewRowId_, queueInterruptBackground],
   );
-  const fixRowPreset = useCallback(
+  const fitRowClosest = useCallback(
     (rowId: string) => {
-      // "Grinder" preset = 16 % ITM, no shell pins. Only meaningful on
-      // freezeout-shaped rows; on bounty-envelope formats (PKO / Mystery /
-      // BR) ITM is structural to the format, so the preset falls back to
-      // the auto-clear path instead of force-pinning a number that doesn't
-      // belong there. The button itself is also hidden in those rows.
-      setSchedule((prev) =>
-        prev.map((r) => {
-          if (r.id !== rowId) return r;
-          const gt = inferGameType(r);
-          const isBountyEnvelope =
-            gt === "mystery" || gt === "mystery-royale" || gt === "pko";
-          return isBountyEnvelope
-            ? { ...r, itmRate: undefined, finishBuckets: undefined }
-            : { ...r, itmRate: 0.16, finishBuckets: undefined };
-        }),
-      );
+      queueInterruptBackground();
+      setSchedule((prev) => {
+        const liveSchedule = applyItmTarget(prev, itmTargetCfg);
+        const issue = validateSchedule(liveSchedule, previewModel).issues.find(
+          (i) => i.rowId === rowId,
+        );
+        if (!issue) return prev;
+        return prev.map((r) =>
+          r.id === rowId
+            ? chooseClosestFeasibilityFix(r, issue, previewModel, itmTargetCfg)
+                .row
+            : r,
+        );
+      });
+      setActiveScenarioId(null);
     },
-    [],
+    [itmTargetCfg, previewModel, queueInterruptBackground],
   );
-  const fixAllAuto = useCallback(() => {
+
+  const fitAllClosest = useCallback(() => {
+    queueInterruptBackground();
     setSchedule((prev) =>
-      prev.map((r) => {
-        if (!feasibility.issues.some((i) => i.rowId === r.id)) return r;
-        const gt = inferGameType(r);
-        const isBountyEnvelope =
-          gt === "mystery" || gt === "mystery-royale" || gt === "pko";
-        return isBountyEnvelope
-          ? { ...r, itmRate: undefined, finishBuckets: undefined }
-          : { ...r, finishBuckets: undefined };
-      }),
+      (() => {
+        const liveSchedule = applyItmTarget(prev, itmTargetCfg);
+        const issues = validateSchedule(liveSchedule, previewModel).issues;
+        if (issues.length === 0) return prev;
+        const issueByRow = new Map(issues.map((i) => [i.rowId, i]));
+        return prev.map((r) => {
+          const issue = issueByRow.get(r.id);
+          return issue
+            ? chooseClosestFeasibilityFix(r, issue, previewModel, itmTargetCfg)
+                .row
+            : r;
+        });
+      })(),
     );
-  }, [feasibility.issues]);
+    setActiveScenarioId(null);
+  }, [itmTargetCfg, previewModel, queueInterruptBackground]);
 
   const onSaveSlot = () => {
     if (!result) return;
@@ -854,19 +835,6 @@ export default function Home() {
             >
               {APP_VERSION}
             </a>
-          </div>
-          {/* Live status — Live = the page is reactive (always true on mount);
-              ResultHub = the same-origin proxy is wired up. Both are static
-              "configured/ready" indicators, not health checks. */}
-          <div className="hidden flex-1 items-center justify-center gap-2 md:flex">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-success)]/35 bg-[color:var(--color-success)]/10 px-3 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--color-success)] shadow-[0_0_6px_var(--color-success)]" />
-              Live
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-3 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-              ResultHub
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--color-success)]" />
-            </span>
           </div>
           <CornerToggles />
         </div>
@@ -1116,10 +1084,10 @@ export default function Home() {
           </div>
           <button
             type="button"
-            onClick={fixAllAuto}
+            onClick={fitAllClosest}
             className="rounded-md border border-rose-300/70 bg-rose-500/30 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/45"
           >
-            {t("shape.fixAll")}
+            {t("shape.fixAllClosest")}
           </button>
         </div>
       )}
@@ -1153,6 +1121,7 @@ export default function Home() {
               number="01"
               title={t("section.schedule.title")}
               accent="var(--color-spade)"
+              mark="♠"
             />
             <ScheduleEditor
               schedule={schedule}
@@ -1162,8 +1131,7 @@ export default function Home() {
               globalRakebackPct={controls.rakebackPct}
               toolbarExtras={scheduleToolbarExtras}
               feasibilityIssues={feasibility.issues}
-              onFixRowAuto={fixRowAuto}
-              onFixRowPreset={fixRowPreset}
+              onFixRowClosest={fitRowClosest}
             />
             {hasBattleRoyaleRows && (
               <BattleRoyaleLeaderboardControl
@@ -1184,6 +1152,7 @@ export default function Home() {
               number="02"
               title={t("section.controls.title")}
               accent="var(--color-diamond)"
+              mark="♦"
             />
             <ControlsPanel
               value={controls}
@@ -1351,7 +1320,11 @@ export default function Home() {
               bankroll={deferredResultsControls.bankroll}
               schedule={deferredSchedule}
               scheduleRepeats={deferredScheduleRepeats}
-              compareMode={deferredResultsControls.compareMode}
+              compareMode={
+                deferredResultsControls.compareEnabled
+                  ? deferredResultsControls.compareMode
+                  : undefined
+              }
               modelPresetId={deferredResultsControls.modelPresetId}
               finishModelId={deferredResultsControls.finishModelId}
               finishModel={deferredPreviewModel}
@@ -1440,30 +1413,90 @@ function CompactPanelHeader({
   number,
   title,
   accent,
+  mark,
   actions,
 }: {
   number: string;
   title: string;
   accent: string;
+  mark?: string;
   actions?: React.ReactNode;
 }) {
+  const headerStyle = {
+    "--section-accent": accent,
+    background:
+      "linear-gradient(135deg, color-mix(in oklab, var(--c-bg-elev-2) 86%, transparent), color-mix(in oklab, var(--c-bg) 72%, transparent))",
+  } as CSSProperties;
+
   return (
-    <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/35 px-3 py-2.5">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="font-mono text-[26px] font-black leading-none tabular-nums text-[color:var(--color-fg)]">
-          {number}
-        </span>
-        <div className="min-w-0">
-          <h2 className="truncate text-[15px] font-bold uppercase tracking-[0.08em] text-[color:var(--color-fg)]">
-            {title}
-          </h2>
-          <div
-            className="mt-1 h-[2px] w-16 rounded-full"
-            style={{ background: accent }}
+    <div
+      className="relative isolate flex min-w-0 flex-wrap items-stretch justify-between overflow-hidden rounded-xl border border-[color:var(--color-border)] shadow-[inset_0_1px_0_rgba(255,255,255,0.055),0_12px_34px_rgba(0,0,0,0.16)]"
+      style={headerStyle}
+    >
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--section-accent),color-mix(in_srgb,var(--section-accent)_18%,transparent),transparent)] opacity-80"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-[color:var(--section-accent)] opacity-90"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-[radial-gradient(circle,color-mix(in_srgb,var(--section-accent)_16%,transparent)_0%,transparent_68%)]"
+      />
+
+      <div className="flex min-w-0 flex-1 items-stretch">
+        <div className="relative flex w-[6.5rem] shrink-0 items-center justify-center pl-3 pr-4 sm:w-[8rem] sm:pl-4 sm:pr-5">
+          <span className="section-num text-[48px] tabular-nums sm:text-[58px]">
+            {number}
+          </span>
+          <span
+            aria-hidden
+            className="absolute right-0 top-1/2 h-14 w-px -translate-y-1/2 bg-[linear-gradient(180deg,transparent,color-mix(in_srgb,var(--section-accent)_54%,var(--color-border-strong)),transparent)]"
           />
         </div>
+
+        <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-4 sm:gap-4 sm:px-5">
+          <div className="relative hidden h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[color:var(--color-border-strong)]/80 bg-[color:var(--color-bg)]/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_0_1px_color-mix(in_srgb,var(--section-accent)_9%,transparent)] sm:flex">
+            {mark && (
+              <span
+                aria-hidden
+                className="text-[23px] font-black leading-none text-[color:var(--section-accent)] drop-shadow-[0_0_14px_color-mix(in_srgb,var(--section-accent)_28%,transparent)]"
+              >
+                {mark}
+              </span>
+            )}
+            <span
+              aria-hidden
+              className="absolute -bottom-1 left-1/2 h-[3px] w-7 -translate-x-1/2 rounded-full bg-[color:var(--section-accent)]"
+            />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2.5">
+              {mark && (
+                <span
+                  aria-hidden
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[color:var(--color-border-strong)]/75 bg-[color:var(--color-bg)]/55 text-[15px] font-black leading-none text-[color:var(--section-accent)] sm:hidden"
+                >
+                  {mark}
+                </span>
+              )}
+              <h2 className="min-w-0 text-[21px] font-black uppercase leading-none tracking-[0.105em] text-[color:var(--color-fg)] sm:text-[28px]">
+                {title}
+              </h2>
+            </div>
+            <div className="mt-3 flex max-w-[24rem] items-center gap-3">
+              <span className="h-[4px] w-[min(10rem,42%)] shrink-0 rounded-full bg-[color:var(--section-accent)] shadow-[0_0_22px_color-mix(in_srgb,var(--section-accent)_30%,transparent)]" />
+              <span className="h-[2px] min-w-12 flex-1 rounded-full bg-[color:var(--section-accent)] opacity-30" />
+            </div>
+          </div>
+        </div>
       </div>
-      {actions && <div className="min-w-0">{actions}</div>}
+      {actions && (
+        <div className="flex min-w-0 items-center px-4 py-3">{actions}</div>
+      )}
     </div>
   );
 }
@@ -1480,7 +1513,7 @@ const GlobalItmControl = memo(function GlobalItmControl({
   const t = useT();
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
-      <label className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+      <label className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--color-accent)]/90">
         <input
           type="checkbox"
           checked={value.itmGlobalEnabled}
@@ -1530,7 +1563,7 @@ const GlobalRakebackControl = memo(function GlobalRakebackControl({
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
       <span
-        className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]"
+        className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--color-accent)]/90"
         title={t("controls.rakeback.title")}
       >
         {t("controls.rakeback.label")}
@@ -1615,7 +1648,7 @@ const BankrollControl = memo(function BankrollControl({
   const displayVal = brMode === "$" ? value.bankroll : (abi > 0 ? Math.round(value.bankroll / abi) : 0);
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
-      <span className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+      <span className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--color-accent)]/90">
         {t("controls.bankroll")}
       </span>
       <div className="flex items-center gap-1">

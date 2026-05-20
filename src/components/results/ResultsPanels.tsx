@@ -328,7 +328,8 @@ export function SettingsDumpCard({
     ["finishModel", settings.finishModelId],
     ["α (override)", settings.alphaOverride == null ? "auto" : settings.alphaOverride.toFixed(3)],
     ["modelPreset", settings.modelPresetId],
-    ["compareMode", settings.compareMode],
+    ["compareEnabled", settings.compareEnabled ? "true" : "false"],
+    ["compareMode", settings.compareEnabled ? settings.compareMode : "off"],
     ["—", "—"],
     ["roiStdErr", `${(settings.roiStdErr * 100).toFixed(2)}%`],
   ];

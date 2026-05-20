@@ -10,6 +10,7 @@ import {
 import type { ProgressStage } from "@/lib/sim/useSimulation";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { formatDurationRu, formatRoughDurationRu } from "@/lib/ui/durationFormat";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import type { BattleRoyaleLeaderboardControls } from "@/lib/sim/battleRoyaleLeaderboardUi";
@@ -41,7 +42,9 @@ export interface ControlsState {
   usePrimedopeFinishModel: boolean;
   /** Keep PD's post-rake-pool variance quirk on the PD pane. */
   usePrimedopeRakeMath: boolean;
-  /** Twin-run mode: "random" = two seeds, same model; "primedope" = same seed, our vs uniform-lift. */
+  /** Explicit opt-in for running and showing a second comparison pass. */
+  compareEnabled: boolean;
+  /** Twin-run mode. UI currently exposes PrimeDope comparison as the only opt-in. */
   compareMode: "random" | "primedope";
   /**
    * One-sigma uncertainty on your ROI estimate, as a fraction. E.g. 0.05
@@ -139,27 +142,6 @@ function formatCount(n: number): string {
   if (n >= 10_000) return `${Math.round(n / 1000)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return n.toLocaleString("ru-RU");
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.max(1, Math.round(ms / 100) * 100)} мс`;
-  if (ms < 10_000) return `${(ms / 1000).toFixed(1)} с`;
-  if (ms < 60_000) return `${Math.round(ms / 1000)} с`;
-  const m = Math.floor(ms / 60_000);
-  const s = Math.round((ms % 60_000) / 1000);
-  return s === 0 ? `${m} мин` : `${m} мин ${s} с`;
-}
-
-// Pre-launch ETA is a per-machine guess based on one prior run's rate; showing
-// "9.3 с" implies a precision we don't have. Round coarsely so the label
-// reads as orientation, not a promise.
-function formatRoughDuration(ms: number): string {
-  if (ms < 2000) return "~1 с";
-  if (ms < 15_000) return `${Math.round(ms / 1000)} с`;
-  if (ms < 60_000) return `${Math.round(ms / 5000) * 5} с`;
-  const m = Math.floor(ms / 60_000);
-  const remSec = Math.round((ms % 60_000) / 10_000) * 10;
-  return remSec === 0 ? `${m} мин` : `${m} мин ${remSec} с`;
 }
 
 export const ControlsPanel = memo(function ControlsPanel({
@@ -316,6 +298,30 @@ export const ControlsPanel = memo(function ControlsPanel({
         </Field>
       </div>
 
+      <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-3 py-2.5 text-left transition-colors hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev)]/45">
+        <input
+          type="checkbox"
+          checked={value.compareEnabled}
+          onChange={(e) =>
+            onChange({
+              ...value,
+              compareEnabled: e.target.checked,
+              compareMode: "primedope",
+            })
+          }
+          className="mt-0.5 h-4 w-4 shrink-0 accent-[color:var(--color-accent)]"
+        />
+        <span className="min-w-0">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg)]">
+            {t("controls.compareLabel")}
+            <InfoTooltip content={t("help.compare")} />
+          </span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+            {t("controls.compareHint")}
+          </span>
+        </span>
+      </label>
+
       {advanced && (
       <button
         type="button"
@@ -328,23 +334,6 @@ export const ControlsPanel = memo(function ControlsPanel({
 
       {advanced && showAdvanced && (
       <>
-      {/* Advanced run knobs: seed + PD compare */}
-      <SectionTitle>{t("controls.section.advanced")}</SectionTitle>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {/* Seed is auto-randomized per run — field removed from UI */}
-        <Field label={t("controls.compareMode")} hint={t("help.compareMode")}>
-          <select
-            value={value.compareMode}
-            onChange={(e) =>
-              set("compareMode", e.target.value as "random" | "primedope")
-            }
-            className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
-          >
-            <option value="random">{t("controls.compareMode.random")}</option>
-            <option value="primedope">{t("controls.compareMode.primedope")}</option>
-          </select>
-        </Field>
-      </div>
       <SectionTitle>{t("preset.label")}</SectionTitle>
       <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
         {STANDARD_PRESETS.map((preset) => {
@@ -569,7 +558,7 @@ export const ControlsPanel = memo(function ControlsPanel({
               {estimatedMs != null && estimatedMs > 0 && (
                 <span className="inline-flex items-center gap-0.5 rounded-full border border-black/25 bg-black/15 px-2 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums text-black/75">
                   <span className="relative -top-px leading-none">≈</span>
-                  <span>{formatRoughDuration(estimatedMs)}</span>
+                  <span>{formatRoughDurationRu(estimatedMs)}</span>
                 </span>
               )}
             </button>
@@ -592,7 +581,7 @@ export const ControlsPanel = memo(function ControlsPanel({
                       <span className="relative -top-px text-[11px] leading-none">
                         ≈
                       </span>
-                      <span>{formatDuration(remainingMs)}</span>
+                      <span>{formatDurationRu(remainingMs)}</span>
                     </>
                   )
                 : "\u00A0"}
@@ -660,7 +649,7 @@ export function Field({
   // input down and break horizontal alignment with neighbouring fields.
   return (
     <label className="flex h-full flex-col gap-1.5">
-      <span className="flex items-start justify-center gap-1.5 text-center text-[10px] font-medium uppercase leading-tight tracking-[0.15em] text-[color:var(--color-fg-dim)]">
+      <span className="flex items-start justify-center gap-1.5 text-center text-[10px] font-bold uppercase leading-tight tracking-[0.16em] text-[color:var(--color-accent)]/90">
         {label}
         {hint && <InfoTooltip content={hint} />}
       </span>
@@ -815,7 +804,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           {t("controls.done.label")}
           {summary.elapsedMs != null && (
             <span className="font-mono text-[color:var(--color-fg-dim)]">
-              · {formatDuration(summary.elapsedMs)}
+              · {formatDurationRu(summary.elapsedMs)}
             </span>
           )}
         </div>

@@ -30,6 +30,7 @@ const BASE_CONTROLS: ControlsState = {
   usePrimedopePayouts: true,
   usePrimedopeFinishModel: true,
   usePrimedopeRakeMath: true,
+  compareEnabled: false,
   compareMode: "primedope",
   roiStdErr: 0,
   roiShockPerTourney: 0,
@@ -114,6 +115,7 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 1,
       samples: 10_000,
       bankroll: 1000,
+      compareEnabled: true,
       compareMode: "primedope",
       // Explicit opt-in on the "reproduce PD" demo — this is the one scenario
       // where the PD pane is supposed to run on PD's native curve.
@@ -361,7 +363,6 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 1,
       samples: 10_000,
       bankroll: 3_000,
-      compareMode: "primedope",
     },
   },
   // Microstakes high-volume: $5 buy-in, 3000-player fields, 10k tourneys/mo.
@@ -388,7 +389,6 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 1,
       samples: 10_000,
       bankroll: 500,
-      compareMode: "primedope",
     },
   },
   // HighRoller Sunday Major: $530 buy-in, 500-player fields. Top-heavy payouts
@@ -416,7 +416,6 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 1,
       samples: 10_000,
       bankroll: 25_000,
-      compareMode: "primedope",
     },
   },
   // Mixed freeze + PKO grind: typical sunday, mixing both formats.
@@ -542,7 +541,6 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 30,
       samples: 8_000,
       bankroll: 4_500,
-      compareMode: "primedope",
     },
   },
   {
@@ -670,7 +668,6 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 16,
       samples: 6_000,
       bankroll: 12_000,
-      compareMode: "primedope",
     },
   },
   // ---- Max-divergence presets ----
@@ -698,6 +695,7 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 1,
       samples: 10_000,
       bankroll: 5_000,
+      compareEnabled: true,
       compareMode: "primedope",
       usePrimedopePayouts: true,
     },

@@ -374,6 +374,7 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
   normalizeBoolean("usePrimedopePayouts");
   normalizeBoolean("usePrimedopeFinishModel");
   normalizeBoolean("usePrimedopeRakeMath");
+  normalizeBoolean("compareEnabled");
   normalizeBoolean("itmGlobalEnabled");
 
   // These controls are intentionally hidden in the current UI. Letting them

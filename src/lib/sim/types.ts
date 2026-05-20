@@ -456,11 +456,10 @@ export interface SimulationInput {
   seed: number;
   finishModel: FinishModelConfig;
   /**
-   * Twin-run mode for the side-by-side trajectory view. "random" (default)
-   * runs the same model twice with two different seeds — shows how much two
-   * fresh draws diverge. "primedope" runs our α-calibrated model on the left
-   * and PrimeDope's uniform-lift on the right with the same seed — shows
-   * how the algorithm choice changes the answer on identical randomness.
+   * Optional twin-run mode for the side-by-side trajectory view. Omitted =
+   * one primary simulation only. "random" runs the same model twice with
+   * two different seeds. "primedope" runs our α-calibrated model on the left
+   * and PrimeDope's uniform-lift on the right with the same seed.
    *
    * Twin dispatch lives in `useSimulation.buildPasses`; the engine runs one
    * pass per call. Direct callers wanting both passes should run twice with

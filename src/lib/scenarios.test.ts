@@ -32,7 +32,7 @@ function buildInputFromScenario(
     usePrimedopePayouts: controls.usePrimedopePayouts,
     usePrimedopeFinishModel: controls.usePrimedopeFinishModel,
     usePrimedopeRakeMath: controls.usePrimedopeRakeMath,
-    compareMode: controls.compareMode,
+    compareMode: controls.compareEnabled ? controls.compareMode : undefined,
     modelPresetId: controls.modelPresetId,
     roiStdErr: controls.roiStdErr,
     roiShockPerTourney: controls.roiShockPerTourney,
@@ -56,6 +56,14 @@ function buildInputFromScenario(
 describe("demo scenarios", () => {
   it("keep unique ids", () => {
     expect(new Set(SCENARIOS.map((s) => s.id)).size).toBe(SCENARIOS.length);
+  });
+
+  it("only enables PrimeDope comparison on explicit comparison examples", () => {
+    const enabled = SCENARIOS.filter((s) => s.controls.compareEnabled).map(
+      (s) => s.id,
+    );
+
+    expect(enabled).toEqual(["primedope-reference", "small-field-topreg"]);
   });
 
   it.each(SCENARIOS)("%s validates and compiles", (scenario) => {

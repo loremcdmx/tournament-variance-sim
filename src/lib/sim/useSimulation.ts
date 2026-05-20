@@ -13,7 +13,7 @@
  * Wall-clock timing lives here (not in the engine) so determinism inside
  * `engine.ts` is preserved.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { RawShard } from "./engine";
 import { BUILD_PROGRESS_CAP, shardProgressFracFor } from "./progressConstants";
 import { composeProgress } from "./progressAggregation";
@@ -109,7 +109,7 @@ interface ShardSlot {
   done: number;
 }
 
-const RATE_KEY = "tvs.lastRateMsPerWork.v1";
+const RATE_KEY = "tvs.lastRateMsPerWork.v2";
 
 /**
  * Per-row format weights for the work-units calculation. Measured on
@@ -670,17 +670,19 @@ export function useSimulation() {
 
   // Shared pass-plan construction: builds the same `PassPlan[]` for both
   // foreground and background runs. The only thing background changes is the
-  // `seed` on the input passed in — every other twin/PD-compare decision must
-  // stay identical so cached sibling runs are apples-to-apples.
+  // `seed` on the input passed in — every other optional comparison decision
+  // must stay identical so cached sibling runs are apples-to-apples.
   const buildPasses = useCallback((input: SimulationInput): PassPlan[] => {
-      const twin = !input.calibrationMode;
-      const mode2 = input.compareMode ?? "random";
+      const mode2 = input.compareMode;
+      const twin = !input.calibrationMode && mode2 != null;
       // The "primedope" model preset means "I want to see PD's ITM-distribution
-      // model as the primary result, with our honest α algo on the right for
-      // comparison". Flip primary ↔ comparison calibrations so the left pane
-      // renders primedope-binary-itm and the right pane renders α.
+      // model as the primary result". When comparison is also enabled, flip
+      // primary ↔ comparison calibrations so the left pane renders
+      // primedope-binary-itm and the right pane renders α.
       const pdPresetFlip =
         twin && mode2 === "primedope" && input.modelPresetId === "primedope";
+      const primaryIsPrimeDope =
+        input.modelPresetId === "primedope" && (!twin || mode2 === "primedope");
       // PrimeDope can't model progressive-KO payouts: their calculator has
       // no bounty field. When the user's schedule contains any PKO row, swap
       // the PrimeDope comparison pass for "same schedule, bounties stripped"
@@ -702,12 +704,12 @@ export function useSimulation() {
         schedule: si.schedule.map((r) => ({ ...r, bountyFraction: 0 })),
       });
       let primaryInput: SimulationInput = input;
-      if (pdPresetFlip && hasPko) primaryInput = stripBounties(primaryInput);
+      if (primaryIsPrimeDope && hasPko) primaryInput = stripBounties(primaryInput);
       const passes: PassPlan[] = [
         {
           key: "primary",
           input: primaryInput,
-          calibrationMode: pdPresetFlip ? "primedope-binary-itm" : "alpha",
+          calibrationMode: primaryIsPrimeDope ? "primedope-binary-itm" : "alpha",
           weight: twin ? 0.5 : 1,
         },
       ];
@@ -813,7 +815,9 @@ export function useSimulation() {
         setAvailableRuns(1);
         setActiveRunIdx(0);
         setActiveSeed(input.seed >>> 0);
-        setResult(merged);
+        startTransition(() => {
+          setResult(merged);
+        });
         setProgress(1);
         setStage(null);
         const elapsed = performance.now() - t0;
@@ -946,7 +950,9 @@ export function useSimulation() {
     if (idx < 0 || idx >= runs.length) return;
     setActiveRunIdx(idx);
     setActiveSeed(runs[idx].seed >>> 0);
-    setResult(runs[idx].result);
+    startTransition(() => {
+      setResult(runs[idx].result);
+    });
   }, []);
 
   return {

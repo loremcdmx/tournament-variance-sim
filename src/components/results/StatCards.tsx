@@ -36,6 +36,11 @@ const MINI_STAT_VALUE =
   "font-display whitespace-normal break-words text-[22px] font-bold leading-[1.05] tabular-nums sm:text-[26px]";
 const MINI_STAT_DETAIL =
   "mt-1 text-[11px] font-medium leading-snug text-[color:var(--color-fg-dim)]";
+const KPI_TRACK_WRAP = "relative h-8 px-1";
+const KPI_TRACK_BG =
+  "absolute inset-x-1 top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-[color:var(--color-border)]/35";
+const KPI_MARKER =
+  "absolute top-1/2 z-10 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-[color:var(--color-bg-elev)] shadow-[0_2px_10px_rgba(0,0,0,0.28)]";
 
 interface RangeSublineProps {
   label: string;
@@ -59,12 +64,28 @@ interface OutcomeSublineProps {
   accentColor?: string;
 }
 
+interface RiskSublineProps {
+  label: string;
+  pointLabel: string;
+  pointHint: string;
+  pointValue: string;
+  leftScaleLabel: string;
+  rightScaleLabel: string;
+  fromLabel: string;
+  toLabel: string;
+  minValue: string;
+  maxValue: string;
+  riskRatio: number;
+  accentColor?: string;
+}
+
 interface BigStatProps {
   label: string;
   value: string;
   sub?: string;
   rangeSubline?: Omit<RangeSublineProps, "accentColor">;
   outcomeSubline?: Omit<OutcomeSublineProps, "accentColor">;
+  riskSubline?: Omit<RiskSublineProps, "accentColor">;
   tone?: "pos" | "neg";
   tip?: string;
   suit?: StatSuit;
@@ -113,6 +134,7 @@ export function BigStat({
   sub,
   rangeSubline,
   outcomeSubline,
+  riskSubline,
   tone,
   tip,
   suit = "club",
@@ -133,7 +155,7 @@ export function BigStat({
   return (
     <div className="relative flex h-full flex-col gap-1.5 overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
       <span
-        className="absolute left-0 top-0 h-full w-[3px]"
+        className="absolute inset-y-0 left-0 w-[4px]"
         style={{ background: accentColor }}
       />
       <span
@@ -155,7 +177,9 @@ export function BigStat({
       >
         {value}
       </div>
-      {rangeSubline ? (
+      {riskSubline ? (
+        <RiskSubline {...riskSubline} accentColor={accentColor} />
+      ) : rangeSubline ? (
         <RangeSubline {...rangeSubline} accentColor={accentColor} />
       ) : outcomeSubline ? (
         <>
@@ -177,6 +201,101 @@ export function BigStat({
   );
 }
 
+function RiskSubline({
+  label,
+  pointLabel,
+  pointHint,
+  pointValue,
+  leftScaleLabel,
+  rightScaleLabel,
+  fromLabel,
+  toLabel,
+  minValue,
+  maxValue,
+  riskRatio,
+  accentColor,
+}: RiskSublineProps) {
+  const clampedRatio = Number.isFinite(riskRatio)
+    ? Math.max(0, Math.min(1, riskRatio))
+    : 0;
+  const markerPct = Math.max(5, Math.min(95, clampedRatio * 100));
+  const frameBorder = accentColor
+    ? `color-mix(in srgb, ${accentColor} 18%, var(--color-border))`
+    : "color-mix(in srgb, var(--color-border) 88%, transparent)";
+  const markerGlow = accentColor
+    ? `0 0 0 4px color-mix(in srgb, ${accentColor} 14%, transparent), 0 2px 10px rgba(0,0,0,0.28)`
+    : "0 0 0 4px rgba(255,255,255,0.06), 0 2px 10px rgba(0,0,0,0.28)";
+
+  return (
+    <div
+      className={`${BIG_STAT_PANEL_CHROME} flex flex-col gap-3`}
+      style={{ borderColor: frameBorder }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className={`${BIG_STAT_PANEL_TITLE} capitalize`}>
+          {label}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <div
+            className="rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-[0.02em]"
+            style={{
+              color: accentColor ?? "var(--color-fg-muted)",
+              borderColor: accentColor
+                ? `color-mix(in srgb, ${accentColor} 34%, var(--color-border))`
+                : "var(--color-border)",
+              backgroundColor: accentColor
+                ? `color-mix(in srgb, ${accentColor} 10%, transparent)`
+                : "rgba(255,255,255,0.02)",
+            }}
+          >
+            {pointLabel} · {pointValue}
+          </div>
+          <InfoTooltip content={pointHint} />
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-[color:var(--color-border)]/65 bg-[color:var(--color-bg)]/42 px-3 py-3">
+        <div className={KPI_TRACK_WRAP}>
+          <div className={KPI_TRACK_BG}>
+            <div className="h-full w-full bg-[linear-gradient(90deg,color-mix(in_srgb,var(--color-success)_68%,transparent)_0%,color-mix(in_srgb,var(--color-accent)_58%,transparent)_48%,color-mix(in_srgb,var(--color-danger)_82%,transparent)_100%)] opacity-90" />
+          </div>
+          <span
+            aria-label={`${pointLabel}: ${pointValue}`}
+            className={KPI_MARKER}
+            style={{
+              left: `${markerPct}%`,
+              borderColor: accentColor ?? "var(--color-fg-muted)",
+              boxShadow: markerGlow,
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3 px-0.5 text-[10px] font-medium text-[color:var(--color-fg-muted)]">
+          <span>{leftScaleLabel}</span>
+          <span>{rightScaleLabel}</span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 items-end gap-4 border-t border-[color:var(--color-border)]/55 pt-2.5">
+          <div className="min-w-0">
+            <div className={BIG_STAT_PANEL_CAPTION}>
+              {fromLabel}
+            </div>
+            <div className={BIG_STAT_PANEL_VALUE}>
+              {minValue}
+            </div>
+          </div>
+          <div className="min-w-0 text-right">
+            <div className={BIG_STAT_PANEL_CAPTION}>
+              {toLabel}
+            </div>
+            <div className={BIG_STAT_PANEL_VALUE}>
+              {maxValue}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RangeSubline({
   label,
   fromLabel,
@@ -191,6 +310,7 @@ function RangeSubline({
   const clampedRatio = Number.isFinite(anchorRatio)
     ? Math.max(0, Math.min(1, anchorRatio))
     : 0.5;
+  const markerPct = Math.max(5, Math.min(95, clampedRatio * 100));
   const frameBorder = accentColor
     ? `color-mix(in srgb, ${accentColor} 18%, var(--color-border))`
     : "color-mix(in srgb, var(--color-border) 88%, transparent)";
@@ -199,21 +319,21 @@ function RangeSubline({
     : "var(--color-border)";
   const rangeRail = accentColor
     ? `linear-gradient(90deg,
-        color-mix(in srgb, ${accentColor} 10%, transparent) 0%,
-        color-mix(in srgb, ${accentColor} 45%, transparent) 50%,
-        color-mix(in srgb, ${accentColor} 10%, transparent) 100%)`
-    : "linear-gradient(90deg, transparent 0%, var(--color-fg-dim) 50%, transparent 100%)";
+        color-mix(in srgb, ${accentColor} 18%, transparent) 0%,
+        color-mix(in srgb, ${accentColor} 62%, transparent) 50%,
+        color-mix(in srgb, ${accentColor} 18%, transparent) 100%)`
+    : "linear-gradient(90deg, color-mix(in srgb, var(--color-fg-dim) 18%, transparent) 0%, color-mix(in srgb, var(--color-fg-dim) 62%, transparent) 50%, color-mix(in srgb, var(--color-fg-dim) 18%, transparent) 100%)";
 
   return (
     <div
-      className={`${BIG_STAT_PANEL_CHROME} flex min-h-[11.25rem] flex-col`}
+      className={`${BIG_STAT_PANEL_CHROME} flex flex-col gap-3`}
       style={{ borderColor: frameBorder }}
     >
-      <div className="flex min-h-[1.85rem] items-start justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div className={`${BIG_STAT_PANEL_TITLE} capitalize`}>
           {label}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <div
             className="rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-[0.02em]"
             style={{
@@ -231,46 +351,47 @@ function RangeSubline({
           <InfoTooltip content={pointHint} />
         </div>
       </div>
-      <div className="relative mt-2.5 h-5 px-1">
-        <div className="absolute inset-x-1 top-1/2 h-px -translate-y-1/2 rounded-full bg-[color:var(--color-border)]/70" />
-        <div
-          className="absolute inset-x-1 top-1/2 h-[3px] -translate-y-1/2 rounded-full opacity-90"
-          style={{ background: rangeRail }}
-        />
-        <span
-          className="absolute left-0 top-1/2 size-2.5 -translate-y-1/2 rounded-full border bg-[color:var(--color-bg-elev)] shadow-[0_0_0_2px_rgba(0,0,0,0.16)]"
-          style={{ borderColor: endpointBorder }}
-        />
-        <span
-          className="absolute right-0 top-1/2 size-2.5 -translate-y-1/2 rounded-full border bg-[color:var(--color-bg-elev)] shadow-[0_0_0_2px_rgba(0,0,0,0.16)]"
-          style={{ borderColor: endpointBorder }}
-        />
-        <span
-          className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-[color:var(--color-bg-elev)]"
-          style={{
-            left: `${clampedRatio * 100}%`,
-            borderColor: accentColor ?? "var(--color-fg-muted)",
-            boxShadow: accentColor
-              ? `0 0 0 3px color-mix(in srgb, ${accentColor} 12%, transparent)`
-              : "0 0 0 3px rgba(255,255,255,0.06)",
-          }}
-        />
-      </div>
-      <div className="mt-auto grid grid-cols-2 items-end gap-4 pt-2.5">
-        <div className="min-w-0">
-          <div className={BIG_STAT_PANEL_CAPTION}>
-            {fromLabel}
+
+      <div className="rounded-lg border border-[color:var(--color-border)]/65 bg-[color:var(--color-bg)]/42 px-3 py-3">
+        <div className={KPI_TRACK_WRAP}>
+          <div className={KPI_TRACK_BG}>
+            <div className="h-full w-full opacity-95" style={{ background: rangeRail }} />
           </div>
-          <div className={BIG_STAT_PANEL_VALUE}>
-            {minValue}
-          </div>
+          <span
+            className="absolute left-0 top-1/2 size-3 -translate-y-1/2 rounded-full border bg-[color:var(--color-bg-elev)] shadow-[0_0_0_2px_rgba(0,0,0,0.16)]"
+            style={{ borderColor: endpointBorder }}
+          />
+          <span
+            className="absolute right-0 top-1/2 size-3 -translate-y-1/2 rounded-full border bg-[color:var(--color-bg-elev)] shadow-[0_0_0_2px_rgba(0,0,0,0.16)]"
+            style={{ borderColor: endpointBorder }}
+          />
+          <span
+            className={KPI_MARKER}
+            style={{
+              left: `${markerPct}%`,
+              borderColor: accentColor ?? "var(--color-fg-muted)",
+              boxShadow: accentColor
+                ? `0 0 0 4px color-mix(in srgb, ${accentColor} 14%, transparent), 0 2px 10px rgba(0,0,0,0.28)`
+                : "0 0 0 4px rgba(255,255,255,0.06), 0 2px 10px rgba(0,0,0,0.28)",
+            }}
+          />
         </div>
-        <div className="min-w-0 text-right">
-          <div className={BIG_STAT_PANEL_CAPTION}>
-            {toLabel}
+        <div className="grid grid-cols-2 items-end gap-4 pt-1">
+          <div className="min-w-0">
+            <div className={BIG_STAT_PANEL_CAPTION}>
+              {fromLabel}
+            </div>
+            <div className={BIG_STAT_PANEL_VALUE}>
+              {minValue}
+            </div>
           </div>
-          <div className={BIG_STAT_PANEL_VALUE}>
-            {maxValue}
+          <div className="min-w-0 text-right">
+            <div className={BIG_STAT_PANEL_CAPTION}>
+              {toLabel}
+            </div>
+            <div className={BIG_STAT_PANEL_VALUE}>
+              {maxValue}
+            </div>
           </div>
         </div>
       </div>
@@ -290,13 +411,14 @@ function OutcomeSubline({
   const clampedRatio = Number.isFinite(ratio)
     ? Math.max(0, Math.min(1, ratio))
     : 0.5;
+  const markerPct = Math.max(5, Math.min(95, clampedRatio * 100));
   const frameBorder = accentColor
     ? `color-mix(in srgb, ${accentColor} 18%, var(--color-border))`
     : "color-mix(in srgb, var(--color-border) 88%, transparent)";
 
   return (
     <div
-      className={`${BIG_STAT_PANEL_CHROME} flex min-h-[11.25rem] flex-col`}
+      className={`${BIG_STAT_PANEL_CHROME} flex flex-col gap-3`}
       style={{ borderColor: frameBorder }}
     >
       <div className="flex min-h-[1.85rem] items-start justify-between gap-3">
@@ -306,51 +428,54 @@ function OutcomeSubline({
           className="invisible h-[1.6rem] w-[6.25rem] shrink-0 rounded-full border"
         />
       </div>
-      <div className="mt-2.5">
-        <div className="relative h-2.5 overflow-hidden rounded-full bg-[color:var(--color-border)]/40">
-          <div
-            className="absolute inset-y-0 left-0 rounded-l-full"
-            style={{
-              width: `${(1 - clampedRatio) * 100}%`,
-              background:
-                "linear-gradient(90deg, rgba(248,113,113,0.52) 0%, rgba(248,113,113,0.2) 100%)",
-            }}
-          />
-          <div
-            className="absolute inset-y-0 right-0 rounded-r-full"
-            style={{
-              width: `${clampedRatio * 100}%`,
-              background:
-                "linear-gradient(90deg, rgba(74,222,128,0.3) 0%, rgba(74,222,128,0.72) 100%)",
-            }}
-          />
+
+      <div className="rounded-lg border border-[color:var(--color-border)]/65 bg-[color:var(--color-bg)]/42 px-3 py-3">
+        <div className={KPI_TRACK_WRAP}>
+          <div className={KPI_TRACK_BG}>
+            <div
+              className="absolute inset-y-0 left-0"
+              style={{
+                width: `${(1 - clampedRatio) * 100}%`,
+                background:
+                  "linear-gradient(90deg, rgba(248,113,113,0.62) 0%, rgba(248,113,113,0.25) 100%)",
+              }}
+            />
+            <div
+              className="absolute inset-y-0 right-0"
+              style={{
+                width: `${clampedRatio * 100}%`,
+                background:
+                  "linear-gradient(90deg, rgba(74,222,128,0.3) 0%, rgba(74,222,128,0.78) 100%)",
+              }}
+            />
+          </div>
           <span
-            className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-[color:var(--color-bg-elev)]"
+            className={KPI_MARKER}
             style={{
-              left: `${clampedRatio * 100}%`,
+              left: `${markerPct}%`,
               borderColor: accentColor ?? "var(--color-fg-muted)",
               boxShadow: accentColor
-                ? `0 0 0 3px color-mix(in srgb, ${accentColor} 10%, transparent)`
+                ? `0 0 0 4px color-mix(in srgb, ${accentColor} 12%, transparent), 0 2px 10px rgba(0,0,0,0.28)`
                 : "0 0 0 3px rgba(255,255,255,0.06)",
             }}
           />
         </div>
-      </div>
-      <div className="mt-auto grid grid-cols-2 items-end gap-4 pt-2.5">
-        <div className="min-w-0">
-          <div className={BIG_STAT_PANEL_CAPTION}>
-            {leftLabel}
+        <div className="mt-3 grid grid-cols-2 items-end gap-4 border-t border-[color:var(--color-border)]/55 pt-2.5">
+          <div className="min-w-0">
+            <div className={BIG_STAT_PANEL_CAPTION}>
+              {leftLabel}
+            </div>
+            <div className={`${BIG_STAT_PANEL_VALUE} text-[color:var(--color-danger)]`}>
+              {leftValue}
+            </div>
           </div>
-          <div className={`${BIG_STAT_PANEL_VALUE} text-[color:var(--color-danger)]`}>
-            {leftValue}
-          </div>
-        </div>
-        <div className="min-w-0 text-right">
-          <div className={BIG_STAT_PANEL_CAPTION}>
-            {rightLabel}
-          </div>
-          <div className={`${BIG_STAT_PANEL_VALUE} text-[color:var(--color-success)]`}>
-            {rightValue}
+          <div className="min-w-0 text-right">
+            <div className={BIG_STAT_PANEL_CAPTION}>
+              {rightLabel}
+            </div>
+            <div className={`${BIG_STAT_PANEL_VALUE} text-[color:var(--color-success)]`}>
+              {rightValue}
+            </div>
           </div>
         </div>
       </div>

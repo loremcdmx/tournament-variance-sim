@@ -111,16 +111,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Flat ink background with a fine grain overlay — no radial bloom, no gradient,
-   just paper-black with a trace of 0.8% noise to kill the "AI dashboard" flat. */
+/* Keep the page background flat. Full-page textures, fixed backgrounds, and
+   SVG noise filters are on the scroll paint path and make Safari feel sticky
+   on this long dashboard. */
 body {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.98 0 0 0 0 0.96 0 0 0 0 0.93 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-attachment: fixed;
-  background-size: 220px 220px;
-}
-
-:root[data-theme="light"] body {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.04 0 0 0 0 0.08 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: none;
 }
 
 /* Display — reuses the sans stack at a tighter letter-spacing. */
