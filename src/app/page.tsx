@@ -1107,10 +1107,6 @@ export default function Home() {
               />
             )}
 
-            <PayoutStructureCard schedule={deferredSchedule} />
-          </div>
-
-          <aside className="flex min-w-0 flex-col gap-3 xl:sticky xl:top-3 xl:self-start">
             <CompactPanelHeader
               number="02"
               title={t("section.controls.title")}
@@ -1143,6 +1139,10 @@ export default function Home() {
               }
             />
 
+            <PayoutStructureCard schedule={deferredSchedule} />
+          </div>
+
+          <aside className="flex min-w-0 flex-col gap-3 xl:sticky xl:top-3 xl:self-start">
             {sanityFindings.length > 0 && (
               <Card className="border-amber-400/40 bg-amber-400/5 p-3">
                 <div className="mb-2 flex items-center gap-2">
