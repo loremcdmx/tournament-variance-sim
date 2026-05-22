@@ -2151,6 +2151,7 @@ export const DICT = {
   },
   "preview.statField": { en: "Field", ru: "Поле" },
   "preview.statItm": { en: "ITM", ru: "ITM" },
+  "preview.statRoi": { en: "ROI", ru: "ROI" },
   "preview.statTop1": { en: "EV from top 1%", ru: "EV из топ-1%" },
   "preview.statTop1Hint": {
     en: "share of mean payout that comes from the best 1% of finishes",

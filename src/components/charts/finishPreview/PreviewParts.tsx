@@ -47,17 +47,17 @@ export function PreviewHeroStat({
             {details.map((item) => (
               <div
                 key={item.label}
-                className={`rounded-md border px-2.5 py-2 ${
+                className={`min-w-0 rounded-md border px-2.5 py-2 ${
                   item.tone === "accent"
                     ? "border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/12"
                     : "border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/60"
                 }`}
               >
-                <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                <div className="truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
                   {item.label}
                 </div>
                 <div
-                  className={`pt-1 font-mono text-[14px] font-semibold leading-none tabular-nums ${
+                  className={`truncate pt-1 font-mono text-[13px] font-semibold leading-none tabular-nums ${
                     item.tone === "accent"
                       ? "text-[color:var(--color-accent)]"
                       : "text-[color:var(--color-fg)]"

@@ -244,7 +244,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             value={moneyFmt(totalEvPerEntry)}
             accent
             details={[
-              { label: t("row.roi"), value: quickRoi, tone: "accent" },
+              { label: t("preview.statRoi"), value: quickRoi, tone: "accent" },
               { label: t("preview.statItm"), value: quickItm },
               { label: t("preview.statField"), value: quickField },
             ]}
