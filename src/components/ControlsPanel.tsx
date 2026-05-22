@@ -276,7 +276,7 @@ export const ControlsPanel = memo(function ControlsPanel({
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
       {/* Run controls: target tournaments per sample, samples */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-4 ${advanced ? "sm:grid-cols-2" : ""}`}>
         <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
           <NumInput
             value={totalTournaments}
@@ -287,40 +287,44 @@ export const ControlsPanel = memo(function ControlsPanel({
             onChange={setTournamentTarget}
           />
         </Field>
-        <Field label={t("controls.samples")} hint={t("help.samples")}>
-          <NumInput
-            value={value.samples}
-            min={100}
-            max={1_000_000}
-            step={1000}
-            onChange={(v) => set("samples", Math.floor(v))}
-          />
-        </Field>
+        {advanced && (
+          <Field label={t("controls.samples")} hint={t("help.samples")}>
+            <NumInput
+              value={value.samples}
+              min={100}
+              max={1_000_000}
+              step={1000}
+              onChange={(v) => set("samples", Math.floor(v))}
+            />
+          </Field>
+        )}
       </div>
 
-      <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-3 py-2.5 text-left transition-colors hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev)]/45">
-        <input
-          type="checkbox"
-          checked={value.compareEnabled}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              compareEnabled: e.target.checked,
-              compareMode: "primedope",
-            })
-          }
-          className="mt-0.5 h-4 w-4 shrink-0 accent-[color:var(--color-accent)]"
-        />
-        <span className="min-w-0">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg)]">
-            {t("controls.compareLabel")}
-            <InfoTooltip content={t("help.compare")} />
+      {advanced && (
+        <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-3 py-2.5 text-left transition-colors hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev)]/45">
+          <input
+            type="checkbox"
+            checked={value.compareEnabled}
+            onChange={(e) =>
+              onChange({
+                ...value,
+                compareEnabled: e.target.checked,
+                compareMode: "primedope",
+              })
+            }
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[color:var(--color-accent)]"
+          />
+          <span className="min-w-0">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg)]">
+              {t("controls.compareLabel")}
+              <InfoTooltip content={t("help.compare")} />
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+              {t("controls.compareHint")}
+            </span>
           </span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-            {t("controls.compareHint")}
-          </span>
-        </span>
-      </label>
+        </label>
+      )}
 
       {advanced && (
       <button

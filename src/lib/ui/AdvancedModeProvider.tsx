@@ -5,47 +5,54 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useState,
 } from "react";
-import { useLocalStorageState } from "./useLocalStorageState";
-
-const LS_KEY = "tvs:advancedMode";
 
 interface AdvancedModeCtx {
   advanced: boolean;
+  adminAvailable: boolean;
   setAdvanced: (v: boolean) => void;
   toggle: () => void;
 }
 
 const Ctx = createContext<AdvancedModeCtx | null>(null);
 
-const load = (): boolean => {
+export function parseAdminParam(search: string | null | undefined): boolean {
+  if (!search) return false;
   try {
-    return localStorage.getItem(LS_KEY) === "1";
+    return new URLSearchParams(search).get("admin") === "1";
   } catch {
     return false;
   }
-};
-const save = (v: boolean) => {
-  try {
-    localStorage.setItem(LS_KEY, v ? "1" : "0");
-  } catch {}
-};
+}
+
+function readAdminParam(): boolean {
+  if (typeof window === "undefined") return false;
+  return parseAdminParam(window.location.search);
+}
 
 export function AdvancedModeProvider({ children }: { children: React.ReactNode }) {
-  const [advanced, setAdvanced] = useLocalStorageState<boolean>(
-    LS_KEY,
-    load,
-    save,
-    false,
+  // adminAvailable is read once on mount and not reactive — admin status
+  // flips only on navigation, which remounts the provider in practice.
+  const [adminAvailable] = useState<boolean>(readAdminParam);
+  const [advanced, setAdvancedState] = useState<boolean>(adminAvailable);
+
+  const setAdvanced = useCallback(
+    (v: boolean) => {
+      if (!adminAvailable) return;
+      setAdvancedState(v);
+    },
+    [adminAvailable],
   );
 
   const toggle = useCallback(() => {
-    setAdvanced(!advanced);
-  }, [advanced, setAdvanced]);
+    if (!adminAvailable) return;
+    setAdvancedState((v) => !v);
+  }, [adminAvailable]);
 
   const value = useMemo<AdvancedModeCtx>(
-    () => ({ advanced, setAdvanced, toggle }),
-    [advanced, setAdvanced, toggle],
+    () => ({ advanced, adminAvailable, setAdvanced, toggle }),
+    [advanced, adminAvailable, setAdvanced, toggle],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

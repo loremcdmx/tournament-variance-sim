@@ -182,6 +182,7 @@ export function sanitizeControlsForBasicMode(
     tiltSlowThreshold: 0,
     tiltSlowMinDuration: 500,
     tiltSlowRecoveryFrac: 0.5,
+    compareEnabled: false,
   };
   if (!ADVANCED_ONLY_PRESET_IDS.has(state.modelPresetId)) return stripped;
   return {

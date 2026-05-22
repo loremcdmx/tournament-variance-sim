@@ -7,7 +7,7 @@ import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 export function CornerToggles() {
   const { locale, setLocale } = useLocale();
   const { theme, toggle } = useTheme();
-  const { advanced, toggle: toggleAdvanced } = useAdvancedMode();
+  const { advanced, adminAvailable, toggle: toggleAdvanced } = useAdvancedMode();
 
   return (
     <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-1 text-[11px]">
@@ -37,20 +37,22 @@ export function CornerToggles() {
           RU
         </button>
       </div>
-      <button
-        type="button"
-        onClick={toggleAdvanced}
-        className={`rounded-full px-2 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
-          advanced
-            ? "bg-[color:var(--color-bg-elev-2)] text-[color:var(--color-fg)]"
-            : "text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg-muted)]"
-        }`}
-        aria-label={advanced ? "Disable advanced mode" : "Enable advanced mode"}
-        aria-pressed={advanced}
-        title={advanced ? "Advanced mode: on" : "Advanced mode: off"}
-      >
-        ADV
-      </button>
+      {adminAvailable && (
+        <button
+          type="button"
+          onClick={toggleAdvanced}
+          className={`rounded-full px-2 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
+            advanced
+              ? "bg-[color:var(--color-bg-elev-2)] text-[color:var(--color-fg)]"
+              : "text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg-muted)]"
+          }`}
+          aria-label={advanced ? "Disable advanced mode" : "Enable advanced mode"}
+          aria-pressed={advanced}
+          title={advanced ? "Advanced mode: on" : "Advanced mode: off"}
+        >
+          ADV
+        </button>
+      )}
       <button
         type="button"
         onClick={toggle}

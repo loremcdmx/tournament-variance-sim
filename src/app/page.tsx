@@ -120,7 +120,7 @@ const initialControls: ControlsState = {
   empiricalBuckets: undefined,
   itmGlobalEnabled: false,
   itmGlobalPct: 18.7,
-  rakebackPct: 0,
+  rakebackPct: 20,
   battleRoyaleLeaderboard: DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
 };
 
@@ -590,16 +590,17 @@ export default function Home() {
     setActiveScenarioId(null);
   }, [queueInterruptBackground]);
   const scheduleToolbarExtras = useMemo(
-    () => (
-      <ScheduleToolbarExtras
-        t={t}
-        activeScenarioId={activeScenarioId}
-        loadScenario={loadScenario}
-        onReset={handleScheduleReset}
-        disabled={running}
-      />
-    ),
-    [t, activeScenarioId, loadScenario, handleScheduleReset, running],
+    () =>
+      advanced ? (
+        <ScheduleToolbarExtras
+          t={t}
+          activeScenarioId={activeScenarioId}
+          loadScenario={loadScenario}
+          onReset={handleScheduleReset}
+          disabled={running}
+        />
+      ) : null,
+    [advanced, t, activeScenarioId, loadScenario, handleScheduleReset, running],
   );
   const doneSummary = useMemo(
     () =>
@@ -812,6 +813,7 @@ export default function Home() {
         </div>
 
         {/* User-saved presets — collapsible so they don't push the schedule below the fold */}
+        {advanced && (
         <details className="group border-t border-[color:var(--color-border)] pt-2">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-accent)]">
               <span className="eyebrow flex items-center gap-2">
@@ -991,6 +993,7 @@ export default function Home() {
               </div>
             </div>
           </details>
+        )}
       </header>
 
       {advanced && (
