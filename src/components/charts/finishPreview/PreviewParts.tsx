@@ -476,12 +476,13 @@ export function evPctInputValue(v: number): string {
 export const PREVIEW_SLIDER_CONTROL_CHROME =
   "flex h-11 items-center rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]";
 export const PREVIEW_SLIDER_VALUE_CHROME =
-  PREVIEW_SLIDER_CONTROL_CHROME + " px-2.5";
+  PREVIEW_SLIDER_CONTROL_CHROME +
+  " px-2.5 transition-colors focus-within:border-[color:var(--color-accent)]";
 export const PREVIEW_SLIDER_RESET_CHROME =
   PREVIEW_SLIDER_CONTROL_CHROME +
   " min-w-[5.75rem] justify-center px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)] transition hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-default disabled:opacity-40 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]";
 export const PREVIEW_SLIDER_VALUE_INPUT =
-  "h-full min-w-0 bg-transparent text-right font-mono font-semibold leading-none tabular-nums text-[color:var(--color-fg)] outline-none disabled:opacity-60";
+  "h-full min-w-0 bg-transparent text-right font-mono font-semibold leading-none tabular-nums text-[color:var(--color-fg)] outline-none focus:outline-none focus:outline-offset-0 disabled:opacity-60";
 export const PREVIEW_SLIDER_VALUE_SUFFIX =
   "ml-1 font-mono font-semibold leading-none text-[color:var(--color-fg-dim)]";
 export const EV_BREAKDOWN_GRID =
