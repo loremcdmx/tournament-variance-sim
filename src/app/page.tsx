@@ -1146,7 +1146,7 @@ export default function Home() {
           </div>
 
           <aside className="flex min-w-0 flex-col gap-3 xl:sticky xl:top-3 xl:self-start">
-            {sanityFindings.length > 0 && (
+            {hydrated && sanityFindings.length > 0 && (
               <Card className="border-amber-400/40 bg-amber-400/5 p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/30 text-[11px] font-bold text-amber-100">
