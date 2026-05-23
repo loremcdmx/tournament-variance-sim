@@ -374,7 +374,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
 
       {/* Tier-by-tier breakdown + discrete position rows. Shared grid
           template: swatch | label | bar | %EV | field % | equilibrium % | $ ROI */}
-      <div className="flex flex-col gap-1.5 pl-6">
+      <div className="flex flex-col gap-1.5">
         <div
           className={`grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-fg-dim)] sm:text-[10px]`}
         >

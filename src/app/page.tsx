@@ -1081,8 +1081,8 @@ export default function Home() {
           </div>
         </Card>
 
-        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(360px,400px)]">
-          <div className="flex min-w-0 flex-col gap-3">
+        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(380px,480px)]">
+          <div className="flex min-w-0 flex-col gap-3 xl:max-w-[960px] 2xl:max-w-[1080px] 3xl:max-w-[1280px]">
             <CompactPanelHeader
               number="01"
               title={t("section.schedule.title")}

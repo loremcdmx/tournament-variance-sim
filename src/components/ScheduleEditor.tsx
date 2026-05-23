@@ -625,7 +625,7 @@ const GAME_TYPE_TINT: Record<VisibleGameType, string> = {
 };
 
 const SCHEDULE_GRID_CLASS =
-  "grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(7rem,0.68fr)_minmax(5rem,0.5fr)_minmax(5.4rem,0.54fr)] 2xl:grid-cols-[minmax(0,1.45fr)_minmax(4.8rem,0.65fr)_minmax(4.5rem,0.55fr)_minmax(4.2rem,0.48fr)_minmax(5.2rem,0.58fr)_minmax(0,1.05fr)_minmax(4.6rem,0.52fr)_2rem] 2xl:gap-2";
+  "grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(7rem,0.68fr)_minmax(5rem,0.5fr)_minmax(5.4rem,0.54fr)] 2xl:grid-cols-[minmax(0,14rem)_minmax(4.8rem,6rem)_minmax(4.5rem,7rem)_minmax(4.2rem,6rem)_minmax(5.2rem,8rem)_minmax(0,16rem)_minmax(4.6rem,7rem)_2rem] 2xl:gap-2";
 
 function ScheduleHeaderCell({
   children,

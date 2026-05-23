@@ -486,7 +486,7 @@ export const PREVIEW_SLIDER_VALUE_INPUT =
 export const PREVIEW_SLIDER_VALUE_SUFFIX =
   "ml-1 font-mono font-semibold leading-none text-[color:var(--color-fg-dim)]";
 export const EV_BREAKDOWN_GRID =
-  "grid-cols-[8px_minmax(3rem,0.75fr)_minmax(16px,1fr)_2.4rem_2.75rem_2.75rem_3.75rem] sm:grid-cols-[8px_minmax(4.25rem,0.9fr)_minmax(24px,1fr)_2.75rem_3.25rem_3.25rem_4rem] 3xl:grid-cols-[10px_minmax(5.75rem,1fr)_minmax(48px,1fr)_3.4rem_4.5rem_4.5rem_5.2rem]";
+  "grid-cols-[8px_minmax(4rem,1.6fr)_minmax(16px,0.6fr)_2.4rem_2.75rem_2.75rem_3.75rem] sm:grid-cols-[8px_minmax(5.5rem,1.8fr)_minmax(20px,0.5fr)_2.75rem_3.25rem_3.25rem_4rem] 3xl:grid-cols-[10px_minmax(7rem,1.8fr)_minmax(36px,0.5fr)_3.4rem_4.5rem_4.5rem_5.2rem]";
 export const EV_BREAKDOWN_GAP = "gap-x-1 sm:gap-x-1.5";
 export const EV_BREAKDOWN_NUM =
   "min-w-0 whitespace-nowrap text-right font-mono tabular-nums";
