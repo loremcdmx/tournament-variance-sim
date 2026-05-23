@@ -197,11 +197,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
 
   const netProfitPerEntry = totalEvPerEntry - stats.cost;
   const roiPerEntry = stats.cost > 1e-9 ? netProfitPerEntry / stats.cost : 0;
-  const rakeAmount = previewEconomics.totalRake;
-  const rakeFooter =
-    rakeAmount > 0.005
-      ? `${moneyFmt(previewEconomics.buyInTotal)} + ${moneyFmt(rakeAmount)} ${t("chart.convergence.rake")}`
-      : moneyFmt(previewEconomics.buyInTotal);
   const quickRoi = `${roiPerEntry >= 0 ? "+" : ""}${(roiPerEntry * 100).toFixed(1)}%`;
   const quickItm = `${(stats.itm * 100).toFixed(1)}%`;
   const quickField = previewEconomics.fieldSize.toLocaleString(
@@ -229,16 +224,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       {/* Buy-in and expected return */}
       <div className="group relative overflow-hidden rounded-md border border-[color:var(--color-border-strong)]/70 bg-[linear-gradient(135deg,var(--color-bg)_0%,var(--color-bg-elev)_60%,rgba(255,222,81,0.08)_100%)] p-3.5 shadow-[0_18px_40px_-32px_rgba(0,0,0,0.9)]">
         <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--color-accent)]/70 to-transparent" />
-        <div className="relative grid grid-cols-1 items-stretch gap-2.5 sm:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-          <PreviewHeroStat
-            label={t("preview.youPay")}
-            value={moneyFmt(stats.cost)}
-            footer={
-              <span className="rounded-md border border-[color:var(--color-border-strong)]/70 bg-[color:var(--color-bg-elev)]/90 px-2.5 py-1.5 font-mono text-[11px] font-medium tabular-nums text-[color:var(--color-fg)] opacity-80">
-                {rakeFooter}
-              </span>
-            }
-          />
+        <div className="relative">
           <PreviewHeroStat
             label="EV"
             value={moneyFmt(totalEvPerEntry)}
