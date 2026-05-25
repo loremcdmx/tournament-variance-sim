@@ -635,7 +635,7 @@ function ScheduleHeaderCell({
   hint?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[color:var(--color-accent)]/90">
+    <div className="flex min-w-0 items-center justify-center gap-1 text-center text-[9px] font-bold uppercase tracking-[0.1em] text-[color:var(--color-accent)]/90">
       <span className="truncate">{children}</span>
       {hint && <InfoTooltip content={hint} />}
     </div>
