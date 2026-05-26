@@ -153,6 +153,7 @@ describe("validateSchedule", () => {
     // already too valuable. Engine compile then reconciles the actual bounty
     // budget as totalWinningsEV - cashEV, so the total row EV is still pinned.
     const r = row({
+      gameType: "pko",
       payoutStructure: "mtt-gg-bounty",
       roi: 1,
       itmRate: 0.20,

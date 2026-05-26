@@ -163,12 +163,6 @@ export function normalizeGameTypeConsistency(row: TournamentRow): TournamentRow 
         changed = true;
       }
       clear("reentryRate");
-    } else {
-      const maxEntries = Math.max(2, row.maxEntries ?? 2);
-      if (row.maxEntries !== maxEntries) {
-        patch.maxEntries = maxEntries;
-        changed = true;
-      }
     }
     if (BOUNTY_PAYOUT_STRUCTURES.has(row.payoutStructure)) {
       patch.payoutStructure = "mtt-standard";
