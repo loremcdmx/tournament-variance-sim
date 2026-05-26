@@ -778,7 +778,7 @@ export default function Home() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 py-3 sm:px-6 sm:py-4 xl:max-w-[1800px] 2xl:max-w-[2200px] 3xl:max-w-[2500px] 4xl:max-w-[2900px]">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 py-3 sm:px-6 sm:py-4 xl:max-w-[1800px] 2xl:max-w-[2200px] 3xl:max-w-[2500px] 4xl:max-w-[2900px] min-[2560px]:!max-w-[3400px]">
       <header className="flex flex-col gap-3">
         {/* Brand strip */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[color:var(--color-border)] pb-2">
@@ -1226,7 +1226,7 @@ export default function Home() {
         </div>
       )}
 
-      {!result ? (
+      {!result && (
         <div className="grid gap-4 4xl:grid-cols-2 4xl:items-start">
           <Card className="min-w-0 p-5">
             <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
@@ -1248,13 +1248,6 @@ export default function Home() {
             />
           </Card>
         </div>
-      ) : (
-        <Card className="p-5">
-          <ProveEdgeCard
-            schedule={deferredSchedule}
-            finishModel={deferredPreviewModel}
-          />
-        </Card>
       )}
 
       {result && (

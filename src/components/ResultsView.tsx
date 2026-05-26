@@ -89,6 +89,7 @@ import {
 import type { ControlsState } from "./ControlsPanel";
 import { DistributionChart } from "./charts/DistributionChart";
 import { ConvergenceChart } from "./charts/ConvergenceChart";
+import { ProveEdgeCard } from "./charts/ProveEdgeCard";
 import {
   BigStat,
   MiniStat,
@@ -1250,15 +1251,24 @@ function ResultsViewImpl({
         </UnitScope>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <Card className="p-5">
-          <ChartHeader
-            title={t("chart.convergence")}
-            subtitle={t("chart.convergence.sub")}
-            showUnitToggle={false}
-          />
-          <ConvergenceChart schedule={schedule} finishModel={finishModel} />
-        </Card>
+      <div
+        className={`grid grid-cols-1 gap-3 ${
+          result.downswings.length > 0 ? "xl:grid-cols-2" : ""
+        }`}
+      >
+        <div className="flex min-w-0 flex-col gap-3">
+          <Card className="p-5">
+            <ChartHeader
+              title={t("chart.convergence")}
+              subtitle={t("chart.convergence.sub")}
+              showUnitToggle={false}
+            />
+            <ConvergenceChart schedule={schedule} finishModel={finishModel} />
+          </Card>
+          <Card className="p-5">
+            <ProveEdgeCard schedule={schedule} finishModel={finishModel} />
+          </Card>
+        </div>
         {result.downswings.length > 0 && (
           <UnitScope id="downswings">
             <div className="flex flex-col gap-1.5">
