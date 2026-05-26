@@ -290,16 +290,18 @@ export const ControlsPanel = memo(function ControlsPanel({
         }`}
       >
         {globalControls}
-        <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
-          <NumInput
-            value={totalTournaments}
-            min={1}
-            max={maxTournamentsPerSample}
-            step={1}
-            commitMode="blur"
-            onChange={setTournamentTarget}
-          />
-        </Field>
+        <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
+          <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
+            <NumInput
+              value={totalTournaments}
+              min={1}
+              max={maxTournamentsPerSample}
+              step={1}
+              commitMode="blur"
+              onChange={setTournamentTarget}
+            />
+          </Field>
+        </div>
         {advanced && (
           <Field label={t("controls.samples")} hint={t("help.samples")}>
             <NumInput
