@@ -1614,6 +1614,42 @@ describe("compileSchedule normalizes BR ↔ mystery-royale split-brain", () => {
     // Tier sampler attaches only when payoutStructure was normalized to BR.
     expect(entry.brTierRatios).not.toBeNull();
   });
+
+  it("explicit freezeout strips stale bounty fields before compile", () => {
+    const compiled = compileSchedule({
+      schedule: [
+        {
+          id: "freeze",
+          label: "freeze",
+          players: 500,
+          buyIn: 10,
+          rake: 0.1,
+          roi: 0.1,
+          gameType: "freezeout",
+          payoutStructure: "mtt-gg-bounty",
+          bountyFraction: 0.5,
+          mysteryBountyVariance: 2,
+          pkoHeadVar: 0.4,
+          pkoHeat: 0.2,
+          bountyEvBias: 0.1,
+          battleRoyaleLeaderboardEnabled: true,
+          battleRoyaleLeaderboardShare: 0.5,
+          count: 1,
+        },
+      ],
+      scheduleRepeats: 1,
+      samples: 1,
+      bankroll: 100,
+      seed: 1,
+      finishModel: { id: "power-law" },
+    });
+    const entry = compiled.flat[0];
+    expect(entry.bountyByPlace).toBeNull();
+    expect(entry.bountyKmean).toBeNull();
+    expect(entry.heatBountyByPlace).toBeNull();
+    expect(entry.brTierRatios).toBeNull();
+    expect(entry.battleRoyaleLeaderboardShare).toBe(0);
+  });
 });
 
 // #113 — bounty conventions and conservation. These pin the decisions in

@@ -364,10 +364,10 @@ export const DICT = {
     en: "Row {row}: count = 0 — this row is never played, so its inputs don't affect the simulation.",
     ru: "Ряд {row}: count = 0 — этот ряд никогда не разыгрывается, его настройки на симуляцию не влияют.",
   },
-  "row.fixedItm": { en: "Fixed ITM %", ru: "Фикс. ITM %" },
+  "row.fixedItm": { en: "ITM %", ru: "ITM %" },
   "row.fixedItmHint": {
-    en: "Pin the in-the-money rate at a constant value regardless of ROI. All skill concentrates WITHIN the cashed band — a grinder doesn't cash more often than a no-skill player, they just run deeper when they do. Empty = auto (classic α-calibration, ITM rate scales with ROI). Typical: 15–18 % for a solid grinder.",
-    ru: "Фиксирует частоту попадания в призовые независимо от ROI. Скилл весь уходит ВНУТРЬ призовой зоны — гриндер попадает в деньги не чаще нулевого игрока, но бежит глубже. Пусто = авто (классическая α-калибровка, ITM растёт с ROI). Типично: 15–18 % для крепкого гриндера.",
+    en: "Pin the in-the-money rate at a constant value regardless of ROI. All skill concentrates WITHIN the cashed band — a grinder doesn't cash more often than a no-skill player, they just run deeper when they do. Default is the payout table's paid fraction; edit the row if needed.",
+    ru: "Фиксирует частоту попадания в призовые независимо от ROI. Скилл весь уходит ВНУТРЬ призовой зоны — гриндер попадает в деньги не чаще нулевого игрока, но бежит глубже. По умолчанию берется paid-фракция структуры выплат; при необходимости отредактируй строку.",
   },
   "row.inheritedShort": { en: "global", ru: "глоб." },
   "row.unnamed": { en: "unnamed", ru: "без названия" },
@@ -2218,16 +2218,16 @@ export const DICT = {
     ru: "Эта строка наследует глобальный ITM%. Чтобы переопределить его только для этого турнира, задай ITM% в самой строке расписания.",
   },
   "controls.itmTarget.label": {
-    en: "Global ITM %",
-    ru: "Глобальный ITM%",
+    en: "ITM %",
+    ru: "ITM%",
   },
   "controls.itmTarget.hint": {
-    en: "Default ITM% applied to every row that doesn't have its own override. Per-row ITM in the schedule always wins.",
-    ru: "ITM% по умолчанию для всех строк без своего значения. Если в строке задан свой ITM%, он имеет приоритет.",
+    en: "Default ITM% for rows without their own value. Per-row ITM in the schedule always wins.",
+    ru: "ITM% по умолчанию для строк без своего значения. ITM в строке всегда имеет приоритет.",
   },
   "controls.itmTarget.body": {
-    en: "ROI is fixed by the schedule — ITM% only controls how bursty the profit curve looks. Same long-run EV, different clip. Leave blank in a row to inherit this default.",
-    ru: "ROI фиксируется расписанием — ITM меняет только «рваность» графика. Долгосрочное EV то же, меняется лишь частота заносов. Оставь поле пустым в строке, чтобы применить этот дефолт.",
+    en: "ROI is fixed by the schedule — ITM% only controls how bursty the profit curve looks. Same long-run EV, different clip.",
+    ru: "ROI фиксируется расписанием — ITM меняет только «рваность» графика. Долгосрочное EV то же, меняется лишь частота заносов.",
   },
   "controls.rakeback.label": {
     en: "Rakeback %",

@@ -4,6 +4,8 @@ import {
   DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
   inferGameType,
   normalizeBrMrConsistency,
+  normalizeGameTypeConsistency,
+  rowHasActiveBounty,
 } from "./gameType";
 import type { TournamentRow } from "./types";
 
@@ -141,5 +143,45 @@ describe("applyGameType defaults", () => {
   it("uses 45% bounty share for fresh Battle Royale rows", () => {
     const patch = applyGameType(row({ bountyFraction: undefined }), "mystery-royale");
     expect(patch.bountyFraction).toBe(DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION);
+  });
+});
+
+describe("normalizeGameTypeConsistency", () => {
+  it("strips stale bounty fields from explicit freezeouts", () => {
+    const fixed = normalizeGameTypeConsistency(
+      row({
+        gameType: "freezeout",
+        payoutStructure: "mtt-gg-bounty",
+        bountyFraction: 0.5,
+        mysteryBountyVariance: 2,
+        pkoHeadVar: 0.4,
+        pkoHeat: 0.2,
+        bountyEvBias: 0.1,
+        battleRoyaleLeaderboardEnabled: true,
+        battleRoyaleLeaderboardShare: 0.5,
+      }),
+    );
+    expect(fixed.gameType).toBe("freezeout");
+    expect(fixed.payoutStructure).toBe("mtt-standard");
+    expect(fixed.bountyFraction).toBeUndefined();
+    expect(fixed.mysteryBountyVariance).toBeUndefined();
+    expect(fixed.pkoHeadVar).toBeUndefined();
+    expect(fixed.pkoHeat).toBeUndefined();
+    expect(fixed.bountyEvBias).toBeUndefined();
+    expect(fixed.battleRoyaleLeaderboardEnabled).toBeUndefined();
+    expect(fixed.battleRoyaleLeaderboardShare).toBeUndefined();
+    expect(rowHasActiveBounty(fixed)).toBe(false);
+  });
+
+  it("keeps bounty formats active", () => {
+    const pko = normalizeGameTypeConsistency(
+      row({
+        gameType: "pko",
+        payoutStructure: "mtt-gg-bounty",
+        bountyFraction: 0.5,
+      }),
+    );
+    expect(rowHasActiveBounty(pko)).toBe(true);
+    expect(pko.bountyFraction).toBe(0.5);
   });
 });

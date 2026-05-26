@@ -19,7 +19,7 @@ import {
   buildBattleRoyaleCashTargetPmf,
   resolveBattleRoyaleCashTarget,
 } from "./battleRoyaleWinnerFirst";
-import { normalizeBrMrConsistency } from "./gameType";
+import { normalizeGameTypeConsistency } from "./gameType";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
@@ -55,7 +55,7 @@ export function validateSchedule(
 ): ScheduleFeasibility {
   const issues: RowFeasibilityIssue[] = [];
   schedule.forEach((rawRow, idx) => {
-    const row = normalizeBrMrConsistency(rawRow);
+    const row = normalizeGameTypeConsistency(rawRow);
     if (row.itmRate == null || row.itmRate <= 0) {
       if (!isAlphaAdjustable(model)) return;
       const analytic = buildScheduleAnalyticBreakdown({

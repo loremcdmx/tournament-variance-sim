@@ -19,8 +19,9 @@ import {
   computeRowStats,
   type RowStats,
 } from "@/lib/sim/previewRowStats";
+import { normalizeGameTypeConsistency } from "@/lib/sim/gameType";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
-import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { useT } from "@/lib/i18n/LocaleProvider";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -63,8 +64,8 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   itmLocked,
 }: Props) {
   const t = useT();
-  const { locale } = useLocale();
   const { advanced } = useAdvancedMode();
+  const effectiveRow = useMemo(() => normalizeGameTypeConsistency(row), [row]);
   const {
     id,
     label,
@@ -88,19 +89,25 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     mysteryBountyVariance,
     pkoHeat,
     pkoHeadVar,
-  } = row;
+  } = effectiveRow;
 
-  const committedBias = clampBountyBias(row.bountyEvBias ?? 0);
+  const committedBias = clampBountyBias(effectiveRow.bountyEvBias ?? 0);
   const committedItmTopHeavyBias = clampItmTopHeavyBias(
-    row.itmTopHeavyBias ?? 0,
+    effectiveRow.itmTopHeavyBias ?? 0,
   );
-  const previewEconomics = useMemo(() => derivePreviewRowEconomics(row), [row]);
-  const stats = useMemo(() => computeRowStats(row, model), [row, model]);
+  const previewEconomics = useMemo(
+    () => derivePreviewRowEconomics(effectiveRow),
+    [effectiveRow],
+  );
+  const stats = useMemo(
+    () => computeRowStats(effectiveRow, model),
+    [effectiveRow, model],
+  );
   const rbFrac = Math.max(0, rakebackPct) / 100;
   const directRakebackPerEntry =
     rbFrac *
-    row.rake *
-    row.buyIn *
+    effectiveRow.rake *
+    effectiveRow.buyIn *
     previewEconomics.expectedBullets;
   const safeLeaderboardPromoPerEntry = Math.max(0, leaderboardPromoPerEntry);
   const totalEvPerEntry =
@@ -198,11 +205,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   const netProfitPerEntry = totalEvPerEntry - stats.cost;
   const roiPerEntry = stats.cost > 1e-9 ? netProfitPerEntry / stats.cost : 0;
   const quickRoi = `${roiPerEntry >= 0 ? "+" : ""}${(roiPerEntry * 100).toFixed(1)}%`;
-  const quickItm = `${(stats.itm * 100).toFixed(1)}%`;
-  const quickField = previewEconomics.fieldSize.toLocaleString(
-    locale === "ru" ? "ru-RU" : "en-US",
-  );
-  const rowTitle = getTournamentRowDisplayLabel(row, t);
+  const rowTitle = getTournamentRowDisplayLabel(effectiveRow, t);
   const bountyTag = stats.progressivePko
     ? t("preview.statBountyPko")
     : stats.bountyShare > 0
@@ -229,32 +232,37 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             label="EV"
             value={moneyFmt(totalEvPerEntry)}
             accent
-            details={[
-              { label: t("preview.statRoi"), value: quickRoi, tone: "accent" },
-              { label: t("preview.statItm"), value: quickItm },
-              { label: t("preview.statField"), value: quickField },
-            ]}
             footer={
-              <div
-                className={`inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 shadow-sm ${
-                  netProfitPerEntry >= 0
-                    ? "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/14"
-                    : "border-[color:var(--color-danger)]/45 bg-[color:var(--color-danger)]/12"
-                }`}
-              >
-                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg)] opacity-70">
-                  {t("preview.avgReturn")}
-                </span>
-                <span
-                  className={`font-mono text-[15px] font-bold leading-none tabular-nums ${
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/12 px-2.5 py-1.5 shadow-sm">
+                  <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg)] opacity-70">
+                    {t("preview.statRoi")}
+                  </span>
+                  <span className="font-mono text-[15px] font-bold leading-none text-[color:var(--color-accent)] tabular-nums">
+                    {quickRoi}
+                  </span>
+                </div>
+                <div
+                  className={`inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 shadow-sm ${
                     netProfitPerEntry >= 0
-                      ? "text-[color:var(--color-accent)]"
-                      : "text-[color:var(--color-danger)]"
+                      ? "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/14"
+                      : "border-[color:var(--color-danger)]/45 bg-[color:var(--color-danger)]/12"
                   }`}
                 >
-                  {netProfitPerEntry >= 0 ? "+" : ""}
-                  {moneyFmt(netProfitPerEntry)}
-                </span>
+                  <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg)] opacity-70">
+                    {t("preview.avgReturn")}
+                  </span>
+                  <span
+                    className={`font-mono text-[15px] font-bold leading-none tabular-nums ${
+                      netProfitPerEntry >= 0
+                        ? "text-[color:var(--color-accent)]"
+                        : "text-[color:var(--color-danger)]"
+                    }`}
+                  >
+                    {netProfitPerEntry >= 0 ? "+" : ""}
+                    {moneyFmt(netProfitPerEntry)}
+                  </span>
+                </div>
               </div>
             }
           />
@@ -305,16 +313,18 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                   share={cashShare}
                   color="var(--color-accent)"
                 />
-                <PreviewSplitStat
-                  label={
-                    hasJp
-                      ? t("preview.evSplit.bountyRegular")
-                      : t("preview.evSplit.bounty")
-                  }
-                  value={moneyFmt(hasJp ? regularBounty : stats.bountyEvPerEntry)}
-                  share={hasJp ? regularBountyShare : bountyShare}
-                  color="hsl(175, 72%, 55%)"
-                />
+                {stats.bountyEvPerEntry > 1e-6 && (
+                  <PreviewSplitStat
+                    label={
+                      hasJp
+                        ? t("preview.evSplit.bountyRegular")
+                        : t("preview.evSplit.bounty")
+                    }
+                    value={moneyFmt(hasJp ? regularBounty : stats.bountyEvPerEntry)}
+                    share={hasJp ? regularBountyShare : bountyShare}
+                    color="hsl(175, 72%, 55%)"
+                  />
+                )}
                 {hasJp && (
                   <PreviewSplitStat
                     label={jpLabel}
@@ -344,7 +354,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             </div>
           );
         })()}
-        {(row.bountyFraction ?? 0) > 0 && onRowChange && (
+        {stats.bountyEvPerEntry > 0 && onRowChange && (
           <BountyShareSlider
             committedBias={committedBias}
             committedShare={committedBountyShare}
@@ -523,7 +533,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       </div>
 
       {advanced && onRowChange && !itmLocked && (
-        <ShapeControls row={row} stats={stats} onRowChange={onRowChange} />
+        <ShapeControls row={effectiveRow} stats={stats} onRowChange={onRowChange} />
       )}
       {advanced && itmLocked && (
         <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">

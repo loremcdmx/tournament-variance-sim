@@ -41,7 +41,7 @@ import {
   resolveBattleRoyaleCashTarget,
 } from "./battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "./brBountyTiers";
-import { inferGameType, normalizeBrMrConsistency } from "./gameType";
+import { inferGameType, normalizeGameTypeConsistency } from "./gameType";
 import { mulberry32, mixSeed } from "./rng";
 import type {
   CalibrationMode,
@@ -412,7 +412,7 @@ export function compileSchedule(
   // Normalize BR ↔ mystery-royale pairing at the compile boundary: legacy
   // rows with drifted flags silently get fixed up so both gameType-gated and
   // payoutStructure-gated hot-loop branches see consistent state (#131).
-  const normalizedSchedule = input.schedule.map(normalizeBrMrConsistency);
+  const normalizedSchedule = input.schedule.map(normalizeGameTypeConsistency);
   input = normalizedSchedule === input.schedule ? input : { ...input, schedule: normalizedSchedule };
   const rowCounts = new Array<number>(input.schedule.length).fill(0);
   const rowBuyIns = new Array<number>(input.schedule.length).fill(0);

@@ -1,10 +1,11 @@
 import type { TournamentRow } from "./types";
+import { normalizeGameTypeConsistency } from "./gameType";
+import { getPayoutTable } from "./payouts";
 
 /**
- * Global player ITM%: a single literal fraction that fills every schedule
- * row that doesn't already carry its own per-row `itmRate` override. No
- * preset modes, no paid-fraction scaling — the number the user types is
- * the number the engine uses. Row-level edits always win over the global.
+ * Row ITM% defaults: every row gets an effective fixed-ITM value. Explicit
+ * row edits win; otherwise the global value fills in; otherwise we use the
+ * payout table's equilibrium paid fraction.
  */
 export interface ItmTargetConfig {
   enabled: boolean;
@@ -29,21 +30,41 @@ export function isItmTargetActive(cfg: ItmTargetConfig): boolean {
   return resolveItmTarget(cfg) != null;
 }
 
+export function equilibriumItmRateForRow(row: TournamentRow): number {
+  const normalized = normalizeGameTypeConsistency(row);
+  const lateRegMult = Math.max(1, normalized.lateRegMultiplier ?? 1);
+  const players = Math.max(2, Math.floor(normalized.players * lateRegMult));
+  const payouts = getPayoutTable(
+    normalized.payoutStructure,
+    players,
+    normalized.customPayouts,
+  );
+  const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
+  return Math.min(0.99, Math.max(1 / players, paidCount / players));
+}
+
 /**
- * Stamp `itmRate` on every row when the global toggle is on. The global
- * value overrides any per-row ITM the user may have typed — if the toggle
- * is on, the number it shows is the number every row gets. When the toggle
- * is off, per-row values survive and rows without one use alpha-calibration.
+ * Build the effective schedule used by previews, validation and the engine.
+ * Source rows are not mutated: a blank row ITM remains blank in saved state,
+ * but the app still runs with the visible default.
  */
 export function applyItmTarget(
   schedule: TournamentRow[],
   cfg: ItmTargetConfig,
 ): TournamentRow[] {
   const base = resolveItmTarget(cfg);
-  if (base == null) return schedule;
-  return schedule.map((r) => ({
-    ...r,
-    itmRate: base,
-    finishBuckets: undefined,
-  }));
+  let changed = false;
+  const next = schedule.map((raw) => {
+    const row = normalizeGameTypeConsistency(raw);
+    if (row !== raw) changed = true;
+    if (row.itmRate != null && row.itmRate > 0) return row;
+    const itmRate = base ?? equilibriumItmRateForRow(row);
+    changed = true;
+    return {
+      ...row,
+      itmRate,
+      finishBuckets: undefined,
+    };
+  });
+  return changed ? next : schedule;
 }

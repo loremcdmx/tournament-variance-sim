@@ -26,6 +26,7 @@ import type {
   SimulationInput,
   SimulationResult,
 } from "./types";
+import { rowHasActiveBounty } from "./gameType";
 import type { BuildStage } from "./engine";
 import type {
   BuildErrorMsg,
@@ -692,9 +693,7 @@ export function useSimulation() {
       // comparison pane looked identical. Binary-ITM has a structurally
       // different PMF (two uniform bins) and produces a meaningfully
       // different envelope — the actual variance gap PD users would see.
-      const hasPko = input.schedule.some(
-        (r) => (r.bountyFraction ?? 0) > 0,
-      );
+      const hasPko = input.schedule.some(rowHasActiveBounty);
       const pdPkoFallback = mode2 === "primedope" && hasPko;
 
       // Under pdPresetFlip+PKO, the LEFT pane is the binary-ITM run, so strip

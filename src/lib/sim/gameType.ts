@@ -20,6 +20,26 @@ export const DEFAULT_BOUNTY_FRACTION = 0.5;
 export const DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION = 0.45;
 export const BATTLE_ROYALE_PLAYERS = 18;
 
+const BOUNTY_GAME_TYPES = new Set<GameType>([
+  "pko",
+  "mystery",
+  "mystery-royale",
+]);
+
+const BOUNTY_PAYOUT_STRUCTURES = new Set<TournamentRow["payoutStructure"]>([
+  "mtt-gg-bounty",
+  "mtt-gg-mystery",
+  "battle-royale",
+]);
+
+export function isBountyGameType(gameType: GameType): boolean {
+  return BOUNTY_GAME_TYPES.has(gameType);
+}
+
+export function rowHasActiveBounty(row: TournamentRow): boolean {
+  return isBountyGameType(inferGameType(row)) && (row.bountyFraction ?? 0) > 0;
+}
+
 /**
  * `freezeout-reentry` is still supported internally for legacy rows and
  * engine math, but it is no longer presented as a separate tournament type
@@ -118,6 +138,45 @@ export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
     return { ...row, gameType: "mystery-royale" };
   }
   return row;
+}
+
+export function normalizeGameTypeConsistency(row: TournamentRow): TournamentRow {
+  if (row.gameType === "freezeout" || row.gameType === "freezeout-reentry") {
+    const patch: Partial<TournamentRow> = {};
+    let changed = false;
+    const clear = <K extends keyof TournamentRow>(key: K) => {
+      if (row[key] !== undefined) {
+        (patch as Record<keyof TournamentRow, unknown>)[key] = undefined;
+        changed = true;
+      }
+    };
+    clear("bountyFraction");
+    clear("mysteryBountyVariance");
+    clear("pkoHeadVar");
+    clear("pkoHeat");
+    clear("bountyEvBias");
+    clear("battleRoyaleLeaderboardEnabled");
+    clear("battleRoyaleLeaderboardShare");
+    if (row.gameType === "freezeout") {
+      if (row.maxEntries !== 1) {
+        patch.maxEntries = 1;
+        changed = true;
+      }
+      clear("reentryRate");
+    } else {
+      const maxEntries = Math.max(2, row.maxEntries ?? 2);
+      if (row.maxEntries !== maxEntries) {
+        patch.maxEntries = maxEntries;
+        changed = true;
+      }
+    }
+    if (BOUNTY_PAYOUT_STRUCTURES.has(row.payoutStructure)) {
+      patch.payoutStructure = "mtt-standard";
+      changed = true;
+    }
+    return changed ? { ...row, ...patch } : row;
+  }
+  return normalizeBrMrConsistency(row);
 }
 
 export function applyGameType(

@@ -19,6 +19,7 @@ import type {
   SimulationResult,
   TournamentRow,
 } from "@/lib/sim/types";
+import { rowHasActiveBounty } from "@/lib/sim/gameType";
 import { type RunMode } from "@/lib/trajectorySelection";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -197,9 +198,7 @@ function ResultsViewImpl({
   // actually shows "same schedule, bounties stripped" because PrimeDope
   // has no PKO support — useSimulation swaps the pass. Detect from the
   // schedule so we can relabel the pane and explain the substitution.
-  const hasPko = (schedule ?? []).some(
-    (r) => (r.bountyFraction ?? 0) > 0,
-  );
+  const hasPko = (schedule ?? []).some(rowHasActiveBounty);
   const pdPkoFallback = isPrimeDopeCompare && hasPko;
   const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
 
@@ -1944,9 +1943,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
     overlayPd && !pdPresetFlip ? (
       <OverlayLegendChip label={t(overlayLegendKey)} />
     ) : null;
-  const hasBounty = (schedule ?? []).some(
-    (r) => (r.bountyFraction ?? 0) > 0,
-  );
+  const hasBounty = (schedule ?? []).some(rowHasActiveBounty);
   const [extremeStyles, setExtremeStyles] = useLocalStorageState<ExtremeStyles>(
     "tvs.extremeStyles.v1",
     loadExtremeStyles,

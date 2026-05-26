@@ -20,10 +20,13 @@ import {
   BATTLE_ROYALE_PLAYERS,
   inferGameType,
   applyGameType,
+  normalizeGameTypeConsistency,
+  rowHasActiveBounty,
   VISIBLE_GAME_TYPE_ORDER,
   toVisibleGameType,
   type VisibleGameType,
 } from "@/lib/sim/gameType";
+import { equilibriumItmRateForRow } from "@/lib/sim/itmTarget";
 import {
   preRakebackRoiFromReportedRoi,
   rakebackRoiContribution,
@@ -73,6 +76,13 @@ function formatBuyIn(buyIn: number, rake: number): string {
 }
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+function displayItmPct(row: TournamentRow, globalItmPct: number | null): number {
+  const frac =
+    row.itmRate ??
+    (globalItmPct != null ? globalItmPct / 100 : equilibriumItmRateForRow(row));
+  return round2(frac * 100);
 }
 
 // Short labels for the dropdown row (≤ ~22 chars), full descriptions in title.
@@ -398,7 +408,9 @@ export const ScheduleEditor = memo(function ScheduleEditor({
 
   const update = useCallback((id: string, patch: Partial<TournamentRow>) => {
     onChangeRef.current(
-      scheduleRef.current.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+      scheduleRef.current.map((r) =>
+        r.id === id ? normalizeGameTypeConsistency({ ...r, ...patch }) : r,
+      ),
     );
   }, []);
   const remove = useCallback((id: string) => {
@@ -625,7 +637,7 @@ const GAME_TYPE_TINT: Record<VisibleGameType, string> = {
 };
 
 const SCHEDULE_GRID_CLASS =
-  "grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(7rem,0.68fr)_minmax(5rem,0.5fr)_minmax(5.4rem,0.54fr)] 2xl:grid-cols-[minmax(0,14rem)_minmax(4.8rem,6rem)_minmax(4.5rem,7rem)_minmax(4.2rem,6rem)_minmax(5.2rem,8rem)_minmax(0,16rem)_minmax(4.6rem,7rem)_2rem] 2xl:gap-2";
+  "grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(7rem,0.68fr)_minmax(5rem,0.5fr)_minmax(5.4rem,0.54fr)] 2xl:grid-cols-[minmax(0,24rem)_minmax(4.6rem,5.6rem)_minmax(4rem,5rem)_minmax(4rem,5rem)_minmax(4.2rem,5.2rem)_minmax(0,20rem)_minmax(4.5rem,5.6rem)_2rem] 2xl:gap-2";
 
 function ScheduleHeaderCell({
   children,
@@ -663,7 +675,7 @@ interface ScheduleRowProps {
 }
 
 const ScheduleRow = memo(function ScheduleRow({
-  row: r,
+  row: rawRow,
   advanced,
   isOpen,
   globalItmPct,
@@ -679,6 +691,7 @@ const ScheduleRow = memo(function ScheduleRow({
   onFixPreset,
 }: ScheduleRowProps) {
   const t = useT();
+  const r = useMemo(() => normalizeGameTypeConsistency(rawRow), [rawRow]);
   const gt = inferGameType(r);
   const isBattleRoyale = gt === "mystery-royale";
   const uiGt = toVisibleGameType(gt);
@@ -687,6 +700,7 @@ const ScheduleRow = memo(function ScheduleRow({
   const hasAdv =
     (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
     !!r.sitThroughPayJumps ||
+    rowHasActiveBounty(r) ||
     (gt === "mystery" &&
       r.mysteryBountyVariance != null &&
       Math.abs(r.mysteryBountyVariance - 2.0) > 1e-9);
@@ -761,22 +775,24 @@ const ScheduleRow = memo(function ScheduleRow({
           <SectionLabel className="2xl:hidden" hint={t("help.row.label")}>
             {t("row.label")}
           </SectionLabel>
-          <div className="flex min-w-0 items-center gap-2">
-            <RoomBadge payoutId={r.payoutStructure} />
-            <TextInput
-              value={r.label ?? ""}
-              onChange={(v) => update(r.id, { label: v })}
-              placeholder={getTournamentRowDisplayLabel(r, t)}
-              className="w-full min-w-0"
-            />
-          </div>
-          <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="grid min-w-0 gap-2 2xl:grid-cols-[minmax(0,1fr)_minmax(6.6rem,7.4rem)] 2xl:items-center">
+            <div className="flex min-w-0 items-center gap-2">
+              <RoomBadge payoutId={r.payoutStructure} />
+              <TextInput
+                value={r.label ?? ""}
+                onChange={(v) => update(r.id, { label: v })}
+                placeholder={getTournamentRowDisplayLabel(r, t)}
+                className="w-full min-w-0"
+              />
+            </div>
             <GameTypeSelect
               value={uiGt}
               onChange={(next) =>
                 startTransition(() => update(r.id, applyGameType(r, next)))
               }
             />
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
             {gt === "mystery-royale" && (
               <BrPresetSelect
                 row={r}
@@ -860,27 +876,16 @@ const ScheduleRow = memo(function ScheduleRow({
             min={0}
             max={100}
             step={0.5}
-            disabled={globalItmPct != null}
-            value={
-              globalItmPct != null
-                ? +(globalItmPct).toFixed(1)
-                : r.itmRate != null
-                  ? +(r.itmRate * 100).toFixed(2)
-                  : ""
-            }
+            value={displayItmPct(r, globalItmPct)}
             placeholder=""
-            lockedLabel={
-              globalItmPct != null ? t("row.inheritedShort") : undefined
-            }
             onChange={(raw) => {
-              if (globalItmPct != null) return;
               if (raw === "") {
-                update(r.id, { itmRate: undefined });
+                update(r.id, { itmRate: undefined, finishBuckets: undefined });
                 return;
               }
               const v = Number(raw);
               if (!Number.isFinite(v) || v < 0 || v > 100) return;
-              update(r.id, { itmRate: v / 100 });
+              update(r.id, { itmRate: v / 100, finishBuckets: undefined });
             }}
           />
         </div>
@@ -894,7 +899,11 @@ const ScheduleRow = memo(function ScheduleRow({
             title={current?.s.full ?? ""}
             onChange={(e) => {
               const next = e.target.value as PayoutStructureId;
-              update(r.id, { payoutStructure: next });
+              update(r.id, {
+                payoutStructure: next,
+                itmRate: undefined,
+                finishBuckets: undefined,
+              });
             }}
             className={
               "h-8 w-full min-w-0 rounded-md border px-2 text-[11px] outline-none transition-colors focus:border-[color:var(--color-accent)] " +

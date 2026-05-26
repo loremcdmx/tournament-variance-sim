@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   applyItmTarget,
+  equilibriumItmRateForRow,
   isItmTargetActive,
   resolveItmTarget,
 } from "./itmTarget";
@@ -53,12 +54,14 @@ describe("isItmTargetActive", () => {
 });
 
 describe("applyItmTarget", () => {
-  it("no-ops when target is null (disabled or invalid)", () => {
+  it("fills rows with their payout equilibrium when global target is off", () => {
     const schedule = [baseRow];
-    expect(applyItmTarget(schedule, { enabled: false, pct: 18 })).toBe(schedule);
+    const result = applyItmTarget(schedule, { enabled: false, pct: 18 });
+    expect(result).not.toBe(schedule);
+    expect(result[0].itmRate).toBeCloseTo(0.15, 9);
   });
 
-  it("stamps itmRate on every row and clears finishBuckets", () => {
+  it("uses the enabled global value only for rows without their own ITM", () => {
     const schedule: TournamentRow[] = [
       { ...baseRow, id: "a" },
       { ...baseRow, id: "b", itmRate: 0.05, finishBuckets: { first: 0.01 } },
@@ -66,14 +69,28 @@ describe("applyItmTarget", () => {
     const result = applyItmTarget(schedule, { enabled: true, pct: 20 });
     expect(result).not.toBe(schedule);
     expect(result[0].itmRate).toBe(0.20);
-    expect(result[1].itmRate).toBe(0.20);
+    expect(result[1].itmRate).toBe(0.05);
     expect(result[0].finishBuckets).toBeUndefined();
-    expect(result[1].finishBuckets).toBeUndefined();
+    expect(result[1].finishBuckets).toEqual({ first: 0.01 });
   });
 
-  it("row-level value always loses to the global when enabled", () => {
+  it("row-level value wins over the global when enabled", () => {
     const schedule = [{ ...baseRow, itmRate: 0.35 }];
     const result = applyItmTarget(schedule, { enabled: true, pct: 12 });
-    expect(result[0].itmRate).toBe(0.12);
+    expect(result[0].itmRate).toBe(0.35);
+  });
+
+  it("normalizes stale freezeout bounty fields before resolving ITM", () => {
+    const schedule = [
+      {
+        ...baseRow,
+        bountyFraction: 0.5,
+        payoutStructure: "mtt-gg-bounty" as const,
+      },
+    ];
+    const result = applyItmTarget(schedule, { enabled: false, pct: 18 });
+    expect(result[0].bountyFraction).toBeUndefined();
+    expect(result[0].payoutStructure).toBe("mtt-standard");
+    expect(result[0].itmRate).toBeCloseTo(equilibriumItmRateForRow(baseRow), 9);
   });
 });

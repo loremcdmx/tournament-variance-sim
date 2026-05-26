@@ -549,8 +549,8 @@ export default function Home() {
     [controls.itmGlobalEnabled, controls.itmGlobalPct],
   );
   const hasBattleRoyaleRows = useMemo(
-    () => scheduleHasBattleRoyaleRows(schedule),
-    [schedule],
+    () => scheduleHasBattleRoyaleRows(effectiveSchedule),
+    [effectiveSchedule],
   );
   const brLeaderboardPreview = useMemo(() => {
     const repeats = Math.max(1, controls.scheduleRepeats);
@@ -632,6 +632,10 @@ export default function Home() {
       : undefined;
     return found ?? deferredSchedule[0];
   }, [deferredSchedule, previewRowId]);
+  const previewSourceRow = useMemo(() => {
+    if (!previewRow) return undefined;
+    return schedule.find((r) => r.id === previewRow.id);
+  }, [previewRow, schedule]);
 
   const previewRowId_ = previewRow?.id;
   const onPreviewRowChange = useCallback(
@@ -774,7 +778,7 @@ export default function Home() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-3 sm:px-6 sm:py-4 xl:max-w-[1400px] 2xl:max-w-[1700px] 3xl:max-w-[2000px] 4xl:max-w-[2400px]">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 py-3 sm:px-6 sm:py-4 xl:max-w-[1800px] 2xl:max-w-[2200px] 3xl:max-w-[2500px] 4xl:max-w-[2900px]">
       <header className="flex flex-col gap-3">
         {/* Brand strip */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[color:var(--color-border)] pb-2">
@@ -1081,8 +1085,8 @@ export default function Home() {
           </div>
         </Card>
 
-        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(380px,480px)]">
-          <div className="flex min-w-0 flex-col gap-3 xl:max-w-[960px] 2xl:max-w-[1080px] 3xl:max-w-[1280px]">
+        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(380px,520px)]">
+          <div className="flex min-w-0 flex-col gap-3">
             <CompactPanelHeader
               number="01"
               title={t("section.schedule.title")}
@@ -1208,7 +1212,7 @@ export default function Home() {
                   leaderboardPromoPerEntry={
                     isBattleRoyaleRow(previewRow) ? brLeaderboardPromoPerTournament : 0
                   }
-                  itmLocked={itmTargetLocked}
+                  itmLocked={itmTargetLocked && previewSourceRow?.itmRate == null}
                   onRowChange={onPreviewRowChange}
                 />
               </Card>
