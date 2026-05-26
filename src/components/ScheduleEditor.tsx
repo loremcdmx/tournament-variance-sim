@@ -637,7 +637,7 @@ const GAME_TYPE_TINT: Record<VisibleGameType, string> = {
 };
 
 const SCHEDULE_GRID_CLASS =
-  "grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(7rem,0.68fr)_minmax(5rem,0.5fr)_minmax(5.4rem,0.54fr)] 2xl:grid-cols-[minmax(0,24rem)_minmax(4.6rem,5.6rem)_minmax(4rem,5rem)_minmax(4rem,5rem)_minmax(4.2rem,5.2rem)_minmax(0,20rem)_minmax(4.5rem,5.6rem)_2rem] 2xl:gap-2";
+  "grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(7rem,0.68fr)_minmax(5rem,0.5fr)_minmax(5.4rem,0.54fr)] 2xl:grid-cols-[minmax(0,24rem)_minmax(4.6rem,5.6rem)_minmax(4rem,5rem)_minmax(4rem,5rem)_minmax(4.2rem,5.2rem)_minmax(0,20rem)_minmax(4.5rem,5.6rem)_minmax(5rem,5.8rem)] 2xl:gap-2";
 
 function ScheduleHeaderCell({
   children,
@@ -792,16 +792,16 @@ const ScheduleRow = memo(function ScheduleRow({
               }
             />
           </div>
-          <div className="flex min-w-0 flex-col gap-1.5">
-            {gt === "mystery-royale" && (
+          {gt === "mystery-royale" && (
+            <div className="flex min-w-0 flex-col gap-1.5">
               <BrPresetSelect
                 row={r}
                 onApply={(patch) =>
                   startTransition(() => update(r.id, patch))
                 }
               />
-            )}
-          </div>
+            </div>
+          )}
           {showBounty && (
             <div className="flex min-w-0 flex-col gap-1">
               <SectionLabel hint={t("row.bountyHint")}>
@@ -969,7 +969,7 @@ const ScheduleRow = memo(function ScheduleRow({
           />
         </div>
 
-        <div className="flex justify-end gap-1 self-end 2xl:flex-col 2xl:items-center 2xl:self-stretch 2xl:justify-center">
+        <div className="flex justify-end gap-1 self-end 2xl:items-center 2xl:self-center">
           <button
             type="button"
             onClick={() => advanced && toggleExpand(r.id)}
