@@ -1226,27 +1226,36 @@ export default function Home() {
         </div>
       )}
 
-      {!result && (
+      {!result ? (
+        <div className="grid gap-4 4xl:grid-cols-2 4xl:items-start">
+          <Card className="min-w-0 p-5">
+            <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
+              {t("chart.convergence")}
+            </div>
+            <div className="mb-1 text-[11px] text-[color:var(--color-fg-muted)]">
+              {t("chart.convergence.sub")}
+            </div>
+            <ConvergenceChart
+              schedule={deferredSchedule}
+              finishModel={deferredPreviewModel}
+            />
+          </Card>
+
+          <Card className="min-w-0 p-5">
+            <ProveEdgeCard
+              schedule={deferredSchedule}
+              finishModel={deferredPreviewModel}
+            />
+          </Card>
+        </div>
+      ) : (
         <Card className="p-5">
-          <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-            {t("chart.convergence")}
-          </div>
-          <div className="mb-1 text-[11px] text-[color:var(--color-fg-muted)]">
-            {t("chart.convergence.sub")}
-          </div>
-          <ConvergenceChart
+          <ProveEdgeCard
             schedule={deferredSchedule}
             finishModel={deferredPreviewModel}
           />
         </Card>
       )}
-
-      <Card className="p-5">
-        <ProveEdgeCard
-          schedule={deferredSchedule}
-          finishModel={deferredPreviewModel}
-        />
-      </Card>
 
       {result && (
         <>
