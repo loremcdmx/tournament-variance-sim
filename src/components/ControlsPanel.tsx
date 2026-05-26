@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
 import {
@@ -100,6 +100,7 @@ interface Props {
   onTournamentTargetChange: (target: number) => void;
   onRun: () => void;
   onCancel: () => void;
+  globalControls?: ReactNode;
   running: boolean;
   progress: number;
   /**
@@ -150,6 +151,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   onTournamentTargetChange,
   onRun,
   onCancel,
+  globalControls,
   running,
   progress,
   stage,
@@ -275,8 +277,19 @@ export const ControlsPanel = memo(function ControlsPanel({
         disabled={running}
         className="contents disabled:opacity-60 [&:disabled_*]:cursor-not-allowed"
       >
-      {/* Run controls: target tournaments per sample, samples */}
-      <div className={`grid grid-cols-1 gap-4 ${advanced ? "sm:grid-cols-2" : ""}`}>
+      {/* Run controls: global EV knobs plus target tournaments per sample. */}
+      <div
+        className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${
+          globalControls
+            ? advanced
+              ? "xl:grid-cols-5"
+              : "xl:grid-cols-4"
+            : advanced
+              ? "xl:grid-cols-2"
+              : ""
+        }`}
+      >
+        {globalControls}
         <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
           <NumInput
             value={totalTournaments}

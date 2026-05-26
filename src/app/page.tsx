@@ -1063,28 +1063,6 @@ export default function Home() {
       )}
 
       <section className="flex min-w-0 flex-col gap-3">
-        <Card className="p-3">
-          <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-3">
-            <GlobalItmControl
-              value={controls}
-              onChange={handleControlsChange}
-              disabled={running}
-            />
-            <GlobalRakebackControl
-              value={controls}
-              onChange={handleControlsChange}
-              disabled={running}
-              showBattleRoyalePreset={hasBattleRoyaleRows}
-            />
-            <BankrollControl
-              value={controls}
-              onChange={handleControlsChange}
-              disabled={running}
-              abi={abi}
-            />
-          </div>
-        </Card>
-
         <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(380px,520px)]">
           <div className="flex min-w-0 flex-col gap-3">
             <CompactPanelHeader
@@ -1126,6 +1104,27 @@ export default function Home() {
               onTournamentTargetChange={handleTournamentTargetChange}
               onRun={onRun}
               onCancel={cancel}
+              globalControls={
+                <>
+                  <GlobalItmControl
+                    value={controls}
+                    onChange={handleControlsChange}
+                    disabled={running}
+                  />
+                  <GlobalRakebackControl
+                    value={controls}
+                    onChange={handleControlsChange}
+                    disabled={running}
+                    showBattleRoyalePreset={hasBattleRoyaleRows}
+                  />
+                  <BankrollControl
+                    value={controls}
+                    onChange={handleControlsChange}
+                    disabled={running}
+                    abi={abi}
+                  />
+                </>
+              }
               running={running}
               progress={progress}
               stage={stage}

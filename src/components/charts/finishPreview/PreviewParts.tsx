@@ -514,7 +514,7 @@ export function PreviewSplitStat({
 }) {
   return (
     <div
-      className="w-full rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/55 px-3 py-2.5 text-[11px] text-[color:var(--color-fg-dim)] shadow-sm sm:w-[15.5rem]"
+      className="min-w-[8.5rem] max-w-[15.5rem] flex-1 basis-[8.75rem] rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/55 px-2.5 py-2 text-[11px] text-[color:var(--color-fg-dim)] shadow-sm"
       title={title}
     >
       <div className="flex items-center gap-2">
