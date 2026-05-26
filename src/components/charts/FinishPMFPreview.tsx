@@ -19,7 +19,10 @@ import {
   computeRowStats,
   type RowStats,
 } from "@/lib/sim/previewRowStats";
-import { normalizeGameTypeConsistency } from "@/lib/sim/gameType";
+import {
+  normalizeGameTypeConsistency,
+  rowHasActiveBounty,
+} from "@/lib/sim/gameType";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
@@ -54,6 +57,8 @@ interface Props {
    *  overridden on the next render. */
   itmLocked?: boolean;
 }
+
+const MONEY_DISPLAY_EPS = 0.005;
 
 export const FinishPMFPreview = memo(function FinishPMFPreview({
   row,
@@ -112,6 +117,9 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   const safeLeaderboardPromoPerEntry = Math.max(0, leaderboardPromoPerEntry);
   const totalEvPerEntry =
     stats.evPerEntry + directRakebackPerEntry + safeLeaderboardPromoPerEntry;
+  const hasActiveBounty = rowHasActiveBounty(effectiveRow);
+  const hasVisibleBountyEv =
+    hasActiveBounty && stats.bountyEvPerEntry > MONEY_DISPLAY_EPS;
   const committedBountyShare = clampUnit(stats.bountyShare);
   const shareProbeBaseRow = useMemo<TournamentRow>(
     () => ({
@@ -267,12 +275,15 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             }
           />
         </div>
-        {(stats.bountyEvPerEntry > 0 ||
+        {(hasVisibleBountyEv ||
           directRakebackPerEntry > 1e-6 ||
           safeLeaderboardPromoPerEntry > 1e-6) &&
           (() => {
           const jp = stats.jackpotBountyEvPerEntry;
-          const hasJp = jp > 0 && jp / stats.bountyEvPerEntry > 0.001;
+          const hasJp =
+            hasVisibleBountyEv &&
+            jp > MONEY_DISPLAY_EPS &&
+            jp / stats.bountyEvPerEntry > 0.001;
           const regularBounty = stats.bountyEvPerEntry - jp;
           const cashShare =
             totalEvPerEntry > 1e-9 ? stats.cashEvPerEntry / totalEvPerEntry : 0;
@@ -313,7 +324,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                   share={cashShare}
                   color="var(--color-accent)"
                 />
-                {stats.bountyEvPerEntry > 1e-6 && (
+                {hasVisibleBountyEv && (
                   <PreviewSplitStat
                     label={
                       hasJp
@@ -354,7 +365,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             </div>
           );
         })()}
-        {stats.bountyEvPerEntry > 0 && onRowChange && (
+        {hasVisibleBountyEv && onRowChange && (
           <BountyShareSlider
             committedBias={committedBias}
             committedShare={committedBountyShare}
@@ -451,7 +462,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             // outside the tier hue range so the bounty slice stays visible
             // even on violet tiers like "Финалка" and "Остальные кеши".
             const bountyAccent = "hsl(175, 72%, 55%)";
-            const hasBounty = stats.bountyEvPerEntry > 1e-6;
+            const hasBounty = hasVisibleBountyEv;
             for (const tier of stats.tiers) {
               const evShare = tier.ev / evTotal;
               const fieldShare = tier.field;
