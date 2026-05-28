@@ -25,7 +25,7 @@ If code and docs disagree, the code wins — fix the doc.
 
 ## Things that trip up fresh sessions
 
-- **Determinism is a hard contract.** `SimulationInput + seed → byte-identical SimulationResult` regardless of pool size. No `Math.random()`, `Date.now()`, `performance.now()` inside `src/lib/sim/` (except `useSimulation.ts`, which is outside the engine). Only `mulberry32` seeded via `mixSeed(baseSeed, sampleIdx, rowIdx, bulletIdx)`. `sampleIdx` is the GLOBAL index in `[0, samples)`, not shard-local. New stochastic channel → fresh mixSeed slot + determinism test.
+- **Determinism is a hard contract.** `SimulationInput + seed → byte-identical SimulationResult` regardless of pool size. No `Math.random()`, `Date.now()`, `performance.now()` inside `src/lib/sim/` (except `useSimulation.ts`, which is outside the engine). Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` — each stochastic channel uses its own XOR-offset of the seed. `sampleIdx` is the GLOBAL index in `[0, samples)`, not shard-local. New stochastic channel → fresh XOR-offset seed + determinism test.
 - **`samplePaths.paths.length` ≠ `samples`.** Only the first ~1000 samples of shard 0 store hi-res trajectories (`wantHiResPaths` in `engine.ts`). Slider in `ResultsView` caps at `paths.length`.
 - **PrimeDope compare mode** uses a second calibration path (`calibrateShelledItm` + `pdCurves.ts`). Changes to the main calibration don't auto-propagate — check compare coverage when touching `finishModel.ts`.
 - **PKO heat** in the hot loop snaps a Gaussian per-tournament to one of `HEAT_BIN_COUNT` preconcentrated `bountyByPlace` tables. Mean bounty is preserved per bin; only σ shifts.

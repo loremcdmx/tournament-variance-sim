@@ -37,6 +37,9 @@ interface Props {
   /** User's schedule — required for the Schedule tab to do anything useful. */
   schedule?: readonly TournamentRow[] | null;
   finishModel?: FinishModelConfig;
+  /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
+   *  excludes them, so the displayed volume is an optimistic floor. */
+  noiseActive?: boolean;
 }
 
 const FORMATS: { id: ProveEdgeFormat; labelKey: DictKey }[] = [
@@ -103,7 +106,7 @@ function fmtRange(
   return `${fmtTourneys(lo, locale)} – ${fmtTourneys(hi, locale)}`;
 }
 
-export function ProveEdgeCard({ schedule, finishModel }: Props) {
+export function ProveEdgeCard({ schedule, finishModel, noiseActive }: Props) {
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = locale === "ru" ? "ru-RU" : "en-US";
@@ -407,6 +410,13 @@ export function ProveEdgeCard({ schedule, finishModel }: Props) {
           {isExact
             ? t("proveEdge.outOfBox.exact")
             : t("proveEdge.outOfBox.single")}
+        </div>
+      )}
+
+      {/* Noise/tilt channels active — σ fit excludes them */}
+      {!scheduleEmpty && noiseActive && (
+        <div className="rounded border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-amber-200/95">
+          {t("proveEdge.noiseCaveat")}
         </div>
       )}
 

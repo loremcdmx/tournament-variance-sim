@@ -24,10 +24,6 @@ describe("scheduleCostWeight — per-format cost weighting for ETA estimates", (
     expect(scheduleCostWeight([{ count: 10, gameType: "mystery-royale" }])).toBeCloseTo(13.0, 9);
   });
 
-  it("freezeout-reentry treated same as freezeout (re-entry is its own dim)", () => {
-    expect(scheduleCostWeight([{ count: 5, gameType: "freezeout-reentry" }])).toBe(5);
-  });
-
   it("mixed schedule sums each row's weighted contribution", () => {
     // freeze 4 + pko 2×1.35 + mystery 1×1.10 = 4 + 2.7 + 1.1 = 7.8
     expect(

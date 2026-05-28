@@ -68,7 +68,7 @@ Described in detail in `docs/ARCHITECTURE.md`. Summary:
 
 - Same `SimulationInput` + same `seed` → byte-identical `SimulationResult`, regardless of worker pool size or shard order.
 - `engine.test.ts` enforces this with a direct comparison. Do not regress it.
-- Consequence: never use `Math.random()`, `Date.now()`, or any time/env-dependent API inside `src/lib/sim/`. Only `mulberry32` seeded via `mixSeed(baseSeed, sampleIdx, rowIdx, bulletIdx)`.
+- Consequence: never use `Math.random()`, `Date.now()`, or any time/env-dependent API inside `src/lib/sim/`. Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` (separate XOR-offset streams per stochastic channel).
 - `sampleIdx` is the **global** index in `[0, samples)`, not shard-local. This is what makes parallel runs reproducible.
 
 Adding a new stochastic channel? Pick a `mixSeed` slot that doesn't collide with existing ones, and add a 3-line test that runs the same input twice and asserts equality.
@@ -115,7 +115,7 @@ Keep docs accurate. Stale docs that contradict the code are worse than no docs.
 - **Next.js 16 / React 19.** APIs may differ from what most tutorials show. If something doesn't work the way you remember, check `node_modules/next/dist/docs/` for the current version before googling. See `AGENTS.md`.
 - **PrimeDope compare mode** uses a second calibration path (`calibrateShelledItm` + `pdCurves`). Changes to the main calibration don't automatically propagate — check the compare run's test coverage when you touch `finishModel.ts`.
 - **`samplePaths.paths.length` ≠ `samples`** — only the first ~1000 samples have stored trajectory paths. The slider cap in `ResultsView` reflects this. Changing it means also changing `wantHiResPaths` in `engine.ts`.
-- **Seed slot collisions.** If two stochastic channels both call `mulberry32(mixSeed(seed, s, 0, 0))`, they'll be correlated in ways you probably didn't intend. Give each channel its own dispatch slot.
+- **Seed slot collisions.** If two stochastic channels both call `mulberry32(mixSeed(seed, s))` with the same seed, they'll be correlated in ways you probably didn't intend. Give each channel its own XOR-offset of the seed (e.g. `seed ^ 0xbeef`).
 
 ## Questions?
 

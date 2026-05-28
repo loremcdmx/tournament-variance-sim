@@ -5,7 +5,7 @@
 >
 > Актуален на **2026-04-24** (v0.7.4, ветка `main`).
 > Закрытые задачи см. в `git log`. История прогресса — в `CHANGELOG.md`.
-> Feature scope на 2026-04-13 расширен: re-entry / PKO / empirical model **IN SCOPE** (см. commit ec88189 и ранее).
+> Feature scope: PKO / empirical model **IN SCOPE**. Re-entry (multi-bullet) was **removed** — every tournament is a single entry.
 
 ---
 

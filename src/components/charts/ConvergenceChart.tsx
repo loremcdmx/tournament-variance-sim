@@ -33,6 +33,9 @@ import {
 interface Props {
   schedule?: TournamentRow[];
   finishModel?: SimulationInput["finishModel"];
+  /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
+   *  excludes them, so the displayed volume is an optimistic floor. */
+  noiseActive?: boolean;
 }
 
 const FORMAT_TAB_ACCENTS: Record<
@@ -144,6 +147,7 @@ function RangeBandValue({
 export const ConvergenceChart = memo(function ConvergenceChart({
   schedule,
   finishModel,
+  noiseActive,
 }: Props) {
   const { locale, t } = useLocale();
   const numberLocale = locale === "ru" ? "ru-RU" : "en-US";
@@ -918,6 +922,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       {bandPolicy?.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
           {t("chart.convergence.bandWarning.outsideFitBox")}
+        </div>
+      )}
+      {noiseActive && (
+        <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
+          {t("chart.convergence.noiseCaveat")}
         </div>
       )}
       <div className="space-y-2 sm:hidden">

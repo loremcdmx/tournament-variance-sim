@@ -1,20 +1,6 @@
 import { buildSchedulePassOrder, histogramOf } from "@/lib/sim/engine";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
-// Expected extra bullets from a geometric re-entry process with cap `maxEntries`
-// and unconditional re-entry rate `reRate`. Matches the engine's closed form
-// for `reentryExpected` so UI-side rakeback overlays can stay in sync with the
-// compiled schedule math.
-export function reentryExpectedClient(
-  maxEntries: number,
-  reRate: number,
-): number {
-  if (maxEntries <= 1) return 0;
-  if (reRate >= 1) return maxEntries - 1;
-  if (reRate <= 0) return 0;
-  return (reRate * (1 - Math.pow(reRate, maxEntries - 1))) / (1 - reRate);
-}
-
 // Deterministic cumulative rakeback curve aligned to `xCheckpoints` (tournament
 // indices into the flat schedule). Walks schedule passes in the same weighted
 // interleave order as `compileSchedule()`, so heterogeneous schedules don't
@@ -37,11 +23,7 @@ export function computeExpectedRakebackCurve(
     const count = Number.isFinite(row.count)
       ? Math.max(1, Math.floor(row.count))
       : 1;
-    const maxEntries = Math.max(1, row.maxEntries ?? 1);
-    const reRate =
-      maxEntries > 1 ? Math.max(0, Math.min(1, row.reentryRate ?? 1)) : 0;
-    const expectedBullets = 1 + reentryExpectedClient(maxEntries, reRate);
-    const rbPer = rbFrac * row.rake * row.buyIn * expectedBullets;
+    const rbPer = rbFrac * row.rake * row.buyIn;
 
     rowCounts.push(count);
     rowRbs.push(rbPer);

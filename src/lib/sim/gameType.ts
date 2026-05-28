@@ -1,15 +1,13 @@
 /**
  * Game-type presets for tournament rows. `inferGameType` reads a row's
- * current flags (re-entry, bounty) and picks the closest canonical
- * preset; `applyGameType` flips the flags to match a chosen preset.
+ * current flags (bounty) and picks the closest canonical preset;
+ * `applyGameType` flips the flags to match a chosen preset.
  * Pure data + small helpers — no side effects, no RNG.
  */
 import type { GameType, TournamentRow } from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
-export type VisibleGameType = Exclude<GameType, "freezeout-reentry">;
-
-export const VISIBLE_GAME_TYPE_ORDER: VisibleGameType[] = [
+export const GAME_TYPE_ORDER: GameType[] = [
   "freezeout",
   "pko",
   "mystery",
@@ -41,15 +39,6 @@ export function rowHasActiveBounty(row: TournamentRow): boolean {
 }
 
 /**
- * `freezeout-reentry` is still supported internally for legacy rows and
- * engine math, but it is no longer presented as a separate tournament type
- * in the editor. User-facing UI collapses it into plain freezeout.
- */
-export function toVisibleGameType(gameType: GameType): VisibleGameType {
-  return gameType === "freezeout-reentry" ? "freezeout" : gameType;
-}
-
-/**
  * Infer a row's game type from its underlying fields. Used for legacy
  * rows (no explicit `gameType`) and for presets imported before this
  * attribute existed. The inference is deterministic:
@@ -59,7 +48,6 @@ export function toVisibleGameType(gameType: GameType): VisibleGameType {
  *   - `payoutStructure === "mtt-gg-bounty"`     → pko
  *   - bountyFraction > 0 + mystery variance > 0 → mystery
  *   - bountyFraction > 0                         → pko
- *   - maxEntries > 1                             → freezeout-reentry
  *   - else                                       → freezeout
  *
  * Mystery-royale is never inferred from variance alone: regular Mystery uses
@@ -77,21 +65,18 @@ export function inferGameType(row: TournamentRow): GameType {
     if (v > 0) return "mystery";
     return "pko";
   }
-  if ((row.maxEntries ?? 1) > 1) return "freezeout-reentry";
   return "freezeout";
 }
 
 /**
  * Apply a game-type change to a row, rewriting the underlying engine
- * fields (maxEntries, reentryRate, bountyFraction, mysteryBountyVariance)
- * to sensible defaults for the chosen format. Caller merges the returned
- * patch into the row.
+ * fields (bountyFraction, mysteryBountyVariance) to sensible defaults for
+ * the chosen format. Caller merges the returned patch into the row.
  *
  * Defaults chosen to match what a typical online grinder would see:
  *   - PKO: 50 % of prize pool in the bounty pool.
  *   - Mystery: 50 % bounty, σ² = 0.8 (moderate right tail).
  *   - Mystery royale: 45 % bounty, 18-max, σ² = 1.8 (jackpot-tier tail).
- *   - Freezeout-reentry: maxEntries=2, reentryRate=1 (always re-enter).
  * Existing values that the new format *still uses* are preserved when
  * possible (e.g. switching between mystery ↔ mystery-royale keeps the
  * current bountyFraction), so the user's manual tweaks survive.
@@ -141,7 +126,7 @@ export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
 }
 
 export function normalizeGameTypeConsistency(row: TournamentRow): TournamentRow {
-  if (row.gameType === "freezeout" || row.gameType === "freezeout-reentry") {
+  if (row.gameType === "freezeout") {
     const patch: Partial<TournamentRow> = {};
     let changed = false;
     const clear = <K extends keyof TournamentRow>(key: K) => {
@@ -157,13 +142,6 @@ export function normalizeGameTypeConsistency(row: TournamentRow): TournamentRow 
     clear("bountyEvBias");
     clear("battleRoyaleLeaderboardEnabled");
     clear("battleRoyaleLeaderboardShare");
-    if (row.gameType === "freezeout") {
-      if (row.maxEntries !== 1) {
-        patch.maxEntries = 1;
-        changed = true;
-      }
-      clear("reentryRate");
-    }
     if (BOUNTY_PAYOUT_STRUCTURES.has(row.payoutStructure)) {
       patch.payoutStructure = "mtt-standard";
       changed = true;
@@ -196,18 +174,6 @@ export function applyGameType(
 
   switch (next) {
     case "freezeout":
-      patch.maxEntries = 1;
-      patch.reentryRate = undefined;
-      patch.bountyFraction = undefined;
-      patch.mysteryBountyVariance = undefined;
-      patch.battleRoyaleLeaderboardEnabled = undefined;
-      patch.battleRoyaleLeaderboardShare = undefined;
-      patch.payoutStructure = "mtt-standard";
-      snapAfs(30);
-      break;
-    case "freezeout-reentry":
-      patch.maxEntries = Math.max(2, row.maxEntries ?? 2);
-      patch.reentryRate = row.reentryRate ?? 1;
       patch.bountyFraction = undefined;
       patch.mysteryBountyVariance = undefined;
       patch.battleRoyaleLeaderboardEnabled = undefined;
@@ -216,8 +182,6 @@ export function applyGameType(
       snapAfs(30);
       break;
     case "pko":
-      patch.maxEntries = 1;
-      patch.reentryRate = undefined;
       patch.bountyFraction = bounty > 0 ? bounty : DEFAULT_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = undefined;
       patch.pkoHeadVar = row.pkoHeadVar ?? 0.4;
@@ -232,8 +196,6 @@ export function applyGameType(
       snapAfs(2);
       break;
     case "mystery":
-      patch.maxEntries = 1;
-      patch.reentryRate = undefined;
       patch.bountyFraction = bounty > 0 ? bounty : DEFAULT_BOUNTY_FRACTION;
       // σ² = 2.0 is a stopgap — log-normal structurally can't match GG's
       // real envelope distribution (jackpot tier ~10000× mean w/ prob ~6e-7,
@@ -250,8 +212,6 @@ export function applyGameType(
       break;
     case "mystery-royale": {
       const brDefault = battleRoyaleRowFromTotalTicket(10);
-      patch.maxEntries = 1;
-      patch.reentryRate = undefined;
       patch.bountyFraction =
         bounty > 0 ? bounty : DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = 1.8;

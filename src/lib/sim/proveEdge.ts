@@ -7,7 +7,16 @@
  *
  * This module answers Q2: "how many tournaments until I can
  * statistically distinguish my true ROI from zero with confidence z?"
- * Formula: N ∝ (z·σ / |ROI|)² — N grows with σ AND with 1/|ROI|².
+ * Formula: N ∝ ((z_sig + z_pow)·σ / |ROI|)² — N grows with σ AND with
+ * 1/|ROI|².
+ *
+ * Power matters here. A naive N = (z·σ/|ROI|)² is the point where the test
+ * threshold sits exactly at the true ROI, so a player whose true edge is
+ * exactly that big still only clears the bar ~50 % of the time — it's the
+ * median, not "you will have proven it". To make the displayed volume match
+ * the UI promise ("N tournaments at C % confidence") we size for detection
+ * power too: significance and power both use the confidence z, so
+ * N = ((z + z)·σ/|ROI|)². At C = 95 % that is ~4× the old median.
  *
  * Same σ source as ConvergenceChart:
  *   - Single format → per-candidate `evalSigma(coef, afs, roi) · rakeScale`
@@ -168,7 +177,12 @@ function singleFormatSigma(
 function nFromSigma(z: number, sigma: number, roi: number): number {
   const absRoi = Math.abs(roi);
   if (absRoi <= 1e-9) return Number.POSITIVE_INFINITY;
-  return Math.ceil(Math.pow((z * sigma) / absRoi, 2));
+  // Significance + detection power, both at the chosen confidence z. The old
+  // (z·σ/roi)² gave only 50 % power (the median); sizing for power too means a
+  // player whose true ROI is `roi` actually clears the bar `confidence`% of
+  // the time. See module header.
+  const zDetect = z + z;
+  return Math.ceil(Math.pow((zDetect * sigma) / absRoi, 2));
 }
 
 function pickAnchorIndex(

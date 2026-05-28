@@ -26,6 +26,7 @@ import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import { chooseClosestFeasibilityFix } from "@/lib/sim/feasibilityFix";
 import { checkInputSanity } from "@/lib/sim/inputSanity";
+import { noiseChannelsActive } from "@/lib/sim/convergencePolicy";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { inferGameType } from "@/lib/sim/gameType";
 import {
@@ -1238,6 +1239,7 @@ export default function Home() {
             <ConvergenceChart
               schedule={deferredSchedule}
               finishModel={deferredPreviewModel}
+              noiseActive={noiseChannelsActive(deferredResultsControls)}
             />
           </Card>
 
@@ -1245,6 +1247,7 @@ export default function Home() {
             <ProveEdgeCard
               schedule={deferredSchedule}
               finishModel={deferredPreviewModel}
+              noiseActive={noiseChannelsActive(deferredResultsControls)}
             />
           </Card>
         </div>

@@ -22,19 +22,6 @@ const SCENARIOS: Scenario[] = [
     N: 500,
   },
   {
-    name: "re-entry-1k",
-    row: {
-      players: 1000,
-      buyIn: 50,
-      rake: 0.1,
-      roi: 0.1,
-      maxEntries: 3,
-      reEntryRate: 0.6,
-    },
-    samples: 20_000,
-    N: 500,
-  },
-  {
     name: "pko-3k",
     row: {
       players: 3000,

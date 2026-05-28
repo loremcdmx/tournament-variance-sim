@@ -207,43 +207,4 @@ describe("checkInputSanity", () => {
     expect(findings.some((f) => f.id === "row-pko-heat-no-bounty")).toBe(false);
   });
 
-  it("flags re-entry slots with no rate", () => {
-    const findings = checkInputSanity(calmControls, [
-      makeRow({ maxEntries: 3, reentryRate: 0 }),
-    ]);
-    expect(findings.some((f) => f.id === "row-reentry-slots-no-rate")).toBe(true);
-  });
-
-  it("flags re-entry rate with no slots", () => {
-    const findings = checkInputSanity(calmControls, [
-      makeRow({ maxEntries: 1, reentryRate: 0.5 }),
-    ]);
-    expect(findings.some((f) => f.id === "row-reentry-rate-no-slots")).toBe(true);
-  });
-
-  it("does not flag re-entry when slots and rate are both off (single bullet)", () => {
-    const findings = checkInputSanity(calmControls, [
-      makeRow({ maxEntries: 1, reentryRate: 0 }),
-    ]);
-    expect(
-      findings.some(
-        (f) =>
-          f.id === "row-reentry-slots-no-rate" ||
-          f.id === "row-reentry-rate-no-slots",
-      ),
-    ).toBe(false);
-  });
-
-  it("does not flag re-entry when slots and rate are coherent", () => {
-    const findings = checkInputSanity(calmControls, [
-      makeRow({ maxEntries: 3, reentryRate: 0.7 }),
-    ]);
-    expect(
-      findings.some(
-        (f) =>
-          f.id === "row-reentry-slots-no-rate" ||
-          f.id === "row-reentry-rate-no-slots",
-      ),
-    ).toBe(false);
-  });
 });

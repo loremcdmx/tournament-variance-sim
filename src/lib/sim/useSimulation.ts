@@ -116,7 +116,7 @@ const RATE_KEY = "tvs.lastRateMsPerWork.v2";
  * Per-row format weights for the work-units calculation. Measured on
  * AFS={50, 200, 500, 2000} with 5000 samples × 100 repeats; medians
  * across AFS:
- *   - freeze / freeze-reentry → 1.00 (baseline)
+ *   - freeze → 1.00 (baseline)
  *   - mystery → 1.10  (small lift, log-normal envelope draw is cheap)
  *   - mystery-royale → 1.30  (BR tier sampler + bounty cap loop)
  *   - pko → 1.35  (per-tournament bounty distribution + heat reshape)
@@ -132,7 +132,6 @@ function rowCostWeight(gameType?: GameType): number {
     case "mystery": return 1.10;
     case "mystery-royale": return 1.30;
     case "freezeout":
-    case "freezeout-reentry":
     default: return 1.00;
   }
 }

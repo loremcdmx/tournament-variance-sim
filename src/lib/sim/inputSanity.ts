@@ -21,8 +21,6 @@ export type SanityFindingId =
   | "row-bounty-format-no-bounty"
   | "row-mystery-no-variance"
   | "row-pko-heat-no-bounty"
-  | "row-reentry-slots-no-rate"
-  | "row-reentry-rate-no-slots"
   | "row-zero-count";
 
 export interface SanityFinding {
@@ -78,8 +76,6 @@ export function checkInputSanity(
     const variance = row.mysteryBountyVariance ?? 0;
     const count = row.count ?? 0;
     const heat = row.pkoHeat ?? 0;
-    const maxEntries = row.maxEntries ?? 1;
-    const reRate = row.reentryRate ?? (maxEntries > 1 ? 1 : 0);
 
     if (
       (fmt === "pko" || fmt === "mystery" || fmt === "mystery-royale") &&
@@ -106,22 +102,6 @@ export function checkInputSanity(
     if (heat > 0 && bounty === 0) {
       findings.push({
         id: "row-pko-heat-no-bounty",
-        rowIdx: idx,
-        rowLabel: label,
-      });
-    }
-
-    if (maxEntries > 1 && reRate <= 0) {
-      findings.push({
-        id: "row-reentry-slots-no-rate",
-        rowIdx: idx,
-        rowLabel: label,
-      });
-    }
-
-    if (maxEntries <= 1 && (row.reentryRate ?? 0) > 0) {
-      findings.push({
-        id: "row-reentry-rate-no-slots",
         rowIdx: idx,
         rowLabel: label,
       });

@@ -14,7 +14,6 @@ import {
   MAX_ITM_TOP_HEAVY_BIAS,
   MIN_ITM_TOP_HEAVY_BIAS,
 } from "@/lib/sim/itmTopHeavy";
-import { derivePreviewRowEconomics } from "@/lib/sim/previewRowEconomics";
 import {
   computeRowStats,
   type RowStats,
@@ -100,20 +99,13 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   const committedItmTopHeavyBias = clampItmTopHeavyBias(
     effectiveRow.itmTopHeavyBias ?? 0,
   );
-  const previewEconomics = useMemo(
-    () => derivePreviewRowEconomics(effectiveRow),
-    [effectiveRow],
-  );
   const stats = useMemo(
     () => computeRowStats(effectiveRow, model),
     [effectiveRow, model],
   );
   const rbFrac = Math.max(0, rakebackPct) / 100;
   const directRakebackPerEntry =
-    rbFrac *
-    effectiveRow.rake *
-    effectiveRow.buyIn *
-    previewEconomics.expectedBullets;
+    rbFrac * effectiveRow.rake * effectiveRow.buyIn;
   const safeLeaderboardPromoPerEntry = Math.max(0, leaderboardPromoPerEntry);
   const totalEvPerEntry =
     stats.evPerEntry + directRakebackPerEntry + safeLeaderboardPromoPerEntry;

@@ -255,10 +255,6 @@ export const DICT = {
   "row.delete": { en: "Delete", ru: "Удалить" },
   "row.gameType": { en: "Game type", ru: "Тип игры" },
   "row.gameType.freezeout": { en: "Freezeout", ru: "Фризаут" },
-  "row.gameType.freezeoutReentry": {
-    en: "Freezeout / Re-entry",
-    ru: "Фризаут / реэнтри",
-  },
   "row.gameType.pko": { en: "PKO", ru: "PKO" },
   "row.gameType.mystery": { en: "Mystery", ru: "Мистери" },
   "row.gameType.mysteryRoyale": {
@@ -351,14 +347,6 @@ export const DICT = {
   "sanity.row-pko-heat-no-bounty": {
     en: "Row {row}: PKO heat is set but bountyFraction = 0 — heat reshapes the bounty distribution, so without a bounty channel it has no effect.",
     ru: "Ряд {row}: задан PKO heat, но bountyFraction = 0 — heat меняет форму распределения bounty, без bounty-канала эффект нулевой.",
-  },
-  "sanity.row-reentry-slots-no-rate": {
-    en: "Row {row}: re-entry maxEntries > 1 but reentryRate = 0 — extra slots are configured but the player never re-enters, so the handle is dead.",
-    ru: "Ряд {row}: maxEntries > 1, но reentryRate = 0 — слоты для повторных входов есть, но игрок их не использует, ручка мёртвая.",
-  },
-  "sanity.row-reentry-rate-no-slots": {
-    en: "Row {row}: reentryRate > 0 but maxEntries ≤ 1 — re-entry probability is set but there are no slots to re-enter into.",
-    ru: "Ряд {row}: reentryRate > 0, но maxEntries ≤ 1 — задана вероятность повторного входа, но слотов для него нет.",
   },
   "sanity.row-zero-count": {
     en: "Row {row}: count = 0 — this row is never played, so its inputs don't affect the simulation.",
@@ -1316,6 +1304,10 @@ export const DICT = {
     en: "How much volume you need before your observed ROI usually sits near the true ROI",
     ru: "Какой объём нужен, чтобы наблюдаемый ROI обычно держался рядом с истинным",
   },
+  "chart.convergence.noiseCaveat": {
+    en: "Skill-uncertainty / shock / tilt channels are on. This σ comes from a clean baseline that excludes them, so real convergence takes more volume than shown — treat these numbers as an optimistic floor.",
+    ru: "Включены каналы неопределённости скилла / шоков / тильта. Эта σ взята из чистого базлайна без них, поэтому реальная сходимость требует большего объёма — считай эти числа оптимистичным минимумом.",
+  },
   "chart.convergence.col.target": { en: "ROI range", ru: "Диапазон ROI" },
   "chart.convergence.col.tourneys": { en: "Tournaments", ru: "Турниров" },
   "chart.convergence.col.fields": { en: "AFS played", ru: "Сыграно AFS" },
@@ -1383,8 +1375,8 @@ export const DICT = {
     ru: "3. Ответ",
   },
   "proveEdge.guide.answer.body": {
-    en: "The table says how many tournaments are needed to distinguish that ROI from 0%.",
-    ru: "Таблица показывает, сколько турниров нужно, чтобы отличить этот ROI от 0%.",
+    en: "The table says how many tournaments are needed before that ROI reliably clears the confidence bar over 0% — not just half the time.",
+    ru: "Таблица показывает, сколько турниров нужно, чтобы этот ROI уверенно (а не в половине случаев) отрывался от 0%.",
   },
   "proveEdge.format.label": { en: "Tournament type", ru: "Тип турнира" },
   "proveEdge.label.fieldSize": { en: "Field size", ru: "Размер поля" },
@@ -1400,8 +1392,8 @@ export const DICT = {
     ru: "Ответ по выбранному ROI:",
   },
   "proveEdge.anchor.body": {
-    en: "if the player's long-term ROI is {roi}, you need about {tourneys} tournaments at {ci}% confidence. That is roughly {fields} full fields of {afs} players.",
-    ru: "если долгосрочный ROI игрока равен {roi}, ориентир по дистанции — {tourneys} турниров при уверенности {ci}%. Это около {fields} полных полей по {afs} игроков.",
+    en: "if the player's long-term ROI is {roi}, you need about {tourneys} tournaments to be {ci}% likely to see it separate from zero. That is roughly {fields} full fields of {afs} players.",
+    ru: "если долгосрочный ROI игрока равен {roi}, ориентир по дистанции — {tourneys} турниров, чтобы с вероятностью {ci}% увидеть отрыв от нуля. Это около {fields} полных полей по {afs} игроков.",
   },
   "proveEdge.col.roi": {
     en: "If long-term ROI is",
@@ -1425,6 +1417,10 @@ export const DICT = {
   "proveEdge.outOfBox.exact": {
     en: "At least one schedule row is outside the verified model zone, so the schedule estimate is shown without a range.",
     ru: "Минимум одна строка расписания вне проверенной зоны модели, поэтому оценка по расписанию показана без диапазона.",
+  },
+  "proveEdge.noiseCaveat": {
+    en: "Skill-uncertainty / shock / tilt channels are on. The σ here comes from a clean baseline that excludes them, so the real volume to prove an edge is higher than shown — treat these numbers as an optimistic floor.",
+    ru: "Включены каналы неопределённости скилла / шоков / тильта. σ здесь взята из чистого базлайна без них, поэтому реальный объём для доказательства эджа больше показанного — считай эти числа оптимистичным минимумом.",
   },
   "proveEdge.schedule.empty": {
     en: "Schedule mode needs at least one row above. Add a row or choose a single tournament type.",
@@ -1651,8 +1647,8 @@ export const DICT = {
     ru: "Для Battle Royale добавили отдельный promo / leaderboard слой и заодно почистили контролы, чтобы интерфейс меньше противоречил сам себе.",
   },
   "changelog.v075.previewMath": {
-    en: "Preview economics and BR controls were realigned with engine math: re-entry cost, RB / promo contribution, and per-tournament EV now match the actual model much closer.",
-    ru: "Экономику preview и BR-контролы выровняли с математикой движка: стоимость re-entry, вклад RB / promo и per-tournament EV теперь заметно ближе к реальной модели.",
+    en: "Preview economics and BR controls were realigned with engine math: entry cost, RB / promo contribution, and per-tournament EV now match the actual model much closer.",
+    ru: "Экономику preview и BR-контролы выровняли с математикой движка: стоимость входа, вклад RB / promo и per-tournament EV теперь заметно ближе к реальной модели.",
   },
   "changelog.v075.inputs": {
     en: "Numeric drafts are calmer: whole-number boxes stop keeping junk tails, and inputs like 0100 collapse back to 100.",
@@ -3171,12 +3167,12 @@ export const DICT = {
     ru: "После калибровки ROI у PrimeDope остаётся бинарный paid-shell: попал в деньги или нет. Внутри оплачиваемой зоны все места получают одинаковую базовую вероятность. Реальные MTT так не устроены: мин-кэшей много, финалок и топ-3 мало, поэтому глубина просадок и время восстановления уезжают.",
   },
   "weakness.pd.tag.formats.title": {
-    en: "It folds re-entry, PKO and envelope formats into a freezeout problem",
-    ru: "Re-entry, PKO и envelope-форматы он сводит к фризаутной задаче",
+    en: "It folds PKO and envelope formats into a freezeout problem",
+    ru: "PKO и envelope-форматы он сводит к фризаутной задаче",
   },
   "weakness.pd.tag.formats.body": {
-    en: "For us multi-bullet re-entry is independent bullets with an inflated prize pool; PKO is a separate bounty channel; Mystery and Battle Royale are separate envelope / jackpot tails. PrimeDope doesn't keep these channels separate, so it can't tell what part of swing comes from format and what from finish-PMF.",
-    ru: "Multi-bullet re-entry у нас — это независимые пули с раздутым призовым; PKO — отдельный bounty-channel; Mystery и Battle Royale — отдельные envelope / jackpot tails. PrimeDope не держит эти каналы по отдельности, поэтому не различает, какой кусок swing идёт от формата, а какой от finish-PMF.",
+    en: "For us PKO is a separate bounty channel; Mystery and Battle Royale are separate envelope / jackpot tails. PrimeDope doesn't keep these channels separate, so it can't tell what part of swing comes from format and what from finish-PMF.",
+    ru: "PKO у нас — отдельный bounty-channel; Mystery и Battle Royale — отдельные envelope / jackpot tails. PrimeDope не держит эти каналы по отдельности, поэтому не различает, какой кусок swing идёт от формата, а какой от finish-PMF.",
   },
   "weakness.pd.tag.roi.title": {
     en: "It treats ROI as known and almost stationary",
@@ -3219,8 +3215,8 @@ export const DICT = {
     ru: "их rake-to-SD quirk без смены ROI-базы UI",
   },
   "weakness.pd.tag.converge.body": {
-    en: "So on one simple freezeout spot the two models really can converge. Example: an ordinary MTT with no re-entry / bounty, an even field, and a standard payout curve. Once finish-shell, payouts and the rake convention are pinned to PD's regime, EV / probability of profit / and the central trajectory band usually sit pretty close.",
-    ru: "Поэтому на одном простом freezeout-споте модели реально могут сблизиться. Пример: один обычный MTT без re-entry и bounty, с ровным полем и стандартными выплатами. Если привести finish-shell, payouts и rake-конвенцию к режиму PD, то EV, шанс выйти в плюс и центральная часть траекторий обычно уже стоят довольно близко.",
+    en: "So on one simple freezeout spot the two models really can converge. Example: an ordinary MTT with no bounty, an even field, and a standard payout curve. Once finish-shell, payouts and the rake convention are pinned to PD's regime, EV / probability of profit / and the central trajectory band usually sit pretty close.",
+    ru: "Поэтому на одном простом freezeout-споте модели реально могут сблизиться. Пример: один обычный MTT без bounty, с ровным полем и стандартными выплатами. Если привести finish-shell, payouts и rake-конвенцию к режиму PD, то EV, шанс выйти в плюс и центральная часть траекторий обычно уже стоят довольно близко.",
   },
   "weakness.pd.tag.converge.reading": {
     en: "What this mode usefully shows: not just where we diverge from PD, but how fast that divergence disappears as you peel modern MTT layers off and end up with a \"napkin freezeout.\"",
@@ -3251,8 +3247,8 @@ export const DICT = {
     ru: "На референсе 100p / $50 / 10% ROI наша σ₁₀₀₀ под PrimeDope-shell попадает в тот же коридор, который показывает их сайт: math около $5607 и sim около $5789.",
   },
   "weakness.pd.tag.precision.body": {
-    en: "So for a simple freezeout spot our PD mode is pretty close to what the user would see on PrimeDope. But that accuracy honestly stops where the site itself stops being a model of the problem: PKO, Mystery, Battle Royale, multi-bullet re-entry, and schedule-level uncertainty all need separate layers PD doesn't have.",
-    ru: "То есть для простого freezeout-спота наш PD-режим довольно близок к тому, что пользователь увидит на PrimeDope. Но эта точность честно заканчивается там, где сам сайт перестаёт быть моделью задачи: PKO, Mystery, Battle Royale, multi-bullet re-entry и schedule-level uncertainty уже требуют отдельных слоёв, которых у PD нет.",
+    en: "So for a simple freezeout spot our PD mode is pretty close to what the user would see on PrimeDope. But that accuracy honestly stops where the site itself stops being a model of the problem: PKO, Mystery, Battle Royale, and schedule-level uncertainty all need separate layers PD doesn't have.",
+    ru: "То есть для простого freezeout-спота наш PD-режим довольно близок к тому, что пользователь увидит на PrimeDope. Но эта точность честно заканчивается там, где сам сайт перестаёт быть моделью задачи: PKO, Mystery, Battle Royale и schedule-level uncertainty уже требуют отдельных слоёв, которых у PD нет.",
   },
   "weakness.pd.tag.boundary.title": {
     en: "Where the similarity ends and why",
@@ -3279,8 +3275,8 @@ export const DICT = {
     ru: "В schedule / mixed-grind режиме у нас ещё поверх этого живут field variability и ROI-noise, а у PrimeDope такого слоя вообще нет.",
   },
   "weakness.pd.tag.boundary.body": {
-    en: "Boundary example: take the same baseline freezeout — top-line numbers can sit close. Add re-entry, PKO bounty EV or a Mystery tail, and the difference no longer comes from fine PMF tuning, it comes from PrimeDope simply not carrying those channels inside the model.",
-    ru: "Пример границы: если взять тот же базовый freezeout, модели могут быть близки по top-line. Но стоит добавить re-entry, PKO bounty EV или Mystery-хвост, и разница уже идёт не из тонкой подстройки PMF, а из того, что PrimeDope просто не держит эти каналы внутри модели.",
+    en: "Boundary example: take the same baseline freezeout — top-line numbers can sit close. Add PKO bounty EV or a Mystery tail, and the difference no longer comes from fine PMF tuning, it comes from PrimeDope simply not carrying those channels inside the model.",
+    ru: "Пример границы: если взять тот же базовый freezeout, модели могут быть близки по top-line. Но стоит добавить PKO bounty EV или Mystery-хвост, и разница уже идёт не из тонкой подстройки PMF, а из того, что PrimeDope просто не держит эти каналы внутри модели.",
   },
   "weakness.pd.summary": {
     en: "Short version: PrimeDope is useful as a baseline where the tournament is already almost reduced to a single simple freezeout-shell. The more format-specific EV and uncertainty layers there are in the problem, the faster our model stops just \"differing\" and starts describing a different class of risk.",

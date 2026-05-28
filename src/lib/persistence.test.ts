@@ -268,7 +268,7 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.customPayouts).toBeUndefined();
   });
 
-  it("drops hidden bounty and re-entry knobs when persisted gameType is explicit freezeout", () => {
+  it("drops hidden bounty knobs when persisted gameType is explicit freezeout", () => {
     const state = decodeState(
       encoded({
         v: 1,
@@ -276,8 +276,6 @@ describe("persistence validation", () => {
           {
             ...row,
             gameType: "freezeout",
-            maxEntries: 4,
-            reentryRate: 0.75,
             bountyFraction: 0.5,
             mysteryBountyVariance: 1.8,
             pkoHeadVar: 0.4,
@@ -290,8 +288,6 @@ describe("persistence validation", () => {
 
     expect(state?.schedule[0]).toMatchObject({
       gameType: "freezeout",
-      maxEntries: 1,
-      reentryRate: undefined,
       bountyFraction: undefined,
       mysteryBountyVariance: undefined,
       pkoHeadVar: undefined,
@@ -304,11 +300,6 @@ describe("persistence validation", () => {
       encoded({
         v: 1,
         schedule: [
-          {
-            ...row,
-            id: "re",
-            gameType: "freezeout-reentry",
-          },
           {
             ...row,
             id: "pko",
@@ -327,22 +318,12 @@ describe("persistence validation", () => {
     );
 
     expect(state?.schedule[0]).toMatchObject({
-      gameType: "freezeout-reentry",
-      maxEntries: 2,
-      reentryRate: 1,
-      bountyFraction: undefined,
-    });
-    expect(state?.schedule[1]).toMatchObject({
       gameType: "pko",
-      maxEntries: 1,
-      reentryRate: undefined,
       bountyFraction: 0.5,
       pkoHeadVar: 0.4,
     });
-    expect(state?.schedule[2]).toMatchObject({
+    expect(state?.schedule[1]).toMatchObject({
       gameType: "mystery",
-      maxEntries: 1,
-      reentryRate: undefined,
       bountyFraction: 0.5,
       mysteryBountyVariance: 2,
       pkoHeadVar: undefined,
@@ -423,26 +404,6 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]?.payJumpAggression).toBe(0.8);
   });
 
-  it("preserves persisted re-entry row knobs when they are still valid product inputs", () => {
-    const state = decodeState(
-      encoded({
-        v: 1,
-        schedule: [
-          {
-            ...row,
-            gameType: "freezeout-reentry",
-            maxEntries: 4,
-            reentryRate: 0.75,
-          },
-        ],
-        controls,
-      }),
-    );
-
-    expect(state?.schedule[0]?.gameType).toBe("freezeout-reentry");
-    expect(state?.schedule[0]?.maxEntries).toBe(4);
-    expect(state?.schedule[0]?.reentryRate).toBe(0.75);
-  });
 
   it("drops hidden persisted row knobs that are no longer user-visible", () => {
     const state = decodeState(
@@ -454,8 +415,6 @@ describe("persistence validation", () => {
             players: 500,
             guarantee: 1_000_000,
             lateRegMultiplier: 1_000_000_000,
-            maxEntries: 0,
-            reentryRate: 5,
             bountyFraction: 0.5,
             bountyEvBias: 999,
             itmRate: 0.18,
@@ -471,8 +430,6 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]).toMatchObject({
       lateRegMultiplier: undefined,
       guarantee: undefined,
-      maxEntries: 1,
-      reentryRate: 1,
       bountyEvBias: 0.25,
       itmTopHeavyBias: -1,
       pkoHeadVar: undefined,

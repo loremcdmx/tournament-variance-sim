@@ -1,12 +1,9 @@
 import type { DictKey } from "@/lib/i18n/dict";
-import {
-  inferGameType,
-  toVisibleGameType,
-  type VisibleGameType,
-} from "@/lib/sim/gameType";
+import { inferGameType } from "@/lib/sim/gameType";
+import type { GameType } from "@/lib/sim/types";
 import type { TournamentRow } from "@/lib/sim/types";
 
-const GAME_TYPE_LABEL_KEY: Record<VisibleGameType, DictKey> = {
+const GAME_TYPE_LABEL_KEY: Record<GameType, DictKey> = {
   freezeout: "row.gameType.freezeout",
   pko: "row.gameType.pko",
   mystery: "row.gameType.mystery",
@@ -32,6 +29,6 @@ export function getTournamentRowDisplayLabel(
   const explicitLabel = row.label?.trim();
   if (explicitLabel) return explicitLabel;
 
-  const gameType = toVisibleGameType(inferGameType(row));
+  const gameType = inferGameType(row);
   return `${t(GAME_TYPE_LABEL_KEY[gameType])} ${formatBuyInToken(row)}`;
 }

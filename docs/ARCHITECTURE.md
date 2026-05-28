@@ -89,7 +89,7 @@ The current split is:
    - Builds alias tables for fast weighted sampling.
    - Returns `CompiledEntry[]` — flat, shard-independent, serializable.
 
-3. **Shard dispatch.** The hook splits `[0, samples)` into K contiguous shards and sends one `ShardRequest` per free worker. Workers are stateless — each receives the compiled schedule in the request and runs `simulateShard(sStart, sEnd)`. Seeds are not shard-local: the hot loop uses `mixSeed(baseSeed, sampleIdx, rowIdx, bulletIdx)` where `sampleIdx` is the *global* index in `[0, samples)`. This is what makes the run deterministic independent of pool size.
+3. **Shard dispatch.** The hook splits `[0, samples)` into K contiguous shards and sends one `ShardRequest` per free worker. Workers are stateless — each receives the compiled schedule in the request and runs `simulateShard(sStart, sEnd)`. Seeds are not shard-local: the hot loop uses `mixSeed(seed, sampleIdx)` where `sampleIdx` is the *global* index in `[0, samples)`. This is what makes the run deterministic independent of pool size.
 
 4. **Progress reporting.** Workers post `ShardProgressMsg` periodically (every ~1000 samples or so). The hook aggregates into a single `progress` number exposed to the UI.
 
@@ -115,12 +115,11 @@ Per tournament entry:
 
 ```text
 for sample s in [sStart, sEnd):
-  rng = mulberry32(mixSeed(seed, s, rowIdx, bulletIdx))
+  rng = mulberry32(mixSeed(seed, s))   // separate XOR-offset streams per channel
   ...for each row...
-    for each bullet fired:
-      draw finish place from alias table
-      look up payoutByPlace[place]   (+ bountyByPlace if PKO)
-      profit += payout - singleCost
+    draw finish place from alias table
+    look up payoutByPlace[place]   (+ bountyByPlace if PKO)
+    profit += payout - singleCost
 ```
 
 The payout/bounty tables are computed once in `compileSchedule()` and reused for every sample. That's the whole point of the build step — pay the finish-model + α-calibration cost once per row, not N × samples times.
@@ -150,7 +149,7 @@ When `row.pkoHeat > 0`, `compileSchedule()` builds `HEAT_BIN_COUNT` alternative 
 
 This is enforced by `engine.test.ts` and is non-negotiable. Concretely:
 
-- The engine **does not** call `Math.random()`. Only `mulberry32`, seeded via `mixSeed(baseSeed, sampleIdx, rowIdx, bulletIdx)`.
+- The engine **does not** call `Math.random()`. Only `mulberry32`, seeded via `mixSeed(seed, sampleIdx)`.
 - `sampleIdx` is the **global** sample index, not a shard-local index. Two workers can run samples 0..4999 and 5000..9999 in parallel and still produce the exact same aggregate as a single-worker 0..9999 run.
 - Iteration order inside the hot loop is fixed — no `Set`, no `Object.keys` on anything that matters.
 - No `Date.now()` / `performance.now()` inside the engine. Timing is measured outside, in `useSimulation`.
@@ -210,7 +209,6 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 - **Determinism** — same input, same seed → byte-identical `finalProfits`.
 - **Realized ROI in SE** — the α calibration produces a run whose mean ROI matches `row.roi` within a few standard errors.
 - **Row decomposition sums** — Σ rowMean ≈ totalMean, Σ rowVar ≈ totalVar (with cross-terms near zero because we fix row-independent seeds).
-- **Re-entry variance amplification** — 3 bullets should yield roughly √3× σ compared to 1 bullet on an uncorrelated draw.
 - **Empirical histogram reproduction** — feeding a flat histogram gives uniform pmf; feeding a spike at position 1 makes the player always win.
 - **Payout normalization** — every `getPayoutTable()` result sums to 1 ± ε.
 

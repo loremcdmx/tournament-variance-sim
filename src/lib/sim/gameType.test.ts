@@ -185,20 +185,4 @@ describe("normalizeGameTypeConsistency", () => {
     expect(pko.bountyFraction).toBe(0.5);
   });
 
-  it("does not coerce re-entry numeric knobs at compile-boundary normalization", () => {
-    const fixed = normalizeGameTypeConsistency(
-      row({
-        gameType: "freezeout-reentry",
-        maxEntries: 1,
-        reentryRate: 0.25,
-        bountyFraction: 0.5,
-        payoutStructure: "mtt-gg-bounty",
-      }),
-    );
-    expect(fixed.gameType).toBe("freezeout-reentry");
-    expect(fixed.maxEntries).toBe(1);
-    expect(fixed.reentryRate).toBe(0.25);
-    expect(fixed.bountyFraction).toBeUndefined();
-    expect(fixed.payoutStructure).toBe("mtt-standard");
-  });
 });

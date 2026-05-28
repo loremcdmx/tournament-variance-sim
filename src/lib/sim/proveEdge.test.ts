@@ -47,6 +47,18 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     expect(r25.tourneys / r5.tourneys).toBeLessThan(4.1);
   });
 
+  it("sizes for detection power: N = ((2z)·σ/ROI)², ~4× the 50%-power median", () => {
+    const z = Z95;
+    const r10 = computeProveEdgeRows({ ...baseFreeze, z }).find(
+      (r) => r.roi === 0.10,
+    )!;
+    const powered = Math.ceil(Math.pow((2 * z * r10.sigma) / 0.10, 2));
+    const naiveMedian = Math.ceil(Math.pow((z * r10.sigma) / 0.10, 2));
+    expect(r10.tourneys).toBe(powered);
+    expect(r10.tourneys / naiveMedian).toBeGreaterThan(3.95);
+    expect(r10.tourneys / naiveMedian).toBeLessThan(4.05);
+  });
+
   it("freeze σ is ROI-invariant — same σ across the candidate grid", () => {
     const rows = computeProveEdgeRows(baseFreeze);
     const sigmas = new Set(rows.map((r) => r.sigma.toFixed(6)));

@@ -82,25 +82,9 @@ export function validateSchedule(
     const lateRegMult = Math.max(1, row.lateRegMultiplier ?? 1);
     const N = Math.max(2, Math.floor(row.players * lateRegMult));
 
-    const maxEntries = Math.max(1, Math.floor(row.maxEntries ?? 1));
-    const reRate = Math.max(
-      0,
-      Math.min(1, row.reentryRate ?? (maxEntries > 1 ? 1 : 0)),
-    );
-    let reentryExpected = 0;
-    if (maxEntries > 1 && reRate > 0) {
-      if (reRate === 1) {
-        reentryExpected = maxEntries - 1;
-      } else {
-        const M = maxEntries - 1;
-        reentryExpected = (reRate * (1 - Math.pow(reRate, M))) / (1 - reRate);
-      }
-    }
-
     const payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
     const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
-    const effectiveSeats = N * (1 + reentryExpected);
-    const basePool = effectiveSeats * row.buyIn;
+    const basePool = N * row.buyIn;
     const overlay = Math.max(0, (row.guarantee ?? 0) - basePool);
     const entryCost = row.buyIn * (1 + row.rake);
     const totalWinningsEV = entryCost * (1 + row.roi);

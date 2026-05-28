@@ -59,21 +59,18 @@ export interface FinishModelConfig {
 
 /**
  * High-level game format for a tournament row. Drives sensible defaults
- * for re-entry / bounty / mystery fields in the editor and feeds a
- * single badge into the preview. The engine itself reads the underlying
- * fields (`maxEntries`, `bountyFraction`, `mysteryBountyVariance`), so
- * gameType is purely a UX grouping — switching it just rewrites those
- * fields to preset values.
+ * for bounty / mystery fields in the editor and feeds a single badge into
+ * the preview. The engine itself reads the underlying fields
+ * (`bountyFraction`, `mysteryBountyVariance`), so gameType is purely a UX
+ * grouping — switching it just rewrites those fields to preset values.
  *
  * - "freezeout":         one entry per player, no bounty.
- * - "freezeout-reentry": re-entry allowed, no bounty.
  * - "pko":               progressive knockout — half the buy-in into bounty.
  * - "mystery":           mystery bounty — log-normal per-KO variance.
  * - "mystery-royale":    mystery bounty with jackpot-tier right tail.
  */
 export type GameType =
   | "freezeout"
-  | "freezeout-reentry"
   | "pko"
   | "mystery"
   | "mystery-royale";
@@ -88,10 +85,10 @@ export interface TournamentRow {
   tags?: string[];
 
   /**
-   * High-level format (freezeout, re-entry, PKO, mystery, mystery-royale).
+   * High-level format (freezeout, PKO, mystery, mystery-royale).
    * Undefined is treated as a plain freezeout for backward compat — the
-   * legacy rows have `maxEntries`/`bountyFraction` set directly and don't
-   * need to know about gameType. See `GameType` for the full taxonomy.
+   * legacy rows have `bountyFraction` set directly and don't need to know
+   * about gameType. See `GameType` for the full taxonomy.
    */
   gameType?: GameType;
 
@@ -166,22 +163,7 @@ export interface TournamentRow {
    */
   count: number;
 
-  // -------- re-entry / knockout extensions --------
-
-  /**
-   * Maximum total entries per player in this MTT. `1` = freezeout (default).
-   * `> 1` = re-entry / re-buy. We model re-entry as geometric: after busting,
-   * the player re-enters with probability `reentryRate` until either the
-   * max is reached or the draw fails. Every extra entry costs another
-   * `buyIn × (1+rake)` and adds to the prize pool.
-   */
-  maxEntries?: number;
-  /**
-   * Probability of re-entering after a non-cashing bust. Defaults to 1 if
-   * `maxEntries > 1` is set without an explicit rate. Ignored for
-   * freezeouts. Bounded to [0, 1].
-   */
-  reentryRate?: number;
+  // -------- knockout extensions --------
 
   /**
    * Knockout / bounty tournaments. `bountyFraction` is the share of the

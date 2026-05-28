@@ -70,12 +70,7 @@ export function inferRowFormat(row: TournamentRow): ConvergenceRowFormat {
   if (row.gameType === "mystery-royale") return "mystery-royale";
   if (row.gameType === "mystery") return "mystery";
   if (row.gameType === "pko") return "pko";
-  if (
-    row.gameType === "freezeout" ||
-    row.gameType === "freezeout-reentry"
-  ) {
-    return "freeze";
-  }
+  if (row.gameType === "freezeout") return "freeze";
 
   // (2) Legacy payoutStructure (no gameType set).
   if (row.payoutStructure === "battle-royale") return "mystery-royale";
@@ -157,4 +152,42 @@ export function getConvergenceBandPolicy(
     }
   }
   return { kind: "numeric" };
+}
+
+export interface NoiseChannelSettings {
+  roiStdErr?: number;
+  roiShockPerTourney?: number;
+  roiShockPerSession?: number;
+  roiDriftSigma?: number;
+  tiltFastGain?: number;
+  tiltFastScale?: number;
+  tiltSlowGain?: number;
+  tiltSlowThreshold?: number;
+}
+
+/**
+ * True when any skill-uncertainty / per-tournament / session / drift shock or
+ * tilt channel is switched on (matching the engine's own activation gates in
+ * `simulateShard`).
+ *
+ * The closed-form σ surface behind the convergence and prove-edge widgets is
+ * fit on a clean engine — every one of these channels held at 0. When a user
+ * turns one on, the real per-run σ is strictly larger, so the widget's
+ * tournaments-to-converge / tournaments-to-prove numbers become an optimistic
+ * lower bound. The UI surfaces this as a caveat rather than silently showing a
+ * too-small number (the residual band stays as-is; these channels aren't in
+ * its fit). roiStdErr in particular is irreducible skill uncertainty that
+ * doesn't even shrink as 1/√n, so folding it into a per-tournament σ would be
+ * wrong — a caveat is the honest call.
+ */
+export function noiseChannelsActive(c: NoiseChannelSettings): boolean {
+  const shock =
+    (c.roiStdErr ?? 0) > 0 ||
+    (c.roiShockPerTourney ?? 0) > 0 ||
+    (c.roiShockPerSession ?? 0) > 0 ||
+    (c.roiDriftSigma ?? 0) > 0;
+  const tiltFast = (c.tiltFastGain ?? 0) !== 0 && (c.tiltFastScale ?? 0) > 0;
+  const tiltSlow =
+    (c.tiltSlowGain ?? 0) !== 0 && (c.tiltSlowThreshold ?? 0) > 0;
+  return shock || tiltFast || tiltSlow;
 }

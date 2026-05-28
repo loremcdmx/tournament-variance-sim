@@ -7,8 +7,9 @@
  * Determinism contract: `SimulationInput + seed → byte-identical
  * SimulationResult` regardless of worker pool size or shard dispatch order.
  * Enforced by `engine.test.ts`. No `Math.random`, no `Date.now`, no wall
- * clock. Only `mulberry32` seeded via `mixSeed(baseSeed, sampleIdx, rowIdx,
- * bulletIdx)`, where `sampleIdx` is the GLOBAL index in `[0, samples)`.
+ * clock. Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` — each
+ * stochastic channel uses its own XOR-offset of the seed — where
+ * `sampleIdx` is the GLOBAL index in `[0, samples)`.
  *
  * Hot loop allocation rule: no `new Float64Array(...)` inside the per-sample
  * inner loop. All scratch buffers are preallocated per shard and reused.
@@ -127,24 +128,16 @@ interface CompiledEntry {
    * For rows without variability this is undefined (fast path).
    */
   variants?: CompiledEntry[];
-  /** Amortized cost per slot: singleCost × (1 + reentryExpected). Used only
-   *  for totalBuyIn reporting / per-row accounting. */
-  costPerEntry: number;
-  /** Cost of a single bullet (buy-in + rake, no re-entry scaling). The hot
-   *  loop charges this per fired bullet. */
+  /** Cost of one entry (buy-in + rake). The hot loop charges this per slot
+   *  and it is also what totalBuyIn / per-row accounting sum. */
   singleCost: number;
-  /** Deterministic rakeback credit added to profit for every bullet fired.
+  /** Deterministic rakeback credit added to profit for the entry.
    *  `input.rakebackFracOfRake × row.rake × row.buyIn`. Zero when rakeback
    *  isn't configured; pure mean shift (adds zero variance, but reshapes
    *  path-dependent stats — drawdown, running max, time-above-zero, bust
    *  probability — since cumulative profit is what those read). */
   rakebackBonusPerBullet: number;
-  /** Cap on bullets fired per slot. 1 for freezeouts. */
-  maxEntries: number;
-  /** Probability of firing the next bullet after a non-cash bust. */
-  reRate: number;
-  /** Number of paid places — the boundary for "did I cash" checks during
-   *  re-entry rolls. */
+  /** Number of paid places — the boundary for the "did I cash" check. */
   paidCount: number;
   /** Vose's alias method: O(1) finish-place sampling in the hot loop.
    *  `aliasProb[i]` is the acceptance threshold for index i; when the
@@ -156,13 +149,6 @@ interface CompiledEntry {
   alpha: number;
   /** Σ pmf[i] over paid places — exact ITM for this entry. */
   itm: number;
-  /**
-   * Expected extra re-entries per seat. For a geometric re-entry process
-   * with cap `maxEntries` and retry rate `p`, the expected number of
-   * *additional* entries is Σ_{k=1..cap-1} p^k = p(1−p^(cap−1))/(1−p)
-   * for p<1, else cap−1. Used for amortized cost reporting only.
-   */
-  reentryExpected: number;
   /**
    * Per-place bounty EV. For a row with bountyFraction > 0, bounties are
    * distributed across finish places using the elimination-order model:
@@ -476,7 +462,7 @@ export function compileSchedule(
     if (rv.length === 1) return rv[0].entry;
     const first = rv[0].entry;
     const variantList = rv.map((v) => v.entry);
-    // Parent's bookkeeping fields (costPerEntry equal across variants; itm
+    // Parent's bookkeeping fields (singleCost equal across variants; itm
     // is the mean over variants so totalBuyIn/itmRate reporting is correct
     // in expectation).
     const meanItm =
@@ -493,7 +479,7 @@ export function compileSchedule(
   );
   const passOrder = buildSchedulePassOrder(passCounts);
   const rowDirectRakebackMeans = slotEntries.map(
-    (entry) => entry.rakebackBonusPerBullet * (1 + entry.reentryExpected),
+    (entry) => entry.rakebackBonusPerBullet,
   );
 
   for (let rep = 0; rep < input.scheduleRepeats; rep++) {
@@ -501,12 +487,12 @@ export function compileSchedule(
       const entry = slotEntries[rowIdx];
       const directRbMean = rowDirectRakebackMeans[rowIdx];
       flat.push(entry);
-      totalBuyIn += entry.costPerEntry;
-      expectedProfit += entry.costPerEntry * input.schedule[rowIdx].roi + directRbMean;
+      totalBuyIn += entry.singleCost;
+      expectedProfit += entry.singleCost * input.schedule[rowIdx].roi + directRbMean;
       expectedDirectRakeback += directRbMean;
       itmAcc += entry.itm;
       rowCounts[rowIdx] += 1;
-      rowBuyIns[rowIdx] += entry.costPerEntry;
+      rowBuyIns[rowIdx] += entry.singleCost;
     }
   }
 
@@ -778,14 +764,6 @@ function compileSingleEntry(
       `engine: row "${label}" payJumpAggression must be in [0,1] (got ${row.payJumpAggression})`,
     );
   }
-  if (row.reentryRate != null && !(row.reentryRate >= 0 && row.reentryRate <= 1)) {
-    throw new Error(
-      `engine: row "${label}" reentryRate must be in [0,1] (got ${row.reentryRate})`,
-    );
-  }
-  if (row.maxEntries != null && !(row.maxEntries >= 1)) {
-    throw new Error(`engine: row "${label}" maxEntries must be ≥ 1 (got ${row.maxEntries})`);
-  }
   if (row.mysteryBountyVariance != null && !(row.mysteryBountyVariance >= 0)) {
     throw new Error(
       `engine: row "${label}" mysteryBountyVariance must be ≥ 0 (got ${row.mysteryBountyVariance})`,
@@ -807,21 +785,6 @@ function compileSingleEntry(
   // widens the finish-position shape. Defaults to 1 (no late reg).
   const lateRegMult = Math.max(1, row.lateRegMultiplier ?? 1);
   const N = Math.max(1, Math.floor(players * lateRegMult));
-  // ---- re-entry accounting ------------------------------------------------
-  // Expected number of *extra* entries per seat (beyond the first) under
-  // geometric re-entry with cap (maxEntries-1). Contributes to cost and to
-  // prize pool (every re-entry pays rake and buy-in too).
-  const maxEntries = Math.max(1, Math.floor(row.maxEntries ?? 1));
-  const reRate = Math.max(0, Math.min(1, row.reentryRate ?? (maxEntries > 1 ? 1 : 0)));
-  let reentryExpected = 0;
-  if (maxEntries > 1 && reRate > 0) {
-    if (reRate === 1) {
-      reentryExpected = maxEntries - 1;
-    } else {
-      const M = maxEntries - 1;
-      reentryExpected = (reRate * (1 - Math.pow(reRate, M))) / (1 - reRate);
-    }
-  }
   // ROI in this app is always net of rake: profit / (buy-in + rake). Keep
   // that cost basis in the PrimeDope comparison too so both panes compare the
   // same edge. Only diagnostic live-site parity scripts opt into PD's
@@ -829,8 +792,7 @@ function compileSingleEntry(
   const entryCostSingle = primedopeStyleEV
     ? row.buyIn
     : row.buyIn * (1 + row.rake);
-  const costPerEntry = entryCostSingle * (1 + reentryExpected);
-  const effectiveSeats = N * (1 + reentryExpected);
+  const effectiveSeats = N;
   // Rake-SD coupling: in PD-binary-itm mode, we model PD's internal quirk
   // of using the POST-RAKE pool as the variance driver while keeping the
   // app's full-cost ROI target fixed.
@@ -1026,13 +988,11 @@ function compileSingleEntry(
   // bounty lump contributes bountyEV directly; the regular prize pool must
   // therefore hit `targetTotal − bountyEV` on its own. We translate that
   // back into an "effective ROI" target to feed the existing calibrator.
-  // Target is defined PER BULLET: the pmf shapes one bullet's prize
-  // distribution. A player fires K bullets stochastically, each costs
-  // `entryCostSingle`, each samples independently from this pmf.
-  //   E[profit per slot] = E[K] × (E[prize per bullet] + E[bounty per bullet] − singleCost)
-  // For overall ROI = row.roi on TOTAL money spent (= E[K] × singleCost):
-  //   E[prize per bullet] + E[bounty per bullet] − singleCost = singleCost × ROI
-  //   → E[prize per bullet] = singleCost × (1 + ROI) − bountyMean
+  // One entry per slot, costing `entryCostSingle`, sampling once from this pmf:
+  //   E[profit per slot] = E[prize] + E[bounty] − singleCost
+  // For overall ROI = row.roi on money spent (= singleCost):
+  //   E[prize] + E[bounty] − singleCost = singleCost × ROI
+  //   → E[prize] = singleCost × (1 + ROI) − bountyMean
   const targetRegular = Math.max(0.01, entryCostSingle * (1 + row.roi) - bountyMean);
   let pmf: Float64Array;
   let alpha = 0;
@@ -1454,18 +1414,14 @@ function compileSingleEntry(
   return {
     rowIdx: idx,
     fieldSize: N,
-    costPerEntry,
     singleCost: entryCostSingle,
     rakebackBonusPerBullet: 0,
-    maxEntries,
-    reRate,
     paidCount,
     aliasProb,
     aliasIdx,
     prizeByPlace,
     alpha,
     itm: itmProbability(pmf, paidCount),
-    reentryExpected,
     bountyByPlace,
     bountyKmean,
     bountyKmeanExp,
@@ -2988,7 +2944,6 @@ export function simulateShard(
       const single = t.singleCost;
       const bulletCost = single - effectiveDelta * single;
       const rakebackPerBullet = t.rakebackBonusPerBullet;
-      const maxB = t.maxEntries;
       const pc = t.paidCount;
       const mystVar = t.mysteryBountyLogVar;
       const mystSig = t.mysteryBountyLogSigma;
@@ -3002,7 +2957,7 @@ export function simulateShard(
       let cashedThisSlot = false;
       let leaderboardPlace = -1;
       let leaderboardKnockoutsThisSlot = 0;
-      if (maxB === 1) {
+      {
         // Vose alias: one uniform → O(1) finish draw.
         const r0 = rng() * aliasN;
         const i0 = r0 | 0;
@@ -3067,76 +3022,6 @@ export function simulateShard(
         delta = prizes[place] + bountyDraw - bulletCost + rakebackPerBullet;
         if (bountyDraw !== 0) rowBountyProfits[rowBase + t.rowIdx] += bountyDraw;
         if (place < pc) cashedThisSlot = true;
-      } else {
-        const reRate = t.reRate;
-        for (let b = 0; b < maxB; b++) {
-          const r1 = rng() * aliasN;
-          const i1 = r1 | 0;
-          const place = r1 - i1 < aliasProb[i1] ? i1 : aliasIdx[i1];
-          leaderboardPlace = place;
-          let bountyDraw = 0;
-          if (bp !== null) {
-            const mean = bp[place];
-            if (mean > 0 && bkm !== null) {
-              const lam = bkm[place];
-              if (lam > 0) {
-                let k: number;
-                if (lam < 30) {
-                  const L = bkmExp![place];
-                  let p = 1;
-                  k = 0;
-                  do {
-                    k++;
-                    p *= bRng();
-                  } while (p > L);
-                  k--;
-                } else {
-                  k = poissonPTRS(lam, bRng);
-                }
-                bountyDraw = mean * k * bkmInv![place];
-                if (k > 0 && bountyDraw > 0) {
-                  if (brRatios !== null) {
-                    const perKO = mean * bkmInv![place];
-                    bountyDraw = 0;
-                    let sumRatio = 0;
-                    for (let j = 0; j < k; j++) {
-                      const rT = bRng() * 10;
-                      const iT = rT | 0;
-                      const pick = rT - iT < brAliasProb![iT] ? iT : brAliasIdx![iT];
-                      const ratio = brRatios[pick];
-                      sumRatio += ratio;
-                      bountyDraw += perKO * ratio;
-                    }
-                    leaderboardKnockoutsThisSlot += k;
-                    if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
-                  } else if (mystVar > 0) {
-                    const perKO = mean * bkmInv![place];
-                    bountyDraw = 0;
-                    let sumRatio = 0;
-                    for (let j = 0; j < k; j++) {
-                      const ratio = Math.exp(mystSig * gaussB() - 0.5 * mystVar);
-                      sumRatio += ratio;
-                      bountyDraw += perKO * ratio;
-                    }
-                    if (brRatios === null) leaderboardKnockoutsThisSlot = 0;
-                    if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
-                  }
-                }
-              } else {
-                bountyDraw = mean;
-              }
-            } else {
-              bountyDraw = mean;
-            }
-          }
-          delta += prizes[place] + bountyDraw - bulletCost + rakebackPerBullet;
-          if (bountyDraw !== 0) rowBountyProfits[rowBase + t.rowIdx] += bountyDraw;
-          if (place < pc) {
-            cashedThisSlot = true;
-            break;
-          }
-          if (b + 1 < maxB && rng() >= reRate) break;
-        }
       }
       profit += delta;
       rowProfits[rowBase + t.rowIdx] += delta;

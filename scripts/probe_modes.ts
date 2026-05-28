@@ -9,8 +9,6 @@ const row: TournamentRow = {
   roi: 0.15,
   payoutStructure: "mtt-standard",
   count: 1000,
-  maxEntries: 2,
-  reentryRate: 1,
 };
 const base: SimulationInput = {
   schedule: [row],

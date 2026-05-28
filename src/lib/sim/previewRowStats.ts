@@ -179,7 +179,6 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
   const payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
   const entryCostSingle = economics.singleCost;
   const entryCost = economics.costPerTournament;
-  const expectedBullets = economics.expectedBullets;
   const brSampler =
     row.payoutStructure === "battle-royale"
       ? makeBrTierSampler(row.buyIn)
@@ -455,9 +454,7 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     0,
     totalEv2 - totalEvPerBullet * totalEvPerBullet,
   );
-  totalEv = totalEvPerBullet * expectedBullets;
-  cashEv *= expectedBullets;
-  bountyEv *= expectedBullets;
+  totalEv = totalEvPerBullet;
   // Jackpot share of bounty EV — fraction of bountyEv that comes from
   // per-KO draws with ratio ≥ JACKPOT_THRESHOLD × mean. Derived from the
   // envelope distribution, independent of place (every KO is an iid draw).
@@ -479,7 +476,7 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     }
   }
   const jackpotBountyEv = bountyEv * jackpotShareFrac;
-  const payoutVar = payoutVarPerBullet * expectedBullets;
+  const payoutVar = payoutVarPerBullet;
   const payoutStd = Math.sqrt(payoutVar);
   const cv = totalEv > 1e-9 ? payoutStd / totalEv : 0;
 
@@ -489,7 +486,7 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
   // Per-place arrays used for both tier binning and the half-mass fact.
   const evByPlace = new Float64Array(N);
   for (let i = 0; i < N; i++) {
-    evByPlace[i] = pmf[i] * totalByPlace[i] * expectedBullets;
+    evByPlace[i] = pmf[i] * totalByPlace[i];
   }
 
   // Half-mass: smallest k such that top-k places cover ≥50% of total EV.
@@ -627,7 +624,7 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     }
     const width = hi - prevHi;
     const eqShareTier = N > 0 ? width / N : 0;
-    const evEqTier = N > 0 ? (totalTierSum / N) * expectedBullets : 0;
+    const evEqTier = N > 0 ? totalTierSum / N : 0;
     const cashGivenFinish = fTier > 1e-12 ? cashTier / fTier : 0;
     const bountyGivenFinish = fTier > 1e-12 ? bountyTier / fTier : 0;
     const bustsGivenFinish = fTier > 1e-12 ? bustsWeighted / fTier : 0;
@@ -638,8 +635,8 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
       labelKey: c.labelKey,
       color: c.color,
       ev: evTier,
-      cashEv: cashTier * expectedBullets,
-      bountyEv: bountyTier * expectedBullets,
+      cashEv: cashTier,
+      bountyEv: bountyTier,
       cashGivenFinish,
       bountyGivenFinish,
       bustsGivenFinish,
@@ -695,10 +692,10 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     ftEvShare,
     shellMode: row.itmRate != null && row.itmRate > 0,
     shellFeasible: feasible,
-    shellTargetEv: targetRegular * expectedBullets,
+    shellTargetEv: targetRegular,
     shellCurrentEv:
       currentWinningsFromSolver != null
-        ? currentWinningsFromSolver * expectedBullets
+        ? currentWinningsFromSolver
         : totalEv - bountyShareOfPayout * totalEv,
     shellP1,
     shellTop3: shellTop3Sum,

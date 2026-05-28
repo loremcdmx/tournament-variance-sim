@@ -22,9 +22,7 @@ import {
   applyGameType,
   normalizeGameTypeConsistency,
   rowHasActiveBounty,
-  VISIBLE_GAME_TYPE_ORDER,
-  toVisibleGameType,
-  type VisibleGameType,
+  GAME_TYPE_ORDER,
 } from "@/lib/sim/gameType";
 import { equilibriumItmRateForRow } from "@/lib/sim/itmTarget";
 import {
@@ -629,7 +627,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
 // Card stripe colour keyed to the user-facing game type. Uses the existing
 // suit palette from globals.css so the tint is consistent with the rest of
 // the UI (no new colour tokens).
-const GAME_TYPE_TINT: Record<VisibleGameType, string> = {
+const GAME_TYPE_TINT: Record<GameType, string> = {
   freezeout: "var(--c-spade)",
   pko: "var(--c-heart)",
   mystery: "var(--c-diamond)",
@@ -694,7 +692,7 @@ const ScheduleRow = memo(function ScheduleRow({
   const r = useMemo(() => normalizeGameTypeConsistency(rawRow), [rawRow]);
   const gt = inferGameType(r);
   const isBattleRoyale = gt === "mystery-royale";
-  const uiGt = toVisibleGameType(gt);
+  const uiGt = gt;
   const showBounty =
     uiGt === "pko" || uiGt === "mystery" || uiGt === "mystery-royale";
   const hasAdv =
@@ -735,7 +733,7 @@ const ScheduleRow = memo(function ScheduleRow({
           mystery: "row.gameType.mystery",
           "mystery-royale": "row.gameType.mysteryRoyale",
         } as const
-      )[toVisibleGameType(g.compat.gameType)];
+      )[g.compat.gameType];
       return t("row.payoutCompat.wrongGameType").replace(
         "{gameType}",
         t(gtKey),
@@ -1682,11 +1680,11 @@ function GameTypeSelect({
   value,
   onChange,
 }: {
-  value: VisibleGameType;
-  onChange: (next: VisibleGameType) => void;
+  value: GameType;
+  onChange: (next: GameType) => void;
 }) {
   const t = useT();
-  const fullLabel = (g: VisibleGameType): string => {
+  const fullLabel = (g: GameType): string => {
     switch (g) {
       case "freezeout":
         return t("row.gameType.freezeout");
@@ -1698,16 +1696,16 @@ function GameTypeSelect({
         return t("row.gameType.mysteryRoyale");
     }
   };
-  const optionLabel = (g: VisibleGameType): string =>
+  const optionLabel = (g: GameType): string =>
     g === "mystery-royale" ? "GG BR" : fullLabel(g);
   return (
     <select
       value={value}
-      onChange={(e) => onChange(e.target.value as VisibleGameType)}
+      onChange={(e) => onChange(e.target.value as GameType)}
       title={fullLabel(value)}
       className="h-8 w-full min-w-0 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-left text-[11px] text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
     >
-      {VISIBLE_GAME_TYPE_ORDER.map((g) => (
+      {GAME_TYPE_ORDER.map((g) => (
         <option key={g} value={g}>
           {optionLabel(g)}
         </option>
@@ -1722,7 +1720,7 @@ function BuyInInput({
   rake,
   onChange,
 }: {
-  gameType: VisibleGameType;
+  gameType: GameType;
   buyIn: number;
   rake: number;
   onChange: (buyIn: number, rake: number) => void;

@@ -10,6 +10,7 @@ import {
   getConvergenceBandPolicy,
   inferRowFormat,
   isInsideFitBox,
+  noiseChannelsActive,
   type FitBoxSample,
 } from "./convergencePolicy";
 import { SIGMA_ROI_FREEZE } from "./convergenceFit";
@@ -408,5 +409,39 @@ describe("freeze ROI-invariant contract (canary)", () => {
     if (SIGMA_ROI_FREEZE.kind === "single-beta") {
       expect(SIGMA_ROI_FREEZE.C1).toBe(0);
     }
+  });
+});
+
+describe("noiseChannelsActive", () => {
+  it("false when every channel is off / unset", () => {
+    expect(noiseChannelsActive({})).toBe(false);
+    expect(
+      noiseChannelsActive({
+        roiStdErr: 0,
+        roiShockPerTourney: 0,
+        roiShockPerSession: 0,
+        roiDriftSigma: 0,
+        tiltFastGain: 0,
+        tiltSlowGain: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("true for any active shock channel", () => {
+    expect(noiseChannelsActive({ roiStdErr: 0.05 })).toBe(true);
+    expect(noiseChannelsActive({ roiShockPerTourney: 0.1 })).toBe(true);
+    expect(noiseChannelsActive({ roiShockPerSession: 0.1 })).toBe(true);
+    expect(noiseChannelsActive({ roiDriftSigma: 0.1 })).toBe(true);
+  });
+
+  it("tilt needs both gain and its companion gate (mirrors engine)", () => {
+    expect(noiseChannelsActive({ tiltFastGain: 0.3 })).toBe(false);
+    expect(noiseChannelsActive({ tiltFastGain: 0.3, tiltFastScale: 100 })).toBe(
+      true,
+    );
+    expect(noiseChannelsActive({ tiltSlowGain: 0.2 })).toBe(false);
+    expect(
+      noiseChannelsActive({ tiltSlowGain: 0.2, tiltSlowThreshold: 500 }),
+    ).toBe(true);
   });
 });

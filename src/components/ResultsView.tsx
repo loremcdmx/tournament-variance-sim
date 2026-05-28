@@ -20,6 +20,7 @@ import type {
   TournamentRow,
 } from "@/lib/sim/types";
 import { rowHasActiveBounty } from "@/lib/sim/gameType";
+import { noiseChannelsActive } from "@/lib/sim/convergencePolicy";
 import { type RunMode } from "@/lib/trajectorySelection";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -1263,10 +1264,18 @@ function ResultsViewImpl({
               subtitle={t("chart.convergence.sub")}
               showUnitToggle={false}
             />
-            <ConvergenceChart schedule={schedule} finishModel={finishModel} />
+            <ConvergenceChart
+              schedule={schedule}
+              finishModel={finishModel}
+              noiseActive={noiseChannelsActive(settings ?? {})}
+            />
           </Card>
           <Card className="p-5">
-            <ProveEdgeCard schedule={schedule} finishModel={finishModel} />
+            <ProveEdgeCard
+              schedule={schedule}
+              finishModel={finishModel}
+              noiseActive={noiseChannelsActive(settings ?? {})}
+            />
           </Card>
         </div>
         {result.downswings.length > 0 && (

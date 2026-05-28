@@ -30,14 +30,10 @@ const translate = (key: DictKey): string => {
 };
 
 describe("getTournamentRowDisplayLabel", () => {
-  it("collapses freezeout-reentry into freezeout for user-facing labels", () => {
+  it("labels a freezeout row by type and buy-in", () => {
     expect(
       getTournamentRowDisplayLabel(
-        row({
-          gameType: "freezeout-reentry",
-          maxEntries: 2,
-          reentryRate: 1,
-        }),
+        row({ gameType: "freezeout" }),
         translate,
       ),
     ).toBe("Фризаут $10+$1");
