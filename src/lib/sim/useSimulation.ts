@@ -71,9 +71,12 @@ function computeBatchKey(input: SimulationInput): string {
 function poolSize(): number {
   if (typeof navigator === "undefined") return 1;
   const hc = navigator.hardwareConcurrency ?? 4;
-  // Use ~half of logical threads — keeps SMT siblings free for the OS,
-  // browser UI thread, and other apps. Avoids saturating cores.
-  return Math.max(1, Math.min(16, Math.floor(hc / 2)));
+  // CPU-bound burst the user is actively waiting on: use most cores but leave
+  // ~2 free for the browser UI thread + OS so the page stays responsive.
+  // hc/2 idled half the cores on no-SMT hardware (Apple Silicon, where hc is
+  // the physical-core count); hc-2 keeps headroom without that waste. Cap at
+  // 16 — oversharding a CPU-bound job past that buys nothing.
+  return Math.max(1, Math.min(16, hc - 2));
 }
 
 interface Pool {

@@ -518,6 +518,11 @@ export function ProveEdgeCard({ schedule, finishModel, noiseActive }: Props) {
           ? t("proveEdge.footnote.banded")
           : t("proveEdge.footnote.point")}
       </div>
+      {!scheduleEmpty && (
+        <div className="text-[10.5px] leading-relaxed text-[color:var(--color-fg-dim)]">
+          {t("convergence.skewNote")}
+        </div>
+      )}
     </div>
   );
 }

@@ -500,7 +500,7 @@ export interface SimulationInput {
    *
    * The whole amount is a deterministic direct bonus of
    * `rakebackFracOfRake × row.rake × row.buyIn` added to profit for each
-   * bullet fired (re-entries included, since each bullet pays rake).
+   * tournament entry, since every entry pays rake.
    */
   rakebackFracOfRake?: number;
   /**

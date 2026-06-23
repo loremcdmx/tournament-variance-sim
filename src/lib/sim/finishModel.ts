@@ -149,6 +149,12 @@ export function buildFinishPMF(
       return pmf;
     }
     case "linear-skill": {
+      // slope = tanh(alpha) is bounded to (-1, 1), so the pmf can tilt at most
+      // to a triangular shape — its max E[W] saturates well below the
+      // power-law / Plackett-Luce models (~20x lower on top-heavy payouts).
+      // High-ROI rows therefore clamp alpha at the bisection ceiling and are
+      // run-blocked by validateSchedule as infeasible; pick power-law /
+      // plackett-luce for a strong top-heavy edge.
       const slope = Math.tanh(alpha);
       const mid = (N + 1) / 2;
       const half = Math.max((N - 1) / 2, 1e-9);
@@ -239,10 +245,12 @@ export function expectedWinnings(
 
 /**
  * Binary-search an alpha value so that player's expected ROI matches target.
- * E[W] is monotonically increasing in alpha for power-law, linear-skill,
- * and stretched-exp. For `uniform` E[W] is constant in alpha, so calibration
- * is impossible — we pin alpha=0 and the configured ROI has no effect on the
- * finish distribution. Callers that need ROI to bite must pick a skill model.
+ * E[W] is monotonically increasing in alpha for every α-adjustable model that
+ * routes through this bisection — power-law, linear-skill, stretched-exp,
+ * plackett-luce (α → skill s = e^α), and powerlaw-realdata-influenced. For
+ * `uniform` E[W] is constant in alpha, so calibration is impossible — we pin
+ * alpha=0 and the configured ROI has no effect on the finish distribution.
+ * Callers that need ROI to bite must pick a skill model.
  */
 export function calibrateAlpha(
   N: number,

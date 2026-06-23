@@ -94,7 +94,8 @@ function logFactorial(k: number): number {
   if (k < 16) return LOG_FACT_SMALL[k];
   return (k + 0.5) * Math.log(k) - k + 0.9189385332046727 + 1 / (12 * k);
 }
-function poissonPTRS(lam: number, rng: () => number): number {
+/** Exported for the statistical unit test; the hot loop calls it directly. */
+export function poissonPTRS(lam: number, rng: () => number): number {
   const smu = Math.sqrt(lam);
   const b = 0.931 + 2.53 * smu;
   const a = -0.059 + 0.02483 * b;
@@ -179,8 +180,8 @@ interface CompiledEntry {
    * add within-place stochastic noise to the bounty haul: at a fixed place
    * the realized KO count is Poisson around `bountyKmean[place]`, and the
    * realized bounty payout equals `bountyByPlace[place] × K / kmean`. K is
-   * drawn via Knuth's inverse-CDF for small λ and PTRS (Hörmann 1993) for
-   * λ ≥ 10 — see `poissonPTRS` / `poissonKnuth` above. Mean is preserved
+   * drawn via inline Knuth multiplication for λ < 30 and PTRS (Hörmann 1993)
+   * for λ ≥ 30 — see `poissonPTRS` above and the hot-loop branch. Mean is preserved
    * exactly; the per-tournament within-place variance is real (not zero
    * as in the original scalar-per-place bounty formulation). Shares null
    * with bountyByPlace.
@@ -2453,6 +2454,10 @@ export function histogramOf(
   }
   if (nonNegative) lo = 0;
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi === lo) {
+    // Empty / degenerate input: lo/hi never updated (lo=+Inf, hi=-Inf) or all
+    // samples equal. Pin a finite unit span so binEdges/span stay finite
+    // instead of producing NaN edges (an empty arr would give Inf-Inf=NaN).
+    if (!Number.isFinite(lo)) lo = 0;
     hi = lo + 1;
   }
   // Long-tail guard (opt-in): a single jackpot sample at 100× median
@@ -2668,6 +2673,11 @@ export function simulateShard(
 
   const finalProfits = new Float64Array(shardSize);
   const pathMatrix = new Float64Array(shardSize * K1);
+  // Per-sample reusable scratch for the breakeven/first-return post-loop:
+  // segLo[jj]/segHi[jj] cache the min/max of checkpoint segment (jj-1, jj) so
+  // the two O(K1²) chord scans don't recompute them on every starting point.
+  const segLo = new Float64Array(K1);
+  const segHi = new Float64Array(K1);
   const maxDrawdowns = new Float64Array(shardSize);
   const maxRunUps = new Float64Array(shardSize);
   const runningMins = new Float64Array(shardSize);
@@ -3143,19 +3153,29 @@ export function simulateShard(
     // per-sample mean first-return chord.
     let firstReturnSum = 0;
     let firstReturnCount = 0;
+    // Precompute each segment's min/max once (O(K1)). The chord scans below
+    // are still O(K1²) but now just read segLo/segHi instead of recomputing
+    // `a < b ? …` on every starting point — the dominant cost in this
+    // post-loop. Same ternary form, so the straddle test is bit-identical.
+    for (let jj = 1; jj < K1; jj++) {
+      const a = pathMatrix[pathBase + jj - 1];
+      const b = pathMatrix[pathBase + jj];
+      segLo[jj] = a < b ? a : b;
+      segHi[jj] = a < b ? b : a;
+    }
     for (let ii = 0; ii < K1 - 1; ii++) {
       const Pi = pathMatrix[pathBase + ii];
       let chordLen = 0;
       for (let jj = K1 - 1; jj > ii; jj--) {
-        const a = pathMatrix[pathBase + jj - 1];
-        const b = pathMatrix[pathBase + jj];
-        const lo = a < b ? a : b;
-        const hi = a < b ? b : a;
-        if (lo <= Pi && Pi <= hi) {
+        if (segLo[jj] <= Pi && Pi <= segHi[jj]) {
           // Skip the trivial case where the segment only touches Pi at
           // its left endpoint (which is time ii itself): that isn't a
           // distinct second point.
-          if (jj === ii + 1 && a === Pi && b !== Pi) break;
+          if (jj === ii + 1) {
+            const a = pathMatrix[pathBase + jj - 1];
+            const b = pathMatrix[pathBase + jj];
+            if (a === Pi && b !== Pi) break;
+          }
           chordLen = jj - ii;
           break;
         }
@@ -3167,12 +3187,12 @@ export function simulateShard(
 
       let firstLen = 0;
       for (let jj = ii + 1; jj < K1; jj++) {
-        const a = pathMatrix[pathBase + jj - 1];
-        const b = pathMatrix[pathBase + jj];
-        const lo = a < b ? a : b;
-        const hi = a < b ? b : a;
-        if (lo <= Pi && Pi <= hi) {
-          if (jj === ii + 1 && a === Pi && b !== Pi) continue;
+        if (segLo[jj] <= Pi && Pi <= segHi[jj]) {
+          if (jj === ii + 1) {
+            const a = pathMatrix[pathBase + jj - 1];
+            const b = pathMatrix[pathBase + jj];
+            if (a === Pi && b !== Pi) continue;
+          }
           firstLen = jj - ii;
           break;
         }

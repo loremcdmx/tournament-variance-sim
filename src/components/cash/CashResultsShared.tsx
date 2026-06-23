@@ -15,6 +15,8 @@ export type SummaryStat = {
   label: string;
   value: string;
   tone?: ValueTone;
+  /** Optional hover explanation; renders a native title + a small ⓘ marker. */
+  tip?: string;
 };
 
 export type SuitAccent = "spade" | "heart" | "diamond" | "club";
@@ -249,6 +251,7 @@ function SummaryPill({
   label,
   value,
   tone,
+  tip,
 }: SummaryStat) {
   const meta = CASH_ACCENT_META[accent];
   const toneClass =
@@ -264,9 +267,18 @@ function SummaryPill({
         borderColor: meta.badgeBorder,
         background: meta.badgeBg,
       }}
+      title={tip}
     >
-      <span className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
+      <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
         {label}
+        {tip && (
+          <span
+            className="cursor-help text-[color:var(--color-fg-dim)]"
+            aria-label={tip}
+          >
+            ⓘ
+          </span>
+        )}
       </span>
       <span className={`font-mono text-[13px] font-semibold tabular-nums ${toneClass}`}>
         {value}

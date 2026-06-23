@@ -988,8 +988,8 @@ export const DICT = {
     ru: "скрыть джекпоты",
   },
   "chart.hideJackpots.title": {
-    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. A handful of jackpot samples stretch the distribution x-axis and the trajectory y-axis into unreadable territory even though they're statistically rare.",
-    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. Пара джекпотных сэмплов растягивает ось X гистограммы и ось Y траектории так, что остальной график становится нечитаемым, хотя статистически такие раны редки.",
+    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. A handful of jackpot samples stretch the distribution x-axis and the trajectory y-axis into unreadable territory even though they're statistically rare. Note: this only reshapes the charts — the scalar stats panels (mean, max, VaR, skew) still reflect ALL samples including jackpots, and the trajectory envelopes are rebuilt from the ~1000 stored hi-res paths.",
+    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. Пара джекпотных сэмплов растягивает ось X гистограммы и ось Y траектории так, что остальной график становится нечитаемым, хотя статистически такие раны редки. Важно: это меняет только графики — скалярные статы (среднее, макс, VaR, скос) по-прежнему считаются по ВСЕМ сэмплам, включая джекпоты, а огибающие траектории пересобираются из ~1000 сохранённых hi-res путей.",
   },
   "chart.trajectory.withRakeback": {
     en: "with RB",
@@ -1303,6 +1303,10 @@ export const DICT = {
   "chart.convergence.sub": {
     en: "How much volume you need before your observed ROI usually sits near the true ROI",
     ru: "Какой объём нужен, чтобы наблюдаемый ROI обычно держался рядом с истинным",
+  },
+  "convergence.skewNote": {
+    en: "Volumes use a symmetric normal approximation. Real MTT results are right-skewed, so for tight targets or small samples the true band is mildly asymmetric — read these as a ballpark.",
+    ru: "Объёмы считаются в симметрично-нормальном приближении. Реальные MTT-результаты скошены вправо, поэтому для тесных таргетов и малых выборок настоящая полоса слегка асимметрична — это ориентир, не точное число.",
   },
   "chart.convergence.noiseCaveat": {
     en: "Skill-uncertainty / shock / tilt channels are on. This σ comes from a clean baseline that excludes them, so real convergence takes more volume than shown — treat these numbers as an optimistic floor.",
@@ -2555,8 +2559,8 @@ export const DICT = {
     ru: "Это просто вариант случайной выборки. Один и тот же сид = тот же самый ран на том же расписании. Обычно трогать не нужно: при каждом запуске берётся новый. Фиксировать имеет смысл только когда сравниваешь две настройки на одной и той же случайности.",
   },
   "help.roiStdErr": {
-    en: "How uncertain you are about your real ROI, as a fraction. 0.05 = \"my true ROI is maybe ±5 pp off\". 0 = you know ROI exactly (PrimeDope's assumption). On each run the engine rolls a random skill shift applied to every bullet — the biggest source of bad-tail swings PrimeDope ignores.",
-    ru: "Неопределённость в истинном ROI (как доля). 0.05 = «реальный ROI может быть ±5 пп от заданного». 0 = ROI известен точно (допущение PrimeDope). На каждом ране движок генерирует случайный сдвиг скилла на все пули — основной источник хвостовых стриков, который PrimeDope игнорирует.",
+    en: "How uncertain you are about your real ROI, as a fraction. 0.05 = \"my true ROI is maybe ±5 pp off\". 0 = you know ROI exactly (PrimeDope's assumption). On each run the engine rolls one random skill shift applied across every tournament in that run — the biggest source of bad-tail swings PrimeDope ignores.",
+    ru: "Неопределённость в истинном ROI (как доля). 0.05 = «реальный ROI может быть ±5 пп от заданного». 0 = ROI известен точно (допущение PrimeDope). На каждом ране движок генерирует один случайный сдвиг скилла на все турниры этого рана — основной источник хвостовых стриков, который PrimeDope игнорирует.",
   },
   "help.roiShockPerTourney": {
     en: "Per-tournament ROI shock (σ). Every tourney independently rolls softer/tougher than average. 0.30 = each tourney's effective ROI is target ± 30 pp (1σ). Adds variance without moving long-run mean — a chunk PrimeDope misses.",
@@ -2917,9 +2921,17 @@ export const DICT = {
     en: "Ever ≤ {threshold}",
     ru: "Хотя бы раз ≤ {threshold}",
   },
+  "cash.summary.probBelowThresholdEver.tip": {
+    en: "Finite-horizon risk: the share of paths that touched the threshold WITHIN this sample's hand count. It underestimates long-run risk on short samples — for the forever-play figure see RoR (∞ horizon).",
+    ru: "Риск на конечной дистанции: доля путей, коснувшихся порога В ПРЕДЕЛАХ числа рук этого сэмпла. На коротких выборках занижает долгосрочный риск — для «играем вечно» смотри RoR (∞ горизонт).",
+  },
   "cash.summary.riskOfRuinAsymptotic": {
     en: "RoR (∞ horizon)",
     ru: "RoR (∞ горизонт)",
+  },
+  "cash.summary.riskOfRuinAsymptotic.tip": {
+    en: "Closed-form infinite-horizon risk of ruin for this edge and variance (Galfond's exp(−2·BR·wr/sd²)). It is the asymptote if the same winrate/variance played forever; the 'Ever ≤' number is just what this finite sample happened to show.",
+    ru: "Аналитический риск разорения на бесконечной дистанции для данного эджа и дисперсии (формула Гэлфонда exp(−2·БР·wr/sd²)). Это асимптота, если тот же винрейт/дисперсия играют вечно; число «Хотя бы раз ≤» — лишь то, что показала конечная выборка.",
   },
   "cash.summary.oddsSub100Now": {
     en: "≤ −100 BB now",

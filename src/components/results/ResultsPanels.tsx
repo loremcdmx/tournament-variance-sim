@@ -300,6 +300,14 @@ export function SettingsDumpCard({
   if (!settings || !schedule || schedule.length === 0) return null;
 
   const r = schedule[0];
+  // Realized mean ROI from the actual run. When the advanced α-override is
+  // pinned, calibration is skipped so the engine ignores each row's ROI
+  // target — the "assumed ROI" label can then silently contradict what the
+  // run produced. Surface the realized figure (and flag the divergence).
+  const realizedRoi =
+    result.totalBuyIn > 0 ? result.stats.mean / result.totalBuyIn : 0;
+  const alphaPinned = settings.alphaOverride != null;
+  const roiDiverges = Math.abs(realizedRoi - r.roi) > 0.005;
   const totalEntries =
     schedule.reduce((acc, row) => acc + row.count, 0) * settings.scheduleRepeats;
   const elapsedStr =
@@ -324,6 +332,12 @@ export function SettingsDumpCard({
     ["bountyFraction", `${((r.bountyFraction ?? 0) * 100).toFixed(0)}%`],
     ["payoutStructure", r.payoutStructure],
     ["assumed ROI", `${(r.roi * 100).toFixed(1)}%`],
+    [
+      "realized ROI",
+      `${(realizedRoi * 100).toFixed(1)}%${
+        alphaPinned && roiDiverges ? "  ⚠ α-pinned, target ignored" : ""
+      }`,
+    ],
     ["—", "—"],
     ["finishModel", settings.finishModelId],
     ["α (override)", settings.alphaOverride == null ? "auto" : settings.alphaOverride.toFixed(3)],

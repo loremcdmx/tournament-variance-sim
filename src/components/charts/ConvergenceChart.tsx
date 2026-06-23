@@ -1140,7 +1140,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         </div>
       )}
       <div className="mt-3 rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev)]/25 px-3 py-2.5 text-[11px] leading-relaxed text-[color:var(--color-fg-dim)] sm:mt-2 sm:border-transparent sm:bg-transparent sm:px-0 sm:py-0 sm:text-[10px] sm:leading-snug">
-        {t("chart.convergence.assumptions")}
+        <div>{t("chart.convergence.assumptions")}</div>
+        <div className="mt-1">{t("convergence.skewNote")}</div>
       </div>
     </div>
   );
