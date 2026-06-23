@@ -26,7 +26,7 @@ If code and docs disagree, the code wins — fix the doc.
 ## Things that trip up fresh sessions
 
 - **Determinism is a hard contract.** `SimulationInput + seed → byte-identical SimulationResult` regardless of pool size. No `Math.random()`, `Date.now()`, `performance.now()` inside `src/lib/sim/` (except `useSimulation.ts`, which is outside the engine). Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` — each stochastic channel uses its own XOR-offset of the seed. `sampleIdx` is the GLOBAL index in `[0, samples)`, not shard-local. New stochastic channel → fresh XOR-offset seed + determinism test.
-- **`samplePaths.paths.length` ≠ `samples`.** Only the first ~1000 samples of shard 0 store hi-res trajectories (`wantHiResPaths` in `engine.ts`). Slider in `ResultsView` caps at `paths.length`.
+- **`samplePaths.paths.length` ≠ `samples`.** Only the first ~1000 samples of shard 0 store hi-res trajectories (`wantHiResPaths` in `hotLoop.ts`). Slider in `ResultsView` caps at `paths.length`.
 - **PrimeDope compare mode** uses a second calibration path (`calibrateShelledItm` + `pdCurves.ts`). Changes to the main calibration don't auto-propagate — check compare coverage when touching `finishModel.ts`.
 - **PKO heat** in the hot loop snaps a Gaussian per-tournament to one of `HEAT_BIN_COUNT` preconcentrated `bountyByPlace` tables. Mean bounty is preserved per bin; only σ shifts.
 - **Dev branch invariant:** `dev` is always ≥ `main`, never behind. Run `git log dev..main` before starting work; ship via `git merge --ff-only dev`.
@@ -66,11 +66,11 @@ See the table at the bottom of `docs/ARCHITECTURE.md`. Short version:
 | Payout structure            | `src/lib/sim/payouts.ts` + `types.ts` + `dict.ts` |
 | Finish model                | `src/lib/sim/finishModel.ts`                      |
 | New chart                   | `src/components/charts/` + `ResultsView.tsx`      |
-| Noise / tilt channel        | `types.ts` + hot loop in `engine.ts`              |
+| Noise / tilt channel        | `types.ts` + hot loop in `hotLoop.ts`             |
 | Demo scenario               | `src/lib/scenarios.ts` + `dict.ts`                |
 | Language                    | `src/lib/i18n/dict.ts`                            |
 | α calibration               | `finishModel.ts` → `calibrateAlpha()`             |
-| Per-run stored data         | `engine.ts` → `buildResult()`                     |
+| Per-run stored data         | `buildResult.ts` → `buildResult()`                |
 
 ## Re-entry checklist after compression
 
@@ -78,7 +78,7 @@ See the table at the bottom of `docs/ARCHITECTURE.md`. Short version:
 2. Read `WISDOM.md` fully before trusting any prior summary or review finding.
 3. Skim `docs/ARCHITECTURE.md` for the data-flow diagram and determinism contract.
 4. Run `git status` + `git log -5 --oneline` to see actual repo state — don't trust summary claims about what's committed.
-5. If touching the engine: re-read `src/lib/sim/engine.ts` top-of-file. If touching UI: re-read the file you're about to edit before editing — `page.tsx` and `ResultsView.tsx` are large and shift often.
+5. If touching the engine: it is split into `engine.ts` (orchestrator/barrel), `compile.ts`, `hotLoop.ts` (the determinism-critical `simulateShard`), `buildResult.ts`, `engineTypes.ts`, `simNumerics.ts`, `grids.ts`, `engineConstants.ts` — open the relevant one and re-read its top-of-file. If touching UI: re-read the file you're about to edit before editing — `page.tsx` and `ResultsView.tsx` are large and shift often.
 6. Run `npm test` before any non-trivial change to confirm baseline is green.
 
 Do not act on summary claims about in-progress work without verifying against the filesystem. Summaries lose nuance; the tree does not.

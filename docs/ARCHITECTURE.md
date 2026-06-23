@@ -23,7 +23,13 @@ This document describes the data flow, module boundaries, and invariants of the 
 │  │  ─ src/lib/sim/worker.ts                             │    │
 │  │        thin dispatcher — onmessage routes to engine  │    │
 │  │  ─ src/lib/sim/engine.ts                             │    │
-│  │        compileSchedule / simulateShard / buildResult │    │
+│  │        thin orchestrator: runSimulation + mergeShards │    │
+│  │        + a barrel re-exporting the modules below      │    │
+│  │  ─ src/lib/sim/compile.ts      schedule → compiled    │    │
+│  │  ─ src/lib/sim/hotLoop.ts      simulateShard (MC core)│    │
+│  │  ─ src/lib/sim/buildResult.ts  shard → result         │    │
+│  │  ─ src/lib/sim/engineTypes.ts  Compiled*/RawShard…    │    │
+│  │  ─ src/lib/sim/simNumerics.ts  poisson + histograms   │    │
 │  │  ─ src/lib/sim/finishModel.ts                        │    │
 │  │        pmf + α calibration                           │    │
 │  │  ─ src/lib/sim/payouts.ts                            │    │
@@ -109,7 +115,7 @@ All in `src/lib/sim/types.ts`:
 
 ## Hot-loop shape
 
-`simulateShard()` in `engine.ts` is a plain `for` loop over samples, with a nested loop over compiled entries. No allocations inside the inner loop — all scratch buffers come from the shard's preallocated pool. The typed arrays (`Float64Array`, `Int32Array`) are chosen specifically so the JS engine can keep things in numeric-typed shapes without boxing.
+`simulateShard()` in `hotLoop.ts` is a plain `for` loop over samples, with a nested loop over compiled entries. No allocations inside the inner loop — all scratch buffers come from the shard's preallocated pool. The typed arrays (`Float64Array`, `Int32Array`) are chosen specifically so the JS engine can keep things in numeric-typed shapes without boxing.
 
 Per tournament entry:
 
@@ -198,7 +204,7 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 
 - **Pool size** — `poolSize()` in `useSimulation.ts`. Defaults to `hardwareConcurrency / 2`. Change if you see the OS get starved.
 - **Shard count** — equal to pool size in the current implementation. There's no overlap benefit to oversharding — each worker is CPU-bound.
-- **Checkpoint grid K** — `makeCheckpointGrid(N)` in `engine.ts`. Currently `K = min(80, N)`. Bigger K = smoother trajectory charts but more main-thread sort work.
+- **Checkpoint grid K** — `makeCheckpointGrid(N)` in `grids.ts`. Currently `K = min(240, N)`. Bigger K = smoother trajectory charts but more main-thread sort work.
 - **`wantHiResPaths`** — how many sample paths to retain at full resolution. Currently 1000. Trades memory for slider range.
 - **`HEAT_BIN_COUNT`** — PKO heat bin count. 13 is more than enough; 5 would be fine.
 
@@ -236,8 +242,15 @@ Add new tests next to the file they cover. Keep them fast — the whole suite sh
 The repo is cleaner than it was, but it is not “finished forever”. The biggest
 remaining concentrated modules are:
 
-- **`src/lib/sim/engine.ts`** — still owns build/compile/hot-loop/result-build
-  in one file. This is the main core-engine split target.
+- **`src/lib/sim/engine.ts`** — **split done.** Formerly a ~3500-line monolith,
+  it is now a ~240-line orchestrator (`runSimulation` + `mergeShards`) plus a
+  barrel that re-exports the public surface from sibling modules:
+  `compile.ts` (compile/calibration/analytic-σ), `hotLoop.ts`
+  (`simulateShard` — the determinism-critical Monte Carlo core),
+  `buildResult.ts` (result assembly), `engineTypes.ts` (contract types),
+  `simNumerics.ts` (poisson + histograms), `grids.ts`, `engineConstants.ts`.
+  Importers still use the `./engine` path unchanged. `compile.ts` (~1250
+  lines) and `buildResult.ts` (~810) are the next finer-grain split targets.
 - **`src/components/charts/FinishPMFPreview.tsx`** — presentation and preview
   economics still live together in one large UI module.
 - **`src/components/cash/CashResultsView.tsx`** — much cleaner than the old
@@ -270,6 +283,6 @@ around.
 | Add a language                    | `src/lib/i18n/dict.ts` — add the locale field, TS will force you through every key |
 | Change the worker pool sizing     | `useSimulation.ts` → `poolSize()`                      |
 | Change how α is calibrated        | `src/lib/sim/finishModel.ts` → `calibrateAlpha()`      |
-| Change what gets stored per-run   | `src/lib/sim/engine.ts` → `buildResult()`              |
+| Change what gets stored per-run   | `src/lib/sim/buildResult.ts` → `buildResult()`         |
 | Fit σ_ROI to new data / re-fit presets | `docs/FITTING.md`                                 |
 | Run parameter sweeps              | `docs/FITTING.md` → `scripts/fit_sigma_parallel.ts`    |
