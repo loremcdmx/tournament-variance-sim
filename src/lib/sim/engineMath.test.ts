@@ -2,10 +2,20 @@ import { describe, it, expect } from "vitest";
 import {
   runSimulation,
   buildScheduleAnalyticBreakdown,
+  compileSchedule,
+  simulateShard,
+  mergeShards,
+  makeCheckpointGrid,
   poissonPTRS,
 } from "./engine";
 import { mulberry32, mixSeed } from "./rng";
 import type { SimulationInput, TournamentRow } from "./types";
+
+function eqF64(a: Float64Array, b: Float64Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 function std(a: Float64Array): number {
   let m = 0;
@@ -127,4 +137,50 @@ describe("poissonPTRS is an unbiased Poisson sampler", () => {
       expect(Math.abs(variance - lam) / lam).toBeLessThan(0.03);
     });
   }
+});
+
+// The engine's #1 contract: SimulationInput + seed → byte-identical result
+// regardless of how samples are sharded across the worker pool. The existing
+// multi-shard tests only assert hi-res sampleIndices alignment; this pins the
+// VALUE-level invariant (the worker.ts path: arbitrary [sStart,sEnd) ranges +
+// mergeShards), which a future refactor of the shard buffers or merge could
+// otherwise silently break with the suite still green.
+describe("pool-invariance: 1 shard vs N out-of-order shards is byte-identical", () => {
+  const schedule: TournamentRow[] = [
+    { label: "fz", players: 500, buyIn: 50, rake: 0.1, roi: 0.1, count: 2,
+      payoutStructure: "mtt-standard", gameType: "freezeout" } as TournamentRow,
+    { label: "pko", players: 1000, buyIn: 25, rake: 0.1, roi: 0.08, count: 2,
+      payoutStructure: "mtt-gg-bounty", gameType: "pko",
+      bountyFraction: 0.5, pkoHeadVar: 0.4 } as TournamentRow,
+  ];
+  const input: SimulationInput = {
+    schedule, scheduleRepeats: 20, samples: 3000, bankroll: 100_000,
+    seed: 0xc0ffee, finishModel: { id: "power-law" },
+  } as SimulationInput;
+
+  it("single full-range shard == reversed multi-shard merge (incl. a 1-sample shard)", () => {
+    const compiled = compileSchedule(input, "alpha");
+    const N = compiled.tournamentsPerSample;
+    const grid = makeCheckpointGrid(N);
+    const K1 = grid.K + 1;
+    const S = input.samples;
+    const numRows = input.schedule.length;
+
+    const single = simulateShard(input, compiled, 0, S, grid);
+
+    // Awkward, out-of-order ranges incl. a single-sample shard.
+    const a = simulateShard(input, compiled, 0, 1, grid);
+    const b = simulateShard(input, compiled, 1, 1234, grid);
+    const c = simulateShard(input, compiled, 1234, 2001, grid);
+    const d = simulateShard(input, compiled, 2001, S, grid);
+    const merged = mergeShards([d, b, a, c], S, K1, numRows);
+
+    expect(eqF64(merged.finalProfits, single.finalProfits)).toBe(true);
+    expect(eqF64(merged.pathMatrix, single.pathMatrix)).toBe(true);
+    expect(eqF64(merged.maxDrawdowns, single.maxDrawdowns)).toBe(true);
+    expect(eqF64(merged.rowProfits, single.rowProfits)).toBe(true);
+    expect([...merged.breakevenStreakCounts]).toEqual([
+      ...single.breakevenStreakCounts,
+    ]);
+  });
 });

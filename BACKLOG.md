@@ -107,7 +107,7 @@
 Сверка `top1/top3/top9/ITM pmf` против реальных MTT-выборок. Ждёт CSV с сэмплом реальных финишей. Без ground-truth правки #121b — регрессия к предположениям. **Триггер:** CSV с реальными данными.
 
 ### #119b · Mystery tail apply — **BLOCKED BY DATA**
-При поступлении GG Mystery-tier выборки (не BR прокси): переход на discrete-tier draw по образцу BR (#92) — single-line change в `engine.ts:~901` (переиспользовать `brTierRatios`-путь) + новый `mysteryTierRatios` preset. После: `SWEEP=mystery_only scripts/fit_sigma_parallel.ts` (~5 мин) + recal `SIGMA_ROI_MYSTERY`. **Триггер:** CSV с Mystery-tier выборкой.
+При поступлении GG Mystery-tier выборки (не BR прокси): переход на discrete-tier draw по образцу BR (#92) — small change в `compile.ts` (переиспользовать `brTierRatios`-путь) + новый `mysteryTierRatios` preset. После: `SWEEP=mystery_only scripts/fit_sigma_parallel.ts` (~5 мин) + recal `SIGMA_ROI_MYSTERY`. **Триггер:** CSV с Mystery-tier выборкой.
 
 ---
 
@@ -320,8 +320,8 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
   **Scope held:** Freeze / MBR коэффициенты не трогали (fit уже tight: freeze resid 6 %, MBR resid 2 %, LOO max < 1 %). AFS slider diapason (`AFS_LOG_MAX`) остался 50k — его расширение отдельная follow-up задача #109b с валидацией extrapolation.
 
 - ✅ **#7** PKO/Mystery within-place bounty variance audit — закрыт как audit-only, кода не трогали. Findings:
-  1. **Нет прямой cancellation:** `calibrateAlpha` двигает только E[W], канальные σ² (`pkoHeadVar`, `mysteryBountyVariance`) в hot loop ([engine.ts:2332](src/lib/sim/engine.ts:2332)) работают отдельно.
-  2. **Косвенный multiplier-эффект есть, но это by-design:** для fixed-shape / itmRate-locked / bountyEvBias≠0 residual reconcile на [engine.ts:589-596](src/lib/sim/engine.ts:589) делает `bountyMean = max(0, totalEV − cashEV)`. σ_dollar ∝ bountyMean, так что при высоком cashEV bounty variance сжимается вместе с bountyMean. Бюджет замкнут, total-ROI контракт соблюдён. Означает, что `mysteryBountyVariance` в этих режимах ведёт себя как коэффициент на `bountyMean²`, а не автономная ручка на абс. σ — это корректно, но стоит держать в голове при чтении fit residuals.
+  1. **Нет прямой cancellation:** `calibrateAlpha` двигает только E[W], канальные σ² (`pkoHeadVar`, `mysteryBountyVariance`) в hot loop (`hotLoop.ts`) работают отдельно.
+  2. **Косвенный multiplier-эффект есть, но это by-design:** для fixed-shape / itmRate-locked / bountyEvBias≠0 residual reconcile в `compile.ts` делает `bountyMean = max(0, totalEV − cashEV)`. σ_dollar ∝ bountyMean, так что при высоком cashEV bounty variance сжимается вместе с bountyMean. Бюджет замкнут, total-ROI контракт соблюдён. Означает, что `mysteryBountyVariance` в этих режимах ведёт себя как коэффициент на `bountyMean²`, а не автономная ручка на абс. σ — это корректно, но стоит держать в голове при чтении fit residuals.
   3. **xval residual 17.6% — не cancellation, а predictor form.** σ-ROI в fixed-shape mystery имеет форму `[(1+ROI) − cashEV/entryCost]·√(exp(var)−1)·f(field)`, где f(field) — не чистый степенной закон (paidCount/N, head-concentration, Poisson kill-count дают разные скейлинги). Линейный-в-ROI × power-в-field предиктор `(C0+C1·ROI)·field^β` оставляет ~10-20% systematic residual. Решается улучшением формы предиктора (log-poly, в процессе через #109), не новым variance каналом.
   4. **Stale "variance is zero" claims** — проверено 6 хитов в repo, все корректные (rakeback, pure mean shifts). Нечего чистить.
   5. **Target metric:** сейчас fit использует σ only. Рекомендация — расширить `scripts/fit_sigma_parallel.ts` репортом skew/kurt как diagnostic columns (дёшево, один лишний pass). Полный tail-CDF fit — только когда появится user-facing метрика типа "P(downswing > X BB)"; сейчас не требуется.
@@ -334,7 +334,7 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 - ✅ **#78 (part 1)** fit script extended — коммиты `76640be` + `befaa1c` (FIELDS до 200k, log-polynomial pooled fit в каждый JSON, FITTING.md обновлён). Recal коэффициентов — отдельно после окончания фонового sweep-а.
 - ✅ **#121b** calibration decomposition — коммиты `9d66e47` (предикат `isAlphaAdjustable` + helper `applyBountyBias`) + `754d0de` (первый residual bounty reconcile после pmf build). Для α-adjustable моделей поведение численно идентично; для fixed-shape (uniform / empirical / realdata-*) bountyMean реанкорится к `total − cashEV`, восстанавливая total-EV ROI контракт на bias=0. SIGMA_ROI recal не нужен.
 - ✅ **#133** progress-bar visual lag — коммит `c315c74` (`transition-[width] duration-300 → duration-100` в `ControlsPanel.tsx`). Полоса теперь держится в пределах кадра от числа в кнопке.
-- ✅ **#134** status-line под progress bar — коммит `c315c74` (`BuildStage` enum в `engine.ts` → worker postMessage → `ProgressStage` в `useSimulation` → ControlsPanel рендерит `controls.stage.*` i18n-label под баром).
+- ✅ **#134** status-line под progress bar — коммит `c315c74` (`BuildStage` enum в `buildResult.ts`, реэкспорт через `engine` → worker postMessage → `ProgressStage` в `useSimulation` → ControlsPanel рендерит `controls.stage.*` i18n-label под баром).
 - ✅ **#135** language-switcher лаг — коммит `73362a0` (`setLocale` обёрнут в `startTransition` в `LocaleProvider.tsx`; клик свитчера красится немедленно).
 
 **Shipped 2026-04-18 (предыдущая волна):**

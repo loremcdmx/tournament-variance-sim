@@ -171,7 +171,7 @@ Only a subset of per-sample data is retained — keeping all of it for 100k samp
 
 - **`finalProfits`** — `Float64Array(samples)`. Every sample's final P&L. Used by histogram, stats, envelopes.
 - **`rowProfits`** — `Float64Array(samples × rows)`, row-major. Used by decomposition and by mixed-schedule cards (e.g., satellite equity).
-- **`samplePaths`** — only the *first* ~1000 samples of shard 0 have a hi-res trajectory path stored. The slider in `ResultsView` caps at `samplePaths.paths.length`, not `samples`. If you want more, bump `wantHiResPaths` in `engine.ts` — but be aware of memory.
+- **`samplePaths`** — only the *first* ~1000 samples of shard 0 have a hi-res trajectory path stored. The slider in `ResultsView` caps at `samplePaths.paths.length`, not `samples`. If you want more, bump `wantHiResPaths` in `hotLoop.ts` — but be aware of memory.
 - **`envelopes`** — mean / p05 / p95 / min / max over all samples, on an 80-point checkpoint grid. This is what the shaded percentile band on the trajectory chart uses.
 
 ## React integration
@@ -278,7 +278,7 @@ around.
 | Add a payout structure            | `src/lib/sim/payouts.ts` + `types.ts` + `dict.ts`      |
 | Add a finish model                | `src/lib/sim/finishModel.ts` + `types.ts`              |
 | Add a new chart                   | `src/components/charts/` + `ResultsView.tsx`           |
-| Add a noise / tilt channel        | `SimulationInput` in `types.ts` + hot loop in `engine.ts` |
+| Add a noise / tilt channel        | `SimulationInput` in `types.ts` + hot loop in `hotLoop.ts` |
 | Add a demo scenario               | `src/lib/scenarios.ts` + `dict.ts`                     |
 | Add a language                    | `src/lib/i18n/dict.ts` — add the locale field, TS will force you through every key |
 | Change the worker pool sizing     | `useSimulation.ts` → `poolSize()`                      |

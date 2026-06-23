@@ -98,7 +98,7 @@ src/
 ├── lib/
 │   ├── sim/                  # ← MC-движок, чистый TS без React
 │   │   ├── types.ts          # SimulationInput / SimulationResult / TournamentRow / …
-│   │   ├── engine.ts         # hot loop: compileSchedule + simulateShard + buildResult
+│   │   ├── engine.ts         # orchestrator + barrel; compile/hotLoop/buildResult split into siblings
 │   │   ├── finishModel.ts    # pmf-модели + α-калибровка (binary search)
 │   │   ├── payouts.ts        # таблицы выплат по месту для всех структур
 │   │   ├── pdCurves.ts       # PrimeDope-style кривые для binary-ITM compare
@@ -161,7 +161,7 @@ SimulationResult → ResultsView
 
 Ключевые файлы:
 
-- **`engine.ts`** — `compileSchedule()` делает heavy-lifting: калибрует α по каждому ряду, строит alias-таблицы, подготавливает PKO heat-биннинг. `simulateShard()` — hot loop, чистая арифметика на типизированных массивах. `buildResult()` — post-processing (гистограммы, envelope, decomposition, risk-of-ruin).
+- **`engine.ts`** — тонкий оркестратор (`runSimulation` + `mergeShards`) + barrel, который реэкспортит модули ниже (импорт-путь `./engine` у потребителей неизменен). `compile.ts` — `compileSchedule()` делает heavy-lifting: калибрует α по каждому ряду, строит alias-таблицы, PKO heat-биннинг. `hotLoop.ts` — `simulateShard()`, hot loop, чистая арифметика на типизированных массивах. `buildResult.ts` — post-processing (гистограммы, envelope, decomposition, risk-of-ruin).
 - **`finishModel.ts`** — `buildFinishPMF(N, model, α)` возвращает Float64Array длины N, сумма = 1. `calibrateAlpha()` делает бинпоиск по α под заданный целевой ROI. `calibrateShelledItm()` — альтернативный калибратор, который пинит ITM rate и решает α/форму под ROI.
 - **`payouts.ts`** — возвращает массив фракций призового для 1..paidCount, сумма = 1. Без денежных значений — engine умножает на prize pool сам.
 - **`worker.ts`** — stateless, один воркер = один `self.onmessage`. Весь state живёт в main thread (пул, jobId, shard-счётчик).
@@ -196,7 +196,7 @@ SimulationResult → ResultsView
 2. Пройтись по каждому ключу `DICT` и добавить новое поле. Тайпскрипт поймает всё пропущенное — код не соберётся пока не заполнишь.
 
 ### Добавить ROI-шум / tilt-канал
-Смотри закомменченные блоки в `SimulationInput` (`types.ts`, строки 282–351). Они описывают каждый канал — математику, размерности, дефолты. Добавление нового канала = новое поле в `SimulationInput` + применение в hot loop `simulateShard()` в `engine.ts`.
+Смотри закомменченные блоки в `SimulationInput` (`types.ts`, строки 282–351). Они описывают каждый канал — математику, размерности, дефолты. Добавление нового канала = новое поле в `SimulationInput` + применение в hot loop `simulateShard()` в `hotLoop.ts`.
 
 ### Добавить график
 1. Новый файл в `src/components/charts/`. Использовать `UplotChart` как обёртку + `common.ts` для стилей.
@@ -220,9 +220,9 @@ SimulationResult → ResultsView
 
 **Seed dispatch.** `seed = 42` не значит, что сэмпл 0 получит 42. Он получит `mixSeed(42, 0)`. Если пишешь тест, который сверяет конкретное число — помни про это.
 
-**`samplePaths.paths.length`** — не равен samples. Хранится только первые ~1000 (см. `wantHiResPaths` в engine.ts), остальные агрегируются в envelopes + best/worst. Слайдер "runs" в ResultsView показывает максимум `paths.length`, не `samples`.
+**`samplePaths.paths.length`** — не равен samples. Хранится только первые ~1000 (см. `wantHiResPaths` в `hotLoop.ts`), остальные агрегируются в envelopes + best/worst. Слайдер "runs" в ResultsView показывает максимум `paths.length`, не `samples`.
 
-**PKO heat.** Когда `row.pkoHeat > 0`, в compileSchedule заводится `HEAT_BIN_COUNT` альтернативных `bountyByPlace` таблиц. Hot loop выбирает одну по гауссовскому драву. Средний bounty сохраняется per-bin — только σ плывёт. Подробнее — комментарий в `engine.ts` сверху.
+**PKO heat.** Когда `row.pkoHeat > 0`, в `compile.ts` заводится `HEAT_BIN_COUNT` альтернативных `bountyByPlace` таблиц. Hot loop (`hotLoop.ts`) выбирает одну по гауссовскому драву. Средний bounty сохраняется per-bin — только σ плывёт. Подробнее — комментарий в `engineConstants.ts`.
 
 **Global ITM %.** `controls.itmGlobalPct` + чекбокс `itmGlobalEnabled` применяется каскадом в `applyItmTarget()`: заполняет `row.itmRate` только там, где он не задан. Per-row значение всегда побеждает глобальное. Смотри `src/lib/sim/itmTarget.ts`.
 

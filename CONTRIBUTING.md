@@ -114,7 +114,7 @@ Keep docs accurate. Stale docs that contradict the code are worse than no docs.
 
 - **Next.js 16 / React 19.** APIs may differ from what most tutorials show. If something doesn't work the way you remember, check `node_modules/next/dist/docs/` for the current version before googling. See `AGENTS.md`.
 - **PrimeDope compare mode** uses a second calibration path (`calibrateShelledItm` + `pdCurves`). Changes to the main calibration don't automatically propagate — check the compare run's test coverage when you touch `finishModel.ts`.
-- **`samplePaths.paths.length` ≠ `samples`** — only the first ~1000 samples have stored trajectory paths. The slider cap in `ResultsView` reflects this. Changing it means also changing `wantHiResPaths` in `engine.ts`.
+- **`samplePaths.paths.length` ≠ `samples`** — only the first ~1000 samples have stored trajectory paths. The slider cap in `ResultsView` reflects this. Changing it means also changing `wantHiResPaths` in `hotLoop.ts`.
 - **Seed slot collisions.** If two stochastic channels both call `mulberry32(mixSeed(seed, s))` with the same seed, they'll be correlated in ways you probably didn't intend. Give each channel its own XOR-offset of the seed (e.g. `seed ^ 0xbeef`).
 
 ## Questions?
