@@ -87,9 +87,26 @@ Two producers — pick the right one for what you're doing:
 - **Freeze / PKO / Mystery canonical fits** — production artifacts
   `scripts/fit_beta_freeze_realdata.json`, `scripts/fit_beta_pko.json`,
   `scripts/fit_beta_mystery.json`. These back the `SIGMA_ROI_*`
-  constants in `src/lib/sim/convergenceFit.ts`. They are updated manually after
-  a drift-report review (see below) — no single script re-writes them
-  end-to-end today.
+  constants in `src/lib/sim/convergenceFit.ts`.
+- **`scripts/resweep_sigma.ts`** — regenerates a canonical PKO/Mystery grid
+  with the **current** engine, using the same row recipe as
+  `fit_sigma_parallel.ts`:
+
+  ```bash
+  FORMAT=pko     N_WORKERS=16 npx tsx scripts/resweep_sigma.ts   # ~8 min
+  FORMAT=mystery N_WORKERS=16 npx tsx scripts/resweep_sigma.ts   # ~4 min
+  npx tsx scripts/refit_2d_logpoly.ts                            # new coefficients
+  ```
+
+  **Why this exists:** a stored grid ages. In 2026-07 an audit found the
+  engine had drifted ~10-14% above the stored PKO grid at small fields ×
+  high ROI (and the stored Mystery grid had been measured with a different
+  payout structure entirely), which put the shipped surfaces 18-22% low
+  there — and since `k ∝ σ²`, the convergence widget understated required
+  volume by up to ~1.9×. **Re-measure before refitting** whenever the
+  compile/hot-loop path has changed; refitting a stale grid just re-learns
+  the old engine. Validate the promoted coefficients on *off-grid* points
+  (the LOO xval in `refit_2d_logpoly.ts` only covers the fitted grid).
 - **`scripts/fit_beta_pko_core.json`** — *not* an independent UI
   canonical. It's a 7-ROI PKO baseline subset (same ROIs as the
   200k-AFS probe) retained purely so `fit_drift_report.ts` can

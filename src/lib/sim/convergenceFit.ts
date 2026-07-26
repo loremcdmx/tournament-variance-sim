@@ -33,33 +33,50 @@ export const SIGMA_ROI_FREEZE: SigmaCoef = {
   resid: 0.06,
 };
 
-// PKO 2D log-poly refit 2026-04-20 from canonical scripts/fit_beta_pko.json
-// (11 ROIs x 18 fields x 120k samples). LOO xval: mean |delta/sigma|=4.00%,
-// p95=11.72%, max=15.15%.
+// PKO 2D log-poly refit 2026-07-13 from a FRESHLY MEASURED canonical grid
+// (scripts/resweep_pko.ts → scripts/fit_beta_pko.json, 11 ROIs x 18 fields x
+// 120k samples x N=500). LOO xval: mean |delta/sigma|=3.88%, p95=10.07%,
+// max=19.04%.
+//
+// Why the re-measurement: the previous coefficients were fit on a grid
+// produced by an older engine build. An audit found the current engine yields
+// ~10-14% more sigma at small fields x high ROI than that stored grid, which
+// combined with the surface's own fit error to put the widget ~18-22% low
+// there (worst 36% at ROI 0.8) — and since k ∝ sigma², the convergence table
+// understated the required volume by up to ~1.9x on that corner. The ROI
+// coefficient roughly doubled in the refit (b1 0.673 → 1.402), which is
+// exactly that missing ROI-dependence.
 export const SIGMA_ROI_PKO: SigmaCoef = {
   kind: "log-poly-2d",
-  a0: 1.21374,
-  a1: -0.21789,
-  a2: 0.03473,
-  b1: 0.67318,
-  b2: -0.03445,
-  c: -0.05298,
-  resid: 0.12,
+  a0: 1.22829,
+  a1: -0.22862,
+  a2: 0.03549,
+  b1: 1.40175,
+  b2: -0.14989,
+  c: -0.10421,
+  resid: 0.11,
 };
 
-// Mystery 2D log-poly refit 2026-04-20 from canonical
-// scripts/fit_beta_mystery.json. LOO xval: mean |delta/sigma|=4.25%,
-// p95=16.97%, max=30.61%. The chart now uses a runtime single-row Mystery
-// center for user-facing bands; this 2D surface remains diagnostic/generic.
+// Mystery 2D log-poly refit 2026-07-13 from a FRESHLY MEASURED canonical grid
+// (scripts/resweep_sigma.ts FORMAT=mystery). LOO xval: mean |delta/sigma|=5.01%,
+// p95=12.84%, max=45.15%. The chart uses a runtime single-row Mystery center
+// for user-facing bands; this 2D surface remains diagnostic/generic.
+//
+// Re-measured alongside PKO: the previous grid was produced by an older engine
+// AND with `payoutStructure: "mtt-gg-bounty"`, while the canonical sweep now
+// builds Mystery rows with "mtt-gg-mystery" — so those coefficients described a
+// materially different row than today's. The ROI coefficient doubled
+// (b1 1.142 → 2.291), restoring the modeling expectation that Mystery's
+// envelope variance reacts to ROI harder than PKO's (b1 1.402).
 export const SIGMA_ROI_MYSTERY: SigmaCoef = {
   kind: "log-poly-2d",
-  a0: 2.33290,
-  a1: -0.27564,
-  a2: 0.02917,
-  b1: 1.14218,
-  b2: -0.09962,
-  c: -0.08406,
-  resid: 0.17,
+  a0: 2.18541,
+  a1: -0.27892,
+  a2: 0.03057,
+  b1: 2.29124,
+  b2: -0.35711,
+  c: -0.16149,
+  resid: 0.13,
 };
 
 // The user-facing Mystery convergence tab now centers on a runtime single-row
