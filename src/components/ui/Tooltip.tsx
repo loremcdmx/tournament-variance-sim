@@ -1,19 +1,29 @@
 "use client";
 
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
+import { useT } from "@/lib/i18n/LocaleProvider";
 
 interface Props {
   content: React.ReactNode;
   children: React.ReactNode;
+  label: string;
 }
 
 export function InfoTooltip({ content }: { content: React.ReactNode }) {
+  const t = useT();
   return (
-    <Tooltip content={content}>
+    <Tooltip content={content} label={t("help.trigger")}>
       <span
-        className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[color:var(--color-border-strong)] text-[10px] font-bold text-[color:var(--color-fg-dim)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]"
-        aria-label="help"
+        className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[color:var(--color-border-strong)] text-[10px] font-bold text-[color:var(--color-fg-dim)] transition-colors group-hover:border-[color:var(--color-accent)] group-hover:text-[color:var(--color-accent)] group-focus-visible:border-[color:var(--color-accent)] group-focus-visible:text-[color:var(--color-accent)]"
+        aria-hidden="true"
       >
         ?
       </span>
@@ -107,13 +117,17 @@ function highlightTokens(line: string): React.ReactNode {
   return parts;
 }
 
-export function Tooltip({ content, children }: Props) {
-  const [open, setOpen] = useState(false);
+export function Tooltip({ content, children, label }: Props) {
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const [coords, setCoords] = useState<{ left: number; top: number } | null>(
     null,
   );
-  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const tooltipRef = useRef<HTMLSpanElement | null>(null);
+  const pointerFocusRef = useRef(false);
+  const tooltipId = useId();
+  const open = hovered || pinned;
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -160,22 +174,65 @@ export function Tooltip({ content, children }: Props) {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
+      // Stale coordinates would flash the tooltip at its previous anchor for
+      // one frame the next time it opens.
+      setCoords(null);
     };
   }, [open]);
 
   const close = () => {
-    setOpen(false);
-    setCoords(null);
+    setHovered(false);
+    setPinned(false);
   };
 
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    // Touch users have no blur to rely on, so a tap anywhere else dismisses.
+    const onPointerDownAway = (e: PointerEvent) => {
+      if (!triggerRef.current?.contains(e.target as Node)) close();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDownAway, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDownAway, true);
+    };
+  }, [open]);
+
   return (
-    <span
+    <button
       ref={triggerRef}
-      className="relative inline-flex"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={close}
-      onFocus={() => setOpen(true)}
-      onBlur={close}
+      type="button"
+      data-tooltip-trigger="true"
+      className="group relative inline-flex focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+      aria-label={label}
+      aria-describedby={open ? tooltipId : undefined}
+      onPointerEnter={(e) => {
+        if (e.pointerType === "mouse") setHovered(true);
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType === "mouse") setHovered(false);
+      }}
+      // Pointer activation focuses the trigger before the click lands; without
+      // this flag the focus-open and the click-toggle would cancel each other.
+      onPointerDown={() => {
+        pointerFocusRef.current = true;
+      }}
+      onClick={() => {
+        pointerFocusRef.current = false;
+        setPinned((v) => !v);
+      }}
+      onFocus={() => {
+        if (!pointerFocusRef.current) setPinned(true);
+      }}
+      onBlur={() => {
+        pointerFocusRef.current = false;
+        close();
+      }}
     >
       {children}
       {open &&
@@ -183,6 +240,7 @@ export function Tooltip({ content, children }: Props) {
         createPortal(
           <span
             ref={tooltipRef}
+            id={tooltipId}
             role="tooltip"
             className="pointer-events-none fixed z-50 max-h-[min(60vh,28rem)] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto whitespace-normal break-words border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3.5 py-3 text-left text-[11.5px] font-normal normal-case leading-relaxed tracking-normal text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] [overflow-wrap:anywhere]"
             style={{
@@ -197,6 +255,6 @@ export function Tooltip({ content, children }: Props) {
           </span>,
           document.body,
         )}
-    </span>
+    </button>
   );
 }

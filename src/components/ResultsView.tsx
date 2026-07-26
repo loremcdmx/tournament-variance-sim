@@ -62,6 +62,10 @@ import {
   isSatelliteOnlySchedule,
 } from "@/lib/results/satellite";
 import {
+  buildRunShareState,
+  type RunStatsSummary,
+} from "@/lib/results/runExport";
+import {
   computeExpectedLeaderboardCurve,
   computeExpectedRakebackCurve,
   shiftResultByRakeback,
@@ -98,10 +102,12 @@ import {
   tailSampleBacking,
 } from "./results/StatCards";
 import {
+  AdvancedStatsCard,
   OurModelWeaknessCard,
   PrimeDopeWeaknessCard,
   SettingsDumpCard,
 } from "./results/ResultsPanels";
+import { RunExportActions } from "./results/RunExportActions";
 import {
   TrajectoryPlot,
   buildTrajectoryAssets,
@@ -152,6 +158,8 @@ interface Props {
   elapsedMs?: number | null;
   availableRuns?: number;
   activeRunIdx?: number;
+  /** Seed of the cached run currently on screen. */
+  activeSeed?: number | null;
   onSelectRun?: (idx: number) => void;
   backgroundStatus?: "idle" | "computing" | "full";
   onUsePdPayoutsChange?: (v: boolean) => void;
@@ -179,6 +187,7 @@ function ResultsViewImpl({
   elapsedMs,
   availableRuns = 0,
   activeRunIdx = 0,
+  activeSeed,
   onSelectRun,
   backgroundStatus = "idle",
   onUsePdPayoutsChange,
@@ -466,6 +475,11 @@ function ResultsViewImpl({
   const totalMin = shiftedStats.min + observedPromoShift;
   const totalMax = shiftedStats.max + observedPromoShift;
   const s = result.stats;
+  // With no bankroll the engine pins riskOfRuin to 0; printing "0.0%" would
+  // read as "no risk" rather than "not modelled".
+  const bankrollOff = bankroll <= 0;
+  const ruinScaleOff =
+    bankrollOff || (s.riskOfRuin === 0 && s.minBankrollRoR1pct === 0);
   const pdStats = pdChart?.stats;
   const pdObservedPromoShift =
     pdChart?.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
@@ -475,6 +489,40 @@ function ResultsViewImpl({
       : undefined;
   const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
   const roi = totalMean / displayResultStats.totalBuyIn;
+  // Browsing the cached seed batch swaps the displayed run without touching
+  // the controls, so the exported seed is the active run's, not settings'.
+  const runExportSeed = (activeSeed ?? settings?.seed ?? 0) >>> 0;
+  const runExport = useMemo(
+    () =>
+      schedule && settings
+        ? {
+            shareState: buildRunShareState(schedule, settings, runExportSeed),
+            stats: {
+              samples: result.samples,
+              seed: runExportSeed,
+              mean: totalMean,
+              median: totalMedian,
+              p05: shiftedStats.p05 + observedPromoShift,
+              p95: shiftedStats.p95 + observedPromoShift,
+              stdDev: shiftedStats.stdDev,
+              probProfit: shiftedStats.probProfit,
+              riskOfRuin: bankrollOff ? null : s.riskOfRuin,
+            } satisfies RunStatsSummary,
+          }
+        : null,
+    [
+      schedule,
+      settings,
+      runExportSeed,
+      result.samples,
+      totalMean,
+      totalMedian,
+      shiftedStats,
+      observedPromoShift,
+      bankrollOff,
+      s.riskOfRuin,
+    ],
+  );
   const expectedProfitRangeRatio =
     Math.abs(totalMax - totalMin) > 1e-9
       ? (totalExpectedProfit - totalMin) /
@@ -703,6 +751,143 @@ function ResultsViewImpl({
           ) : null}
         </div>
       ) : null}
+      {rakebackCurve && (
+        <div className="flex items-center justify-end -mb-1">
+          <label
+            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
+            title={t("chart.rakeback.profitOnly.title")}
+          >
+            <input
+              type="checkbox"
+              checked={rbStats}
+              onChange={(e) => setRbStats(e.target.checked)}
+              className="h-3.5 w-3.5 accent-lime-400"
+            />
+            <span className="uppercase tracking-wider text-lime-400/80">
+              {t("chart.stats.withRakeback")}
+            </span>
+          </label>
+        </div>
+      )}
+      {rakebackCurve && (
+        <div className="-mt-1 mb-1 text-right text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("chart.rakeback.fullSampleNote")}
+        </div>
+      )}
+
+      <div className="-mb-1 flex flex-wrap items-center justify-end gap-2">
+        {runExport && (
+          <div className="mr-auto">
+            <RunExportActions
+              shareState={runExport.shareState}
+              stats={runExport.stats}
+            />
+          </div>
+        )}
+        <InlineUnitToggle />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <BigStat
+          suit="club"
+          label={t("stat.expectedProfit")}
+          value={money(totalExpectedProfit)}
+          rangeSubline={{
+            label: t("stat.range.spread"),
+            fromLabel: t("stat.range.from"),
+            toLabel: t("stat.range.to"),
+            pointLabel: t("stat.range.pointEv"),
+            pointHint: t("stat.range.pointHint"),
+            minValue: money(totalMin),
+            maxValue: money(totalMax),
+            anchorRatio: expectedProfitRangeRatio,
+          }}
+          sub={t("stat.expectedProfit.sub")
+            .replace("{min}", money(totalMin))
+            .replace("{max}", money(totalMax))}
+          tip={t("stat.expectedProfit.tip")
+            .replace("{mean}", money(totalMean))
+            .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
+            .replace("{median}", money(totalMedian))}
+          tone={totalExpectedProfit >= 0 ? "pos" : "neg"}
+          pdValue={pdExpectedProfit != null ? money(pdExpectedProfit) : undefined}
+          pdDelta={
+            pdExpectedProfit != null
+              ? pctDelta(totalExpectedProfit, pdExpectedProfit)
+              : null
+          }
+          pdLabel={pdBadgeLabel}
+        />
+        <BigStat
+          suit="spade"
+          label={t("stat.probProfit")}
+          value={pct(shiftedStats.probProfit)}
+          outcomeSubline={{
+            label: t("stat.probProfit.outcome"),
+            leftLabel: t("stat.probProfit.outcome.down"),
+            rightLabel: t("stat.probProfit.outcome.up"),
+            leftValue: pct(1 - shiftedStats.probProfit),
+            rightValue: pct(shiftedStats.probProfit),
+            ratio: shiftedStats.probProfit,
+          }}
+          sub={t("stat.probProfit.sub").replace(
+            "{n}",
+            intFmt(shiftedStats.tournamentsFor95ROI),
+          )}
+          tip={t("stat.tFor95.sub")}
+          pdValue={shiftedPdStats ? pct(shiftedPdStats.probProfit) : undefined}
+          pdDelta={
+            shiftedPdStats
+              ? pctDelta(shiftedStats.probProfit, shiftedPdStats.probProfit)
+              : null
+          }
+          pdLabel={pdBadgeLabel}
+        />
+        <BigStat
+          suit="heart"
+          label={t("stat.riskOfRuin")}
+          value={bankrollOff ? "—" : pct(s.riskOfRuin)}
+          riskSubline={
+            ruinScaleOff
+              ? undefined
+              : {
+                  label: t("stat.riskOfRuin.scale"),
+                  pointLabel: t("stat.riskOfRuin.scale.point"),
+                  pointHint: t("stat.riskOfRuin.scale.hint"),
+                  pointValue: pct(s.riskOfRuin),
+                  leftScaleLabel: t("stat.riskOfRuin.scale.safe"),
+                  rightScaleLabel: t("stat.riskOfRuin.scale.danger"),
+                  fromLabel: t("stat.riskOfRuin.range.from"),
+                  toLabel: t("stat.riskOfRuin.range.to"),
+                  minValue: money(s.minBankrollRoR5pct),
+                  maxValue: money(s.minBankrollRoR1pct),
+                  riskRatio: s.riskOfRuin,
+                }
+          }
+          sub={
+            bankrollOff ? t("stat.bankrollOff") : t("stat.riskOfRuin.sub")
+          }
+          tip={
+            ruinScaleOff
+              ? undefined
+              : t("stat.riskOfRuin.tip")
+                  .replace("{br1}", money(s.minBankrollRoR1pct))
+                  .replace("{br5}", money(s.minBankrollRoR5pct))
+          }
+          tone={!bankrollOff && s.riskOfRuin > 0.05 ? "neg" : undefined}
+          pdValue={
+            pdStats && !bankrollOff ? pct(pdStats.riskOfRuin) : undefined
+          }
+          pdDelta={
+            pdStats && !bankrollOff
+              ? pctDelta(s.riskOfRuin, pdStats.riskOfRuin)
+              : null
+          }
+          emphasizeTail
+          pdLabel={pdBadgeLabel}
+        />
+      </div>
+
       {(rakebackCurve || hasMysteryRow || rbRecomputing || lbCurve) && (
         <div className="flex items-center justify-between gap-4 -mb-1">
           <div
@@ -841,7 +1026,10 @@ function ResultsViewImpl({
           title={t("section.settingsDump")}
           showUnitToggle={false}
         >
-          <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
+          <div className="flex flex-col gap-2">
+            <AdvancedStatsCard result={result} bankroll={bankroll} />
+            <SettingsDumpCard settings={settings} schedule={schedule} result={result} elapsedMs={elapsedMs} />
+          </div>
         </CollapsibleSection>
       )}
 
@@ -860,131 +1048,6 @@ function ResultsViewImpl({
           />
         </CollapsibleSection>
       )}
-
-      {rakebackCurve && (
-        <div className="flex items-center justify-end -mb-1">
-          <label
-            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
-            title={t("chart.rakeback.profitOnly.title")}
-          >
-            <input
-              type="checkbox"
-              checked={rbStats}
-              onChange={(e) => setRbStats(e.target.checked)}
-              className="h-3.5 w-3.5 accent-lime-400"
-            />
-            <span className="uppercase tracking-wider text-lime-400/80">
-              {t("chart.trajectory.withRakeback")}
-            </span>
-          </label>
-        </div>
-      )}
-      {rakebackCurve && (
-        <div className="-mt-1 mb-1 text-right text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-          {t("chart.rakeback.fullSampleNote")}
-        </div>
-      )}
-
-      <div className="-mb-1 flex items-center justify-end">
-        <InlineUnitToggle />
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <BigStat
-          suit="club"
-          label={t("stat.expectedProfit")}
-          value={money(totalExpectedProfit)}
-          rangeSubline={{
-            label: t("stat.range.spread"),
-            fromLabel: t("stat.range.from"),
-            toLabel: t("stat.range.to"),
-            pointLabel: t("stat.range.pointEv"),
-            pointHint: t("stat.range.pointHint"),
-            minValue: money(totalMin),
-            maxValue: money(totalMax),
-            anchorRatio: expectedProfitRangeRatio,
-          }}
-          sub={t("stat.expectedProfit.sub")
-            .replace("{min}", money(totalMin))
-            .replace("{max}", money(totalMax))}
-          tip={t("stat.expectedProfit.tip")
-            .replace("{mean}", money(totalMean))
-            .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
-            .replace("{median}", money(totalMedian))}
-          tone={totalExpectedProfit >= 0 ? "pos" : "neg"}
-          pdValue={pdExpectedProfit != null ? money(pdExpectedProfit) : undefined}
-          pdDelta={
-            pdExpectedProfit != null
-              ? pctDelta(totalExpectedProfit, pdExpectedProfit)
-              : null
-          }
-          pdLabel={pdBadgeLabel}
-        />
-        <BigStat
-          suit="spade"
-          label={t("stat.probProfit")}
-          value={pct(shiftedStats.probProfit)}
-          outcomeSubline={{
-            label: t("stat.probProfit.outcome"),
-            leftLabel: t("stat.probProfit.outcome.down"),
-            rightLabel: t("stat.probProfit.outcome.up"),
-            leftValue: pct(1 - shiftedStats.probProfit),
-            rightValue: pct(shiftedStats.probProfit),
-            ratio: shiftedStats.probProfit,
-          }}
-          sub={t("stat.probProfit.sub").replace(
-            "{n}",
-            intFmt(shiftedStats.tournamentsFor95ROI),
-          )}
-          tip={t("stat.tFor95.sub")}
-          pdValue={shiftedPdStats ? pct(shiftedPdStats.probProfit) : undefined}
-          pdDelta={
-            shiftedPdStats
-              ? pctDelta(shiftedStats.probProfit, shiftedPdStats.probProfit)
-              : null
-          }
-          pdLabel={pdBadgeLabel}
-        />
-        <BigStat
-          suit="heart"
-          label={t("stat.riskOfRuin")}
-          value={pct(s.riskOfRuin)}
-          riskSubline={
-            s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
-              ? undefined
-              : {
-                  label: t("stat.riskOfRuin.scale"),
-                  pointLabel: t("stat.riskOfRuin.scale.point"),
-                  pointHint: t("stat.riskOfRuin.scale.hint"),
-                  pointValue: pct(s.riskOfRuin),
-                  leftScaleLabel: t("stat.riskOfRuin.scale.safe"),
-                  rightScaleLabel: t("stat.riskOfRuin.scale.danger"),
-                  fromLabel: t("stat.riskOfRuin.range.from"),
-                  toLabel: t("stat.riskOfRuin.range.to"),
-                  minValue: money(s.minBankrollRoR5pct),
-                  maxValue: money(s.minBankrollRoR1pct),
-                  riskRatio: s.riskOfRuin,
-                }
-          }
-          sub={
-            s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
-              ? t("stat.bankrollOff")
-              : t("stat.riskOfRuin.sub")
-          }
-          tip={
-            s.riskOfRuin === 0 && result.stats.minBankrollRoR1pct === 0
-              ? undefined
-              : t("stat.riskOfRuin.tip")
-                  .replace("{br1}", money(s.minBankrollRoR1pct))
-                  .replace("{br5}", money(s.minBankrollRoR5pct))
-          }
-          tone={s.riskOfRuin > 0.05 ? "neg" : undefined}
-          pdValue={pdStats ? pct(pdStats.riskOfRuin) : undefined}
-          pdDelta={pdStats ? pctDelta(s.riskOfRuin, pdStats.riskOfRuin) : null}
-          emphasizeTail
-          pdLabel={pdBadgeLabel}
-        />
-      </div>
 
       {result.battleRoyaleLeaderboardPromo && (
         <BattleRoyaleLeaderboardPromoSection
@@ -1196,7 +1259,7 @@ function ResultsViewImpl({
               className="h-3.5 w-3.5 accent-lime-400"
             />
             <span className="uppercase tracking-wider text-lime-400/80">
-              {t("chart.trajectory.withRakeback")}
+              {t("chart.dist.withRakeback")}
             </span>
           </label>
         </div>

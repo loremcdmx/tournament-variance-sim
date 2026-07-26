@@ -26,6 +26,7 @@ import {
   PROVE_EDGE_POSITIVE_CANDIDATES,
   type ProveEdgeFormat,
 } from "@/lib/sim/proveEdge";
+import { inferRowFormat } from "@/lib/sim/convergencePolicy";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import type {
@@ -66,6 +67,28 @@ const READING_GUIDE: { titleKey: DictKey; bodyKey: DictKey }[] = [
 ];
 
 const MBR_FIXED_AFS = 18;
+
+/** Opening tab: whichever format the user actually plays most of. Showing PKO
+ *  numbers to a freezeout-only schedule is a silent lie. */
+function dominantScheduleFormat(
+  schedule: readonly TournamentRow[] | null | undefined,
+): ProveEdgeFormat {
+  if (!schedule || schedule.length === 0) return "pko";
+  const counts = new Map<ProveEdgeFormat, number>();
+  for (const row of schedule) {
+    const f = inferRowFormat(row);
+    counts.set(f, (counts.get(f) ?? 0) + Math.max(0, row.count));
+  }
+  let best: ProveEdgeFormat | null = null;
+  let bestCount = -1;
+  for (const [f, c] of counts) {
+    if (c > bestCount) {
+      best = f;
+      bestCount = c;
+    }
+  }
+  return best ?? "pko";
+}
 
 function fmtTourneys(n: number, locale: Intl.LocalesArgument): string {
   if (!Number.isFinite(n)) return "∞";
@@ -111,7 +134,9 @@ export function ProveEdgeCard({ schedule, finishModel, noiseActive }: Props) {
   const { locale } = useLocale();
   const numberLocale = locale === "ru" ? "ru-RU" : "en-US";
 
-  const [format, setFormat] = useState<ProveEdgeFormat>("pko");
+  const [format, setFormat] = useState<ProveEdgeFormat>(() =>
+    dominantScheduleFormat(schedule),
+  );
   const [afsPos, setAfsPos] = useState<number>(afsToPos(200));
   const [rakePct, setRakePct] = useState<number>(10);
   const [ciPct, setCiPct] = useState<number>(95);
@@ -455,7 +480,10 @@ export function ProveEdgeCard({ schedule, finishModel, noiseActive }: Props) {
                 <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right">
                   {t("proveEdge.col.tourneys")}
                 </th>
-                <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right">
+                <th
+                  className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right"
+                  title={t("chart.convergence.col.fields.title")}
+                >
                   {t("proveEdge.col.fields")}
                 </th>
               </tr>

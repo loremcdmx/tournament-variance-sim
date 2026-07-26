@@ -215,6 +215,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       setCiPct(Math.max(75, Math.min(99.9, n)));
     }
   };
+  const ciTitle = t("chart.convergence.ci.title")
+    .replace("{ci}", String(ciPct))
+    .replace("{z}", z.toFixed(3));
 
   // ROI override — decimal fraction. null means "use baseline roi".
   const [roiOverride, setRoiOverride] = useState<number | null>(null);
@@ -863,7 +866,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         </button>
       </div>
       )}
-      <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
+      <div
+        className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
+        title={ciTitle}
+      >
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
           CI
         </span>
@@ -903,9 +909,6 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         >
           ↺
         </button>
-      </div>
-      <div className="mb-2 text-[10px] text-[color:var(--color-fg-dim)]">
-        z = {z.toFixed(3)}
       </div>
       {effectiveMode === "exact" && exactBreakdown && (
         <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 px-2 py-1.5 text-[11px] leading-snug text-emerald-200">
@@ -958,7 +961,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                 />
               </div>
               <div className="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg)]/45 px-2.5 py-2">
-                <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+                <div
+                  className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]"
+                  title={t("chart.convergence.col.fields.title")}
+                >
                   {t("chart.convergence.col.fields")}
                 </div>
                 <RangeBandValue
@@ -990,7 +996,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
               <th className="py-1.5 px-2.5 text-right font-semibold whitespace-nowrap">
                 {t("chart.convergence.col.tourneys")}
               </th>
-              <th className="py-1.5 pl-2.5 text-right font-semibold whitespace-nowrap">
+              <th
+                className="py-1.5 pl-2.5 text-right font-semibold whitespace-nowrap"
+                title={t("chart.convergence.col.fields.title")}
+              >
                 {t("chart.convergence.col.fields")}
               </th>
             </tr>
@@ -1140,7 +1149,12 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         </div>
       )}
       <div className="mt-3 rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev)]/25 px-3 py-2.5 text-[11px] leading-relaxed text-[color:var(--color-fg-dim)] sm:mt-2 sm:border-transparent sm:bg-transparent sm:px-0 sm:py-0 sm:text-[10px] sm:leading-snug">
-        <div>{t("chart.convergence.assumptions")}</div>
+        <details>
+          <summary className="cursor-pointer list-inside uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
+            {t("chart.convergence.assumptions.summary")}
+          </summary>
+          <div className="mt-1">{t("chart.convergence.assumptions")}</div>
+        </details>
         <div className="mt-1">{t("convergence.skewNote")}</div>
       </div>
     </div>

@@ -7,6 +7,8 @@ import type {
 } from "@/lib/sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
 import { Card } from "@/components/ui/Section";
+import { InfoTooltip } from "@/components/ui/Tooltip";
+import { money } from "@/lib/results/formatters";
 import { useT } from "@/lib/i18n/LocaleProvider";
 
 export function PrimeDopeWeaknessCard() {
@@ -282,6 +284,129 @@ function WeakBlock({
       </div>
       <div className="text-[color:var(--color-fg-dim)]">{children}</div>
     </div>
+  );
+}
+
+/**
+ * Distribution-shape and Kelly diagnostics. Every figure here is stated over
+ * one full simulated distance (schedule × repeats), not per tournament — the
+ * unit caption under each label is the whole point of the card.
+ */
+export function AdvancedStatsCard({
+  result,
+  bankroll,
+}: {
+  result: SimulationResult;
+  bankroll: number;
+}) {
+  const t = useT();
+  const s = result.stats;
+  const notPlus = t("advStats.na.negEv");
+  const kellyDefined = s.kellyFraction > 0 && Number.isFinite(s.kellyBankroll);
+  const stats: Array<{
+    label: string;
+    unit: string;
+    value: string;
+    tip: string;
+  }> = [
+    {
+      label: t("stat.sharpe"),
+      unit: t("advStats.unit.perDistance"),
+      value: s.sharpe.toFixed(3),
+      tip: t("stat.sharpe.tip"),
+    },
+    {
+      label: t("stat.sortino"),
+      unit: t("advStats.unit.perDistance"),
+      value: s.sortino.toFixed(3),
+      tip: t("stat.sortino.tip"),
+    },
+    {
+      label: t("stat.skew"),
+      unit: t("advStats.unit.g1"),
+      value: s.skewness.toFixed(3),
+      tip: t("stat.skew.tip"),
+    },
+    {
+      label: t("stat.kurt"),
+      unit: t("advStats.unit.excess"),
+      value: s.kurtosis.toFixed(3),
+      tip: t("stat.kurt.tip"),
+    },
+    {
+      label: t("stat.kelly"),
+      unit: t("advStats.unit.kellyShare"),
+      value: kellyDefined ? s.kellyFraction.toFixed(4) : notPlus,
+      tip: t("stat.kelly.tip"),
+    },
+    {
+      label: t("stat.kellyBR"),
+      unit: t("advStats.unit.kellyBr"),
+      value: kellyDefined ? money(s.kellyBankroll) : notPlus,
+      tip: t("stat.kellyBR.tip"),
+    },
+    {
+      label: t("stat.logG"),
+      unit: t("advStats.unit.logPerDistance"),
+      value: bankroll > 0 ? s.logGrowthRate.toFixed(4) : t("stat.bankrollOff"),
+      tip: t("stat.logG.tip"),
+    },
+  ];
+
+  return (
+    <Card className="p-4">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+        {t("advStats.title")}
+      </div>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-[11px] sm:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="group flex items-baseline justify-between gap-3"
+          >
+            <span className="flex min-w-0 flex-col">
+              <span className="flex items-center gap-1 text-[color:var(--color-fg-dim)]">
+                {stat.label}
+                <InfoTooltip content={stat.tip} />
+              </span>
+              <span className="text-[10px] text-[color:var(--color-fg-muted)]">
+                {stat.unit}
+              </span>
+            </span>
+            <span className="shrink-0 font-mono tabular-nums text-[color:var(--color-fg)]">
+              {stat.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {result.decomposition.length > 1 && (
+        <>
+          <div className="group mt-4 mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+            {t("advStats.rowKelly")}
+            <InfoTooltip content={t("advStats.rowKelly.tip")} />
+          </div>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-1 font-mono text-[11px] sm:grid-cols-2 lg:grid-cols-3">
+            {result.decomposition.map((row) => {
+              const live =
+                row.kellyFraction > 0 && Number.isFinite(row.kellyBankroll);
+              return (
+                <div key={row.rowId} className="flex justify-between gap-3">
+                  <span className="truncate text-[color:var(--color-fg-dim)]">
+                    {row.label}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-[color:var(--color-fg)]">
+                    {live
+                      ? `${row.kellyFraction.toFixed(4)} · ${money(row.kellyBankroll)}`
+                      : "—"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </Card>
   );
 }
 

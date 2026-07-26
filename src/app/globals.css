@@ -454,11 +454,14 @@ input[type="range"]:disabled::-moz-range-thumb {
 .dense-control-table input,
 .dense-control-table select,
 .dense-control-table textarea,
-.dense-control-table button {
+.dense-control-table button:not([data-tooltip-trigger="true"]) {
   min-height: 32px;
 }
 
-.dense-control-table button:not([data-compact-icon-button="true"]) {
+.dense-control-table
+  button:not([data-compact-icon-button="true"]):not(
+    [data-tooltip-trigger="true"]
+  ) {
   min-width: 32px;
 }
 

@@ -618,6 +618,7 @@ export default function Home() {
               roi: mean / result.totalBuyIn,
               probProfit: result.stats.probProfit,
               riskOfRuin: result.stats.riskOfRuin,
+              bankrollOff: controls.bankroll <= 0,
               worstDrawdown: result.stats.maxDrawdownP99,
               longestCashlessWorst: result.stats.longestCashlessWorst,
               elapsedMs,
@@ -625,7 +626,7 @@ export default function Home() {
             };
           })()
         : null,
-    [status, result, elapsedMs],
+    [status, result, elapsedMs, controls.bankroll],
   );
 
   const previewRow = useMemo(() => {
@@ -1283,6 +1284,7 @@ export default function Home() {
               elapsedMs={elapsedMs}
               availableRuns={availableRuns}
               activeRunIdx={activeRunIdx}
+              activeSeed={activeSeed}
               onSelectRun={selectRun}
               backgroundStatus={backgroundStatus}
               onUsePdPayoutsChange={onUsePdPayoutsChange}

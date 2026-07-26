@@ -252,6 +252,7 @@ export const DICT = {
   },
   "row.guarantee": { en: "Guarantee $", ru: "Гарантия $" },
   "row.addRow": { en: "Add row", ru: "Добавить" },
+  "row.duplicate": { en: "Duplicate row", ru: "Дублировать ряд" },
   "row.delete": { en: "Delete", ru: "Удалить" },
   "row.gameType": { en: "Game type", ru: "Тип игры" },
   "row.gameType.freezeout": { en: "Freezeout", ru: "Фризаут" },
@@ -900,12 +901,72 @@ export const DICT = {
     en: "Minimum bankroll that gives you a 95% chance of surviving this distance. Less = ruin risk climbs fast.",
     ru: "Минимальный банкролл с 95% шансом не закататься на этой дистанции. Меньше — шанс слива быстро растёт.",
   },
-  "stat.bankrollOff": { en: "bankroll off", ru: "банкролл выкл" },
+  "stat.bankrollOff": {
+    en: "set a bankroll to compute",
+    ru: "укажи банкролл, чтобы посчитать",
+  },
   "stat.skew": { en: "Profit tilt", ru: "Перекос профита" },
   "stat.kurt": { en: "Tail fatness", ru: "Толщина хвостов" },
   "stat.kelly": { en: "Kelly fraction", ru: "Доля по Келли" },
   "stat.kellyBR": { en: "Kelly BR", ru: "БР по Келли" },
   "stat.logG": { en: "BR growth rate", ru: "Темп роста БР" },
+
+  // Results — advanced diagnostics (shape & Kelly)
+  "advStats.title": {
+    en: "Snapshot · distribution shape & Kelly",
+    ru: "Снимок · форма распределения и Келли",
+  },
+  "advStats.unit.perDistance": {
+    en: "ratio, per full distance",
+    ru: "коэффициент, на всю дистанцию",
+  },
+  "advStats.unit.g1": { en: "G1, dimensionless", ru: "G1, безразмерно" },
+  "advStats.unit.excess": {
+    en: "excess, 0 = normal",
+    ru: "избыточный, 0 = нормальное",
+  },
+  "advStats.unit.kellyShare": {
+    en: "buy-in ÷ Kelly bankroll",
+    ru: "бай-ин ÷ банкролл Келли",
+  },
+  "advStats.unit.kellyBr": { en: "$, from σ²/μ", ru: "$, из σ²/μ" },
+  "advStats.unit.logPerDistance": {
+    en: "E[ln growth], per full distance",
+    ru: "E[ln роста], на всю дистанцию",
+  },
+  "advStats.na.negEv": { en: "n/a — not +EV", ru: "н/д — не в плюсе" },
+  "advStats.rowKelly": {
+    en: "Per-row Kelly — fraction · bankroll",
+    ru: "Келли по строкам — доля · банкролл",
+  },
+  "advStats.rowKelly.tip": {
+    en: "Kelly for one row, evaluated on that row's own slot distribution: fraction = row buy-in ÷ row Kelly bankroll (σ²/μ of the row). Rows that are not +EV show a dash.",
+    ru: "Келли по строке считается на её собственном распределении: доля = бай-ин строки ÷ банкролл Келли строки (σ²/μ строки). Строки не в плюсе показывают прочерк.",
+  },
+  "stat.sharpe.tip": {
+    en: "Mean profit ÷ standard deviation of profit over one full simulated distance (all rows × schedule repeats). Not annualised, not per tournament — it grows with distance, so only compare runs of equal length.",
+    ru: "Средний профит ÷ стандартное отклонение профита за одну полную симулированную дистанцию (все строки × повторы расписания). Не годовой и не на турнир — растёт с дистанцией, так что сравнивай только раны одинаковой длины.",
+  },
+  "stat.sortino.tip": {
+    en: "Same as Sharpe, but the denominator counts losses only: √(Σ min(profit, 0)² / samples). Upside never penalises the score. Per full simulated distance.",
+    ru: "То же, что Sharpe, но в знаменателе только минусы: √(Σ min(профит, 0)² / сэмплов). Плюсовые исходы не штрафуют оценку. За полную симулированную дистанцию.",
+  },
+  "stat.skew.tip": {
+    en: "Bias-corrected sample skewness (G1) of final profit. 0 = symmetric, positive = a long right tail of big scores, negative = a long left tail.",
+    ru: "Несмещённая выборочная асимметрия (G1) итогового профита. 0 — симметрия, плюс — длинный правый хвост больших заносов, минус — длинный левый хвост.",
+  },
+  "stat.kurt.tip": {
+    en: "EXCESS kurtosis (G2) of final profit: 0 = normal-shaped tails, positive = fatter tails than a bell curve, so extreme stretches happen more often than a Gaussian bankroll formula assumes.",
+    ru: "ИЗБЫТОЧНЫЙ эксцесс (G2) итогового профита: 0 — хвосты как у нормального распределения, плюс — хвосты толще колокола, экстремальные отрезки случаются чаще, чем предполагает гауссова формула банкролла.",
+  },
+  "stat.kelly.tip": {
+    en: "The schedule's total buy-in as a share of the Kelly-optimal bankroll B* = σ²/μ. Dimensionless: 0.05 means the whole distance stakes 5% of a Kelly roll. Undefined unless the schedule is +EV.",
+    ru: "Суммарный бай-ин расписания как доля оптимального по Келли банкролла B* = σ²/μ. Безразмерно: 0.05 — вся дистанция ставит 5% от ролла по Келли. Не определено, если расписание не в плюсе.",
+  },
+  "stat.logG.tip": {
+    en: "Expected ln(1 + profit / bankroll) over the full distance — the quantity Kelly maximises. Positive = the roll compounds, negative = this schedule shrinks it even at positive EV. Ruin samples are floored at ln(0.01).",
+    ru: "Ожидаемый ln(1 + профит / банкролл) за всю дистанцию — величина, которую максимизирует Келли. Плюс — банкролл растёт, минус — расписание его съедает даже при плюсовом EV. Сэмплы с разорением ограничены снизу ln(0.01).",
+  },
 
   // Results — charts
   "chart.satellite": {
@@ -1008,8 +1069,16 @@ export const DICT = {
     ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. Пара джекпотных сэмплов растягивает ось X гистограммы и ось Y траектории так, что остальной график становится нечитаемым, хотя статистически такие раны редки. Важно: это меняет только графики — скалярные статы (среднее, макс, VaR, скос) по-прежнему считаются по ВСЕМ сэмплам, включая джекпоты, а огибающие траектории пересобираются из ~1000 сохранённых hi-res путей.",
   },
   "chart.trajectory.withRakeback": {
-    en: "with RB",
-    ru: "с РБ",
+    en: "RB in chart",
+    ru: "РБ в графике",
+  },
+  "chart.stats.withRakeback": {
+    en: "RB in stats",
+    ru: "РБ в статах",
+  },
+  "chart.dist.withRakeback": {
+    en: "RB in histograms",
+    ru: "РБ в гистограммах",
   },
   "chart.recomputing": {
     en: "recomputing…",
@@ -1330,7 +1399,15 @@ export const DICT = {
   },
   "chart.convergence.col.target": { en: "ROI range", ru: "Диапазон ROI" },
   "chart.convergence.col.tourneys": { en: "Tournaments", ru: "Турниров" },
-  "chart.convergence.col.fields": { en: "AFS played", ru: "Сыграно AFS" },
+  "chart.convergence.col.fields": { en: "Full fields", ru: "Полных полей" },
+  "chart.convergence.col.fields.title": {
+    en: "The same volume counted in whole fields: tournaments ÷ average field size. 10× means you played as many entries as ten complete fields hold.",
+    ru: "Тот же объём, но в целых полях: турниры ÷ средний размер поля. 10× значит, что сыграно столько входов, сколько вмещают десять полных полей.",
+  },
+  "chart.convergence.ci.title": {
+    en: "Confidence level for the ± band. At {ci} % the normal quantile is z = {z}.",
+    ru: "Уровень доверия для ± полосы. При {ci} % квантиль нормального распределения z = {z}.",
+  },
   "chart.convergence.afs.lockedBR": {
     en: "Fixed at 18 for Battle Royale — the lobby is always 18-max, so AFS doesn't change across buy-in tiers",
     ru: "Зафиксирован на 18 для Батл Рояля — лобби всегда 18-max, AFS не меняется между бай-ин тирами",
@@ -1421,7 +1498,7 @@ export const DICT = {
   },
   "proveEdge.col.sigma": { en: "Result noise", ru: "Шум результата" },
   "proveEdge.col.tourneys": { en: "Play this many", ru: "Нужно сыграть" },
-  "proveEdge.col.fields": { en: "Same as fields", ru: "Это полей" },
+  "proveEdge.col.fields": { en: "Full fields", ru: "Полных полей" },
   "proveEdge.footnote.banded": {
     en: "Ranges include the model's residual noise buffer. Near 0% ROI the required volume explodes, because a tiny positive result is almost indistinguishable from normal tournament variance.",
     ru: "Диапазоны включают запас на остаточную ошибку модели. Рядом с 0% нужный объем резко растет, потому что маленький плюс почти неотличим от обычной турнирной дисперсии.",
@@ -1513,6 +1590,10 @@ export const DICT = {
     en: "RB shifts total ROI upward but doesn't add variance — the k / fields above are driven by game σ only, independent of RB%.",
     ru: "РБ сдвигает итоговый ROI вверх, но не добавляет дисперсии — k / филды выше зависят только от игровой σ и не меняются с РБ.",
   },
+  "chart.convergence.assumptions.summary": {
+    en: "How to read a row",
+    ru: "Как читать строку",
+  },
   "chart.convergence.assumptions": {
     en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, Mystery, and Battle Royale use runtime format-specific estimates; PKO uses a validated fitted model, and Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where they are validated; outside that safe zone the table falls back to a point estimate.",
     ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, Мистери и Battle Royale считают это через runtime-модель своего формата; ПКО использует проверенную аппроксимацию, а Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где он провалидирован; вне безопасной зоны таблица оставляет только точечную оценку.",
@@ -1572,6 +1653,21 @@ export const DICT = {
   "seedBatch.full": {
     en: "all sibling runs cached",
     ru: "все соседние раны в кэше",
+  },
+  "runExport.copyLink": { en: "Copy run link", ru: "Ссылка на прогон" },
+  "runExport.copyLink.hint": {
+    en: "Copy a link that opens this run's schedule and settings. Each new run draws a fresh seed, so the numbers will differ.",
+    ru: "Скопировать ссылку с расписанием и настройками этого прогона. Каждый новый запуск берёт свежий сид, поэтому числа будут другими.",
+  },
+  "runExport.copyCsv": { en: "Copy stats CSV", ru: "Статистика в CSV" },
+  "runExport.copyCsv.hint": {
+    en: "Copy the headline numbers as CSV text.",
+    ru: "Скопировать ключевые числа как CSV-текст.",
+  },
+  "runExport.copied": { en: "copied ✓", ru: "скопировано ✓" },
+  "runExport.failed": {
+    en: "clipboard blocked",
+    ru: "буфер обмена недоступен",
   },
   "runs.mode.worst": { en: "worst", ru: "худшие" },
   "runs.mode.random": { en: "random", ru: "случайные" },
@@ -2546,6 +2642,7 @@ export const DICT = {
   "dd.bestUp": { en: "Best upswings", ru: "Лучшие апсвинги" },
 
   // Help tooltips — controls panel
+  "help.trigger": { en: "Help", ru: "Справка" },
   "help.scheduleRepeats": {
     en: "Target distance inside one simulated sample. The app rounds up to full schedule repeats: if the schedule has 47 tournaments and you ask for 1,000, the engine runs 22 repeats = 1,034 tournaments/sample.",
     ru: "Целевая дистанция внутри одного сэмпла. Приложение округляет вверх до целых повторов расписания: если в расписании 47 турниров, а нужно 1 000, движок запустит 22 повтора = 1 034 турнира/сэмпл.",

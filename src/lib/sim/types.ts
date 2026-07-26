@@ -558,30 +558,29 @@ export interface SimulationInput {
 
   // -------- TILT mechanics — two flavors, can be used together ----------
   //
-  // ⚠ EXPERIMENTAL / DISABLED: the tilt controls are hidden in the UI
-  // ("re-enable after testing") and both channels have known defects that
-  // need a redesign before they are trustworthy — see the per-field notes.
-  // Documented here as *intended* design; the CURRENT IMPLEMENTATION notes
-  // record what the hot loop actually does today.
+  // ⚠ EXPERIMENTAL: the tilt controls are hidden in the UI ("re-enable after
+  // testing") and neither channel is calibrated against real data. The
+  // mechanics below are what the hot loop does today, but the magnitudes are
+  // a modelling choice, not a measurement.
+  //
+  // Both channels are off unless explicitly configured — an unset field never
+  // activates a channel on its own.
 
   /**
-   * FAST tilt — intended: symmetric, immediate, smooth ROI shift of
-   * `−tiltFastGain · tanh(currentDrawdown / tiltFastScale)`, reacting within
+   * FAST tilt — symmetric, immediate, smooth ROI shift of
+   * `tiltFastGain · tanh(currentDrawdown / tiltFastScale)`, reacting within
    * tens of tournaments. Use for nervous grinders whose play degrades the
-   * second they go down.
+   * second they go down. The drawdown is measured against the sample's
+   * running max, so it decays back to 0 whenever a new high is made.
    *
-   *  - tiltFastGain  ∈ [−1, 1]: intended max ROI shift at saturation.
+   *  - tiltFastGain ∈ [−1, 1]: ROI shift at saturation. −0.3 = "loses 30 pp
+   *    of ROI at a deep drawdown" (typical tilter); +0.2 = "plays sharper
+   *    when down". Defaults to 0 (channel off).
    *  - tiltFastScale (in profit $): drawdown depth at which tanh ≈ 0.76.
-   *
-   * ⚠ CURRENT IMPLEMENTATION (hotLoop.ts): shifts by
-   * `−tiltFastGain · tanh((drawdown − upswing) / tiltFastScale)` using the
-   * ALL-TIME per-sample running max/min. Because the up-swing term grows
-   * without bound on winning paths, tanh saturates and the channel becomes a
-   * PERMANENT ±gain ROI bias, not a resetting drawdown reaction — and the
-   * sign is inverted vs the examples above (gain = −0.3 boosts ROI in a
-   * drawdown and stabilizes variance). tiltFastScale also defaults to $1
-   * (fully saturated from the first dollar), NOT "100 buy-ins". Do not trust
-   * this channel until it is reworked to a decaying/windowed drawdown.
+   *    Defaults to 0, which is only reachable together with a non-zero gain
+   *    as a mis-configuration: the hot loop floors the divisor at $1 to avoid
+   *    a division by zero, so the shift saturates from the first dollar of
+   *    drawdown. `checkInputSanity` flags that combination.
    */
   tiltFastGain?: number;
   tiltFastScale?: number;
@@ -590,19 +589,19 @@ export interface SimulationInput {
    * SLOW tilt — state-machine with hysteresis. Player sits in `normal` until
    * they spend `tiltSlowMinDuration` tournaments straight in a drawdown
    * deeper than `tiltSlowThreshold` (entry → `down`) or straight in an
-   * upswing higher than the same threshold (entry → `up`). While in `down`,
-   * ROI shifts by `−tiltSlowGain`; while in `up`, by `+tiltSlowGain`. State
-   * exits only after recovering `tiltSlowRecoveryFrac` of the original swing.
+   * upswing higher than the same threshold (entry → `up`). The entry streak
+   * is per-side: it restarts whenever the qualifying side flips, and a
+   * drawdown streak takes precedence when both sides qualify. While in
+   * `down`, ROI shifts by `−tiltSlowGain`; while in `up`, by `+tiltSlowGain`
+   * — note this is the opposite sign convention from `tiltFastGain`, so here
+   * +0.1 is the tilter who bleeds 10 pp of ROI while stuck in a downswing.
+   * State exits only after recovering `tiltSlowRecoveryFrac` of the original
+   * swing.
    *
-   * Defaults when unset: gain=0 (off), minDuration=500 tournaments,
-   * recoveryFrac=0.5.
-   *
-   * ⚠ CURRENT IMPLEMENTATION: (1) tiltSlowThreshold defaults to 0, not "50
-   * buy-ins" — so with a nonzero gain but unset threshold the channel is
-   * silently OFF (the on-gate requires threshold > 0). (2) The entry streak
-   * counter is SHARED between the drawdown and upswing conditions, so a
-   * "straight" streak can mix drawdown and upswing ticks; it needs a per-side
-   * counter/flag that resets when the active side flips.
+   * Defaults when unset: gain=0, threshold=0, minDuration=500 tournaments,
+   * recoveryFrac=0.5. The channel is gated on gain ≠ 0 AND threshold > 0 AND
+   * minDuration > 0, so an unset threshold leaves it off rather than firing
+   * on any non-zero drawdown.
    */
   tiltSlowGain?: number;
   tiltSlowThreshold?: number;
@@ -627,15 +626,15 @@ export interface RowDecomposition {
   tournamentsPerSample: number;
   totalBuyIn: number;
   /**
-   * Per-row Kelly fraction f* = mean / variance (continuous Kelly limit),
-   * evaluated on the row's *slot* profit distribution. Zero or negative
-   * means this row is not a Kelly bet. Dimensionless.
+   * Per-row Kelly fraction f* = totalBuyIn / kellyBankroll, evaluated on the
+   * row's *slot* profit distribution. Zero means this row is not a Kelly bet.
+   * Dimensionless.
    */
   kellyFraction: number;
   /**
-   * Per-row Kelly bankroll: minimum roll at which playing *just this row*
-   * at its schedule frequency is the Kelly-optimal bet size. `totalBuyIn /
-   * kellyFraction` when kellyFraction > 0, else Infinity.
+   * Per-row Kelly bankroll σ²/μ: the roll at which playing *just this row*
+   * at its schedule frequency is the Kelly-optimal bet size. Infinity when
+   * the row is not +EV.
    */
   kellyBankroll: number;
 }
@@ -1023,32 +1022,30 @@ export interface SimulationResult {
     itmRate: number;
 
     /**
-     * Third standardized moment E[((X−μ)/σ)^3]. Negative = fatter left tail
-     * (more bad months than good). PrimeDope reports none of this.
+     * Bias-corrected sample skewness (G1) of final profit. Negative = fatter
+     * left tail (more bad months than good). PrimeDope reports none of this.
      */
     skewness: number;
     /**
-     * Excess kurtosis E[((X−μ)/σ)^4] − 3. Zero = gaussian; positive = fat
-     * tails (more extreme outcomes than a normal distribution predicts).
+     * Bias-corrected sample EXCESS kurtosis (G2) of final profit. Zero =
+     * gaussian; positive = fat tails (more extreme outcomes than a normal
+     * distribution predicts).
      */
     kurtosis: number;
     /**
-     * Fraction of bankroll to risk per unit of EV under the Kelly criterion:
-     * f* ≈ μ / σ² (continuous approximation). Dimensionless; valid only
-     * when mean > 0.
+     * The schedule's total buy-in as a share of the Kelly-optimal bankroll:
+     * f* = totalBuyIn / kellyBankroll. Dimensionless; 0 when mean ≤ 0.
      */
     kellyFraction: number;
     /**
-     * Kelly-optimal bankroll: totalBuyIn / kellyFraction. Interpreted as
-     * the minimum roll at which playing the full schedule is the Kelly-
-     * optimal bet size. Infinity when mean ≤ 0.
+     * Kelly-optimal bankroll B* = σ²/μ — the roll for which staking the
+     * whole schedule once is exactly log-optimal. Infinity when mean ≤ 0.
      */
     kellyBankroll: number;
     /**
      * Expected log-growth rate E[ln(1 + profit/bankroll)] — the quantity
      * Kelly maximises. Only meaningful when `bankroll > 0`; 0 otherwise.
-     * Ruin samples (profit ≤ -bankroll) are clamped to ln(1e-9) to avoid
-     * −∞ contamination.
+     * Ruin samples are floored at ln(0.01) to avoid −∞ contamination.
      */
     logGrowthRate: number;
     /**

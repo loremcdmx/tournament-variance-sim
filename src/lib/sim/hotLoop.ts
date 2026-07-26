@@ -234,6 +234,7 @@ export function simulateShard(
     let tiltState: -1 | 0 | 1 = 0;
     let tiltAnchor = 0;
     let tiltStreakLen = 0;
+    let tiltStreakSide: -1 | 0 | 1 = 0;
     let tiltSwingMag = 0;
     let profit = 0;
     let runningMax = 0;
@@ -283,45 +284,45 @@ export function simulateShard(
 
       let tiltShift = 0;
       if (tiltFastOn) {
-        const dd = runningMax - profit;
-        const upSwing = profit - runningMin;
-        const net = dd - upSwing;
-        tiltShift -= tiltFastGain * Math.tanh(net / tiltFastScale);
+        tiltShift +=
+          tiltFastGain * Math.tanh((runningMax - profit) / tiltFastScale);
       }
       if (tiltSlowOn) {
         if (tiltState === 0) {
           const dd = runningMax - profit;
           const up = profit - runningMin;
-          if (dd >= tiltSlowThreshold) {
-            tiltStreakLen++;
-            if (tiltStreakLen >= tiltSlowMinDur) {
-              tiltState = -1;
-              tiltAnchor = profit;
-              tiltSwingMag = dd;
-              tiltStreakLen = 0;
-            }
-          } else if (up >= tiltSlowThreshold) {
-            tiltStreakLen++;
-            if (tiltStreakLen >= tiltSlowMinDur) {
-              tiltState = 1;
-              tiltAnchor = profit;
-              tiltSwingMag = up;
-              tiltStreakLen = 0;
-            }
-          } else {
+          const side: -1 | 0 | 1 =
+            dd >= tiltSlowThreshold ? -1 : up >= tiltSlowThreshold ? 1 : 0;
+          if (side === 0) {
             tiltStreakLen = 0;
+            tiltStreakSide = 0;
+          } else {
+            if (side !== tiltStreakSide) {
+              tiltStreakSide = side;
+              tiltStreakLen = 0;
+            }
+            tiltStreakLen++;
+            if (tiltStreakLen >= tiltSlowMinDur) {
+              tiltState = side;
+              tiltAnchor = profit;
+              tiltSwingMag = side === -1 ? dd : up;
+              tiltStreakLen = 0;
+              tiltStreakSide = 0;
+            }
           }
         } else if (tiltState === -1) {
           tiltShift -= tiltSlowGain;
           if (profit - tiltAnchor >= tiltSlowRecFrac * tiltSwingMag) {
             tiltState = 0;
             tiltStreakLen = 0;
+            tiltStreakSide = 0;
           }
         } else {
           tiltShift += tiltSlowGain;
           if (tiltAnchor - profit >= tiltSlowRecFrac * tiltSwingMag) {
             tiltState = 0;
             tiltStreakLen = 0;
+            tiltStreakSide = 0;
           }
         }
       }

@@ -88,6 +88,8 @@ interface DoneSummary {
   roi: number;
   probProfit: number;
   riskOfRuin: number;
+  /** No bankroll configured — ruin was never modelled, so 0% would lie. */
+  bankrollOff: boolean;
   worstDrawdown: number;
   longestCashlessWorst: number;
   elapsedMs: number | null;
@@ -874,15 +876,24 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             {t("controls.done.ruin")}
           </span>
-          <span
-            className={`font-semibold ${
-              summary.riskOfRuin > 0.05
-                ? "text-rose-300"
-                : "text-[color:var(--color-fg)]"
-            }`}
-          >
-            {(summary.riskOfRuin * 100).toFixed(1)}%
-          </span>
+          {summary.bankrollOff ? (
+            <span
+              className="font-semibold text-[color:var(--color-fg-dim)]"
+              title={t("stat.bankrollOff")}
+            >
+              —
+            </span>
+          ) : (
+            <span
+              className={`font-semibold ${
+                summary.riskOfRuin > 0.05
+                  ? "text-rose-300"
+                  : "text-[color:var(--color-fg)]"
+              }`}
+            >
+              {(summary.riskOfRuin * 100).toFixed(1)}%
+            </span>
+          )}
         </div>
         <div className="flex flex-col">
           <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">

@@ -124,33 +124,54 @@ describe("engine — tilt fast", () => {
     }
   });
 
-  it("active fast tilt changes the distribution vs baseline", () => {
-    // Fast tilt is NOT mean-preserving (see types.ts CURRENT IMPLEMENTATION
-    // note): it applies a saturating net-swing bias, so an active channel
-    // shifts both the mean and the variance vs baseline. This test only pins
-    // that the distribution changes; it does not claim the mean is preserved.
+  it("negative gain is a tilter: lowers mean and p05 and deepens drawdowns", () => {
     const baseline = runSimulation(baseInput());
     const tilted = runSimulation(
       baseInput({ tiltFastGain: -0.30, tiltFastScale: 2000 }),
     );
-    expect(variance(tilted.finalProfits)).not.toBeCloseTo(
-      variance(baseline.finalProfits),
-      0,
+    expect(tilted.stats.mean).toBeLessThan(baseline.stats.mean);
+    expect(tilted.stats.p05).toBeLessThan(baseline.stats.p05);
+    expect(tilted.stats.maxDrawdownMean).toBeGreaterThan(
+      baseline.stats.maxDrawdownMean,
     );
   });
 
-  it("scale parameter changes the tilt's activation depth (different variance signature)", () => {
+  it("positive gain plays sharper when down: raises mean and p05", () => {
+    const baseline = runSimulation(baseInput());
+    const steadied = runSimulation(
+      baseInput({ tiltFastGain: 0.30, tiltFastScale: 2000 }),
+    );
+    expect(steadied.stats.mean).toBeGreaterThan(baseline.stats.mean);
+    expect(steadied.stats.p05).toBeGreaterThan(baseline.stats.p05);
+  });
+
+  it("reacts to the current drawdown instead of applying a permanent gain bias", () => {
+    // A saturated channel would cost the full |gain| on every entry. The tanh
+    // argument resets whenever the path makes a new high, so the realized ROI
+    // penalty must stay well short of that ceiling.
+    const baseline = runSimulation(baseInput());
+    const tilted = runSimulation(
+      baseInput({ tiltFastGain: -0.30, tiltFastScale: 2000 }),
+    );
+    const penalty = baseline.stats.mean - tilted.stats.mean;
+    expect(penalty).toBeGreaterThan(0);
+    expect(penalty).toBeLessThan(0.30 * tilted.totalBuyIn * 0.8);
+  });
+
+  it("scale sets the activation depth: shallower scale bites harder", () => {
+    const baseline = runSimulation(baseInput());
     const tight = runSimulation(
       baseInput({ tiltFastGain: -0.30, tiltFastScale: 500 }),
+    );
+    const mid = runSimulation(
+      baseInput({ tiltFastGain: -0.30, tiltFastScale: 2000 }),
     );
     const loose = runSimulation(
       baseInput({ tiltFastGain: -0.30, tiltFastScale: 50_000 }),
     );
-    // Different scales produce different variance signatures
-    expect(variance(tight.finalProfits)).not.toBeCloseTo(
-      variance(loose.finalProfits),
-      0,
-    );
+    expect(tight.stats.mean).toBeLessThan(mid.stats.mean);
+    expect(mid.stats.mean).toBeLessThan(loose.stats.mean);
+    expect(loose.stats.mean).toBeLessThan(baseline.stats.mean);
   });
 
   it("tiltFastScale is clamped to ≥1 (no div-by-zero crash)", () => {
@@ -210,28 +231,51 @@ describe("engine — tilt slow (state machine)", () => {
     }
   });
 
-  it("active slow tilt changes the result distribution (state-machine engaged on long runs)", () => {
-    // Use a longer schedule + lower ROI so drawdowns are wide enough to
-    // trigger the tiltSlow state machine.
-    const longLossy = (overrides: Partial<SimulationInput> = {}): SimulationInput =>
-      baseInput({
-        scheduleRepeats: 1000,
-        schedule: [{ ...freezeRow(), roi: 0 }],
-        samples: 800,
-        ...overrides,
-      });
-    const baseline = runSimulation(longLossy());
-    const tilted = runSimulation(
-      longLossy({
-        tiltSlowGain: -0.20,
-        tiltSlowThreshold: 100,
-        tiltSlowMinDuration: 30,
-        tiltSlowRecoveryFrac: 0.5,
-      }),
+  // Longer schedule + break-even ROI so swings are wide enough to trip the
+  // state machine in both directions.
+  const longFlat = (overrides: Partial<SimulationInput> = {}): SimulationInput =>
+    baseInput({
+      scheduleRepeats: 1000,
+      schedule: [{ ...freezeRow(), roi: 0 }],
+      samples: 800,
+      ...overrides,
+    });
+
+  // Sign convention here is the mirror of tiltFastGain: the `down` state
+  // shifts ROI by −tiltSlowGain, so the tilter is the POSITIVE gain.
+  const slowTilt = (
+    gain: number,
+    minDuration = 30,
+  ): SimulationInput =>
+    longFlat({
+      tiltSlowGain: gain,
+      tiltSlowThreshold: 100,
+      tiltSlowMinDuration: minDuration,
+      tiltSlowRecoveryFrac: 0.5,
+    });
+
+  it("positive gain is a tilter: lowers mean and p05 and deepens drawdowns", () => {
+    const baseline = runSimulation(longFlat());
+    const tilted = runSimulation(slowTilt(0.20));
+    expect(tilted.stats.mean).toBeLessThan(baseline.stats.mean);
+    expect(tilted.stats.p05).toBeLessThan(baseline.stats.p05);
+    expect(tilted.stats.maxDrawdownMean).toBeGreaterThan(
+      baseline.stats.maxDrawdownMean,
     );
-    expect(variance(tilted.finalProfits)).not.toBeCloseTo(
-      variance(baseline.finalProfits),
-      0,
-    );
+  });
+
+  it("negative gain fights back on downswings: raises mean and p05", () => {
+    const baseline = runSimulation(longFlat());
+    const steadied = runSimulation(slowTilt(-0.20));
+    expect(steadied.stats.mean).toBeGreaterThan(baseline.stats.mean);
+    expect(steadied.stats.p05).toBeGreaterThan(baseline.stats.p05);
+  });
+
+  it("longer required streak means less time tilted", () => {
+    const baseline = runSimulation(longFlat());
+    const quick = runSimulation(slowTilt(0.20, 30));
+    const slow = runSimulation(slowTilt(0.20, 300));
+    expect(quick.stats.mean).toBeLessThan(slow.stats.mean);
+    expect(slow.stats.mean).toBeLessThan(baseline.stats.mean);
   });
 });

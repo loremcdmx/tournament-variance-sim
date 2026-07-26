@@ -1003,7 +1003,7 @@ const ScheduleRow = memo(function ScheduleRow({
               <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[color:var(--color-accent)]" />
             )}
           </button>
-          <IconBtn onClick={() => duplicate(r.id)} label={t("row.addRow")}>
+          <IconBtn onClick={() => duplicate(r.id)} label={t("row.duplicate")}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <rect
                 x="8"
