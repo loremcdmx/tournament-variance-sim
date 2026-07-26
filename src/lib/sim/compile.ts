@@ -605,8 +605,15 @@ function compileSingleEntry(
     defaultBountyMean = bountyPerSeat * bountyLift;
     bountyMean = applyBountyBias(defaultBountyMean, totalWinningsEV, bias);
 
-    // Shrink the regular pool by the bounty share.
-    prizePool = prizePool * (1 - bountyFraction);
+    // Shrink the *entry-funded* pool by the bounty share, but keep guarantee
+    // overlay entirely in the cash pool: real rooms fix per-head bounties at
+    // buyIn·f and top the cash pool up to the guarantee, so the field pool is
+    // basePool·(1−f) [cash from entries] + overlay [room top-up] + basePool·f
+    // [bounty pool] = basePool + overlay = guarantee. The old
+    // `(basePool+overlay)·(1−f)` silently dropped overlay·f of the guaranteed
+    // pool (e.g. 18.75% of a 40k guarantee at f=0.5). No-overlay rows are
+    // unchanged: basePool·(1−f)+0 == (basePool+0)·(1−f).
+    prizePool = basePool * (1 - bountyFraction) + overlay;
   }
 
   // ---- raw payout curve --------------------------------------------------

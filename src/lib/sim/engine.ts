@@ -37,18 +37,12 @@ export {
   buildScheduleAnalyticBreakdown,
 } from "./compile";
 export { histogramOf, poissonPTRS } from "./simNumerics";
-export { JACKPOT_THRESHOLD } from "./engineConstants";
-export { makeCheckpointGrid, makeHiResGrid } from "./grids";
+export { makeCheckpointGrid } from "./grids";
 export { simulateShard } from "./hotLoop";
 export type { ProgressCb } from "./hotLoop";
 export { buildResult } from "./buildResult";
 export type { BuildStage } from "./buildResult";
-export type {
-  CheckpointGrid,
-  RawShard,
-  ScheduleAnalyticBreakdown,
-  ScheduleAnalyticRow,
-} from "./engineTypes";
+export type { RawShard } from "./engineTypes";
 
 // =====================================================================
 // Top-level entry: runSimulation + buildResult

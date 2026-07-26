@@ -131,15 +131,37 @@ export function buildFinishPMF(
       }
       const M = src.length;
       let s = 0;
-      for (let i = 0; i < N; i++) {
-        // Linear interpolation in source space
-        const t = (i / Math.max(1, N - 1)) * (M - 1);
-        const lo = Math.floor(t);
-        const hi = Math.min(M - 1, lo + 1);
-        const frac = t - lo;
-        const v = Math.max(0, src[lo] * (1 - frac) + src[hi] * frac);
-        pmf[i] = v;
-        s += v;
+      if (N >= M) {
+        // Upsample: linear interpolation in source space (mass-preserving for
+        // N ≥ M; a uniform source stays uniform).
+        for (let i = 0; i < N; i++) {
+          const t = (i / Math.max(1, N - 1)) * (M - 1);
+          const lo = Math.floor(t);
+          const hi = Math.min(M - 1, lo + 1);
+          const frac = t - lo;
+          const v = Math.max(0, src[lo] * (1 - frac) + src[hi] * frac);
+          pmf[i] = v;
+          s += v;
+        }
+      } else {
+        // Downsample (N < M): area-average the source over each destination
+        // cell so mass between sample points isn't dropped. Point-sampling
+        // (the N ≥ M interpolation) aliases here and can zero out the whole
+        // pmf → silent uniform fallback. Treat src[j] as density over [j,j+1)
+        // in source-index space and integrate over each dest cell.
+        for (let i = 0; i < N; i++) {
+          const a = (i / N) * M;
+          const b = ((i + 1) / N) * M;
+          const jhi = Math.min(M - 1, Math.ceil(b) - 1);
+          let acc = 0;
+          for (let j = Math.floor(a); j <= jhi; j++) {
+            const lo = Math.max(a, j);
+            const hi = Math.min(b, j + 1);
+            if (hi > lo) acc += Math.max(0, src[j]) * (hi - lo);
+          }
+          pmf[i] = acc;
+          s += acc;
+        }
       }
       if (s <= 0) {
         pmf.fill(1 / N);

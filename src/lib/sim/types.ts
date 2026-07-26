@@ -545,40 +545,64 @@ export interface SimulationInput {
    * schedule pass: drift_t = ρ · drift_{t−1} + Normal(0, σ · √(1−ρ²)),
    * with ρ defaulting to 0.95 (≈20-session memory). Models meta shifts,
    * roster turnover, seasonality. Defaults to 0.
+   *
+   * The process starts cold (drift₀ = 0 each sample — "you currently play
+   * at your configured ROI") and only reaches the stationary σ after
+   * ≈1/(1−ρ) sessions: per-session sd is σ·√(1−ρ^{2t}), so short runs see
+   * proportionally less drift variance than the stationary σ implies
+   * (e.g. at ρ=0.95 a 20-session run realizes ≈77 % of σ).
    */
   roiDriftSigma?: number;
   /** AR(1) persistence for roiDriftSigma. Defaults to 0.95 if unset. */
   roiDriftRho?: number;
 
   // -------- TILT mechanics — two flavors, can be used together ----------
+  //
+  // ⚠ EXPERIMENTAL / DISABLED: the tilt controls are hidden in the UI
+  // ("re-enable after testing") and both channels have known defects that
+  // need a redesign before they are trustworthy — see the per-field notes.
+  // Documented here as *intended* design; the CURRENT IMPLEMENTATION notes
+  // record what the hot loop actually does today.
 
   /**
-   * FAST tilt — symmetric, immediate, smooth. ROI is shifted continuously
-   * by `−tiltFastGain · tanh(currentDrawdown / tiltFastScale)`. Always-on
-   * once gain ≠ 0; reacts within tens of tournaments. Use for nervous
-   * grinders whose play degrades the second they go down.
+   * FAST tilt — intended: symmetric, immediate, smooth ROI shift of
+   * `−tiltFastGain · tanh(currentDrawdown / tiltFastScale)`, reacting within
+   * tens of tournaments. Use for nervous grinders whose play degrades the
+   * second they go down.
    *
-   *  - tiltFastGain  ∈ [−1, 1]: max ROI shift at saturation (tanh=1).
-   *      −0.3 = lose 30 pp of ROI at deep drawdown (typical tilter).
-   *      +0.2 = play sharper when down (rare, focus types).
+   *  - tiltFastGain  ∈ [−1, 1]: intended max ROI shift at saturation.
    *  - tiltFastScale (in profit $): drawdown depth at which tanh ≈ 0.76.
-   *      Smaller = more sensitive. Defaults to 100 buy-ins-equivalent.
+   *
+   * ⚠ CURRENT IMPLEMENTATION (hotLoop.ts): shifts by
+   * `−tiltFastGain · tanh((drawdown − upswing) / tiltFastScale)` using the
+   * ALL-TIME per-sample running max/min. Because the up-swing term grows
+   * without bound on winning paths, tanh saturates and the channel becomes a
+   * PERMANENT ±gain ROI bias, not a resetting drawdown reaction — and the
+   * sign is inverted vs the examples above (gain = −0.3 boosts ROI in a
+   * drawdown and stabilizes variance). tiltFastScale also defaults to $1
+   * (fully saturated from the first dollar), NOT "100 buy-ins". Do not trust
+   * this channel until it is reworked to a decaying/windowed drawdown.
    */
   tiltFastGain?: number;
   tiltFastScale?: number;
 
   /**
-   * SLOW tilt — state-machine with hysteresis. Player sits in `normal`
-   * until they spend `tiltSlowMinDuration` tournaments straight in a
-   * drawdown deeper than `tiltSlowThreshold` (entry → `down`) or in
-   * an upswing higher than the same threshold (entry → `up`). While
-   * in `down`, ROI is shifted by `−tiltSlowGain`; while in `up`, by
-   * `+tiltSlowGain`. State exits ONLY after recovering
-   * `tiltSlowRecoveryFrac` of the original swing. Models the "I need
-   * to claw back half before I calm down" reality of long streaks.
+   * SLOW tilt — state-machine with hysteresis. Player sits in `normal` until
+   * they spend `tiltSlowMinDuration` tournaments straight in a drawdown
+   * deeper than `tiltSlowThreshold` (entry → `down`) or straight in an
+   * upswing higher than the same threshold (entry → `up`). While in `down`,
+   * ROI shifts by `−tiltSlowGain`; while in `up`, by `+tiltSlowGain`. State
+   * exits only after recovering `tiltSlowRecoveryFrac` of the original swing.
    *
-   * Defaults when unset: gain=0 (off), threshold=50 buy-ins,
-   * minDuration=500 tournaments, recoveryFrac=0.5.
+   * Defaults when unset: gain=0 (off), minDuration=500 tournaments,
+   * recoveryFrac=0.5.
+   *
+   * ⚠ CURRENT IMPLEMENTATION: (1) tiltSlowThreshold defaults to 0, not "50
+   * buy-ins" — so with a nonzero gain but unset threshold the channel is
+   * silently OFF (the on-gate requires threshold > 0). (2) The entry streak
+   * counter is SHARED between the drawdown and upswing conditions, so a
+   * "straight" streak can mix drawdown and upswing ticks; it needs a per-side
+   * counter/flag that resets when the active side flips.
    */
   tiltSlowGain?: number;
   tiltSlowThreshold?: number;

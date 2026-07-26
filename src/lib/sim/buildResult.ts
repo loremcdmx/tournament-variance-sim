@@ -97,17 +97,17 @@ export function buildResult(
 
   let varAcc = 0;
   let downVarAcc = 0;
-  let downCount = 0;
   for (let s = 0; s < S; s++) {
     const d = finalProfits[s] - mean;
     varAcc += d * d;
-    if (finalProfits[s] < 0) {
-      downVarAcc += d * d;
-      downCount++;
-    }
+    // Sortino downside deviation: shortfall below target 0, over ALL samples.
+    if (finalProfits[s] < 0) downVarAcc += finalProfits[s] * finalProfits[s];
   }
   const stdDev = Math.sqrt(varAcc / Math.max(1, S - 1));
-  const downSigma = Math.sqrt(downVarAcc / Math.max(1, downCount - 1));
+  // Textbook downside deviation √(Σ min(x,0)²/S) — upside contributes 0. (The
+  // old code measured deviation from the MEAN over only the losing samples and
+  // divided by their count, a nonstandard hybrid that inflates when μ>0.)
+  const downSigma = Math.sqrt(downVarAcc / S);
 
   // Higher moments: bias-corrected sample skewness (G1) and excess kurtosis
   // (G2) per standard formulas. Population moments under-estimate both for
@@ -138,13 +138,19 @@ export function buildResult(
     kurtosis = a * sumZ4 - b;
   }
 
-  // Kelly: f* ≈ μ / σ² for continuous outcomes. Only meaningful if +EV.
-  // We report the fraction and the implied bankroll = totalBuyIn / f*.
+  // Kelly (dollar P&L X over the schedule pass, mean μ, variance σ²). The
+  // Kelly-optimal bankroll — the B for which staking this schedule once is
+  // exactly log-optimal (argmax_λ E[ln(1+λX/B)] = 1) — is B* = σ²/μ. The
+  // Kelly *fraction* is the share of B* that the stake represents:
+  //   f* = totalBuyIn / B* = totalBuyIn·μ / σ²   (dimensionless).
+  // (The old code used f* = μ/σ², which has units 1/$, and a bankroll of
+  //  totalBuyIn/f* = totalBuyIn·σ²/μ — off by a factor of totalBuyIn.)
+  // Only meaningful if +EV.
   const variance = stdDev * stdDev;
-  const kellyFraction =
-    mean > 0 && variance > 0 ? mean / variance : 0;
   const kellyBankroll =
-    kellyFraction > 0 ? compiled.totalBuyIn / kellyFraction : Infinity;
+    mean > 0 && variance > 0 ? variance / mean : Infinity;
+  const kellyFraction =
+    mean > 0 && variance > 0 ? compiled.totalBuyIn / kellyBankroll : 0;
 
   // Expected log-growth — the thing Kelly actually maximises. Only valid
   // when the user has a bankroll. Winsorize ruin samples at ln(0.01) ≈ −4.6
@@ -487,11 +493,12 @@ export function buildResult(
     // otherwise Kelly is undefined (we emit 0 / Infinity respectively).
     const rv = rowVariances[r];
     const rm = rowMeans[r];
-    const rowKellyFraction = rm > 0 && rv > 1e-9 ? rm / rv : 0;
+    // Same convention as the schedule-level Kelly above: B* = σ²/μ,
+    // f* = rowBuyIns / B* (dimensionless).
     const rowKellyBankroll =
-      rowKellyFraction > 0
-        ? compiled.rowBuyIns[r] / rowKellyFraction
-        : Number.POSITIVE_INFINITY;
+      rm > 0 && rv > 1e-9 ? rv / rm : Number.POSITIVE_INFINITY;
+    const rowKellyFraction =
+      rm > 0 && rv > 1e-9 ? compiled.rowBuyIns[r] / rowKellyBankroll : 0;
     decomposition[r] = {
       rowId: compiled.rowIds[r],
       label: compiled.rowLabels[r],

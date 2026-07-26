@@ -124,11 +124,11 @@ describe("engine — tilt fast", () => {
     }
   });
 
-  it("active fast tilt changes per-sample variance (drawdown↔upswing transfer)", () => {
-    // Tilt fast trades ROI between drawdown and upswing regimes. On
-    // average the symmetry preserves mean but inflates per-sample variance
-    // because individual paths diverge based on which regime they spend
-    // more time in.
+  it("active fast tilt changes the distribution vs baseline", () => {
+    // Fast tilt is NOT mean-preserving (see types.ts CURRENT IMPLEMENTATION
+    // note): it applies a saturating net-swing bias, so an active channel
+    // shifts both the mean and the variance vs baseline. This test only pins
+    // that the distribution changes; it does not claim the mean is preserved.
     const baseline = runSimulation(baseInput());
     const tilted = runSimulation(
       baseInput({ tiltFastGain: -0.30, tiltFastScale: 2000 }),
