@@ -53,7 +53,7 @@ Bundle related changes. A preset rework and a lint fix go in **separate** commit
 
 ## Testing
 
-Tests live next to the file they cover: `engine.test.ts` for `engine.ts`, etc. We use Vitest, and the whole suite runs in single-digit seconds — keep it that way.
+Tests live next to the file they cover: `engine.test.ts` for `engine.ts`, etc. We use Vitest, and the whole suite runs in ~35s on an idle machine — keep it in that ballpark.
 
 ### What to test
 
@@ -72,6 +72,27 @@ Described in detail in `docs/ARCHITECTURE.md`. Summary:
 - `sampleIdx` is the **global** index in `[0, samples)`, not shard-local. This is what makes parallel runs reproducible.
 
 Adding a new stochastic channel? Pick a `mixSeed` slot that doesn't collide with existing ones, and add a 3-line test that runs the same input twice and asserts equality.
+
+### The suite is CPU-bound, and that changes how you read a red run
+
+About 20 engine tests are real Monte Carlo runs (millions of tournaments). On an
+idle 18-core box the slowest is ~1.1s; under heavy contention — a parallel
+`next build`, a shared CI runner, another agent's job — the same tests measure
+7-10x slower. Nothing about the *result* changes: the engine is seed-deterministic
+and the assertions are load-invariant. Only wall time moves.
+
+Because of that, `vitest.config.ts` sets `testTimeout`/`hookTimeout` to 30s
+instead of Vitest's 5s default. At 5s the slow tail had barely 4x headroom, so
+any competing process turned the suite red with a scatter of unrelated-looking
+failures. Don't lower it back.
+
+If you do see a red full-suite run, check the duration and the error text first:
+
+- total duration far above the usual ~35-40s **and** every error line reading
+  `Error: Test timed out in Nms` → that is contention, not a regression. Re-run
+  on an idle machine before treating it as a bug.
+- any `AssertionError` / numeric mismatch → that is real, and for engine tests it
+  means the determinism contract is broken. Investigate the engine, not the test.
 
 ## Code style
 

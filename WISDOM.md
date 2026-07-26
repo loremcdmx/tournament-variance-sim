@@ -230,6 +230,28 @@ residual coefficient before being band-eligible.
   full buy-in+rake ROI basis. Byte-for-byte live-site parity also needs
   `primedopeStyleEV: true`, and that should stay a diagnostic-script opt-in.
 
+## Timeout Signature vs Determinism Failure
+
+A red full-suite run with an inflated duration (155s or 415s against the normal
+~35-40s) is a **timeout signature**, not a determinism failure. Before suspecting
+the engine, check that every error line says `Error: Test timed out in Nms` and
+that there are zero `AssertionError` / numeric mismatches.
+
+This was actually investigated once: 17 failures under artificial CPU contention
+were 100% timeouts, and the `bountyEvBias` scenario produced byte-identical
+17-significant-digit output across three quiet runs and three runs under 36 CPU
+hogs. CPU load cannot move a seeded number.
+
+The real defect was config, not code: ~20 Monte Carlo tests sat at 0.5-1.4s
+against Vitest's unconfigured 5s default `testTimeout`, and contention costs
+7-10x. `vitest.config.ts` now pins `testTimeout`/`hookTimeout` to 30s. Do not
+"fix" a slow red run by lowering that or by adding `retry` — retries would hide
+genuine hangs and cost the most time under exactly the load that triggers this.
+
+Corollary for the other direction: if an engine test ever fails with a real
+numeric mismatch, do **not** widen the tolerance. That is the determinism
+contract breaking, and the root cause is in `src/lib/sim/`.
+
 ## Good Defaults For New Agents
 
 - Start read-only.

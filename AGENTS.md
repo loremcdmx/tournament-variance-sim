@@ -38,7 +38,7 @@ If code and docs disagree, the code wins — fix the doc.
 ```bash
 npm install
 npm run dev         # http://localhost:3000 (user often runs on :3456 — check for stale servers first)
-npm test            # vitest, single-digit seconds
+npm test            # vitest, ~35s idle (CPU-bound Monte Carlo; slower under load)
 npx tsc --noEmit    # type check
 npm run lint
 npm run build       # catches real Next.js errors
