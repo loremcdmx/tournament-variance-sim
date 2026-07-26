@@ -312,6 +312,22 @@ export const DICT = {
     ru: "Подогнать вводные",
   },
   "shape.fixAll": { en: "Clear locks on all", ru: "Снять фиксации со всех" },
+  "run.jumpToReason": {
+    en: "↑ to reason",
+    ru: "↑ к причине",
+  },
+  "stat.sampleSupport": {
+    en: "n ≈ {n} of {total}",
+    ru: "n ≈ {n} из {total}",
+  },
+  "stat.sampleSupport.tip": {
+    en: "How many simulated runs actually reached this percentile",
+    ru: "Сколько симуляций реально дотянулись до этого процентиля",
+  },
+  "stat.sampleSupport.tip.thin": {
+    en: "The rarest part of the distribution — these numbers are very noisy",
+    ru: "Самая редкая часть распределения — числа очень шумные",
+  },
   "sanity.title": {
     en: "Check settings",
     ru: "Проверь настройки",

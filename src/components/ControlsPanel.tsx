@@ -8,9 +8,9 @@ import {
   applyModelPatch,
 } from "@/lib/sim/modelPresets";
 import type { ProgressStage } from "@/lib/sim/useSimulation";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
-import { formatDurationRu, formatRoughDurationRu } from "@/lib/ui/durationFormat";
+import { formatDuration, formatRoughDuration } from "@/lib/ui/durationFormat";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import type { BattleRoyaleLeaderboardControls } from "@/lib/sim/battleRoyaleLeaderboardUi";
@@ -138,11 +138,11 @@ interface Props {
   runBlockedScrollTarget?: string | null;
 }
 
-function formatCount(n: number): string {
+function formatCount(n: number, locale = "en"): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
   if (n >= 10_000) return `${Math.round(n / 1000)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return n.toLocaleString("ru-RU");
+  return n.toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
 }
 
 export const ControlsPanel = memo(function ControlsPanel({
@@ -166,6 +166,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   runBlockedScrollTarget,
 }: Props) {
   const t = useT();
+  const { locale } = useLocale();
   const { advanced } = useAdvancedMode();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empError, setEmpError] = useState<string | null>(null);
@@ -558,7 +559,7 @@ export const ControlsPanel = memo(function ControlsPanel({
                 {runBlockedReason}
               </span>
               <span className="text-[10px] font-medium uppercase tracking-wider text-rose-200/80">
-                ↑ к причине
+                {t("run.jumpToReason")}
               </span>
             </button>
           ) : (
@@ -577,7 +578,7 @@ export const ControlsPanel = memo(function ControlsPanel({
               {estimatedMs != null && estimatedMs > 0 && (
                 <span className="inline-flex items-center gap-0.5 rounded-full border border-black/25 bg-black/15 px-2 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums text-black/75">
                   <span className="relative -top-px leading-none">≈</span>
-                  <span>{formatRoughDurationRu(estimatedMs)}</span>
+                  <span>{formatRoughDuration(estimatedMs, locale)}</span>
                 </span>
               )}
             </button>
@@ -600,7 +601,7 @@ export const ControlsPanel = memo(function ControlsPanel({
                       <span className="relative -top-px text-[11px] leading-none">
                         ≈
                       </span>
-                      <span>{formatDurationRu(remainingMs)}</span>
+                      <span>{formatDuration(remainingMs, locale)}</span>
                     </>
                   )
                 : "\u00A0"}
@@ -807,6 +808,7 @@ function useRemainingMs(opts: {
 
 function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
   const t = useT();
+  const { locale } = useLocale();
   const meanPositive = summary.mean >= 0;
   const scrollToResults = () => {
     const el = document.getElementById(summary.resultsAnchorId);
@@ -823,7 +825,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           {t("controls.done.label")}
           {summary.elapsedMs != null && (
             <span className="font-mono text-[color:var(--color-fg-dim)]">
-              · {formatDurationRu(summary.elapsedMs)}
+              · {formatDuration(summary.elapsedMs, locale)}
             </span>
           )}
         </div>

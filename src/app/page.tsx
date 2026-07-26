@@ -590,18 +590,20 @@ export default function Home() {
     ]);
     setActiveScenarioId(null);
   }, [queueInterruptBackground]);
+  // Demo scenarios are the onboarding path — the fastest way for a new user to
+  // see a realistic schedule instead of staring at one placeholder row. Shown
+  // to everyone, not just advanced/admin.
   const scheduleToolbarExtras = useMemo(
-    () =>
-      advanced ? (
-        <ScheduleToolbarExtras
-          t={t}
-          activeScenarioId={activeScenarioId}
-          loadScenario={loadScenario}
-          onReset={handleScheduleReset}
-          disabled={running}
-        />
-      ) : null,
-    [advanced, t, activeScenarioId, loadScenario, handleScheduleReset, running],
+    () => (
+      <ScheduleToolbarExtras
+        t={t}
+        activeScenarioId={activeScenarioId}
+        loadScenario={loadScenario}
+        onReset={handleScheduleReset}
+        disabled={running}
+      />
+    ),
+    [t, activeScenarioId, loadScenario, handleScheduleReset, running],
   );
   const doneSummary = useMemo(
     () =>

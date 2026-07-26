@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { InfoTooltip } from "@/components/ui/Tooltip";
 
 type StatSuit = "club" | "heart" | "spade" | "diamond";
@@ -490,6 +490,7 @@ function StatSubline({
   text: string;
   accentColor?: string;
 }) {
+  const t = useT();
   const colonIdx = text.indexOf(":");
   const hasStructuredRange = colonIdx > 0 && text.includes("→");
   if (hasStructuredRange) {
@@ -550,7 +551,7 @@ function StatSubline({
           <div className="mt-2 grid grid-cols-2 gap-3">
             <div className="min-w-0">
               <div className="text-[10px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]">
-                От
+                {t("stat.range.from")}
               </div>
               <div className="mt-1 truncate font-mono text-[13px] font-semibold leading-none tabular-nums text-[color:var(--color-fg)]">
                 {minValue}
@@ -558,7 +559,7 @@ function StatSubline({
             </div>
             <div className="min-w-0 text-right">
               <div className="text-[10px] font-medium tracking-[0.01em] text-[color:var(--color-fg-muted)]">
-                До
+                {t("stat.range.to")}
               </div>
               <div className="mt-1 truncate font-mono text-[13px] font-semibold leading-none tabular-nums text-[color:var(--color-fg)]">
                 {maxValue}
@@ -590,6 +591,9 @@ export function MiniStat({
   pdLabel,
   sampleSupport,
 }: MiniStatProps) {
+  const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = locale === "ru" ? "ru-RU" : "en-US";
   const accentColor = SUIT_COLOR[suit];
   const toneColor =
     tone === "pos"
@@ -628,12 +632,13 @@ export function MiniStat({
             }`}
             title={
               sampleSupport.backing <= 3
-                ? "Самая редкая часть распределения — числа очень шумные"
-                : "Сколько симуляций реально дотянулись до этого процентиля"
+                ? t("stat.sampleSupport.tip.thin")
+                : t("stat.sampleSupport.tip")
             }
           >
-            n ≈ {sampleSupport.backing.toLocaleString("ru-RU")} из{" "}
-            {sampleSupport.total.toLocaleString("ru-RU")}
+            {t("stat.sampleSupport")
+              .replace("{n}", sampleSupport.backing.toLocaleString(numberLocale))
+              .replace("{total}", sampleSupport.total.toLocaleString(numberLocale))}
           </div>
         )}
       </div>
