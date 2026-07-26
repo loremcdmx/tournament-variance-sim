@@ -254,3 +254,12 @@ export interface CheckpointGrid {
   K: number;
   checkpointIdx: Int32Array;
 }
+
+/**
+ * Coarse phase label for the current build emit. The four stages together
+ * cover every emit site inside `buildResult` so the UI can tell a user which
+ * phase is taking the wall-clock — envelope sorts and streak rankings
+ * dominate on large S, stats/convergence are cheap.
+ */
+export type BuildStage = "stats" | "envelopes" | "streaks" | "convergence";
+export type BuildProgressCb = (frac: number, stage: BuildStage) => void;

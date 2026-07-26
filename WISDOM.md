@@ -56,7 +56,7 @@ This area produced the most false confidence. Remember:
   is valid only inside the fixed BR box (AFS 18, ROI +/-10%).
 - Battle Royale KO EV split now centers on the row's configured
   `bountyFraction` baseline. Do not resurrect older "BR is always 50/50
-  cash/KO at slider center" wording without re-checking `compile.ts` (the
+  cash/KO at slider center" wording without re-checking `compileEntry.ts` (the
   bounty-split lives there now) and `previewRowStats.ts`.
 - PKO keeps the promoted averaged fit band, and only inside the validated
   training box.

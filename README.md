@@ -161,7 +161,7 @@ SimulationResult → ResultsView
 
 Ключевые файлы:
 
-- **`engine.ts`** — тонкий оркестратор (`runSimulation` + `mergeShards`) + barrel, который реэкспортит модули ниже (импорт-путь `./engine` у потребителей неизменен). `compile.ts` — `compileSchedule()` делает heavy-lifting: калибрует α по каждому ряду, строит alias-таблицы, PKO heat-биннинг. `hotLoop.ts` — `simulateShard()`, hot loop, чистая арифметика на типизированных массивах. `buildResult.ts` — post-processing (гистограммы, envelope, decomposition, risk-of-ruin).
+- **`engine.ts`** — тонкий оркестратор (`runSimulation` + `mergeShards`) + barrel, который реэкспортит модули ниже (импорт-путь `./engine` у потребителей неизменен). `compile.ts` — `compileSchedule()` собирает расписание из скомпилированных рядов; сам heavy-lifting (калибровка α по ряду, alias-таблицы, PKO heat-биннинг) живёт в `compileEntry.ts`, закрытые формы моментов — в `scheduleMoments.ts`, чередование рядов — в `schedulePassOrder.ts`. `hotLoop.ts` — `simulateShard()`, hot loop, чистая арифметика на типизированных массивах. `buildResult.ts` — post-processing (гистограммы, envelope, decomposition, risk-of-ruin); сами секции живут в `resultStats.ts`, `resultEnvelopes.ts`, `resultStreaks.ts`, `resultDecomposition.ts`, `resultCurves.ts`, `resultLeaderboard.ts`.
 - **`finishModel.ts`** — `buildFinishPMF(N, model, α)` возвращает Float64Array длины N, сумма = 1. `calibrateAlpha()` делает бинпоиск по α под заданный целевой ROI. `calibrateShelledItm()` — альтернативный калибратор, который пинит ITM rate и решает α/форму под ROI.
 - **`payouts.ts`** — возвращает массив фракций призового для 1..paidCount, сумма = 1. Без денежных значений — engine умножает на prize pool сам.
 - **`worker.ts`** — stateless, один воркер = один `self.onmessage`. Весь state живёт в main thread (пул, jobId, shard-счётчик).
@@ -222,7 +222,7 @@ SimulationResult → ResultsView
 
 **`samplePaths.paths.length`** — не равен samples. Хранится только первые ~1000 (см. `wantHiResPaths` в `hotLoop.ts`), остальные агрегируются в envelopes + best/worst. Слайдер "runs" в ResultsView показывает максимум `paths.length`, не `samples`.
 
-**PKO heat.** Когда `row.pkoHeat > 0`, в `compile.ts` заводится `HEAT_BIN_COUNT` альтернативных `bountyByPlace` таблиц. Hot loop (`hotLoop.ts`) выбирает одну по гауссовскому драву. Средний bounty сохраняется per-bin — только σ плывёт. Подробнее — комментарий в `engineConstants.ts`.
+**PKO heat.** Когда `row.pkoHeat > 0`, в `compileEntry.ts` заводится `HEAT_BIN_COUNT` альтернативных `bountyByPlace` таблиц. Hot loop (`hotLoop.ts`) выбирает одну по гауссовскому драву. Средний bounty сохраняется per-bin — только σ плывёт. Подробнее — комментарий в `engineConstants.ts`.
 
 **Global ITM %.** `controls.itmGlobalPct` + чекбокс `itmGlobalEnabled` применяется каскадом в `applyItmTarget()`: заполняет `row.itmRate` только там, где он не задан. Per-row значение всегда побеждает глобальное. Смотри `src/lib/sim/itmTarget.ts`.
 

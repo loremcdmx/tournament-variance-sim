@@ -64,19 +64,8 @@ describe("convergence math", () => {
   });
 
   it("hides ROI control only in exact mode", () => {
-    expect(isRoiControlActive("exact", "exact", [0, 1, 0])).toBe(false);
-  });
-
-  it("keeps ROI control for every averaged mode, including freeze", () => {
-    expect(isRoiControlActive("freeze", "avg", [1, 0, 0])).toBe(true);
-    expect(isRoiControlActive("pko", "avg", [0, 1, 0])).toBe(true);
-    expect(isRoiControlActive("mystery", "avg", [0, 0, 1])).toBe(true);
-    expect(isRoiControlActive("mystery-royale", "avg", [1, 0, 0])).toBe(
-      true,
-    );
-    expect(isRoiControlActive("mix", "avg", [1, 0, 0])).toBe(true);
-    expect(isRoiControlActive("mix", "avg", [0.99, 0.01, 0])).toBe(true);
-    expect(isRoiControlActive("mix", "avg", [0.99, 0, 0.01])).toBe(true);
+    expect(isRoiControlActive("exact")).toBe(false);
+    expect(isRoiControlActive("avg")).toBe(true);
   });
 
   it("keeps freeze rows invariant to ROI and bounty rows sensitive to ROI", () => {

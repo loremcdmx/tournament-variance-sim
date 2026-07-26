@@ -352,7 +352,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   };
 
   const gameRoi = effectiveRoi;
-  const roiControlActive = isRoiControlActive(format, effectiveMode, mix);
+  const roiControlActive = isRoiControlActive(effectiveMode);
 
   // Per-row σ breakdown — only populated in "exact" mode. Each entry carries
   // the row's compiled field summary plus cost-share / σ²-share diagnostics.

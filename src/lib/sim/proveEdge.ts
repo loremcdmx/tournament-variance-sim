@@ -365,14 +365,3 @@ function computeProveEdgeSchedule(input: ProveEdgeInput): ProveEdgeResult {
     anchor,
   };
 }
-
-/**
- * Backwards-compatible helper for the previous `computeProveEdgeRows`
- * signature — returns just the row array. New callers should prefer
- * `computeProveEdge` for the full result with anchor + band policy.
- */
-export function computeProveEdgeRows(
-  input: ProveEdgeInput,
-): ProveEdgeRow[] {
-  return computeProveEdge(input).rows;
-}

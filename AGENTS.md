@@ -78,7 +78,7 @@ See the table at the bottom of `docs/ARCHITECTURE.md`. Short version:
 2. Read `WISDOM.md` fully before trusting any prior summary or review finding.
 3. Skim `docs/ARCHITECTURE.md` for the data-flow diagram and determinism contract.
 4. Run `git status` + `git log -5 --oneline` to see actual repo state — don't trust summary claims about what's committed.
-5. If touching the engine: it is split into `engine.ts` (orchestrator/barrel), `compile.ts`, `hotLoop.ts` (the determinism-critical `simulateShard`), `buildResult.ts`, `engineTypes.ts`, `simNumerics.ts`, `grids.ts`, `engineConstants.ts` — open the relevant one and re-read its top-of-file. If touching UI: re-read the file you're about to edit before editing — `page.tsx` and `ResultsView.tsx` are large and shift often.
+5. If touching the engine: it is split into `engine.ts` (orchestrator/barrel), `compile.ts` (schedule assembly) with `compileEntry.ts` / `scheduleMoments.ts` / `schedulePassOrder.ts`, `hotLoop.ts` (the determinism-critical `simulateShard`), `buildResult.ts` (result sequencer) with `resultStats.ts` / `resultEnvelopes.ts` / `resultStreaks.ts` / `resultDecomposition.ts` / `resultCurves.ts` / `resultLeaderboard.ts`, `engineTypes.ts`, `simNumerics.ts`, `grids.ts`, `engineConstants.ts` — open the relevant one and re-read its top-of-file. If touching UI: re-read the file you're about to edit before editing — `page.tsx` and `ResultsView.tsx` are large and shift often.
 6. Run `npm test` before any non-trivial change to confirm baseline is green.
 
 Do not act on summary claims about in-progress work without verifying against the filesystem. Summaries lose nuance; the tree does not.

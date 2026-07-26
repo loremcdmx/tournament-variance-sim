@@ -278,13 +278,7 @@ export function buildExactBreakdown(
   };
 }
 
-export function isRoiControlActive(
-  format: ConvergenceFormat,
-  mode: "avg" | "exact",
-  mix: MixTuple,
-): boolean {
-  void format;
-  void mix;
+export function isRoiControlActive(mode: "avg" | "exact"): boolean {
   return mode !== "exact";
 }
 

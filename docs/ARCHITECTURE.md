@@ -26,8 +26,17 @@ This document describes the data flow, module boundaries, and invariants of the 
 │  │        thin orchestrator: runSimulation + mergeShards │    │
 │  │        + a barrel re-exporting the modules below      │    │
 │  │  ─ src/lib/sim/compile.ts      schedule → compiled    │    │
+│  │  ─ src/lib/sim/compileEntry.ts row → CompiledEntry    │    │
+│  │  ─ src/lib/sim/scheduleMoments.ts closed-form σ       │    │
+│  │  ─ src/lib/sim/schedulePassOrder.ts row interleave    │    │
 │  │  ─ src/lib/sim/hotLoop.ts      simulateShard (MC core)│    │
 │  │  ─ src/lib/sim/buildResult.ts  shard → result         │    │
+│  │  ─ src/lib/sim/resultStats.ts  scalar stats + RoR     │    │
+│  │  ─ src/lib/sim/resultEnvelopes.ts percentile bands    │    │
+│  │  ─ src/lib/sim/resultStreaks.ts streaks + swings      │    │
+│  │  ─ src/lib/sim/resultDecomposition.ts per-row split   │    │
+│  │  ─ src/lib/sim/resultCurves.ts sensitivity + conv.    │    │
+│  │  ─ src/lib/sim/resultLeaderboard.ts BR promo channel  │    │
 │  │  ─ src/lib/sim/engineTypes.ts  Compiled*/RawShard…    │    │
 │  │  ─ src/lib/sim/simNumerics.ts  poisson + histograms   │    │
 │  │  ─ src/lib/sim/finishModel.ts                        │    │
@@ -249,8 +258,19 @@ remaining concentrated modules are:
   (`simulateShard` — the determinism-critical Monte Carlo core),
   `buildResult.ts` (result assembly), `engineTypes.ts` (contract types),
   `simNumerics.ts` (poisson + histograms), `grids.ts`, `engineConstants.ts`.
-  Importers still use the `./engine` path unchanged. `compile.ts` (~1250
-  lines) and `buildResult.ts` (~810) are the next finer-grain split targets.
+  Importers still use the `./engine` path unchanged. `compile.ts` has since
+  been split again into a ~255-line orchestrator plus `compileEntry.ts`
+  (per-row calibration/bounty/heat compilation), `scheduleMoments.ts`
+  (closed-form per-entry moments feeding the convergence widgets), and
+  `schedulePassOrder.ts` (row interleaving). `buildResult.ts` has likewise
+  been split into a ~285-line sequencer plus `resultStats.ts` (scalar
+  moments, VaR/CVaR, Kelly, Gaussian + historical RoR), `resultEnvelopes.ts`
+  (percentile bands and hi-res upsampling), `resultStreaks.ts` (drawdown /
+  breakeven / recovery catalogs and the swing rankings),
+  `resultDecomposition.ts` (per-row variance split), `resultCurves.ts`
+  (sensitivity + convergence), and `resultLeaderboard.ts` (BR leaderboard
+  channel). The `onBuildProgress` stage labels are owned by the module that
+  does the work.
 - **`src/components/charts/FinishPMFPreview.tsx`** — presentation and preview
   economics still live together in one large UI module.
 - **`src/components/cash/CashResultsView.tsx`** — much cleaner than the old

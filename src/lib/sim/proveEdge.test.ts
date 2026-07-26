@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   computeProveEdge,
-  computeProveEdgeRows,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
 } from "./proveEdge";
 import type { TournamentRow } from "./types";
+
+const computeProveEdgeRows = (input: Parameters<typeof computeProveEdge>[0]) =>
+  computeProveEdge(input).rows;
 
 const Z95 = 1.959964;
 
