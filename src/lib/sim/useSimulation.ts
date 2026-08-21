@@ -15,7 +15,11 @@
  */
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { RawShard } from "./engine";
-import { BUILD_PROGRESS_CAP, shardProgressFracFor } from "./progressConstants";
+import {
+  BUILD_PROGRESS_CAP,
+  nextBuildShare,
+  shardFracFromBuildShare,
+} from "./progressConstants";
 import { composeProgress } from "./progressAggregation";
 import { computeNextRate } from "@/lib/ui/rateUpdate";
 
@@ -162,6 +166,33 @@ function workUnits(
   return Math.max(1, samples * scheduleRepeats * Math.max(1, costWeight));
 }
 
+/**
+ * Measured wall-time share of the build/finalize phase from previous runs.
+ * Drives where the progress bar's shard→build seam sits (see
+ * `shardFracFromBuildShare`): with a measured seam the bar advances
+ * ~linearly in time, which in turn makes the in-run ETA projection honest.
+ */
+const BUILD_SHARE_KEY = "tvs.lastBuildShare.v1";
+
+function loadBuildShare(): number | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(BUILD_SHARE_KEY);
+    if (!raw) return null;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveBuildShare(v: number) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(BUILD_SHARE_KEY, String(v));
+  } catch {}
+}
+
 function loadRate(): number | null {
   if (typeof localStorage === "undefined") return null;
   try {
@@ -229,11 +260,13 @@ export function useSimulation() {
       samples: number,
       scheduleRepeats: number,
       schedule: ReadonlyArray<{ count: number; gameType?: GameType }>,
+      passCount = 1,
     ) => {
       if (lastRateMs == null) return null;
       return (
         workUnits(samples, scheduleRepeats, scheduleCostWeight(schedule)) *
-        lastRateMs
+        lastRateMs *
+        Math.max(1, passCount)
       );
     },
     [lastRateMs],
@@ -369,7 +402,12 @@ export function useSimulation() {
       for (const p of passes) {
         if (p.input.samples > maxPassSamples) maxPassSamples = p.input.samples;
       }
-      const shardFrac = shardProgressFracFor(maxPassSamples);
+      const shardFrac = shardFracFromBuildShare(
+        loadBuildShare(),
+        maxPassSamples,
+      );
+      const tJobStart = performance.now();
+      let tShardsEnd: number | null = null;
 
       // Throttle UI updates: at most ~30 fps.
       let lastEmit = 0;
@@ -575,6 +613,19 @@ export function useSimulation() {
             if (buildsRemaining === 0) {
               settled = true;
               detach();
+              // Record how much of the wall clock the build phase actually
+              // took, so the next run's seam (and therefore its ETA
+              // projection) reflects this machine instead of a guess. Skip
+              // sub-500ms runs — pure message overhead at that size.
+              if (tShardsEnd != null) {
+                const tEnd = performance.now();
+                const total = tEnd - tJobStart;
+                if (total > 500) {
+                  saveBuildShare(
+                    nextBuildShare(loadBuildShare(), (tEnd - tShardsEnd) / total),
+                  );
+                }
+              }
               onProgress(1, displayStage());
               const out: Record<PassPlan["key"], SimulationResult> =
                 {} as never;
@@ -614,6 +665,7 @@ export function useSimulation() {
               // used to cause a 2–5 s freeze at 99% on 100k-sample runs.
               // Hand off to one worker per pass so a twin run parallelizes.
               lastEmit = 0;
+              tShardsEnd = performance.now();
               // Shards complete → transitioning into the build phase; tag
               // with the first build stage so the UI flips the label away
               // from "simulating" even before the first build-progress emit.
@@ -829,11 +881,18 @@ export function useSimulation() {
         // observations (≥2.5× change vs cached) are dropped entirely so a
         // single throttled tab can't poison the cache for the next clean
         // run. See `src/lib/ui/rateUpdate.ts` for the math.
-        const work = workUnits(
-          input.samples,
-          Math.max(1, input.scheduleRepeats),
-          scheduleCostWeight(input.schedule),
-        );
+        // Sum over every dispatched pass: a compare run executes the twin
+        // schedule too, and dividing two passes' wall time by one pass's work
+        // taught a ~2× inflated rate that whipsawed the ETA whenever the
+        // compare toggle changed.
+        let work = 0;
+        for (const p of passes) {
+          work += workUnits(
+            p.input.samples,
+            Math.max(1, p.input.scheduleRepeats),
+            scheduleCostWeight(p.input.schedule),
+          );
+        }
         const update = computeNextRate({
           elapsedMs: elapsed,
           work,

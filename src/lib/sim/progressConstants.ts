@@ -30,3 +30,54 @@ export function shardProgressFracFor(samples: number): number {
   const logScale = Math.log10(Math.max(1, samples / 10_000));
   return Math.max(0.55, 0.80 - 0.10 * logScale);
 }
+
+/** Clamp bounds for the measured build share. Below 2% the measurement is
+ *  noise. The ceiling is high on purpose: on a wide pool the shard phase is
+ *  16-way parallel while each pass's build runs on ONE worker, so a
+ *  200k-sample single-pass run legitimately spends 60-75% of its wall time
+ *  in build — measured, not assumed. Only truly pathological readings
+ *  (throttled tab parked mid-build) are cut off. */
+export const BUILD_SHARE_MIN = 0.02;
+export const BUILD_SHARE_MAX = 0.85;
+
+/**
+ * Blend a fresh build-share observation into the persisted cache. Equal-weight
+ * EMA: adapts within ~2 runs after a machine/pool change without letting one
+ * odd run swing the seam.
+ */
+export function nextBuildShare(prev: number | null, observed: number): number {
+  const clamped = Math.min(
+    BUILD_SHARE_MAX,
+    Math.max(BUILD_SHARE_MIN, observed),
+  );
+  if (prev == null || !Number.isFinite(prev)) return clamped;
+  const blended = 0.5 * prev + 0.5 * clamped;
+  return Math.min(BUILD_SHARE_MAX, Math.max(BUILD_SHARE_MIN, blended));
+}
+
+/**
+ * Place the shard→build seam from the MEASURED build share of previous runs,
+ * so the bar advances ~linearly in wall time: shard phase gets `(1 − share)`
+ * of the bar (scaled to the cap), build gets the rest. This is what makes the
+ * in-run ETA's `elapsed / progress` projection honest — with a guessed seam
+ * the projection inherits the guess's error (3–5× around the seam on
+ * machines where the split differs from the hardcoded curve).
+ *
+ * Falls back to the `shardProgressFracFor` heuristic until a run has been
+ * measured on this machine.
+ */
+export function shardFracFromBuildShare(
+  buildShare: number | null,
+  samples: number,
+): number {
+  if (buildShare == null || !Number.isFinite(buildShare) || buildShare <= 0) {
+    return shardProgressFracFor(samples);
+  }
+  const share = Math.min(
+    BUILD_SHARE_MAX,
+    Math.max(BUILD_SHARE_MIN, buildShare),
+  );
+  // Floor keeps a visible shard zone even on build-dominated runs; ceiling
+  // keeps a visible build zone on shard-dominated ones.
+  return Math.min(0.95, Math.max(0.12, (1 - share) * BUILD_PROGRESS_CAP));
+}

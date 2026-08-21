@@ -778,11 +778,13 @@ function useRemainingMs(opts: {
   const [smoothed, setSmoothed] = useState<number | null>(null);
   const smoothedRef = useRef<number | null>(null);
   const lastSmoothAt = useRef<number | null>(null);
+  const lastShownRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (running) return;
     smoothedRef.current = null;
     lastSmoothAt.current = null;
+    lastShownRef.current = null;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets ETA display when run ends; sync with external run lifecycle.
     setSmoothed(null);
   }, [running]);
@@ -801,8 +803,18 @@ function useRemainingMs(opts: {
     });
     if (next == null) return;
     smoothedRef.current = next;
-    const frame = requestAnimationFrame(() => setSmoothed(next));
-    return () => cancelAnimationFrame(frame);
+    // Set state directly — the old requestAnimationFrame deferral raced the
+    // effect cleanup: during a run every core is saturated by the worker
+    // pool, rAF frames starve, and each ~33ms progress render cancelled the
+    // still-pending frame, so the countdown NEVER left "warming up…".
+    // The 100ms delta guard keeps re-render traffic at the old rAF level.
+    if (
+      lastShownRef.current == null ||
+      Math.abs(next - lastShownRef.current) >= 100
+    ) {
+      lastShownRef.current = next;
+      setSmoothed(next);
+    }
   }, [running, runElapsedMs, progress, estimatedMs]);
 
   return smoothed;

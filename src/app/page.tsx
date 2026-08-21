@@ -542,8 +542,17 @@ export default function Home() {
         controls.samples,
         controls.scheduleRepeats,
         deferredSchedule,
+        // A compare run dispatches the twin schedule too — same flag the run
+        // itself uses (basic mode sanitizes compareEnabled to false).
+        effectiveResultsControls.compareEnabled ? 2 : 1,
       ),
-    [estimateMs, controls.samples, controls.scheduleRepeats, deferredSchedule],
+    [
+      estimateMs,
+      controls.samples,
+      controls.scheduleRepeats,
+      deferredSchedule,
+      effectiveResultsControls.compareEnabled,
+    ],
   );
   const scheduleGlobalItmPct = useMemo(
     () => (controls.itmGlobalEnabled ? controls.itmGlobalPct : null),
