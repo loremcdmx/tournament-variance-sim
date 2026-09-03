@@ -107,3 +107,43 @@ describe("mixSeed channel/sample decorrelation", () => {
     expect(chi2).toBeLessThan(150);
   });
 });
+
+// Regression: the old mixSeed XOR-ed seed and index raw, so seeds differing
+// only in low bits yielded the same multiset of per-sample seeds over any
+// aligned block — seed 1 vs seed 2 was the same simulation with samples
+// permuted, and every adjacent seed had byte-identical mean/stdDev.
+describe("mixSeed seed sensitivity", () => {
+  const S = 64;
+  const sampleSeeds = (seed: number): number[] => {
+    const out = new Array<number>(S);
+    for (let s = 0; s < S; s++) out[s] = mixSeed(seed, s);
+    return out;
+  };
+  const meanFirstDraw = (seed: number): number => {
+    let sum = 0;
+    for (let s = 0; s < S; s++) sum += mulberry32(mixSeed(seed, s))();
+    return sum / S;
+  };
+
+  it("seeds 1..8 produce eight different sample-seed multisets over an aligned block", () => {
+    const multisets = new Set<string>();
+    for (let seed = 1; seed <= 8; seed++) {
+      multisets.add(sampleSeeds(seed).sort((a, b) => a - b).join(","));
+    }
+    expect(multisets.size).toBe(8);
+  });
+
+  it("seeds 1..8 produce different first-draw means", () => {
+    const means = new Set<number>();
+    for (let seed = 1; seed <= 8; seed++) means.add(meanFirstDraw(seed));
+    expect(means.size).toBe(8);
+  });
+
+  it("consecutive sibling seeds produce different stats", () => {
+    for (const base of [0, 1, 0xc0ffee, 0x7fffffff, 0xfffffffe]) {
+      const a = meanFirstDraw(base >>> 0);
+      const b = meanFirstDraw((base + 1) >>> 0);
+      expect(a).not.toBe(b);
+    }
+  });
+});

@@ -91,12 +91,15 @@ describe("primedope-binary-itm calibration matches PD's actual server math", () 
         expect(out.ev).toBeCloseTo(evMath, 0);
       });
 
-      it(`SD matches PD within 1 % (PD = $${sdMath})`, () => {
-        // SD has MC noise on PD's side (1k samples) AND ours (30k samples).
-        // Allow 1 % tolerance — much tighter than the ~3 % SD residual our
-        // own σ-fits ship with.
+      it(`SD matches PD within 1.5 % (PD = $${sdMath})`, () => {
+        // SD has MC noise on PD's side (1k samples, ~2 % SE) AND ours (30k
+        // samples, ~0.4-0.5 % SE on a 1000-tournament sum). A seed sweep at
+        // AFS=2000 spread our deviation over ±0.6 % across ten seeds, so
+        // 1.5 % is ~3 SE of our own noise — still tighter than the ~3 % SD
+        // residual our σ-fits ship with, and no longer calibrated to one
+        // lucky seed.
         const dev = Math.abs(out.sd - sdMath) / sdMath;
-        expect(dev).toBeLessThan(0.01);
+        expect(dev).toBeLessThan(0.015);
       });
     },
   );

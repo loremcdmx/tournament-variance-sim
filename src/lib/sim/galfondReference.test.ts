@@ -13,8 +13,14 @@
  *
  * What this test pins:
  *   - `expectedEvBb` matches analytic exactly (deterministic)
- *   - `sdFinalBb` matches analytic to 0.5 % (MC noise on 30k samples)
- *   - `probProfit` matches analytic to ±1 pp (MC noise)
+ *   - `sdFinalBb`, `probProfit`, `meanFinalBb` match analytic within 4-5 MC
+ *     standard errors of the sample count the engine ACTUALLY runs
+ *
+ * The fixtures ask for 30k samples, but `normalizeCashInput` caps
+ * samples × hands at `MAX_TOTAL_SIM_HANDS`, so a 50k-hand scenario runs
+ * 4 000 paths (2 000 at 100k hands). Tolerances are derived from
+ * `out.samples`, not from the requested count — an earlier fixed 1.5 %
+ * σ tolerance was ~1.3 SE at 4 000 paths and only held on one lucky seed.
  *
  * What this test does NOT pin:
  *   - `probBelowThresholdEver` (our finite-horizon RoR) vs Galfond's
@@ -123,21 +129,23 @@ describe("simulateCash matches Galfond's variance-calculator math", () => {
         expect(out.stats.expectedEvBb).toBeCloseTo(ref.muBB, 9);
       });
 
-      it("sdFinalBb matches analytic σ within 1.5 % (MC SE on 30k samples)", () => {
-        // MC SE of sample-σ estimate ≈ σ / √(2 × N_samples) = ~0.41 % of σ
-        // at N=30k. 1.5 % tolerance = ~3.6 SE; trips only on real model drift,
-        // not on RNG luck.
+      it("sdFinalBb matches analytic σ within 4 MC SE of the realized sample count", () => {
+        // Sample-σ SE ≈ σ / √(2 × samples) — ~1.1 % at the 4 000 paths the
+        // hands budget allows here. 4 SE trips on real model drift, not RNG luck.
+        const seRel = 1 / Math.sqrt(2 * out.samples);
         const dev = Math.abs(out.stats.sdFinalBb - ref.sigBB) / ref.sigBB;
-        expect(dev).toBeLessThan(0.015);
+        expect(dev).toBeLessThan(4 * seRel);
       });
 
-      it("probProfit matches analytic within ±1 pp (MC noise on 30k samples)", () => {
-        const dev = Math.abs(out.stats.probProfit - ref.probProfit);
-        expect(dev).toBeLessThan(0.01);
+      it("probProfit matches analytic within 4 MC SE of the realized sample count", () => {
+        const p = ref.probProfit;
+        const se = Math.sqrt((p * (1 - p)) / out.samples);
+        const dev = Math.abs(out.stats.probProfit - p);
+        expect(dev).toBeLessThan(4 * se);
       });
 
       it("meanFinalBb sample mean within 5 SE of true μ", () => {
-        const se = ref.sigBB / Math.sqrt(30_000);
+        const se = ref.sigBB / Math.sqrt(out.samples);
         expect(Math.abs(out.stats.meanFinalBb - ref.muBB)).toBeLessThan(5 * se);
       });
 

@@ -252,6 +252,31 @@ Corollary for the other direction: if an engine test ever fails with a real
 numeric mismatch, do **not** widen the tolerance. That is the determinism
 contract breaking, and the root cause is in `src/lib/sim/`.
 
+## Seed Era And Reproducibility
+
+`mixSeed` (`src/lib/sim/rng.ts`) was changed in v0.7.x so the seed is
+finalized before it meets the sample index. The old construction XOR-ed them
+raw, which made seeds differing only in low bits the same simulation with
+samples permuted: seeds 1, 2, 3, 7 had byte-identical `stats.mean/stdDev`.
+The cached sibling batch was unaffected only because `deriveSiblingSeed`
+strides by `0x9e3779b1` (high bits change), but a user typing seed 1 then
+seed 2 saw "the same run".
+
+Consequences to remember:
+
+- Every simulation output changed with that commit — a new numerical era.
+  Old share links and stored runs reproduce the same *distributions* (σ fits
+  were re-checked: freeze N=500, 30k samples, field 1000/5000 at ROI +10%
+  landed within 2% of `evalSigma`, against a 6% residual) but not the same
+  individual paths, best/worst samples, or downswing catalog entries.
+- Do not treat a stored-vs-fresh numeric mismatch from before/after that commit
+  as a determinism failure. Determinism is still `input + seed -> bytes`
+  within one era, and the pool-invariance tests compare runs against each
+  other, not against pinned values.
+- If a stored fit grid (`scripts/fit_*.json`) is used to judge the current
+  engine, remember it was measured under the previous seed era; refit before
+  calling small drifts a regression.
+
 ## Good Defaults For New Agents
 
 - Start read-only.
