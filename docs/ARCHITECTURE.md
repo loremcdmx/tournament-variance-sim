@@ -19,7 +19,7 @@ This document describes the data flow, module boundaries, and invariants of the 
 │         ▼ ShardRequest × N workers                           │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐    │
-│  │  Web Worker pool (N ≈ hardwareConcurrency / 2)       │    │
+│  │  Web Worker pool (N = min(16, hc − 2))               │    │
 │  │  ─ src/lib/sim/worker.ts                             │    │
 │  │        thin dispatcher — onmessage routes to engine  │    │
 │  │  ─ src/lib/sim/engine.ts                             │    │
@@ -174,6 +174,21 @@ If you add a new stochastic mechanism:
 2. Write a determinism test: run with the same input twice, assert identical `finalProfits`.
 3. Write a pool-invariance test if practical: 1-worker vs N-worker runs should agree.
 
+### Seed eras
+
+Determinism is `input + seed → bytes` *within one construction of `mixSeed`*.
+`mixSeed` (`rng.ts`) was changed in v0.7.x to finalize the seed before it meets
+the sample index: the old raw XOR made seeds that differ only in low bits the
+same simulation with samples permuted (seeds 1, 2, 3, 7 had byte-identical
+`stats.mean/stdDev`). Every simulation output changed with that commit — a new
+numerical era. Stored runs and share links from before it reproduce the same
+*distributions* (σ fits were re-checked within 2% of `evalSigma`) but not the
+same individual paths, best/worst samples, or downswing catalog entries. A
+stored-vs-fresh mismatch across that boundary is not a determinism failure; the
+pool-invariance tests compare runs against each other, never against pinned
+values. Fit grids under `scripts/fit_*.json` measured before the change should
+be refitted before a small drift is called a regression.
+
 ## Storage of results
 
 Only a subset of per-sample data is retained — keeping all of it for 100k samples at 300 tournaments each would be ~240 MB of hot-res points per run.
@@ -181,7 +196,7 @@ Only a subset of per-sample data is retained — keeping all of it for 100k samp
 - **`finalProfits`** — `Float64Array(samples)`. Every sample's final P&L. Used by histogram, stats, envelopes.
 - **`rowProfits`** — `Float64Array(samples × rows)`, row-major. Used by decomposition and by mixed-schedule cards (e.g., satellite equity).
 - **`samplePaths`** — only the *first* ~1000 samples of shard 0 have a hi-res trajectory path stored. The slider in `ResultsView` caps at `samplePaths.paths.length`, not `samples`. If you want more, bump `wantHiResPaths` in `hotLoop.ts` — but be aware of memory.
-- **`envelopes`** — mean / p05 / p95 / min / max over all samples, on an 80-point checkpoint grid. This is what the shaded percentile band on the trajectory chart uses.
+- **`envelopes`** — mean / p05 / p95 / min / max over all samples, on the low-res checkpoint grid (`K = min(240, N)`, `makeCheckpointGrid` in `grids.ts`). This is what the shaded percentile band on the trajectory chart uses.
 
 ## React integration
 
@@ -211,7 +226,7 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 
 ## Performance knobs
 
-- **Pool size** — `poolSize()` in `useSimulation.ts`. Defaults to `hardwareConcurrency / 2`. Change if you see the OS get starved.
+- **Pool size** — `poolSize()` in `useSimulation.ts`. Defaults to `min(16, hardwareConcurrency − 2)`; `hc / 2` idled half the cores on no-SMT hardware (Apple Silicon), and past 16 oversharding buys nothing. The cash pool in `CashApp.tsx` still uses `min(12, hc / 2)`. Change if you see the OS get starved.
 - **Shard count** — equal to pool size in the current implementation. There's no overlap benefit to oversharding — each worker is CPU-bound.
 - **Checkpoint grid K** — `makeCheckpointGrid(N)` in `grids.ts`. Currently `K = min(240, N)`. Bigger K = smoother trajectory charts but more main-thread sort work.
 - **`wantHiResPaths`** — how many sample paths to retain at full resolution. Currently 1000. Trades memory for slider range.
@@ -227,7 +242,7 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 - **Empirical histogram reproduction** — feeding a flat histogram gives uniform pmf; feeding a spike at position 1 makes the player always win.
 - **Payout normalization** — every `getPayoutTable()` result sums to 1 ± ε.
 
-Add new tests next to the file they cover. Keep them fast — the whole suite should finish in single-digit seconds.
+Add new tests next to the file they cover. Keep them fast — the whole suite runs in ~30s on an idle machine (62 files / 937 tests; CPU-bound Monte Carlo, several times slower under load — see `CONTRIBUTING.md` on reading a red run).
 
 ## What lives outside `src/lib/sim/`
 

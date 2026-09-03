@@ -36,6 +36,9 @@ interface Props {
   /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
    *  excludes them, so the displayed volume is an optimistic floor. */
   noiseActive?: boolean;
+  /** "exact" opens on the Schedule tab (post-run, next to the Monte-Carlo
+   *  card it must agree with); default keeps the synthetic planning mode. */
+  defaultMode?: "avg" | "exact";
 }
 
 const FORMAT_TAB_ACCENTS: Record<
@@ -148,6 +151,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   schedule,
   finishModel,
   noiseActive,
+  defaultMode = "avg",
 }: Props) {
   const { locale, t } = useLocale();
   const numberLocale = locale === "ru" ? "ru-RU" : "en-US";
@@ -236,7 +240,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   // drop MBR's σ contribution if we defaulted to "mix". Fall back to
   // "exact" in that case so per-row σ over the real schedule is shown.
   const baselineFormat: ConvergenceFormat =
-    baseline.mysteryRoyaleShare >= 0.99
+    defaultMode === "exact" && hasSchedule
+      ? "exact"
+      : baseline.mysteryRoyaleShare >= 0.99
       ? "mystery-royale"
       : baseline.pkoShare >= 0.99
         ? "pko"
@@ -628,6 +634,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                 key={f.id}
                 type="button"
                 disabled={disabled}
+                title={
+                  f.id !== "exact" && hasSchedule
+                    ? t("chart.convergence.synthetic.hint")
+                    : undefined
+                }
                 onClick={() => {
                   // Pin current AFS / ROI / CI so switching format never
                   // visually shifts them — lets the user A/B the σ tables
@@ -677,6 +688,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           ↺
         </button>
       </div>
+      {effectiveMode !== "exact" && hasSchedule && (
+        <div className="mb-2 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("chart.convergence.synthetic.hint")}
+        </div>
+      )}
       {format === "mix" && (
         <div className="mb-3">
           <div className="flex flex-col gap-1.5">

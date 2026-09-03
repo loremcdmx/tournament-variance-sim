@@ -12,7 +12,8 @@ import {
 import type uPlot from "uplot";
 import type { SimulationResult } from "@/lib/sim/types";
 import { rankedRunIndices, type RunMode } from "@/lib/trajectorySelection";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import {
   DEFAULT_EXTREME_STYLES,
   DEFAULT_LINE_STYLE_PRESET,
@@ -63,6 +64,8 @@ export function TrajectoryPlot({
   compactMoney: (v: number) => string;
 }) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const plotRef = useRef<uPlot | null>(null);
   const [plotReadyNonce, setPlotReadyNonce] = useState(0);
@@ -161,7 +164,7 @@ export function TrajectoryPlot({
       visibleRuns > 0 && {
         key: "runs",
         label: fmt(t("chart.traj.legend.runs"), {
-          n: Math.min(visibleRuns, assets.visibility.pathSeriesIdx.length).toLocaleString(),
+          n: Math.min(visibleRuns, assets.visibility.pathSeriesIdx.length).toLocaleString(numberLocale),
         }),
         color: assets.visibility.pathBasePreset.stroke,
       },
@@ -182,7 +185,7 @@ export function TrajectoryPlot({
         dash: true,
       },
     ].filter(Boolean) as Array<{ key: string; label: string; color: string; dash?: boolean }>;
-  }, [assets, representativeBand, t, visibleRuns, visibilityGate]);
+  }, [assets, numberLocale, representativeBand, t, visibleRuns, visibilityGate]);
 
   // Imperative visibility layer: instead of rebuilding the uPlot instance
   // on every slider tick, flip `show` on the pre-built path/band/best/worst
@@ -757,7 +760,7 @@ export function TrajectoryPlot({
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 tabular-nums">
             <span className="text-[color:var(--color-fg-dim)]">tournaments</span>
             <span className="text-right font-semibold text-[color:var(--color-fg)]">
-              {tournaments.toLocaleString()}
+              {tournaments.toLocaleString(numberLocale)}
             </span>
             <span className="text-[color:var(--color-fg-dim)]">profit</span>
             <span
@@ -820,7 +823,7 @@ export function TrajectoryPlot({
                 {focusedPathStats.ddTourneys > 0 && (
                   <div className="mt-0.5 text-[9px] text-[color:var(--color-fg-dim)]">
                     {fmt(t("chart.traj.ddDuration"), {
-                      n: focusedPathStats.ddTourneys.toLocaleString(),
+                      n: focusedPathStats.ddTourneys.toLocaleString(numberLocale),
                     })}
                   </div>
                 )}
@@ -844,14 +847,14 @@ export function TrajectoryPlot({
                   {t("chart.traj.longestLosing")}
                 </span>
                 <span className="text-right text-[color:var(--color-fg)]">
-                  {focusedPathStats.losingTourneys.toLocaleString()}{" "}
+                  {focusedPathStats.losingTourneys.toLocaleString(numberLocale)}{" "}
                   {t("chart.traj.tourneys")}
                 </span>
                 <span className="text-[color:var(--color-fg-dim)]">
                   {t("chart.traj.longestBE")}
                 </span>
                 <span className="text-right text-[color:var(--color-fg)]">
-                  {focusedPathStats.beTourneys.toLocaleString()}{" "}
+                  {focusedPathStats.beTourneys.toLocaleString(numberLocale)}{" "}
                   {t("chart.traj.tourneys")}
                 </span>
               </div>

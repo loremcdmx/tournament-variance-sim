@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/Section";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { MIX_BLOCK_HANDS } from "@/lib/sim/cashEngine";
 import type { CashResult } from "@/lib/sim/cashTypes";
 import type { RunMode } from "@/lib/trajectorySelection";
 import {
@@ -34,6 +36,8 @@ import { ChartTitle, MiniChartTitle } from "./CashResultsShared";
 
 export function CashResultsView({ result }: { result: CashResult }) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const s = result.stats;
   const bb = result.echoInput.bbSize;
   const riskThresholdBb = result.oddsOverDistance.thresholdBb;
@@ -53,10 +57,12 @@ export function CashResultsView({ result }: { result: CashResult }) {
   const fmtMoney = (vBb: number) => formatCashMoney(vBb, moneyUnit, bb);
   const fmtHands = (v: number) =>
     Number.isFinite(v)
-      ? `${Math.round(v).toLocaleString()} ${t("cash.axis.hands")}`
+      ? `${Math.round(v).toLocaleString(numberLocale)} ${t("cash.axis.hands")}`
       : "—";
   const moneyAxisLabel =
     moneyUnit === "usd" ? t("cash.axis.usd") : t("cash.axis.bb");
+  const moneyUnitLabel =
+    moneyUnit === "usd" ? t("cash.unit.usd") : t("cash.unit.bb");
 
   const finalHistogram = useMemo(
     () => scaleMoneyHistogram(result.histogram, moneyUnit, bb),
@@ -83,7 +89,7 @@ export function CashResultsView({ result }: { result: CashResult }) {
               .replace("{hourly}", formatUsdRate(s.hourlyEvUsd))
               .replace(
                 "{hands}",
-                result.echoInput.hoursBlock?.handsPerHour.toLocaleString() ?? "—",
+                result.echoInput.hoursBlock?.handsPerHour.toLocaleString(numberLocale) ?? "—",
               )
           : t("cash.hero.expected.subDistance"),
       tone: "pos",
@@ -171,7 +177,9 @@ export function CashResultsView({ result }: { result: CashResult }) {
       label: t("cash.summary.riskOfRuinAsymptotic"),
       value: fmtPct(s.riskOfRuinAsymptotic),
       tone: s.riskOfRuinAsymptotic > 0.05 ? "neg" : undefined,
-      tip: t("cash.summary.riskOfRuinAsymptotic.tip"),
+      tip: mixBreakdown
+        ? t("cash.summary.riskOfRuinAsymptotic.tip.mix")
+        : t("cash.summary.riskOfRuinAsymptotic.tip"),
     },
   ];
 
@@ -213,8 +221,14 @@ export function CashResultsView({ result }: { result: CashResult }) {
   ];
 
   const economics: StatRow[] = [
-    { label: t("cash.stats.meanRakePaidBb"), value: fmtMoney(s.meanRakePaidBb) },
-    { label: t("cash.stats.meanRbEarnedBb"), value: fmtMoney(s.meanRbEarnedBb) },
+    {
+      label: t("cash.stats.meanRakePaidBb").replace("{unit}", moneyUnitLabel),
+      value: fmtMoney(s.meanRakePaidBb),
+    },
+    {
+      label: t("cash.stats.meanRbEarnedBb").replace("{unit}", moneyUnitLabel),
+      value: fmtMoney(s.meanRbEarnedBb),
+    },
   ];
   if (s.hourlyEvUsd !== undefined) {
     economics.push({
@@ -348,8 +362,47 @@ export function CashResultsView({ result }: { result: CashResult }) {
         </Card>
       </div>
 
+      <CashAssumptionsCard result={result} />
+
       <DiagnosticsDisclosure result={result} />
     </div>
+  );
+}
+
+function CashAssumptionsCard({ result }: { result: CashResult }) {
+  const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
+  const lines = [
+    t("cash.assumptions.model"),
+    t("cash.assumptions.independence"),
+    t("cash.assumptions.rakeback"),
+  ];
+  if (result.mixBreakdown) {
+    lines.push(
+      t("cash.assumptions.mix")
+        .replace("{block}", MIX_BLOCK_HANDS.toLocaleString(numberLocale))
+        .replace("{bb}", formatUsdBbSize(result.echoInput.bbSize)),
+    );
+  }
+  return (
+    <Card className="data-surface-card p-4">
+      <ChartTitle
+        suit="spade"
+        title={t("cash.section.assumptions.title")}
+        note={t("cash.section.assumptions.note")}
+      />
+      <ul className="flex flex-col gap-2 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+        {lines.map((line) => (
+          <li key={line} className="flex gap-2">
+            <span aria-hidden className="text-[color:var(--color-fg-dim)]">
+              ·
+            </span>
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -397,6 +450,8 @@ function MixBreakdownRowCard({
   bbSize: number;
 }) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const rowLabel =
     row.label?.trim() ||
     t("cash.mix.rowFallback").replace("{index}", String(index + 1));
@@ -422,7 +477,7 @@ function MixBreakdownRowCard({
           </div>
           <div className="flex flex-wrap gap-2">
             <MixTag accent="diamond">
-              {row.hands.toLocaleString()} {t("cash.axis.hands")}
+              {row.hands.toLocaleString(numberLocale)} {t("cash.axis.hands")}
             </MixTag>
             <MixTag accent="club">
               {t("cash.wrBb100.label")}: {formatSignedBb100(row.wrBb100)}
@@ -447,7 +502,7 @@ function MixBreakdownRowCard({
           accent="diamond"
           label={t("cash.mix.metric.hands")}
           share={row.handShare}
-          detail={`${formatCashPct(row.handShare)} · ${row.hands.toLocaleString()} ${t("cash.axis.hands")}`}
+          detail={`${formatCashPct(row.handShare)} · ${row.hands.toLocaleString(numberLocale)} ${t("cash.axis.hands")}`}
         />
         <MixMetricBar
           accent="heart"

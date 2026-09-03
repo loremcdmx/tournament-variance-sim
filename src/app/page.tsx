@@ -19,6 +19,7 @@ import { ResultsView } from "@/components/ResultsView";
 import { PayoutStructureCard } from "@/components/PayoutStructureCard";
 import { Section, Card } from "@/components/ui/Section";
 import { CornerToggles } from "@/components/ui/CornerToggles";
+import { InfoTooltip } from "@/components/ui/Tooltip";
 import { FinishPMFPreview } from "@/components/charts/FinishPMFPreview";
 import { ConvergenceChart } from "@/components/charts/ConvergenceChart";
 import { ProveEdgeCard } from "@/components/charts/ProveEdgeCard";
@@ -40,6 +41,10 @@ import {
   countScheduleTournaments,
   redistributeScheduleCounts,
 } from "@/lib/sim/scheduleTarget";
+import {
+  memoryHintGb,
+  projectedBuildBytes,
+} from "@/lib/sim/buildMemoryEstimate";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
@@ -75,6 +80,7 @@ import {
   loadFromUrlHash,
   loadLocal,
   loadUserPresets,
+  PERSISTED_STATE_VERSION,
   removeUserPreset,
   saveLocal,
   saveUserPresets,
@@ -84,7 +90,7 @@ import {
 const initialSchedule: TournamentRow[] = [
   {
     id: "r1",
-    label: "тестовый турнир",
+    label: "",
     players: 5000,
     buyIn: 50,
     rake: 0.1,
@@ -94,6 +100,14 @@ const initialSchedule: TournamentRow[] = [
     count: 1,
   },
 ];
+
+function drawFreshSeed(): number {
+  return (
+    (((Math.random() * 0xffffffff) >>> 0) ^
+      ((Date.now() & 0xffffffff) >>> 0)) >>>
+    0
+  );
+}
 
 const initialControls: ControlsState = {
   scheduleRepeats: 200,
@@ -207,14 +221,20 @@ export default function Home() {
 
   useEffect(() => {
     const fromUrl = loadFromUrlHash();
+    if (fromUrl) {
+      // A share link is a one-shot import: once applied, the hash must not
+      // keep winning over the user's own autosaved edits on every reload.
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+    }
     const fromLocal = fromUrl ?? loadLocal();
     // Fresh random seed on every mount — users shouldn't see a pinned
-    // "42" or a stale saved seed in the field. Runs are re-seeded again
-    // in onRun, but this keeps the UI honest about reproducibility.
-    const freshSeed =
-      (((Math.random() * 0xffffffff) >>> 0) ^
-        ((Date.now() & 0xffffffff) >>> 0)) >>>
-      0;
+    // "42" or a stale saved seed in the field. Run keeps this seed so
+    // what-if edits are comparable; "new seed" redraws it on demand.
+    const freshSeed = drawFreshSeed();
     startTransition(() => {
       if (fromLocal) {
         setSchedule(fromLocal.schedule);
@@ -234,7 +254,7 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return;
     const timeoutId = window.setTimeout(() => {
-      saveLocal({ v: 1, schedule, controls });
+      saveLocal({ v: PERSISTED_STATE_VERSION, schedule, controls });
     }, 200);
     return () => window.clearTimeout(timeoutId);
   }, [schedule, controls, hydrated]);
@@ -419,16 +439,14 @@ export default function Home() {
     clearPendingInterrupt();
     const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
     if (!liveFeasibility.ok) return;
-    const freshSeed =
-      (((Math.random() * 0xffffffff) >>> 0) ^
-        ((Date.now() & 0xffffffff) >>> 0)) >>>
-      0;
-    const nextControls = { ...controls, seed: freshSeed };
-    setControls(nextControls);
-    const input = buildInput(effectiveSchedule, nextControls);
+    const input = buildInput(effectiveSchedule, controls);
     lastRunInputRef.current = input;
     run(input);
   }, [clearPendingInterrupt, effectiveSchedule, previewModel, controls, run, buildInput]);
+
+  const onNewSeed = useCallback(() => {
+    setControls((c) => ({ ...c, seed: drawFreshSeed() }));
+  }, []);
 
   const runPdOnlyWithLatestInput = useCallback(
     (
@@ -492,7 +510,7 @@ export default function Home() {
     if (!s) return;
     queueInterruptBackground();
     setSchedule(s.schedule);
-    setControls({ ...initialControls, ...s.controls });
+    setControls((c) => ({ ...initialControls, ...s.controls, seed: c.seed }));
     setActiveScenarioId(id);
   }, [queueInterruptBackground]);
 
@@ -551,6 +569,23 @@ export default function Home() {
       controls.samples,
       controls.scheduleRepeats,
       deferredSchedule,
+      effectiveResultsControls.compareEnabled,
+    ],
+  );
+  const buildMemoryHintGb = useMemo(
+    () =>
+      memoryHintGb(
+        projectedBuildBytes({
+          samples: controls.samples,
+          tournamentsPerSample: tournamentsPerSession,
+          rowCount: schedule.length,
+          passCount: effectiveResultsControls.compareEnabled ? 2 : 1,
+        }),
+      ),
+    [
+      controls.samples,
+      tournamentsPerSession,
+      schedule.length,
       effectiveResultsControls.compareEnabled,
     ],
   );
@@ -707,7 +742,7 @@ export default function Home() {
     if (name == null) return;
     const trimmed = name.trim();
     if (!trimmed) return;
-    addUserPreset(trimmed, { v: 1, schedule, controls });
+    addUserPreset(trimmed, { v: PERSISTED_STATE_VERSION, schedule, controls });
     setUserPresets(loadUserPresets());
   };
 
@@ -1116,6 +1151,7 @@ export default function Home() {
               onChange={handleControlsChange}
               onTournamentTargetChange={handleTournamentTargetChange}
               onRun={onRun}
+              onNewSeed={onNewSeed}
               onCancel={cancel}
               globalControls={
                 <>
@@ -1142,6 +1178,7 @@ export default function Home() {
               progress={progress}
               stage={stage}
               estimatedMs={estimatedMs}
+              memoryHintGb={buildMemoryHintGb}
               tournamentsPerSchedule={tournamentsPerSchedule}
               tournamentsPerSession={tournamentsPerSession}
               activeSeed={activeSeed}
@@ -1465,6 +1502,7 @@ const GlobalItmControl = memo(function GlobalItmControl({
           className="h-3.5 w-3.5 cursor-pointer accent-[color:var(--color-accent)]"
         />
         {t("controls.itmTarget.label")}
+        <InfoTooltip content={t("controls.itmTarget.hint")} />
       </label>
       <div className="flex items-center gap-1">
         <input

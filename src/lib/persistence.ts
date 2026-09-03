@@ -28,10 +28,16 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((entry) => typeof entry === "string");
+}
+
 function isTournamentRowLike(v: unknown): v is TournamentRow {
   if (!isRecord(v)) return false;
   return (
     typeof v.id === "string" &&
+    (v.label === undefined || typeof v.label === "string") &&
+    (v.tags === undefined || isStringArray(v.tags)) &&
     isFiniteNumber(v.players) &&
     isFiniteNumber(v.buyIn) &&
     isFiniteNumber(v.rake) &&
@@ -41,10 +47,23 @@ function isTournamentRowLike(v: unknown): v is TournamentRow {
   );
 }
 
-function isPersistedState(v: unknown): v is PersistedState {
+/**
+ * v1 payloads predate the Battle Royale bounty-share default moving from
+ * 50% to 45%; a v1 row at exactly 0.5 is that stale default, not a user
+ * choice, and is migrated. v2 rows are taken verbatim.
+ */
+type LegacyPersistedState = Omit<PersistedState, "v"> & { v: 1 };
+
+function isPersistedState(
+  v: unknown,
+): v is PersistedState | LegacyPersistedState {
   if (!isRecord(v)) return false;
-  if (v.v !== 1) return false;
-  if (!Array.isArray(v.schedule) || !v.schedule.every(isTournamentRowLike)) {
+  if (v.v !== 1 && v.v !== PERSISTED_STATE_VERSION) return false;
+  if (
+    !Array.isArray(v.schedule) ||
+    v.schedule.length > MAX_SCHEDULE_ROWS ||
+    !v.schedule.every(isTournamentRowLike)
+  ) {
     return false;
   }
   if (!isRecord(v.controls)) return false;
@@ -67,8 +86,11 @@ function warnOnBrMrDrift(schedule: readonly TournamentRow[] | undefined, source:
   }
 }
 
+export const PERSISTED_STATE_VERSION = 2;
+export const MAX_SCHEDULE_ROWS = 300;
+
 export interface PersistedState {
-  v: 1;
+  v: typeof PERSISTED_STATE_VERSION;
   schedule: TournamentRow[];
   controls: ControlsState;
 }
@@ -423,9 +445,14 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
   return changed ? (next as unknown as ControlsState) : controls;
 }
 
-function normalizePersistedState(state: PersistedState): PersistedState {
-  let changed = false;
+function normalizePersistedState(
+  state: PersistedState | LegacyPersistedState,
+): PersistedState {
+  let changed = state.v !== PERSISTED_STATE_VERSION;
+  const migrateLegacyBattleRoyaleDefault = state.v === 1;
   const schedule = state.schedule.map((row) => {
+    const nextLabel = typeof row.label === "string" ? row.label : undefined;
+    const nextTags = isStringArray(row.tags) ? row.tags : undefined;
     const nextGameType = normalizePersistedGameType(row.gameType);
     const nextPayoutStructure = isValidPayoutStructureId(row.payoutStructure)
       ? row.payoutStructure
@@ -446,7 +473,11 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       PERSISTED_ROW_ROI_MAX,
       Math.max(PERSISTED_ROW_ROI_MIN, row.roi),
     );
-    const nextGuarantee = undefined;
+    const nextGuarantee = clampPersistedOptionalNumber(
+      row.guarantee,
+      0,
+      Number.POSITIVE_INFINITY,
+    );
     const nextLateRegMultiplier = undefined;
     const nextItmRate = clampPersistedOptionalNumber(
       row.itmRate,
@@ -518,7 +549,9 @@ function normalizePersistedState(state: PersistedState): PersistedState {
       finalBattleRoyaleLeaderboardShare = undefined;
     } else if (finalGameType === "mystery-royale") {
       finalBountyFraction =
-        nextBountyFraction == null || Math.abs(nextBountyFraction - 0.5) < 1e-9
+        nextBountyFraction == null ||
+        (migrateLegacyBattleRoyaleDefault &&
+          Math.abs(nextBountyFraction - 0.5) < 1e-9)
           ? DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION
           : nextBountyFraction;
       finalMysteryBountyVariance = nextMysteryBountyVariance ?? 1.8;
@@ -549,6 +582,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
         : normalizePersistedFieldVariability(row.fieldVariability);
     const nextCount = clampPersistedCount(row.count);
     if (
+      nextLabel === row.label &&
+      nextTags === row.tags &&
       finalGameType === row.gameType &&
       finalPlayers === row.players &&
       nextBuyIn === row.buyIn &&
@@ -579,6 +614,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
     changed = true;
     return {
       ...row,
+      label: nextLabel,
+      tags: nextTags,
       gameType: finalGameType,
       players: finalPlayers,
       buyIn: nextBuyIn,
@@ -606,7 +643,8 @@ function normalizePersistedState(state: PersistedState): PersistedState {
   });
   const controls = normalizePersistedControls(state.controls);
   if (controls !== state.controls) changed = true;
-  return changed ? { ...state, schedule, controls } : state;
+  if (!changed) return state as PersistedState;
+  return { ...state, v: PERSISTED_STATE_VERSION, schedule, controls };
 }
 
 export function encodeState(state: PersistedState): string {

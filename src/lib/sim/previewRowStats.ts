@@ -196,7 +196,9 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     bountyFraction > 0
       ? applyBountyBias(defaultBountyMean, totalWinningsEV, bias)
       : 0;
-  const prizePool = economics.prizePoolBeforeBounty * (1 - bountyFraction);
+  // Same overlay rule as compileEntry: bounties are carved from the entry-funded
+  // pool only; a guarantee top-up stays entirely in the cash pool.
+  const prizePool = economics.basePool * (1 - bountyFraction) + economics.overlay;
   const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
 
   const solveCashTarget = (

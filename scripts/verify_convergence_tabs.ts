@@ -2,15 +2,11 @@
  * Cross-check ConvergenceChart math across every tab:
  *   freeze, pko, mystery, mystery-royale, mix, exact
  *
- * For each, run three checks:
+ * For each, run two checks:
  *   1. σ formula sanity (positive, monotone where claimed)
  *   2. k = ⌈(z·σ/target)²⌉ inverts σ correctly
- *   3. Against public/bench/convergence.json for freeze — σ_widget vs
- *      per-tournament σ implied by p5/p95 of the 1000-tourney samples.
  */
 
-import fs from "node:fs";
-import path from "node:path";
 import {
   FIT_RAKE_BY_FORMAT,
   SIGMA_ROI_MYSTERY_ROYALE,
@@ -290,35 +286,6 @@ for (const target of [0.1, 0.05, 0.01, 0.005]) {
   console.log(
     `  target=±${(target * 100).toFixed(1)}%  k=${k.toLocaleString()}  SE=${(implied_se * 100).toFixed(3)}%  (target hit: ${implied_se <= target})`,
   );
-}
-
-// ---------- Bench cross-check (freeze, ROI=10%, rake=10%) ------------------
-
-console.log("\n==== bench cross-check: freeze, roi=10%, rake=10%, 1000-tourney samples ====");
-const benchPath = path.join("public", "bench", "convergence.json");
-if (fs.existsSync(benchPath)) {
-  const bench = JSON.parse(fs.readFileSync(benchPath, "utf8")) as {
-    reference: { roi: number; rake: number };
-    nTourneys: number;
-    points: { players: number; ours: { p5: number; p95: number } }[];
-  };
-  const nT = bench.nTourneys;
-  console.log("  AFS  widget σ   bench-implied σ   Δ%");
-  for (const pt of bench.points) {
-    const sWidget = freezeSigma(
-      pt.players,
-      bench.reference.roi,
-      bench.reference.rake,
-    );
-    const spreadSE = (pt.ours.p95 - pt.ours.p5) / (2 * 1.6448536); // z95 one-tail = 1.645
-    const sBench = spreadSE * Math.sqrt(nT);
-    const deltaPct = ((sWidget - sBench) / sBench) * 100;
-    console.log(
-      `  ${pt.players.toString().padStart(5)}   ${sWidget.toFixed(3)}       ${sBench.toFixed(3)}        ${deltaPct.toFixed(1).padStart(6)}%`,
-    );
-  }
-} else {
-  console.log("  (no bench data available)");
 }
 
 console.log("\n✓ all tabs passed structural checks");

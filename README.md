@@ -51,7 +51,7 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 ## Стек
 
 - **Next.js 16** + React 19 + TypeScript (App Router)
-- **Web Worker** — MC-движок не блокирует UI, пул размером `navigator.hardwareConcurrency / 2`
+- **Web Worker** — MC-движок не блокирует UI, пул размером `min(16, navigator.hardwareConcurrency − 2)`
 - **uPlot** — графики (main-thread работа минимизирована через чекпойнт-сетки)
 - **Tailwind 4**
 - **Vitest** — 400+ тестов на движке и UI-математике: determinism, realized-ROI-in-SE, progress lifecycle, rakeback/path transforms, row decomposition sums, empirical histogram reproduction и т.д.

@@ -7,7 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import type { Locale } from "@/lib/i18n/dict";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import type { TierRow } from "@/lib/sim/previewRowStats";
 
 export function PreviewHeroStat({
@@ -114,6 +116,7 @@ export function EvBreakdownRow({
    *  here, what do I pocket" readout the user asked for. */
   breakdown?: TierBreakdown;
 }) {
+  const { locale } = useLocale();
   const [hover, setHover] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [canHover, setCanHover] = useState(false);
@@ -221,7 +224,7 @@ export function EvBreakdownRow({
         <span
           className={`${EV_BREAKDOWN_NUM} ${netClass}`}
         >
-          {fmtSignedMoney(netDollars)}
+          {fmtSignedMoney(netDollars, locale)}
         </span>
       </div>
       {showPopup && breakdown && (
@@ -239,6 +242,7 @@ function TierHoverPopup({
   breakdown: TierBreakdown;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { tier, hasBounty, bountyColor, posRangeLabel } = breakdown;
   const oddsStr =
     tier.field > 1e-9
@@ -338,7 +342,7 @@ function TierHoverPopup({
             <span>{t("preview.hover.cashPayout")}</span>
           </span>
           <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-            {fmtMoneyAbs(tier.cashGivenFinish)}
+            {fmtMoneyAbs(tier.cashGivenFinish, locale)}
           </span>
         </div>
         {hasBounty && (
@@ -352,7 +356,7 @@ function TierHoverPopup({
                 <span>{t("preview.hover.bountyTotal")}</span>
               </span>
               <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-                {fmtMoneyAbs(tier.bountyGivenFinish)}
+                {fmtMoneyAbs(tier.bountyGivenFinish, locale)}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2 text-[color:var(--color-fg-dim)]">
@@ -366,7 +370,7 @@ function TierHoverPopup({
             <div className="flex items-center justify-between gap-2 text-[color:var(--color-fg-dim)]">
               <span>{t("preview.hover.bountyAvgSize")}</span>
               <span className="font-mono tabular-nums">
-                {fmtMoneyAbs(tier.bountySizePerBust)}
+                {fmtMoneyAbs(tier.bountySizePerBust, locale)}
               </span>
             </div>
           </>
@@ -374,27 +378,27 @@ function TierHoverPopup({
         <div className="mt-1 flex items-center justify-between gap-2 border-t border-[color:var(--color-border)]/50 pt-1 text-[color:var(--color-fg)]">
           <span className="font-semibold">{t("preview.hover.totalTake")}</span>
           <span className="font-mono tabular-nums">
-            {fmtMoneyAbs(tier.cashGivenFinish + tier.bountyGivenFinish)}
+            {fmtMoneyAbs(tier.cashGivenFinish + tier.bountyGivenFinish, locale)}
           </span>
         </div>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-[color:var(--color-border)]/70 pt-1.5 text-[10px] text-[color:var(--color-fg-dim)]">
         <span>{t("preview.hover.perEntry")}</span>
         <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-          {fmtMoneyAbs(tier.ev)}
+          {fmtMoneyAbs(tier.ev, locale)}
         </span>
       </div>
     </div>
   );
 }
 
-export function fmtMoneyAbs(v: number): string {
+export function fmtMoneyAbs(v: number, locale: Locale): string {
   if (!Number.isFinite(v) || v < 0.005) return "$0";
   if (v < 1000) {
     const hasFraction = Math.abs(v - Math.round(v)) > 0.005;
     return `$${hasFraction ? v.toFixed(2) : Math.round(v).toString()}`;
   }
-  return `$${Math.round(v).toLocaleString()}`;
+  return `$${Math.round(v).toLocaleString(numberLocaleTag(locale))}`;
 }
 
 export function EvBreakdownFooter({
@@ -408,6 +412,7 @@ export function EvBreakdownFooter({
    *  (−rake) readout sits inline with ROI instead of on its own row. */
   eqNetDollars?: number;
 }) {
+  const { locale } = useLocale();
   const netClass =
     netDollars > 0
       ? "text-[color:var(--color-accent)]"
@@ -426,16 +431,16 @@ export function EvBreakdownFooter({
         className={`${EV_BREAKDOWN_NUM} text-[10px] text-[color:var(--color-fg-dim)]`}
         title="equilibrium (−rake)"
       >
-        {eqNetDollars != null ? fmtSignedMoney(eqNetDollars) : ""}
+        {eqNetDollars != null ? fmtSignedMoney(eqNetDollars, locale) : ""}
       </span>
       <span className={`${EV_BREAKDOWN_NUM} ${netClass}`}>
-        {fmtSignedMoney(netDollars)}
+        {fmtSignedMoney(netDollars, locale)}
       </span>
     </div>
   );
 }
 
-export function fmtSignedMoney(v: number): string {
+export function fmtSignedMoney(v: number, locale: Locale): string {
   if (!Number.isFinite(v) || Math.abs(v) < 0.005) return "$0";
   const sign = v < 0 ? "−" : "+";
   const abs = Math.abs(v);
@@ -443,7 +448,7 @@ export function fmtSignedMoney(v: number): string {
     const hasFraction = Math.abs(abs - Math.round(abs)) > 0.005;
     return `${sign}$${hasFraction ? abs.toFixed(2) : Math.round(abs).toString()}`;
   }
-  return `${sign}$${Math.round(abs).toLocaleString()}`;
+  return `${sign}$${Math.round(abs).toLocaleString(numberLocaleTag(locale))}`;
 }
 
 function clampUnit(v: number): number {

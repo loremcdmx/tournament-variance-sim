@@ -434,14 +434,41 @@ describe("noiseChannelsActive", () => {
     expect(noiseChannelsActive({ roiDriftSigma: 0.1 })).toBe(true);
   });
 
-  it("tilt needs both gain and its companion gate (mirrors engine)", () => {
-    expect(noiseChannelsActive({ tiltFastGain: 0.3 })).toBe(false);
-    expect(noiseChannelsActive({ tiltFastGain: 0.3, tiltFastScale: 100 })).toBe(
+  it("fast tilt is live for any nonzero gain — engine floors scale at 1", () => {
+    expect(noiseChannelsActive({ tiltFastGain: 0.3 })).toBe(true);
+    expect(noiseChannelsActive({ tiltFastGain: 0.3, tiltFastScale: 0 })).toBe(
       true,
     );
+    expect(noiseChannelsActive({ tiltFastGain: 0, tiltFastScale: 100 })).toBe(
+      false,
+    );
+  });
+
+  it("slow tilt needs gain, threshold and a positive min-duration (mirrors engine)", () => {
     expect(noiseChannelsActive({ tiltSlowGain: 0.2 })).toBe(false);
     expect(
       noiseChannelsActive({ tiltSlowGain: 0.2, tiltSlowThreshold: 500 }),
+    ).toBe(true);
+    expect(
+      noiseChannelsActive({
+        tiltSlowGain: 0.2,
+        tiltSlowThreshold: 500,
+        tiltSlowMinDuration: 0,
+      }),
+    ).toBe(false);
+    expect(
+      noiseChannelsActive({
+        tiltSlowGain: 0.2,
+        tiltSlowThreshold: 500,
+        tiltSlowMinDuration: 0.5,
+      }),
+    ).toBe(false);
+    expect(
+      noiseChannelsActive({
+        tiltSlowGain: 0.2,
+        tiltSlowThreshold: 500,
+        tiltSlowMinDuration: 10,
+      }),
     ).toBe(true);
   });
 });

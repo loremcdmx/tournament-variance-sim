@@ -10,7 +10,7 @@ import {
   calibrateShelledItm,
   isAlphaAdjustable,
 } from "./finishModel";
-import { buildScheduleAnalyticBreakdown } from "./engine";
+import { buildScheduleAnalyticBreakdown } from "./compile";
 import {
   clampBountyMean,
   isBattleRoyaleRow,
@@ -91,7 +91,9 @@ export function validateSchedule(
     const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
     const bias = Math.max(-0.25, Math.min(0.25, row.bountyEvBias ?? 0));
     let bountyMean = 0;
-    let prizePool = basePool + overlay;
+    // Same overlay rule as compileEntry: bounties are carved from the
+    // entry-funded pool only; a guarantee top-up stays entirely in cash.
+    const prizePool = basePool * (1 - bountyFraction) + overlay;
     let battleRoyaleCenter: {
       pmf: Float64Array;
       cashEV: number;
@@ -104,7 +106,6 @@ export function validateSchedule(
       );
       const defaultBountyMean = bountyPerSeat * bountyLift;
       bountyMean = applyBountyBias(defaultBountyMean, totalWinningsEV, bias);
-      prizePool = prizePool * (1 - bountyFraction);
     }
 
     if (

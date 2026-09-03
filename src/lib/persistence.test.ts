@@ -7,6 +7,8 @@ import {
   isValidUserPreset,
   loadLocal,
   loadUserPresets,
+  MAX_SCHEDULE_ROWS,
+  PERSISTED_STATE_VERSION,
   saveUserPresets,
   type PersistedState,
   type UserPreset,
@@ -40,6 +42,47 @@ describe("persistence validation", () => {
     expect(decodeState(encoded({ v: 1, schedule: null, controls: {} }))).toBeNull();
     expect(decodeState(encoded({ v: 1, schedule: [null], controls: {} }))).toBeNull();
     expect(decodeState(encoded({ v: 1, schedule: [row], controls: null }))).toBeNull();
+    expect(decodeState(encoded({ v: 3, schedule: [row], controls: {} }))).toBeNull();
+  });
+
+  it("rejects rows whose label or tags are not strings so the editor cannot crash on render", () => {
+    for (const label of [{}, 5, ["a"], null]) {
+      expect(
+        decodeState(encoded({ v: 2, schedule: [{ ...row, label }], controls })),
+        `label=${JSON.stringify(label)}`,
+      ).toBeNull();
+    }
+    for (const tags of ["a", 5, [1], [{}], [null], {}]) {
+      expect(
+        decodeState(encoded({ v: 2, schedule: [{ ...row, tags }], controls })),
+        `tags=${JSON.stringify(tags)}`,
+      ).toBeNull();
+    }
+    const ok = decodeState(
+      encoded({ v: 2, schedule: [{ ...row, label: "Sunday", tags: ["a", "b"] }], controls }),
+    );
+    expect(ok?.schedule[0]).toMatchObject({ label: "Sunday", tags: ["a", "b"] });
+  });
+
+  it("rejects schedules longer than the editor cap instead of hydrating a multi-second validate loop", () => {
+    const atCap = Array.from({ length: MAX_SCHEDULE_ROWS }, (_, i) => ({ ...row, id: `r${i}` }));
+    expect(decodeState(encoded({ v: 2, schedule: atCap, controls }))?.schedule).toHaveLength(
+      MAX_SCHEDULE_ROWS,
+    );
+    expect(
+      decodeState(encoded({ v: 2, schedule: [...atCap, { ...row, id: "extra" }], controls })),
+    ).toBeNull();
+    expect(
+      loadLocalFromPayload({ v: 2, schedule: [...atCap, { ...row, id: "extra" }], controls }),
+    ).toBeNull();
+  });
+
+  it("writes the current schema version and upgrades legacy payloads on read", () => {
+    expect(PERSISTED_STATE_VERSION).toBe(2);
+    const state: PersistedState = { v: PERSISTED_STATE_VERSION, schedule: [row], controls };
+    expect(JSON.parse(JSON.stringify(state)).v).toBe(2);
+    expect(decodeState(encodeState(state))).toEqual(state);
+    expect(decodeState(encoded({ v: 1, schedule: [row], controls }))?.v).toBe(2);
   });
 
   it("clamps oversized persisted row counts back to the editor max", () => {
@@ -331,29 +374,30 @@ describe("persistence validation", () => {
     });
   });
 
-  it("migrates legacy Battle Royale default bounty share from 50% to 45%", () => {
-    const state = decodeState(
-      encoded({
-        v: 1,
-        schedule: [
-          {
-            ...row,
-            gameType: "mystery-royale",
-            payoutStructure: "battle-royale",
-            bountyFraction: 0.5,
-            mysteryBountyVariance: 1.8,
-            players: 18,
-          },
-        ],
-        controls,
-      }),
-    );
+  it("migrates the v1 Battle Royale default bounty share from 50% to 45% but keeps an explicit v2 50%", () => {
+    const brRow = {
+      ...row,
+      gameType: "mystery-royale",
+      payoutStructure: "battle-royale",
+      bountyFraction: 0.5,
+      mysteryBountyVariance: 1.8,
+      players: 18,
+    };
 
-    expect(state?.schedule[0]).toMatchObject({
+    expect(
+      decodeState(encoded({ v: 1, schedule: [brRow], controls }))?.schedule[0],
+    ).toMatchObject({
       gameType: "mystery-royale",
       payoutStructure: "battle-royale",
       bountyFraction: 0.45,
     });
+    expect(
+      decodeState(encoded({ v: 2, schedule: [brRow], controls }))?.schedule[0],
+    ).toMatchObject({ bountyFraction: 0.5 });
+    expect(
+      decodeState(encoded({ v: 2, schedule: [{ ...brRow, bountyFraction: undefined }], controls }))
+        ?.schedule[0],
+    ).toMatchObject({ bountyFraction: 0.45 });
   });
 
   it("clamps persisted row knobs back into the engine/UI contract before hydration", () => {
@@ -429,12 +473,46 @@ describe("persistence validation", () => {
 
     expect(state?.schedule[0]).toMatchObject({
       lateRegMultiplier: undefined,
-      guarantee: undefined,
+      guarantee: 1_000_000,
       bountyEvBias: 0.25,
       itmTopHeavyBias: -1,
       pkoHeadVar: undefined,
       pkoHeat: undefined,
     });
+  });
+
+  it("round-trips the row guarantee the demo scenarios rely on", () => {
+    const state: PersistedState = {
+      v: PERSISTED_STATE_VERSION,
+      schedule: [
+        { ...row, id: "g", guarantee: 50_000 },
+        { ...row, id: "none" },
+      ],
+      controls,
+    };
+
+    const decoded = decodeState(encodeState(state));
+    expect(decoded?.schedule[0]?.guarantee).toBe(50_000);
+    expect(decoded?.schedule[1]?.guarantee).toBeUndefined();
+    expect(loadLocalFromPayload(state)?.schedule[0]?.guarantee).toBe(50_000);
+  });
+
+  it("clamps negative persisted guarantees to zero and drops non-finite ones", () => {
+    const state = decodeState(
+      encoded({
+        v: 2,
+        schedule: [
+          { ...row, id: "neg", guarantee: -5 },
+          { ...row, id: "str", guarantee: "1e6" },
+          { ...row, id: "nan", guarantee: Number.NaN },
+        ],
+        controls,
+      }),
+    );
+
+    expect(state?.schedule[0]?.guarantee).toBe(0);
+    expect(state?.schedule[1]?.guarantee).toBeUndefined();
+    expect(state?.schedule[2]?.guarantee).toBeUndefined();
   });
 
   it("drops malformed persisted finish-bucket locks instead of hydrating impossible shell constraints", () => {
@@ -710,7 +788,7 @@ describe("persistence validation", () => {
       id: "good",
       name: "Good",
       createdAt: 1,
-      state: { v: 1, schedule: [row], controls },
+      state: { v: PERSISTED_STATE_VERSION, schedule: [row], controls },
     };
     const bad = {
       id: "bad",

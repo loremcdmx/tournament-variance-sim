@@ -9,7 +9,8 @@ import type { ControlsState } from "@/components/ControlsPanel";
 import { Card } from "@/components/ui/Section";
 import { InfoTooltip } from "@/components/ui/Tooltip";
 import { money } from "@/lib/results/formatters";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 
 export function PrimeDopeWeaknessCard() {
   const t = useT();
@@ -422,6 +423,8 @@ export function SettingsDumpCard({
   elapsedMs?: number | null;
 }) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   if (!settings || !schedule || schedule.length === 0) return null;
 
   const r = schedule[0];
@@ -445,13 +448,13 @@ export function SettingsDumpCard({
           : `${Math.floor(elapsedMs / 60_000)}m ${((elapsedMs % 60_000) / 1000).toFixed(1)}s`;
   const rows: Array<[string, string]> = [
     ["compute time", elapsedStr],
-    ["samples", settings.samples.toLocaleString()],
-    ["scheduleRepeats", settings.scheduleRepeats.toLocaleString()],
-    ["totalTournaments", totalEntries.toLocaleString()],
-    ["totalBuyIn", `$${result.totalBuyIn.toLocaleString()}`],
-    ["bankroll", `$${settings.bankroll.toLocaleString()}`],
+    ["samples", settings.samples.toLocaleString(numberLocale)],
+    ["scheduleRepeats", settings.scheduleRepeats.toLocaleString(numberLocale)],
+    ["totalTournaments", totalEntries.toLocaleString(numberLocale)],
+    ["totalBuyIn", `$${result.totalBuyIn.toLocaleString(numberLocale)}`],
+    ["bankroll", `$${settings.bankroll.toLocaleString(numberLocale)}`],
     ["—", "—"],
-    ["players", r.players.toLocaleString()],
+    ["players", r.players.toLocaleString(numberLocale)],
     ["buyIn", `$${r.buyIn}`],
     ["rake", `${(r.rake * 100).toFixed(1)}%`],
     ["bountyFraction", `${((r.bountyFraction ?? 0) * 100).toFixed(0)}%`],

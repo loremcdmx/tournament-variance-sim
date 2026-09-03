@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useState } from "react";
 
 import { Card } from "./ui/Section";
 import { getPayoutTable } from "@/lib/sim/payouts";
+import { derivePreviewRowEconomics } from "@/lib/sim/previewRowEconomics";
 import type { TournamentRow } from "@/lib/sim/types";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey, Locale } from "@/lib/i18n/dict";
@@ -101,16 +102,28 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
     [schedule, selectedId],
   );
 
+  // Same field / pool the engine compiles: late-reg scales the field and the
+  // guarantee overlay tops up the cash pool, so a $40k GTD row reads $40k.
+  const economics = useMemo(
+    () => (row ? derivePreviewRowEconomics(row) : null),
+    [row],
+  );
+  const fieldSize = economics?.fieldSize ?? 0;
+
   const table = useMemo(() => {
-    if (!row) return null;
+    if (!row || !economics) return null;
     try {
-      return getPayoutTable(row.payoutStructure, row.players, row.customPayouts);
+      return getPayoutTable(
+        row.payoutStructure,
+        economics.fieldSize,
+        row.customPayouts,
+      );
     } catch {
       return null;
     }
-  }, [row]);
+  }, [row, economics]);
 
-  if (!row || !table || table.length === 0) return null;
+  if (!row || !economics || !table || table.length === 0) return null;
 
   const paid = table.length;
   const max = table[0];
@@ -119,8 +132,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
   const tailSum = tail.reduce((a, b) => a + b, 0);
   const tailMin = tail.length ? tail[tail.length - 1] : 0;
   const tailMax = tail.length ? tail[0] : 0;
-  const totalPaidPct = paid / row.players;
-  const minCashBuyIns = (table[paid - 1] * row.players).toFixed(2);
+  const totalPaidPct = paid / fieldSize;
 
   // Bounty-format pool decomposition. The `table` above is the payout curve
   // normalized over the CASH pool — for PKO/Mystery/BR a chunk of the gross
@@ -128,12 +140,20 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
   // payouts. Showing the two pools explicitly so the user knows the bars
   // aren't the whole prize. For BR the bounty pool is further sliced into
   // tiered envelopes (#92) — flagged via a footer note, mini-chart deferred.
+  // Mirrors compileEntry: bounties come out of the entry-funded pool only,
+  // the guarantee overlay stays entirely in cash.
   const bountyFraction = Math.max(0, Math.min(0.9, row.bountyFraction ?? 0));
   const hasBounty = bountyFraction > 0;
-  const grossPool = row.players * row.buyIn;
-  const cashPoolShare = 1 - bountyFraction;
-  const cashPoolDollars = grossPool * cashPoolShare;
-  const bountyPoolDollars = grossPool * bountyFraction;
+  const cashPoolDollars =
+    economics.basePool * (1 - bountyFraction) + economics.overlay;
+  const bountyPoolDollars = economics.basePool * bountyFraction;
+  const grossPool = cashPoolDollars + bountyPoolDollars;
+  const cashPoolShare = grossPool > 0 ? cashPoolDollars / grossPool : 1;
+  const bountyPoolShare = 1 - cashPoolShare;
+  const minCashBuyIns =
+    row.buyIn > 0
+      ? ((table[paid - 1] * cashPoolDollars) / row.buyIn).toFixed(2)
+      : "0.00";
   const isBr = row.payoutStructure === "battle-royale";
 
   return (
@@ -146,7 +166,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
           <div className="text-[11px] text-[color:var(--color-fg-dim)]">
             {t("payouts.subtitle")
               .replace("{paid}", formatInteger(paid, locale))
-              .replace("{total}", formatInteger(row.players, locale))
+              .replace("{total}", formatInteger(fieldSize, locale))
               .replace("{pct}", (totalPaidPct * 100).toFixed(1))
               .replace("{min}", minCashBuyIns)}
           </div>
@@ -184,7 +204,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
       {hasBounty && (
         <PoolSplit
           cashPoolShare={cashPoolShare}
-          bountyShare={bountyFraction}
+          bountyShare={bountyPoolShare}
           cashPoolDollars={cashPoolDollars}
           bountyPoolDollars={bountyPoolDollars}
           isBr={isBr}
@@ -221,9 +241,9 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
             }
           />
         )}
-        {row.players > paid && (
+        {fieldSize > paid && (
           <PayoutBar
-            place={`${paid + 1}–${row.players}`}
+            place={`${paid + 1}–${fieldSize}`}
             label={t("payouts.nonItm")}
             value={0}
             max={max}
@@ -231,7 +251,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
             color="transparent"
             rangeText={t("payouts.nonItmShare").replace(
               "{pct}",
-              (((row.players - paid) / row.players) * 100).toFixed(1),
+              (((fieldSize - paid) / fieldSize) * 100).toFixed(1),
             )}
           />
         )}

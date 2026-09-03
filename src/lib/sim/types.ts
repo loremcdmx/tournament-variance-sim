@@ -810,6 +810,16 @@ export interface SimulationResult {
    * charts (histogram, trajectory) when the "hide jackpots" toggle is on.
    */
   jackpotMask: Uint8Array;
+  /**
+   * Per-sample 0/1: 1 when the run never touched −bankroll (its running
+   * minimum stayed above the bust line). Length === samples when a bankroll
+   * is set, length 0 otherwise. Lets main-thread transforms that shift
+   * finalProfits (rakeback / leaderboard folding) recompute
+   * `stats.probUpNeverBusted` on the shifted finals instead of pairing a raw
+   * sub-line with a shifted headline. Rakeback accrues monotonically, so the
+   * raw bust flag is a conservative (never over-optimistic) bound.
+   */
+  neverBustedMask: Uint8Array;
   histogram: { binEdges: number[]; counts: number[] };
 
   samplePaths: {
@@ -1014,6 +1024,12 @@ export interface SimulationResult {
     mcSamplesFor1Pct: number;
     /** Fraction of samples whose running min profit stayed ≥ 0 throughout. */
     neverBelowZeroFrac: number;
+    /**
+     * Fraction of samples that ended in profit AND never touched −bankroll.
+     * `probProfit` keeps counting runs that busted mid-way (the engine flags
+     * ruin and keeps playing). null when no bankroll is configured.
+     */
+    probUpNeverBusted: number | null;
     /**
      * Compile-time expected in-the-money rate across the whole schedule —
      * weighted mean of per-tournament ITM probability from the finish-place

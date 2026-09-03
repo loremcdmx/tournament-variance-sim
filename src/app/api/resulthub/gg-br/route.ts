@@ -6,6 +6,7 @@ import {
   parseGgBrStakeResponse,
   sanitizeUsernameForLookup,
 } from "@/lib/sim/resulthubLookup";
+import { TokenBucketLimiter } from "@/lib/rateLimit";
 
 // Server-side proxy for the ResultHub GG Battle Royale per-stake aggregate.
 // Lives on our origin so the browser can call it without tripping resulthub's
@@ -16,8 +17,31 @@ import {
 // makes the user feel like "click twice → nothing changed" (a stuck cached
 // response from before a code change can outlive an instance and survive a
 // click). Resulthub answers in ~300 ms; just go upstream every time.
+//
+// The control fans out one call per nick (up to 10 per click), so the
+// per-IP budget is sized for a few honest clicks a minute, not one.
+
+const RATE_LIMIT_PER_MINUTE = 30;
+const limiter = new TokenBucketLimiter(RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE);
+
+function clientKey(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const first = forwarded?.split(",")[0]?.trim();
+  return first || request.headers.get("x-real-ip") || "unknown";
+}
 
 export async function GET(request: Request) {
+  const limit = limiter.take(clientKey(request), Date.now());
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "rate-limited", retryAfterSec: limit.retryAfterSec },
+      {
+        status: 429,
+        headers: { "retry-after": String(limit.retryAfterSec) },
+      },
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const rawUsername = searchParams.get("username") ?? "";
   const username = sanitizeUsernameForLookup(rawUsername);

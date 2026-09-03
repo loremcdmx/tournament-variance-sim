@@ -22,7 +22,8 @@ import type {
 import { rowHasActiveBounty } from "@/lib/sim/gameType";
 import { noiseChannelsActive } from "@/lib/sim/convergencePolicy";
 import { type RunMode } from "@/lib/trajectorySelection";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
@@ -61,6 +62,10 @@ import {
   hasSatelliteRow,
   isSatelliteOnlySchedule,
 } from "@/lib/results/satellite";
+import {
+  computeHeadlineStats,
+  leaderboardPromoHeadlineShift,
+} from "@/lib/results/headlineStats";
 import {
   buildRunShareState,
   type RunStatsSummary,
@@ -198,6 +203,8 @@ function ResultsViewImpl({
   pdOverrideProgress = 0,
 }: Props) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const { advanced } = useAdvancedMode();
 
   const isPrimeDopeCompare = compareMode === "primedope";
@@ -466,14 +473,20 @@ function ResultsViewImpl({
 
   const shiftedStats = displayResultStats.stats;
   const shiftedPdStats = displayPdChartStats?.stats;
-  const observedPromoShift =
-    result.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
-  const totalExpectedProfit =
-    displayResultStats.expectedProfit + observedPromoShift;
-  const totalMean = shiftedStats.mean + observedPromoShift;
-  const totalMedian = shiftedStats.median + observedPromoShift;
-  const totalMin = shiftedStats.min + observedPromoShift;
-  const totalMax = shiftedStats.max + observedPromoShift;
+  const lbFoldedIntoResult = lbIncluded && lbCurve != null;
+  const observedPromoShift = leaderboardPromoHeadlineShift(
+    lbExpectedPayout,
+    lbFoldedIntoResult,
+  );
+  const headline = useMemo(
+    () => computeHeadlineStats(displayResultStats, observedPromoShift),
+    [displayResultStats, observedPromoShift],
+  );
+  const totalExpectedProfit = headline.expectedProfit;
+  const totalMean = headline.mean;
+  const totalMedian = headline.median;
+  const totalMin = headline.min;
+  const totalMax = headline.max;
   const s = result.stats;
   // With no bankroll the engine pins riskOfRuin to 0; printing "0.0%" would
   // read as "no risk" rather than "not modelled".
@@ -481,11 +494,14 @@ function ResultsViewImpl({
   const ruinScaleOff =
     bankrollOff || (s.riskOfRuin === 0 && s.minBankrollRoR1pct === 0);
   const pdStats = pdChart?.stats;
-  const pdObservedPromoShift =
-    pdChart?.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
+  const pdObservedPromoShift = leaderboardPromoHeadlineShift(
+    pdChart?.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0,
+    lbIncluded && pdLbCurve != null,
+  );
   const pdExpectedProfit =
     displayPdChartStats != null
-      ? displayPdChartStats.expectedProfit + pdObservedPromoShift
+      ? computeHeadlineStats(displayPdChartStats, pdObservedPromoShift)
+          .expectedProfit
       : undefined;
   const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
   const roi = totalMean / displayResultStats.totalBuyIn;
@@ -500,10 +516,10 @@ function ResultsViewImpl({
             stats: {
               samples: result.samples,
               seed: runExportSeed,
-              mean: totalMean,
-              median: totalMedian,
-              p05: shiftedStats.p05 + observedPromoShift,
-              p95: shiftedStats.p95 + observedPromoShift,
+              mean: headline.mean,
+              median: headline.median,
+              p05: headline.p05,
+              p95: headline.p95,
               stdDev: shiftedStats.stdDev,
               probProfit: shiftedStats.probProfit,
               riskOfRuin: bankrollOff ? null : s.riskOfRuin,
@@ -515,10 +531,8 @@ function ResultsViewImpl({
       settings,
       runExportSeed,
       result.samples,
-      totalMean,
-      totalMedian,
+      headline,
       shiftedStats,
-      observedPromoShift,
       bankrollOff,
       s.riskOfRuin,
     ],
@@ -560,6 +574,13 @@ function ResultsViewImpl({
   // money(...) call sites pick up the unit-aware pair.
   const { money } = moneyFmt;
   const tourneysWord = t("unit.tourneys");
+  // The worst run's own longest flat stretch — `longestBreakevenMean` is the
+  // average over all runs and already has its own card.
+  const worstRunLongestBreakeven = result.downswings[0]?.longestBreakeven;
+  const worstRunFlatline =
+    worstRunLongestBreakeven != null
+      ? `${Math.round(worstRunLongestBreakeven)} ${tourneysWord}`
+      : undefined;
 
   const [lineStylePresetId, setLineStylePresetId] =
     useLocalStorageState<LineStylePresetId>(
@@ -830,11 +851,18 @@ function ResultsViewImpl({
             rightValue: pct(shiftedStats.probProfit),
             ratio: shiftedStats.probProfit,
           }}
-          sub={t("stat.probProfit.sub").replace(
-            "{n}",
-            intFmt(shiftedStats.tournamentsFor95ROI),
-          )}
-          tip={t("stat.tFor95.sub")}
+          sub={
+            !bankrollOff && shiftedStats.probUpNeverBusted != null
+              ? t("stat.probProfit.neverBusted").replace(
+                  "{p}",
+                  pct(shiftedStats.probUpNeverBusted),
+                )
+              : t("stat.probProfit.sub").replace(
+                  "{n}",
+                  intFmt(shiftedStats.tournamentsFor95ROI),
+                )
+          }
+          tip={t("stat.probProfit.tip")}
           pdValue={shiftedPdStats ? pct(shiftedPdStats.probProfit) : undefined}
           pdDelta={
             shiftedPdStats
@@ -865,7 +893,12 @@ function ResultsViewImpl({
                 }
           }
           sub={
-            bankrollOff ? t("stat.bankrollOff") : t("stat.riskOfRuin.sub")
+            bankrollOff
+              ? t("stat.bankrollOff")
+              : `${t("stat.riskOfRuin.sub")} · ${t("stat.riskOfRuin.horizon").replace(
+                  "{n}",
+                  result.tournamentsPerSample.toLocaleString(numberLocale),
+                )}`
           }
           tip={
             ruinScaleOff
@@ -1062,8 +1095,10 @@ function ResultsViewImpl({
           value={money(s.maxDrawdownWorst)}
           detail={
             unit === "abi"
-              ? `${Math.round(s.longestBreakevenMean)} ${tourneysWord}`
-              : `${(s.maxDrawdownWorst / abi).toFixed(1)} ABI · ${Math.round(s.longestBreakevenMean)} ${tourneysWord}`
+              ? worstRunFlatline
+              : [`${(s.maxDrawdownWorst / abi).toFixed(1)} ABI`, worstRunFlatline]
+                  .filter(Boolean)
+                  .join(" · ")
           }
           tone="neg"
           tip={t("stat.ddWorst.tip")}
@@ -1274,7 +1309,7 @@ function ResultsViewImpl({
         <UnitScope id="dist.profit">
           <MoneyDistributionCard
             title={t("chart.dist")}
-            subtitle={`${result.samples.toLocaleString()} ${t("app.samples")} · 60 bins`}
+            subtitle={`${result.samples.toLocaleString(numberLocale)} ${t("app.samples")} · 60 bins`}
             binEdges={displayResultDist.histogram.binEdges}
             counts={displayResultDist.histogram.counts}
             color="#34d399"
@@ -1331,6 +1366,7 @@ function ResultsViewImpl({
               schedule={schedule}
               finishModel={finishModel}
               noiseActive={noiseChannelsActive(settings ?? {})}
+              defaultMode="exact"
             />
           </Card>
           <Card className="p-5">
@@ -1338,6 +1374,7 @@ function ResultsViewImpl({
               schedule={schedule}
               finishModel={finishModel}
               noiseActive={noiseChannelsActive(settings ?? {})}
+              defaultMode="exact"
             />
           </Card>
         </div>
@@ -1511,6 +1548,8 @@ function SatelliteCard({
   allSatellite: boolean;
 }) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const { money } = useMoneyFmt();
   const stats = useMemo(
     () => computeSatelliteStats(result, schedule, scheduleRepeats),
@@ -1558,7 +1597,7 @@ function SatelliteCard({
       <div className="mb-2 flex items-end justify-between gap-3 text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
         <span>{t("chart.satellite.hist")}</span>
         <span className="normal-case tracking-normal">
-          {stats.tourneysPerSession.toLocaleString("ru-RU")}{" "}
+          {stats.tourneysPerSession.toLocaleString(numberLocale)}{" "}
           {t("sat.perSession")}
         </span>
       </div>
@@ -1594,6 +1633,8 @@ function BattleRoyaleLeaderboardPromoSection({
   promo: NonNullable<SimulationResult["battleRoyaleLeaderboardPromo"]>;
 }) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const { money } = useMoneyFmt();
   const isObserved = promo.mode === "observed";
   const isLookup = promo.mode === "lookup";
@@ -1612,7 +1653,7 @@ function BattleRoyaleLeaderboardPromoSection({
       "{tourneysPerDay}",
       promo.current.tournamentsPerDay.toFixed(1),
     )
-    .replace("{days}", promo.current.activeDays.toLocaleString("ru-RU"));
+    .replace("{days}", promo.current.activeDays.toLocaleString(numberLocale));
 
   return (
     <CollapsibleSection
@@ -1678,7 +1719,7 @@ function BattleRoyaleLeaderboardPromoSection({
             <MiniStat
               suit="spade"
               label={t("chart.brLeaderboardObserved.currentVolume")}
-              value={promo.current.tournaments.toLocaleString("ru-RU")}
+              value={promo.current.tournaments.toLocaleString(numberLocale)}
               detail={t("chart.brLeaderboardObserved.currentVolumeDetail").replace(
                 "{perDay}",
                 promo.current.tournamentsPerDay.toFixed(1),
@@ -1698,7 +1739,7 @@ function BattleRoyaleLeaderboardPromoSection({
                 <MiniStat
                   suit="club"
                   label={t("chart.brLeaderboardObserved.observedTournaments")}
-                  value={promo.observed.totalTournaments.toLocaleString("ru-RU")}
+                  value={promo.observed.totalTournaments.toLocaleString(numberLocale)}
                 />
                 <MiniStat
                   suit="spade"
@@ -1721,7 +1762,7 @@ function BattleRoyaleLeaderboardPromoSection({
                 <MiniStat
                   suit="spade"
                   label={t("chart.brLeaderboardObserved.observedPoints")}
-                  value={promo.observed.totalPoints.toLocaleString("ru-RU")}
+                  value={promo.observed.totalPoints.toLocaleString(numberLocale)}
                 />
               </StatGroup>
               <div
@@ -1780,7 +1821,7 @@ function BattleRoyaleLeaderboardPromoSection({
                   suit="spade"
                   label={t("chart.brLeaderboardManual.targetPoints")}
                   value={Math.round(promo.manual.targetPoints).toLocaleString(
-                    "ru-RU",
+                    numberLocale,
                   )}
                   detail={
                     promo.manual.tournamentsPerDay != null &&
@@ -1788,11 +1829,11 @@ function BattleRoyaleLeaderboardPromoSection({
                       ? t("chart.brLeaderboardLookup.targetDetail")
                           .replace(
                             "{tournaments}",
-                            promo.manual.tournamentsPerDay.toLocaleString("ru-RU"),
+                            promo.manual.tournamentsPerDay.toLocaleString(numberLocale),
                           )
                           .replace(
                             "{points}",
-                            promo.manual.pointsPerTournament.toLocaleString("ru-RU"),
+                            promo.manual.pointsPerTournament.toLocaleString(numberLocale),
                           )
                       : undefined
                   }
@@ -1802,10 +1843,10 @@ function BattleRoyaleLeaderboardPromoSection({
                 <MiniStat
                   suit="spade"
                   label={t("chart.brLeaderboardManual.days")}
-                  value={promo.manual.snapshotCount.toLocaleString("ru-RU")}
+                  value={promo.manual.snapshotCount.toLocaleString(numberLocale)}
                   detail={t("chart.brLeaderboardLookup.daysDetail").replace(
                     "{paid}",
-                    (promo.manual.paidDays ?? 0).toLocaleString("ru-RU"),
+                    (promo.manual.paidDays ?? 0).toLocaleString(numberLocale),
                   )}
                 />
               )}
@@ -1816,7 +1857,7 @@ function BattleRoyaleLeaderboardPromoSection({
                   .replace("{perTournament}", money(promo.manual.payoutPerTournament))
                   .replace(
                     "{tournaments}",
-                    promo.current.tournaments.toLocaleString("ru-RU"),
+                    promo.current.tournaments.toLocaleString(numberLocale),
                 )}
               />
             </StatGroup>
@@ -1836,24 +1877,24 @@ function BattleRoyaleLeaderboardPromoSection({
               <MiniStat
                 suit="spade"
                 label={t("chart.brLeaderboardLookup.targetPoints")}
-                value={Math.round(promo.lookup.targetPoints).toLocaleString("ru-RU")}
+                value={Math.round(promo.lookup.targetPoints).toLocaleString(numberLocale)}
                 detail={t("chart.brLeaderboardLookup.targetDetail")
                   .replace(
                     "{tournaments}",
-                    promo.lookup.tournamentsPerDay.toLocaleString("ru-RU"),
+                    promo.lookup.tournamentsPerDay.toLocaleString(numberLocale),
                   )
                   .replace(
                     "{points}",
-                    promo.lookup.pointsPerTournament.toLocaleString("ru-RU"),
+                    promo.lookup.pointsPerTournament.toLocaleString(numberLocale),
                   )}
               />
               <MiniStat
                 suit="spade"
                 label={t("chart.brLeaderboardLookup.days")}
-                value={promo.lookup.snapshotCount.toLocaleString("ru-RU")}
+                value={promo.lookup.snapshotCount.toLocaleString(numberLocale)}
                 detail={t("chart.brLeaderboardLookup.daysDetail").replace(
                   "{paid}",
-                  promo.lookup.paidDays.toLocaleString("ru-RU"),
+                  promo.lookup.paidDays.toLocaleString(numberLocale),
                 )}
               />
             </StatGroup>
@@ -1877,7 +1918,7 @@ function BattleRoyaleLeaderboardPromoSection({
                 </div>
                 <div className="text-[color:var(--color-fg-dim)]">
                   {t("chart.brLeaderboardObserved.rowLine")
-                    .replace("{count}", row.tournaments.toLocaleString("ru-RU"))
+                    .replace("{count}", row.tournaments.toLocaleString(numberLocale))
                     .replace("{buyIn}", money(row.buyIn))
                     .replace("{payout}", money(row.payout))}
                 </div>
@@ -1902,7 +1943,7 @@ function BattleRoyaleLeaderboardPromoSection({
                       </div>
                       <div className="text-[color:var(--color-fg-dim)]">
                         {t("chart.brLeaderboardObserved.observedMixLine")
-                          .replace("{points}", row.points.toLocaleString("ru-RU"))
+                          .replace("{points}", row.points.toLocaleString(numberLocale))
                           .replace("{share}", pct(row.share))
                           .replace("{tournaments}", row.tournaments.toFixed(0))
                           .replace("{buyIn}", money(row.buyIn))}
@@ -1917,7 +1958,7 @@ function BattleRoyaleLeaderboardPromoSection({
                 .replace("{perTournament}", money(promo.manual.payoutPerTournament))
                 .replace(
                   "{tournaments}",
-                  promo.current.tournaments.toLocaleString("ru-RU"),
+                  promo.current.tournaments.toLocaleString(numberLocale),
                 )
                 .replace("{payout}", money(promo.expectedPayout))}
             </div>
@@ -1927,7 +1968,7 @@ function BattleRoyaleLeaderboardPromoSection({
                 .replace("{perTournament}", money(promo.lookup.payoutPerTournament))
                 .replace(
                   "{days}",
-                  promo.lookup.snapshotCount.toLocaleString("ru-RU"),
+                  promo.lookup.snapshotCount.toLocaleString(numberLocale),
                 )
                 .replace("{dailyPrize}", money(promo.lookup.averageDailyPrize))
                 .replace("{payout}", money(promo.expectedPayout))}

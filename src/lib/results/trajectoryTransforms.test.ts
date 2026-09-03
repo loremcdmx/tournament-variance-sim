@@ -81,6 +81,7 @@ describe("stripJackpots", () => {
     const result = {
       finalProfits: Float64Array.from([0, 10, 20, 1000]),
       jackpotMask: Uint8Array.from([0, 0, 0, 1]),
+      neverBustedMask: new Uint8Array(0),
       histogram: { binEdges: [0, 1000], counts: [4] },
       samplePaths: {
         x: [0, 1],
@@ -117,6 +118,40 @@ describe("stripJackpots", () => {
 });
 
 describe("shiftResultByRakeback", () => {
+  it("recomputes probUpNeverBusted on the shifted finals, keeping raw bust flags", () => {
+    const hist = { binEdges: [-10, 0, 10], counts: [2, 2] };
+    const path = Float64Array.from([0, 0, 0]);
+    const env = {
+      x: [0, 1, 2], mean: path, p05: path, p95: path, p15: path, p85: path,
+      p025: path, p975: path, p0015: path, p9985: path, min: path, max: path,
+    };
+    const base = {
+      expectedProfit: 0,
+      histogram: hist,
+      // finals −4, −2, 3, 8; run #1 (index 1) busted on the way.
+      finalProfits: Float64Array.from([-4, -2, 3, 8]),
+      neverBustedMask: Uint8Array.from([1, 0, 1, 1]),
+      stats: { mean: 1, median: 0, min: -4, max: 8, p01: -4, p05: -4, p95: 8, p99: 8,
+        probProfit: 0.5, probUpNeverBusted: 0.5, var95: 4, var99: 4, cvar95: 4, cvar99: 4 },
+      samplePaths: { x: [0, 1, 2], paths: [path], best: path, worst: path, sampleIndices: [0] },
+      envelopes: env,
+    } as unknown as SimulationResult;
+
+    // +5 rakeback lifts run #0 above zero; run #1 also crosses zero but it
+    // busted, so it must NOT count. 3 of 4 → 0.75 (raw was 0.5).
+    const shifted = shiftResultByRakeback(base, Float64Array.from([0, 2.5, 5]), 1);
+    expect(shifted.stats.probUpNeverBusted).toBeCloseTo(0.75, 12);
+
+    // Without a bankroll the engine leaves the mask empty and the stat null:
+    // the transform must not invent a number.
+    const noBankroll = {
+      ...base,
+      neverBustedMask: new Uint8Array(0),
+      stats: { ...base.stats, probUpNeverBusted: null },
+    } as unknown as SimulationResult;
+    expect(shiftResultByRakeback(noBankroll, Float64Array.from([0, 2.5, 5]), 1).stats.probUpNeverBusted).toBeNull();
+  });
+
   it("shifts profit scalars without replacing full-sample streak statistics", () => {
     const hist = { binEdges: [-10, 0, 10], counts: [1, 1] };
     const basePath = Float64Array.from([0, 5, 10]);

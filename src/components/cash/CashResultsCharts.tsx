@@ -8,7 +8,8 @@ import {
 } from "react";
 import type uPlot from "uplot";
 import { UplotChart, type CursorInfo } from "@/components/charts/UplotChart";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import {
   DEFAULT_LINE_STYLE_PRESET,
@@ -84,7 +85,7 @@ function cashPctAxes(
 const CASH_TRAJECTORY_RUN_CAP = 120;
 const CASH_PATH_HIT_PX = 20;
 
-type CashTrajectoryLineKind = "mean" | "band" | "path" | "ref";
+type CashTrajectoryLineKind = "mean" | "band" | "path" | "ref" | "risk";
 
 interface CashTrajectoryLineMeta {
   label: string;
@@ -93,6 +94,8 @@ interface CashTrajectoryLineMeta {
   kind: CashTrajectoryLineKind;
   percentile?: number;
   rank?: number;
+  /** Index into `result.samplePaths.*` for `kind === "path"`. */
+  runIdx?: number;
 }
 
 function parseRgb(css: string): [number, number, number] {
@@ -226,6 +229,8 @@ export function TrajectoryChart({
   riskThresholdBb: number;
 }) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const [linePresetId] = useLocalStorageState(
     "tvs.lineStylePreset.v1",
     loadLineStylePreset,
@@ -360,7 +365,7 @@ export function TrajectoryChart({
         points: noPoints,
         label: "risk",
       },
-      { label: formatRiskThreshold(riskThresholdBb, moneyUnit, bbSize), color: "rgba(255,145,118,0.9)", kind: "ref" },
+      { label: formatRiskThreshold(riskThresholdBb, moneyUnit, bbSize), color: "rgba(255,145,118,0.9)", kind: "risk" },
     );
 
     const ranked = rankedRunIndices(result.samplePaths.paths, runMode);
@@ -403,6 +408,7 @@ export function TrajectoryChart({
           color: stroke,
           kind: "path",
           rank,
+          runIdx,
         },
       );
     }
@@ -461,13 +467,13 @@ export function TrajectoryChart({
           key: "runs",
           label: t("chart.traj.legend.runs").replace(
             "{n}",
-            deferredVisibleRuns.toLocaleString(),
+            deferredVisibleRuns.toLocaleString(numberLocale),
           ),
           color: linePreset.path.stroke,
         },
         {
           key: "bands",
-          label: t("chart.traj.legend.bands"),
+          label: t("cash.chart.trajectory.legend.bands"),
           color: linePreset.bandNarrow.stroke,
         },
       ].filter(Boolean) as Array<{
@@ -476,7 +482,7 @@ export function TrajectoryChart({
         color: string;
         dash?: boolean;
       }>,
-    [deferredVisibleRuns, linePreset, t],
+    [deferredVisibleRuns, linePreset, numberLocale, t],
   );
 
   const handlePlotReady = useCallback((plot: uPlot | null) => {
@@ -555,14 +561,17 @@ export function TrajectoryChart({
   }
 
   const focusedSeriesIdx = nearest?.kind === "path" ? nearest.seriesIdx : null;
+  const focusedRunIdx = nearest?.kind === "path" ? nearest.runIdx ?? null : null;
   const focusedPathStats = useMemo(() => {
-    if (focusedSeriesIdx == null) return null;
+    if (focusedSeriesIdx == null || focusedRunIdx == null) return null;
     const yArr = assets.rawBbData[focusedSeriesIdx] as ArrayLike<number> | undefined;
-    const xArr = assets.data[0] as ArrayLike<number> | undefined;
-    if (!yArr || !xArr || yArr.length === 0) return null;
+    if (!yArr || yArr.length === 0) return null;
 
+    // The red highlight is drawn on the checkpoint grid, so its endpoints are
+    // located on the grid too. The numbers shown come from the engine's
+    // per-hand bookkeeping (see CashSamplePaths) — the grid under-reports.
     let peak = -Infinity;
-    let maxDd = 0;
+    let gridMaxDd = 0;
     let ddStart = 0;
     let ddEnd = 0;
     let curPeakIdx = 0;
@@ -574,49 +583,22 @@ export function TrajectoryChart({
         curPeakIdx = i;
       }
       const dd = peak - value;
-      if (dd > maxDd) {
-        maxDd = dd;
+      if (dd > gridMaxDd) {
+        gridMaxDd = dd;
         ddStart = curPeakIdx;
         ddEnd = i;
       }
     }
 
-    let longestBelowPeak = 0;
-    let belowPeakStart = 0;
-    let belowPeakEnd = 0;
-    peak = -Infinity;
-    let streakStart = 0;
-    let streakLen = 0;
-    for (let i = 0; i < yArr.length; i++) {
-      const value = yArr[i];
-      if (!Number.isFinite(value)) continue;
-      if (value > peak) {
-        peak = value;
-        streakStart = i;
-        streakLen = 0;
-      } else {
-        streakLen++;
-        if (streakLen > longestBelowPeak) {
-          longestBelowPeak = streakLen;
-          belowPeakStart = streakStart;
-          belowPeakEnd = i;
-        }
-      }
-    }
-
-    const handAt = (i: number) => Math.round(xArr[i] ?? 0);
+    const { samplePaths } = result;
     return {
       finalBb: yArr[yArr.length - 1] ?? 0,
-      maxDd,
+      maxDd: samplePaths.maxDrawdownBb[focusedRunIdx] ?? 0,
       ddStart,
       ddEnd,
-      ddHands: Math.max(0, handAt(ddEnd) - handAt(ddStart)),
-      belowPeakHands:
-        longestBelowPeak > 0
-          ? Math.max(0, handAt(belowPeakEnd) - handAt(belowPeakStart))
-          : 0,
+      belowPeakHands: samplePaths.longestBelowPeakHands[focusedRunIdx] ?? 0,
     };
-  }, [assets.data, assets.rawBbData, focusedSeriesIdx]);
+  }, [assets.rawBbData, focusedRunIdx, focusedSeriesIdx, result]);
 
   useEffect(() => {
     const plot = plotRef.current;
@@ -697,7 +679,9 @@ export function TrajectoryChart({
       case "path":
         return t("chart.traj.kind.path");
       case "ref":
-        return t("chart.traj.kind.ref");
+        return t("cash.chart.trajectory.kind.ev");
+      case "risk":
+        return t("cash.chart.trajectory.kind.risk");
     }
   };
 
@@ -783,7 +767,7 @@ export function TrajectoryChart({
             <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 tabular-nums">
               <span className="text-[color:var(--color-fg-dim)]">{t("cash.hands.label")}</span>
               <span className="text-right font-semibold text-[color:var(--color-fg)]">
-                {hands.toLocaleString()}
+                {hands.toLocaleString(numberLocale)}
               </span>
               <span className="text-[color:var(--color-fg-dim)]">
                 {t("cash.chart.trajectory.bankrollBb")}
@@ -868,11 +852,6 @@ export function TrajectoryChart({
                       {formatUsd(focusedPathStats.maxDd * bbSize)}
                     </span>
                   </div>
-                  {focusedPathStats.ddHands > 0 && (
-                    <div className="mt-0.5 text-[9px] text-[color:var(--color-fg-dim)]">
-                      {focusedPathStats.ddHands.toLocaleString()} {t("cash.hands.label").toLowerCase()}
-                    </div>
-                  )}
                 </div>
                 <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
                   <span className="text-[color:var(--color-fg-dim)]">
@@ -893,7 +872,7 @@ export function TrajectoryChart({
                     {t("chart.traj.longestBE")}
                   </span>
                   <span className="text-right text-[color:var(--color-fg)]">
-                    {focusedPathStats.belowPeakHands.toLocaleString()} {t("cash.hands.label").toLowerCase()}
+                    {focusedPathStats.belowPeakHands.toLocaleString(numberLocale)} {t("cash.hands.label").toLowerCase()}
                   </span>
                 </div>
               </div>

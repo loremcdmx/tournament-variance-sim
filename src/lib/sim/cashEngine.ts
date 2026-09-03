@@ -68,7 +68,7 @@ interface CompiledStakeSchedule {
   segments: CompiledSegment[];
 }
 
-const MIX_BLOCK_HANDS = 100;
+export const MIX_BLOCK_HANDS = 100;
 
 function allocateRowHands(
   totalHands: number,
@@ -627,10 +627,15 @@ export function buildCashResult(
   const xHi = new Int32Array(hiIdx);
   const paths: Float64Array[] = [];
   const sampleIndices: number[] = [];
+  const hiResMaxDd: number[] = [];
+  const hiResLongestBe: number[] = [];
   for (const sh of sorted) {
     for (let i = 0; i < sh.hiResPaths.length; i++) {
+      const localS = sh.hiResSampleIndices[i] - sh.sStart;
       paths.push(sh.hiResPaths[i]);
       sampleIndices.push(sh.hiResSampleIndices[i]);
+      hiResMaxDd.push(sh.maxDrawdownBb[localS]);
+      hiResLongestBe.push(sh.longestBreakevenHands[localS]);
     }
   }
   // Pointwise best / worst across the stored hi-res bundle.
@@ -654,6 +659,8 @@ export function buildCashResult(
     x: xHi,
     paths,
     sampleIndices,
+    maxDrawdownBb: Float64Array.from(hiResMaxDd),
+    longestBelowPeakHands: Int32Array.from(hiResLongestBe),
     best,
     worst,
   };

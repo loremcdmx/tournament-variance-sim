@@ -10,7 +10,11 @@
  */
 import { describe, it, expect } from "vitest";
 import { runSimulation } from "./engine";
-import type { SimulationInput, TournamentRow } from "./types";
+import type {
+  SimulationInput,
+  SimulationResult,
+  TournamentRow,
+} from "./types";
 
 function freezeRow(): TournamentRow {
   return {
@@ -50,6 +54,21 @@ function variance(arr: Float64Array): number {
   return m2 / Math.max(1, arr.length - 1);
 }
 
+/** Realized schedule ROI and its Monte Carlo standard error. `expectedProfit`
+ *  is a compile-time constant no hot-loop channel can move, so mean checks
+ *  must read the sampled profits. */
+function realizedRoi(r: SimulationResult): { roi: number; se: number } {
+  return {
+    roi: r.stats.mean / r.totalBuyIn,
+    se: r.stats.stdDev / Math.sqrt(r.samples) / r.totalBuyIn,
+  };
+}
+
+const TARGET_ROI = 0.10;
+// se ≈ 0.003 at 12k samples on this schedule, so 3.5·se pins any channel
+// bias below ~1 ROI point.
+const SE_CEILING = 0.005;
+
 describe("engine — ROI shocks", () => {
   it("zero shock = baseline (deterministic given seed, identical bit-for-bit)", () => {
     const a = runSimulation(baseInput());
@@ -60,13 +79,13 @@ describe("engine — ROI shocks", () => {
     }
   });
 
-  it("per-tourney shock keeps mean near target (zero-mean)", () => {
+  it("per-tourney shock is zero-mean: realized ROI stays within 3.5 SE of target", () => {
     const shocked = runSimulation(
       baseInput({ samples: 12_000, roiShockPerTourney: 0.10 }),
     );
-    const buyIn = 50 * 1.10;
-    const totalCost = buyIn * 200;
-    expect(shocked.expectedProfit / totalCost).toBeCloseTo(0.10, 1);
+    const { roi, se } = realizedRoi(shocked);
+    expect(se).toBeLessThan(SE_CEILING);
+    expect(Math.abs(roi - TARGET_ROI)).toBeLessThan(3.5 * se);
   });
 
   it("per-tourney shock activates (result paths differ from baseline)", () => {
@@ -84,13 +103,13 @@ describe("engine — ROI shocks", () => {
     expect(identical).toBe(false);
   });
 
-  it("ROI std-err shock keeps mean near target (zero-mean per sample)", () => {
+  it("ROI std-err is zero-mean per sample: realized ROI stays within 3.5 SE of target", () => {
     const withErr = runSimulation(
       baseInput({ samples: 12_000, roiStdErr: 0.10 }),
     );
-    const buyIn = 50 * 1.10;
-    const totalCost = buyIn * 200;
-    expect(withErr.expectedProfit / totalCost).toBeCloseTo(0.10, 1);
+    const { roi, se } = realizedRoi(withErr);
+    expect(se).toBeLessThan(SE_CEILING);
+    expect(Math.abs(roi - TARGET_ROI)).toBeLessThan(3.5 * se);
   });
 
   it("ROI std-err inflates cross-sample variance (each sample uses a perturbed ROI)", () => {
@@ -103,15 +122,59 @@ describe("engine — ROI shocks", () => {
     );
   });
 
-  it("drift sigma keeps mean intact and produces finite results", () => {
+  it("drift is zero-mean: realized ROI stays within 3.5 SE of target", () => {
     const withDrift = runSimulation(
       baseInput({ samples: 12_000, roiDriftSigma: 0.10 }),
     );
-    expect(Number.isFinite(withDrift.expectedProfit)).toBe(true);
-    const buyIn = 50 * 1.10;
-    const totalCost = buyIn * 200;
-    // Drift can perturb mean modestly per sample but should average out
-    expect(withDrift.expectedProfit / totalCost).toBeCloseTo(0.10, 0);
+    const { roi, se } = realizedRoi(withDrift);
+    expect(Number.isFinite(roi)).toBe(true);
+    expect(se).toBeLessThan(SE_CEILING);
+    expect(Math.abs(roi - TARGET_ROI)).toBeLessThan(3.5 * se);
+  });
+
+  it("drift inflates cross-sample variance by the AR(1) closed form", () => {
+    const samples = 12_000;
+    const sigma = 0.10;
+    const rho = 0.95;
+    const N = 200;
+    const single = 50 * 1.10;
+    const baseline = runSimulation(baseInput({ samples }));
+    const withDrift = runSimulation(
+      baseInput({ samples, roiDriftSigma: sigma, roiDriftRho: rho }),
+    );
+
+    // Single-row schedule ⇒ one pass per tournament, so the AR(1) steps once
+    // per entry: d_i = ρ·d_{i−1} + ε_i, ε ~ N(0, σ²(1−ρ²)), d_{−1} = 0.
+    // Var(d_i) = σ²(1−ρ^{2(i+1)}), Cov(d_i, d_j) = ρ^{j−i}·Var(d_i) for i<j.
+    // Each entry's profit gains d_i·single, so the sample profit picks up
+    // D = single·Σd_i on top of the finish draws.
+    let varSumDrift = 0;
+    for (let i = 0; i < N; i++) {
+      const vi = sigma * sigma * (1 - Math.pow(rho, 2 * (i + 1)));
+      varSumDrift += vi;
+      for (let j = i + 1; j < N; j++) {
+        varSumDrift += 2 * Math.pow(rho, j - i) * vi;
+      }
+    }
+    const theoryExcess = single * single * varSumDrift;
+
+    // The finish stream is seeded independently of the shock stream, so both
+    // runs share byte-identical finish draws and differ only by D:
+    //   Var̂_on − Var̂_off = Var̂(D) + 2·Côv(base, D)
+    //   SE² ≈ 2·σ_D⁴/n + 4·σ_base²·σ_D²/n
+    // Power at σ=0.10, ρ=0.95, N=200, n=12k: theoryExcess ≈ 2.0e5 against
+    // SE ≈ 2.9e4, i.e. the expected excess is ≈ 7 SE — a missing or
+    // mis-scaled drift channel fails by a wide margin. (Two independently
+    // seeded runs would put the same excess at ≈ 1 SE of variance noise.)
+    const varBase = variance(baseline.finalProfits);
+    const se = Math.sqrt(
+      (2 * theoryExcess * theoryExcess + 4 * varBase * theoryExcess) / samples,
+    );
+    expect(theoryExcess / se).toBeGreaterThan(5);
+
+    const measuredExcess =
+      variance(withDrift.finalProfits) - variance(baseline.finalProfits);
+    expect(Math.abs(measuredExcess - theoryExcess)).toBeLessThan(4 * se);
   });
 });
 

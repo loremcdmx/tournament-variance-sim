@@ -9,7 +9,7 @@ import {
   SIGMA_ROI_PKO,
   type SigmaCoef,
 } from "./convergenceFit";
-import { buildScheduleAnalyticBreakdown } from "./engine";
+import { buildScheduleAnalyticBreakdown } from "./compile";
 import {
   CONVERGENCE_FIELD_MAX,
   CONVERGENCE_FIELD_MIN,

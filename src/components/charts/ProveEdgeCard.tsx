@@ -41,6 +41,9 @@ interface Props {
   /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
    *  excludes them, so the displayed volume is an optimistic floor. */
   noiseActive?: boolean;
+  /** "exact" opens on the Schedule tab so the card agrees with the
+   *  schedule-mode convergence widget it sits next to post-run. */
+  defaultMode?: "avg" | "exact";
 }
 
 const FORMATS: { id: ProveEdgeFormat; labelKey: DictKey }[] = [
@@ -129,13 +132,20 @@ function fmtRange(
   return `${fmtTourneys(lo, locale)} – ${fmtTourneys(hi, locale)}`;
 }
 
-export function ProveEdgeCard({ schedule, finishModel, noiseActive }: Props) {
+export function ProveEdgeCard({
+  schedule,
+  finishModel,
+  noiseActive,
+  defaultMode = "avg",
+}: Props) {
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = locale === "ru" ? "ru-RU" : "en-US";
 
   const [format, setFormat] = useState<ProveEdgeFormat>(() =>
-    dominantScheduleFormat(schedule),
+    defaultMode === "exact" && schedule && schedule.length > 0
+      ? "exact"
+      : dominantScheduleFormat(schedule),
   );
   const [afsPos, setAfsPos] = useState<number>(afsToPos(200));
   const [rakePct, setRakePct] = useState<number>(10);

@@ -2,7 +2,8 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Field, NumInput, type ControlsState } from "@/components/ControlsPanel";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import type { DictKey } from "@/lib/i18n/dict";
 import {
   joinObservedResultHubUsernames,
@@ -41,6 +42,8 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
   previewBuyIn: number;
 }) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const controls = value.battleRoyaleLeaderboard;
   const totalPoints = BR_STAKE_KEYS.reduce(
     (acc, stake) => acc + Math.max(0, controls.observedPointsByStake[stake]),
@@ -111,7 +114,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
   const [lookupImportError, setLookupImportError] = useState<string | null>(null);
   const fmtMoney = (n: number) =>
     Math.abs(n) >= 100
-      ? `$${Math.round(n).toLocaleString("ru-RU")}`
+      ? `$${Math.round(n).toLocaleString(numberLocale)}`
       : `$${n.toFixed(2)}`;
 
   const addLookupSnapshot = () => {
@@ -330,7 +333,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               hint={t("controls.brLeaderboard.lookupTargetPointsHint")}
             >
               <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
-                {Math.round(manualAnalysis.targetPoints).toLocaleString("ru-RU")}
+                {Math.round(manualAnalysis.targetPoints).toLocaleString(numberLocale)}
               </div>
             </Field>
             <Field
@@ -354,7 +357,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               hint={t("controls.brLeaderboard.lookupParsedDaysHint")}
             >
               <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
-                {manualAnalysis.snapshotCount.toLocaleString("ru-RU")}
+                {manualAnalysis.snapshotCount.toLocaleString(numberLocale)}
               </div>
             </Field>
             <Field
@@ -443,7 +446,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               hint={t("controls.brLeaderboard.lookupTargetPointsHint")}
             >
               <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
-                {Math.round(lookupAnalysis.targetPoints).toLocaleString("ru-RU")}
+                {Math.round(lookupAnalysis.targetPoints).toLocaleString(numberLocale)}
               </div>
             </Field>
             <Field
@@ -467,7 +470,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               hint={t("controls.brLeaderboard.lookupParsedDaysHint")}
             >
               <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
-                {lookupAnalysis.snapshotCount.toLocaleString("ru-RU")}
+                {lookupAnalysis.snapshotCount.toLocaleString(numberLocale)}
               </div>
             </Field>
             <Field
@@ -483,7 +486,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               hint={t("controls.brLeaderboard.manualVolumeHint")}
             >
               <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
-                {Math.round(previewTournaments).toLocaleString("ru-RU")}
+                {Math.round(previewTournaments).toLocaleString(numberLocale)}
               </div>
             </Field>
           </div>
@@ -531,13 +534,13 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
                       .map((day) =>
                         t("controls.brLeaderboard.lookupSnapshotLine")
                           .replace("{label}", day.label ?? day.snapshotId)
-                          .replace("{entries}", day.entries.toLocaleString("ru-RU"))
+                          .replace("{entries}", day.entries.toLocaleString(numberLocale))
                           .replace("{rank}", day.rank == null ? "—" : `#${day.rank}`)
                           .replace(
                             "{points}",
                             day.points == null
                               ? "—"
-                              : Math.round(day.points).toLocaleString("ru-RU"),
+                              : Math.round(day.points).toLocaleString(numberLocale),
                           )
                           .replace("{prize}", fmtMoney(day.prize)),
                       )
@@ -599,7 +602,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               hint={t("controls.brLeaderboard.prizesHint")}
             >
               <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
-                {Math.round(controls.observedTotalPrizes).toLocaleString("ru-RU")}
+                {Math.round(controls.observedTotalPrizes).toLocaleString(numberLocale)}
               </div>
             </Field>
             <Field
@@ -648,7 +651,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
                 hint={t("controls.brLeaderboard.pointsHint")}
               >
                 <div className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-center text-sm font-mono tabular-nums text-[color:var(--color-fg)]">
-                  {Math.round(controls.observedPointsByStake[stake]).toLocaleString("ru-RU")}
+                  {Math.round(controls.observedPointsByStake[stake]).toLocaleString(numberLocale)}
                 </div>
               </Field>
             ))}

@@ -23,7 +23,8 @@ import {
   rowHasActiveBounty,
 } from "@/lib/sim/gameType";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -68,6 +69,8 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   itmLocked,
 }: Props) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const { advanced } = useAdvancedMode();
   const effectiveRow = useMemo(() => normalizeGameTypeConsistency(row), [row]);
   const {
@@ -199,7 +202,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       const hasFraction = Math.abs(abs - Math.round(abs)) > 0.005;
       return `${sign}$${hasFraction ? abs.toFixed(2) : Math.round(abs).toString()}`;
     }
-    return `${sign}$${Math.round(abs).toLocaleString()}`;
+    return `${sign}$${Math.round(abs).toLocaleString(numberLocale)}`;
   };
 
   const netProfitPerEntry = totalEvPerEntry - stats.cost;
@@ -560,6 +563,8 @@ interface ShapeControlsProps {
 
 function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const active = stats.shellMode;
 
   const patchBuckets = (patch: Partial<NonNullable<TournamentRow["finishBuckets"]>>) => {
@@ -594,7 +599,7 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
       const hasFraction = Math.abs(abs - Math.round(abs)) > 0.005;
       return `${sign}$${hasFraction ? abs.toFixed(2) : Math.round(abs).toString()}`;
     }
-    return `${sign}$${Math.round(abs).toLocaleString()}`;
+    return `${sign}$${Math.round(abs).toLocaleString(numberLocale)}`;
   };
   const pctFmt = (v: number) =>
     `${(v * 100).toFixed(v < 0.001 ? 3 : v < 0.01 ? 2 : v < 0.1 ? 2 : 1)}%`;

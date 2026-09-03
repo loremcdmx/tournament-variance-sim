@@ -109,6 +109,13 @@ export interface CashSamplePaths {
   paths: Float64Array[];
   /** Path indices in the [0, nSimulations) space. */
   sampleIndices: number[];
+  /**
+   * Per-hand engine values parallel to `paths`. The stored trajectory is a
+   * checkpoint grid, so recomputing these from it under-reports; the UI must
+   * read them here to agree with the drawdown / breakeven histograms.
+   */
+  maxDrawdownBb: Float64Array;
+  longestBelowPeakHands: Int32Array;
   /** Pointwise best / worst across the stored hi-res path bundle. */
   best: Float64Array;
   worst: Float64Array;

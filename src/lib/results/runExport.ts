@@ -1,4 +1,4 @@
-import type { PersistedState } from "@/lib/persistence";
+import { PERSISTED_STATE_VERSION, type PersistedState } from "@/lib/persistence";
 import type { ControlsState } from "@/components/ControlsPanel";
 import type { TournamentRow } from "@/lib/sim/types";
 
@@ -50,7 +50,7 @@ export function buildRunShareState(
   seed: number,
 ): PersistedState {
   return {
-    v: 1,
+    v: PERSISTED_STATE_VERSION,
     schedule: [...schedule],
     controls: { ...controls, seed: seed >>> 0 },
   };

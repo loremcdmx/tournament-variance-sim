@@ -101,6 +101,7 @@ interface Props {
   onChange: (next: ControlsState) => void;
   onTournamentTargetChange: (target: number) => void;
   onRun: () => void;
+  onNewSeed: () => void;
   onCancel: () => void;
   globalControls?: ReactNode;
   running: boolean;
@@ -114,6 +115,12 @@ interface Props {
   stage?: ProgressStage | null;
   /** Projected run duration in ms, or null when no prior run exists. */
   estimatedMs?: number | null;
+  /**
+   * Projected build-phase memory in GB, or null when it is small enough not
+   * to mention. Surfaced as a warning because the sample cap (1M) is well
+   * past what a typical tab survives — see `buildMemoryEstimate.ts`.
+   */
+  memoryHintGb?: string | null;
   /** Tournaments in one schedule pass before repeat expansion. */
   tournamentsPerSchedule: number;
   /** Actual tournaments per sample after rounding to full schedule repeats. */
@@ -152,12 +159,14 @@ export const ControlsPanel = memo(function ControlsPanel({
   onChange,
   onTournamentTargetChange,
   onRun,
+  onNewSeed,
   onCancel,
   globalControls,
   running,
   progress,
   stage,
   estimatedMs,
+  memoryHintGb,
   tournamentsPerSchedule,
   tournamentsPerSession,
   // activeSeed prop intentionally not destructured — kept on Props for
@@ -317,6 +326,12 @@ export const ControlsPanel = memo(function ControlsPanel({
           </Field>
         )}
       </div>
+
+      {memoryHintGb != null && (
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-300">
+          {t("controls.memoryHint").replace("{gb}", memoryHintGb)}
+        </div>
+      )}
 
       {advanced && (
         <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-3 py-2.5 text-left transition-colors hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev)]/45">
@@ -612,6 +627,16 @@ export const ControlsPanel = memo(function ControlsPanel({
             <span>
               {formatCount(totalTournaments)} {t("controls.totalTourneys")}
             </span>
+            <span className="text-[color:var(--color-fg-dim)]">·</span>
+            <button
+              type="button"
+              onClick={onNewSeed}
+              disabled={running}
+              title={t("controls.newSeed.hint")}
+              className="rounded px-1 text-[color:var(--color-fg-muted)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {t("controls.newSeed")}
+            </button>
           </div>
         </div>
         {barVisible && (

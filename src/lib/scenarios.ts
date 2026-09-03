@@ -82,7 +82,7 @@ export const SCENARIOS: DemoScenario[] = [
         ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
         mode: "observed",
         observedTotalPrizes: 450,
-        observedTotalTournaments: 0,
+        observedTotalTournaments: 3_000,
         observedPointsByStake: {
           "0.25": 0,
           "1": 0,
@@ -598,7 +598,7 @@ export const SCENARIOS: DemoScenario[] = [
         ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
         mode: "observed",
         observedTotalPrizes: 540,
-        observedTotalTournaments: 0,
+        observedTotalTournaments: 3_600,
         observedPointsByStake: {
           "0.25": 0,
           "1": 0,
@@ -695,6 +695,7 @@ export const SCENARIOS: DemoScenario[] = [
       scheduleRepeats: 1,
       samples: 10_000,
       bankroll: 5_000,
+      itmGlobalPct: 18.7,
       compareEnabled: true,
       compareMode: "primedope",
       usePrimedopePayouts: true,

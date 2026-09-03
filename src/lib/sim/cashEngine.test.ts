@@ -34,6 +34,12 @@ describe("cashEngine — determinism contract", () => {
     const b = simulateCash(baseInput());
     expect(a.samples).toBe(b.samples);
     expect(Array.from(a.finalBb)).toEqual(Array.from(b.finalBb));
+    expect(Array.from(a.samplePaths.maxDrawdownBb)).toEqual(
+      Array.from(b.samplePaths.maxDrawdownBb),
+    );
+    expect(Array.from(a.samplePaths.longestBelowPeakHands)).toEqual(
+      Array.from(b.samplePaths.longestBelowPeakHands),
+    );
   });
 
   it("different seeds → different trajectories", () => {
@@ -75,6 +81,47 @@ describe("cashEngine — determinism contract", () => {
     expect(merged.samplePaths.paths).toHaveLength(monolith.samplePaths.paths.length);
     expect(merged.samplePaths.sampleIndices).toEqual(monolith.samplePaths.sampleIndices);
     expect(merged.samplePaths.sampleIndices.at(-1)).toBe(99);
+    expect(Array.from(merged.samplePaths.maxDrawdownBb)).toEqual(
+      Array.from(monolith.samplePaths.maxDrawdownBb),
+    );
+    expect(Array.from(merged.samplePaths.longestBelowPeakHands)).toEqual(
+      Array.from(monolith.samplePaths.longestBelowPeakHands),
+    );
+  });
+
+  it("hi-res per-path drawdown / breakeven are the engine's per-hand values, not grid recomputes", () => {
+    const input = baseInput({ hands: 5_000, nSimulations: 300 });
+    const envGrid = makeCashEnvGrid(input.hands);
+    const hiGrid = makeCashHiResGrid(input.hands);
+    const s1 = simulateCashShard(input, 0, 120, envGrid, hiGrid);
+    const s2 = simulateCashShard(input, 120, 300, envGrid, hiGrid);
+    const merged = buildCashResult(input, [s2, s1], envGrid);
+    const { samplePaths } = merged;
+
+    expect(samplePaths.maxDrawdownBb).toHaveLength(samplePaths.paths.length);
+    expect(samplePaths.longestBelowPeakHands).toHaveLength(samplePaths.paths.length);
+    for (let i = 0; i < samplePaths.paths.length; i++) {
+      const s = samplePaths.sampleIndices[i];
+      const sh = s < 120 ? s1 : s2;
+      expect(samplePaths.maxDrawdownBb[i]).toBe(sh.maxDrawdownBb[s - sh.sStart]);
+      expect(samplePaths.longestBelowPeakHands[i]).toBe(
+        sh.longestBreakevenHands[s - sh.sStart],
+      );
+    }
+
+    // The per-hand max drawdown can never be smaller than what the stored
+    // checkpoint grid shows — the grid is a subsample of the same walk.
+    const x = samplePaths.x;
+    for (let i = 0; i < samplePaths.paths.length; i++) {
+      const p = samplePaths.paths[i];
+      let peak = -Infinity;
+      let gridDd = 0;
+      for (let j = 0; j < x.length; j++) {
+        if (p[j] > peak) peak = p[j];
+        gridDd = Math.max(gridDd, peak - p[j]);
+      }
+      expect(samplePaths.maxDrawdownBb[i]).toBeGreaterThanOrEqual(gridDd - 1e-9);
+    }
   });
 });
 
@@ -551,6 +598,12 @@ describe("cashEngine — mix of stakes", () => {
     const a = mk();
     const b = mk();
     expect(Array.from(a.finalBb)).toEqual(Array.from(b.finalBb));
+    expect(Array.from(a.samplePaths.maxDrawdownBb)).toEqual(
+      Array.from(b.samplePaths.maxDrawdownBb),
+    );
+    expect(Array.from(a.samplePaths.longestBelowPeakHands)).toEqual(
+      Array.from(b.samplePaths.longestBelowPeakHands),
+    );
   });
 
   it("mix handShares normalize when they don't sum to 1", () => {

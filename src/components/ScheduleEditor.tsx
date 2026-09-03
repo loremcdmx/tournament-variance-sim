@@ -34,6 +34,7 @@ import {
   battleRoyaleRowFromTotalTicket,
   BATTLE_ROYALE_INTERNAL_RAKE,
 } from "@/lib/sim/battleRoyaleTicket";
+import { MAX_SCHEDULE_ROWS } from "@/lib/persistence";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useT } from "@/lib/i18n/LocaleProvider";
@@ -399,7 +400,8 @@ export const ScheduleEditor = memo(function ScheduleEditor({
     const { rows, errors } = parseImportCSV(text);
     setImportErrors(errors);
     if (rows.length === 0) return;
-    onChange(mode === "replace" ? rows : [...schedule, ...rows]);
+    const merged = mode === "replace" ? rows : [...schedule, ...rows];
+    onChange(merged.slice(0, MAX_SCHEDULE_ROWS));
     setImportText("");
     setImportOpen(false);
   };
@@ -416,6 +418,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   }, []);
   const duplicate = useCallback((id: string) => {
     const sched = scheduleRef.current;
+    if (sched.length >= MAX_SCHEDULE_ROWS) return;
     const row = sched.find((r) => r.id === id);
     if (!row) return;
     const copy = { ...row, id: crypto.randomUUID() };
@@ -433,6 +436,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
     });
   }, []);
   const add = () => {
+    if (schedule.length >= MAX_SCHEDULE_ROWS) return;
     onChange([
       ...schedule,
       {
@@ -448,6 +452,8 @@ export const ScheduleEditor = memo(function ScheduleEditor({
     ]);
   };
   const canRemove = schedule.length > 1;
+  const canAdd = schedule.length < MAX_SCHEDULE_ROWS;
+  const maxRowsHint = t("row.maxRows").replace("{n}", String(MAX_SCHEDULE_ROWS));
   // Build the rowId → issue index once so each ScheduleRow does an O(1)
   // lookup. The whole map is cheap to recompute (≤ schedule.length entries),
   // but rebuilding on every keystroke would re-render every row through the
@@ -507,6 +513,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
               globalItmPct={globalItmPct}
               globalRakebackPct={globalRakebackPct}
               canRemove={canRemove}
+              canAdd={canAdd}
               update={update}
               remove={remove}
               duplicate={duplicate}
@@ -523,7 +530,9 @@ export const ScheduleEditor = memo(function ScheduleEditor({
           <button
             type="button"
             onClick={add}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[color:var(--color-fg-muted)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)]"
+            disabled={!canAdd}
+            title={canAdd ? undefined : maxRowsHint}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[color:var(--color-fg-muted)] transition-colors hover:bg-[color:var(--color-fg)]/5 hover:text-[color:var(--color-fg)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -660,6 +669,7 @@ interface ScheduleRowProps {
   globalItmPct: number | null;
   globalRakebackPct: number;
   canRemove: boolean;
+  canAdd: boolean;
   update: (id: string, patch: Partial<TournamentRow>) => void;
   remove: (id: string) => void;
   duplicate: (id: string) => void;
@@ -679,6 +689,7 @@ const ScheduleRow = memo(function ScheduleRow({
   globalItmPct,
   globalRakebackPct,
   canRemove,
+  canAdd,
   update,
   remove,
   duplicate,
@@ -1003,7 +1014,15 @@ const ScheduleRow = memo(function ScheduleRow({
               <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[color:var(--color-accent)]" />
             )}
           </button>
-          <IconBtn onClick={() => duplicate(r.id)} label={t("row.duplicate")}>
+          <IconBtn
+            onClick={() => duplicate(r.id)}
+            disabled={!canAdd}
+            label={
+              canAdd
+                ? t("row.duplicate")
+                : t("row.maxRows").replace("{n}", String(MAX_SCHEDULE_ROWS))
+            }
+          >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <rect
                 x="8"

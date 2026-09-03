@@ -163,6 +163,7 @@ export interface NoiseChannelSettings {
   tiltFastScale?: number;
   tiltSlowGain?: number;
   tiltSlowThreshold?: number;
+  tiltSlowMinDuration?: number;
 }
 
 /**
@@ -186,8 +187,13 @@ export function noiseChannelsActive(c: NoiseChannelSettings): boolean {
     (c.roiShockPerTourney ?? 0) > 0 ||
     (c.roiShockPerSession ?? 0) > 0 ||
     (c.roiDriftSigma ?? 0) > 0;
-  const tiltFast = (c.tiltFastGain ?? 0) !== 0 && (c.tiltFastScale ?? 0) > 0;
+  // The engine floors tiltFastScale at 1, so any nonzero gain is live even
+  // with scale = 0; slow tilt additionally needs a positive streak length
+  // (engine default 500 when unset).
+  const tiltFast = (c.tiltFastGain ?? 0) !== 0;
   const tiltSlow =
-    (c.tiltSlowGain ?? 0) !== 0 && (c.tiltSlowThreshold ?? 0) > 0;
+    (c.tiltSlowGain ?? 0) !== 0 &&
+    (c.tiltSlowThreshold ?? 0) > 0 &&
+    Math.floor(c.tiltSlowMinDuration ?? 500) > 0;
   return shock || tiltFast || tiltSlow;
 }

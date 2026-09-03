@@ -77,12 +77,15 @@ export const CashApp = memo(function CashApp() {
   const [result, setResult] = useState<CashResult | null>(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const jobIdRef = useRef(0);
   const poolRef = useRef<Worker[] | null>(null);
   const destroyPool = () => {
     if (!poolRef.current) return;
     for (const w of poolRef.current) {
       w.onmessage = null;
+      w.onerror = null;
+      w.onmessageerror = null;
       w.terminate();
     }
     poolRef.current = null;
@@ -142,7 +145,22 @@ export const CashApp = memo(function CashApp() {
     let errored = false;
 
     const cleanup = () => {
-      for (const w of pool) w.onmessage = null;
+      for (const w of pool) {
+        w.onmessage = null;
+        w.onerror = null;
+        w.onmessageerror = null;
+      }
+    };
+
+    // A dead worker or a throwing shard leaves the pool in an unknown state,
+    // so it is torn down and rebuilt lazily on the next run.
+    const failJob = (detail: string) => {
+      if (errored) return;
+      errored = true;
+      cleanup();
+      destroyPool();
+      setRunning(false);
+      setError(t("cash.error.run").replace("{detail}", detail));
     };
 
     const onWorkerMessage = (
@@ -151,12 +169,7 @@ export const CashApp = memo(function CashApp() {
       const msg = e.data;
       if (msg.jobId !== jobIdRef.current) return;
       if (msg.type === "cash-shard-error") {
-        if (errored) return;
-        errored = true;
-        cleanup();
-        destroyPool();
-        setRunning(false);
-        console.error("[cash] shard error:", msg.message);
+        failJob(msg.message);
         return;
       }
       shards[msg.shardId] = msg.shard;
@@ -167,13 +180,23 @@ export const CashApp = memo(function CashApp() {
         try {
           setResult(buildCashResult(snapshot, shards, envGrid));
           setProgress(1);
-        } finally {
+          setError(null);
           setRunning(false);
+        } catch (err) {
+          failJob(err instanceof Error ? err.message : String(err));
         }
       }
     };
+    const onWorkerError = (e: Event) => {
+      if (jobId !== jobIdRef.current) return;
+      failJob(e instanceof ErrorEvent && e.message ? e.message : e.type);
+    };
 
-    for (const w of pool) w.onmessage = onWorkerMessage;
+    for (const w of pool) {
+      w.onmessage = onWorkerMessage;
+      w.onerror = onWorkerError;
+      w.onmessageerror = onWorkerError;
+    }
 
     for (let i = 0; i < totalShards; i++) {
       const worker = pool[i % W];
@@ -560,6 +583,14 @@ export const CashApp = memo(function CashApp() {
         suit="heart"
         title={t("cash.section.results.title")}
       >
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+          >
+            {error}
+          </div>
+        )}
         {!result && (
           <Card className="data-surface-card border-dashed p-5">
             <p className="max-w-xl text-sm leading-relaxed text-[color:var(--color-fg-muted)]">

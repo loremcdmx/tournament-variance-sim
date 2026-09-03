@@ -66,6 +66,22 @@ describe("demo scenarios", () => {
     expect(enabled).toEqual(["primedope-reference", "small-field-topreg"]);
   });
 
+  it("activates the Battle Royale promo layer wherever the blurb promises one", () => {
+    const promising = SCENARIOS.filter((s) =>
+      /leaderboard|promo|BR-поинт/i.test(s.description),
+    ).map((s) => s.id);
+    expect(promising).toEqual(["br-leaderboard", "mixed-gg-with-br"]);
+    for (const id of promising) {
+      const scenario = SCENARIOS.find((s) => s.id === id)!;
+      const promo = buildBattleRoyaleLeaderboardPromoConfig(
+        scenario.controls.battleRoyaleLeaderboard,
+        scenario.schedule,
+      );
+      expect(promo, id).toBeDefined();
+      expect(promo?.mode, id).toBe("observed");
+    }
+  });
+
   it.each(SCENARIOS)("%s validates and compiles", (scenario) => {
     const finishModel = {
       id: scenario.controls.finishModelId,

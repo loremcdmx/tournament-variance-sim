@@ -25,8 +25,10 @@ export class ResulthubLookupError extends Error {
  * `ResulthubLookupError` so the UI can pick a localized message.
  *
  * Empty / whitespace-only username is rejected up front to avoid sending
- * garbage to the server route. The route itself caches results for 5
- * minutes per (username, window).
+ * garbage to the server route. The route does not cache — every call is a
+ * fresh upstream roundtrip — and it rate-limits per client IP (429 with
+ * Retry-After), so the multi-nick fan-out in the control counts against
+ * that budget.
  */
 export async function fetchResulthubGgBr(
   username: string,

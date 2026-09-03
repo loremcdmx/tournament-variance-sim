@@ -91,12 +91,14 @@ describe("checkInputSanity", () => {
     ).toBe(true);
   });
 
-  it("flags Mystery Battle Royale row with zero variance and zero bounty independently", () => {
+  it("flags Mystery Battle Royale row with zero bounty but ignores its variance", () => {
+    // BR envelopes come from the tier table; the editor hides σ² for BR rows.
     const findings = checkInputSanity(calmControls, [
       makeRow({
         id: "mbr-row",
         label: "MBR",
         gameType: "mystery-royale",
+        payoutStructure: "battle-royale",
         bountyFraction: 0,
         mysteryBountyVariance: 0,
       }),
@@ -104,7 +106,20 @@ describe("checkInputSanity", () => {
     expect(
       findings.some((f) => f.id === "row-bounty-format-no-bounty"),
     ).toBe(true);
-    expect(findings.some((f) => f.id === "row-mystery-no-variance")).toBe(true);
+    expect(findings.some((f) => f.id === "row-mystery-no-variance")).toBe(false);
+  });
+
+  it("battle-royale row with no variance yields no findings", () => {
+    const findings = checkInputSanity(calmControls, [
+      makeRow({
+        gameType: "mystery-royale",
+        payoutStructure: "battle-royale",
+        players: 18,
+        bountyFraction: 0.45,
+        mysteryBountyVariance: 0,
+      }),
+    ]);
+    expect(findings).toEqual([]);
   });
 
   it("does not flag a freezeout row with zero bounty (not a contradiction)", () => {

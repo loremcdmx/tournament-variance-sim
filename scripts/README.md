@@ -31,7 +31,6 @@ report is not considered complete.
 
 Use these when making performance claims or comparing a refactor to baseline:
 
-- `bench_convergence.ts`
 - `bench_engine_perf.ts`
 - `bench_rakeback_pipeline.ts`
 - `bench_run_click_path.ts`

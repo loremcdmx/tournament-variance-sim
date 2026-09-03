@@ -88,10 +88,9 @@ export function checkInputSanity(
       });
     }
 
-    if (
-      (fmt === "mystery" || fmt === "mystery-royale") &&
-      variance === 0
-    ) {
+    // Battle Royale envelopes come from the fixed GG tier table, so σ² is
+    // irrelevant there; only plain Mystery reads the log-normal variance.
+    if (fmt === "mystery" && variance === 0) {
       findings.push({
         id: "row-mystery-no-variance",
         rowIdx: idx,

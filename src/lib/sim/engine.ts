@@ -28,15 +28,13 @@ import type {
 } from "./types";
 
 // `engine.ts` is now a thin orchestrator (runSimulation + mergeShards). It
-// re-exports the public surface from the sibling modules so existing
-// importers — the worker, useSimulation, convergence math, trajectory
-// transforms, tests — keep their `./engine` import path unchanged.
-export { compileSchedule } from "./compile";
-export {
-  buildSchedulePassOrder,
-  buildScheduleAnalyticBreakdown,
-} from "./compile";
-export { histogramOf, poissonPTRS } from "./simNumerics";
+// re-exports the public surface from the sibling modules so the worker and
+// the tests keep their `./engine` import path unchanged. Main-thread code
+// (validation, convergence math, trajectory transforms) must import from the
+// sibling modules directly: this barrel pulls `hotLoop` + `buildResult`, and
+// via the page bundle that would ship the hot loop a second time.
+export { compileSchedule, buildScheduleAnalyticBreakdown } from "./compile";
+export { poissonPTRS } from "./simNumerics";
 export { makeCheckpointGrid } from "./grids";
 export { simulateShard } from "./hotLoop";
 export type { ProgressCb } from "./hotLoop";

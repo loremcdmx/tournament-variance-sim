@@ -209,6 +209,10 @@ export const DICT = {
   },
   "row.addRow": { en: "Add row", ru: "Добавить" },
   "row.duplicate": { en: "Duplicate row", ru: "Дублировать ряд" },
+  "row.maxRows": {
+    en: "Schedule is capped at {n} rows",
+    ru: "В расписании не больше {n} рядов",
+  },
   "row.delete": { en: "Delete", ru: "Удалить" },
   "row.gameType": { en: "Game type", ru: "Тип игры" },
   "row.gameType.freezeout": { en: "Freezeout", ru: "Фризаут" },
@@ -268,6 +272,10 @@ export const DICT = {
     en: "↑ to reason",
     ru: "↑ к причине",
   },
+  "run.engineCrashed": {
+    en: "Simulation engine failed to load — reload the page.",
+    ru: "Движок симуляции не загрузился — перезагрузите страницу.",
+  },
   "stat.sampleSupport": {
     en: "n ≈ {n} of {total}",
     ru: "n ≈ {n} из {total}",
@@ -309,8 +317,8 @@ export const DICT = {
     ru: "Ряд {row}: формат PKO / Mystery / Battle Royale, но bountyFraction = 0 — bounty-канал молча выключен.",
   },
   "sanity.row-mystery-no-variance": {
-    en: "Row {row}: Mystery / MBR with mysteryBountyVariance = 0 — envelope size never varies, so the format collapses to plain PKO.",
-    ru: "Ряд {row}: Mystery / MBR с mysteryBountyVariance = 0 — конверты не различаются по размеру, формат вырождается в обычный ПКО.",
+    en: "Row {row}: Mystery with mysteryBountyVariance = 0 — envelope size never varies, so the format collapses to plain PKO.",
+    ru: "Ряд {row}: Mystery с mysteryBountyVariance = 0 — конверты не различаются по размеру, формат вырождается в обычный ПКО.",
   },
   "sanity.row-pko-heat-no-bounty": {
     en: "Row {row}: PKO heat is set but bountyFraction = 0 — heat reshapes the bounty distribution, so without a bounty channel it has no effect.",
@@ -384,6 +392,10 @@ export const DICT = {
     ru: "Турниров в сэмпле",
   },
   "controls.samples": { en: "Simulations", ru: "Симуляций" },
+  "controls.memoryHint": {
+    en: "Projected memory ≈ {gb} GB while building results — the tab may run out of memory. Lower Simulations to stay safe.",
+    ru: "Прогноз памяти ≈ {gb} ГБ на сборке результата — вкладке может не хватить памяти. Уменьшите число симуляций.",
+  },
   "controls.bankroll": { en: "Bankroll", ru: "Банкролл" },
   "controls.compareMode": { en: "Twin-run mode", ru: "Режим сравнения" },
   "controls.compareMode.random": {
@@ -417,6 +429,11 @@ export const DICT = {
   "controls.seed": {
     en: "Sample variant",
     ru: "Вариант выборки",
+  },
+  "controls.newSeed": { en: "🎲 new seed", ru: "🎲 новый сид" },
+  "controls.newSeed.hint": {
+    en: "Run reuses the current seed so edits are comparable; draw a new one to see a different random sample.",
+    ru: "Запуск использует текущий сид, чтобы правки были сравнимы; возьмите новый, чтобы увидеть другую случайную выборку.",
   },
   "controls.roiStdErr": {
     en: "Uncertainty about your true ROI",
@@ -521,6 +538,14 @@ export const DICT = {
     en: "{n} tourneys to reach ±5% ROI",
     ru: "{n} турниров до точного ROI ±5%",
   },
+  "stat.probProfit.neverBusted": {
+    en: "{p} without ever busting",
+    ru: "{p} ни разу не слив банкролл",
+  },
+  "stat.probProfit.tip": {
+    en: "Share of simulated runs that end the schedule in profit. A run that hits −bankroll mid-way still counts if it finishes up: the engine flags the bust and keeps playing, as if you could reload and continue. With a bankroll set, the sub-line shows the stricter share that finished up without ever busting.",
+    ru: "Доля симулированных прогонов, закончивших расписание в плюсе. Прогон, который по пути ушёл в −банкролл, всё равно считается, если финиширует в плюсе: движок отмечает разорение и продолжает играть, как будто можно докупить и продолжить. При заданном банкролле подстрока показывает более строгую долю — в плюсе и ни разу не слив банкролл.",
+  },
   "stat.probProfit.outcome": {
     en: "Sample finish",
     ru: "Финиш сэмпла",
@@ -532,6 +557,10 @@ export const DICT = {
   "stat.probProfit.outcome.up": {
     en: "In profit",
     ru: "В плюсе",
+  },
+  "stat.riskOfRuin.horizon": {
+    en: "within {n} tournaments (one sample)",
+    ru: "на горизонте {n} турниров (один сэмпл)",
   },
   "stat.riskOfRuin.sub": {
     en: "chance your bankroll streaks to zero",
@@ -571,14 +600,13 @@ export const DICT = {
   },
   "stat.ddWorst": { en: "Deepest drawdown", ru: "Максимальная просадка" },
   "stat.ddWorst.tip": {
-    en: "Deepest peak-to-trough across all samples. Shown in $, ABIs, and tournaments between equal profit points.",
-    ru: "Самая глубокая просадка от пика ко дну по всем сэмплам. Показана в $, ABI и турнирах между равными точками профита.",
+    en: "Deepest peak-to-trough across all samples. Shown in $, ABIs, and the longest flat stretch (tournaments between equal profit points) of that same worst run.",
+    ru: "Самая глубокая просадка от пика ко дну по всем сэмплам. Показана в $, ABI и самым длинным откатом (турниры между равными точками профита) того же худшего прогона.",
   },
   "stat.probProfit": { en: "Chance to be up", ru: "Шанс выйти в плюс" },
   "stat.riskOfRuin": { en: "Bankroll bust risk", ru: "Риск слить банкролл" },
   "stat.sharpe": { en: "Profit / volatility", ru: "Профит / волатильность" },
   "stat.sortino": { en: "Profit / downside", ru: "Профит / просадка" },
-  "stat.tFor95.sub": { en: "to reach ±5% ROI", ru: "до точного ROI ±5%" },
   "stat.kellyBR.tip": {
     en: "Kelly-optimal bankroll: ABI sits in the growth-maximizing fraction. Less = ruin risk, more = idle capital.",
     ru: "Оптимальный по Келли банкролл: ABI укладывается в долю, максимизирующую лог-рост. Меньше — риск, больше — деньги простаивают.",
@@ -847,8 +875,8 @@ export const DICT = {
     ru: "Рейк-арифметика ПД",
   },
   "chart.trajectory.pdRakeMath.hint": {
-    en: "PD rake quirk (their §7): variance is driven by the POST-rake prize pool. In this comparison the EV target stays pinned to the same full-cost ROI as the left chart.\n\nExample — $100 + $9 rake, 1000 entrants, player ROI +20%:\n  EV target in both panes = 0.20 × $109 = $21.80\n\nBut SD differs:\n  Our SD scales with the full $109 × 1000 pool (rake is a real cost)\n  PD  SD scales with $100 × 1000 pool only (post-rake)\n  → PD's SD comes out ≈8.3% lower on this row\n\nConsequence: crank rake up to $20 and PD's simulated SD keeps dropping while EV stays pinned. This toggle isolates that coupling alone.\n\nUncheck to use the pre-rake pool in PD's pass.",
-    ru: "Квирк рейка ПД (их §7): дисперсия считается от ПОСТ-рейкового призового пула. В этом сравнении EV-таргет закреплён тем же ROI от полной стоимости, что и левый график.\n\nПример — $100 + $9 рейк, 1000 участников, ROI игрока +20%:\n  EV-таргет в обеих панелях = 0.20 × $109 = $21.80\n\nНо SD разная:\n  Наша SD считается от полного пула $109 × 1000 (рейк — реальная стоимость)\n  SD ПД  считается только от $100 × 1000 (пост-рейк)\n  → SD ПД на этой строке выходит ≈8.3% ниже\n\nСледствие: подними рейк до $20 — у ПД симулированная SD будет падать, а EV останется закреплённым. Эта галка изолирует только этот эффект.\n\nСнимите галку — использовать пре-рейковый пул в прогоне ПД.",
+    en: "PD rake quirk (their §7): variance is driven by the POST-rake prize pool. In this comparison the EV target stays pinned to the same full-cost ROI as the left chart.\n\nExample — $100 + $9 rake, 1000 entrants, player ROI +20%:\n  EV target in both panes = 0.20 × $109 = $21.80\n\nBut SD differs:\n  Our SD scales with the full $109 × 1000 pool (rake is a real cost)\n  PD  SD scales with $100 × 1000 pool only (post-rake)\n  → PD's SD comes out ≈5% lower on this row (≈10% once rake is $20)\n\nConsequence: crank rake up to $20 and PD's simulated SD keeps dropping while EV stays pinned. This toggle isolates that coupling alone.\n\nUncheck to use the pre-rake pool in PD's pass.",
+    ru: "Квирк рейка ПД (их §7): дисперсия считается от ПОСТ-рейкового призового пула. В этом сравнении EV-таргет закреплён тем же ROI от полной стоимости, что и левый график.\n\nПример — $100 + $9 рейк, 1000 участников, ROI игрока +20%:\n  EV-таргет в обеих панелях = 0.20 × $109 = $21.80\n\nНо SD разная:\n  Наша SD считается от полного пула $109 × 1000 (рейк — реальная стоимость)\n  SD ПД  считается только от $100 × 1000 (пост-рейк)\n  → SD ПД на этой строке выходит ≈5% ниже (при рейке $20 — уже ≈10%)\n\nСледствие: подними рейк до $20 — у ПД симулированная SD будет падать, а EV останется закреплённым. Эта галка изолирует только этот эффект.\n\nСнимите галку — использовать пре-рейковый пул в прогоне ПД.",
   },
   "chart.dist": { en: "Distribution of final profit", ru: "Распределение итогового профита" },
   "chart.ddDist": { en: "What streaks look like", ru: "Какие стрики бывают" },
@@ -1227,6 +1255,10 @@ export const DICT = {
   "chart.convergence.exact.rowCol.fmt": { en: "Format", ru: "Формат" },
   "chart.convergence.exact.rowCol.share": { en: "Spend %", ru: "Доля затрат" },
   "chart.convergence.exact.rowCol.varShare": { en: "σ² share", ru: "Доля σ²" },
+  "chart.convergence.synthetic.hint": {
+    en: "Synthetic what-if — not your schedule",
+    ru: "Синтетический what-if — не ваше расписание",
+  },
   "chart.convergence.mix.note": {
     en: "Mix weights are shares of tournaments in the synthetic mix, not dollar-risk shares.",
     ru: "Веса в Миксе — это доли турниров в синтетическом миксе, а не доли долларового риска.",
@@ -1295,8 +1327,8 @@ export const DICT = {
   },
   "runExport.copyLink": { en: "Copy run link", ru: "Ссылка на прогон" },
   "runExport.copyLink.hint": {
-    en: "Copy a link that opens this run's schedule and settings. Each new run draws a fresh seed, so the numbers will differ.",
-    ru: "Скопировать ссылку с расписанием и настройками этого прогона. Каждый новый запуск берёт свежий сид, поэтому числа будут другими.",
+    en: "Copy a link that opens this run's schedule and settings. Opening the link draws a fresh seed, so the numbers will differ.",
+    ru: "Скопировать ссылку с расписанием и настройками этого прогона. При открытии ссылки берётся свежий сид, поэтому числа будут другими.",
   },
   "runExport.copyCsv": { en: "Copy stats CSV", ru: "Статистика в CSV" },
   "runExport.copyCsv.hint": {
@@ -1584,6 +1616,10 @@ export const DICT = {
   "preview.itmLocked": {
     en: "This row inherits the global ITM%. To override just this tournament, set its ITM% inside the schedule row.",
     ru: "Эта строка наследует глобальный ITM%. Чтобы переопределить его только для этого турнира, задай ITM% в самой строке расписания.",
+  },
+  "controls.itmTarget.hint": {
+    en: "Global in-the-money rate applied to every row that has no ITM % of its own. Pins how often you cash regardless of ROI — the skill then shows up as running deeper, not cashing more often. Untick to let each row use its payout table's paid fraction.",
+    ru: "Глобальная частота попадания в призы для всех строк без своего ITM %. Фиксирует, как часто ты заходишь в деньги независимо от ROI — скилл проявляется как более глубокие заносы, а не более частые. Сними галку, чтобы строки брали paid-фракцию своей структуры выплат.",
   },
   "controls.itmTarget.label": {
     en: "ITM %",
@@ -1907,8 +1943,8 @@ export const DICT = {
     ru: "Произвольное название строки. Чисто косметика — на расчёт не влияет.",
   },
   "help.row.players": {
-    en: "Field size — how many entrants register. Sets the places (1..N) the finish-model samples from and scales the prize pool.",
-    ru: "Размер поля — сколько игроков заявлено. Задаёт места (1..N) для финиш-модели и масштабирует призовой.",
+    en: "AFS — average field size: how many entrants register. Sets the places (1..N) the finish-model samples from and scales the prize pool.",
+    ru: "AFS — среднее поле (average field size): сколько игроков заявлено. Задаёт места (1..N) для финиш-модели и масштабирует призовой.",
   },
   "help.row.buyIn": {
     en: "Buy-in in poker format. \"50+5\" = $50 buy-in + $5 rake (before \"+\" goes to pool, after is the room's fee). Just \"50\" keeps the current rake. Real entry cost = buyIn + rake. Note on convention: the rake % we show is fee ÷ net buy-in, not fee ÷ total ticket. Entering \"9.20+0.80\" displays as 8.7% rake ($0.80 ÷ $9.20) even though your room calls the same fee 8% of the $10 ticket — same dollars, different denominator.",
@@ -2040,12 +2076,12 @@ export const DICT = {
   },
   "cash.stats.hourlyEvUsd": { en: "EV / hour", ru: "EV / час" },
   "cash.stats.meanRakePaidBb": {
-    en: "Rake paid (BB)",
-    ru: "Заплачено рейка (BB)",
+    en: "Rake paid ({unit})",
+    ru: "Заплачено рейка ({unit})",
   },
   "cash.stats.meanRbEarnedBb": {
-    en: "RB earned (BB)",
-    ru: "Рейкбек получен (BB)",
+    en: "RB earned ({unit})",
+    ru: "Рейкбек получен ({unit})",
   },
   "cash.axis.bb": { en: "BB", ru: "BB" },
   "cash.axis.usd": { en: "$", ru: "$" },
@@ -2077,6 +2113,18 @@ export const DICT = {
   "cash.chart.trajectory.finalBankroll": {
     en: "Final bankroll",
     ru: "Финальный банкролл",
+  },
+  "cash.chart.trajectory.legend.bands": {
+    en: "70 / 90 / 95% intervals",
+    ru: "интервалы 70 / 90 / 95%",
+  },
+  "cash.chart.trajectory.kind.ev": {
+    en: "reference line for the expected winrate (EV slope)",
+    ru: "опорная линия ожидаемого винрейта (наклон EV)",
+  },
+  "cash.chart.trajectory.kind.risk": {
+    en: "your risk line: the bankroll threshold from the inputs",
+    ru: "твоя линия риска: порог банкролла из параметров",
   },
   "cash.chart.final.title": {
     en: "Final bankroll distribution",
@@ -2202,6 +2250,38 @@ export const DICT = {
   "cash.summary.riskOfRuinAsymptotic.tip": {
     en: "Closed-form infinite-horizon risk of ruin for this edge and variance (Galfond's exp(−2·BR·wr/sd²)). It is the asymptote if the same winrate/variance played forever; the 'Ever ≤' number is just what this finite sample happened to show.",
     ru: "Аналитический риск разорения на бесконечной дистанции для данного эджа и дисперсии (формула Гэлфонда exp(−2·БР·wr/sd²)). Это асимптота, если тот же винрейт/дисперсия играют вечно; число «Хотя бы раз ≤» — лишь то, что показала конечная выборка.",
+  },
+  "cash.summary.riskOfRuinAsymptotic.tip.mix": {
+    en: "Closed-form infinite-horizon risk of ruin exp(−2·BR·μ/σ²) where μ and σ² are the hand-share-weighted per-hand drift and variance of the whole mix in reference BB — an aggregate, not any single row's Galfond figure. It is the asymptote if this exact mix played forever; the 'Ever ≤' number is just what this finite sample happened to show.",
+    ru: "Аналитический риск разорения на бесконечной дистанции exp(−2·БР·μ/σ²), где μ и σ² — взвешенные по доле раздач дрейф и дисперсия на раздачу всего микса в референсных BB — агрегат, а не формула Гэлфонда для одной строки. Это асимптота, если ровно этот микс играет вечно; число «Хотя бы раз ≤» — лишь то, что показала конечная выборка.",
+  },
+  "cash.section.assumptions.title": {
+    en: "Model assumptions",
+    ru: "Допущения модели",
+  },
+  "cash.section.assumptions.note": {
+    en: "What this engine does and does not model. Read before trusting a tail number.",
+    ru: "Что этот движок моделирует, а что нет. Прочти, прежде чем верить хвостовой цифре.",
+  },
+  "cash.assumptions.model": {
+    en: "Per-hand Normal random walk: BR[i+1] = BR[i] + wr/100 + rb/100 + (sd/10)·N(0,1). Winrate and SD are taken in bb/100 and scaled to one hand (SD by √100).",
+    ru: "Нормальное случайное блуждание по раздачам: BR[i+1] = BR[i] + wr/100 + rb/100 + (sd/10)·N(0,1). Винрейт и SD берутся в bb/100 и масштабируются на одну раздачу (SD через √100).",
+  },
+  "cash.assumptions.independence": {
+    en: "Hands are independent and identically distributed: no tilt, no table or session correlation, no stake changes in response to the bankroll, no tails heavier than the Normal.",
+    ru: "Раздачи независимы и одинаково распределены: нет тильта, корреляции между столами и сессиями, смены лимита в ответ на банкролл и хвостов тяжелее нормальных.",
+  },
+  "cash.assumptions.rakeback": {
+    en: "Rakeback is a deterministic add accrued smoothly per hand (contributed rake × advertised RB % × PVI). The horizon total matches 100-hand payouts exactly; only the trajectory shape is smoother.",
+    ru: "Рейкбек — детерминированная добавка, начисляемая равномерно каждую раздачу (внесённый рейк × заявленный RB % × PVI). Итог за дистанцию совпадает с выплатами по 100 раздач; ровнее только форма траектории.",
+  },
+  "cash.assumptions.mix": {
+    en: "Stake mix: rows interleave in fixed {block}-hand blocks on a deterministic schedule, each row owning round(share × hands) hands; every rate is rescaled to the reference {bb}.",
+    ru: "Микс лимитов: строки чередуются фиксированными блоками по {block} раздач по детерминированному расписанию, каждая строка получает round(доля × раздачи) раздач; все ставки пересчитаны в референсный {bb}.",
+  },
+  "cash.error.run": {
+    en: "Cash simulation failed: {detail}. Fix the inputs or run again — the worker pool has been reset.",
+    ru: "Симуляция кэша не удалась: {detail}. Проверь параметры или запусти снова — пул воркеров сброшен.",
   },
   "chart.brLeaderboardObserved.title": {
     en: "BR leaderboard promo",
@@ -2517,8 +2597,8 @@ export const DICT = {
     ru: "Для 100 игроков и 15 paid наша mtt-primedope кривая выплат совпадает с их текущей live-кривой byte-for-byte.",
   },
   "weakness.pd.tag.precision.bullet.sigma": {
-    en: "On the 100p / $50 / 10 % ROI reference our σ₁₀₀₀ under the PD shell lands in the same band their site shows: math ≈ $5,607 and sim ≈ $5,789.",
-    ru: "На референсе 100p / $50 / 10% ROI наша σ₁₀₀₀ под PrimeDope-shell попадает в тот же коридор, который показывает их сайт: math около $5607 и sim около $5789.",
+    en: "On the 100p / $50 / 10 % ROI / 1000-tournament reference PrimeDope's own site shows σ₁₀₀₀ ≈ $5,607 (math) / ≈ $5,789 (sim). Our PD-mode pane on the same row lands at ≈ $5.85–5.9k with 10k samples — within ~2 %. The gap is Monte-Carlo noise plus our full-cost ROI basis (EV $5,550 vs their rake-ignored $5,000); with PD's EV basis the pane gives ≈ $5,620.",
+    ru: "На референсе 100p / $50 / 10% ROI / 1000 турниров сайт PrimeDope показывает σ₁₀₀₀ ≈ $5607 (math) / ≈ $5789 (sim). Наша панель в PD-режиме на той же строке даёт ≈ $5,85–5,9k при 10k сэмплов — расхождение в пределах ~2%. Разница — MC-шум плюс наша база ROI от полной стоимости (EV $5550 против их $5000 без рейка); с их базой EV панель даёт ≈ $5620.",
   },
   "weakness.pd.tag.precision.body": {
     en: "So for a simple freezeout spot our PD mode is pretty close to what the user would see on PrimeDope. But that accuracy honestly stops where the site itself stops being a model of the problem: PKO, Mystery, Battle Royale, and schedule-level uncertainty all need separate layers PD doesn't have.",
@@ -2687,6 +2767,15 @@ export const DICT = {
   "finishModel.mystery-realdata-linear": { en: "Mystery / real-data — linear", ru: "Mystery / real-data — линейно" },
   "finishModel.mystery-realdata-tilt": { en: "Mystery / real-data — tilt (α)", ru: "Mystery / real-data — наклон (α)" },
   "finishModel.powerlaw-realdata-influenced": { en: "Power-law — real-data α", ru: "Степенной — real-data α" },
+
+  // Error boundaries (app/error.tsx, app/global-error.tsx)
+  "errorPage.title": { en: "Something went wrong", ru: "Что-то пошло не так" },
+  "errorPage.body": {
+    en: "The simulator hit an unexpected error. Reload the page — the schedule and settings saved in this browser are kept.",
+    ru: "Симулятор столкнулся с непредвиденной ошибкой. Перезагрузите страницу — расписание и настройки, сохранённые в этом браузере, останутся.",
+  },
+  "errorPage.reload": { en: "Reload page", ru: "Перезагрузить страницу" },
+  "errorPage.digest": { en: "Error id: {n}", ru: "Код ошибки: {n}" },
 } as const satisfies Record<string, Entry>;
 
 export type DictKey = keyof typeof DICT;

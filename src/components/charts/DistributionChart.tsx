@@ -4,7 +4,8 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { AlignedData, Options } from "uplot";
 import { UplotChart, type CursorInfo } from "./UplotChart";
 import { barsPath } from "./barsPath";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 
 interface Props {
   binEdges: number[];
@@ -115,6 +116,8 @@ function DistributionChartImpl({
   xDomain,
 }: Props) {
   const t = useT();
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const divisor = scaleBy && scaleBy > 0 ? scaleBy : 1;
   const overlayColor = overlay?.color ?? "#60a5fa";
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
@@ -406,7 +409,7 @@ function DistributionChartImpl({
               {t("hist.tooltip.count")}
             </span>
             <span className="text-right text-[color:var(--color-fg)]">
-              {tip.count.toLocaleString()}
+              {tip.count.toLocaleString(numberLocale)}
             </span>
             <span className="text-[color:var(--color-fg-dim)]">
               {t("hist.tooltip.cumulative")}

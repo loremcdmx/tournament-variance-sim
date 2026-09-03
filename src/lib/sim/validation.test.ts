@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateSchedule } from "./validation";
+import { compileSchedule } from "./engine";
 import type { FinishModelConfig, TournamentRow } from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
@@ -24,19 +25,50 @@ describe("validateSchedule", () => {
     expect(validateSchedule([], baseModel)).toEqual({ ok: true, issues: [] });
   });
 
-  it("row without itmRate skips checks", () => {
+  // No row skips validation: rows without itmRate go through the analytic
+  // per-bullet EV check, rows with itmRate through the shelled solver. These
+  // three are the feasible baselines the negative cases below contrast with.
+  it("row without itmRate passes the analytic-EV check at a modest ROI", () => {
     const r = row();
     expect(validateSchedule([r], baseModel).ok).toBe(true);
   });
 
-  it("row with itmRate but no finishBuckets skips checks", () => {
+  it("row with itmRate and no shell locks is feasible at a modest ROI", () => {
     const r = row({ itmRate: 0.16 });
     expect(validateSchedule([r], baseModel).ok).toBe(true);
   });
 
-  it("row with finishBuckets but no lock fields skips checks", () => {
+  it("empty finishBuckets behaves like no shell locks (feasible at a modest ROI)", () => {
     const r = row({ itmRate: 0.16, finishBuckets: {} });
     expect(validateSchedule([r], baseModel).ok).toBe(true);
+  });
+
+  it("flags a lock-free fixed-ITM row when α saturates below the cash target", () => {
+    // 2 % ITM on a 100-player field caps E[W] at ≈ itm × 1st prize even with
+    // all paid mass pushed onto place 1 (α at its +25 ceiling); ROI +100 %
+    // asks for 110 against a ceiling near 27.
+    const r = row({ players: 100, itmRate: 0.02, roi: 1 });
+    const res = validateSchedule([r], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0].rowId).toBe("r1");
+    expect(res.issues[0].targetEv).toBeCloseTo(50 * 1.1 * 2, 9);
+    expect(res.issues[0].currentEv).toBeLessThan(res.issues[0].targetEv);
+    expect(res.issues[0].gap).toBeCloseTo(
+      res.issues[0].currentEv - res.issues[0].targetEv,
+      12,
+    );
+  });
+
+  it("flags a lock-free fixed-ITM row when the α floor still overshoots a deep-negative ROI", () => {
+    // 16 % ITM forces at least the min-cash mass; α at its −6 floor cannot
+    // push E[W] under ≈ 14, but ROI −95 % asks for 2.75.
+    const r = row({ itmRate: 0.16, roi: -0.95 });
+    const res = validateSchedule([r], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0].targetEv).toBeCloseTo(50 * 1.1 * 0.05, 9);
+    expect(res.issues[0].currentEv).toBeGreaterThan(res.issues[0].targetEv);
   });
 
   it("row with reasonable first-place lock is feasible", () => {
@@ -178,5 +210,40 @@ describe("validateSchedule", () => {
 
     expect(res.ok).toBe(false);
     expect(res.issues[0].currentEv).toBeGreaterThan(res.issues[0].targetEv);
+  });
+
+  it("agrees with the engine on fixed-ITM rows whose guarantee overlays the pool", () => {
+    // With the overlay wrongly shrunk by (1−f) the shelled cash side looked
+    // short of target, so residual bounty "closed" it and the row passed —
+    // while the engine, holding the full overlay in cash, overshot ROI by 40%.
+    const engineHitsTarget = (r: TournamentRow) => {
+      const entry = compileSchedule({
+        schedule: [r],
+        scheduleRepeats: 1,
+        samples: 1,
+        bankroll: 1,
+        seed: 1,
+        finishModel: baseModel,
+      }).flat[0];
+      const target = entry.singleCost * (1 + r.roi);
+      return Math.abs(entry.analyticMeanSingle - target) / target <= 1e-3;
+    };
+    const overlayRow = row({
+      players: 100,
+      buyIn: 10,
+      roi: 0.1,
+      payoutStructure: "mtt-gg-bounty",
+      gameType: "pko",
+      bountyFraction: 0.5,
+      itmRate: 0.3,
+      guarantee: 2000,
+    });
+    const controlRow = { ...overlayRow, guarantee: undefined };
+
+    expect(engineHitsTarget(overlayRow)).toBe(false);
+    expect(validateSchedule([overlayRow], baseModel).ok).toBe(false);
+    expect(validateSchedule([controlRow], baseModel).ok).toBe(
+      engineHitsTarget(controlRow),
+    );
   });
 });

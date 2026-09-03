@@ -21,20 +21,31 @@ interface LocaleCtx {
 
 const Ctx = createContext<LocaleCtx | null>(null);
 
+/**
+ * Error boundaries (`app/error.tsx`, `app/global-error.tsx`) mount outside
+ * this provider, so they read the persisted choice directly.
+ */
+export function readPersistedLocale(): Locale | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw && (LOCALES as string[]).includes(raw) ? (raw as Locale) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
   // Default to RU — that's the target audience per project brief.
   const [locale, setLocaleState] = useState<Locale>("ru");
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw && (LOCALES as string[]).includes(raw)) {
-        startTransition(() => setLocaleState(raw as Locale));
-      }
-    } catch {
-      // ignore
-    }
+    const persisted = readPersistedLocale();
+    if (persisted) startTransition(() => setLocaleState(persisted));
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   const setLocale = useCallback((l: Locale) => {
     // Every consumer of useLocale re-renders when locale flips, which on this

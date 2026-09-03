@@ -222,6 +222,20 @@ export function computeScalarStats(
   let neverBelowZero = 0;
   for (let s = 0; s < S; s++) if (runningMins[s] >= 0) neverBelowZero++;
   const neverBelowZeroFrac = neverBelowZero / S;
+  // probProfit counts end-of-schedule profit even for runs that touched
+  // −bankroll on the way (the hot loop flags ruin and keeps playing). This
+  // is the stricter "finished up AND never busted" share; null without a
+  // bankroll because "busted" is undefined there.
+  let upNeverBusted = 0;
+  const neverBustedMask = new Uint8Array(bankroll > 0 ? S : 0);
+  if (bankroll > 0) {
+    for (let s = 0; s < S; s++) {
+      const neverBusted = runningMins[s] > -bankroll;
+      if (neverBusted) neverBustedMask[s] = 1;
+      if (finalProfits[s] > 0 && neverBusted) upNeverBusted++;
+    }
+  }
+  const probUpNeverBusted = bankroll > 0 ? upNeverBusted / S : null;
 
   return {
     mean,
@@ -261,5 +275,7 @@ export function computeScalarStats(
     minBankrollRoR15pct,
     minBankrollRoR50pct,
     neverBelowZeroFrac,
+    probUpNeverBusted,
+    neverBustedMask,
   };
 }

@@ -105,6 +105,7 @@ function collectResultTransfers(r: SimulationResult): Transferable[] {
   out.push(r.finalProfits.buffer);
   out.push(r.rowProfits.buffer);
   out.push(r.jackpotMask.buffer);
+  out.push(r.neverBustedMask.buffer);
   if (r.battleRoyaleLeaderboard) {
     out.push(r.battleRoyaleLeaderboard.points.buffer);
     out.push(r.battleRoyaleLeaderboard.payouts.buffer);

@@ -22,6 +22,7 @@ import {
 } from "./progressConstants";
 import { composeProgress } from "./progressAggregation";
 import { computeNextRate } from "@/lib/ui/rateUpdate";
+import { useT } from "@/lib/i18n/LocaleProvider";
 
 const EMPTY_BUILD_FRACS: ReadonlyMap<number, number> = new Map();
 import type {
@@ -85,19 +86,40 @@ function poolSize(): number {
 
 interface Pool {
   workers: Worker[];
+  /**
+   * Set (to the failure detail) once any worker fires `error`. That event is
+   * the only signal for a worker script that failed to fetch/evaluate —
+   * classic post-deploy chunk skew — or threw outside `onmessage`'s
+   * try/catch; neither path ever posts a message, so without it a run would
+   * stay "running" forever. Respawning would just fail the same way, so the
+   * pool is terminated and left poisoned until the page reloads.
+   */
+  poisoned: string | null;
+}
+
+function errorEventDetail(e: Event): string {
+  return e instanceof ErrorEvent && e.message ? e.message : e.type;
+}
+
+function poisonPool(pool: Pool, detail: string) {
+  if (pool.poisoned != null) return;
+  pool.poisoned = detail;
+  for (const w of pool.workers) w.terminate();
 }
 
 function spawnPool(): Pool {
   const W = poolSize();
-  const workers: Worker[] = [];
+  const pool: Pool = { workers: [], poisoned: null };
   for (let i = 0; i < W; i++) {
-    workers.push(
-      new Worker(new URL("./worker.ts", import.meta.url), {
-        type: "module",
-      }),
-    );
+    const w = new Worker(new URL("./worker.ts", import.meta.url), {
+      type: "module",
+    });
+    w.addEventListener("error", (e) => poisonPool(pool, errorEventDetail(e)), {
+      once: true,
+    });
+    pool.workers.push(w);
   }
-  return { workers };
+  return pool;
 }
 
 interface PassPlan {
@@ -238,6 +260,11 @@ export function useSimulation() {
   const [availableRuns, setAvailableRuns] = useState(0);
   const [activeRunIdx, setActiveRunIdx] = useState(0);
   const [activeSeed, setActiveSeed] = useState<number | null>(null);
+  // Raw (un-normalised) seed of the displayed run, readable from callbacks
+  // without adding `activeSeed` to their deps. PD-only re-runs must target
+  // this seed, not the batch's base seed, or the override lands on a
+  // sibling's comparison pane.
+  const activeSeedRef = useRef<number | null>(null);
   const [backgroundStatus, setBackgroundStatus] = useState<BackgroundStatus>(
     "idle",
   );
@@ -245,7 +272,12 @@ export function useSimulation() {
   const pdJobIdRef = useRef(0);
   const [pdStatus, setPdStatus] = useState<Status>("idle");
   const [pdProgress, setPdProgress] = useState(0);
-  const [pdResultOverride, setPdResultOverride] = useState<SimulationResult | null>(null);
+  const [pdOverride, setPdOverride] = useState<CachedRun | null>(null);
+  const t = useT();
+  const engineCrashMessage = useCallback(
+    (detail: string) => `${t("run.engineCrashed")} (${detail})`,
+    [t],
+  );
 
   useEffect(() => {
     setLastRateMs(loadRate());
@@ -475,12 +507,29 @@ export function useSimulation() {
             displayStage(),
           );
         };
+        // Every failure path drops the pool: in a twin run the sibling pass
+        // would otherwise keep every core busy on shards nobody will build.
+        // Safe because each pool replacement bumps jobIdRef, so no message
+        // from the terminated workers can reach this handler. A poisoned
+        // pool is already terminated and must stay poisoned (see `Pool`).
+        const fail = (err: unknown) => {
+          settled = true;
+          detach();
+          if (pool.poisoned == null) resetPool();
+          reject(err);
+        };
         const onAbort = () => {
           if (settled) return;
           settled = true;
           detach();
           if (signal) signal.removeEventListener("abort", onAbort);
           reject(new Error("aborted"));
+        };
+        const onWorkerError = (e: Event) => {
+          if (settled || jobIdRef.current !== jobId) return;
+          const detail = errorEventDetail(e);
+          if (e.type === "error") poisonPool(pool, detail);
+          fail(new Error(detail));
         };
         if (signal) {
           if (signal.aborted) {
@@ -639,9 +688,7 @@ export function useSimulation() {
             return;
           }
           if (msg.type === "build-error") {
-            settled = true;
-            detach();
-            reject(new Error(msg.message));
+            fail(new Error(msg.message));
             return;
           }
           const slot = slotById.get(msg.shardId);
@@ -676,9 +723,7 @@ export function useSimulation() {
                   dispatchBuild(k, i % W);
                 });
               } catch (err) {
-                settled = true;
-                detach();
-                reject(err);
+                fail(err);
                 return;
               }
               // Real build-phase progress is now driven by build-progress
@@ -688,20 +733,22 @@ export function useSimulation() {
               emitProgress();
             }
           } else if (msg.type === "shard-error") {
-            settled = true;
-            detach();
-            reject(new Error(msg.message));
+            fail(new Error(msg.message));
           }
         };
 
         const detach = () => {
           for (const w of pool.workers) {
             w.removeEventListener("message", handler as EventListener);
+            w.removeEventListener("error", onWorkerError);
+            w.removeEventListener("messageerror", onWorkerError);
           }
         };
 
         for (const w of pool.workers) {
           w.addEventListener("message", handler as EventListener);
+          w.addEventListener("error", onWorkerError);
+          w.addEventListener("messageerror", onWorkerError);
         }
 
         // Dispatch all shards. Workers process postMessage queues serially;
@@ -720,7 +767,7 @@ export function useSimulation() {
         }
       });
     },
-    [],
+    [resetPool],
   );
 
   // Shared pass-plan construction: builds the same `PassPlan[]` for both
@@ -824,7 +871,14 @@ export function useSimulation() {
 
   const run = useCallback(
     async (input: SimulationInput) => {
-      if (!poolRef.current) return;
+      const pool = poolRef.current;
+      if (!pool) return;
+      if (pool.poisoned != null) {
+        setError(engineCrashMessage(pool.poisoned));
+        setStatus("error");
+        setStage(null);
+        return;
+      }
       bgAbortRef.current?.abort();
       bgAbortRef.current = null;
       resetPool();
@@ -840,12 +894,13 @@ export function useSimulation() {
       batchRef.current.baseInput = input;
       setAvailableRuns(0);
       setActiveRunIdx(0);
+      activeSeedRef.current = input.seed;
       setActiveSeed(input.seed >>> 0);
       setBackgroundStatus("idle");
       pdJobIdRef.current++;
       setPdStatus("idle");
       setPdProgress(0);
-      setPdResultOverride(null);
+      setPdOverride(null);
       setStatus("running");
       setProgress(0);
       setStage("simulating");
@@ -904,7 +959,9 @@ export function useSimulation() {
         }
       } catch (err) {
         if (jobIdRef.current !== jobId) return;
-        setError(err instanceof Error ? err.message : String(err));
+        const detail = err instanceof Error ? err.message : String(err);
+        const poison = poolRef.current?.poisoned;
+        setError(poison != null ? engineCrashMessage(poison) : detail);
         setStatus("error");
         setStage(null);
         return;
@@ -925,6 +982,16 @@ export function useSimulation() {
         }
         if (bgController.signal.aborted) {
           if (bgAbortRef.current === bgController) bgAbortRef.current = null;
+          return;
+        }
+        // Don't start burning cores for a tab nobody is looking at. No
+        // resume on visibilitychange — the next Run refills the cache.
+        if (
+          typeof document !== "undefined" &&
+          document.visibilityState === "hidden"
+        ) {
+          if (bgAbortRef.current === bgController) bgAbortRef.current = null;
+          setBackgroundStatus("idle");
           return;
         }
         const siblingSeed = deriveSiblingSeed(input.seed, i);
@@ -962,7 +1029,7 @@ export function useSimulation() {
         setBackgroundStatus("full");
       }
     },
-    [runJob, buildPasses, mergePasses, resetPool],
+    [runJob, buildPasses, mergePasses, resetPool, engineCrashMessage],
   );
 
   // Isolated re-run of just the PrimeDope-comparison pass. Used by the
@@ -972,10 +1039,21 @@ export function useSimulation() {
   // need the pool immediately; the user can re-run to refill the cache.
   const runPdOnly = useCallback(
     async (input: SimulationInput) => {
-      if (!poolRef.current) return;
-      const passes = buildPasses(input);
+      const pool = poolRef.current;
+      if (!pool) return;
+      // The caller passes the batch's base input; the displayed run may be a
+      // cached sibling with a different seed. The comparison pass shares the
+      // primary's seed (see buildPasses), so re-seeding here keeps the
+      // override aligned with the pane it replaces.
+      const seed = activeSeedRef.current ?? input.seed;
+      const passes = buildPasses({ ...input, seed });
       const cmpPass = passes.find((p) => p.key === "comparison");
       if (!cmpPass) return;
+      if (pool.poisoned != null) {
+        setPdStatus("error");
+        setError(engineCrashMessage(pool.poisoned));
+        return;
+      }
       bgAbortRef.current?.abort();
       bgAbortRef.current = null;
       resetPool();
@@ -993,27 +1071,54 @@ export function useSimulation() {
           },
         );
         if (pdJobIdRef.current !== myPdJob) return;
-        setPdResultOverride(out.comparison);
+        setPdOverride({ seed, result: out.comparison });
         setPdProgress(1);
         setPdStatus("done");
       } catch (err) {
         if (pdJobIdRef.current !== myPdJob) return;
+        const detail = err instanceof Error ? err.message : String(err);
+        const poison = poolRef.current?.poisoned;
         setPdStatus("error");
-        setError(err instanceof Error ? err.message : String(err));
+        setError(poison != null ? engineCrashMessage(poison) : detail);
       }
     },
-    [runJob, buildPasses, resetPool],
+    [runJob, buildPasses, resetPool, engineCrashMessage],
   );
 
-  const selectRun = useCallback((idx: number) => {
-    const runs = batchRef.current.runs;
-    if (idx < 0 || idx >= runs.length) return;
-    setActiveRunIdx(idx);
-    setActiveSeed(runs[idx].seed >>> 0);
-    startTransition(() => {
-      setResult(runs[idx].result);
-    });
-  }, []);
+  const selectRun = useCallback(
+    (idx: number) => {
+      const runs = batchRef.current.runs;
+      if (idx < 0 || idx >= runs.length) return;
+      const nextSeed = runs[idx].seed;
+      if (nextSeed !== activeSeedRef.current) {
+        // A PD-only re-run in flight belongs to the run being left; its
+        // result would be keyed to that seed anyway, so drop it instead of
+        // letting it finish on cores the user no longer cares about.
+        if (pdStatus === "running") {
+          pdJobIdRef.current++;
+          resetPool();
+        }
+        setPdStatus("idle");
+        setPdProgress(0);
+      }
+      activeSeedRef.current = nextSeed;
+      setActiveRunIdx(idx);
+      setActiveSeed(nextSeed >>> 0);
+      startTransition(() => {
+        setResult(runs[idx].result);
+      });
+    },
+    [pdStatus, resetPool],
+  );
+
+  // Only the override computed for the displayed seed is exposed — a sibling
+  // switch must never show seed A's PD pane next to seed B's primary.
+  const pdResultOverride =
+    pdOverride != null &&
+    activeSeed != null &&
+    (pdOverride.seed >>> 0) === activeSeed
+      ? pdOverride.result
+      : null;
 
   return {
     status,

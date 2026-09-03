@@ -1,4 +1,5 @@
-import { buildSchedulePassOrder, histogramOf } from "@/lib/sim/engine";
+import { buildSchedulePassOrder } from "@/lib/sim/schedulePassOrder";
+import { histogramOf } from "@/lib/sim/simNumerics";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
 // Deterministic cumulative rakeback curve aligned to `xCheckpoints` (tournament
@@ -118,7 +119,32 @@ export function shiftResultByRakeback(
     }
   }
 
-  const probProfit = Math.max(0, Math.min(1, 1 - cumBelow / totalCount));
+  // Exact when the per-sample finals are available; the histogram-bin
+  // interpolation above is only the fallback for callers that carry no
+  // finalProfits. Keeping both sub-line and headline on the same exact count
+  // avoids a 0.1pp mismatch between them on real runs.
+  let probProfit = Math.max(0, Math.min(1, 1 - cumBelow / totalCount));
+  if (result.finalProfits && result.finalProfits.length > 0) {
+    let up = 0;
+    for (let s = 0; s < result.finalProfits.length; s++) {
+      if (result.finalProfits[s] + totalShift > 0) up++;
+    }
+    probProfit = up / result.finalProfits.length;
+  }
+
+  // The "finished up AND never busted" sub-line must move with the same
+  // shift as the probProfit headline, or the card contradicts itself (raw
+  // 60% under a folded 68% while ruin risk reads 0%). Bust flags stay raw:
+  // rakeback only ever adds, so raw "never busted" is a lower bound.
+  let probUpNeverBusted = result.stats.probUpNeverBusted;
+  const mask = result.neverBustedMask;
+  if (probUpNeverBusted != null && mask != null && mask.length > 0 && mask.length === result.finalProfits.length) {
+    let up = 0;
+    for (let s = 0; s < mask.length; s++) {
+      if (mask[s] === 1 && result.finalProfits[s] + totalShift > 0) up++;
+    }
+    probUpNeverBusted = up / mask.length;
+  }
 
   return {
     ...result,
@@ -138,6 +164,7 @@ export function shiftResultByRakeback(
       p95: result.stats.p95 + totalShift,
       p99: result.stats.p99 + totalShift,
       probProfit,
+      probUpNeverBusted,
       var95: result.stats.var95 - totalShift,
       var99: result.stats.var99 - totalShift,
       cvar95: result.stats.cvar95 - totalShift,

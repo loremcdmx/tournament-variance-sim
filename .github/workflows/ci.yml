@@ -2,12 +2,15 @@ name: ci
 
 on:
   push:
-    branches:
-      - main
-      - dev
-      - "cleanup/**"
-      - "feature/**"
+    branches: ["**"]
   pull_request:
+  workflow_dispatch:
+
+# A newer push to the same ref supersedes the in-flight run; the suite is
+# CPU-bound, so letting stale runs finish only delays the signal that matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   checks:

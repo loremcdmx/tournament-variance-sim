@@ -53,6 +53,18 @@ describe("engine", () => {
     );
   });
 
+  it("adjacent seeds are different simulations, not permutations of one", () => {
+    const means = new Set<number>();
+    const stdDevs = new Set<number>();
+    for (let seed = 1; seed <= 4; seed++) {
+      const r = runSimulation(baseInput({ seed }));
+      means.add(r.stats.mean);
+      stdDevs.add(r.stats.stdDev);
+    }
+    expect(means.size).toBe(4);
+    expect(stdDevs.size).toBe(4);
+  });
+
   it("realized mean ROI is within 3 SE of the target", () => {
     const r = runSimulation(baseInput({ samples: 5000 }));
     const realized = r.stats.mean / r.totalBuyIn;
@@ -66,17 +78,20 @@ describe("engine", () => {
     expect(r.expectedProfit).toBeCloseTo(r.totalBuyIn * 0.2, 10);
   });
 
-  it("uniform model yields realized ROI ≈ -rake", () => {
-    const r = runSimulation(
-      baseInput({
-        samples: 5000,
-        finishModel: { id: "uniform" },
-      }),
+  it("uniform model: analytic ROI is exactly −rake/(1+rake); realized ROI within 3 SE of it", () => {
+    const input = baseInput({ samples: 5000, finishModel: { id: "uniform" } });
+    // Uniform → E[prize] = pool/N = buyIn, cost = buyIn·(1+rake), so the
+    // per-entry ROI is −rake/(1+rake) with no calibration involved.
+    const expectedRoi = -0.1 / 1.1;
+    const entry = compileSchedule(input, "alpha").flat[0];
+    expect(entry.analyticMeanSingle / entry.singleCost - 1).toBeCloseTo(
+      expectedRoi,
+      9,
     );
-    // Uniform → ev = pool/N = buyIn, cost = buyIn*(1+rake)
-    // ROI = buyIn / (buyIn*1.1) - 1 ≈ -0.0909
+    const r = runSimulation(input);
     const realized = r.stats.mean / r.totalBuyIn;
-    expect(realized).toBeCloseTo(-0.0909, 1);
+    const se = r.stats.stdDev / Math.sqrt(r.samples) / r.totalBuyIn;
+    expect(Math.abs(realized - expectedRoi)).toBeLessThan(3 * se);
   });
 
   it("row decomposition sums back to total mean", () => {
@@ -239,13 +254,21 @@ describe("engine", () => {
     expect(dd).toBeLessThanOrEqual(r.stats.maxDrawdownWorst + 1e-9);
   });
 
-  it("downswing catalog is top-10 sorted by depth descending", () => {
+  it("swing catalogs are exactly top-3, sorted descending, led by the reported worst drawdown", () => {
     const r = runSimulation(baseInput());
-    expect(r.downswings.length).toBeLessThanOrEqual(10);
+    expect(r.downswings).toHaveLength(3);
+    expect(r.upswings).toHaveLength(3);
+    expect(r.downswings[0].depth).toBe(r.stats.maxDrawdownWorst);
     for (let i = 1; i < r.downswings.length; i++) {
       expect(r.downswings[i].depth).toBeLessThanOrEqual(
         r.downswings[i - 1].depth,
       );
+      expect(r.upswings[i].height).toBeLessThanOrEqual(
+        r.upswings[i - 1].height,
+      );
+    }
+    for (const sw of [...r.downswings, ...r.upswings]) {
+      expect(sw.finalProfit).toBe(r.finalProfits[sw.sampleIndex]);
     }
   });
 
@@ -579,7 +602,7 @@ describe("engine", () => {
     expect(withManual.stats.mean).toBeCloseTo(baseline.stats.mean, 10);
   });
 
-  it("bounty row produces a non-zero expected bounty lump per entry", () => {
+  it("bounty channel carries a non-zero lump and keeps the realized mean within 4 SE of the plain row", () => {
     const base = runSimulation(
       baseInput({
         samples: 4000,
@@ -615,10 +638,15 @@ describe("engine", () => {
         ],
       }),
     );
+    // The lump itself: decomposition splits mean into cash vs bounty.
+    expect(base.decomposition[0].bountyMean).toBe(0);
+    expect(bounty.decomposition[0].bountyMean).toBeGreaterThan(0);
     // Same seed, same schedule, same ROI target → means should track within
-    // the realised noise of a 4000-sample run. Stability of bounty model.
+    // the realised noise of a 4000-sample run. Two runs at 3σ each would
+    // separate by 3·√2 ≈ 4.2 SE if independent; the shared seed correlates
+    // them, so 4 SE is a strict bound (measured gap ≈ 1 SE).
     const se = bounty.stats.stdDev / Math.sqrt(bounty.samples);
-    expect(Math.abs(bounty.stats.mean - base.stats.mean)).toBeLessThan(6 * se);
+    expect(Math.abs(bounty.stats.mean - base.stats.mean)).toBeLessThan(4 * se);
   });
 
   it("empirical finish model reproduces a provided histogram", () => {
@@ -1014,7 +1042,9 @@ describe("jackpotMask", () => {
   // (no single ratio ≥ 100, sum ≥ 100) is not achievable with the
   // engine's current K distribution (harmonic prefix caps winners'
   // bounty count well below the ~50–100 draws compound would need at
-  // low σ), so we accept the weaker aggregate assertion here.
+  // low σ), so we accept the weaker aggregate assertion here. Hits are
+  // rare (~0.2 per 1000 samples), so the fixture runs 30k samples: a seed
+  // sweep gave 5-11 hits per seed, against 0-2 at 3k samples.
   it("flags aggregate jackpots via Σ per-KO ratios ≥ threshold", () => {
     const mystery: SimulationInput = {
       schedule: [
@@ -1032,7 +1062,7 @@ describe("jackpotMask", () => {
         },
       ],
       scheduleRepeats: 100,
-      samples: 3000,
+      samples: 30_000,
       bankroll: 1000,
       seed: 42,
       finishModel: { id: "power-law" },
@@ -1658,6 +1688,16 @@ describe("compileSchedule normalizes BR ↔ mystery-royale split-brain", () => {
 //   (b) PKO winner DOES receive their own accumulated head bounty.
 //   (c) Σ bounty EV per row matches the configured bounty budget.
 describe("bounty conventions and conservation", () => {
+  const pmfFromAlias = (prob: Float64Array, alias: Int32Array): number[] => {
+    const n = prob.length;
+    const pmf = Array.from({ length: n }, () => 0);
+    for (let i = 0; i < n; i++) {
+      pmf[i] += prob[i] / n;
+      pmf[alias[i]] += (1 - prob[i]) / n;
+    }
+    return pmf;
+  };
+
   it("Mystery Royale winner contributes 8 envelopes (own envelope stays unopened)", () => {
     const compiled = compileSchedule({
       schedule: [
@@ -1728,11 +1768,21 @@ describe("bounty conventions and conservation", () => {
   });
 
   it("bounty budget is conserved per row (no self-inflation, no leak)", () => {
-    // analyticMeanSingle locks total EV (prize + bounty) = singleCost × (1 + roi)
-    // at engine.test.ts:578. This narrower check isolates the bounty channel:
-    // Σ bountyByPlace × kmean over all places should equal the total bounty
-    // budget per bullet (bountyFraction × prizePoolAvailable).
-    // Compile both a PKO and a mystery-royale row; both must balance.
+    // The compile contract pins total EV (prize + bounty) = singleCost·(1+roi)
+    // via analyticMeanSingle. This isolates the bounty channel with the exact
+    // identity compileEntry.ts builds in: for an α-adjustable model with no
+    // fixed ITM and bias 0, bountyMean = buyIn·bountyFraction·(1+rake)(1+roi)
+    // (the un-clamped skill lift), and buildBounty normalizes the raw weights
+    // so Σ pmf[i]·bountyByPlace[i] === bountyMean. Hence
+    //   Σ pmf·bountyByPlace = buyIn·f·(1+rake)(1+roi)
+    //   Σ pmf·prizeByPlace + Σ pmf·bountyByPlace = analyticMeanSingle.
+    // Battle Royale reaches the same budget through KO counts instead:
+    // bountyByPlace[i] = bountyKmean[i]·(fixed mean envelope).
+    const buyIn = 10;
+    const rake = 0.08;
+    const roi = 0;
+    const bountyFraction = 0.5;
+    const expectedBountyMean = buyIn * bountyFraction * (1 + rake) * (1 + roi);
     for (const gt of ["pko", "mystery-royale"] as const) {
       const compiled = compileSchedule({
         schedule: [
@@ -1741,11 +1791,11 @@ describe("bounty conventions and conservation", () => {
             label: "bb",
             gameType: gt,
             players: gt === "mystery-royale" ? 18 : 100,
-            buyIn: 10,
-            rake: 0.08,
-            roi: 0,
+            buyIn,
+            rake,
+            roi,
             payoutStructure: gt === "mystery-royale" ? "battle-royale" : "mtt-gg-bounty",
-            bountyFraction: 0.5,
+            bountyFraction,
             ...(gt === "mystery-royale" ? { mysteryBountyVariance: 1.8 } : {}),
             count: 1,
           },
@@ -1759,21 +1809,30 @@ describe("bounty conventions and conservation", () => {
       const entry = compiled.flat[0];
       const bounty = entry.bountyByPlace!;
       const kmean = entry.bountyKmean!;
-      // Sum of expected bounty across all places per bullet.
+      const pmf = pmfFromAlias(entry.aliasProb, entry.aliasIdx);
       let bountyEV = 0;
-      for (let i = 0; i < bounty.length; i++) bountyEV += bounty[i];
-      // Expected total bounty per bullet == bountyFraction × prizePoolPerEntry.
-      // Engine's buildBounty uses mean-preserving normalization (raw × scale),
-      // so Σ bountyByPlace · prob[i] over the finish pmf equals the budget.
-      // A cheaper invariant: Σ bountyByPlace divided by its mean != pathological.
-      expect(bountyEV).toBeGreaterThan(0);
-      // No self-inflation: all bountyByPlace entries must be finite and >= 0.
+      let cashEV = 0;
+      for (let i = 0; i < bounty.length; i++) {
+        bountyEV += pmf[i] * bounty[i];
+        cashEV += pmf[i] * entry.prizeByPlace[i];
+      }
+      expect(bountyEV).toBeCloseTo(expectedBountyMean, 9);
+      expect(cashEV + bountyEV).toBeCloseTo(entry.analyticMeanSingle, 9);
+      expect(entry.analyticMeanSingle).toBeCloseTo(
+        entry.singleCost * (1 + roi),
+        9,
+      );
+      if (gt === "mystery-royale") {
+        // Fixed envelope size: every non-zero place shares one $/KO ratio.
+        const perKo = bounty[0] / kmean[0];
+        for (let i = 0; i < bounty.length; i++) {
+          if (kmean[i] === 0) expect(bounty[i]).toBe(0);
+          else expect(bounty[i] / kmean[i]).toBeCloseTo(perKo, 9);
+        }
+      }
       for (let i = 0; i < bounty.length; i++) {
         expect(Number.isFinite(bounty[i])).toBe(true);
         expect(bounty[i]).toBeGreaterThanOrEqual(0);
-      }
-      // All kmean entries >= 0 as well.
-      for (let i = 0; i < kmean.length; i++) {
         expect(kmean[i]).toBeGreaterThanOrEqual(0);
       }
     }
@@ -1848,4 +1907,49 @@ describe("conservation fixtures per gameType", () => {
       expect(Math.abs(realized - f.row.roi)).toBeLessThan(3 * se);
     });
   }
+});
+
+describe("guarantee overlay stays in the cash pool", () => {
+  const compileRow = (row: Partial<TournamentRow>) =>
+    compileSchedule({
+      schedule: [
+        {
+          id: "g",
+          label: "guaranteed",
+          players: 100,
+          buyIn: 10,
+          rake: 0.1,
+          roi: 0.1,
+          payoutStructure: "mtt-standard",
+          count: 1,
+          guarantee: 2000,
+          ...row,
+        },
+      ],
+      scheduleRepeats: 1,
+      samples: 1,
+      bankroll: 100,
+      seed: 1,
+      finishModel: { id: "power-law" },
+    }).flat[0];
+
+  const sumPrizes = (prizeByPlace: Float64Array) => {
+    let total = 0;
+    for (let i = 0; i < prizeByPlace.length; i++) total += prizeByPlace[i];
+    return total;
+  };
+
+  it("PKO: cash pool = basePool·(1−f) + overlay", () => {
+    const entry = compileRow({
+      payoutStructure: "mtt-gg-bounty",
+      gameType: "pko",
+      bountyFraction: 0.5,
+    });
+    expect(sumPrizes(entry.prizeByPlace)).toBeCloseTo(500 + 1000, 6);
+  });
+
+  it("freezeout control: cash pool = guarantee", () => {
+    const entry = compileRow({ gameType: "freezeout" });
+    expect(sumPrizes(entry.prizeByPlace)).toBeCloseTo(2000, 6);
+  });
 });

@@ -23,9 +23,25 @@ npm run build       # prod build (catches real Next.js errors)
 
 Before a PR: run **all four** — test, typecheck, lint, build. Any one failing blocks the merge.
 
-CI runs the same four commands from `.github/workflows/ci.yml`. If the team
+CI runs the same four commands from `.github/workflows/ci.yml` on every
+push to any branch, on pull requests, and on manual dispatch. If the team
 starts relying on an extra local check, add it to CI as well so the canonical
 green state stays the same locally and remotely.
+
+Be honest about what that check enforces today: nothing. There is no branch
+protection or ruleset on this repository, so a red `checks` job does not stop
+a push to `main`, and Vercel deploys `main` on push — before CI has finished.
+The status is informational. Requiring the `checks` status before `main` can
+move is a one-command owner decision:
+
+```bash
+gh api -X POST repos/loremcdmx/tournament-variance-sim/rulesets --input - <<'JSON'
+{"name":"main requires ci","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":true,"required_status_checks":[{"context":"checks"}]}}]}
+JSON
+```
+
+With that ruleset on, `main` only moves through a PR whose `checks` job is
+green, which also puts CI ahead of the Vercel deploy.
 
 ## Branching
 
@@ -53,7 +69,7 @@ Bundle related changes. A preset rework and a lint fix go in **separate** commit
 
 ## Testing
 
-Tests live next to the file they cover: `engine.test.ts` for `engine.ts`, etc. We use Vitest, and the whole suite runs in ~35s on an idle machine — keep it in that ballpark.
+Tests live next to the file they cover: `engine.test.ts` for `engine.ts`, etc. We use Vitest, and the whole suite runs in ~30s on an idle machine (62 files / 937 tests) — keep it in that ballpark.
 
 ### What to test
 
@@ -115,7 +131,7 @@ The engine is the performance-critical path. Rules:
 
 - **No allocations in the hot loop.** Every `simulateShard` iteration should reuse preallocated typed-array scratch buffers. New `Float64Array(n)` inside the inner loop is a bug.
 - **Typed arrays over regular arrays** when sizes are known. Avoid pushing to arrays in the hot path.
-- **Worker pool size** is `hardwareConcurrency / 2` by default. More isn't faster — each worker is CPU-bound.
+- **Worker pool size** is `min(16, hardwareConcurrency − 2)` by default (`poolSize()` in `useSimulation.ts`). More isn't faster — each worker is CPU-bound.
 - Before optimizing, measure. `performance.now()` around `onRun` in `useSimulation.ts` gives you wall-clock.
 
 The UI path is less critical but: don't put non-trivial work in render. `useMemo` over the full `SimulationResult` is fine; recomputing histograms on every keystroke is not.
