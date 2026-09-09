@@ -7,11 +7,12 @@ For the architecture map (what each file does, how the engine is wired) read [`d
 ## Dev setup
 
 ```bash
-npm install
+nvm use            # Node 24 LTS (see .nvmrc)
+npm ci
 npm run dev         # http://localhost:3000
 ```
 
-Requires Node 20+. Everything else is pinned in `package.json`.
+Requires Node 24 LTS. CI reads `.nvmrc`; `engines.node` selects the same major on Vercel. Use the lockfile with `npm ci` for reproducible dependencies.
 
 ```bash
 npm test            # vitest
