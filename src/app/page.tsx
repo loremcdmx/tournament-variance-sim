@@ -68,7 +68,7 @@ const scenarioDerived = new Map(
     return [s.id, { total, range }] as const;
   }),
 );
-const APP_VERSION = "v0.7.7";
+const APP_VERSION = "v0.7.8";
 import type {
   SimulationInput,
   TournamentRow,
@@ -1411,6 +1411,10 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">v0.7.8</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v078.summary")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">v0.7.7</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v077.summary")}</li>
@@ -1568,6 +1572,7 @@ const GlobalItmControl = memo(function GlobalItmControl({
           max={99}
           step={0.5}
           value={value.itmGlobalPct}
+          aria-label={t("controls.itmTarget.label")}
           disabled={disabled || !value.itmGlobalEnabled}
           onChange={(e) => {
             const raw = normalizeNumericDraft(e.target.value);
@@ -1576,7 +1581,7 @@ const GlobalItmControl = memo(function GlobalItmControl({
             if (!Number.isFinite(v)) return;
             onChange({ ...value, itmGlobalPct: v });
           }}
-          className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+          className="number-control w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
         />
         <span className="text-[11px] text-[color:var(--color-fg-dim)]">%</span>
       </div>
@@ -1611,6 +1616,7 @@ const GlobalRakebackControl = memo(function GlobalRakebackControl({
           max={100}
           step={1}
           value={value.rakebackPct}
+          aria-label={t("controls.rakeback.label")}
           disabled={disabled}
           onChange={(e) => {
             const raw = normalizeNumericDraft(e.target.value);
@@ -1622,7 +1628,7 @@ const GlobalRakebackControl = memo(function GlobalRakebackControl({
               rakebackPct: Math.max(0, Math.min(100, v)),
             });
           }}
-          className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+          className="number-control w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
         />
         <span className="text-[11px] text-[color:var(--color-fg-dim)]">%</span>
       </div>
@@ -1701,7 +1707,7 @@ const BankrollControl = memo(function BankrollControl({
             if (!Number.isFinite(v) || v < 0) return;
             onChange({ ...value, bankroll: brMode === "$" ? v : Math.round(v * abi) });
           }}
-          className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
+          className="number-control w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
         />
         <button
           type="button"

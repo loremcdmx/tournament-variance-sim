@@ -1,5 +1,6 @@
 "use client";
 
+import { RangeInput } from "@/components/ui/RangeInput";
 import {
   memo,
   useCallback,
@@ -676,8 +677,7 @@ function ResultsViewImpl({
           <div className="rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/70 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[color:var(--color-fg-dim)]">
             {t("runs.label")}
           </div>
-          <input
-            type="range"
+          <RangeInput
             min={0}
             max={maxRuns}
             step={1}
@@ -699,7 +699,7 @@ function ResultsViewImpl({
                   if (!Number.isFinite(raw)) return;
                   setVisibleRuns(Math.max(0, Math.min(maxRuns, Math.round(raw))));
                 }}
-                className="w-14 rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/75 px-1 py-1 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+                className="number-control w-14 rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/75 px-1 py-1 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
                 aria-label={t("runs.label")}
                 title={t("runs.capturedMax").replace("{n}", String(maxRuns))}
               />
@@ -2579,8 +2579,7 @@ function TrimPctSlider({
       <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[color:var(--color-fg-dim)]">
         {label}
       </span>
-      <input
-        type="range"
+      <RangeInput
         min={0}
         max={40}
         step={0.5}
@@ -2783,8 +2782,7 @@ function LineStyleCustomizer({
                   onChange={(v) => setKey(k, { stroke: v })}
                   aria-label={t(labelKey(k))}
                 />
-                <input
-                  type="range"
+                <RangeInput
                   min={0.5}
                   max={4}
                   step={0.25}
@@ -2988,7 +2986,7 @@ function RefLineCustomizer({
                     const nextRoi = raw / 100;
                     setAt(i, { roi: nextRoi, label: roiLabel(nextRoi) });
                   }}
-                  className="w-14 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)] px-1 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)]"
+                  className="number-control w-14 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)] px-1 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)]"
                   aria-label={t("refLines.roi")}
                 />
                 <span className="text-[color:var(--color-fg-dim)]">%</span>

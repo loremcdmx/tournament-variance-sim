@@ -259,142 +259,189 @@ tr:focus-within td {
   background-color: rgba(255, 255, 255, 0.018);
 }
 
-/* Range sliders — full cross-browser custom styling.
-   `accent-color` alone gives inconsistent results across platforms
-   (Windows Chrome leaves a flat grey track + tiny black thumb that
-   ignores the accent on the unfilled portion), so we restyle the
-   track and thumb explicitly via vendor pseudo-elements. */
+/* Native controls keep browser keyboard and pointer behavior. */
 input[type="range"] {
   appearance: none;
   -webkit-appearance: none;
-  -moz-appearance: none;
   background: transparent;
   cursor: pointer;
-  height: 22px;
+  height: 32px;
   padding: 0;
   margin: 0;
   vertical-align: middle;
+  border-radius: 999px;
+  --range-fill: var(--c-accent);
+  --range-track: var(--c-bg-elev-2);
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 999px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--c-bg-elev-2), black 12%),
-    color-mix(in oklab, var(--c-bg-elev-2), black 4%)
-  );
-  border: 1px solid color-mix(in oklab, var(--c-border), black 6%);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.35);
+  background: linear-gradient(to right,
+    var(--range-fill) 0 var(--range-progress, 0%),
+    var(--range-track) var(--range-progress, 0%) 100%);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c-border-strong), transparent 45%);
 }
 
 input[type="range"]::-moz-range-track {
   height: 6px;
   border-radius: 999px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--c-bg-elev-2), black 12%),
-    color-mix(in oklab, var(--c-bg-elev-2), black 4%)
-  );
-  border: 1px solid color-mix(in oklab, var(--c-border), black 6%);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.35);
+  background: var(--range-track);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c-border-strong), transparent 45%);
 }
 
 input[type="range"]::-moz-range-progress {
   height: 6px;
   border-radius: 999px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--c-accent), white 8%),
-    var(--c-accent-strong)
-  );
+  background: var(--range-fill);
 }
 
 input[type="range"]::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  margin-top: -6px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--c-accent), white 18%),
-    var(--c-accent-strong)
-  );
-  border: 1px solid color-mix(in oklab, var(--c-accent-strong), black 22%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    0 1px 2px rgba(0, 0, 0, 0.4);
-  transition: transform 80ms ease, box-shadow 80ms ease;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  margin-top: -7px;
+  background: var(--c-accent);
+  border: 3px solid var(--c-bg-elev);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--c-accent), transparent 35%), 0 2px 5px #0003;
+  transition: box-shadow 120ms ease;
 }
 
 input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--c-accent), white 18%),
-    var(--c-accent-strong)
-  );
-  border: 1px solid color-mix(in oklab, var(--c-accent-strong), black 22%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    0 1px 2px rgba(0, 0, 0, 0.4);
-  transition: transform 80ms ease, box-shadow 80ms ease;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  border: 3px solid var(--c-bg-elev);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--c-accent), transparent 35%), 0 2px 5px #0003;
+  transition: box-shadow 120ms ease;
 }
 
-input[type="range"]:hover::-webkit-slider-thumb {
-  transform: scale(1.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    0 0 0 4px color-mix(in oklab, var(--c-accent), transparent 80%),
-    0 1px 2px rgba(0, 0, 0, 0.45);
+input[type="range"]:hover:not(:disabled)::-webkit-slider-thumb {
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--c-accent), transparent 82%);
 }
 
-input[type="range"]:hover::-moz-range-thumb {
-  transform: scale(1.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    0 0 0 4px color-mix(in oklab, var(--c-accent), transparent 80%),
-    0 1px 2px rgba(0, 0, 0, 0.45);
+input[type="range"]:hover:not(:disabled)::-moz-range-thumb {
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--c-accent), transparent 82%);
 }
 
 input[type="range"]:focus-visible {
-  outline: none;
-}
-
-input[type="range"]:focus-visible::-webkit-slider-thumb {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    0 0 0 4px color-mix(in oklab, var(--c-accent), transparent 65%),
-    0 1px 2px rgba(0, 0, 0, 0.45);
-}
-
-input[type="range"]:focus-visible::-moz-range-thumb {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    0 0 0 4px color-mix(in oklab, var(--c-accent), transparent 65%),
-    0 1px 2px rgba(0, 0, 0, 0.45);
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
 }
 
 input[type="range"]:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.45;
+  --range-fill: var(--c-fg-dim);
 }
 
 input[type="range"]:disabled::-webkit-slider-thumb {
   background: var(--c-fg-dim);
-  border-color: color-mix(in oklab, var(--c-fg-dim), black 30%);
   box-shadow: none;
-  transform: none;
 }
 
 input[type="range"]:disabled::-moz-range-thumb {
   background: var(--c-fg-dim);
-  border-color: color-mix(in oklab, var(--c-fg-dim), black 30%);
   box-shadow: none;
+}
+
+/* PMF controls draw a neutral marker and a fill from the midpoint. The
+   visible thumb and the native hit area use the same 10px end inset. */
+.pmf-slider {
+  position: relative;
+  height: 32px;
+  border-radius: 999px;
+}
+
+.pmf-slider input[type="range"] {
+  height: 100%;
+  opacity: 0;
+}
+
+.pmf-slider-track {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--c-bg-elev-2);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c-border-strong), transparent 45%);
+}
+
+.pmf-slider-thumb {
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--c-bg-elev);
+  background: var(--c-accent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--c-accent), transparent 35%), 0 2px 5px #0003;
+  transition: box-shadow 120ms ease;
+}
+
+.pmf-slider:hover:not(:has(input:disabled)) .pmf-slider-thumb {
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--c-accent), transparent 82%);
+}
+
+.pmf-slider:has(input:focus-visible) {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}
+
+.pmf-slider:has(input:disabled) {
+  opacity: 0.45;
+}
+
+/* Shared number-field chrome does not change draft or commit behavior. */
+.number-control,
+.number-control-group {
+  border-radius: 8px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.number-control:not(:disabled) {
+  background-color: color-mix(in oklab, var(--c-bg), var(--c-bg-elev) 45%);
+}
+
+.number-control:not(:disabled):hover,
+.number-control-group:not(:has(input:disabled)):hover {
+  border-color: var(--c-border-strong);
+}
+
+.number-control:focus,
+.number-control-group:focus-within {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--c-accent), transparent 85%);
+}
+
+.number-control[aria-invalid="true"],
+.number-control-group:has(input[aria-invalid="true"]) {
+  border-color: var(--c-danger);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--c-danger), transparent 85%);
+}
+
+@media (pointer: coarse) {
+  input[type="range"],
+  .pmf-slider {
+    height: 44px;
+  }
+
+  .number-control {
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  input[type="range"]::-webkit-slider-thumb { transition: none; }
+  input[type="range"]::-moz-range-thumb { transition: none; }
+  .pmf-slider-thumb,
+  .number-control,
+  .number-control-group { transition: none; }
 }
 
 .primary-run-button {

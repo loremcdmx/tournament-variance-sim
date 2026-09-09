@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
 import {
@@ -169,7 +169,8 @@ export function changeFinishModel(
   return { ...value, finishModelId, alphaOverride: null, modelPresetId: "custom" };
 }
 
-export function AlphaOverrideInput({ modelId, value, placeholder, onChange }: {
+export function AlphaOverrideInput({ id, modelId, value, placeholder, onChange }: {
+  id?: string;
   modelId: FinishModelId;
   value: number | null;
   placeholder: string;
@@ -178,6 +179,7 @@ export function AlphaOverrideInput({ modelId, value, placeholder, onChange }: {
   const enabled = supportsManualAlpha(modelId);
   return (
     <input
+      id={id}
       type="number"
       disabled={!enabled}
       step={0.05}
@@ -195,7 +197,7 @@ export function AlphaOverrideInput({ modelId, value, placeholder, onChange }: {
         const parsed = Number(raw);
         if (Number.isFinite(parsed) && parsed >= -0.5 && parsed <= 0.5) onChange(parsed);
       }}
-      className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:opacity-50"
+      className="number-control w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:opacity-50"
     />
   );
 }
@@ -225,6 +227,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   const t = useT();
   const { locale } = useLocale();
   const { advanced } = useAdvancedMode();
+  const fieldId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empError, setEmpError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -350,8 +353,9 @@ export const ControlsPanel = memo(function ControlsPanel({
       >
         {globalControls}
         <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
-          <Field label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
+          <Field htmlFor={`${fieldId}-tournaments`} label={t("controls.scheduleRepeats")} hint={t("help.scheduleRepeats")}>
             <NumInput
+              id={`${fieldId}-tournaments`}
               value={totalTournaments}
               min={1}
               max={maxTournamentsPerSample}
@@ -362,8 +366,9 @@ export const ControlsPanel = memo(function ControlsPanel({
           </Field>
         </div>
         {advanced && (
-          <Field label={t("controls.samples")} hint={t("help.samples")}>
+          <Field htmlFor={`${fieldId}-samples`} label={t("controls.samples")} hint={t("help.samples")}>
             <NumInput
+              id={`${fieldId}-samples`}
               value={value.samples}
               min={100}
               max={1_000_000}
@@ -477,8 +482,9 @@ export const ControlsPanel = memo(function ControlsPanel({
             </div>
           )}
         </Field>
-        <Field label={t("controls.alphaOverride")} hint={t("help.alphaOverride")}>
+        <Field htmlFor={`${fieldId}-alpha`} label={t("controls.alphaOverride")} hint={t("help.alphaOverride")}>
           <AlphaOverrideInput
+            id={`${fieldId}-alpha`}
             modelId={value.finishModelId}
             value={value.alphaOverride}
             placeholder={t("controls.alphaPlaceholder")}
@@ -490,8 +496,9 @@ export const ControlsPanel = memo(function ControlsPanel({
             </div>
           )}
         </Field>
-        <Field label={t("controls.roiStdErr")} hint={t("help.roiStdErr")}>
+        <Field htmlFor={`${fieldId}-roi-error`} label={t("controls.roiStdErr")} hint={t("help.roiStdErr")}>
           <NumInput
+            id={`${fieldId}-roi-error`}
             value={value.roiStdErr}
             min={0}
             max={5}
@@ -718,10 +725,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 export function Field({
+  htmlFor,
   label,
   children,
   hint,
 }: {
+  htmlFor?: string;
   label: string;
   children: React.ReactNode;
   hint?: React.ReactNode;
@@ -730,7 +739,7 @@ export function Field({
   // wrapping labels (e.g. "Турниров в сэмпле") don't shove their
   // input down and break horizontal alignment with neighbouring fields.
   return (
-    <label className="flex h-full flex-col gap-1.5">
+    <label htmlFor={htmlFor} className="flex h-full flex-col gap-1.5">
       <span className="flex items-start justify-center gap-1.5 text-center text-[10px] font-bold uppercase leading-tight tracking-[0.16em] text-[color:var(--color-accent)]/90">
         {label}
         {hint && <InfoTooltip content={hint} />}
@@ -741,6 +750,7 @@ export function Field({
 }
 
 export function NumInput({
+  id,
   value,
   onChange,
   step,
@@ -749,6 +759,7 @@ export function NumInput({
   commitMode = "change",
   disabled = false,
 }: {
+  id?: string;
   value: number;
   onChange: (v: number) => void;
   step?: number;
@@ -793,6 +804,7 @@ export function NumInput({
 
   return (
     <input
+      id={id}
       type="number"
       disabled={disabled}
       value={display}
@@ -800,6 +812,7 @@ export function NumInput({
       max={max}
       step={step}
       inputMode="decimal"
+      aria-invalid={invalid || undefined}
       onChange={(e) => {
         const raw = normalizeNumericDraft(e.target.value);
         setDraft(raw);
@@ -819,7 +832,7 @@ export function NumInput({
         if (e.key === "Enter") commitDraft();
         else if (e.key === "Escape") setDraft(null);
       }}
-      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-45 ${
+      className={`number-control w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-45 ${
         invalid
           ? "border-rose-500/70 ring-1 ring-rose-500/30"
           : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"

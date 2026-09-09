@@ -3,6 +3,15 @@
 Only user-facing changes are listed here. Small refactors, bench refreshes,
 internal scripts, and other low-signal maintenance are intentionally omitted.
 
+## v0.7.8 — 2026-09-09
+
+- Refreshed sliders within the existing design: filled tracks, larger handles,
+  larger touch targets, and visible keyboard focus, including the EV controls.
+- Numeric fields now share clearer focus and invalid-value states; schedule
+  field labels are associated with their inputs.
+- Fixed EV slider changes sometimes remaining an uncommitted preview after a
+  quick key press or pointer release. Numeric draft and commit behavior is unchanged.
+
 ## v0.7.4 - 2026-04-20
 
 - Fixed Battle Royale fixed-ITM profit routing: when cash-side ROI grows, the

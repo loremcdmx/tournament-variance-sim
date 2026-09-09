@@ -838,10 +838,11 @@ const ScheduleRow = memo(function ScheduleRow({
           )}
           {showBounty && (
             <div className="flex min-w-0 flex-col gap-1">
-              <SectionLabel hint={t("row.bountyHint")}>
+              <SectionLabel htmlFor={`schedule-${r.id}-bounty`} hint={t("row.bountyHint")}>
                 {t("row.bounty")}
               </SectionLabel>
               <PercentNumInput
+                id={`schedule-${r.id}-bounty`}
                 value={+(((r.bountyFraction ?? 0) * 100).toFixed(1))}
                 onChange={(v) =>
                   update(r.id, {
@@ -857,10 +858,11 @@ const ScheduleRow = memo(function ScheduleRow({
         </div>
 
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel className="2xl:hidden" hint={t("help.row.buyIn")}>
+          <SectionLabel htmlFor={`schedule-${r.id}-buy-in`} className="2xl:hidden" hint={t("help.row.buyIn")}>
             {t("row.buyIn")}
           </SectionLabel>
           <BuyInInput
+            id={`schedule-${r.id}-buy-in`}
             gameType={uiGt}
             buyIn={r.buyIn}
             rake={r.rake}
@@ -869,10 +871,11 @@ const ScheduleRow = memo(function ScheduleRow({
         </div>
 
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel className="2xl:hidden" hint={t("help.row.players")}>
+          <SectionLabel htmlFor={`schedule-${r.id}-players`} className="2xl:hidden" hint={t("help.row.players")}>
             {t("row.players")}
           </SectionLabel>
           <NumInput
+            id={`schedule-${r.id}-players`}
             value={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : r.players}
             onChange={(v) => update(r.id, { players: Math.floor(v) })}
             min={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 2}
@@ -883,10 +886,11 @@ const ScheduleRow = memo(function ScheduleRow({
         </div>
 
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel className="2xl:hidden" hint={t("help.row.roi")}>
+          <SectionLabel htmlFor={`schedule-${r.id}-roi`} className="2xl:hidden" hint={t("help.row.roi")}>
             {t("row.roi")}
           </SectionLabel>
           <PercentNumInput
+            id={`schedule-${r.id}-roi`}
             value={Math.round(r.roi * 100)}
             onChange={(v) => update(r.id, { roi: v / 100 })}
             min={-99}
@@ -903,10 +907,11 @@ const ScheduleRow = memo(function ScheduleRow({
         </div>
 
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel className="2xl:hidden" hint={t("row.fixedItmHint")}>
+          <SectionLabel htmlFor={`schedule-${r.id}-itm`} className="2xl:hidden" hint={t("row.fixedItmHint")}>
             {t("row.fixedItm")}
           </SectionLabel>
           <PercentDraftInput
+            id={`schedule-${r.id}-itm`}
             min={0}
             max={100}
             step={0.5}
@@ -990,10 +995,11 @@ const ScheduleRow = memo(function ScheduleRow({
         </div>
 
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel className="2xl:hidden" hint={t("help.row.count")}>
+          <SectionLabel htmlFor={`schedule-${r.id}-count`} className="2xl:hidden" hint={t("help.row.count")}>
             {t("row.count")}
           </SectionLabel>
           <NumInput
+            id={`schedule-${r.id}-count`}
             value={r.count}
             onChange={(v) => update(r.id, { count: Math.floor(v) })}
             min={1}
@@ -1161,16 +1167,19 @@ const ScheduleRow = memo(function ScheduleRow({
 });
 
 function SectionLabel({
+  htmlFor,
   children,
   hint,
   className = "",
 }: {
+  htmlFor?: string;
   children: React.ReactNode;
   hint?: React.ReactNode;
   className?: string;
 }) {
   return (
     <label
+      htmlFor={htmlFor}
       className={
         "inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--color-accent)]/90 " +
         className
@@ -1380,6 +1389,7 @@ function NumInputBox({
       max={max}
       step={step}
       inputMode="decimal"
+      aria-invalid={invalid || undefined}
       onChange={(e) => {
         const raw = normalizeNumericDraft(e.target.value);
         setDraft(raw);
@@ -1423,7 +1433,7 @@ function NumInputBox({
           setDraft(null);
         }
       }}
-      className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
+      className={`number-control w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-xs tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] ${
         invalid
           ? "border-rose-500/70 ring-1 ring-rose-500/30"
           : "border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]"
@@ -1769,11 +1779,13 @@ function GameTypeSelect({
 }
 
 function BuyInInput({
+  id,
   gameType,
   buyIn,
   rake,
   onChange,
 }: {
+  id: string;
   gameType: GameType;
   buyIn: number;
   rake: number;
@@ -1796,8 +1808,10 @@ function BuyInInput({
   return (
     <div className="flex w-full flex-col items-center gap-1">
       <input
+        id={id}
         type="text"
         inputMode="decimal"
+        aria-invalid={invalid || undefined}
         value={local}
         onFocus={() => setFocused(true)}
         onBlur={() => {
@@ -1819,7 +1833,7 @@ function BuyInInput({
         title="50+5 = $50 buy-in + $5 rake (or just a number)"
         className={
           INPUT_BASE +
-          " w-full text-center tabular-nums " +
+          " number-control w-full text-center tabular-nums " +
           (invalid ? "!border-[color:var(--color-danger)]/70" : "")
         }
       />
@@ -1845,6 +1859,7 @@ function BuyInInput({
 }
 
 function NumInput({
+  id,
   value,
   onChange,
   step,
@@ -1854,6 +1869,7 @@ function NumInput({
   className = "",
   disabled = false,
 }: {
+  id?: string;
   value: number;
   onChange: (v: number) => void;
   step?: number;
@@ -1881,6 +1897,7 @@ function NumInput({
   const invalid = computeInvalid(draft, min, max);
   return (
     <input
+      id={id}
       type="number"
       value={display}
       min={min}
@@ -1888,6 +1905,7 @@ function NumInput({
       step={step}
       disabled={disabled}
       inputMode="decimal"
+      aria-invalid={invalid || undefined}
       onChange={(e) => {
         if (disabled) return;
         const raw = e.target.value;
@@ -1937,7 +1955,7 @@ function NumInput({
       }}
       className={
         INPUT_BASE +
-        " w-full text-center tabular-nums disabled:cursor-not-allowed disabled:opacity-55 " +
+        " number-control w-full text-center tabular-nums disabled:cursor-not-allowed disabled:opacity-55 " +
         className +
         " " +
         (invalid ? "!border-rose-500/70 ring-1 ring-rose-500/30" : "")
@@ -1960,6 +1978,7 @@ function PercentNumInput(
 }
 
 function PercentDraftInput({
+  id,
   value,
   onChange,
   min,
@@ -1969,6 +1988,7 @@ function PercentDraftInput({
   disabled,
   lockedLabel,
 }: {
+  id: string;
   value: number | "";
   onChange: (raw: string) => void;
   min: number;
@@ -1981,6 +2001,7 @@ function PercentDraftInput({
   return (
     <div className="relative w-full">
       <input
+        id={id}
         type="number"
         min={min}
         max={max}
@@ -1996,7 +2017,7 @@ function PercentDraftInput({
         }}
         className={
           INPUT_BASE +
-          " w-full pr-7 text-center tabular-nums disabled:cursor-not-allowed disabled:border-[color:var(--color-border)]/70 disabled:bg-[color:var(--color-bg-elev)]/55 disabled:text-[color:var(--color-fg-muted)]"
+          " number-control w-full pr-7 text-center tabular-nums disabled:cursor-not-allowed disabled:border-[color:var(--color-border)]/70 disabled:bg-[color:var(--color-bg-elev)]/55 disabled:text-[color:var(--color-fg-muted)]"
         }
       />
       {lockedLabel ? (

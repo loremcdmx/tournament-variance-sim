@@ -107,6 +107,37 @@ async function check(name, state, body, viewport) {
 try {
   browser = await chromium.launch({ headless: true,
     ...(process.env.SMOKE_BROWSER_CHANNEL ? { channel: process.env.SMOKE_BROWSER_CHANNEL } : {}) });
+  for (const kind of ["top-heavy", "bounty"]) {
+    const bounty = kind === "bounty";
+    const biasKey = bounty ? "bountyEvBias" : "itmTopHeavyBias";
+    const sliderLabel = text(bounty ? "preview.evBias.label" : "preview.topHeavyBias.label");
+    const rows = [{ ...row, ...(bounty ? { gameType: "pko", bountyFraction: 0.5 } : {}) }];
+    await check(`ev-slider-${kind}-commits`, fixture({}, rows), async page => {
+      const slider = page.getByRole("slider", { name: sliderLabel, exact: true });
+      await slider.waitFor();
+      await slider.press("ArrowRight");
+      // A changed thumb alone is insufficient: quick keyup previously committed
+      // the stale controlled DOM value before the draft animation frame ran.
+      await page.waitForFunction(({ biasKey, sign }) => {
+        const saved = JSON.parse(localStorage.getItem("tvs:state"));
+        return (saved.schedule[0][biasKey] ?? 0) * sign > 0;
+      }, { biasKey, sign: bounty ? -1 : 1 });
+      const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("tvs:state")).schedule[0]);
+      assert.equal(persisted.roi, row.roi);
+      assert.equal(await slider.evaluate(el => document.activeElement === el), true, "committed before blur");
+      if (!bounty) {
+        const manual = page.getByRole("spinbutton", { name: sliderLabel, exact: true });
+        await manual.fill("60");
+        await manual.press("Enter");
+        await page.waitForFunction(() => Math.abs(JSON.parse(localStorage.getItem("tvs:state")).schedule[0].itmTopHeavyBias - 0.2) < 1e-6);
+        const card = slider.locator("..").locator("..").locator("..");
+        await card.getByRole("button", { name: text("preview.evBias.reset"), exact: true }).click();
+        await page.waitForFunction(() => !JSON.parse(localStorage.getItem("tvs:state")).schedule[0].itmTopHeavyBias);
+      }
+      return { biasKey, committedBeforeBlur: persisted[biasKey], roiPreserved: true };
+    });
+  }
+
   await check("completed-input-snapshot", fixture(), async page => {
     await page.getByRole("button", { name: text("controls.run"), exact: true }).click();
     await settleBatch(page);

@@ -11,6 +11,7 @@
  * via prop only when the Schedule tab is active. Does not modify
  * ConvergenceChart state, so the existing widget stays exactly as it is.
  */
+import { RangeInput } from "@/components/ui/RangeInput";
 import { useMemo, useState } from "react";
 import {
   AFS_MAX,
@@ -252,8 +253,7 @@ export function ProveEdgeCard({
             <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-emerald-400/80">
               {t("proveEdge.label.fieldSize")}
             </span>
-            <input
-              type="range"
+            <RangeInput
               min={0}
               max={1}
               step={0.001}
@@ -278,7 +278,7 @@ export function ProveEdgeCard({
                 }
               }}
               disabled={isMbr}
-              className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed"
+              className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed"
               aria-label={t("proveEdge.label.fieldSize")}
             />
           </div>
@@ -287,8 +287,7 @@ export function ProveEdgeCard({
             <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-orange-400/80">
               {t("proveEdge.label.rake")}
             </span>
-            <input
-              type="range"
+            <RangeInput
               min={0}
               max={20}
               step={0.5}
@@ -307,7 +306,7 @@ export function ProveEdgeCard({
                 const n = Number(e.target.value);
                 if (Number.isFinite(n)) setRakePct(Math.max(0, Math.min(50, n)));
               }}
-              className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-orange-400 focus:outline-none"
+              className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-orange-400 focus:outline-none"
               aria-label={t("proveEdge.label.rake")}
             />
           </div>
@@ -316,8 +315,7 @@ export function ProveEdgeCard({
             <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
               {t("proveEdge.label.confidence")}
             </span>
-            <input
-              type="range"
+            <RangeInput
               min={50}
               max={99.9}
               step={0.1}
@@ -336,7 +334,7 @@ export function ProveEdgeCard({
                 const n = Number(e.target.value);
                 if (Number.isFinite(n)) setCiPct(Math.max(50, Math.min(99.99, n)));
               }}
-              className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
+              className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
               aria-label={t("proveEdge.label.confidence")}
             />
           </div>
@@ -345,8 +343,7 @@ export function ProveEdgeCard({
             <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--color-accent)]/85">
               {t("proveEdge.label.yourRoi")}
             </span>
-            <input
-              type="range"
+            <RangeInput
               min={-30}
               max={30}
               step={0.1}
@@ -367,7 +364,7 @@ export function ProveEdgeCard({
                   setCurrentRoiPct(Math.max(-50, Math.min(100, n)));
                 }
               }}
-              className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+              className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
               aria-label={t("proveEdge.label.yourRoi")}
             />
           </div>
@@ -381,8 +378,7 @@ export function ProveEdgeCard({
             <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
               {t("proveEdge.label.confidence")}
             </span>
-            <input
-              type="range"
+            <RangeInput
               min={50}
               max={99.9}
               step={0.1}
@@ -401,7 +397,7 @@ export function ProveEdgeCard({
                 const n = Number(e.target.value);
                 if (Number.isFinite(n)) setCiPct(Math.max(50, Math.min(99.99, n)));
               }}
-              className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
+              className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
               aria-label={t("proveEdge.label.confidence")}
             />
           </div>

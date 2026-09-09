@@ -924,6 +924,16 @@ function BountyShareSlider({
     onCommit(nextBias);
   };
 
+  const commitSliderDraft = (fallbackBias: number) => {
+    // React may restore the controlled DOM value before the draft's rAF.
+    // Commit the latest input event, then discard its pending paint.
+    const nextBias = pendingSliderBiasRef.current ?? fallbackBias;
+    if (sliderFrameRef.current !== null) cancelAnimationFrame(sliderFrameRef.current);
+    sliderFrameRef.current = null;
+    pendingSliderBiasRef.current = null;
+    commitBias(nextBias);
+  };
+
   const parseManualShare = (raw: string): number | null => {
     const normalized = raw.trim().replace(",", ".");
     if (normalized === "") return null;
@@ -1003,6 +1013,8 @@ function BountyShareSlider({
               }}
               disabled={locked}
               aria-label={title}
+              aria-invalid={manualOutOfRange || undefined}
+              inputMode="decimal"
               className={`${PREVIEW_SLIDER_VALUE_INPUT} w-14 text-[15px]`}
             />
             <span className={`${PREVIEW_SLIDER_VALUE_SUFFIX} text-[12px]`}>
@@ -1025,10 +1037,10 @@ function BountyShareSlider({
         </div>
       </div>
       <div className="mt-2.5 flex flex-col gap-1.5">
-        <div className="relative h-7">
+        <div className="pmf-slider">
           <div
             aria-hidden
-            className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]"
+            className="pmf-slider-track"
           >
             <div
               className="absolute inset-y-0 left-0 bg-[color:var(--color-bg-elev)]"
@@ -1050,8 +1062,8 @@ function BountyShareSlider({
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[color:var(--color-bg)] bg-[color:var(--color-accent)] shadow-sm"
-            style={{ left: `${valuePct}%` }}
+            className="pmf-slider-thumb pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ left: `calc(${valuePct}% + ${10 - valuePct / 5}px)` }}
           />
           <input
             type="range"
@@ -1063,10 +1075,11 @@ function BountyShareSlider({
               setManualText(null);
               scheduleSliderDraft(-Number(e.target.value));
             }}
-            onPointerUp={(e) => commitBias(-Number(e.currentTarget.value))}
-            onKeyUp={(e) => commitBias(-Number(e.currentTarget.value))}
-            onBlur={(e) => commitBias(-Number(e.currentTarget.value))}
+            onPointerUp={(e) => commitSliderDraft(-Number(e.currentTarget.value))}
+            onKeyUp={(e) => commitSliderDraft(-Number(e.currentTarget.value))}
+            onBlur={(e) => commitSliderDraft(-Number(e.currentTarget.value))}
             disabled={locked}
+            aria-valuetext={evPct(value)}
             className="absolute inset-0 z-10 block h-full w-full cursor-pointer appearance-none bg-transparent opacity-0 disabled:cursor-default"
             aria-label={title}
           />
@@ -1191,6 +1204,16 @@ function TopHeavyPlacementSlider({
     onCommit(nextBias);
   };
 
+  const commitSliderDraft = (fallbackBias: number) => {
+    // React may restore the controlled DOM value before the draft's rAF.
+    // Commit the latest input event, then discard its pending paint.
+    const nextBias = pendingSliderBiasRef.current ?? fallbackBias;
+    if (sliderFrameRef.current !== null) cancelAnimationFrame(sliderFrameRef.current);
+    sliderFrameRef.current = null;
+    pendingSliderBiasRef.current = null;
+    commitBias(nextBias);
+  };
+
   const parseManualPercent = (raw: string): number | null => {
     const normalized = raw.trim().replace(",", ".");
     if (normalized === "") return null;
@@ -1259,6 +1282,8 @@ function TopHeavyPlacementSlider({
                 }
               }}
               aria-label={title}
+              aria-invalid={manualOutOfRange || undefined}
+              inputMode="decimal"
               className={`${PREVIEW_SLIDER_VALUE_INPUT} w-16 text-[17px]`}
             />
             <span className={`${PREVIEW_SLIDER_VALUE_SUFFIX} text-[13px]`}>
@@ -1281,10 +1306,10 @@ function TopHeavyPlacementSlider({
         </div>
       </div>
       <div className="mt-3 flex flex-col gap-2">
-        <div className="relative h-8">
+        <div className="pmf-slider">
           <div
             aria-hidden
-            className="absolute left-0 right-0 top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]"
+            className="pmf-slider-track"
           >
             <div
               className="absolute inset-y-0 left-0 bg-[color:var(--color-bg-elev)]"
@@ -1306,8 +1331,8 @@ function TopHeavyPlacementSlider({
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute top-1/2 h-4.5 w-4.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[color:var(--color-bg)] bg-[color:var(--color-accent)] shadow-sm"
-            style={{ left: `${valuePct}%` }}
+            className="pmf-slider-thumb pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ left: `calc(${valuePct}% + ${10 - valuePct / 5}px)` }}
           />
           <input
             type="range"
@@ -1319,9 +1344,10 @@ function TopHeavyPlacementSlider({
               setManualText(null);
               scheduleSliderDraft(Number(e.target.value));
             }}
-            onPointerUp={(e) => commitBias(Number(e.currentTarget.value))}
-            onKeyUp={(e) => commitBias(Number(e.currentTarget.value))}
-            onBlur={(e) => commitBias(Number(e.currentTarget.value))}
+            onPointerUp={(e) => commitSliderDraft(Number(e.currentTarget.value))}
+            onKeyUp={(e) => commitSliderDraft(Number(e.currentTarget.value))}
+            onBlur={(e) => commitSliderDraft(Number(e.currentTarget.value))}
+            aria-valuetext={`${topHeavyPctInputValue(biasToTopHeavyPercent(effectiveBias))}%`}
             className="absolute inset-0 z-10 block h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
             aria-label={title}
           />

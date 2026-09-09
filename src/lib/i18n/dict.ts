@@ -23,6 +23,10 @@ export const DICT = {
     en: "Settings have changed. These results and their share link still describe the completed run. Run again to apply your changes.",
     ru: "Настройки изменены. Эти результаты и ссылка относятся к завершённому прогону. Запустите расчёт снова, чтобы применить изменения.",
   },
+  "changelog.v078.summary": {
+    en: "Refreshed sliders and number fields: filled tracks, larger touch targets, visible keyboard focus and clearer invalid-value feedback. The familiar layout and input behavior are preserved.",
+    ru: "Обновлены ползунки и числовые поля: заполненная дорожка, удобнее захват на телефоне, заметный фокус с клавиатуры и подсветка неверного значения. Сохранены привычная компоновка и поведение ввода.",
+  },
   "changelog.v077.summary": {
     en: "Corrected payouts, bankroll recommendations, leaderboard and satellite statistics. Completed runs keep their settings; PrimeDope comparisons, saved schedules and CSV imports stay consistent.",
     ru: "Исправлены выплаты, рекомендации по банкроллу, статистика лидерборда и сателлитов. Результаты сохраняют настройки своего прогона; исправлены сравнения PrimeDope, сохранение расписаний и импорт CSV.",

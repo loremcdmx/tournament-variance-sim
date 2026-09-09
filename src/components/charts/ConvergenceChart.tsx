@@ -1,5 +1,6 @@
 "use client";
 
+import { RangeInput } from "@/components/ui/RangeInput";
 import { memo, useMemo, useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
@@ -735,8 +736,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-emerald-400/80">
           AFS
         </span>
-        <input
-          type="range"
+        <RangeInput
           min={0}
           max={1}
           step={0.001}
@@ -765,8 +765,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             }
           }}
           disabled={afsLocked}
-          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed"
-          aria-label="AFS value"
+          className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed"
+          aria-label={t("proveEdge.label.fieldSize")}
         />
         <button
           type="button"
@@ -784,8 +784,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-amber-400/80">
             ROI
           </span>
-          <input
-            type="range"
+          <RangeInput
             min={roiMin * 100}
             max={roiMax * 100}
             step={0.5}
@@ -809,8 +808,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-amber-400 focus:outline-none"
-            aria-label="ROI percent"
+            className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-amber-400 focus:outline-none"
+            aria-label={t("proveEdge.label.yourRoi")}
           />
           <button
             type="button"
@@ -840,8 +839,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-orange-400/80">
           {t("chart.convergence.rake")}
         </span>
-        <input
-          type="range"
+        <RangeInput
           min={0}
           max={20}
           step={0.5}
@@ -851,7 +849,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             setRakeOverridePct(Number(e.target.value));
           }}
           className="flex-1 accent-orange-400"
-          aria-label="Rake"
+          aria-label={t("chart.convergence.rake")}
         />
         <input
           type="number"
@@ -868,8 +866,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-orange-400 focus:outline-none"
-          aria-label="Rake percent"
+          className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-orange-400 focus:outline-none"
+          aria-label={t("proveEdge.label.rake")}
         />
         <button
           type="button"
@@ -891,15 +889,14 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
           CI
         </span>
-        <input
-          type="range"
+        <RangeInput
           min={75}
           max={99.9}
           step={0.1}
           value={ciPct}
           onChange={(e) => setCiPct(Number(e.target.value))}
           className="flex-1 accent-sky-400"
-          aria-label="Confidence interval"
+          aria-label={t("proveEdge.label.confidence")}
         />
         <input
           type="number"
@@ -916,8 +913,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
-          aria-label="CI percent"
+          className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
+          aria-label={t("proveEdge.label.confidence")}
         />
         <button
           type="button"
@@ -1232,15 +1229,14 @@ function MixRow({
       >
         {label}
       </span>
-      <input
-        type="range"
+      <RangeInput
         min={0}
         max={100}
         step={1}
         value={pct}
         onChange={(e) => onChange(idx, Number(e.target.value) / 100)}
         className={`flex-1 ${classes.range}`}
-        aria-label={`${label} share`}
+        aria-label={label}
       />
       <input
         type="number"
@@ -1257,8 +1253,8 @@ function MixRow({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        className={`w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] outline-none ${classes.focus}`}
-        aria-label={`${label} percent`}
+        className={`number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] outline-none ${classes.focus}`}
+        aria-label={`${label} %`}
       />
       <span className="w-[22px]" />
     </div>

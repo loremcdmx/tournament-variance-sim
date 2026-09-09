@@ -1,3 +1,4 @@
+import { RangeInput } from "@/components/ui/RangeInput";
 import {
   useCallback,
   useDeferredValue,
@@ -175,8 +176,7 @@ export function TrajectoryToolbar({
         <span className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
           {t("cash.toolbar.runs")}
         </span>
-        <input
-          type="range"
+        <RangeInput
           min={0}
           max={maxVisibleRuns}
           step={1}

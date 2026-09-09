@@ -4,6 +4,8 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 
 **🔗 Live:** https://tournament-variance-sim.vercel.app
 
+**v0.7.8:** обновлены ползунки и числовые поля в существующем оформлении: заполненная дорожка, более удобная область захвата, видимый фокус и подсветка неверного значения. Сохранены диапазоны и точный ввод; исправлено применение быстрых движений и клавиш у ползунков EV. Проект, CI и Vercel используют Node 24 LTS; обновлены инструменты разработки с исправлениями безопасности.
+
 **v0.7.7:** результаты и ссылка сохраняют настройки завершённого прогона; для изменённых полей нужен новый запуск. Исправлены вероятности и выплаты на граничных полях, рекомендации банкролла, сочетание лидерборда с рейкбеком и подсчёт билетов. Ошибочный CSV не заменяет расписание. [Список исправлений и проверок](docs/BUGHUNT_FIXES_2026-09-09.md).
 
 Раздел «Минусы нашей модели» объясняет шесть практических ограничений: качество исходных данных, распределение финишей, особенности турниров, редкие исходы, оценку дистанции и учёт промо в риске.
@@ -63,7 +65,8 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 ## Запуск
 
 ```bash
-npm install
+nvm use # Node 24 LTS
+npm ci
 npm run dev       # http://localhost:3000
 npm test          # vitest
 npx tsc --noEmit  # type check
@@ -72,7 +75,7 @@ npm run build     # prod build
 npm run smoke:cash # release smoke for the advanced cash tab
 ```
 
-Требует Node 20+. Vercel-деплой без конфига (App Router).
+Требует Node 24 LTS (`.nvmrc` и `engines.node`). Vercel-деплой без конфига (App Router).
 
 ## Структура проекта
 
@@ -256,6 +259,8 @@ SimulationResult → ResultsView
 
 Monte Carlo variance simulator for poker MTTs. A from-scratch alternative to [PrimeDope's Tournament Variance Calculator](https://www.primedope.com/tournament-variance-calculator/) with an honest finish-position model.
 
+**v0.7.8:** refreshed sliders and numeric fields within the existing design, with filled tracks, larger touch targets, visible focus and invalid-value feedback. Ranges and exact entry are preserved; fast keyboard and pointer changes to EV sliders now commit reliably. The project, CI and Vercel use Node 24 LTS; development tooling includes security fixes.
+
 **v0.7.7:** completed results and share links retain their run inputs. Changed settings require a new run. Fixes cover boundary payout/probability cases, conservative bankroll quotes, leaderboard/rakeback composition, exact satellite ticket counts, persistence and atomic CSV imports. [Fix coverage and checks](docs/BUGHUNT_FIXES_2026-09-09.md).
 
 The model limitations panel explains six practical boundaries: input quality, finish distributions, tournament assumptions, rare outcomes, volume estimates and how promotions affect risk.
@@ -284,7 +289,8 @@ Next.js 16, React 19, TypeScript, Web Worker engine pool, uPlot, Tailwind 4, Vit
 ## Run
 
 ```bash
-npm install
+nvm use # Node 24 LTS
+npm ci
 npm run dev       # http://localhost:3000
 npm test          # vitest
 npx tsc --noEmit  # type check
@@ -292,7 +298,7 @@ npm run lint
 npm run build
 ```
 
-Needs Node 20+.
+Needs Node 24 LTS (`.nvmrc` and `engines.node`).
 
 ## Forking / contributing
 
