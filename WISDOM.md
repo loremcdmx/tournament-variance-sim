@@ -230,6 +230,32 @@ residual coefficient before being band-eligible.
   full buy-in+rake ROI basis. Byte-for-byte live-site parity also needs
   `primedopeStyleEV: true`, and that should stay a diagnostic-script opt-in.
 
+## Run Must Read Settled State
+
+"I changed the distance, clicked Run, the bar ran, nothing changed" was real
+and had three legs, all reproduced from the worker requests, not from the UI:
+
+- `ScheduleEditor` commits blur drafts inside `startTransition`. A mouse click
+  on Run blurs the field on mousedown and fires `onRun` on click; the click's
+  closure still held the previous schedule, so the engine ran N=1000 while the
+  results header (live state) already said 2 000.
+- Cmd/Ctrl+Enter is a `window` keydown; a `commitMode="blur"` field that still
+  has focus has not committed at all, so the shortcut ran the old value.
+- `ControlsPanel` disables its `<fieldset>` while running. Chrome drops focus
+  from a disabled field **without a blur event**, so the draft stayed on screen
+  and stayed uncommitted; every later Run repeated the stale value until the
+  user touched the field again.
+
+Stable seeds made this visible (identical result), they did not cause it —
+before the seed became stable the same bug produced a *different* result for
+the *wrong* N, which is worse. The fix in `page.tsx`: Run blurs the focused
+form field, then requests the run as a transition-lane state change; an effect
+builds `SimulationInput` from the state that request rendered against. Do not
+"simplify" it back to calling `run()` from the click handler. When checking
+this class of bug, patch `Worker.prototype.postMessage` and read
+`input.schedule` / `scheduleRepeats` off the shard requests — the results
+header is derived from live state and will lie.
+
 ## Timeout Signature vs Determinism Failure
 
 A red full-suite run with an inflated duration (155s or 415s against the normal

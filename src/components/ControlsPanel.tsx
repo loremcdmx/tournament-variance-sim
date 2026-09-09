@@ -742,6 +742,20 @@ export function NumInput({
     }
   }
 
+  const commitDraft = () => {
+    if (draft === null) return;
+    const v = Number(draft);
+    if (!Number.isFinite(v)) {
+      setDraft(null);
+      return;
+    }
+    const lo = min ?? -Infinity;
+    const hi = max ?? Infinity;
+    const clamped = Math.min(hi, Math.max(lo, v));
+    if (clamped !== value) onChange(clamped);
+    setDraft(null);
+  };
+
   return (
     <input
       type="number"
@@ -762,18 +776,13 @@ export function NumInput({
         if (max !== undefined && v > max) return;
         onChange(v);
       }}
-      onBlur={() => {
-        if (draft === null) return;
-        const v = Number(draft);
-        if (!Number.isFinite(v)) {
-          setDraft(null);
-          return;
-        }
-        const lo = min ?? -Infinity;
-        const hi = max ?? Infinity;
-        const clamped = Math.min(hi, Math.max(lo, v));
-        if (clamped !== value) onChange(clamped);
-        setDraft(null);
+      onBlur={commitDraft}
+      onKeyDown={(e) => {
+        // Enter commits like the schedule editor's fields do; the event keeps
+        // bubbling so Cmd/Ctrl+Enter still reaches the page's run shortcut
+        // — after the commit, which is what makes that shortcut honest.
+        if (e.key === "Enter") commitDraft();
+        else if (e.key === "Escape") setDraft(null);
       }}
       className={`w-full rounded-md border bg-[color:var(--color-bg)] px-2 py-1.5 text-center text-[13px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors focus:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-45 ${
         invalid

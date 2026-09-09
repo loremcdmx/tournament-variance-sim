@@ -435,14 +435,48 @@ export default function Home() {
     ],
   );
 
+  // A run request is state, not a direct call. The click can land while a
+  // schedule edit is still in flight: the editor commits blur drafts inside
+  // startTransition, and a field that still has focus has not committed at
+  // all. Reading the schedule from the click's closure then re-ran the
+  // previous schedule under the same seed — an identical result under a
+  // results header that already claimed the new distance. Blurring the
+  // focused field flushes its draft (and dodges the disabled-fieldset focus
+  // drop, which fires no blur event); requesting the run as a transition
+  // keeps it behind every earlier commit; the effect builds the input from
+  // the state those commits produced.
+  const [runRequest, setRunRequest] = useState(0);
+  const handledRunRequestRef = useRef(0);
   const onRun = useCallback(() => {
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLSelectElement
+    ) {
+      active.blur();
+    }
+    startTransition(() => setRunRequest((n) => n + 1));
+  }, []);
+
+  useEffect(() => {
+    if (runRequest === 0 || handledRunRequestRef.current === runRequest) return;
+    handledRunRequestRef.current = runRequest;
     clearPendingInterrupt();
     const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
     if (!liveFeasibility.ok) return;
     const input = buildInput(effectiveSchedule, controls);
     lastRunInputRef.current = input;
     run(input);
-  }, [clearPendingInterrupt, effectiveSchedule, previewModel, controls, run, buildInput]);
+  }, [
+    runRequest,
+    clearPendingInterrupt,
+    effectiveSchedule,
+    previewModel,
+    controls,
+    run,
+    buildInput,
+  ]);
 
   const onNewSeed = useCallback(() => {
     setControls((c) => ({ ...c, seed: drawFreshSeed() }));
