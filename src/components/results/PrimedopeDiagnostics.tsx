@@ -7,22 +7,49 @@ import type {
 } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
-import { pct } from "@/lib/results/formatters";
+import { formatMinimumBankroll, money as usdMoney, pct } from "@/lib/results/formatters";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { relativeDifferencePct, summarizePdStats } from "@/lib/results/primedopeDiagnostics";
 import type { ControlsState } from "../ControlsPanel";
 import { useMoneyFmt } from "./UnitContext";
 import { Card } from "../ui/Section";
 import { InfoTooltip } from "../ui/Tooltip";
 
+export function CalibrationNotices({ result, schedule }: {
+  result: SimulationResult;
+  schedule?: TournamentRow[];
+}) {
+  const t = useT();
+  const warnings = [result, result.comparison].flatMap((run) => run?.calibrationWarnings ?? []);
+  if (warnings.length === 0) return null;
+  return (
+    <ul role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-amber-200">
+      {warnings.map((warning, index) => (
+        <li key={`${warning.rowId}-${index}`}>
+          {t("pd.calibrationClamped")
+            .replace("{row}", schedule?.find((row) => row.id === warning.rowId)?.label || warning.rowId)
+            .replace("{target}", usdMoney(warning.targetWinnings))
+            .replace("{actual}", usdMoney(warning.actualWinnings))}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
+  const t = useT();
+  const { locale } = useLocale();
+  const minimumBankroll = (value: number) => formatMinimumBankroll(value, "money", 1, numberLocaleTag(locale));
+  const modelLabel = (r: SimulationResult) => t(r.calibrationMode === "primedope-binary-itm" ? "pd.model.primedope" : "pd.model.alpha");
   // PrimeDope-style numeric dump — mirrors the layout of their site so users
   // can put the two side by side and watch deltas as they tweak settings.
   // When the run has a comparison twin (binary-ITM), shows both columns.
   const cols: { label: string; res: SimulationResult; tone: string }[] = [
-    { label: "наша α-калибровка", res: result, tone: "#34d399" },
+    { label: modelLabel(result), res: result, tone: "#34d399" },
   ];
   if (result.comparison) {
     cols.push({
-      label: "PrimeDope (binary-ITM)",
+      label: modelLabel(result.comparison),
       res: result.comparison,
       tone: "#60a5fa",
     });
@@ -89,10 +116,10 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
     <Card className="p-4">
       <div className="mb-3 flex items-baseline justify-between">
         <div className="text-xs font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-          PrimeDope-style report
+          {t("section.primedopeReport")}
         </div>
         <div className="text-[10px] text-[color:var(--color-fg-dim)]">
-          формат с сайта PrimeDope — для прямого сравнения
+          {t("pd.report.subtitle")}
         </div>
       </div>
       <div className={`grid gap-5 ${rows.length === 2 ? "lg:grid-cols-2" : "grid-cols-1"}`}>
@@ -107,17 +134,17 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
                 {col.label}
               </span>
             </div>
-            <Section title="Return on investment, EV & SD">
-              <Line k="Total tournaments" v={col.data.N.toLocaleString()} />
-              <Line k="Sample size" v={col.res.samples.toLocaleString()} />
-              <Line k="Sum buy-ins" v={fmt$(col.data.cost)} />
-              <Line k="EV (mathematically)" v={fmt$(col.data.evMath)} />
-              <Line k="EV (simulated)" v={fmt$(col.data.meanSim)} />
-              <Line k="ROI (mathematically)" v={fmtPct(col.data.roiMath)} />
-              <Line k="ROI (simulated)" v={fmtPct(col.data.roiSim)} />
-              <Line k="SD (simulated)" v={fmt$(col.data.sdSim)} />
+            <Section title={t("pd.report.returns")}>
+              <Line k={t("pd.report.tournaments")} v={col.data.N.toLocaleString()} />
+              <Line k={t("pd.report.samples")} v={col.res.samples.toLocaleString()} />
+              <Line k={t("pd.report.buyIns")} v={fmt$(col.data.cost)} />
+              <Line k={t("pd.report.expectedProfit")} v={fmt$(col.data.evMath)} />
+              <Line k={t("pd.report.mean")} v={fmt$(col.data.meanSim)} />
+              <Line k={t("pd.report.expectedRoi")} v={fmtPct(col.data.roiMath)} />
+              <Line k={t("pd.report.realizedRoi")} v={fmtPct(col.data.roiSim)} />
+              <Line k={t("pd.report.stdDev")} v={fmt$(col.data.sdSim)} />
             </Section>
-            <Section title="Confidence Intervals (simulated)">
+            <Section title={t("pd.report.intervals")}>
               <Line
                 k="70%"
                 v={`${fmt$(col.data.ci70.lo)} – ${fmt$(col.data.ci70.hi)}`}
@@ -131,19 +158,19 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
                 v={`${fmt$(col.data.ci997.lo)} – ${fmt$(col.data.ci997.hi)}`}
               />
             </Section>
-            <Section title="Bankroll & risk of ruin">
-              <Line k="RoR 50%" v={fmt$(col.data.ror50)} />
-              <Line k="RoR 15%" v={fmt$(col.data.ror15)} />
-              <Line k="RoR 5%" v={fmt$(col.data.ror5)} />
-              <Line k="RoR 1%" v={fmt$(col.data.ror1)} />
-              <Line k="RoR 5% · Gaussian" v={fmt$(col.data.ror5Gauss)} />
-              <Line k="RoR 1% · Gaussian" v={fmt$(col.data.ror1Gauss)} />
+            <Section title={t("pd.report.bankroll")}>
+              <Line k={t("pd.report.ror50")} v={minimumBankroll(col.data.ror50)} />
+              <Line k={t("pd.report.ror15")} v={minimumBankroll(col.data.ror15)} />
+              <Line k={t("pd.report.ror5")} v={minimumBankroll(col.data.ror5)} />
+              <Line k={t("pd.report.ror1")} v={minimumBankroll(col.data.ror1)} />
+              <Line k={t("pd.report.ror5Gaussian")} v={minimumBankroll(col.data.ror5Gauss)} />
+              <Line k={t("pd.report.ror1Gaussian")} v={minimumBankroll(col.data.ror1Gauss)} />
               <Line
-                k={`Runs that never dipped below 0`}
+                k={t("pd.report.neverBelow")}
                 v={`${Math.round(col.data.neverBelow * col.res.samples)} / ${col.res.samples.toLocaleString()}`}
               />
               <Line
-                k={`Probability of loss after ${col.data.N.toLocaleString()} tournaments`}
+                k={t("pd.report.probLoss").replace("{n}", col.data.N.toLocaleString())}
                 v={fmtPct(col.data.probLoss)}
               />
             </Section>
@@ -357,49 +384,7 @@ export function CopyPdDiagButton({
 }) {
   const [copied, setCopied] = useState(false);
   const handleClick = async () => {
-    const statSummary = (r: SimulationResult | null | undefined) => {
-      if (!r) return null;
-      const s = r.stats as Record<string, unknown>;
-      const num = (k: string) =>
-        typeof s[k] === "number" ? (s[k] as number) : undefined;
-      const round = (v: number | undefined) =>
-        v == null ? undefined : Math.round(v);
-      const fix4 = (v: number | undefined) =>
-        v == null ? undefined : Number(v.toFixed(4));
-      return {
-        mean: round(num("mean")),
-        stdDev: round(num("stdDev")),
-        median: round(num("median")),
-        min: round(num("min")),
-        max: round(num("max")),
-        p01: round(num("p01")),
-        p05: round(num("p05")),
-        p95: round(num("p95")),
-        p99: round(num("p99")),
-        maxDrawdownMean: round(num("maxDrawdownMean")),
-        maxDrawdownMedian: round(num("maxDrawdownMedian")),
-        maxDrawdownP95: round(num("maxDrawdownP95")),
-        maxDrawdownP99: round(num("maxDrawdownP99")),
-        maxDrawdownWorst: round(num("maxDrawdownWorst")),
-        minBankrollRoR1pct: round(num("minBankrollRoR1pct")),
-        minBankrollRoR5pct: round(num("minBankrollRoR5pct")),
-        itmRate: fix4(num("itmRate")),
-        probProfit: fix4(num("probProfit")),
-        riskOfRuin: fix4(num("riskOfRuin")),
-        sigmaPerTourneyEmpirical: (() => {
-          const v = num("sigmaPerTournamentEmpirical");
-          return v == null ? undefined : Number(v.toFixed(2));
-        })(),
-        sigmaPerTourneyMath: (() => {
-          const v = num("sigmaPerTournamentMath");
-          return v == null ? undefined : Number(v.toFixed(2));
-        })(),
-        spreadMaxMinusMean:
-          num("max") != null && num("mean") != null
-            ? Math.round((num("max") as number) - (num("mean") as number))
-            : undefined,
-      };
-    };
+    const statSummary = summarizePdStats;
     const dump = {
       timestamp: new Date().toISOString(),
       scheduleRepeats,
@@ -468,6 +453,7 @@ export function PrimedopeDiff({
   title,
   subtitle,
   hasBounty,
+  bankroll = 0,
 }: {
   primary: SimulationResult;
   other: SimulationResult;
@@ -475,15 +461,20 @@ export function PrimedopeDiff({
   title?: string;
   subtitle?: string;
   hasBounty?: boolean;
+  bankroll?: number;
 }) {
   const t = useT();
   const { money } = useMoneyFmt();
   const ours = primary.stats;
   const theirs = other.stats;
+  const primaryLabel = t(primary.calibrationMode === "primedope-binary-itm" ? "pd.model.primedope" : "pd.model.alpha");
+  const secondaryLabel = theirsLabel ?? t(other.calibrationMode === "primedope-binary-itm" ? "pd.model.primedope" : "pd.model.alpha");
   const pctPp = (a: number, b: number) =>
-    `${((a - b) * 100).toFixed(2)} процентных пунктов`;
-  const ratioPct = (a: number, b: number) =>
-    `${((a / Math.max(1e-9, b) - 1) * 100).toFixed(1)} %`;
+    t("pd.delta.pp").replace("{value}", ((a - b) * 100).toFixed(2));
+  const ratioPct = (a: number, b: number) => {
+    const value = relativeDifferencePct(a, b);
+    return value == null ? "—" : `${value.toFixed(1)} %`;
+  };
   const diffMoney = (a: number, b: number) =>
     `${a - b >= 0 ? "+" : "−"}${money(Math.abs(a - b))}`;
   const rows: {
@@ -526,15 +517,15 @@ export function PrimedopeDiff({
     },
     {
       label: t("pd.row.longestBE"),
-      ours: `${Math.round(ours.longestBreakevenMean)} турниров`,
-      theirs: `${Math.round(theirs.longestBreakevenMean)} турниров`,
-      delta: `${Math.round(ours.longestBreakevenMean - theirs.longestBreakevenMean)} турниров`,
+      ours: t("pd.delta.tournaments").replace("{value}", String(Math.round(ours.longestBreakevenMean))),
+      theirs: t("pd.delta.tournaments").replace("{value}", String(Math.round(theirs.longestBreakevenMean))),
+      delta: t("pd.delta.tournaments").replace("{value}", String(Math.round(ours.longestBreakevenMean - theirs.longestBreakevenMean))),
     },
     {
       label: t("pd.row.var95"),
-      ours: money(ours.var95),
-      theirs: money(theirs.var95),
-      delta: diffMoney(ours.var95, theirs.var95),
+      ours: money(ours.p05),
+      theirs: money(theirs.p05),
+      delta: diffMoney(ours.p05, theirs.p05),
     },
     {
       label: t("pd.row.cvar"),
@@ -562,9 +553,9 @@ export function PrimedopeDiff({
     },
     {
       label: t("pd.row.ror"),
-      ours: pct(ours.riskOfRuin),
-      theirs: pct(theirs.riskOfRuin),
-      delta: pctPp(ours.riskOfRuin, theirs.riskOfRuin),
+      ours: bankroll > 0 ? pct(ours.riskOfRuin) : "—",
+      theirs: bankroll > 0 ? pct(theirs.riskOfRuin) : "—",
+      delta: bankroll > 0 ? pctPp(ours.riskOfRuin, theirs.riskOfRuin) : t("stat.bankrollOff"),
     },
   ];
   return (
@@ -581,11 +572,11 @@ export function PrimedopeDiff({
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider">
           <span className="flex items-center gap-1 text-[color:var(--color-fg-muted)]">
             <span className="inline-block h-1.5 w-3 rounded-sm bg-[#34d399]" />{" "}
-            {t("pd.ours")}
+            {primaryLabel}
           </span>
           <span className="flex items-center gap-1 text-[color:var(--color-fg-muted)]">
             <span className="inline-block h-1.5 w-3 rounded-sm bg-[#60a5fa]" />{" "}
-            {theirsLabel ?? t("pd.theirs")}
+            {secondaryLabel}
           </span>
         </div>
       </div>
@@ -602,8 +593,8 @@ export function PrimedopeDiff({
           <thead>
             <tr className="border-b border-[color:var(--color-border)] text-[10px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
               <th className="py-2 text-left font-medium">{t("pd.metric")}</th>
-              <th className="py-2 text-right font-medium">{t("pd.ours")}</th>
-              <th className="py-2 text-right font-medium">{theirsLabel ?? "primedope"}</th>
+              <th className="py-2 text-right font-medium">{primaryLabel}</th>
+              <th className="py-2 text-right font-medium">{secondaryLabel}</th>
               <th className="py-2 text-right font-medium">{t("pd.delta")}</th>
             </tr>
           </thead>

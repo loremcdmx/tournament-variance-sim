@@ -24,6 +24,7 @@ import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
 export interface RowFeasibilityIssue {
+  reason?: "inconsistent-finish-locks";
   rowId: string;
   rowIdx: number;
   label: string;
@@ -84,6 +85,40 @@ export function validateSchedule(
 
     const payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
     const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
+    // The shelled solver normalizes even invalid raw inputs, but a pinned
+    // probability must not silently change in an interactive run.
+    const ignoresShellLocks = /^(freeze|pko|mystery)-realdata-(step|linear|tilt)$/.test(model.id);
+    if (!ignoresShellLocks && row.finishBuckets) {
+      const locks = row.finishBuckets;
+      const boundaries = [
+        [1, locks.first],
+        [Math.min(3, paidCount), locks.top3],
+        [Math.min(9, paidCount), locks.ft],
+        [paidCount, paidCount === N ? 1 : row.itmRate],
+      ] as const;
+      let previousEnd = 0;
+      let previousMass = 0;
+      let inconsistent = false;
+      for (const [end, mass] of boundaries) {
+        if (mass == null) continue;
+        if (!Number.isFinite(mass) || mass < previousMass - 1e-9 || mass > 1 ||
+            (end === previousEnd && Math.abs(mass - previousMass) > 1e-9)) {
+          inconsistent = true;
+          break;
+        }
+        previousEnd = end;
+        previousMass = mass;
+      }
+      if (inconsistent) {
+        const targetEv = row.buyIn * (1 + row.rake) * (1 + row.roi);
+        issues.push({
+          rowId: row.id, rowIdx: idx, label: row.label || `#${idx + 1}`,
+          targetEv, currentEv: targetEv, gap: 0,
+          reason: "inconsistent-finish-locks",
+        });
+        return;
+      }
+    }
     const basePool = N * row.buyIn;
     const overlay = Math.max(0, (row.guarantee ?? 0) - basePool);
     const entryCost = row.buyIn * (1 + row.rake);

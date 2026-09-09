@@ -194,9 +194,14 @@ be refitted before a small drift is called a regression.
 Only a subset of per-sample data is retained — keeping all of it for 100k samples at 300 tournaments each would be ~240 MB of hot-res points per run.
 
 - **`finalProfits`** — `Float64Array(samples)`. Every sample's final P&L. Used by histogram, stats, envelopes.
+- **`satelliteSeatsWon`** — optional sample-by-row integer paid-finish counters. Satellite ticket statistics use these counts directly, without deriving tickets from profit affected by rakeback or ROI noise.
 - **`rowProfits`** — `Float64Array(samples × rows)`, row-major. Used by decomposition and by mixed-schedule cards (e.g., satellite equity).
-- **`samplePaths`** — only the *first* ~1000 samples of shard 0 have a hi-res trajectory path stored. The slider in `ResultsView` caps at `samplePaths.paths.length`, not `samples`. If you want more, bump `wantHiResPaths` in `hotLoop.ts` — but be aware of memory.
+- **`samplePaths`** — the first 1000 global sample indices have a hi-res trajectory path stored, independent of shard boundaries. The slider in `ResultsView` caps at `samplePaths.paths.length`, not `samples`. If you want more, bump `wantHiResPaths` in `hotLoop.ts` — but be aware of memory.
 - **`envelopes`** — mean / p05 / p95 / min / max over all samples, on the low-res checkpoint grid (`K = min(240, N)`, `makeCheckpointGrid` in `grids.ts`). This is what the shaded percentile band on the trajectory chart uses.
+
+## Completed run snapshots
+
+`useSimulation` stores effective worker input, raw persisted/share source and the completed result in each cached seed entry. The result header, bankroll, settings, charts and share export use that entry. Editing inputs leaves a visible rerun notice; it cannot reinterpret the stored result. PD-only updates select the PrimeDope calibration pass and atomically replace that pass and its flags in the same cached entry. Pending checkbox flags never substitute for completed report settings.
 
 ## React integration
 

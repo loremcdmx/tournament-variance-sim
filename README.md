@@ -4,6 +4,8 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 
 **🔗 Live:** https://tournament-variance-sim.vercel.app
 
+**v0.7.7:** результаты и ссылка сохраняют настройки завершённого прогона; для изменённых полей нужен новый запуск. Исправлены вероятности и выплаты на граничных полях, рекомендации банкролла, сочетание лидерборда с рейкбеком и подсчёт билетов. Ошибочный CSV не заменяет расписание. [Список исправлений и проверок](docs/BUGHUNT_FIXES_2026-09-09.md).
+
 *EN version below ↓*
 
 ---
@@ -251,6 +253,8 @@ SimulationResult → ResultsView
 # EN
 
 Monte Carlo variance simulator for poker MTTs. A from-scratch alternative to [PrimeDope's Tournament Variance Calculator](https://www.primedope.com/tournament-variance-calculator/) with an honest finish-position model.
+
+**v0.7.7:** completed results and share links retain their run inputs. Changed settings require a new run. Fixes cover boundary payout/probability cases, conservative bankroll quotes, leaderboard/rakeback composition, exact satellite ticket counts, persistence and atomic CSV imports. [Fix coverage and checks](docs/BUGHUNT_FIXES_2026-09-09.md).
 
 You feed it a schedule (field, buy-in, rake, ROI, payout structure) and get the profit distribution over N samples: mean / median / stdDev / Sharpe / Sortino / CVaR, histogram, convergence curve, bankroll paths, risk of ruin, downswing catalog, row-level variance decomposition, ROI sensitivity scan.
 

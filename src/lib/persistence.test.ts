@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ControlsState } from "@/components/ControlsPanel";
 import type { TournamentRow } from "./sim/types";
+import { STANDARD_PRESETS, applyModelPatch } from "./sim/modelPresets";
+import { applyItmTarget } from "./sim/itmTarget";
+import { redistributeScheduleCounts } from "./sim/scheduleTarget";
 import {
   decodeState,
   encodeState,
@@ -85,17 +88,62 @@ describe("persistence validation", () => {
     expect(decodeState(encoded({ v: 1, schedule: [row], controls }))?.v).toBe(2);
   });
 
-  it("clamps oversized persisted row counts back to the editor max", () => {
+  it("clamps unsafe persisted row counts without imposing the direct-entry cap", () => {
     const state = decodeState(
       encoded({
         v: 1,
-        schedule: [{ ...row, count: 1_000_000_000 }],
+        schedule: [{ ...row, count: 1e308 }],
         controls: { ...controls, samples: 1_000_000_000 },
       }),
     );
 
-    expect(state?.schedule[0]?.count).toBe(100_000);
+    expect(state?.schedule[0]?.count).toBe(Number.MAX_SAFE_INTEGER);
     expect(state?.controls.samples).toBe(1_000_000);
+  });
+
+  it("preserves a redistributed 400k tournament distance through share and local loading", () => {
+    const schedule = redistributeScheduleCounts([row, { ...row, id: "r2", count: 3 }], 400_000);
+    const payload = { v: PERSISTED_STATE_VERSION, schedule, controls: { scheduleRepeats: 1 } };
+    for (const loaded of [decodeState(encoded(payload)), loadLocalFromPayload(payload)]) {
+      expect(loaded?.schedule.map((entry) => entry.count)).toEqual([100001, 299999]);
+      expect(loaded?.schedule.reduce((sum, entry) => sum + entry.count, 0)).toBe(400_000);
+    }
+  });
+
+  it("keeps a cleared global ITM at equilibrium through persistence", () => {
+    const config = { itmGlobalEnabled: true, itmGlobalPct: 0 };
+    const loaded = decodeState(encoded({ v: PERSISTED_STATE_VERSION, schedule: [row], controls: config }))!;
+    const before = applyItmTarget([row], { enabled: true, pct: 0 });
+    const after = applyItmTarget(loaded.schedule, {
+      enabled: loaded.controls.itmGlobalEnabled, pct: loaded.controls.itmGlobalPct,
+    });
+    expect(loaded.controls.itmGlobalPct).toBe(0);
+    expect(after[0].itmRate).toBe(before[0].itmRate);
+    expect(after[0].itmRate).toBeGreaterThan(0.005);
+  });
+
+  it("preserves every visible preset and its hand-tuned descendant", () => {
+    for (const preset of STANDARD_PRESETS) {
+      for (const id of [preset.id, "custom"]) {
+        const selected = applyModelPatch(controls, preset.patch, id);
+        const loaded = decodeState(encoded({ v: PERSISTED_STATE_VERSION, schedule: [row], controls: selected }));
+        expect(loaded?.controls, `${preset.id} as ${id}`).toEqual(selected);
+      }
+    }
+  });
+
+  it("repairs a named preset from an older save that omitted its hidden profile", () => {
+    const preset = STANDARD_PRESETS.find((entry) => entry.id === "realistic-solo")!;
+    const loaded = loadLocalFromPayload({ v: 2, schedule: [row], controls: { modelPresetId: preset.id } });
+    expect(loaded?.controls).toMatchObject({
+      roiShockPerTourney: 0.3, roiShockPerSession: 0.05, roiDriftSigma: 0.01,
+      tiltFastGain: -0.15, tiltFastScale: 2500,
+    });
+  });
+
+  it.each([{}, [], 123, null])("drops a non-string modelPresetId %j before rendering", (modelPresetId) => {
+    const loaded = decodeState(encoded({ v: 2, schedule: [row], controls: { modelPresetId } }));
+    expect(loaded?.controls.modelPresetId).toBeUndefined();
   });
 
   it("clamps oversized persisted field sizes back to the editor max", () => {
@@ -807,7 +855,7 @@ describe("persistence validation", () => {
     vi.unstubAllGlobals();
   });
 
-  it("normalizes oversized row counts inside saved user presets", () => {
+  it("preserves safe large row counts inside saved user presets", () => {
     vi.stubGlobal("localStorage", {
       getItem: () =>
         JSON.stringify([
@@ -826,7 +874,7 @@ describe("persistence validation", () => {
 
     const presets = loadUserPresets();
     expect(presets).toHaveLength(1);
-    expect(presets[0]?.state.schedule[0]?.count).toBe(100_000);
+    expect(presets[0]?.state.schedule[0]?.count).toBe(1_000_000_000);
 
     vi.unstubAllGlobals();
   });

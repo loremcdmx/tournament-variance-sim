@@ -59,15 +59,15 @@ export function computeStreakStats(
   }
   const longestCashlessMean = cashlessAcc / S;
 
-  // Recovery from deepest drawdown: -1 entries are "unrecovered" — we
+  // Recovery from deepest drawdown: -2 means no drawdown, -1 "unrecovered" — we
   // compute median / p90 over the recovered-only slice, and report the
   // unrecovered share separately.
   let unrecoveredCount = 0;
   const recoveredOnly: number[] = [];
   for (let s = 0; s < S; s++) {
     const v = recoveryLengths[s];
-    if (v < 0) unrecoveredCount++;
-    else recoveredOnly.push(v);
+    if (v === -1) unrecoveredCount++;
+    else if (v >= 0) recoveredOnly.push(v);
   }
   recoveredOnly.sort((a, b) => a - b);
   const recoveredCount = recoveredOnly.length;

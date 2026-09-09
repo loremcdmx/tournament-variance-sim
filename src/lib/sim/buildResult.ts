@@ -179,6 +179,8 @@ export function buildResult(
   });
 
   return {
+    calibrationWarnings: compiled.calibrationWarnings,
+    satelliteSeatsWon: shard.satelliteSeatsWon ?? undefined,
     type: "result",
     samples: S,
     tournamentsPerSample: N,

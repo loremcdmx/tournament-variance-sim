@@ -40,7 +40,7 @@ export function equilibriumItmRateForRow(row: TournamentRow): number {
     normalized.customPayouts,
   );
   const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
-  return Math.min(0.99, Math.max(1 / players, paidCount / players));
+  return paidCount >= players ? 1 : Math.min(0.99, Math.max(1 / players, paidCount / players));
 }
 
 /**
@@ -57,8 +57,14 @@ export function applyItmTarget(
   const next = schedule.map((raw) => {
     const row = normalizeGameTypeConsistency(raw);
     if (row !== raw) changed = true;
+    const equilibrium = equilibriumItmRateForRow(row);
+    if (equilibrium === 1) {
+      if (row.itmRate === 1) return row;
+      changed = true;
+      return { ...row, itmRate: 1 };
+    }
     if (row.itmRate != null && row.itmRate > 0) return row;
-    const itmRate = base ?? equilibriumItmRateForRow(row);
+    const itmRate = base ?? equilibrium;
     changed = true;
     return {
       ...row,

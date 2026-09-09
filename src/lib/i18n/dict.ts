@@ -14,6 +14,64 @@ export const LOCALES: Locale[] = ["en", "ru"];
 type Entry = Record<Locale, string>;
 
 export const DICT = {
+  "shape.inconsistentFinishLocks": {
+    en: "Pinned finish probabilities conflict with each other or the row’s ITM.",
+    ru: "Закреплённые вероятности финишей противоречат друг другу или ITM строки.",
+  },
+  "shape.clearFinishLocks": { en: "Clear finish locks", ru: "Снять фиксацию финишей" },
+  "results.inputsChanged": {
+    en: "Settings have changed. These results and their share link still describe the completed run. Run again to apply your changes.",
+    ru: "Настройки изменены. Эти результаты и ссылка относятся к завершённому прогону. Запустите расчёт снова, чтобы применить изменения.",
+  },
+  "changelog.v077.summary": {
+    en: "Corrected payouts, bankroll recommendations, leaderboard and satellite statistics. Completed runs keep their settings; PrimeDope comparisons, saved schedules and CSV imports stay consistent.",
+    ru: "Исправлены выплаты, рекомендации по банкроллу, статистика лидерборда и сателлитов. Результаты сохраняют настройки своего прогона; исправлены сравнения PrimeDope, сохранение расписаний и импорт CSV.",
+  },
+  "pd.model.primedope": {"en":"PrimeDope","ru":"PrimeDope"},
+  "pd.model.alpha": {"en":"Our calibrated model","ru":"Наша калиброванная модель"},
+  "pd.report.subtitle": {"en":"The same report layout as PrimeDope, for direct comparison","ru":"Формат отчёта PrimeDope для прямого сравнения"},
+  "pd.report.returns": {"en":"Return, EV and volatility","ru":"Доходность, EV и разброс"},
+  "pd.report.tournaments": {"en":"Tournaments","ru":"Турниры"},
+  "pd.report.samples": {"en":"Samples","ru":"Сэмплы"},
+  "pd.report.buyIns": {"en":"Total buy-ins","ru":"Сумма бай-инов"},
+  "pd.report.expectedProfit": {"en":"Expected profit","ru":"Ожидаемый профит"},
+  "pd.report.mean": {"en":"Simulated mean profit","ru":"Средний профит симуляции"},
+  "pd.report.expectedRoi": {"en":"Expected ROI","ru":"Ожидаемый ROI"},
+  "pd.report.realizedRoi": {"en":"Simulated ROI","ru":"ROI симуляции"},
+  "pd.report.stdDev": {"en":"Simulated standard deviation","ru":"Стандартное отклонение симуляции"},
+  "pd.report.intervals": {"en":"Simulated outcome intervals","ru":"Интервалы результатов симуляции"},
+  "pd.report.bankroll": {"en":"Bankroll for a given risk of ruin","ru":"Банкролл для заданного риска разорения"},
+  "pd.report.ror50": {"en":"50% risk of ruin","ru":"Риск разорения 50%"},
+  "pd.report.ror15": {"en":"15% risk of ruin","ru":"Риск разорения 15%"},
+  "pd.report.ror5": {"en":"5% risk of ruin","ru":"Риск разорения 5%"},
+  "pd.report.ror1": {"en":"1% risk of ruin","ru":"Риск разорения 1%"},
+  "pd.report.ror5Gaussian": {"en":"5% risk · Gaussian estimate","ru":"Риск 5% · гауссова оценка"},
+  "pd.report.ror1Gaussian": {"en":"1% risk · Gaussian estimate","ru":"Риск 1% · гауссова оценка"},
+  "pd.report.neverBelow": {"en":"Runs that never fell below zero profit","ru":"Раны, где профит не опускался ниже нуля"},
+  "pd.report.probLoss": {"en":"Chance of loss after {n} tournaments","ru":"Вероятность убытка после {n} турниров"},
+  "pd.delta.pp": {"en":"{value} percentage points","ru":"{value} процентных пунктов"},
+  "pd.delta.tournaments": {"en":"{value} tournaments","ru":"{value} турниров"},
+  "pd.calibrationClamped": {"en":"PrimeDope could not reach the configured payout for {row}: requested {target}, modeled {actual} per tournament. These results use the modeled payout.","ru":"PrimeDope не достиг заданной выплаты для {row}: запрошено {target}, смоделировано {actual} за турнир. Результаты рассчитаны по смоделированной выплате."},
+  "chart.traj.profit": {"en":"Profit","ru":"Профит"},
+  "chart.itmBadge.tip": {"en":"In-the-money rate: {value}%","ru":"Частота попадания в призы: {value}%"},
+  "runs.capturedMax": {"en":"Maximum {n} stored paths","ru":"Сохранено не более {n} траекторий"},
+  "stat.probProfit.shiftedSurvival": {"en":"The never-busted estimate is unavailable for this adjusted view.","ru":"Оценка «без банкротства» недоступна для этого скорректированного вида."},
+  "controls.brLeaderboard.lookupError.incomplete": {"en":"Some usernames returned no data. Previous totals are unchanged. Check every nickname and try again.","ru":"Для части ников нет данных. Прежние итоги сохранены. Проверь все ники и повтори запрос."},
+  "controls.brLeaderboard.lookupError.rate-limited": {"en":"Too many lookup requests. Previous totals are unchanged; try again in {seconds} seconds.","ru":"Слишком много запросов. Прежние итоги сохранены; повтори через {seconds} сек."},
+  "weakness.tag.finishes": {"en":"FINISHES","ru":"ФИНИШИ"},
+  "weakness.tag.formats": {"en":"FORMATS","ru":"ФОРМАТЫ"},
+  "weakness.tag.trap": {"en":"CAVEAT","ru":"ОГОВОРКА"},
+  "weakness.tag.converge": {"en":"ALIGNMENT","ru":"СОВПАДЕНИЕ"},
+  "weakness.tag.precision": {"en":"PRECISION","ru":"ТОЧНОСТЬ"},
+  "weakness.tag.boundary": {"en":"LIMITS","ru":"ГРАНИЦЫ"},
+  "weakness.tag.bands": {"en":"BANDS","ru":"ИНТЕРВАЛЫ"},
+  "weakness.tag.schedule": {"en":"SCHEDULE","ru":"РАСПИСАНИЕ"},
+  "weakness.tag.paths": {"en":"PATHS","ru":"ТРАЕКТОРИИ"},
+  "weakness.tag.empirical": {"en":"EMPIRICAL","ru":"ЭМПИРИКА"},
+  "weakness.tag.input": {"en":"INPUT","ru":"ВВОД"},
+  "weakness.tag.tails": {"en":"TAILS","ru":"ХВОСТЫ"},
+  "row.importTooMany": {"en":"The schedule can contain at most {max} rows. No rows were imported. Reduce the import or replace the current schedule.","ru":"В расписании может быть не больше {max} строк. Импорт не выполнен. Уменьши число строк или замени текущее расписание."},
+  "controls.alphaUnavailable": {"en":"Manual alpha is available only for the three real-data tilt models. This model uses its calibrated or fixed shape.","ru":"Ручной alpha доступен только в трёх real-data tilt моделях. Здесь используется калибруемая или фиксированная форма."},
   // Header
   "app.samples": { en: "samples", ru: "сэмплов" },
 
@@ -889,10 +947,7 @@ export const DICT = {
     en: "Longest horizontal chord of the profit graph — bouncing around without net progress",
     ru: "Самый длинный горизонтальный отрезок между двумя точками графика с одинаковым Y",
   },
-  "chart.longestBE.tip": {
-    en: "Criterion: longest horizontal chord of the profit trajectory — the biggest gap (in tournaments) between two points of the graph sharing the same Y value. A measure of 'playing for nothing': how long the run bounced around a fixed bankroll level before breaking out of it.\n\nX — chord length in tournaments. Y — how many samples have their longest chord fall in this bucket (one entry per sample).",
-    ru: "Критерий: самый длинный горизонтальный отрезок графика профита — максимальная дистанция (в турнирах) между двумя точками с одинаковым значением Y. Метрика «игры в ноль»: сколько турниров ран болтался вокруг одного и того же уровня банкролла, прежде чем ушёл с него надолго.\n\nX — длина отрезка в турнирах. Y — сколько сэмплов попало в этот бакет (один замер на сэмпл).",
-  },
+  "chart.longestBE.tip": {"en":"For each starting checkpoint in each run, measure the longest horizontal chord of the profit curve: how far apart two points at the same profit level are. X is chord length in tournaments; Y counts these checkpoint observations across all runs. A run contributes multiple observations, not just its longest chord.","ru":"Для каждой начальной контрольной точки каждого рана измеряется самый длинный горизонтальный отрезок графика: расстояние между двумя точками на одном уровне профита. X — длина в турнирах; Y — число таких наблюдений по всем ранам. Один ран даёт несколько наблюдений, а не только свой максимальный отрезок."},
   "chart.longestCashless": { en: "Cashless streaks", ru: "Серии без ИТМ" },
   "chart.longestCashless.sub": {
     en: "How often and how long you grind without landing a cash",
@@ -902,19 +957,13 @@ export const DICT = {
     en: "Independent of rakeback — counts ITM events, not profit.",
     ru: "Не зависит от рейкбэка — считает заходы в ИТМ, не профит.",
   },
-  "chart.longestCashless.tip": {
-    en: "Критерий: серия — это непрерывная последовательность турниров без попадания в призовую часть (place ≥ paidCount). Заканчивается на первом же ITM.\n\nПо X — длина серии в турнирах, по Y — сколько ТАКИХ серий встретилось во всех сэмплах суммарно (все серии, а не только максимумы по сэмплу).",
-    ru: "Критерий: серия — это непрерывная последовательность турниров без попадания в призовую часть (place ≥ paidCount). Заканчивается на первом же ITM.\n\nПо X — длина серии в турнирах, по Y — сколько ТАКИХ серий встретилось во всех сэмплах суммарно (все серии, а не только максимумы по сэмплу).",
-  },
+  "chart.longestCashless.tip": {"en":"A cashless streak is a consecutive sequence of tournaments without a paid finish (place ≥ paidCount). It ends at the next ITM finish. X is streak length in tournaments; Y counts every such streak across all samples, not only each sample’s maximum.","ru":"Критерий: серия — это непрерывная последовательность турниров без попадания в призовую часть (place ≥ paidCount). Заканчивается на первом же ITM.\n\nПо X — длина серии в турнирах, по Y — сколько таких серий встретилось во всех сэмплах суммарно: все серии, а не только максимумы по сэмплу."},
   "chart.recovery": { en: "Recovery length", ru: "Отмазка" },
   "chart.recovery.sub": {
     en: "How many tournaments it takes to climb from the bottom back to the pre-streak peak",
     ru: "Сколько турниров уходит на то, чтобы со дна вернуться к прежнему пику",
   },
-  "chart.recovery.tip": {
-    en: "Критерий: для каждого сэмпла находим самую глубокую просадку (маx peak-to-trough). Отмазка — количество турниров с момента дна этой просадки до первого турнира, на котором профит снова достигает старого максимума.\n\nЕсли сэмпл не успел отмазаться до конца расписания — он считается не восстановившимся и в график не попадает (такие сэмплы показаны отдельной строкой под графиком).",
-    ru: "Критерий: для каждого сэмпла находим самую глубокую просадку (маx peak-to-trough). Отмазка — количество турниров с момента дна этой просадки до первого турнира, на котором профит снова достигает старого максимума.\n\nЕсли сэмпл не успел отмазаться до конца расписания — он считается не восстановившимся и в график не попадает (такие сэмплы показаны отдельной строкой под графиком).",
-  },
+  "chart.recovery.tip": {"en":"For each sample, find its deepest peak-to-trough drawdown. Recovery is the number of tournaments from that trough until profit first regains the previous peak. Samples that do not recover before the schedule ends are excluded from this chart and reported separately.","ru":"Для каждого сэмпла находим самую глубокую просадку от пика до дна. Отмазка — количество турниров от её дна до первого возвращения профита на предыдущий максимум. Сэмплы, которые не восстановились к концу расписания, не входят в этот график и показаны отдельно."},
   "chart.recovery.unrecovered": {
     en: "{pct} of runs never recovered by end of schedule (not shown above)",
     ru: "{pct} ранов не восстановились до конца расписания (не показано на графике)",
@@ -1745,10 +1794,7 @@ export const DICT = {
     en: "ResultHub returned malformed data — they may have changed the API. Please report this.",
     ru: "ResultHub вернул битый JSON — возможно, у них поменялся API. Сообщи об этом.",
   },
-  "controls.brLeaderboard.lookupError.no-data": {
-    en: "ResultHub has no Battle Royale data for this username this month. Check the spelling or wait until you've played some BRs.",
-    ru: "У ResultHub нет данных Battle Royale по этому нику за текущий месяц. Проверь написание или сыграй пару BR.",
-  },
+  "controls.brLeaderboard.lookupError.no-data": {"en":"ResultHub has no recorded Battle Royale data for this username. Check the spelling and the profile history.","ru":"У ResultHub нет сохранённых данных Battle Royale по этому нику. Проверь написание и историю профиля."},
   "controls.brLeaderboard.lookupError.empty-username": {
     en: "Type a ResultHub username first.",
     ru: "Сначала введи ник в ResultHub.",
@@ -1912,10 +1958,7 @@ export const DICT = {
 
   // Help tooltips — controls panel
   "help.trigger": { en: "Help", ru: "Справка" },
-  "help.scheduleRepeats": {
-    en: "Target distance inside one simulated sample. The app rounds up to full schedule repeats: if the schedule has 47 tournaments and you ask for 1,000, the engine runs 22 repeats = 1,034 tournaments/sample.",
-    ru: "Целевая дистанция внутри одного сэмпла. Приложение округляет вверх до целых повторов расписания: если в расписании 47 турниров, а нужно 1 000, движок запустит 22 повтора = 1 034 турнира/сэмпл.",
-  },
+  "help.scheduleRepeats": {"en":"Target number of tournaments in each simulated run. Changing it redistributes the row counts in proportion to the current schedule and uses one schedule pass. Each row keeps at least one tournament; the target cannot be smaller than the number of rows.","ru":"Число турниров в каждом прогоне. При изменении дистанции количества в строках перераспределяются пропорционально текущему расписанию, которое затем проходит один раз. В каждой строке остаётся хотя бы один турнир, поэтому дистанция не может быть меньше числа строк."},
   "help.samples": {
     en: "How many alternative futures to simulate. More = smoother tails and worst-case numbers, slower to compute. 5k is quick, 50k is overkill-nice.",
     ru: "Сколько альтернативных вариантов прогнать. Больше — точнее хвосты и худшие раны, но дольше. 5k — быстро, 50k — с запасом.",
@@ -1924,10 +1967,7 @@ export const DICT = {
     en: "How your skill distributes across finish places — does it mostly show up as deep runs, or as lots of small cashes?\n\nOptions:\n• Power-law — skill pays off deep; the closer to 1st, the bigger the lift. (default, best match to real samples)\n• Linear skill — steady lift toward the top, less dramatic\n• Stretched-exp — middle ground between those two\n• Plackett–Luce — classic ranking model, mathematically sound\n• Uniform — every paid place gets the same lift (PrimeDope-style — understates swings)\n• Empirical — built from a CSV of your own real finish history",
     ru: "Как скилл распределяется по местам: глубокие финиши или много мин-кешей?\n\nОпции:\n• Power-law — скилл работает в глубоких финишах; чем ближе к 1-му, тем сильнее лифт (дефолт, лучше всего ложится на реальные выборки)\n• Linear skill — плавный лифт к топу, менее драматичный\n• Stretched-exp — промежуточный вариант\n• Plackett–Luce — классическая модель ранжирования, математически чистая\n• Uniform — все призовые получают одинаковый буст (как у PrimeDope — занижает свинги)\n• Empirical — по CSV реальных финишей",
   },
-  "help.alphaOverride": {
-    en: "Force skill-curve sharpness by hand instead of fitting to target ROI. Blank = auto. 1.0 neutral, 2.0 = aggressive concentration near 1st. Advanced — fixes curve shape and deliberately misses ROI.",
-    ru: "Жёстко задать крутизну кривой скилла вместо автоподгонки под ROI. Пусто = авто. 1.0 — нейтрально, 2.0 — агрессивная концентрация у 1-го. Продвинутое: фиксирует форму кривой и сознательно промахивается по ROI.",
-  },
+  "help.alphaOverride": {"en":"Adjust the three real-data tilt models from −0.5 to 0.5; blank or 0 keeps the neutral reference shape. Other models use the fixed-ITM calibration or their fixed shape, so manual alpha is unavailable. Switching models clears the override.","ru":"Настройка трёх real-data tilt моделей от −0,5 до 0,5; пустое поле или 0 сохраняет нейтральную форму референса. В других моделях действует калибровка под заданный ITM или фиксированная форма, поэтому ручной alpha недоступен. При смене модели значение сбрасывается."},
   "help.roiStdErr": {
     en: "How uncertain you are about your real ROI, as a fraction. 0.05 = \"my true ROI is maybe ±5 pp off\". 0 = you know ROI exactly (PrimeDope's assumption). On each run the engine rolls one random skill shift applied across every tournament in that run — the biggest source of bad-tail swings PrimeDope ignores.",
     ru: "Неопределённость в истинном ROI (как доля). 0.05 = «реальный ROI может быть ±5 пп от заданного». 0 = ROI известен точно (допущение PrimeDope). На каждом ране движок генерирует один случайный сдвиг скилла на все турниры этого рана — основной источник хвостовых стриков, который PrimeDope игнорирует.",
@@ -1958,10 +1998,7 @@ export const DICT = {
     en: "Shape of the prize ladder. Standard ~15% ITM, Flat ~20% (shallower top), Top-heavy ~12% (steeper), plus real captured curves (PokerStars / GG / Sunday Million / Bounty Builder). WTA = 100% to 1st. Custom = your own %.",
     ru: "Форма призовой сетки. Standard ~15% ITM, Flat ~20% (плоский топ), Top-heavy ~12% (крутой), плюс реальные кривые (PokerStars / GG / Sunday Million / Bounty Builder). WTA = 100% победителю. Custom = свои %.",
   },
-  "help.row.count": {
-    en: "How many tournaments from this row you play in one schedule pass. Fractions are allowed and rounded stochastically.",
-    ru: "Сколько турниров из этой строки ты играешь за один проход расписания. Дробные значения допустимы и округляются стохастически.",
-  },
+  "help.row.count": {"en":"Number of tournaments from this row in one schedule pass. Use whole numbers; the total-distance control redistributes these counts proportionally.","ru":"Число турниров из этой строки за один проход расписания. Используются целые числа; поле общей дистанции перераспределяет эти количества пропорционально."},
 
   "emp.title": { en: "Empirical PMF source", ru: "Источник эмпирической PMF" },
   "emp.paste": {
@@ -2673,10 +2710,7 @@ export const DICT = {
     en: "BR leaderboard cashflow now flows honestly through trajectory and the scalar stats — mean, median, probProfit, VaR, CVaR, histogram. The user no longer has to mentally add \"+$200 LB promo\" from the BR widget to \"+$300 EV\" from the trajectory.",
     ru: "BR leaderboard cashflow теперь честно проложен через trajectory и скалярную статистику — mean, median, probProfit, VaR, CVaR, гистограмма. Игроку больше не нужно складывать в голове «+$200 LB-промо» из BR-виджета и «+$300 EV» с траектории.",
   },
-  "weakness.ours.tag.paths.p2": {
-    en: "But drawdown, breakeven streaks and risk-of-ruin stay game-only. The reason is upfront: LB EV is a deterministic monotone-non-decreasing add-on (it never goes negative), drawdowns are invariant under such an add-on, and recomputing RoR would need full N-sample raw data that we don't keep after the stat pass.",
-    ru: "Но drawdown, серии минусов и risk-of-ruin остаются game-only. Причина прозрачная: LB EV в модели — детерминированная monotone-non-decreasing надбавка к выплатам (она не уходит в минус), drawdowns под такой надбавкой инвариантны, а RoR потребовал бы пересчёта по полному N-sample raw, которого мы после stat-pass не держим.",
-  },
+  "weakness.ours.tag.paths.p2": {"en":"Drawdowns, breakeven streaks and risk of ruin retain the engine’s full-sample values and exclude the leaderboard add-on. A cumulative leaderboard payment can change those path-dependent metrics; the retained paths cover only a subset of samples, so we do not recalculate population risk from them.","ru":"Просадки, серии и риск разорения сохраняют значения движка по всем сэмплам без надбавки лидерборда. Накопительные выплаты лидерборда могут менять эти траекторные метрики. Сохранённые траектории охватывают лишь часть сэмплов, поэтому риск по ним заново не оценивается."},
   "weakness.ours.section.model": {
     en: "What's still simplified inside the model itself",
     ru: "Что всё ещё упрощено в самой модели",

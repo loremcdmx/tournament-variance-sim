@@ -35,12 +35,12 @@ export function computeSatelliteStats(
   scheduleRepeats: number,
 ): SatelliteStats | null {
   const numRows = result.decomposition.length;
-  const rowProfits = result.rowProfits;
+  const seatCounts = result.satelliteSeatsWon;
+  if (!seatCounts || seatCounts.length !== result.finalProfits.length * numRows) return null;
 
   interface SatRow {
     rpIdx: number;
     seatPrice: number;
-    costPerSession: number;
     seats: number;
     tourneysPerSession: number;
     players: number;
@@ -53,19 +53,16 @@ export function computeSatelliteStats(
     if (rpIdx < 0) continue;
 
     const players = Math.max(
-      10,
+      2,
       Math.floor(row.players * (row.lateRegMultiplier ?? 1)),
     );
     const seats = Math.max(1, Math.floor(players * 0.1));
-    const seatPrice = (players * row.buyIn) / seats;
-    const costPerTourney = row.buyIn * (1 + row.rake);
+    const seatPrice = Math.max(players * row.buyIn, row.guarantee ?? 0) / seats;
     const tourneysPerSession = row.count * scheduleRepeats;
-    const costPerSession = tourneysPerSession * costPerTourney;
 
     satRows.push({
       rpIdx,
       seatPrice,
-      costPerSession,
       seats,
       tourneysPerSession,
       players,
@@ -81,8 +78,7 @@ export function computeSatelliteStats(
     const base = i * numRows;
     let value = 0;
     for (const satRow of satRows) {
-      const profit = rowProfits[base + satRow.rpIdx];
-      value += (profit + satRow.costPerSession) / satRow.seatPrice;
+      value += seatCounts[base + satRow.rpIdx];
     }
     seatsWon[i] = value;
     sum += value;
@@ -114,14 +110,6 @@ export function computeSatelliteStats(
     counts[bin]++;
   }
 
-  let satSeatsTotal = 0;
-  let satPlayersTotal = 0;
-  for (const satRow of satRows) {
-    satSeatsTotal += satRow.seats;
-    satPlayersTotal += satRow.players;
-  }
-  const cashRate = satPlayersTotal > 0 ? satSeatsTotal / satPlayersTotal : 0;
-  const shotsPerSeat = cashRate > 0 ? 1 / cashRate : Infinity;
 
   let netPerSession = 0;
   for (const satRow of satRows) {
@@ -132,6 +120,8 @@ export function computeSatelliteStats(
     (acc, satRow) => acc + satRow.tourneysPerSession,
     0,
   );
+  const cashRate = tourneysPerSession > 0 ? mean / tourneysPerSession : 0;
+  const shotsPerSeat = cashRate > 0 ? 1 / cashRate : Infinity;
   const representative = satRows[0];
 
   return {

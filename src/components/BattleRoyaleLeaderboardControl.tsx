@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Field, NumInput, type ControlsState } from "@/components/ControlsPanel";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
@@ -10,6 +10,7 @@ import {
   parseObservedResultHubUsernames,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { useResulthubLookup } from "@/lib/sim/useResulthubLookup";
+import { mergeResulthubSummary } from "@/lib/sim/resulthubControls";
 import {
   analyzeBattleRoyaleLeaderboardLookup,
   parseBattleRoyaleLeaderboardSnapshot,
@@ -45,6 +46,8 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
   const controls = value.battleRoyaleLeaderboard;
+  const latestValueRef = useRef(value);
+  useLayoutEffect(() => { latestValueRef.current = value; }, [value]);
   const totalPoints = BR_STAKE_KEYS.reduce(
     (acc, stake) => acc + Math.max(0, controls.observedPointsByStake[stake]),
     0,
@@ -188,16 +191,11 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
   const runResulthubLookup = useCallback(
     () =>
       runLookup(usernamesForLookup, (summary) => {
-        onChange({
-          ...value,
-          battleRoyaleLeaderboard: {
-            ...controls,
-            observedTotalPrizes: summary.totalPrizes,
-            observedPointsByStake: { ...summary.pointsByStake },
-          },
-        });
+        const merged = mergeResulthubSummary(latestValueRef.current, usernamesForLookup, summary);
+        if (!merged) return false;
+        onChange(merged);
       }),
-    [runLookup, usernamesForLookup, value, controls, onChange],
+    [runLookup, usernamesForLookup, onChange],
   );
 
   const uiDisabled = disabled || !advanced;
@@ -592,7 +590,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
                 : lookupStatus.kind === "error"
                   ? t(
                       `controls.brLeaderboard.lookupError.${lookupStatus.reason}` as DictKey,
-                    )
+                    ).replace("{seconds}", String(lookupStatus.retryAfterSec ?? 60))
                   : t("controls.brLeaderboard.observedUsernameHint")}
             </div>
           </div>

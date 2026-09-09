@@ -90,6 +90,9 @@ export function simulateShard(
   const breakevenStreakAvgs = new Float64Array(shardSize);
   const longestCashless = new Int32Array(shardSize);
   const recoveryLengths = new Int32Array(shardSize);
+  const satelliteSeatsWon = compiled.flat.some((entry) => entry.isSatellite)
+    ? new Uint32Array(shardSize * input.schedule.length)
+    : null;
   const rowProfits = new Float64Array(shardSize * numRows);
   const rowBountyProfits = new Float64Array(shardSize * numRows);
   const jackpotMask = new Uint8Array(shardSize);
@@ -133,18 +136,9 @@ export function simulateShard(
   const hiK = hiGrid.K;
   const hiK1 = hiK + 1;
   const hiCheckpointIdx = hiGrid.checkpointIdx;
-  // Hi-res path budget is split proportionally across shards so the visible
-  // run count stays ≈ HI_RES_GLOBAL_CAP regardless of pool / oversubscription.
-  // Under 4×W oversub with W=16 and S=10k, a single shard holds ~156 samples —
-  // if only shard 0 captured paths we'd cap the slider at ~156 instead of 1000.
+  // Select global sample indices so sharding cannot change the visible runs.
   const HI_RES_GLOBAL_CAP = 1000;
-  const wantHiResPaths = Math.min(
-    shardSize,
-    Math.max(
-      1,
-      Math.ceil((shardSize / Math.max(1, input.samples)) * HI_RES_GLOBAL_CAP),
-    ),
-  );
+  const wantHiResPaths = Math.max(0, Math.min(sEnd, HI_RES_GLOBAL_CAP) - sStart);
   const hiResPaths: Float64Array[] = new Array(wantHiResPaths);
   for (let i = 0; i < wantHiResPaths; i++) hiResPaths[i] = new Float64Array(hiK1);
   const hiResSampleIndices = new Int32Array(wantHiResPaths);
@@ -441,6 +435,9 @@ export function simulateShard(
       }
       profit += delta;
       rowProfits[rowBase + t.rowIdx] += delta;
+      if (satelliteSeatsWon && t.isSatellite && t.prizeByPlace[leaderboardPlace] > 0) {
+        satelliteSeatsWon[rowBase + t.rowIdx]++;
+      }
       if (
         leaderboardConfig !== null &&
         leaderboardRng !== null &&
@@ -642,7 +639,7 @@ export function simulateShard(
     longestBreakevens[localS] = longestBreakeven;
     breakevenStreakAvgs[localS] = breakevenStreakAvg;
     longestCashless[localS] = longestCashlessRun;
-    recoveryLengths[localS] = sampleRecoveryLen;
+    recoveryLengths[localS] = maxDD > 0 ? sampleRecoveryLen : -2;
     if (leaderboardPoints !== null) leaderboardPoints[localS] = leaderboardTotalPoints;
     if (leaderboardPayouts !== null) leaderboardPayouts[localS] = leaderboardTotalPayout;
     if (leaderboardExpectedPayouts !== null) {
@@ -665,6 +662,7 @@ export function simulateShard(
   onProgress?.(shardSize, shardSize);
 
   return {
+    satelliteSeatsWon,
     sStart,
     sEnd,
     finalProfits,

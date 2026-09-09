@@ -154,6 +154,52 @@ function formatCount(n: number, locale = "en"): string {
   return n.toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
 }
 
+export function supportsManualAlpha(modelId: FinishModelId): boolean {
+  return modelId === "freeze-realdata-tilt"
+    || modelId === "pko-realdata-tilt"
+    || modelId === "mystery-realdata-tilt";
+}
+
+export function changeFinishModel(
+  value: ControlsState,
+  finishModelId: FinishModelId,
+): ControlsState {
+  // Alpha has different semantics between families; never carry an old
+  // curve override into a newly selected reference model.
+  return { ...value, finishModelId, alphaOverride: null, modelPresetId: "custom" };
+}
+
+export function AlphaOverrideInput({ modelId, value, placeholder, onChange }: {
+  modelId: FinishModelId;
+  value: number | null;
+  placeholder: string;
+  onChange: (value: number | null) => void;
+}) {
+  const enabled = supportsManualAlpha(modelId);
+  return (
+    <input
+      type="number"
+      disabled={!enabled}
+      step={0.05}
+      min={-0.5}
+      max={0.5}
+      value={enabled ? value ?? "" : ""}
+      placeholder={placeholder}
+      onChange={(e) => {
+        if (!enabled) return;
+        const raw = e.target.value;
+        if (raw === "") {
+          onChange(null);
+          return;
+        }
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed) && parsed >= -0.5 && parsed <= 0.5) onChange(parsed);
+      }}
+      className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:opacity-50"
+    />
+  );
+}
+
 export const ControlsPanel = memo(function ControlsPanel({
   value,
   onChange,
@@ -226,7 +272,8 @@ export const ControlsPanel = memo(function ControlsPanel({
   const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
   const scheduleTournaments = Math.max(1, Math.round(tournamentsPerSchedule));
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
-  const maxTournamentsPerSample = scheduleTournaments * 100_000;
+  const maxTournamentsPerSample = Math.min(Number.MAX_SAFE_INTEGER, scheduleTournaments * 100_000);
+  const manualAlpha = supportsManualAlpha(value.finishModelId);
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
   const setTournamentTarget = (target: number) => {
@@ -403,7 +450,7 @@ export const ControlsPanel = memo(function ControlsPanel({
           <select
             value={value.finishModelId}
             onChange={(e) =>
-              setModel("finishModelId", e.target.value as FinishModelId)
+              onChange(changeFinishModel(value, e.target.value as FinishModelId))
             }
             className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
           >
@@ -431,29 +478,17 @@ export const ControlsPanel = memo(function ControlsPanel({
           )}
         </Field>
         <Field label={t("controls.alphaOverride")} hint={t("help.alphaOverride")}>
-          <input
-            type="number"
-            step={value.finishModelId === "freeze-realdata-tilt" || value.finishModelId === "pko-realdata-tilt" ? 0.05 : 0.1}
-            min={value.finishModelId === "freeze-realdata-tilt" || value.finishModelId === "pko-realdata-tilt" ? -0.5 : 0.1}
-            max={value.finishModelId === "freeze-realdata-tilt" || value.finishModelId === "pko-realdata-tilt" ? 0.5 : 10}
-            value={value.alphaOverride ?? ""}
+          <AlphaOverrideInput
+            modelId={value.finishModelId}
+            value={value.alphaOverride}
             placeholder={t("controls.alphaPlaceholder")}
-            onChange={(e) => {
-              const raw = e.target.value;
-              if (raw === "") {
-                setModel("alphaOverride", null);
-                return;
-              }
-              const v = Number(raw);
-              if (!Number.isFinite(v)) return;
-              const isTilt = value.finishModelId === "freeze-realdata-tilt" || value.finishModelId === "pko-realdata-tilt";
-              const lo = isTilt ? -0.5 : 0.1;
-              const hi = isTilt ? 0.5 : 10;
-              if (v < lo || v > hi) return;
-              setModel("alphaOverride", v);
-            }}
-            className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)]"
+            onChange={(next) => setModel("alphaOverride", next)}
           />
+          {!manualAlpha && (
+            <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+              {t("controls.alphaUnavailable")}
+            </div>
+          )}
         </Field>
         <Field label={t("controls.roiStdErr")} hint={t("help.roiStdErr")}>
           <NumInput

@@ -252,17 +252,6 @@ export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {
     };
   });
 
-  // Aggregate band policy for the whole table — mirrors the convergence
-  // widget. If any single-format sample is out of box, suppress bands.
-  const samples: FitBoxSample[] = rows.map((r) => ({
-    format: formatTyped,
-    field: safeAfs,
-    roi: r.roi,
-  }));
-  const policy = getConvergenceBandPolicy(samples);
-  const bandPolicy: BandPolicy =
-    policy.kind === "numeric" ? "numeric" : "outside-fit-box";
-
   // Anchor = precise σ at user's exact ROI, not snapped to grid.
   const anchorTriple = singleFormatSigma(
     formatTyped,
@@ -288,7 +277,7 @@ export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {
   return {
     rows,
     effectiveAfs: safeAfs,
-    bandPolicy,
+    bandPolicy: anchor.insideFitBox ? "numeric" : "outside-fit-box",
     anchor,
   };
 }
@@ -307,6 +296,8 @@ function computeProveEdgeSchedule(input: ProveEdgeInput): ProveEdgeResult {
     ? breakdown.perRow.map((r) => ({
         format: r.format,
         field: r.afs,
+        fieldMin: r.fieldMin,
+        fieldMax: r.fieldMax,
         roi: r.roi,
       }))
     : [];

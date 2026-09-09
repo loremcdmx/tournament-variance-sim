@@ -106,6 +106,7 @@ function parseRankFromCell(cell: string): number | null {
 }
 
 function numericCandidates(cell: string): number[] {
+  if (!/^[\s\d.,+\-]+$/.test(cell)) return [];
   return [...cell.matchAll(/[+-]?\d[\d\s.,]*/g)]
     .map((m) => parseLooseNumber(m[0]))
     .filter((n): n is number => n != null && Number.isFinite(n));
@@ -141,19 +142,23 @@ function parseEntryFromCells(
   }
   if (prize == null) return null;
 
-  const candidates: number[] = [];
-  for (let i = 0; i < cells.length; i++) {
+  let points: number | null = null;
+  let pointsCell = -1;
+  // Pasted tables place the score after the player name. Taking the last
+  // complete numeric cell also permits entirely numeric nicknames.
+  for (let i = cells.length - 1; i >= 0; i--) {
     if (i === rankCell || i === prizeCell) continue;
-    for (const n of numericCandidates(cells[i])) {
-      if (n >= 0 && n <= 100_000_000) candidates.push(n);
+    const candidates = numericCandidates(cells[i]);
+    if (candidates.length === 1 && candidates[0] > 0 && candidates[0] <= 100_000_000) {
+      points = candidates[0];
+      pointsCell = i;
+      break;
     }
   }
-  if (candidates.length === 0) return null;
-  const points = Math.max(...candidates);
-  if (!(points > 0)) return null;
+  if (points == null) return null;
 
   const nickname =
-    cells.find((cell, idx) => idx !== rankCell && idx !== prizeCell && !/\d/.test(cell)) ??
+    cells.find((_, idx) => idx !== rankCell && idx !== prizeCell && idx !== pointsCell) ??
     undefined;
   return { rank, points, prize, nickname };
 }
@@ -354,12 +359,9 @@ export function analyzeBattleRoyaleLeaderboardLookup(params: {
     : 0;
   const targetPoints = tournamentsPerDay * pointsPerTournament;
   const snapshots = params.snapshots.filter((snapshot) => snapshot.entries.length > 0);
-  const days =
-    targetPoints > 0
-      ? snapshots.map((snapshot) =>
-          findBattleRoyaleLeaderboardDayPayout(snapshot, targetPoints),
-        )
-      : [];
+  const days = snapshots.map((snapshot) =>
+    findBattleRoyaleLeaderboardDayPayout(snapshot, targetPoints),
+  );
   const averageDailyPrize =
     days.length > 0
       ? days.reduce((acc, day) => acc + day.prize, 0) / days.length

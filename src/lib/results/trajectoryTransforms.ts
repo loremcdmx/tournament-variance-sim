@@ -89,6 +89,7 @@ export function shiftResultByRakeback(
   curve: Float64Array,
   sign: 1 | -1,
 ): SimulationResult {
+  if (curve.length === 0 || curve.every((value) => value === 0)) return result;
   // Only profit-path quantities that shift by the deterministic cumulative RB
   // curve are updated here. Path-dependent streak / drawdown / ruin stats stay
   // on the engine's full-sample output; recomputing them from stored hi-res
@@ -102,6 +103,7 @@ export function shiftResultByRakeback(
   };
 
   const totalShift = sign * curve[curve.length - 1];
+  const finalProfits = result.finalProfits?.map((profit) => profit + totalShift);
   const shiftedHistEdges = result.histogram.binEdges.map((edge) => edge + totalShift);
   const totalCount =
     result.histogram.counts.reduce((sum, count) => sum + count, 0) || 1;
@@ -124,30 +126,22 @@ export function shiftResultByRakeback(
   // finalProfits. Keeping both sub-line and headline on the same exact count
   // avoids a 0.1pp mismatch between them on real runs.
   let probProfit = Math.max(0, Math.min(1, 1 - cumBelow / totalCount));
-  if (result.finalProfits && result.finalProfits.length > 0) {
+  if (finalProfits && finalProfits.length > 0) {
     let up = 0;
-    for (let s = 0; s < result.finalProfits.length; s++) {
-      if (result.finalProfits[s] + totalShift > 0) up++;
+    for (let s = 0; s < finalProfits.length; s++) {
+      if (finalProfits[s] > 0) up++;
     }
-    probProfit = up / result.finalProfits.length;
+    probProfit = up / finalProfits.length;
   }
 
-  // The "finished up AND never busted" sub-line must move with the same
-  // shift as the probProfit headline, or the card contradicts itself (raw
-  // 60% under a folded 68% while ruin risk reads 0%). Bust flags stay raw:
-  // rakeback only ever adds, so raw "never busted" is a lower bound.
-  let probUpNeverBusted = result.stats.probUpNeverBusted;
-  const mask = result.neverBustedMask;
-  if (probUpNeverBusted != null && mask != null && mask.length > 0 && mask.length === result.finalProfits.length) {
-    let up = 0;
-    for (let s = 0; s < mask.length; s++) {
-      if (mask[s] === 1 && result.finalProfits[s] + totalShift > 0) up++;
-    }
-    probUpNeverBusted = up / mask.length;
-  }
+  // The stored bust mask belongs to the original paths. Removing RB can
+  // turn survivors into busts; adding LB can do the reverse. Full-sample
+  // shifted minima are unavailable, so omit this joint path statistic.
+  const probUpNeverBusted = null;
 
   return {
     ...result,
+    finalProfits,
     expectedProfit: result.expectedProfit + totalShift,
     histogram: {
       ...result.histogram,

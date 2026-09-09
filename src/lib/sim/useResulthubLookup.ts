@@ -22,7 +22,7 @@ export type LookupStatus =
   | { kind: "idle" }
   | { kind: "pending" }
   | { kind: "ok"; at: number; window: { from: string; to: string } }
-  | { kind: "error"; reason: string };
+  | { kind: "error"; reason: string; retryAfterSec?: number };
 
 export interface UseResulthubLookupResult {
   status: LookupStatus;
@@ -30,7 +30,7 @@ export interface UseResulthubLookupResult {
    *  full summary and decides how to merge it into its own state. */
   run: (
     usernames: readonly string[],
-    onSuccess: (summary: ResulthubGgBrSummary) => void,
+    onSuccess: (summary: ResulthubGgBrSummary) => boolean | void,
   ) => Promise<void>;
 }
 
@@ -44,7 +44,7 @@ export function useResulthubLookup(): UseResulthubLookupResult {
   const run = useCallback(
     async (
       usernames: readonly string[],
-      onSuccess: (summary: ResulthubGgBrSummary) => void,
+      onSuccess: (summary: ResulthubGgBrSummary) => boolean | void,
     ) => {
       if (usernames.length === 0) return;
       abortRef.current?.abort();
@@ -53,7 +53,11 @@ export function useResulthubLookup(): UseResulthubLookupResult {
       setStatus({ kind: "pending" });
       try {
         const summary = await fetchResulthubGgBrMany(usernames, ctrl.signal);
-        onSuccess(summary);
+        if (ctrl.signal.aborted) return;
+        if (onSuccess(summary) === false) {
+          setStatus({ kind: "idle" });
+          return;
+        }
         setStatus({
           kind: "ok",
           at: Date.now(),
@@ -63,7 +67,9 @@ export function useResulthubLookup(): UseResulthubLookupResult {
         if (err instanceof DOMException && err.name === "AbortError") return;
         const code =
           err instanceof ResulthubLookupError ? err.code : "network";
-        setStatus({ kind: "error", reason: code });
+        if (ctrl.signal.aborted) return;
+        setStatus({ kind: "error", reason: code,
+          retryAfterSec: err instanceof ResulthubLookupError ? err.retryAfterSec : undefined });
       }
     },
     [],

@@ -244,7 +244,7 @@ export function TrajectoryChart({
   const linePreset = LINE_STYLE_PRESETS[linePresetId];
   const maxRuns = Math.min(CASH_TRAJECTORY_RUN_CAP, result.samplePaths.paths.length);
   const clampedVisibleRuns =
-    maxRuns <= 0 ? 0 : Math.max(1, Math.min(visibleRuns, maxRuns));
+    maxRuns <= 0 ? 0 : Math.max(0, Math.min(visibleRuns, maxRuns));
   const deferredVisibleRuns = useDeferredValue(clampedVisibleRuns);
 
   const assets = useMemo(() => {

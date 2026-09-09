@@ -223,7 +223,6 @@ async function bootCashPage(context, baseUrl, storageEntries) {
   });
 
   await page.addInitScript((entries) => {
-    localStorage.setItem("tvs:advancedMode", "1");
     localStorage.setItem("tvs:mode", "cash");
     localStorage.setItem("tvs:locale", "ru");
     localStorage.removeItem("tvs:cash-input");
@@ -233,7 +232,9 @@ async function bootCashPage(context, baseUrl, storageEntries) {
     }
   }, Object.entries(storageEntries));
 
-  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  const cashUrl = new URL(baseUrl);
+  cashUrl.searchParams.set("admin", "1");
+  await page.goto(cashUrl.href, { waitUntil: "domcontentloaded" });
   await page.getByText("Параметры кэша").waitFor({ state: "visible" });
   await page.getByText("Результаты кэша").waitFor({ state: "visible" });
 
@@ -440,7 +441,10 @@ try {
     report.serverStartupLog = serverHandle.startupLog;
   }
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    ...(process.env.SMOKE_BROWSER_CHANNEL ? { channel: process.env.SMOKE_BROWSER_CHANNEL } : {}),
+  });
   try {
     report.scenarios = [];
     for (const scenario of scenarios) {

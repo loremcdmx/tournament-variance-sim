@@ -627,6 +627,8 @@ function NumField({
 }: NumFieldProps) {
   const [draft, setDraft] = useState(() => formatNumFieldValue(value));
   const [editing, setEditing] = useState(false);
+  const focusValueRef = useRef(value);
+  const cancelledRef = useRef(false);
 
   const commitDraft = (raw: string) => {
     const next = commitNumFieldDraft(raw, value, min, max);
@@ -649,6 +651,8 @@ function NumField({
         max={max}
         disabled={disabled}
         onFocus={(e) => {
+          focusValueRef.current = value;
+          cancelledRef.current = false;
           setEditing(true);
           setDraft(e.currentTarget.value);
         }}
@@ -659,14 +663,18 @@ function NumField({
           if (parsed !== null) onChange(parsed);
         }}
         onBlur={(e) => {
-          commitDraft(e.target.value);
+          if (!cancelledRef.current) commitDraft(e.target.value);
+          cancelledRef.current = false;
           setEditing(false);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.currentTarget.blur();
           } else if (e.key === "Escape") {
-            setDraft(formatNumFieldValue(value));
+            e.preventDefault();
+            cancelledRef.current = true;
+            onChange(focusValueRef.current);
+            setDraft(formatNumFieldValue(focusValueRef.current));
             setEditing(false);
             e.currentTarget.blur();
           }

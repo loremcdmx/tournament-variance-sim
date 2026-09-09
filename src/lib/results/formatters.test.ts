@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   compactMoney,
   fmt,
+  formatMinimumBankroll,
   GLOBAL_UNIT_KEY,
   intFmt,
   loadUnitMode,
@@ -80,6 +81,25 @@ describe("money", () => {
 
   it("Unicode minus for negatives", () => {
     expect(money(-1234)).toBe("−$1,234");
+  });
+});
+
+describe("minimum bankroll formatting", () => {
+  it("preserves cents in USD and rounds fractional requirements upward", () => {
+    expect(formatMinimumBankroll(11.01)).toBe("$11.01");
+    expect(formatMinimumBankroll(11.0101)).toBe("$11.02");
+    expect(formatMinimumBankroll(10_000.01)).toBe("$10,000.01");
+    expect(money(11.01)).toBe("$11");
+  });
+
+  it("never quotes fewer buy-ins than the required bankroll", () => {
+    expect(formatMinimumBankroll(11.01, "abi", 11)).toBe("1.01 ABI");
+    for (const amount of [0.01, 11.01, 125.57, 10_000.01, 1_000_000.01]) {
+      for (const abi of [.25, 1, 11, 25, 123.45]) {
+        const shown = Number(formatMinimumBankroll(amount, "abi", abi).replaceAll(",", "").replace(" ABI", ""));
+        expect(shown).toBeGreaterThanOrEqual(amount / abi);
+      }
+    }
   });
 });
 

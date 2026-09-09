@@ -104,6 +104,7 @@ function collectResultTransfers(r: SimulationResult): Transferable[] {
   const out: Transferable[] = [];
   out.push(r.finalProfits.buffer);
   out.push(r.rowProfits.buffer);
+  if (r.satelliteSeatsWon) out.push(r.satelliteSeatsWon.buffer);
   out.push(r.jackpotMask.buffer);
   out.push(r.neverBustedMask.buffer);
   if (r.battleRoyaleLeaderboard) {
@@ -160,6 +161,7 @@ function collectShardTransfers(shard: RawShard): Transferable[] {
     shard.hiResMin.buffer,
     shard.hiResMax.buffer,
   ];
+  if (shard.satelliteSeatsWon) out.push(shard.satelliteSeatsWon.buffer);
   if (shard.leaderboardPoints) out.push(shard.leaderboardPoints.buffer);
   if (shard.leaderboardPayouts) out.push(shard.leaderboardPayouts.buffer);
   if (shard.leaderboardExpectedPayouts) {

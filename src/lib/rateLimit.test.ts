@@ -31,13 +31,20 @@ describe("TokenBucketLimiter", () => {
     expect(limiter.take("b", 0).allowed).toBe(true);
   });
 
-  it("drops idle keys once the map grows past its cap", () => {
+  it("evicts the least recently used key at capacity without waiting for denial or refill", () => {
     const limiter = new TokenBucketLimiter(1, 60, 2);
     limiter.take("a", 0);
     limiter.take("b", 0);
+    expect(limiter.take("a", 0).allowed).toBe(false);
     limiter.take("c", 0);
-    limiter.take("c", 0);
-    limiter.take("c", 5000);
-    expect(limiter.take("a", 5000).allowed).toBe(true);
+    expect(limiter.take("a", 0).allowed).toBe(false);
+    expect(limiter.take("b", 0).allowed).toBe(true);
+  });
+
+  it("bounds retained buckets under successful requests from new clients", () => {
+    const limiter = new TokenBucketLimiter(30, 30, 2);
+    for (let i = 0; i < 1000; i++) limiter.take(`client-${i}`, i * 60_000);
+    const stored = (limiter as unknown as { buckets: Map<string, unknown> }).buckets;
+    expect(stored.size).toBeLessThanOrEqual(2);
   });
 });

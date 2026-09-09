@@ -6,6 +6,24 @@ import {
 } from "./battleRoyaleLeaderboardLookup";
 
 describe("battleRoyaleLeaderboardLookup", () => {
+  it("preserves numeric nicknames without treating their suffix as points", () => {
+    const parsed = parseBattleRoyaleLeaderboardSnapshot("1\tPlayer99999\t1,000\t$100\n2\tPlain\t500\t$50");
+    expect(parsed.entries[0]).toEqual({ rank: 1, nickname: "Player99999", points: 1000, prize: 100 });
+    expect(parseBattleRoyaleLeaderboardSnapshot("1\t99999\t1,000\t$100").entries[0])
+      .toEqual({ rank: 1, nickname: "99999", points: 1000, prize: 100 });
+    const analysis = analyzeBattleRoyaleLeaderboardLookup({ tournamentsPerDay: 100, pointsPerTournament: 15,
+      snapshots: [{ id: "day", entries: parsed.entries }] });
+    expect(analysis.averageDailyPrize).toBe(100);
+  });
+
+  it("retains imported days while the target score is zero", () => {
+    const analysis = analyzeBattleRoyaleLeaderboardLookup({ tournamentsPerDay: 160, pointsPerTournament: 0,
+      snapshots: [{ id: "day", entries: [{ rank: 1, points: 1000, prize: 100 }] }] });
+    expect(analysis.snapshotCount).toBe(1);
+    expect(analysis.days).toHaveLength(1);
+    expect(analysis.averageDailyPrize).toBe(0);
+    expect(analysis.paidDays).toBe(0);
+  });
   it("parses rank / points / prize rows from pasted HTML table code", () => {
     const parsed = parseBattleRoyaleLeaderboardSnapshot(`
       <table>

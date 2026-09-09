@@ -54,7 +54,7 @@ export function chooseClosestFeasibilityFix(
   const entryCost = row.buyIn * (1 + row.rake);
   const matchedRoi =
     entryCost > 0 ? clampRoi(issue.currentEv / entryCost - 1) : null;
-  if (matchedRoi !== null) {
+  if (matchedRoi !== null && issue.reason !== "inconsistent-finish-locks") {
     candidates.push({ kind: "match-roi", row: { ...row, roi: matchedRoi } });
   }
 

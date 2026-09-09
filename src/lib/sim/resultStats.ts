@@ -172,22 +172,33 @@ export function computeScalarStats(
   const sigmaPerTournRuin = N > 0 ? stdDev / Math.sqrt(N) : 0;
   const gaussianRuinProb = (B: number): number => {
     if (B <= 0) return 1;
-    if (sigmaPerTournRuin <= 0 || N <= 0) return muPerTourn >= 0 ? 0 : 1;
+    if (N <= 0) return 0;
+    if (sigmaPerTournRuin <= 0) return mean <= -B ? 1 : 0;
     const sqrtN = Math.sqrt(N);
     const denom = sigmaPerTournRuin * sqrtN;
     const a = (-B - muPerTourn * N) / denom;
     const b = (-B + muPerTourn * N) / denom;
     const var1 = sigmaPerTournRuin * sigmaPerTournRuin;
     const expArg = (-2 * muPerTourn * B) / var1;
-    // expArg blows up only under strongly unfavorable drift (μ≪0), where the
-    // infinite-horizon ruin probability equals 1; short-circuit to avoid
-    // Infinity·Φ(b) → NaN.
-    if (expArg > 700) return 1;
-    const p = normalCdf(a) + Math.exp(expArg) * normalCdf(b);
+    // For a deep negative b, combine the Gaussian exponent algebraically:
+    // expArg - b²/2 = -a²/2. This avoids both overflow and tail cancellation.
+    let reflected: number;
+    if (b < -8) {
+      const inv = 1 / (b * b);
+      const mills = 1 - inv + 3 * inv ** 2 - 15 * inv ** 3 + 105 * inv ** 4 - 945 * inv ** 5;
+      reflected = Math.exp(-0.5 * a * a) * mills / (-b * Math.sqrt(2 * Math.PI));
+    } else if (b < 0) {
+      const t = 1 / (1 + 0.3275911 * (-b / Math.SQRT2));
+      const erfcFactor = (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+      reflected = 0.5 * erfcFactor * Math.exp(-0.5 * a * a);
+    } else {
+      reflected = Math.exp(expArg) * normalCdf(b);
+    }
+    const p = normalCdf(a) + reflected;
     return Math.min(1, Math.max(0, p));
   };
   const solveGaussianBankroll = (alpha: number): number => {
-    if (sigmaPerTournRuin <= 0) return 0;
+    if (sigmaPerTournRuin <= 0) return mean < 0 ? (Math.floor(-mean * 100) + 1) / 100 : 0;
     // Bracket: 0 → ruin prob = 1. Upper bound: scale with σ√N × 10.
     let lo = 0;
     let hi = Math.max(100, stdDev * 10);
@@ -213,10 +224,17 @@ export function computeScalarStats(
   const worstLosses = new Float64Array(S);
   for (let s = 0; s < S; s++) worstLosses[s] = -runningMins[s];
   worstLosses.sort();
-  const minBankrollRoR1pct = worstLosses[Math.floor(0.99 * (S - 1))];
-  const minBankrollRoR5pct = worstLosses[Math.floor(0.95 * (S - 1))];
-  const minBankrollRoR15pct = worstLosses[Math.floor(0.85 * (S - 1))];
-  const minBankrollRoR50pct = worstLosses[Math.floor(0.5 * (S - 1))];
+  const historicalBankroll = (alpha: number): number => {
+    const index = Math.max(0, S - Math.floor(alpha * S) - 1);
+    const threshold = worstLosses[index];
+    // Ruin includes equality. Quote a cent amount strictly above the loss
+    // threshold so tied samples cannot invalidate the advertised risk bound.
+    return threshold > 0 ? (Math.floor(threshold * 100) + 1) / 100 : 0;
+  };
+  const minBankrollRoR1pct = historicalBankroll(0.01);
+  const minBankrollRoR5pct = historicalBankroll(0.05);
+  const minBankrollRoR15pct = historicalBankroll(0.15);
+  const minBankrollRoR50pct = historicalBankroll(0.5);
   // "Runs that never dipped below 0" — fraction of samples whose running
   // minimum profit stayed non-negative over the entire schedule.
   let neverBelowZero = 0;

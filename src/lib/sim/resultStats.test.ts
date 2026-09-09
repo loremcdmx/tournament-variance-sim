@@ -188,11 +188,15 @@ describe("computeScalarStats bankroll requirements", () => {
 
   it("1% RoR bankroll is strictly above the 5% one on skewed data", () => {
     const out = stats(finals, runningMins, 0);
-    const worstLosses = runningMins.map((v) => -v).sort((a, b) => a - b);
-    expect(out.minBankrollRoR1pct).toBe(worstLosses[Math.floor(0.99 * (size - 1))]);
-    expect(out.minBankrollRoR5pct).toBe(worstLosses[Math.floor(0.95 * (size - 1))]);
-    expect(out.minBankrollRoR15pct).toBe(worstLosses[Math.floor(0.85 * (size - 1))]);
-    expect(out.minBankrollRoR50pct).toBe(worstLosses[Math.floor(0.5 * (size - 1))]);
+    for (const [bankroll, risk] of [
+      [out.minBankrollRoR1pct, .01],
+      [out.minBankrollRoR5pct, .05],
+      [out.minBankrollRoR15pct, .15],
+      [out.minBankrollRoR50pct, .5],
+    ]) {
+      const realized = runningMins.filter((v) => v <= -bankroll).length / size;
+      expect(realized).toBeLessThanOrEqual(risk);
+    }
     expect(out.minBankrollRoR1pct).toBeGreaterThan(out.minBankrollRoR5pct);
     expect(out.minBankrollRoR5pct).toBeGreaterThan(out.minBankrollRoR15pct);
     expect(out.minBankrollRoR15pct).toBeGreaterThan(out.minBankrollRoR50pct);

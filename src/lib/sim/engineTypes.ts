@@ -5,6 +5,8 @@
  */
 
 export interface CompiledEntry {
+  isSatellite?: boolean;
+  calibrationWarning?: import("./types").CalibrationWarning;
   rowIdx: number;
   /** Real field size seen by the compiled payout/pmf path after late reg. */
   fieldSize: number;
@@ -129,6 +131,7 @@ export interface BattleRoyaleLeaderboardMixRow {
 }
 
 export interface CompiledSchedule {
+  calibrationWarnings?: import("./types").CalibrationWarning[];
   flat: CompiledEntry[];
   totalBuyIn: number;
   /** Deterministic profit target from the schedule ROI plus deterministic RB. */
@@ -171,6 +174,7 @@ export interface ScheduleAnalyticBreakdown {
 }
 
 export interface RawShard {
+  satelliteSeatsWon?: Uint32Array | null;
   sStart: number;
   sEnd: number;
   finalProfits: Float64Array;
@@ -189,6 +193,7 @@ export interface RawShard {
    *  metric — the dual of longestBreakevens (max chord per sample). */
   breakevenStreakAvgs: Float64Array;
   longestCashless: Int32Array;
+  /** -2: no drawdown; -1: unrecovered; otherwise recovery tournaments. */
   recoveryLengths: Int32Array;
   /** Per-length histograms. `breakevenStreakCounts` counts one entry
    *  per starting point per sample at the grid-unit length of that
@@ -231,7 +236,7 @@ export interface RawShard {
   /** Hi-res capture grid (K'+1 points). Shared across all hi-res buffers
    *  in this shard. */
   hiResCheckpointIdx: Int32Array;
-  /** Per-sample hi-res paths for the first `wantHiResPaths` samples of
+  /** Per-sample hi-res paths for the globally selected first 1000 samples within
    *  this shard. */
   hiResPaths: Float64Array[];
   /** Global sample ids parallel to `hiResPaths`, used by UI filters that need

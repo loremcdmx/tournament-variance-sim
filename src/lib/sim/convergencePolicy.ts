@@ -32,6 +32,8 @@ export type ConvergenceBandPolicy =
 export interface FitBoxSample {
   format: ConvergenceRowFormat;
   field: number;
+  fieldMin?: number;
+  fieldMax?: number;
   roi: number;
 }
 
@@ -106,6 +108,10 @@ export function inferRowFormat(row: TournamentRow): ConvergenceRowFormat {
  */
 export function isInsideFitBox(sample: FitBoxSample): boolean {
   const { format, field, roi } = sample;
+  if (sample.fieldMin !== undefined || sample.fieldMax !== undefined) {
+    return isInsideFitBox({ format, field: sample.fieldMin ?? field, roi }) &&
+      isInsideFitBox({ format, field: sample.fieldMax ?? field, roi });
+  }
   switch (format) {
     case "freeze":
       return betweenInclusive(

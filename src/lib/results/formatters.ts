@@ -53,6 +53,23 @@ export interface MoneyFmt {
 
 export type UnitMode = "money" | "abi";
 
+/** A quoted minimum must never round below the amount that meets the risk bound. */
+export function formatMinimumBankroll(
+  value: number,
+  unit: UnitMode = "money",
+  abi = 1,
+  locale = "en-US",
+): string {
+  if (!Number.isFinite(value)) return "—";
+  const amount = Math.max(0, value) / (unit === "abi" && abi > 0 ? abi : 1);
+  const wholeCents = Math.floor(amount * 100);
+  const conservative = (wholeCents / 100 >= amount ? wholeCents : wholeCents + 1) / 100;
+  const text = conservative.toLocaleString(locale, {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  return unit === "abi" ? `${text} ABI` : `$${text}`;
+}
+
 /** USD-denominated formatter pair. Default for new result widgets. */
 export const defaultMoneyFmt: MoneyFmt = { money, compactMoney };
 

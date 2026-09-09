@@ -345,8 +345,8 @@ describe("engine", () => {
     expect(result.samplePaths.paths).toHaveLength(1000);
     expect(result.samplePaths.sampleIndices[0]).toBe(0);
     expect(result.samplePaths.sampleIndices[499]).toBe(499);
-    expect(result.samplePaths.sampleIndices[500]).toBe(2000);
-    expect(result.samplePaths.sampleIndices[999]).toBe(2499);
+    expect(result.samplePaths.sampleIndices[500]).toBe(500);
+    expect(result.samplePaths.sampleIndices[999]).toBe(999);
   });
 
   it("emits a deterministic BR leaderboard backend channel", () => {
@@ -1083,14 +1083,14 @@ describe("jackpotMask", () => {
     const a = simulateShard(input, compiled, 0, 1000, grid);
     const b = simulateShard(input, compiled, 1000, 2000, grid);
 
-    expect(a.hiResPaths.length).toBeLessThan(1000);
-    expect(b.hiResPaths.length).toBeLessThan(1000);
+    expect(a.hiResPaths.length).toBe(1000);
+    expect(b.hiResPaths.length).toBe(0);
 
     const merged = mergeShards([a, b], input.samples, grid.K + 1, input.schedule.length);
     const result = buildResult(input, compiled, merged, "alpha", grid);
 
     expect(result.samplePaths.sampleIndices[0]).toBe(0);
-    expect(result.samplePaths.sampleIndices[a.hiResPaths.length]).toBe(1000);
+    expect(result.samplePaths.sampleIndices).toEqual(Array.from({ length: 1000 }, (_, i) => i));
   });
 });
 

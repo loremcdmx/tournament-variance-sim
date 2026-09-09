@@ -34,12 +34,15 @@ export class TokenBucketLimiter {
     const elapsed = Math.max(0, now - bucket.updatedAt);
     bucket.tokens = Math.min(this.capacity, bucket.tokens + elapsed * this.refillPerMs);
     bucket.updatedAt = now;
+    // Map insertion order tracks least-recently-used keys. Enforce the cap
+    // on successful requests too: a fresh client always starts allowed.
+    this.buckets.delete(key);
+    this.buckets.set(key, bucket);
+    this.pruneIfCrowded(now);
     if (bucket.tokens >= 1) {
       bucket.tokens -= 1;
-      this.buckets.set(key, bucket);
       return { allowed: true, retryAfterSec: 0 };
     }
-    this.buckets.set(key, bucket);
     const waitMs = (1 - bucket.tokens) / this.refillPerMs;
     this.pruneIfCrowded(now);
     return { allowed: false, retryAfterSec: Math.max(1, Math.ceil(waitMs / 1000)) };
@@ -50,6 +53,11 @@ export class TokenBucketLimiter {
     const fullRefillMs = this.capacity / this.refillPerMs;
     for (const [key, bucket] of this.buckets) {
       if (now - bucket.updatedAt >= fullRefillMs) this.buckets.delete(key);
+    }
+    while (this.buckets.size > Math.max(1, this.maxKeys)) {
+      const oldest = this.buckets.keys().next().value;
+      if (oldest === undefined) break;
+      this.buckets.delete(oldest);
     }
   }
 }

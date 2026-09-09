@@ -758,11 +758,11 @@ export function TrajectoryPlot({
             </span>
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 tabular-nums">
-            <span className="text-[color:var(--color-fg-dim)]">tournaments</span>
+            <span className="text-[color:var(--color-fg-dim)]">{t("pd.report.tournaments")}</span>
             <span className="text-right font-semibold text-[color:var(--color-fg)]">
               {tournaments.toLocaleString(numberLocale)}
             </span>
-            <span className="text-[color:var(--color-fg-dim)]">profit</span>
+            <span className="text-[color:var(--color-fg-dim)]">{t("chart.traj.profit")}</span>
             <span
               className="text-right font-semibold"
               style={{

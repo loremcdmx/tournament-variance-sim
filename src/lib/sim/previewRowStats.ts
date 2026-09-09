@@ -15,6 +15,7 @@ import {
 } from "@/lib/sim/battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { inferGameType } from "@/lib/sim/gameType";
+import { applySitThroughPayJumps } from "./sitThroughPayJumps";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import { derivePreviewRowEconomics } from "@/lib/sim/previewRowEconomics";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
@@ -354,6 +355,10 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     let cashEVActual = 0;
     for (let i = 0; i < N; i++) cashEVActual += pmf[i] * prizeByPlace[i];
     bountyMean = Math.max(0, totalWinningsEV - cashEVActual);
+  }
+
+  if (row.sitThroughPayJumps) {
+    applySitThroughPayJumps(pmf, prizeByPlace, paidCount, row.payJumpAggression);
   }
 
   const bountyByPlace = new Float64Array(N);

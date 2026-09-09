@@ -15,10 +15,10 @@ export function getPayoutTable(
       return [1];
 
     case "sng-65-35":
-      return normalize([0.65, 0.35]);
+      return normalize([0.65, 0.35].slice(0, Math.max(1, Math.floor(players))));
 
     case "sng-50-30-20":
-      return normalize([0.5, 0.3, 0.2]);
+      return normalize([0.5, 0.3, 0.2].slice(0, Math.max(1, Math.floor(players))));
 
     case "mtt-flat": {
       const paid = Math.max(1, Math.floor(players * 0.2));
@@ -142,7 +142,7 @@ function firstShareForField(
 function primedopeTable(players: number, custom?: number[]): number[] {
   const paid =
     custom && custom.length > 0
-      ? custom.length
+      ? Math.min(Math.max(1, Math.floor(players)), custom.length)
       : Math.max(1, Math.floor(players * 0.15));
   if (paid > 700) {
     return buildRealisticCurve(paid, players, {
@@ -186,7 +186,7 @@ function ggTable(players: number): number[] {
  * SCOOP Main-ish behaviour at 16k and richer ~16 % 1st at 500 runners.
  */
 function sundayMillionTable(players: number): number[] {
-  const paid = Math.max(9, Math.floor(players * 0.138));
+  const paid = Math.min(Math.max(1, Math.floor(players)), Math.max(9, Math.floor(players * 0.138)));
   return buildRealisticCurve(paid, players, {
     firstShare: firstShareForField(0.165, 0.115, players),
     ftRatio: 1.42,
@@ -371,7 +371,7 @@ function buildRealisticCurve(
   const tailEnd = Math.min(tailEndTarget, tailStart * 0.99);
   const delta = tailStart - tailEnd;
 
-  const maxTailSum = tailLen * tailStart;
+  const maxTailSum = (tailLen - 1) * tailStart + tailEnd;
   const minTailSum = tailStart + (tailLen - 1) * tailEnd;
 
   if (targetTailSum >= maxTailSum || targetTailSum <= minTailSum) {
@@ -393,7 +393,9 @@ function buildRealisticCurve(
   };
 
   let lo = 0.001;
+  if (sumAt(lo) < targetTailSum) lo = 0;
   let hi = 200;
+  while (sumAt(hi) > targetTailSum && hi < 1e9) hi *= 2;
   for (let iter = 0; iter < 80; iter++) {
     const mid = 0.5 * (lo + hi);
     const s = sumAt(mid);
@@ -409,7 +411,9 @@ function buildRealisticCurve(
     const t = tailLen === 1 ? 1 : j / (tailLen - 1);
     result[ftLen + j] = tailEnd + delta * Math.pow(1 - t, c);
   }
-  return result;
+  return Math.abs(result.reduce((a, b) => a + b, 0) - 1) > 1e-9
+    ? normalize(result)
+    : result;
 }
 
 function normalize(arr: number[]): number[] {

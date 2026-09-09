@@ -1,6 +1,6 @@
 {
   "name": "tournament-variance-sim",
-  "version": "0.7.4",
+  "version": "0.7.7",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "br:leaderboard:data": "tsx scripts/update_br_leaderboard_manual_data.ts",
     "smoke:br": "tsx scripts/smoke_br_leaderboard.ts",
-    "smoke:cash": "node scripts/smoke_cash_release.mjs"
+    "smoke:cash": "node scripts/smoke_cash_release.mjs",
+    "smoke:bughunt": "tsx scripts/smoke_bughunt_release.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

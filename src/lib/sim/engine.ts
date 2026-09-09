@@ -102,6 +102,9 @@ export function mergeShards(
   const longestCashless = new Int32Array(S);
   const recoveryLengths = new Int32Array(S);
   const rowProfits = new Float64Array(S * numRows);
+  const satelliteSeatsWon = sorted.some((shard) => shard.satelliteSeatsWon)
+    ? new Uint32Array(S * numRows)
+    : null;
   const rowBountyProfits = new Float64Array(S * numRows);
   const jackpotMask = new Uint8Array(S);
   const hasLeaderboard = sorted[0].leaderboardPoints !== null;
@@ -133,6 +136,9 @@ export function mergeShards(
     recoveryLengths.set(sh.recoveryLengths, sh.sStart);
     pathMatrix.set(sh.pathMatrix, sh.sStart * K1);
     rowProfits.set(sh.rowProfits, sh.sStart * numRows);
+    if (satelliteSeatsWon && sh.satelliteSeatsWon) {
+      satelliteSeatsWon.set(sh.satelliteSeatsWon, sh.sStart * numRows);
+    }
     rowBountyProfits.set(sh.rowBountyProfits, sh.sStart * numRows);
     jackpotMask.set(sh.jackpotMask, sh.sStart);
     if (leaderboardPoints !== null && sh.leaderboardPoints !== null) {
@@ -191,6 +197,7 @@ export function mergeShards(
     }
   }
   return {
+    satelliteSeatsWon,
     sStart: 0,
     sEnd: S,
     finalProfits,

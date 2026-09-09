@@ -361,7 +361,7 @@ export function calibrateShelledItm(
 ): ShelledCalibrationResult {
   const pmf = new Float64Array(N);
   const paid = Math.max(0, Math.min(paidCount, N));
-  const clampedItm = Math.max(0, Math.min(1, itmRate));
+  const clampedItm = paid === N ? 1 : Math.max(0, Math.min(1, itmRate));
   const clampedTopHeavyBias = clampItmTopHeavyBias(itmTopHeavyBias);
 
   const emptyShells = { first: 0, top3: 0, ft: 0 };
@@ -442,11 +442,11 @@ export function calibrateShelledItm(
       ? Math.max(0, Math.min(clampedItm, locks.first))
       : undefined;
   const cumTop3 =
-    locks.top3 != null
+    paid <= 3 && locks.top3 != null ? clampedItm : locks.top3 != null
       ? Math.max(cumFirst ?? 0, Math.min(clampedItm, locks.top3))
       : undefined;
   const cumFt =
-    locks.ft != null
+    paid <= 9 && locks.ft != null ? clampedItm : locks.ft != null
       ? Math.max(cumTop3 ?? cumFirst ?? 0, Math.min(clampedItm, locks.ft))
       : undefined;
 
@@ -650,7 +650,7 @@ export function buildBinaryItmAssets(
   // Solve ITM rate so E[W] matches target. Clamp defensively.
   let l = (targetWinnings * paid) / prizePool;
   if (!Number.isFinite(l) || l < 0) l = 0;
-  if (l > 1) l = 1;
+  if (l > 1 || paid === N) l = 1;
 
   const pPaid = l / paid;
   const pUnpaid = N > paid ? (1 - l) / (N - paid) : 0;

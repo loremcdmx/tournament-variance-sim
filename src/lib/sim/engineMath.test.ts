@@ -14,7 +14,7 @@ import type { RawShard } from "./engineTypes";
 import type { SimulationInput, SimulationResult, TournamentRow } from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
-type TypedArray = Float64Array | Int32Array | Uint8Array;
+type TypedArray = Float64Array | Int32Array | Uint32Array | Uint8Array;
 
 function eqTyped(a: TypedArray, b: TypedArray): boolean {
   if (a.length !== b.length) return false;
@@ -24,7 +24,7 @@ function eqTyped(a: TypedArray, b: TypedArray): boolean {
 
 function isTyped(v: unknown): v is TypedArray {
   return (
-    v instanceof Float64Array || v instanceof Int32Array || v instanceof Uint8Array
+    v instanceof Float64Array || v instanceof Int32Array || v instanceof Uint32Array || v instanceof Uint8Array
   );
 }
 
@@ -229,14 +229,6 @@ describe("pool-invariance: 1 shard vs N out-of-order shards is byte-identical", 
   const d = simulateShard(input, compiled, 2001, S, grid);
   const merged = mergeShards([d, b, a, c], S, K1, numRows);
 
-  // Hi-res path capture is a per-shard budget by design (see wantHiResPaths
-  // in hotLoop.ts): which sample ids get a stored trajectory depends on the
-  // split, so those two fields are compared by overlap instead of equality.
-  const HI_RES_BY_SHARD_BUDGET = new Set<keyof RawShard>([
-    "hiResPaths",
-    "hiResSampleIndices",
-  ]);
-
   it("every channel in the fixture is genuinely active", () => {
     expect(compiled.flat.some((e) => (e.variants?.length ?? 0) > 1)).toBe(true);
     expect(compiled.flat.some((e) => e.heatBountyByPlace !== null)).toBe(true);
@@ -267,7 +259,6 @@ describe("pool-invariance: 1 shard vs N out-of-order shards is byte-identical", 
 
   it("every RawShard field matches after an out-of-order merge", () => {
     for (const key of Object.keys(single) as (keyof RawShard)[]) {
-      if (HI_RES_BY_SHARD_BUDGET.has(key)) continue;
       const lhs = single[key];
       const rhs = merged[key];
       if (isTyped(lhs)) {
@@ -276,17 +267,13 @@ describe("pool-invariance: 1 shard vs N out-of-order shards is byte-identical", 
       } else if (typeof lhs === "number") {
         expect(rhs, key).toBe(lhs);
       } else {
-        // Only the hi-res path list and null-able leaderboard buffers fall
-        // through; in this fixture the leaderboard is on, so null here means
-        // the merge dropped a channel.
-        expect(lhs, key).not.toBeNull();
-        expect(rhs, key).not.toBeNull();
+        expect(rhs, key).toEqual(lhs);
       }
     }
     expect(merged.sStart).toBe(0);
     expect(merged.sEnd).toBe(S);
-    // Leaderboard buffers are the only nullable RawShard arrays — pin that
-    // the generic walk above actually compared them rather than skipping.
+    // Pin the active optional channels so the generic walk cannot pass if
+    // both execution paths accidentally drop them.
     expect(single.leaderboardPoints).not.toBeNull();
     expect(single.leaderboardThirds).not.toBeNull();
   });

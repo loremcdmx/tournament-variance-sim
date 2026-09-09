@@ -243,7 +243,7 @@ export function buildExactBreakdown(
   // If any row is outside its box the schedule estimate stays point-only,
   // matching the single-format `outside-fit-box` policy.
   const allInsideBox = perRowWithoutShare.every((r) =>
-    isInsideFitBox({ format: r.format, field: r.afs, roi: r.roi }),
+    isInsideFitBox({ format: r.format, field: r.afs, fieldMin: r.fieldMin, fieldMax: r.fieldMax, roi: r.roi }),
   );
   const perRowWithShare = perRowWithoutShare.map((r) => ({
     ...r,

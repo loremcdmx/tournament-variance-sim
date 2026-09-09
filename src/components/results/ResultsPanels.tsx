@@ -28,7 +28,7 @@ export function PrimeDopeWeaknessCard() {
           </div>
           <div className="grid gap-2 lg:grid-cols-2">
             <WeakBlock
-              tag="ФИНИШИ"
+              tag={t("weakness.tag.finishes")}
               tone="#f87171"
               title={t("weakness.pd.tag.finishes.title")}
             >
@@ -36,7 +36,7 @@ export function PrimeDopeWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="ФОРМАТЫ"
+              tag={t("weakness.tag.formats")}
               tone="#f87171"
               title={t("weakness.pd.tag.formats.title")}
             >
@@ -52,7 +52,7 @@ export function PrimeDopeWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="ЛОВУШКА"
+              tag={t("weakness.tag.trap")}
               tone="#f87171"
               title={t("weakness.pd.tag.trap.title")}
             >
@@ -70,7 +70,7 @@ export function PrimeDopeWeaknessCard() {
           </div>
           <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
             <WeakBlock
-              tag="СХОДИТСЯ"
+              tag={t("weakness.tag.converge")}
               tone="#86efac"
               title={t("weakness.pd.tag.converge.title")}
             >
@@ -96,7 +96,7 @@ export function PrimeDopeWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="ТОЧНОСТЬ"
+              tag={t("weakness.tag.precision")}
               tone="#93c5fd"
               title={t("weakness.pd.tag.precision.title")}
             >
@@ -113,7 +113,7 @@ export function PrimeDopeWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="ГРАНИЦА"
+              tag={t("weakness.tag.boundary")}
               tone="#94a3b8"
               title={t("weakness.pd.tag.boundary.title")}
             >
@@ -155,7 +155,7 @@ export function OurModelWeaknessCard() {
           </div>
           <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
             <WeakBlock
-              tag="BANDS"
+              tag={t("weakness.tag.bands")}
               tone="#f59e0b"
               title={t("weakness.ours.tag.bands.title")}
             >
@@ -163,7 +163,7 @@ export function OurModelWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="SCHEDULE"
+              tag={t("weakness.tag.schedule")}
               tone="#f59e0b"
               title={t("weakness.ours.tag.schedule.title")}
             >
@@ -174,7 +174,7 @@ export function OurModelWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="PATHS"
+              tag={t("weakness.tag.paths")}
               tone="#f59e0b"
               title={t("weakness.ours.tag.paths.title")}
             >
@@ -206,7 +206,7 @@ export function OurModelWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="FORMATS"
+              tag={t("weakness.tag.formats")}
               tone="#94a3b8"
               title={t("weakness.ours.tag.formats.title")}
             >
@@ -217,7 +217,7 @@ export function OurModelWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="EMPIRICAL"
+              tag={t("weakness.tag.empirical")}
               tone="#94a3b8"
               title={t("weakness.ours.tag.empirical.title")}
             >
@@ -228,7 +228,7 @@ export function OurModelWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="INPUT"
+              tag={t("weakness.tag.input")}
               tone="#94a3b8"
               title={t("weakness.ours.tag.input.title")}
             >
@@ -239,7 +239,7 @@ export function OurModelWeaknessCard() {
             </WeakBlock>
 
             <WeakBlock
-              tag="TAILS"
+              tag={t("weakness.tag.tails")}
               tone="#94a3b8"
               title={t("weakness.ours.tag.tails.title")}
             >

@@ -6,6 +6,7 @@ import {
   useContext,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 interface AdvancedModeCtx {
@@ -31,11 +32,20 @@ function readAdminParam(): boolean {
   return parseAdminParam(window.location.search);
 }
 
+const subscribeAdmin = (onChange: () => void) => {
+  window.addEventListener("popstate", onChange);
+  return () => window.removeEventListener("popstate", onChange);
+};
+const serverAdminSnapshot = () => false;
+
 export function AdvancedModeProvider({ children }: { children: React.ReactNode }) {
-  // adminAvailable is read once on mount and not reactive — admin status
-  // flips only on navigation, which remounts the provider in practice.
-  const [adminAvailable] = useState<boolean>(readAdminParam);
-  const [advanced, setAdvancedState] = useState<boolean>(adminAvailable);
+  const adminAvailable = useSyncExternalStore(
+    subscribeAdmin,
+    readAdminParam,
+    serverAdminSnapshot,
+  );
+  const [advancedChoice, setAdvancedState] = useState(true);
+  const advanced = adminAvailable && advancedChoice;
 
   const setAdvanced = useCallback(
     (v: boolean) => {

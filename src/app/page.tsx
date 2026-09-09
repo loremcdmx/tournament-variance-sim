@@ -68,7 +68,7 @@ const scenarioDerived = new Map(
     return [s.id, { total, range }] as const;
   }),
 );
-const APP_VERSION = "v0.7.4";
+const APP_VERSION = "v0.7.7";
 import type {
   SimulationInput,
   TournamentRow,
@@ -155,6 +155,7 @@ export default function Home() {
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
   const [hydrated, setHydrated] = useState(false);
+  const initialStateLoadedRef = useRef(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
     "tvs:user-presets",
@@ -200,6 +201,8 @@ export default function Home() {
     progress,
     stage,
     result,
+    resultInput,
+    resultSource,
     error,
     elapsedMs,
     run,
@@ -214,12 +217,16 @@ export default function Home() {
     runPdOnly,
     pdStatus,
     pdProgress,
-    pdResultOverride,
+    pdPendingFlags,
   } = useSimulation();
-  const lastRunInputRef = useRef<SimulationInput | null>(null);
+  const resultControls = resultSource?.controls;
   const pendingInterruptRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Strict Mode repeats mount effects. The URL import is consumed once,
+    // so a second read would replace it with the older local autosave.
+    if (initialStateLoadedRef.current) return;
+    initialStateLoadedRef.current = true;
     const fromUrl = loadFromUrlHash();
     if (fromUrl) {
       // A share link is a one-shot import: once applied, the hash must not
@@ -241,7 +248,7 @@ export default function Home() {
         setControls({
           ...initialControls,
           ...fromLocal.controls,
-          seed: freshSeed,
+          seed: fromUrl?.controls.seed ?? freshSeed,
         });
       } else {
         // No saved state — start from the neutral one-chart app state.
@@ -356,6 +363,10 @@ export default function Home() {
     () => applyItmTarget(schedule, itmTargetCfg),
     [schedule, itmTargetCfg],
   );
+  const resultInputsChanged = useMemo(() => resultInput != null &&
+    JSON.stringify({ ...buildInput(effectiveSchedule, controls), seed: 0 }) !==
+      JSON.stringify({ ...resultInput, seed: 0 }),
+  [buildInput, effectiveSchedule, controls, resultInput]);
   // Heavy downstream widgets (FinishPMFPreview calibrates α via bisection on
   // N places; PayoutStructureCard / ConvergenceChart re-walk the schedule)
   // re-run on every keystroke and on gameType flips that rewrite 4+ row
@@ -363,7 +374,6 @@ export default function Home() {
   // selects responsive — the preview catches up in the background instead
   // of blocking the click.
   const deferredSchedule = useDeferredValue(effectiveSchedule);
-  const deferredScheduleRepeats = useDeferredValue(controls.scheduleRepeats);
   const deferredControls = useDeferredValue(controls);
   const effectiveResultsControls = useMemo(
     () => (advanced ? controls : sanitizeControlsForBasicMode(controls)),
@@ -448,6 +458,7 @@ export default function Home() {
   const [runRequest, setRunRequest] = useState(0);
   const handledRunRequestRef = useRef(0);
   const onRun = useCallback(() => {
+    if (activeMode !== "mtt" || status === "running" || pdStatus === "running") return;
     const active = document.activeElement;
     if (
       active instanceof HTMLInputElement ||
@@ -457,17 +468,21 @@ export default function Home() {
       active.blur();
     }
     startTransition(() => setRunRequest((n) => n + 1));
-  }, []);
+  }, [activeMode, status, pdStatus]);
 
   useEffect(() => {
     if (runRequest === 0 || handledRunRequestRef.current === runRequest) return;
     handledRunRequestRef.current = runRequest;
+    if (activeMode !== "mtt" || status === "running" || pdStatus === "running") return;
     clearPendingInterrupt();
     const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
     if (!liveFeasibility.ok) return;
     const input = buildInput(effectiveSchedule, controls);
-    lastRunInputRef.current = input;
-    run(input);
+    run(input, {
+      v: PERSISTED_STATE_VERSION,
+      schedule,
+      controls: advanced ? controls : sanitizeControlsForBasicMode(controls),
+    });
   }, [
     runRequest,
     clearPendingInterrupt,
@@ -476,6 +491,11 @@ export default function Home() {
     controls,
     run,
     buildInput,
+    activeMode,
+    status,
+    pdStatus,
+    schedule,
+    advanced,
   ]);
 
   const onNewSeed = useCallback(() => {
@@ -493,11 +513,7 @@ export default function Home() {
         >
       >,
     ) => {
-      const base = lastRunInputRef.current;
-      if (!base) return;
-      const next = { ...base, ...patch };
-      lastRunInputRef.current = next;
-      runPdOnly(next);
+      runPdOnly(patch);
     },
     [runPdOnly],
   );
@@ -528,14 +544,14 @@ export default function Home() {
   );
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      if (activeMode === "mtt" && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
         onRun();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onRun]);
+  }, [onRun, activeMode]);
 
   const running = status === "running";
 
@@ -696,7 +712,7 @@ export default function Home() {
               roi: mean / result.totalBuyIn,
               probProfit: result.stats.probProfit,
               riskOfRuin: result.stats.riskOfRuin,
-              bankrollOff: controls.bankroll <= 0,
+              bankrollOff: (resultInput?.bankroll ?? 0) <= 0,
               worstDrawdown: result.stats.maxDrawdownP99,
               longestCashlessWorst: result.stats.longestCashlessWorst,
               elapsedMs,
@@ -704,7 +720,7 @@ export default function Home() {
             };
           })()
         : null,
-    [status, result, elapsedMs, controls.bankroll],
+    [status, result, elapsedMs, resultInput],
   );
 
   const previewRow = useMemo(() => {
@@ -727,6 +743,7 @@ export default function Home() {
       setSchedule((prev) =>
         prev.map((r) => (r.id === previewRowId_ ? { ...r, ...updates } : r)),
       );
+      setActiveScenarioId(null);
     },
     [previewRowId_, queueInterruptBackground],
   );
@@ -1104,7 +1121,7 @@ export default function Home() {
         </div>
       )}
 
-      {activeMode === "cash" ? <CashApp /> : null}
+      <div hidden={activeMode !== "cash"}><CashApp /></div>
 
       {activeMode === "mtt" && (
       <>
@@ -1336,7 +1353,7 @@ export default function Home() {
         </div>
       )}
 
-      {result && (
+      {result && resultInput && resultControls && (
         <>
           <Section
             number="03"
@@ -1344,23 +1361,25 @@ export default function Home() {
             title={t("section.results.title")}
             subtitle={t("section.results.subtitle")
               .replace("{samples}", result.samples.toLocaleString(locale === "ru" ? "ru-RU" : "en-US"))
-              .replace("{tourneys}", tournamentsPerSession.toLocaleString(locale === "ru" ? "ru-RU" : "en-US"))}
+              .replace("{tourneys}", result.tournamentsPerSample.toLocaleString(locale === "ru" ? "ru-RU" : "en-US"))}
             anchorId="results-top"
           >
+            {resultInputsChanged && (
+              <p role="status" className="mb-3 text-sm text-[color:var(--color-fg-muted)]">
+                {t("results.inputsChanged")}
+              </p>
+            )}
             <ResultsView
               result={result}
-              bankroll={deferredResultsControls.bankroll}
-              schedule={deferredSchedule}
-              scheduleRepeats={deferredScheduleRepeats}
-              compareMode={
-                deferredResultsControls.compareEnabled
-                  ? deferredResultsControls.compareMode
-                  : undefined
-              }
-              modelPresetId={deferredResultsControls.modelPresetId}
-              finishModelId={deferredResultsControls.finishModelId}
-              finishModel={deferredPreviewModel}
-              settings={deferredResultsControls}
+              bankroll={resultInput.bankroll}
+              schedule={resultInput.schedule}
+              scheduleRepeats={resultInput.scheduleRepeats}
+              compareMode={resultInput.compareMode}
+              modelPresetId={resultInput.modelPresetId}
+              finishModelId={resultInput.finishModel.id}
+              finishModel={resultInput.finishModel}
+              settings={resultControls}
+              shareState={resultSource}
               elapsedMs={elapsedMs}
               availableRuns={availableRuns}
               activeRunIdx={activeRunIdx}
@@ -1370,9 +1389,9 @@ export default function Home() {
               onUsePdPayoutsChange={onUsePdPayoutsChange}
               onUsePdFinishModelChange={onUsePdFinishModelChange}
               onUsePdRakeMathChange={onUsePdRakeMathChange}
-              pdOverrideResult={pdResultOverride}
               pdOverrideStatus={pdStatus}
               pdOverrideProgress={pdProgress}
+              pdPendingFlags={pdPendingFlags}
             />
           </Section>
         </>
@@ -1392,6 +1411,10 @@ export default function Home() {
             {t("changelog.title")}
           </summary>
           <div className="mt-3 space-y-3 pl-2">
+            <div className="text-[color:var(--color-fg-muted)]">v0.7.7</div>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>{t("changelog.v077.summary")}</li>
+            </ul>
             <div className="text-[color:var(--color-fg-muted)]">{t("changelog.v076.title")}</div>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t("changelog.v076.summary")}</li>
@@ -1669,6 +1692,7 @@ const BankrollControl = memo(function BankrollControl({
           type="number"
           min={0}
           max={brMode === "$" ? 1_000_000_000 : 100_000}
+          aria-label={t("controls.bankroll")}
           step={brMode === "$" ? 100 : 10}
           value={displayVal}
           disabled={disabled}

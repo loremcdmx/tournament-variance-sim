@@ -27,6 +27,7 @@ import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
+import type { PersistedState } from "@/lib/persistence";
 import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
   DEFAULT_EXTREME_STYLES,
@@ -80,6 +81,7 @@ import {
   GLOBAL_UNIT_KEY,
   defaultMoneyFmt,
   fmt,
+  formatMinimumBankroll,
   intFmt,
   loadUnitMode,
   makeAbiMoney,
@@ -121,6 +123,7 @@ import {
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 import {
+  CalibrationNotices,
   CopyPdDiagButton,
   PdCompareToggles,
   PrimedopeDiff,
@@ -160,6 +163,7 @@ interface Props {
   finishModelId?: FinishModelId;
   finishModel?: SimulationInput["finishModel"];
   settings?: ControlsState;
+  shareState?: PersistedState;
   elapsedMs?: number | null;
   availableRuns?: number;
   activeRunIdx?: number;
@@ -170,7 +174,7 @@ interface Props {
   onUsePdPayoutsChange?: (v: boolean) => void;
   onUsePdFinishModelChange?: (v: boolean) => void;
   onUsePdRakeMathChange?: (v: boolean) => void;
-  pdOverrideResult?: SimulationResult | null;
+  pdPendingFlags?: Partial<Pick<SimulationInput, "usePrimedopePayouts" | "usePrimedopeFinishModel" | "usePrimedopeRakeMath">> | null;
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
 }
@@ -189,6 +193,7 @@ function ResultsViewImpl({
   finishModelId,
   finishModel,
   settings,
+  shareState,
   elapsedMs,
   availableRuns = 0,
   activeRunIdx = 0,
@@ -198,7 +203,7 @@ function ResultsViewImpl({
   onUsePdPayoutsChange,
   onUsePdFinishModelChange,
   onUsePdRakeMathChange,
-  pdOverrideResult,
+  pdPendingFlags,
   pdOverrideStatus = "idle",
   pdOverrideProgress = 0,
 }: Props) {
@@ -209,7 +214,7 @@ function ResultsViewImpl({
 
   const isPrimeDopeCompare = compareMode === "primedope";
   const pdChart = isPrimeDopeCompare
-    ? (pdOverrideResult ?? result.comparison ?? null)
+    ? (result.comparison ?? null)
     : null;
   const hasPrimeDopeCompare = isPrimeDopeCompare && pdChart != null;
   // When comparing against PrimeDope on a PKO schedule, the right pane
@@ -283,10 +288,8 @@ function ResultsViewImpl({
   // visually include the side-channel. Default-on when promo exists; user
   // can flip off to see the pure-game view.
   // NB: drawdown / longest-cashless / RoR are intentionally NOT shifted.
-  // For a monotone-non-decreasing add-on curve, drawdowns are invariant
-  // (running_max and path shift by the same amount), and RoR would
-  // decrease but recomputing it needs the full N-sample raw — kept as
-  // game-only to avoid silent bias.
+  // A cumulative add-on can change drawdowns and RoR. Recomputing those
+  // metrics needs full-sample paths, so retain the labeled engine values.
   const lbExpectedPayout =
     result.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
   const lbCurve = useMemo(
@@ -438,16 +441,16 @@ function ResultsViewImpl({
   const distProfitXDomain = useMemo<[number, number] | undefined>(() => {
     if (!rakebackCurve) return undefined;
     return mergedHistogramDomain(
-      result.histogram,
+      resultForCharts.histogram,
       resultChartsNoRb.histogram,
-      pdChart?.histogram,
+      pdChartForCharts?.histogram,
       pdChartChartsNoRb?.histogram,
     );
   }, [
     rakebackCurve,
-    result,
+    resultForCharts,
     resultChartsNoRb,
-    pdChart,
+    pdChartForCharts,
     pdChartChartsNoRb,
   ]);
   const streakDrawdownXDomain = useMemo<[number, number] | undefined>(
@@ -512,7 +515,7 @@ function ResultsViewImpl({
     () =>
       schedule && settings
         ? {
-            shareState: buildRunShareState(schedule, settings, runExportSeed),
+            shareState: shareState ?? buildRunShareState(schedule, settings, runExportSeed),
             stats: {
               samples: result.samples,
               seed: runExportSeed,
@@ -527,6 +530,7 @@ function ResultsViewImpl({
           }
         : null,
     [
+      shareState,
       schedule,
       settings,
       runExportSeed,
@@ -573,6 +577,7 @@ function ResultsViewImpl({
   // Shadow the module-level formatter inside ResultsView so existing
   // money(...) call sites pick up the unit-aware pair.
   const { money } = moneyFmt;
+  const minimumBankroll = (value: number) => formatMinimumBankroll(value, unit, abi, numberLocale);
   const tourneysWord = t("unit.tourneys");
   // The worst run's own longest flat stretch — `longestBreakevenMean` is the
   // average over all runs and already has its own card.
@@ -696,7 +701,7 @@ function ResultsViewImpl({
                 }}
                 className="w-14 rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/75 px-1 py-1 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
                 aria-label={t("runs.label")}
-                title={`max ${maxRuns} (captured paths)`}
+                title={t("runs.capturedMax").replace("{n}", String(maxRuns))}
               />
               <span className="font-mono text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
                 /{maxRuns}
@@ -737,6 +742,7 @@ function ResultsViewImpl({
     <AbiContext.Provider value={abi}>
     <MoneyFmtContext.Provider value={moneyFmt}>
     <div className="flex flex-col gap-5">
+      <CalibrationNotices result={result} schedule={schedule} />
       {advanced && availableRuns > 0 && onSelectRun ? (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--color-fg-dim)]">
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
@@ -857,7 +863,9 @@ function ResultsViewImpl({
                   "{p}",
                   pct(shiftedStats.probUpNeverBusted),
                 )
-              : t("stat.probProfit.sub").replace(
+              : !bankrollOff
+                ? t("stat.probProfit.shiftedSurvival")
+                : t("stat.probProfit.sub").replace(
                   "{n}",
                   intFmt(shiftedStats.tournamentsFor95ROI),
                 )
@@ -887,8 +895,8 @@ function ResultsViewImpl({
                   rightScaleLabel: t("stat.riskOfRuin.scale.danger"),
                   fromLabel: t("stat.riskOfRuin.range.from"),
                   toLabel: t("stat.riskOfRuin.range.to"),
-                  minValue: money(s.minBankrollRoR5pct),
-                  maxValue: money(s.minBankrollRoR1pct),
+                  minValue: minimumBankroll(s.minBankrollRoR5pct),
+                  maxValue: minimumBankroll(s.minBankrollRoR1pct),
                   riskRatio: s.riskOfRuin,
                 }
           }
@@ -904,8 +912,8 @@ function ResultsViewImpl({
             ruinScaleOff
               ? undefined
               : t("stat.riskOfRuin.tip")
-                  .replace("{br1}", money(s.minBankrollRoR1pct))
-                  .replace("{br5}", money(s.minBankrollRoR5pct))
+                  .replace("{br1}", minimumBankroll(s.minBankrollRoR1pct))
+                  .replace("{br5}", minimumBankroll(s.minBankrollRoR5pct))
           }
           tone={!bankrollOff && s.riskOfRuin > 0.05 ? "neg" : undefined}
           pdValue={
@@ -1025,6 +1033,7 @@ function ResultsViewImpl({
           onUsePdFinishModelChange={onUsePdFinishModelChange}
           usePdRakeMath={settings?.usePrimedopeRakeMath ?? true}
           onUsePdRakeMathChange={onUsePdRakeMathChange}
+          pdPendingFlags={pdPendingFlags}
           pdOverrideStatus={pdOverrideStatus}
           pdOverrideProgress={pdOverrideProgress}
         />
@@ -1074,6 +1083,7 @@ function ResultsViewImpl({
           <PrimedopeDiff
             primary={result}
             other={result.comparison}
+            bankroll={bankroll}
             theirsLabel={pdPkoFallback ? t("chart.overlay.freezeouts") : undefined}
             title={pdPkoFallback ? t("pd.title.freezeouts") : undefined}
             subtitle={pdPkoFallback ? t("pd.subtitle.freezeouts") : undefined}
@@ -1636,6 +1646,9 @@ function BattleRoyaleLeaderboardPromoSection({
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
   const { money } = useMoneyFmt();
+  const price = (value: number) => value.toLocaleString(numberLocale, {
+    style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
   const isObserved = promo.mode === "observed";
   const isLookup = promo.mode === "lookup";
   const confidenceTone = isObserved
@@ -1713,7 +1726,7 @@ function BattleRoyaleLeaderboardPromoSection({
               suit="spade"
               label={t("chart.brLeaderboardObserved.currentAbi")}
               value={
-                promo.current.abi == null ? "—" : `${promo.current.abi.toFixed(2)} ABI`
+                promo.current.abi == null ? "—" : price(promo.current.abi)
               }
             />
             <MiniStat
@@ -1747,7 +1760,7 @@ function BattleRoyaleLeaderboardPromoSection({
                   value={
                     promo.observed.reconstructedAbi == null
                       ? "—"
-                      : `${promo.observed.reconstructedAbi.toFixed(2)} ABI`
+                      : price(promo.observed.reconstructedAbi)
                   }
                 />
                 <MiniStat
@@ -1788,9 +1801,9 @@ function BattleRoyaleLeaderboardPromoSection({
                     promo.observed.reconstructedAbi != null && (
                       <span className="ml-1 font-mono opacity-80">
                         ({t("chart.brLeaderboardObserved.currentAbi")}{" "}
-                        {promo.current.abi.toFixed(2)} ABI →{" "}
+                        {price(promo.current.abi)} →{" "}
                         {t("chart.brLeaderboardObserved.observedAbi")}{" "}
-                        {promo.observed.reconstructedAbi.toFixed(2)} ABI)
+                        {price(promo.observed.reconstructedAbi)})
                       </span>
                     )}
                 </div>
@@ -2015,6 +2028,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
   onUsePdFinishModelChange,
   usePdRakeMath,
   onUsePdRakeMathChange,
+  pdPendingFlags,
   pdOverrideStatus,
   pdOverrideProgress,
   toolbar,
@@ -2048,6 +2062,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
   onUsePdFinishModelChange?: (v: boolean) => void;
   usePdRakeMath: boolean;
   onUsePdRakeMathChange?: (v: boolean) => void;
+  pdPendingFlags?: Props["pdPendingFlags"];
   pdOverrideStatus?: "idle" | "running" | "done" | "error";
   pdOverrideProgress?: number;
   toolbar?: React.ReactNode;
@@ -2317,11 +2332,11 @@ const TrajectoryCard = memo(function TrajectoryCard({
               scheduleRepeats ? (
                 <div className="flex items-center gap-2">
                   <PdCompareToggles
-                    usePdPayouts={usePdPayouts}
+                    usePdPayouts={pdPendingFlags?.usePrimedopePayouts ?? usePdPayouts}
                     onUsePdPayoutsChange={onUsePdPayoutsChange}
-                    usePdFinishModel={usePdFinishModel}
+                    usePdFinishModel={pdPendingFlags?.usePrimedopeFinishModel ?? usePdFinishModel}
                     onUsePdFinishModelChange={onUsePdFinishModelChange}
-                    usePdRakeMath={usePdRakeMath}
+                    usePdRakeMath={pdPendingFlags?.usePrimedopeRakeMath ?? usePdRakeMath}
                     onUsePdRakeMathChange={onUsePdRakeMathChange}
                     pdOverrideStatus={pdOverrideStatus}
                     pdOverrideProgress={pdOverrideProgress}
@@ -2377,11 +2392,11 @@ const TrajectoryCard = memo(function TrajectoryCard({
       {hasPrimeDopePane && !pdPkoFallback && schedule && scheduleRepeats ? (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <PdCompareToggles
-            usePdPayouts={usePdPayouts}
+            usePdPayouts={pdPendingFlags?.usePrimedopePayouts ?? usePdPayouts}
             onUsePdPayoutsChange={onUsePdPayoutsChange}
-            usePdFinishModel={usePdFinishModel}
+            usePdFinishModel={pdPendingFlags?.usePrimedopeFinishModel ?? usePdFinishModel}
             onUsePdFinishModelChange={onUsePdFinishModelChange}
-            usePdRakeMath={usePdRakeMath}
+            usePdRakeMath={pdPendingFlags?.usePrimedopeRakeMath ?? usePdRakeMath}
             onUsePdRakeMathChange={onUsePdRakeMathChange}
             pdOverrideStatus={pdOverrideStatus}
             pdOverrideProgress={pdOverrideProgress}
@@ -3083,7 +3098,7 @@ function ChartPane({
   const itmLabel = itmCashOnly ? t("chart.itmBadge.cash") : "ITM";
   const itmTitle = itmCashOnly
     ? t("chart.itmBadge.cash.tip")
-    : `In-the-money rate: ${itmRate != null ? (itmRate * 100).toFixed(2) : "—"}%`;
+    : t("chart.itmBadge.tip").replace("{value}", itmRate != null ? (itmRate * 100).toFixed(2) : "—");
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-bg-elev-2)]/30 p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

@@ -23,6 +23,13 @@ import {
 import { composeProgress } from "./progressAggregation";
 import { computeNextRate } from "@/lib/ui/rateUpdate";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import type { PersistedState } from "@/lib/persistence";
+import {
+  cacheSimulationRun,
+  replacePrimeDopeResult,
+  type CachedSimulationRun,
+  type PrimeDopePatch,
+} from "@/lib/ui/simulationSnapshot";
 
 const EMPTY_BUILD_FRACS: ReadonlyMap<number, number> = new Map();
 import type {
@@ -56,11 +63,6 @@ export type ProgressStage = "simulating" | BuildStage;
 
 /** Max sibling runs cached per batch (foreground + background). */
 const MAX_CACHED_RUNS = 5;
-
-interface CachedRun {
-  seed: number;
-  result: SimulationResult;
-}
 
 /**
  * Hash of the SimulationInput with `seed` masked out — runs that differ
@@ -240,7 +242,8 @@ export function useSimulation() {
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState<ProgressStage | null>(null);
-  const [result, setResult] = useState<SimulationResult | null>(null);
+  const [displayedRun, setDisplayedRun] = useState<CachedSimulationRun | null>(null);
+  const result = displayedRun?.result ?? null;
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [lastRateMs, setLastRateMs] = useState<number | null>(null);
@@ -254,7 +257,7 @@ export function useSimulation() {
   const batchRef = useRef<{
     version: number;
     key: string;
-    runs: CachedRun[];
+    runs: CachedSimulationRun[];
     baseInput: SimulationInput | null;
   }>({ version: 0, key: "", runs: [], baseInput: null });
   const [availableRuns, setAvailableRuns] = useState(0);
@@ -272,7 +275,8 @@ export function useSimulation() {
   const pdJobIdRef = useRef(0);
   const [pdStatus, setPdStatus] = useState<Status>("idle");
   const [pdProgress, setPdProgress] = useState(0);
-  const [pdOverride, setPdOverride] = useState<CachedRun | null>(null);
+  const pendingPdInputRef = useRef<SimulationInput | null>(null);
+  const [pdPendingFlags, setPdPendingFlags] = useState<PrimeDopePatch | null>(null);
   const t = useT();
   const engineCrashMessage = useCallback(
     (detail: string) => `${t("run.engineCrashed")} (${detail})`,
@@ -340,6 +344,8 @@ export function useSimulation() {
     setBackgroundStatus("idle");
     setPdStatus("idle");
     setPdProgress(0);
+    pendingPdInputRef.current = null;
+    setPdPendingFlags(null);
   }, [pdStatus, resetPool]);
 
   const cancel = useCallback(() => {
@@ -355,6 +361,8 @@ export function useSimulation() {
     setBackgroundStatus("idle");
     setPdStatus("idle");
     setPdProgress(0);
+    pendingPdInputRef.current = null;
+    setPdPendingFlags(null);
   }, [resetPool]);
 
   // Dispatch ALL shards from ALL passes concurrently to the single pool.
@@ -580,6 +588,7 @@ export function useSimulation() {
             out.push(sh.rowProfits.buffer);
             out.push(sh.rowBountyProfits.buffer);
             out.push(sh.jackpotMask.buffer);
+            if (sh.satelliteSeatsWon) out.push(sh.satelliteSeatsWon.buffer);
             if (sh.leaderboardPoints) out.push(sh.leaderboardPoints.buffer);
             if (sh.leaderboardPayouts) out.push(sh.leaderboardPayouts.buffer);
             if (sh.leaderboardExpectedPayouts) {
@@ -870,7 +879,7 @@ export function useSimulation() {
     ((baseSeed + i * 0x9e3779b1) >>> 0);
 
   const run = useCallback(
-    async (input: SimulationInput) => {
+    async (input: SimulationInput, source?: PersistedState) => {
       const pool = poolRef.current;
       if (!pool) return;
       if (pool.poisoned != null) {
@@ -900,11 +909,12 @@ export function useSimulation() {
       pdJobIdRef.current++;
       setPdStatus("idle");
       setPdProgress(0);
-      setPdOverride(null);
+      pendingPdInputRef.current = null;
+      setPdPendingFlags(null);
       setStatus("running");
       setProgress(0);
       setStage("simulating");
-      setResult(null);
+      setDisplayedRun(null);
       setError(null);
       setElapsedMs(null);
       const t0 = performance.now();
@@ -919,12 +929,13 @@ export function useSimulation() {
         if (jobIdRef.current !== jobId) return;
         if (batchRef.current.version !== myVersion) return;
         const merged = mergePasses(passes, out);
-        batchRef.current.runs.push({ seed: input.seed, result: merged });
+        const cached = cacheSimulationRun(input, merged, source);
+        batchRef.current.runs.push(cached);
         setAvailableRuns(1);
         setActiveRunIdx(0);
         setActiveSeed(input.seed >>> 0);
         startTransition(() => {
-          setResult(merged);
+          setDisplayedRun(cached);
         });
         setProgress(1);
         setStage(null);
@@ -1014,7 +1025,7 @@ export function useSimulation() {
             return;
           }
           const merged = mergePasses(siblingPasses, bgOut);
-          batchRef.current.runs.push({ seed: siblingSeed, result: merged });
+          batchRef.current.runs.push(cacheSimulationRun(siblingInput, merged, source));
           setAvailableRuns(batchRef.current.runs.length);
         } catch {
           // Background errors (including aborts) are silent — the foreground
@@ -1032,23 +1043,19 @@ export function useSimulation() {
     [runJob, buildPasses, mergePasses, resetPool, engineCrashMessage],
   );
 
-  // Isolated re-run of just the PrimeDope-comparison pass. Used by the
-  // "PD payouts" toggle next to the compare chart so flipping it only
-  // recomputes the right pane (with its own progress bar) instead of
-  // invalidating the main result. Aborts background precompute since we
-  // need the pool immediately; the user can re-run to refill the cache.
+  // The PD preset puts PrimeDope in the primary pane. Select by calibration,
+  // then replace that pass and its input together in the selected seed's cache.
   const runPdOnly = useCallback(
-    async (input: SimulationInput) => {
+    async (patch: PrimeDopePatch) => {
       const pool = poolRef.current;
       if (!pool) return;
-      // The caller passes the batch's base input; the displayed run may be a
-      // cached sibling with a different seed. The comparison pass shares the
-      // primary's seed (see buildPasses), so re-seeding here keeps the
-      // override aligned with the pane it replaces.
-      const seed = activeSeedRef.current ?? input.seed;
-      const passes = buildPasses({ ...input, seed });
-      const cmpPass = passes.find((p) => p.key === "comparison");
-      if (!cmpPass) return;
+      const index = batchRef.current.runs.findIndex((r) => r.seed === activeSeedRef.current);
+      const cached = batchRef.current.runs[index];
+      if (!cached) return;
+      const input = { ...(pendingPdInputRef.current ?? cached.input), ...patch };
+      const passes = buildPasses(input);
+      const pdPass = passes.find((p) => p.calibrationMode === "primedope-binary-itm");
+      if (!pdPass) return;
       if (pool.poisoned != null) {
         setPdStatus("error");
         setError(engineCrashMessage(pool.poisoned));
@@ -1060,24 +1067,34 @@ export function useSimulation() {
       setBackgroundStatus("idle");
       const myPdJob = ++pdJobIdRef.current;
       const myJobId = ++jobIdRef.current;
+      pendingPdInputRef.current = input;
+      setPdPendingFlags({ usePrimedopePayouts: input.usePrimedopePayouts,
+        usePrimedopeFinishModel: input.usePrimedopeFinishModel,
+        usePrimedopeRakeMath: input.usePrimedopeRakeMath });
       setPdStatus("running");
       setPdProgress(0);
       try {
         const out = await runJob(
           myJobId,
-          [cmpPass],
+          [pdPass],
           (f) => {
             if (pdJobIdRef.current === myPdJob) setPdProgress(f);
           },
         );
         if (pdJobIdRef.current !== myPdJob) return;
-        setPdOverride({ seed, result: out.comparison });
+        const updated = replacePrimeDopeResult(cached, input, out[pdPass.key], pdPass.key);
+        batchRef.current.runs[index] = updated;
+        pendingPdInputRef.current = null;
+        setPdPendingFlags(null);
+        setDisplayedRun(updated);
         setPdProgress(1);
         setPdStatus("done");
       } catch (err) {
         if (pdJobIdRef.current !== myPdJob) return;
         const detail = err instanceof Error ? err.message : String(err);
         const poison = poolRef.current?.poisoned;
+        pendingPdInputRef.current = null;
+        setPdPendingFlags(null);
         setPdStatus("error");
         setError(poison != null ? engineCrashMessage(poison) : detail);
       }
@@ -1100,31 +1117,26 @@ export function useSimulation() {
         }
         setPdStatus("idle");
         setPdProgress(0);
+        pendingPdInputRef.current = null;
+        setPdPendingFlags(null);
       }
       activeSeedRef.current = nextSeed;
-      setActiveRunIdx(idx);
-      setActiveSeed(nextSeed >>> 0);
       startTransition(() => {
-        setResult(runs[idx].result);
+        setActiveRunIdx(idx);
+        setActiveSeed(nextSeed >>> 0);
+        setDisplayedRun(runs[idx]);
       });
     },
     [pdStatus, resetPool],
   );
-
-  // Only the override computed for the displayed seed is exposed — a sibling
-  // switch must never show seed A's PD pane next to seed B's primary.
-  const pdResultOverride =
-    pdOverride != null &&
-    activeSeed != null &&
-    (pdOverride.seed >>> 0) === activeSeed
-      ? pdOverride.result
-      : null;
 
   return {
     status,
     progress,
     stage,
     result,
+    resultInput: displayedRun?.input ?? null,
+    resultSource: displayedRun?.source,
     error,
     elapsedMs,
     run,
@@ -1139,6 +1151,6 @@ export function useSimulation() {
     runPdOnly,
     pdStatus,
     pdProgress,
-    pdResultOverride,
+    pdPendingFlags,
   };
 }

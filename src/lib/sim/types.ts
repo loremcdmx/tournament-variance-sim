@@ -775,7 +775,17 @@ export type BattleRoyaleLeaderboardPromoResult =
   | BattleRoyaleLeaderboardManualPromoResult
   | BattleRoyaleLeaderboardLookupPromoResult;
 
+export interface CalibrationWarning {
+  rowId: string;
+  kind: "primedope-target-clamped";
+  targetWinnings: number;
+  actualWinnings: number;
+}
+
 export interface SimulationResult {
+  calibrationWarnings?: CalibrationWarning[];
+  /** Exact sample-major satellite ticket counts, independent of money/noise. */
+  satelliteSeatsWon?: Uint32Array;
   type: "result";
   samples: number;
   tournamentsPerSample: number;

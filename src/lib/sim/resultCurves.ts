@@ -30,8 +30,7 @@ export function buildConvergence(
   const convPoints = Math.min(80, S);
   const convX: number[] = new Array(convPoints);
   for (let j = 0; j < convPoints; j++) {
-    const frac = (j + 1) / convPoints;
-    convX[j] = Math.max(1, Math.floor(S * frac));
+    convX[j] = Math.max(1, Math.floor((S * (j + 1)) / convPoints));
   }
   const convMean = new Float64Array(convPoints);
   const convSeLo = new Float64Array(convPoints);

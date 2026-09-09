@@ -24,7 +24,7 @@ import {
   rowHasActiveBounty,
   GAME_TYPE_ORDER,
 } from "@/lib/sim/gameType";
-import { equilibriumItmRateForRow } from "@/lib/sim/itmTarget";
+import { applyItmTarget } from "@/lib/sim/itmTarget";
 import {
   preRakebackRoiFromReportedRoi,
   rakebackRoiContribution,
@@ -52,20 +52,24 @@ export function parseBuyIn(
   raw: string,
   currentRake: number,
 ): { buyIn: number; rake: number } | null {
-  const cleaned = raw.replace(/[$\s,]/g, "");
+  const cleaned = raw.replace(/[$\s]/g, "");
   if (cleaned === "") return null;
-  const plus = cleaned.match(/^([\d.]+)\+([\d.]+)$/);
-  if (plus) {
-    const net = parseFloat(plus[1]);
-    const fee = parseFloat(plus[2]);
+  // A comma is a thousands separator only in complete groups. Validate the
+  // entire ticket before conversion: parseFloat accepts junk suffixes and
+  // malformed plus forms as a different, seemingly valid buy-in.
+  const amount = /^(?:\d+(?:\.\d*)?|\.\d+|\d{1,3}(?:,\d{3})+(?:\.\d*)?)$/;
+  const parts = cleaned.split("+");
+  if (parts.length > 2 || parts.some((part) => !amount.test(part))) return null;
+  const net = Number(parts[0].replaceAll(",", ""));
+  if (!Number.isFinite(net) || net <= 0) return null;
+  if (parts.length === 2) {
+    const fee = Number(parts[1].replaceAll(",", ""));
     if (!isFinite(net) || !isFinite(fee) || net <= 0) return null;
     const rake = fee / net;
     if (!isFinite(rake) || rake < 0 || rake > MAX_BUY_IN_RAKE) return null;
     return { buyIn: net, rake };
   }
-  const single = parseFloat(cleaned);
-  if (!isFinite(single) || single <= 0) return null;
-  return { buyIn: single, rake: currentRake };
+  return { buyIn: net, rake: currentRake };
 }
 
 function formatBuyIn(buyIn: number, rake: number): string {
@@ -77,11 +81,14 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
 
-function displayItmPct(row: TournamentRow, globalItmPct: number | null): number {
-  const frac =
-    row.itmRate ??
-    (globalItmPct != null ? globalItmPct / 100 : equilibriumItmRateForRow(row));
-  return round2(frac * 100);
+export function displayItmPct(row: TournamentRow, globalItmPct: number | null): number {
+  // Resolve inheritance, zero-as-auto and all-paid rows exactly as the run
+  // does. A raw zero must not be displayed as 0% when the engine uses paid/N.
+  const [effective] = applyItmTarget([row], {
+    enabled: globalItmPct != null,
+    pct: globalItmPct ?? 0,
+  });
+  return round2(effective.itmRate! * 100);
 }
 
 // Short labels for the dropdown row (≤ ~22 chars), full descriptions in title.
@@ -366,6 +373,22 @@ export function parseImportCSV(raw: string): {
   return { rows, errors };
 }
 
+/** A rejected import never replaces or partially appends to the schedule. */
+export function prepareScheduleImport(
+  text: string,
+  schedule: TournamentRow[],
+  mode: "append" | "replace",
+  tooManyRowsMessage: string,
+): { schedule: TournamentRow[] | null; errors: string[] } {
+  const { rows, errors } = parseImportCSV(text);
+  if (errors.length > 0 || rows.length === 0) return { schedule: null, errors };
+  const merged = mode === "replace" ? rows : [...schedule, ...rows];
+  if (merged.length > MAX_SCHEDULE_ROWS) {
+    return { schedule: null, errors: [tooManyRowsMessage] };
+  }
+  return { schedule: merged, errors: [] };
+}
+
 export const ScheduleEditor = memo(function ScheduleEditor({
   schedule,
   onChange,
@@ -397,11 +420,13 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   });
 
   const applyImport = (text: string, mode: "append" | "replace") => {
-    const { rows, errors } = parseImportCSV(text);
+    const { schedule: imported, errors } = prepareScheduleImport(
+      text, schedule, mode,
+      t("row.importTooMany").replace("{max}", String(MAX_SCHEDULE_ROWS)),
+    );
     setImportErrors(errors);
-    if (rows.length === 0) return;
-    const merged = mode === "replace" ? rows : [...schedule, ...rows];
-    onChange(merged.slice(0, MAX_SCHEDULE_ROWS));
+    if (!imported) return;
+    onChange(imported);
     setImportText("");
     setImportOpen(false);
   };
@@ -1078,7 +1103,7 @@ const ScheduleRow = memo(function ScheduleRow({
           "Grinder" preset is hidden on bounty-envelope rows (PKO / Mystery
           / BR), where ITM is structural and a fixed 16% number doesn't
           belong. */}
-      {issue && (onFixClosest || onFixAuto || onFixPreset) && (
+      {issue && (onFixClosest || onFixAuto || onFixPreset || issue.reason === "inconsistent-finish-locks") && (
         <div className="border-t-2 border-rose-500/60 bg-rose-950/40 px-5 py-2.5">
           <div className="flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-rose-50">
@@ -1086,12 +1111,22 @@ const ScheduleRow = memo(function ScheduleRow({
               {t("shape.rowBlocked")}
             </span>
             <span className="font-mono text-[11px] text-rose-200/80">
+              {issue.reason === "inconsistent-finish-locks" ? t("shape.inconsistentFinishLocks") : <>
               EW ${issue.currentEv.toFixed(2)} / ${issue.targetEv.toFixed(2)} (
               {t("shape.blockedGap")} {issue.gap >= 0 ? "+" : ""}
               {issue.gap.toFixed(2)})
+              </>}
             </span>
             <div className="ml-auto flex flex-wrap gap-1.5">
-              {onFixClosest ? (
+              {issue.reason === "inconsistent-finish-locks" ? (
+                <button
+                  type="button"
+                  onClick={() => update(r.id, { finishBuckets: undefined })}
+                  className="rounded border border-rose-300/70 bg-rose-500/25 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/40"
+                >
+                  {t("shape.clearFinishLocks")}
+                </button>
+              ) : onFixClosest ? (
                 <button
                   type="button"
                   onClick={() => onFixClosest(r.id)}
@@ -1108,7 +1143,7 @@ const ScheduleRow = memo(function ScheduleRow({
                   {t("shape.fixAuto")}
                 </button>
               ) : null}
-              {!onFixClosest && onFixPreset && !showBounty && (
+              {issue.reason !== "inconsistent-finish-locks" && !onFixClosest && onFixPreset && !showBounty && (
                 <button
                   type="button"
                   onClick={() => onFixPreset(r.id)}

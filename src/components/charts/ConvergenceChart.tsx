@@ -507,6 +507,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       return exactBreakdown.perRow.map((r) => ({
         format: r.format,
         field: r.afs,
+        fieldMin: r.fieldMin,
+        fieldMax: r.fieldMax,
         roi: r.roi,
       }));
     }

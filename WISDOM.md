@@ -221,7 +221,7 @@ residual coefficient before being band-eligible.
 
 ## Result Toolbar Re-Run Wisdom
 
-- Isolated result-toolbar re-runs must update the stored `lastRunInputRef`
+- Isolated result-toolbar re-runs must compose patches with the pending input
   before dispatching. A real bug let sequential PrimeDope checkboxes update the
   visible React state while the second worker re-run started from an older
   input snapshot and silently re-enabled the first checkbox's flag.
@@ -253,8 +253,8 @@ form field, then requests the run as a transition-lane state change; an effect
 builds `SimulationInput` from the state that request rendered against. Do not
 "simplify" it back to calling `run()` from the click handler. When checking
 this class of bug, patch `Worker.prototype.postMessage` and read
-`input.schedule` / `scheduleRepeats` off the shard requests — the results
-header is derived from live state and will lie.
+`input.schedule` / `scheduleRepeats` off the shard requests. The results header
+now uses completed inputs too, but worker requests are the direct execution proof.
 
 ## Timeout Signature vs Determinism Failure
 
@@ -302,6 +302,14 @@ Consequences to remember:
 - If a stored fit grid (`scripts/fit_*.json`) is used to judge the current
   engine, remember it was measured under the previous seed era; refit before
   calling small drifts a regression.
+
+## Completed Result Ownership And Boundary Proofs
+
+- `useSimulation` caches the result, effective worker input and raw share source together for each seed. Results must never read live editor controls. PrimeDope-only reruns replace the pass whose calibration is PrimeDope, including the primary pane under the PD preset; pending checkbox flags are separate from completed report inputs.
+- A normalized PMF does not prove that explicit finish locks are satisfiable. Coincident paid/top3/FT boundaries need equal cumulative probabilities. Validation excludes only the nine fixed reference models; `powerlaw-realdata-influenced` still supports locks.
+- Ruin includes equality with the bankroll. An empirical minimum bankroll must exceed tied losses, and its displayed USD/ABI amount must not round back below that bound. Test the formatted recommendation as well as the scalar.
+- Saved trajectories now select the first 1000 global sample indices. Do not reintroduce proportional per-shard rounding; both the selected paths and aggregate results must be independent of shard boundaries/order.
+- `smoke:cash` uses the actual `?admin=1` route. Browser readiness waits for product elements, not `networkidle`; dev HMR and analytics can keep the network active. `SMOKE_BROWSER_CHANNEL=chrome` uses an installed Chrome when Playwright's bundled browser is unavailable.
 
 ## Good Defaults For New Agents
 

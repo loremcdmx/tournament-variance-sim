@@ -118,7 +118,7 @@ describe("stripJackpots", () => {
 });
 
 describe("shiftResultByRakeback", () => {
-  it("recomputes probUpNeverBusted on the shifted finals, keeping raw bust flags", () => {
+  it("omits survival estimates when only the original full-sample bust mask is known", () => {
     const hist = { binEdges: [-10, 0, 10], counts: [2, 2] };
     const path = Float64Array.from([0, 0, 0]);
     const env = {
@@ -137,10 +137,23 @@ describe("shiftResultByRakeback", () => {
       envelopes: env,
     } as unknown as SimulationResult;
 
-    // +5 rakeback lifts run #0 above zero; run #1 also crosses zero but it
-    // busted, so it must NOT count. 3 of 4 → 0.75 (raw was 0.5).
+    // Shifted paths can cross the bankroll boundary differently. The
+    // original flags cannot establish joint survival in either direction.
     const shifted = shiftResultByRakeback(base, Float64Array.from([0, 2.5, 5]), 1);
-    expect(shifted.stats.probUpNeverBusted).toBeCloseTo(0.75, 12);
+    expect(shifted.stats.probUpNeverBusted).toBeNull();
+    expect(shiftResultByRakeback(base, Float64Array.from([0, 2.5, 5]), -1).stats.probUpNeverBusted).toBeNull();
+    expect(shiftResultByRakeback(base, new Float64Array(3), 1)).toBe(base);
+
+    const withoutRb = shiftResultByRakeback(shifted, Float64Array.from([0, 1, 2]), -1);
+    expect(Array.from(withoutRb.finalProfits)).toEqual([-1, 1, 6, 11]);
+    expect(withoutRb.stats.probProfit).toBe(0.75);
+    expect(Array.from(base.finalProfits)).toEqual([-4, -2, 3, 8]);
+
+    const masked = { ...shifted, jackpotMask: Uint8Array.from([0, 0, 0, 1]) };
+    const filtered = stripJackpots(masked);
+    expect(Array.from(filtered.finalProfits)).toEqual([1, 3, 8]);
+    expect(filtered.histogram.binEdges[0]).toBe(1);
+    expect(filtered.histogram.counts.reduce((sum, count) => sum + count, 0)).toBe(3);
 
     // Without a bankroll the engine leaves the mask empty and the stat null:
     // the transform must not invent a number.

@@ -9,6 +9,7 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import type { GameType, PayoutStructureId, TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
+import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
   normalizeBattleRoyaleLeaderboardControls,
@@ -162,7 +163,9 @@ const PERSISTED_ROW_ITM_TOP_HEAVY_BIAS_MAX = 1;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MIN = 0;
 const PERSISTED_ROW_MYSTERY_VARIANCE_MAX = 3;
 const PERSISTED_FIELD_VARIABILITY_BUCKETS_MAX = 20;
-const PERSISTED_ROW_COUNT_MAX = 100_000;
+// The distance control redistributes a whole run into row counts, so these
+// can legitimately exceed the single-row editor's 100k direct-entry cap.
+const PERSISTED_ROW_COUNT_MAX = Number.MAX_SAFE_INTEGER;
 const PERSISTED_SCHEDULE_REPEATS_MAX = 100_000;
 const PERSISTED_SAMPLES_MIN = 100;
 const PERSISTED_SAMPLES_MAX = 1_000_000;
@@ -377,7 +380,8 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
   normalizeNumber("samples", PERSISTED_SAMPLES_MIN, PERSISTED_SAMPLES_MAX, true);
   normalizeNumber("bankroll", 0, PERSISTED_BANKROLL_MAX);
   normalizeNumber("rakebackPct", 0, 100);
-  normalizeNumber("itmGlobalPct", 0.5, 99);
+  // Zero means equilibrium in resolveItmTarget, including a cleared input.
+  normalizeNumber("itmGlobalPct", 0, 99);
   normalizeNumber("roiStdErr", 0, 5);
   normalizeBoolean("usePrimedopePayouts");
   normalizeBoolean("usePrimedopeFinishModel");
@@ -385,10 +389,7 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
   normalizeBoolean("compareEnabled");
   normalizeBoolean("itmGlobalEnabled");
 
-  // These controls are intentionally hidden in the current UI. Letting them
-  // survive from old localStorage/share state silently changes the model while
-  // giving the user no visible way to inspect or clear the cause.
-  for (const key of [
+  const profileKeys = [
     "roiShockPerTourney",
     "roiShockPerSession",
     "roiDriftSigma",
@@ -398,11 +399,29 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
     "tiltSlowThreshold",
     "tiltSlowMinDuration",
     "tiltSlowRecoveryFrac",
-  ] as const satisfies readonly (keyof ControlsState)[]) {
-    if (key in next) {
+  ] as const satisfies readonly (keyof ControlsState)[];
+  // The visible built-in profiles own these otherwise hidden knobs. Restore
+  // their canonical settings (also repairs older saves with missing fields).
+  // Hand-tuning a visible field changes the id to custom but retains its
+  // profile; recognize that complete signature without accepting arbitrary
+  // hidden legacy parameters.
+  const profile = STANDARD_PRESETS.find((preset) => preset.id === next.modelPresetId)
+    ?? (next.modelPresetId === "custom" ? STANDARD_PRESETS.find((preset) =>
+      profileKeys.every((key) => next[key] === preset.patch[key]),
+    ) : undefined);
+  for (const key of profileKeys) {
+    if (profile && next[key] !== profile.patch[key]) {
+      next[key] = profile.patch[key];
+      changed = true;
+    } else if (!profile && key in next) {
       delete next[key];
       changed = true;
     }
+  }
+
+  if ("modelPresetId" in next && typeof next.modelPresetId !== "string") {
+    delete next.modelPresetId;
+    changed = true;
   }
 
   if ("finishModelId" in next && !isValidFinishModelId(next.finishModelId)) {

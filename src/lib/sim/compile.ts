@@ -51,6 +51,12 @@ export function compileSchedule(
   input: SimulationInput,
   calibrationMode: CalibrationMode = "alpha",
 ): CompiledSchedule {
+  const tournamentsPerPass = input.schedule.reduce((total, row) => total + Math.max(1, Math.floor(row.count)), 0);
+  if (!Number.isSafeInteger(tournamentsPerPass) ||
+      !Number.isSafeInteger(input.scheduleRepeats) ||
+      !Number.isSafeInteger(tournamentsPerPass * input.scheduleRepeats)) {
+    throw new Error("engine: tournament total must be a safe integer");
+  }
   // Normalize BR ↔ mystery-royale pairing at the compile boundary: legacy
   // rows with drifted flags silently get fixed up so both gameType-gated and
   // payoutStructure-gated hot-loop branches see consistent state (#131).
@@ -99,6 +105,14 @@ export function compileSchedule(
     }
   }
 
+  const calibrationWarnings = variants.flatMap((row) =>
+    row.flatMap(({ entry }) => entry.calibrationWarning ? [entry.calibrationWarning] : []),
+  );
+  const rowExpectedWinnings = variants.map((row) =>
+    row.reduce((sum, { entry, share }) => sum + share * entry.analyticMeanSingle, 0),
+  );
+  const rowTargetClamped = variants.map((row) => row.some(({ entry }) => entry.calibrationWarning));
+
   const flat: CompiledEntry[] = [];
   let totalBuyIn = 0;
   let expectedProfit = 0;
@@ -144,7 +158,9 @@ export function compileSchedule(
       const directRbMean = rowDirectRakebackMeans[rowIdx];
       flat.push(entry);
       totalBuyIn += entry.singleCost;
-      expectedProfit += entry.singleCost * input.schedule[rowIdx].roi + directRbMean;
+      expectedProfit += (rowTargetClamped[rowIdx]
+        ? rowExpectedWinnings[rowIdx] - entry.singleCost
+        : entry.singleCost * input.schedule[rowIdx].roi) + directRbMean;
       expectedDirectRakeback += directRbMean;
       itmAcc += entry.itm;
       rowCounts[rowIdx] += 1;
@@ -154,6 +170,7 @@ export function compileSchedule(
 
   const reps = Math.max(1, input.scheduleRepeats);
   return {
+    calibrationWarnings: calibrationWarnings.length > 0 ? calibrationWarnings : undefined,
     flat,
     totalBuyIn,
     expectedProfit,

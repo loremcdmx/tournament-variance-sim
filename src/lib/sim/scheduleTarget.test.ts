@@ -47,4 +47,12 @@ describe("schedule target helpers", () => {
     expect(next.map((r) => r.count)).toEqual([1, 1, 1]);
     expect(countScheduleTournaments(next)).toBe(3);
   });
+
+  it("allocates exactly at the safe-integer boundary without rounding overflow", () => {
+    const maximum = Number.MAX_SAFE_INTEGER;
+    const next = redistributeScheduleCounts([row("a", maximum), row("b", maximum)], maximum);
+    expect(next.map((entry) => entry.count)).toEqual([4503599627370496, 4503599627370495]);
+    expect(countScheduleTournaments(next)).toBe(maximum);
+    expect(redistributeScheduleCounts([row("a", 1)], 1e308)[0].count).toBe(maximum);
+  });
 });

@@ -7,6 +7,13 @@ import { DICT, LOCALES } from "./dict";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 describe("i18n dict", () => {
+  it.each(["chart.longestCashless.tip", "chart.recovery.tip"] as const)(
+    "keeps the English statistical explanation in English: %s", (key) => {
+      expect(DICT[key].en).not.toMatch(/[А-Яа-яЁё]/);
+      expect(DICT[key].ru).toMatch(/[А-Яа-яЁё]/);
+    },
+  );
+
   it("every entry covers every locale with a non-empty string", () => {
     for (const [key, entry] of Object.entries(DICT)) {
       for (const loc of LOCALES) {
