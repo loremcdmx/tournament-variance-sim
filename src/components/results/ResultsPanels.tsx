@@ -141,119 +141,37 @@ export function PrimeDopeWeaknessCard() {
 
 export function OurModelWeaknessCard() {
   const t = useT();
+  const groups = [
+    { title: "weakness.ours.section.model", tone: "#94a3b8", cards: ["input", "player", "formats"] },
+    { title: "weakness.ours.section.ui", tone: "#f59e0b", cards: ["tails", "bands", "paths"] },
+  ] as const;
   return (
     <Card className="rounded-none border-0 p-4">
-      <div className="flex flex-col gap-4 text-[11px] leading-relaxed text-[color:var(--color-fg)]">
+      <div className="flex flex-col gap-4 text-xs leading-relaxed text-[color:var(--color-fg)]">
         <p className="text-[color:var(--color-fg-dim)]">{t("weakness.ours.intro")}</p>
-
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#f59e0b]" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-              {t("weakness.ours.section.ui")}
-            </span>
+        {groups.map((group) => (
+          <div key={group.title} className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full" style={{ background: group.tone }} />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+                {t(group.title)}
+              </span>
+            </div>
+            <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
+              {group.cards.map((card) => (
+                <WeakBlock
+                  key={card}
+                  tag={t(`weakness.ours.tag.${card}.label`)}
+                  tone={group.tone}
+                  title={t(`weakness.ours.tag.${card}.title`)}
+                >
+                  {t(`weakness.ours.tag.${card}.body`)}
+                </WeakBlock>
+              ))}
+            </div>
           </div>
-          <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-            <WeakBlock
-              tag={t("weakness.tag.bands")}
-              tone="#f59e0b"
-              title={t("weakness.ours.tag.bands.title")}
-            >
-              {t("weakness.ours.tag.bands.body")}
-            </WeakBlock>
-
-            <WeakBlock
-              tag={t("weakness.tag.schedule")}
-              tone="#f59e0b"
-              title={t("weakness.ours.tag.schedule.title")}
-            >
-              <div className="space-y-2">
-                <p>{t("weakness.ours.tag.schedule.p1")}</p>
-                <p>{t("weakness.ours.tag.schedule.p2")}</p>
-              </div>
-            </WeakBlock>
-
-            <WeakBlock
-              tag={t("weakness.tag.paths")}
-              tone="#f59e0b"
-              title={t("weakness.ours.tag.paths.title")}
-            >
-              <div className="space-y-2">
-                <p>{t("weakness.ours.tag.paths.p1")}</p>
-                <p>{t("weakness.ours.tag.paths.p2")}</p>
-              </div>
-            </WeakBlock>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#94a3b8]" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-              {t("weakness.ours.section.model")}
-            </span>
-          </div>
-          <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-            <WeakBlock
-              tag="ROI"
-              tone="#94a3b8"
-              title={t("weakness.ours.tag.roi.title")}
-            >
-              <div className="space-y-2">
-                <p>{t("weakness.ours.tag.roi.p1")}</p>
-                <p>{t("weakness.ours.tag.roi.p2")}</p>
-              </div>
-            </WeakBlock>
-
-            <WeakBlock
-              tag={t("weakness.tag.formats")}
-              tone="#94a3b8"
-              title={t("weakness.ours.tag.formats.title")}
-            >
-              <div className="space-y-2">
-                <p>{t("weakness.ours.tag.formats.p1")}</p>
-                <p>{t("weakness.ours.tag.formats.p2")}</p>
-              </div>
-            </WeakBlock>
-
-            <WeakBlock
-              tag={t("weakness.tag.empirical")}
-              tone="#94a3b8"
-              title={t("weakness.ours.tag.empirical.title")}
-            >
-              <div className="space-y-2">
-                <p>{t("weakness.ours.tag.empirical.p1")}</p>
-                <p>{t("weakness.ours.tag.empirical.p2")}</p>
-              </div>
-            </WeakBlock>
-
-            <WeakBlock
-              tag={t("weakness.tag.input")}
-              tone="#94a3b8"
-              title={t("weakness.ours.tag.input.title")}
-            >
-              <div className="space-y-2">
-                <p>{t("weakness.ours.tag.input.p1")}</p>
-                <p>{t("weakness.ours.tag.input.p2")}</p>
-              </div>
-            </WeakBlock>
-
-            <WeakBlock
-              tag={t("weakness.tag.tails")}
-              tone="#94a3b8"
-              title={t("weakness.ours.tag.tails.title")}
-            >
-              <div className="space-y-2">
-                <p>{t("weakness.ours.tag.tails.p1")}</p>
-                <p>{t("weakness.ours.tag.tails.p2")}</p>
-              </div>
-            </WeakBlock>
-          </div>
-        </div>
-
-        <div className="text-[10px] text-[color:var(--color-fg-dim)]">
-          {t("weakness.ours.summary")}
-        </div>
+        ))}
+        <p className="text-[color:var(--color-fg-dim)]">{t("weakness.ours.summary")}</p>
       </div>
     </Card>
   );

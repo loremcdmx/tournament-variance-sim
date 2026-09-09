@@ -2675,109 +2675,92 @@ export const DICT = {
   },
 
   "weakness.ours.intro": {
-    en: "Our model is wider than PrimeDope and more honest in modern formats, but it's still a model, not an oracle. It decomposes a tournament well into finish-shape, payouts, rake, bounty channels and uncertainty layers — but some of those layers stay parametric, and some are deliberately constrained by policy so the model doesn't pretend to be more accurate than it is.",
-    ru: "Наша модель шире PrimeDope и честнее в современных форматах, но это всё ещё модель, а не оракул. Она хорошо раскладывает турнир на finish-shape, payouts, rake, bounty-каналы и uncertainty-слои, но часть этих слоёв остаётся параметрической, а часть специально ограничена policy, чтобы не притворяться точнее, чем она есть.",
+    en: "The simulator shows how much results can vary under your chosen settings. Its accuracy depends on how closely those settings match your actual play.",
+    ru: "Симулятор показывает, насколько могут различаться результаты при выбранных настройках. Точность зависит от того, насколько эти настройки похожи на вашу игру.",
+  },
+  "weakness.ours.section.model": {
+    en: "What the result depends on",
+    ru: "От чего зависит результат",
   },
   "weakness.ours.section.ui": {
-    en: "Boundaries already wired into the UI",
-    ru: "Где граница уже встроена в UI",
+    en: "How to read the numbers",
+    ru: "Как читать расчёт",
   },
-  "weakness.ours.tag.bands.title": {
-    en: "Numeric bands aren't shown everywhere — and that's a deliberate limit",
-    ru: "Числовые диапазоны показываются не везде — и это осознанное ограничение",
-  },
-  "weakness.ours.tag.bands.body": {
-    en: "On the convergence widget the numeric ±band is allowed only inside a validated fit-box. Outside it, only the point estimate stays; the band is hidden. Honest protection from extrapolation, but the side effect is that the user doesn't always get a full range exactly where they want it most — at the ROI / AFS edges.",
-    ru: "У convergence-виджета numeric ±band разрешён только внутри провалидированных fit-boxов. За пределами этого box-а остаётся точка, а полоса скрывается. Это честная защита от экстраполяции, но побочный эффект такой: пользователь не всегда получает полноценный диапазон именно там, где вопрос ему интереснее всего — на краях ROI / AFS.",
-  },
-  "weakness.ours.tag.schedule.title": {
-    en: "Schedule-mode band exists but it's locked to format-level fit-boxes",
-    ru: "Schedule-band есть, но он жёстко привязан к format-level fit-box",
-  },
-  "weakness.ours.tag.schedule.p1": {
-    en: "Schedule mode now shows a numeric residual band, but only when every row sits inside its format fit-box. As soon as one row leaves the box — odd AFS, extreme ROI — the schedule-wide band hides and the mode falls back to point-only. Same gate as single-format, deliberately strict.",
-    ru: "Для schedule-mode мы теперь показываем числовой residual-band, но только когда каждая строка расписания сидит внутри своего format fit-box. Стоит хотя бы одной строке выйти за box — чужой AFS, экстремальный ROI — и полоса для всего расписания скрывается, режим возвращается к point-only. Это тот же gate, что и в single-format, и он намеренно строгий.",
-  },
-  "weakness.ours.tag.schedule.p2": {
-    en: "The band itself is a variance-share-weighted average of format-level residual coefficients, not a residual fit specifically to your schedule. It honestly reflects σ-fit uncertainty, but it doesn't capture how your specific mix could deviate from those fits in ensemble.",
-    ru: "Сама полоса — variance-share-weighted среднее format-level residual коэффициентов, а не отдельно подогнанный под ваше конкретное расписание остаток. Это честно отражает неопределённость σ-фитов, но не учитывает, насколько ваш конкретный mix мог бы отклоняться от этих фитов в ансамбле.",
-  },
-  "weakness.ours.tag.paths.title": {
-    en: "BR leaderboard EV is already in trajectory, but drawdown / risk-of-ruin aren't",
-    ru: "EV BR leaderboard уже в trajectory, но drawdown и risk-of-ruin — пока нет",
-  },
-  "weakness.ours.tag.paths.p1": {
-    en: "BR leaderboard cashflow now flows honestly through trajectory and the scalar stats — mean, median, probProfit, VaR, CVaR, histogram. The user no longer has to mentally add \"+$200 LB promo\" from the BR widget to \"+$300 EV\" from the trajectory.",
-    ru: "BR leaderboard cashflow теперь честно проложен через trajectory и скалярную статистику — mean, median, probProfit, VaR, CVaR, гистограмма. Игроку больше не нужно складывать в голове «+$200 LB-промо» из BR-виджета и «+$300 EV» с траектории.",
-  },
-  "weakness.ours.tag.paths.p2": {"en":"Drawdowns, breakeven streaks and risk of ruin retain the engine’s full-sample values and exclude the leaderboard add-on. A cumulative leaderboard payment can change those path-dependent metrics; the retained paths cover only a subset of samples, so we do not recalculate population risk from them.","ru":"Просадки, серии и риск разорения сохраняют значения движка по всем сэмплам без надбавки лидерборда. Накопительные выплаты лидерборда могут менять эти траекторные метрики. Сохранённые траектории охватывают лишь часть сэмплов, поэтому риск по ним заново не оценивается."},
-  "weakness.ours.section.model": {
-    en: "What's still simplified inside the model itself",
-    ru: "Что всё ещё упрощено в самой модели",
-  },
-  "weakness.ours.tag.roi.title": {
-    en: "Uncertainty layers are good knobs, but not learned truth",
-    ru: "Uncertainty-слои — это хорошие ручки, но не learned truth",
-  },
-  "weakness.ours.tag.roi.p1": {
-    en: "ROI std-err, per-tournament shock, per-session shock, drift and tilt are already there, but they're set as model parameters, not auto-extracted from your history.",
-    ru: "ROI std err, per-tournament shock, per-session shock, drift и tilt у нас уже есть, но они задаются как параметры модели, а не автоматически извлекаются из вашей истории.",
-  },
-  "weakness.ours.tag.roi.p2": {
-    en: "So they answer the question \"what if my reality is noisier / harsher than it looks?\" perfectly, but they don't yet answer \"what specific noise did I actually run last year?\" without a separate fit on the data.",
-    ru: "Поэтому они отлично отвечают на вопрос «что будет, если моя реальность шумнее/жёстче, чем кажется», но пока не отвечают на вопрос «какой именно шум у меня реально был в прошлом году» без отдельной подгонки по данным.",
-  },
-  "weakness.ours.tag.formats.title": {
-    en: "Format-specific channels are modeled, but they don't cover the whole real room",
-    ru: "Format-specific каналы смоделированы, но не исчерпывают реальный рум целиком",
-  },
-  "weakness.ours.tag.formats.p1": {
-    en: "PKO, Mystery and Battle Royale aren't reduced to freezeout here — there are separate bounty / envelope / leaderboard channels. But those channels still rest on a house model, buy-in profiles, runtime estimates and fit-policy, not on full knowledge of a specific room's ecosystem, time slot and field on a specific day.",
-    ru: "PKO, Mystery и Battle Royale у нас уже не сведены к фризауту: есть отдельные bounty / envelope / leaderboard-каналы. Но эти каналы всё ещё держатся на house-модели, buy-in-профилях, runtime-оценках и fit-policy, а не на полном знании экосистемы конкретного рума, временного слота и поля в конкретный день.",
-  },
-  "weakness.ours.tag.formats.p2": {
-    en: "Much better than \"no format at all,\" but still doesn't mean the model knows every real promo rule, reg pool and meta-shift automatically.",
-    ru: "Это сильно лучше «вообще без формата», но всё ещё не означает, что модель знает все реальные промо-правила, рег-пулы и мета-сдвиги автоматически.",
-  },
-  "weakness.ours.tag.empirical.title": {
-    en: "Empirical mode replays finishes, not your full poker reality",
-    ru: "Эмпирический режим переигрывает финиши, а не всю вашу покерную реальность",
-  },
-  "weakness.ours.tag.empirical.p1": {
-    en: "Empirical mode honestly resamples finish history without an α-fit, but it still only works with what's actually in the finishes themselves.",
-    ru: "Empirical mode честно ресэмплит историю финишей без α-fit, но он всё равно работает только с тем, что есть в самих финишах.",
-  },
-  "weakness.ours.tag.empirical.p2": {
-    en: "It doesn't reconstruct the hidden causes behind those places: limit changes, field-quality drift over time, late-reg decisions, style switches, ICM deviations, table draw and other hidden states. So it's a very useful mode, but not a full causal reconstruction of your grind.",
-    ru: "Он не восстанавливает скрытые причины этих мест: пересевки по лимитам, изменение качества поля по времени, решение late-reg, смену стиля игры, ICM-отклонения, table-draw и прочие скрытые состояния. То есть это очень полезный режим, но не полная causal-реконструкция вашего грина.",
+  "weakness.ours.tag.input.label": {
+    en: "Inputs",
+    ru: "Ввод",
   },
   "weakness.ours.tag.input.title": {
-    en: "The answer's quality still depends heavily on the input's quality",
-    ru: "Качество ответа по-прежнему сильно зависит от качества входа",
+    en: "The calculation relies on your ROI estimate",
+    ru: "Расчёт опирается на вашу оценку ROI",
   },
-  "weakness.ours.tag.input.p1": {
-    en: "The model can be more honest than PrimeDope precisely because it asks for more inputs: field, ROI, rake, payout structure, mix, uncertainty, tilt, promo regimes.",
-    ru: "Модель умеет быть честнее PrimeDope именно потому, что просит больше входных допущений: поле, ROI, рейк, структуру выплат, mix, uncertainty, tilt, promo-режимы.",
+  "weakness.ours.tag.input.body": {
+    en: "An optimistic ROI, an understated field size or incorrect payouts can make the outlook too favourable. Compare several plausible ROI values, especially if you have played few tournaments.",
+    ru: "Завышенный ROI, заниженный размер поля или неверные выплаты могут сделать прогноз слишком оптимистичным. Сравните несколько реалистичных значений ROI, особенно если сыграли мало турниров.",
   },
-  "weakness.ours.tag.input.p2": {
-    en: "But that has a flip side: if the user feeds in an optimistic ROI, a wrong field-size, or turns on pretty noise knobs unrelated to reality, the engine honestly computes an already-wrong problem. The limit isn't only in the code — it's in the information quality of the input itself.",
-    ru: "Но это значит и обратную сторону: если пользователь даёт оптимистичный ROI, неверный field-size или включает красивые шумовые ручки без связи с реальностью, движок честно посчитает уже неверную постановку задачи. Здесь предел не только в коде, а в информационном качестве самого ввода.",
+  "weakness.ours.tag.player.label": {
+    en: "Player",
+    ru: "Игрок",
+  },
+  "weakness.ours.tag.player.title": {
+    en: "The same ROI can come with different risks",
+    ru: "Одинаковый ROI — разный риск",
+  },
+  "weakness.ours.tag.player.body": {
+    en: "The same average profit can come from frequent small prizes or rare big scores. The model sets how these finishes are distributed. Even with the right ROI, your actual drawdowns and losing stretches may differ.",
+    ru: "Одинаковую среднюю прибыль можно получать за счёт частых небольших призов или редких крупных заносов. Модель задаёт распределение этих финишей. Даже при верно оценённом ROI реальные просадки и серии могут отличаться.",
+  },
+  "weakness.ours.tag.formats.label": {
+    en: "Tournaments",
+    ru: "Турниры",
+  },
+  "weakness.ours.tag.formats.title": {
+    en: "Real tournaments have more detail",
+    ru: "Реальные турниры сложнее настроек",
+  },
+  "weakness.ours.tag.formats.body": {
+    en: "PKO, Mystery and Battle Royale have their own rules in the model, but individual hands and opponents’ stacks are not played out. Changes in form and tilt come from the selected profile rather than being learned from your history.",
+    ru: "PKO, Mystery и Battle Royale учитываются отдельно, но реальные раздачи и стеки соперников не разыгрываются. Колебания формы и тильт задаются выбранным профилем, а не определяются по вашей истории.",
+  },
+  "weakness.ours.tag.tails.label": {
+    en: "Variation",
+    ru: "Разброс",
   },
   "weakness.ours.tag.tails.title": {
-    en: "Tails read better than the average, but they don't become truth automatically",
-    ru: "Хвосты читаются лучше среднего, но всё равно не становятся истиной автоматически",
+    en: "Rare outcomes are less certain",
+    ru: "Редкие исходы оцениваются менее точно",
   },
-  "weakness.ours.tag.tails.p1": {
-    en: "The biggest improvement here is that tails, drawdowns, recovery and ruin no longer pretend to be smooth. But as soon as the question is about the rarest events, the answer's quality still hangs on whether the finish-shape and uncertainty layers were chosen correctly.",
-    ru: "Наше главное улучшение — хвосты, просадки, recovery и ruin больше не притворяются гладкими. Но как только речь идёт о самых редких событиях, качество ответа по-прежнему зависит от того, насколько верно выбраны finish-shape и uncertainty-слои.",
+  "weakness.ours.tag.tails.body": {
+    en: "Big scores and deep drawdowns are rare, so their estimates vary more between runs. More simulations make the estimate steadier, but a worse outcome than any shown remains possible.",
+    ru: "Крупные заносы и глубокие просадки случаются редко, поэтому их оценки сильнее меняются от запуска к запуску. Большее число симуляций делает оценку стабильнее, но ещё более тяжёлый сценарий остаётся возможным.",
   },
-  "weakness.ours.tag.tails.p2": {
-    en: "In other words: the model has gotten much more honest about bad tails, but tails are still the most fragile numbers in the whole app and they should be read as a range of scenarios, not as a promise.",
-    ru: "Иначе говоря: модель стала гораздо честнее про bad tails, но tails всё ещё самые хрупкие числа во всём приложении и именно их надо читать как диапазон сценариев, а не как обещание.",
+  "weakness.ours.tag.bands.label": {
+    en: "Volume",
+    ru: "Дистанция",
+  },
+  "weakness.ours.tag.bands.title": {
+    en: "Required volume is an estimate",
+    ru: "Нужная дистанция — ориентир",
+  },
+  "weakness.ours.tag.bands.body": {
+    en: "The number of tournaments needed to verify ROI is approximate. For some field sizes and ROI values, the accuracy of the range has not been checked, so only a single estimate is shown. One such row can hide the range for a whole mixed schedule.",
+    ru: "Оценка числа турниров для проверки ROI приблизительна. Для некоторых размеров поля и значений ROI точность диапазона не проверена, поэтому остаётся только одно ориентировочное число. Одна такая строка может скрыть диапазон для всего расписания.",
+  },
+  "weakness.ours.tag.paths.label": {
+    en: "Promotions",
+    ru: "Промо",
+  },
+  "weakness.ours.tag.paths.title": {
+    en: "Promotions and bankroll risk need separate attention",
+    ru: "У промо и риска разные ограничения",
+  },
+  "weakness.ours.tag.paths.body": {
+    en: "Expected leaderboard income is spread evenly over the chart; actual amounts and payment dates may differ. This addition does not recalculate drawdowns or ruin risk. Rakeback switches in the results also leave risk tied to the original run. The chance of finishing up without going broke may then be unavailable.",
+    ru: "Ожидаемый доход лидерборда распределяется по графику равномерно; реальные суммы и сроки выплат могут отличаться. Эта прибавка не пересчитывает просадки и риск разорения. Переключатели рейкбека в результатах тоже сохраняют риск от исходного прогона. Показатель «в плюс и без разорения» при таких изменениях может быть недоступен.",
   },
   "weakness.ours.summary": {
-    en: "Short version: our model is now strong enough to honestly show where PrimeDope is too thin. But its own weak spots aren't \"one wrong formula\" — they're validation boundaries, parametric uncertainty layers, partially separated side-channels, and dependence on the quality of the input assumptions.",
-    ru: "Коротко: сейчас наша модель уже достаточно сильная, чтобы честно показывать, где PrimeDope слишком тонкий. Но её собственные слабые места — это не «одна неверная формула», а границы валидации, параметрические uncertainty-слои, частично отдельные side-channels и зависимость от качества входных допущений.",
+    en: "Compare several realistic scenarios. The calculation helps you assess variation and a bankroll cushion, while future results can still fall outside the range shown.",
+    ru: "Сравнивайте несколько реалистичных сценариев. Расчёт помогает оценить разброс и запас банкролла, а будущий результат всё равно может выйти за показанный диапазон.",
   },
 
   "settingsDump.title": {
