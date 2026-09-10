@@ -111,7 +111,6 @@ import {
 } from "./results/StatCards";
 import {
   AdvancedStatsCard,
-  OurModelWeaknessCard,
   PrimeDopeWeaknessCard,
   SettingsDumpCard,
 } from "./results/ResultsPanels";
@@ -1518,13 +1517,6 @@ function ResultsViewImpl({
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection
-        id="ourWeakness"
-        title={t("section.ourWeakness")}
-        showUnitToggle={false}
-      >
-        <OurModelWeaknessCard />
-      </CollapsibleSection>
     </div>
     </MoneyFmtContext.Provider>
     </AbiContext.Provider>

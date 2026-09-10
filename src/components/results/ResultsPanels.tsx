@@ -139,24 +139,6 @@ export function PrimeDopeWeaknessCard() {
   );
 }
 
-export function OurModelWeaknessCard() {
-  const t = useT();
-  return (
-    <Card className="rounded-none border-0 p-4">
-      <ul className="space-y-3 text-xs leading-relaxed text-[color:var(--color-fg)]">
-        {(["pko", "mystery"] as const).map((format) => (
-          <li key={format}>
-            <p className="font-semibold">{t(`weakness.ours.${format}.title`)}</p>
-            <p className="mt-1 text-[color:var(--color-fg-muted)]">
-              {t(`weakness.ours.${format}.body`)}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
 function WeakBlock({
   tag,
   tone,

@@ -1409,7 +1409,6 @@ export const DICT = {
   "refLines.add": { en: "Add line", ru: "Добавить линию" },
   "section.primedopeReport": { en: "PrimeDope report", ru: "PrimeDope отчёт" },
   "section.pdWeakness": { en: "PrimeDope model flaws", ru: "Минусы модели PrimeDope" },
-  "section.ourWeakness": { en: "Limits of our model", ru: "Минусы нашей модели" },
   "section.settingsDump": { en: "Run settings", ru: "Настройки рана" },
   "section.pdDiff": { en: "PrimeDope diff", ru: "Разница с PrimeDope" },
   "section.pdDiff.freezeouts": {
@@ -2676,23 +2675,6 @@ export const DICT = {
   "weakness.pd.summary": {
     en: "Short version: PrimeDope is useful as a baseline where the tournament is already almost reduced to a single simple freezeout-shell. The more format-specific EV and uncertainty layers there are in the problem, the faster our model stops just \"differing\" and starts describing a different class of risk.",
     ru: "Коротко: PrimeDope полезен как baseline там, где турнир уже почти сведён к одному простому freezeout-shell. Чем больше в задаче format-specific EV и uncertainty layers, тем быстрее наша модель перестаёт «просто отличаться» и начинает описывать другой класс риска.",
-  },
-
-  "weakness.ours.pko.title": {
-    en: "PKO: stack coverage is not modeled",
-    ru: "PKO: не учитывается покрытие по стекам",
-  },
-  "weakness.ours.pko.body": {
-    en: "Knockout counts and bounty amounts are modeled from the finishing position. The calculation does not track which opponents the player covered or how their bounties grew during the tournament.",
-    ru: "Число ноков и суммы баунти моделируются по итоговому месту. Расчёт не отслеживает, каких соперников игрок покрывал по стеку и как росли их баунти по ходу турнира.",
-  },
-  "weakness.ours.mystery.title": {
-    en: "Mystery: the actual envelope pool is not tracked",
-    ru: "Mystery: не отслеживается реальный набор конвертов",
-  },
-  "weakness.ours.mystery.body": {
-    en: "For regular Mystery tournaments, envelope amounts are generated from the configured average and spread, without the tournament’s actual prize table or remaining envelopes. GG Battle Royale uses its own prize table.",
-    ru: "В обычном Mystery суммы конвертов генерируются по заданным среднему и разбросу, без таблицы призов конкретного турнира и учёта оставшихся конвертов. Для GG Battle Royale используется отдельная таблица призов.",
   },
 
   "settingsDump.title": {
