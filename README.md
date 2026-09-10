@@ -8,7 +8,7 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 
 **v0.7.7:** результаты и ссылка сохраняют настройки завершённого прогона; для изменённых полей нужен новый запуск. Исправлены вероятности и выплаты на граничных полях, рекомендации банкролла, сочетание лидерборда с рейкбеком и подсчёт билетов. Ошибочный CSV не заменяет расписание. [Список исправлений и проверок](docs/BUGHUNT_FIXES_2026-09-09.md).
 
-Раздел «Минусы нашей модели» объясняет шесть практических ограничений: качество исходных данных, распределение финишей, особенности турниров, редкие исходы, оценку дистанции и учёт промо в риске.
+В «Минусах нашей модели» оставлены только два конкретных упрощения: в PKO не отслеживаются покрытие по стекам и баунти отдельных соперников; в обычном Mystery не моделируется реальный набор оставшихся конвертов. GG Battle Royale использует отдельную таблицу призов.
 
 *EN version below ↓*
 
@@ -263,7 +263,7 @@ Monte Carlo variance simulator for poker MTTs. A from-scratch alternative to [Pr
 
 **v0.7.7:** completed results and share links retain their run inputs. Changed settings require a new run. Fixes cover boundary payout/probability cases, conservative bankroll quotes, leaderboard/rakeback composition, exact satellite ticket counts, persistence and atomic CSV imports. [Fix coverage and checks](docs/BUGHUNT_FIXES_2026-09-09.md).
 
-The model limitations panel explains six practical boundaries: input quality, finish distributions, tournament assumptions, rare outcomes, volume estimates and how promotions affect risk.
+The model limitations panel lists two concrete simplifications: PKO does not track stack coverage or individual opponents’ bounties; regular Mystery does not model the actual remaining envelope pool. GG Battle Royale uses its own prize table.
 
 You feed it a schedule (field, buy-in, rake, ROI, payout structure) and get the profit distribution over N samples: mean / median / stdDev / Sharpe / Sortino / CVaR, histogram, convergence curve, bankroll paths, risk of ruin, downswing catalog, row-level variance decomposition, ROI sensitivity scan.
 

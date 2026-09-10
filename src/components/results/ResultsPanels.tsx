@@ -141,38 +141,18 @@ export function PrimeDopeWeaknessCard() {
 
 export function OurModelWeaknessCard() {
   const t = useT();
-  const groups = [
-    { title: "weakness.ours.section.model", tone: "#94a3b8", cards: ["input", "player", "formats"] },
-    { title: "weakness.ours.section.ui", tone: "#f59e0b", cards: ["tails", "bands", "paths"] },
-  ] as const;
   return (
     <Card className="rounded-none border-0 p-4">
-      <div className="flex flex-col gap-4 text-xs leading-relaxed text-[color:var(--color-fg)]">
-        <p className="text-[color:var(--color-fg-dim)]">{t("weakness.ours.intro")}</p>
-        {groups.map((group) => (
-          <div key={group.title} className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full" style={{ background: group.tone }} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-muted)]">
-                {t(group.title)}
-              </span>
-            </div>
-            <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-              {group.cards.map((card) => (
-                <WeakBlock
-                  key={card}
-                  tag={t(`weakness.ours.tag.${card}.label`)}
-                  tone={group.tone}
-                  title={t(`weakness.ours.tag.${card}.title`)}
-                >
-                  {t(`weakness.ours.tag.${card}.body`)}
-                </WeakBlock>
-              ))}
-            </div>
-          </div>
+      <ul className="space-y-3 text-xs leading-relaxed text-[color:var(--color-fg)]">
+        {(["pko", "mystery"] as const).map((format) => (
+          <li key={format}>
+            <p className="font-semibold">{t(`weakness.ours.${format}.title`)}</p>
+            <p className="mt-1 text-[color:var(--color-fg-muted)]">
+              {t(`weakness.ours.${format}.body`)}
+            </p>
+          </li>
         ))}
-        <p className="text-[color:var(--color-fg-dim)]">{t("weakness.ours.summary")}</p>
-      </div>
+      </ul>
     </Card>
   );
 }

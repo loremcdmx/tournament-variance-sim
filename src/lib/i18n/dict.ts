@@ -2678,93 +2678,21 @@ export const DICT = {
     ru: "Коротко: PrimeDope полезен как baseline там, где турнир уже почти сведён к одному простому freezeout-shell. Чем больше в задаче format-specific EV и uncertainty layers, тем быстрее наша модель перестаёт «просто отличаться» и начинает описывать другой класс риска.",
   },
 
-  "weakness.ours.intro": {
-    en: "The simulator shows how much results can vary under your chosen settings. Its accuracy depends on how closely those settings match your actual play.",
-    ru: "Симулятор показывает, насколько могут различаться результаты при выбранных настройках. Точность зависит от того, насколько эти настройки похожи на вашу игру.",
+  "weakness.ours.pko.title": {
+    en: "PKO: stack coverage is not modeled",
+    ru: "PKO: не учитывается покрытие по стекам",
   },
-  "weakness.ours.section.model": {
-    en: "What the result depends on",
-    ru: "От чего зависит результат",
+  "weakness.ours.pko.body": {
+    en: "Knockout counts and bounty amounts are modeled from the finishing position. The calculation does not track which opponents the player covered or how their bounties grew during the tournament.",
+    ru: "Число ноков и суммы баунти моделируются по итоговому месту. Расчёт не отслеживает, каких соперников игрок покрывал по стеку и как росли их баунти по ходу турнира.",
   },
-  "weakness.ours.section.ui": {
-    en: "How to read the numbers",
-    ru: "Как читать расчёт",
+  "weakness.ours.mystery.title": {
+    en: "Mystery: the actual envelope pool is not tracked",
+    ru: "Mystery: не отслеживается реальный набор конвертов",
   },
-  "weakness.ours.tag.input.label": {
-    en: "Inputs",
-    ru: "Ввод",
-  },
-  "weakness.ours.tag.input.title": {
-    en: "The calculation relies on your ROI estimate",
-    ru: "Расчёт опирается на вашу оценку ROI",
-  },
-  "weakness.ours.tag.input.body": {
-    en: "An optimistic ROI, an understated field size or incorrect payouts can make the outlook too favourable. Compare several plausible ROI values, especially if you have played few tournaments.",
-    ru: "Завышенный ROI, заниженный размер поля или неверные выплаты могут сделать прогноз слишком оптимистичным. Сравните несколько реалистичных значений ROI, особенно если сыграли мало турниров.",
-  },
-  "weakness.ours.tag.player.label": {
-    en: "Player",
-    ru: "Игрок",
-  },
-  "weakness.ours.tag.player.title": {
-    en: "The same ROI can come with different risks",
-    ru: "Одинаковый ROI — разный риск",
-  },
-  "weakness.ours.tag.player.body": {
-    en: "The same average profit can come from frequent small prizes or rare big scores. The model sets how these finishes are distributed. Even with the right ROI, your actual drawdowns and losing stretches may differ.",
-    ru: "Одинаковую среднюю прибыль можно получать за счёт частых небольших призов или редких крупных заносов. Модель задаёт распределение этих финишей. Даже при верно оценённом ROI реальные просадки и серии могут отличаться.",
-  },
-  "weakness.ours.tag.formats.label": {
-    en: "Tournaments",
-    ru: "Турниры",
-  },
-  "weakness.ours.tag.formats.title": {
-    en: "Real tournaments have more detail",
-    ru: "Реальные турниры сложнее настроек",
-  },
-  "weakness.ours.tag.formats.body": {
-    en: "PKO, Mystery and Battle Royale have their own rules in the model, but individual hands and opponents’ stacks are not played out. Changes in form and tilt come from the selected profile rather than being learned from your history.",
-    ru: "PKO, Mystery и Battle Royale учитываются отдельно, но реальные раздачи и стеки соперников не разыгрываются. Колебания формы и тильт задаются выбранным профилем, а не определяются по вашей истории.",
-  },
-  "weakness.ours.tag.tails.label": {
-    en: "Variation",
-    ru: "Разброс",
-  },
-  "weakness.ours.tag.tails.title": {
-    en: "Rare outcomes are less certain",
-    ru: "Редкие исходы оцениваются менее точно",
-  },
-  "weakness.ours.tag.tails.body": {
-    en: "Big scores and deep drawdowns are rare, so their estimates vary more between runs. More simulations make the estimate steadier, but a worse outcome than any shown remains possible.",
-    ru: "Крупные заносы и глубокие просадки случаются редко, поэтому их оценки сильнее меняются от запуска к запуску. Большее число симуляций делает оценку стабильнее, но ещё более тяжёлый сценарий остаётся возможным.",
-  },
-  "weakness.ours.tag.bands.label": {
-    en: "Volume",
-    ru: "Дистанция",
-  },
-  "weakness.ours.tag.bands.title": {
-    en: "Required volume is an estimate",
-    ru: "Нужная дистанция — ориентир",
-  },
-  "weakness.ours.tag.bands.body": {
-    en: "The number of tournaments needed to verify ROI is approximate. For some field sizes and ROI values, the accuracy of the range has not been checked, so only a single estimate is shown. One such row can hide the range for a whole mixed schedule.",
-    ru: "Оценка числа турниров для проверки ROI приблизительна. Для некоторых размеров поля и значений ROI точность диапазона не проверена, поэтому остаётся только одно ориентировочное число. Одна такая строка может скрыть диапазон для всего расписания.",
-  },
-  "weakness.ours.tag.paths.label": {
-    en: "Promotions",
-    ru: "Промо",
-  },
-  "weakness.ours.tag.paths.title": {
-    en: "Promotions and bankroll risk need separate attention",
-    ru: "У промо и риска разные ограничения",
-  },
-  "weakness.ours.tag.paths.body": {
-    en: "Expected leaderboard income is spread evenly over the chart; actual amounts and payment dates may differ. This addition does not recalculate drawdowns or ruin risk. Rakeback switches in the results also leave risk tied to the original run. The chance of finishing up without going broke may then be unavailable.",
-    ru: "Ожидаемый доход лидерборда распределяется по графику равномерно; реальные суммы и сроки выплат могут отличаться. Эта прибавка не пересчитывает просадки и риск разорения. Переключатели рейкбека в результатах тоже сохраняют риск от исходного прогона. Показатель «в плюс и без разорения» при таких изменениях может быть недоступен.",
-  },
-  "weakness.ours.summary": {
-    en: "Compare several realistic scenarios. The calculation helps you assess variation and a bankroll cushion, while future results can still fall outside the range shown.",
-    ru: "Сравнивайте несколько реалистичных сценариев. Расчёт помогает оценить разброс и запас банкролла, а будущий результат всё равно может выйти за показанный диапазон.",
+  "weakness.ours.mystery.body": {
+    en: "For regular Mystery tournaments, envelope amounts are generated from the configured average and spread, without the tournament’s actual prize table or remaining envelopes. GG Battle Royale uses its own prize table.",
+    ru: "В обычном Mystery суммы конвертов генерируются по заданным среднему и разбросу, без таблицы призов конкретного турнира и учёта оставшихся конвертов. Для GG Battle Royale используется отдельная таблица призов.",
   },
 
   "settingsDump.title": {
