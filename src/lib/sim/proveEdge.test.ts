@@ -5,6 +5,7 @@ import {
   PROVE_EDGE_POSITIVE_CANDIDATES,
 } from "./proveEdge";
 import type { TournamentRow } from "./types";
+import { buildOceanKoSigmaBand } from "./convergenceMath";
 
 const computeProveEdgeRows = (input: Parameters<typeof computeProveEdge>[0]) =>
   computeProveEdge(input).rows;
@@ -21,6 +22,27 @@ const baseFreeze = {
 };
 
 describe("computeProveEdgeRows (single-format mode)", () => {
+  it("Ocean KO evaluates each ROI through the runtime model without a residual band", () => {
+    const result = computeProveEdge({
+      ...baseFreeze,
+      format: "ocean-ko",
+      candidates: [0.05, 0.1],
+    });
+    expect(result.bandPolicy).toBe("outside-fit-box");
+    for (const row of result.rows) {
+      const expected = buildOceanKoSigmaBand({
+        afs: baseFreeze.afs,
+        rake: baseFreeze.rake,
+        roi: row.roi,
+        totalTicket: 100,
+      });
+      expect(row.sigma).toBe(expected.s);
+      expect(row.tourneys).toBe(Math.ceil(Math.pow(2 * Z95 * expected.s / row.roi, 2)));
+      expect(row.tourneysLo).toBe(row.tourneys);
+      expect(row.tourneysHi).toBe(row.tourneys);
+      expect(row.insideFitBox).toBe(false);
+    }
+  });
   it("returns one row per candidate", () => {
     const rows = computeProveEdgeRows(baseFreeze);
     expect(rows).toHaveLength(PROVE_EDGE_POSITIVE_CANDIDATES.length);

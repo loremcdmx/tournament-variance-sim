@@ -34,6 +34,20 @@ function encoded(payload: unknown): string {
 }
 
 describe("persistence validation", () => {
+  it("round-trips Ocean KO economics and strips unrelated random channels", () => {
+    const ocean = { ...row, gameType: "ocean-ko", buyIn: 92, rake: 8 / 92,
+      bountyFraction: 50 / 92, payoutStructure: "mtt-gg-bounty",
+      mysteryBountyVariance: 2, pkoHeat: 0.4, pkoHeadVar: 0.8 };
+    const state = decodeState(encoded({ v: 2, schedule: [ocean], controls }));
+    const saved = state?.schedule[0];
+    expect(saved).toMatchObject({ gameType: "ocean-ko", buyIn: 92, rake: 8 / 92,
+      bountyFraction: 50 / 92, payoutStructure: "mtt-gg-bounty" });
+    expect(saved?.mysteryBountyVariance).toBeUndefined();
+    expect(saved?.pkoHeat).toBeUndefined();
+    expect(saved?.pkoHeadVar).toBeUndefined();
+    expect(decodeState(encodeState(state!))?.schedule[0]).toEqual(saved);
+  });
+
   it("decodes valid persisted state", () => {
     const state = decodeState(encoded({ v: 1, schedule: [row], controls }));
 

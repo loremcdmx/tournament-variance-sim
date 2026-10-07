@@ -2,6 +2,13 @@ import { buildSchedulePassOrder } from "@/lib/sim/schedulePassOrder";
 import { histogramOf } from "@/lib/sim/simNumerics";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
+// Ocean marks inherited jackpot ancestry. On long runs almost every sample
+// can contain one, so filtering that mask removes the distribution itself.
+export function supportsJackpotFilter(schedule?: readonly TournamentRow[]): boolean {
+  return !!schedule?.some((row) => row.gameType === "mystery" || row.gameType === "mystery-royale")
+    && !schedule.some((row) => row.gameType === "ocean-ko");
+}
+
 // Deterministic cumulative rakeback curve aligned to `xCheckpoints` (tournament
 // indices into the flat schedule). Walks schedule passes in the same weighted
 // interleave order as `compileSchedule()`, so heterogeneous schedules don't

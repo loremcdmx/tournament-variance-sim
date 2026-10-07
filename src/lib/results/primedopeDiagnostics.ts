@@ -10,6 +10,9 @@ export function summarizePdStats(r: SimulationResult | null | undefined) {
   const fix4 = (v: number | undefined) =>
     v == null ? undefined : Number(v.toFixed(4));
   return {
+    ...(s.sigmaPerTournamentAnalyticKind
+      ? { sigmaPerTourneyMathKind: s.sigmaPerTournamentAnalyticKind }
+      : {}),
     mean: round(num("mean")),
     stdDev: round(num("stdDev")),
     median: round(num("median")),

@@ -18,6 +18,7 @@ import {
   BATTLE_ROYALE_PLAYERS,
   DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
   DEFAULT_BOUNTY_FRACTION,
+  DEFAULT_OCEAN_BOUNTY_FRACTION,
   normalizeBrMrConsistency,
 } from "@/lib/sim/gameType";
 
@@ -118,6 +119,7 @@ const VALID_FINISH_MODEL_IDS = new Set<ControlsState["finishModelId"]>([
 const VALID_GAME_TYPES = new Set<GameType>([
   "freezeout",
   "pko",
+  "ocean-ko",
   "mystery",
   "mystery-royale",
 ]);
@@ -234,6 +236,7 @@ function defaultPayoutStructureForGameType(
     case "mystery":
       return "mtt-gg-mystery";
     case "pko":
+    case "ocean-ko":
       return "mtt-gg-bounty";
     default:
       return "mtt-standard";
@@ -548,6 +551,13 @@ function normalizePersistedState(
       nextBattleRoyaleLeaderboardShare;
     if (finalGameType === "freezeout") {
       finalBountyFraction = undefined;
+      finalMysteryBountyVariance = undefined;
+      finalPkoHeadVar = undefined;
+      finalPkoHeat = undefined;
+      finalBattleRoyaleLeaderboardEnabled = undefined;
+      finalBattleRoyaleLeaderboardShare = undefined;
+    } else if (finalGameType === "ocean-ko") {
+      finalBountyFraction = nextBountyFraction ?? DEFAULT_OCEAN_BOUNTY_FRACTION;
       finalMysteryBountyVariance = undefined;
       finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;

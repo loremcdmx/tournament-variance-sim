@@ -10,6 +10,7 @@ import {
   type SigmaCoef,
 } from "./convergenceFit";
 import { buildScheduleAnalyticBreakdown } from "./compile";
+import { applyGameType } from "./gameType";
 import {
   CONVERGENCE_FIELD_MAX,
   CONVERGENCE_FIELD_MIN,
@@ -49,6 +50,7 @@ export type MixTuple = [number, number, number];
 export type ConvergenceFormat =
   | "freeze"
   | "pko"
+  | "ocean-ko"
   | "mystery"
   | "mystery-royale"
   | "mix"
@@ -78,6 +80,8 @@ export interface ExactBreakdownRow {
 }
 
 export interface ExactBreakdown {
+  /** Ocean rows propagate a conservative variance bound to the schedule. */
+  varianceEstimate: "model" | "upper-bound";
   perRow: ExactBreakdownRow[];
   avgField: number;
   sigmaEff: number;
@@ -251,14 +255,16 @@ export function buildExactBreakdown(
   }));
   const weightedResid = allInsideBox
     ? perRowWithShare.reduce(
-        (acc, r) => acc + r.varShare * SIGMA_COEF_BY_FORMAT[r.format].resid,
+        (acc, r) => acc + r.varShare * (
+          r.format === "ocean-ko" ? 0 : SIGMA_COEF_BY_FORMAT[r.format].resid
+        ),
         0,
       )
     : 0;
   // Apply weighted residual to every row's sigma so per-row sigmaLo/Hi
   // reflect the same band the total uses, and to sigmaEff.
   const decoratedPerRow = perRowWithShare.map((r) => {
-    const rResid = allInsideBox
+    const rResid = allInsideBox && r.format !== "ocean-ko"
       ? SIGMA_COEF_BY_FORMAT[r.format].resid
       : 0;
     return {
@@ -270,6 +276,9 @@ export function buildExactBreakdown(
     };
   });
   return {
+    varianceEstimate: perRowWithShare.some((r) => r.format === "ocean-ko")
+      ? "upper-bound"
+      : "model",
     perRow: decoratedPerRow,
     avgField,
     sigmaEff: analytic.sigmaRoiPerTourney,
@@ -282,6 +291,48 @@ export function isRoiControlActive(mode: "avg" | "exact"): boolean {
   return mode !== "exact";
 }
 
+export function defaultOceanKoTicket(schedule?: readonly TournamentRow[] | null): number {
+  let count = 0;
+  let ticketTotal = 0;
+  for (const row of schedule ?? []) {
+    if (inferRowFormat(row) !== "ocean-ko") continue;
+    const plays = Math.max(0, row.count);
+    count += plays;
+    ticketTotal += plays * row.buyIn * (1 + row.rake);
+  }
+  return count > 0 ? Math.max(0.01, ticketTotal / count) : 100;
+}
+
+export function buildOceanKoSigmaBand(input: {
+  afs: number;
+  roi: number;
+  rake: number;
+  totalTicket: number;
+  finishModel?: SimulationInput["finishModel"];
+}): SigmaBand {
+  const base: TournamentRow = {
+    id: "convergence-ocean-ko-runtime",
+    players: Math.max(2, Math.round(input.afs)),
+    buyIn: Math.max(0.01, input.totalTicket) / (1 + Math.max(0, input.rake)),
+    rake: Math.max(0, input.rake),
+    roi: input.roi,
+    payoutStructure: "mtt-gg-bounty",
+    count: 1,
+  };
+  const ocean: TournamentRow = {
+    ...base,
+    ...applyGameType(base, "ocean-ko"),
+    buyIn: base.buyIn,
+    rake: base.rake,
+  };
+  const breakdown = buildExactBreakdown([ocean], { finishModel: input.finishModel });
+  if (!breakdown) throw new Error("Ocean KO runtime moments unavailable");
+  const s = breakdown.sigmaEff;
+  // Ocean's runtime sigma is an analytic upper bound. Equal endpoints mean
+  // no calibrated residual band; they do not make this an exact sigma.
+  return { s, lo: s, hi: s };
+}
+
 export function computeConvergenceRows(input: {
   afs: number;
   z: number;
@@ -289,6 +340,8 @@ export function computeConvergenceRows(input: {
   mix: MixTuple;
   format: ConvergenceFormat;
   rakePct: number;
+  oceanKoTotalTicket?: number;
+  finishModel?: SimulationInput["finishModel"];
   exactBreakdown?: ExactBreakdown | null;
   sigmaOverrides?: Partial<Record<RowFormat, SigmaBand>>;
 }): ConvergenceTableRow[] {
@@ -310,6 +363,15 @@ export function computeConvergenceRows(input: {
   const p = sigmaFor("pko", SIGMA_ROI_PKO);
   const m = sigmaFor("mystery", SIGMA_ROI_MYSTERY);
   const mr = sigmaFor("mystery-royale", SIGMA_ROI_MYSTERY_ROYALE);
+  const ocean = format === "ocean-ko"
+    ? sigmaOverrides?.["ocean-ko"] ?? buildOceanKoSigmaBand({
+        afs,
+        roi,
+        rake: rakePct / 100,
+        totalTicket: input.oceanKoTotalTicket ?? 100,
+        finishModel: input.finishModel,
+      })
+    : null;
   const [fFreeze, fPko, fMystery] = mix;
   const pick = (key: "s" | "lo" | "hi"): number =>
     format === "exact" && exactBreakdown
@@ -318,19 +380,21 @@ export function computeConvergenceRows(input: {
         : key === "lo"
           ? exactBreakdown.sigmaEffLo
           : exactBreakdown.sigmaEffHi
-      : format === "mystery-royale"
-        ? mr[key]
-        : format === "mystery"
-          ? m[key]
-          : format === "pko"
-            ? p[key]
-            : format === "freeze"
-              ? f[key]
-              : Math.sqrt(
-                  fFreeze * f[key] * f[key] +
-                    fPko * p[key] * p[key] +
-                    fMystery * m[key] * m[key],
-                );
+      : format === "ocean-ko" && ocean
+        ? ocean[key]
+        : format === "mystery-royale"
+          ? mr[key]
+          : format === "mystery"
+            ? m[key]
+            : format === "pko"
+              ? p[key]
+              : format === "freeze"
+                ? f[key]
+                : Math.sqrt(
+                    fFreeze * f[key] * f[key] +
+                      fPko * p[key] * p[key] +
+                      fMystery * m[key] * m[key],
+                  );
 
   const sigmaRoi = pick("s");
   const sigmaRoiLo = pick("lo");

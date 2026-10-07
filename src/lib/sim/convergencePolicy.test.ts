@@ -39,6 +39,13 @@ function s(
 }
 
 describe("inferRowFormat — precedence", () => {
+  it("keeps explicit Ocean KO distinct from its underlying bounty payout", () => {
+    expect(inferRowFormat(row({
+      gameType: "ocean-ko",
+      payoutStructure: "mtt-gg-bounty",
+      bountyFraction: 0.5,
+    }))).toBe("ocean-ko");
+  });
   it("explicit gameType wins over everything else", () => {
     // gameType:"mystery" with MBR variance and BR payout → still mystery.
     expect(
@@ -131,6 +138,15 @@ describe("inferRowFormat — precedence", () => {
 });
 
 describe("isInsideFitBox — per-format training boxes", () => {
+  it("Ocean KO has no validated residual band, including inside the PKO box", () => {
+    for (const field of [50, 500, 50_000]) {
+      expect(isInsideFitBox(s("ocean-ko", field, 0.1))).toBe(false);
+    }
+    expect(getConvergenceBandPolicy([
+      s("pko", 1000, 0.1),
+      s("ocean-ko", 1000, 0.1),
+    ])).toEqual({ kind: "warning", reason: "outside-fit-box" });
+  });
   describe("freeze — field [50, 50_000], ROI unrestricted", () => {
     it("inside field bounds", () => {
       expect(isInsideFitBox(s("freeze", CONVERGENCE_FIELD_MIN, 0))).toBe(true);

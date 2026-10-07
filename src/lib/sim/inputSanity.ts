@@ -78,7 +78,7 @@ export function checkInputSanity(
     const heat = row.pkoHeat ?? 0;
 
     if (
-      (fmt === "pko" || fmt === "mystery" || fmt === "mystery-royale") &&
+      (fmt === "pko" || fmt === "ocean-ko" || fmt === "mystery" || fmt === "mystery-royale") &&
       bounty === 0
     ) {
       findings.push({

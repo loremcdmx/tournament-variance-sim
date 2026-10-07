@@ -60,18 +60,18 @@ export interface FinishModelConfig {
 /**
  * High-level game format for a tournament row. Drives sensible defaults
  * for bounty / mystery fields in the editor and feeds a single badge into
- * the preview. The engine itself reads the underlying fields
- * (`bountyFraction`, `mysteryBountyVariance`), so gameType is purely a UX
- * grouping — switching it just rewrites those fields to preset values.
+ * the preview. The engine also uses the format to select the KO mechanism.
  *
  * - "freezeout":         one entry per player, no bounty.
  * - "pko":               progressive knockout — half the buy-in into bounty.
+ * - "ocean-ko":          GGPoker progressive bounties with tiered multipliers.
  * - "mystery":           mystery bounty — log-normal per-KO variance.
  * - "mystery-royale":    mystery bounty with jackpot-tier right tail.
  */
 export type GameType =
   | "freezeout"
   | "pko"
+  | "ocean-ko"
   | "mystery"
   | "mystery-royale";
 
@@ -1085,6 +1085,8 @@ export interface SimulationResult {
      * as a self-check next to the empirical per-tourney σ.
      */
     sigmaPerTournamentAnalytic: number;
+    /** Ocean adaptive-tier variance is bounded, not an exact analytic point. */
+    sigmaPerTournamentAnalyticKind?: "upper-bound";
     /** Empirical per-tourney σ = stdDev / √N. Reported alongside the analytic
      *  counterpart so the user can eyeball convergence / calibration drift. */
     sigmaPerTournamentEmpirical: number;

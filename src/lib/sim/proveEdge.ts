@@ -20,6 +20,8 @@
  *
  * Same σ source as ConvergenceChart:
  *   - Single format → per-candidate `evalSigma(coef, afs, roi) · rakeScale`
+ *   - Ocean KO → per-candidate runtime variance upper bound, without a
+ *     calibrated residual band
  *   - Schedule mode → schedule-aware `buildExactBreakdown(schedule).sigmaEff`,
  *     where σ already weights per-row dollar variance, field variability,
  *     payout shape, rake, and bounty structure
@@ -30,7 +32,11 @@
  * show only the point estimate, matching the convergence widget's
  * policy.
  */
-import { buildExactBreakdown, type ExactBreakdown } from "./convergenceMath";
+import {
+  buildExactBreakdown,
+  buildOceanKoSigmaBand,
+  type ExactBreakdown,
+} from "./convergenceMath";
 import {
   FIT_RAKE_BY_FORMAT,
   SIGMA_COEF_BY_FORMAT,
@@ -49,7 +55,7 @@ export type ProveEdgeFormat = ConvergenceRowFormat | "exact";
 export interface ProveEdgeRow {
   /** Candidate true ROI as a fraction (0.10 = +10 %). */
   roi: number;
-  /** σ_ROI evaluated at this candidate ROI (point estimate). */
+  /** σ_ROI at this candidate ROI; an upper bound for Ocean KO. */
   sigma: number;
   /** σ × (1 - residual). Equal to `sigma` when out-of-box. */
   sigmaLo: number;
@@ -107,6 +113,8 @@ export interface ProveEdgeInput {
   afs: number;
   /** Player's rake fraction (0.10 = 10 %); ignored when `format === "exact"`. */
   rake: number;
+  /** Full ticket cost matters for Ocean's dollar-denominated bounty tiers. */
+  oceanKoTotalTicket?: number;
   /** Two-tailed z-score from the chosen confidence level. */
   z: number;
   /** Player's current ROI fraction — used to highlight the closest candidate
@@ -158,7 +166,20 @@ function singleFormatSigma(
   afs: number,
   rake: number,
   roi: number,
+  finishModel?: FinishModelConfig,
+  oceanKoTotalTicket = 100,
 ): SigmaTriple {
+  if (format === "ocean-ko") {
+    const runtime = buildOceanKoSigmaBand({
+      afs, rake, roi, finishModel, totalTicket: oceanKoTotalTicket,
+    });
+    return {
+      sigma: runtime.s,
+      sigmaLo: runtime.s,
+      sigmaHi: runtime.s,
+      insideBox: false,
+    };
+  }
   const coef = SIGMA_COEF_BY_FORMAT[format];
   const fitRake = FIT_RAKE_BY_FORMAT[format];
   const rakeScale = (1 + fitRake) / (1 + Math.max(0, rake));
@@ -233,7 +254,9 @@ export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {
   const anchorIdx = pickAnchorIndex(candidates, currentRoi);
 
   const rows: ProveEdgeRow[] = candidates.map((roi, i) => {
-    const triple = singleFormatSigma(formatTyped, safeAfs, input.rake, roi);
+    const triple = singleFormatSigma(
+      formatTyped, safeAfs, input.rake, roi, input.finishModel, input.oceanKoTotalTicket,
+    );
     const tourneys = nFromSigma(z, triple.sigma, roi);
     const tourneysLo = nFromSigma(z, triple.sigmaLo, roi);
     const tourneysHi = nFromSigma(z, triple.sigmaHi, roi);
@@ -258,6 +281,8 @@ export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {
     safeAfs,
     input.rake,
     currentRoi,
+    input.finishModel,
+    input.oceanKoTotalTicket,
   );
   const anchor: ProveEdgeAnchor = {
     roi: currentRoi,

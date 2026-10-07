@@ -3,6 +3,7 @@ import {
   type ConvergenceRowFormat,
 } from "./convergencePolicy";
 import type { TournamentRow } from "./types";
+import { buildScheduleAnalyticBreakdown } from "./compile";
 
 export type SigmaCoefSingleBeta = {
   kind: "single-beta";
@@ -102,7 +103,7 @@ export const SIGMA_ROI_MYSTERY_ROYALE: SigmaCoef = {
 };
 
 export const SIGMA_COEF_BY_FORMAT: Record<
-  ConvergenceRowFormat,
+  Exclude<ConvergenceRowFormat, "ocean-ko">,
   SigmaCoef
 > = {
   freeze: SIGMA_ROI_FREEZE,
@@ -111,7 +112,10 @@ export const SIGMA_COEF_BY_FORMAT: Record<
   "mystery-royale": SIGMA_ROI_MYSTERY_ROYALE,
 };
 
-export const FIT_RAKE_BY_FORMAT: Record<ConvergenceRowFormat, number> = {
+export const FIT_RAKE_BY_FORMAT: Record<
+  Exclude<ConvergenceRowFormat, "ocean-ko">,
+  number
+> = {
   freeze: 0.10,
   pko: 0.10,
   mystery: 0.10,
@@ -144,6 +148,15 @@ export function sigmaRoiForRow(
   format: ConvergenceRowFormat;
 } {
   const fmt = inferRowFormat(row);
+  if (fmt === "ocean-ko") {
+    const breakdown = buildScheduleAnalyticBreakdown({
+      schedule: [{ ...row, count: 1 }],
+      finishModel: { id: "power-law" },
+    });
+    if (!breakdown) throw new Error("Ocean KO runtime moments unavailable");
+    const sigma = breakdown.sigmaRoiPerTourney * (rakeScaleOverride ?? 1);
+    return { sigma, sigmaLo: sigma, sigmaHi: sigma, format: fmt };
+  }
   const coef = SIGMA_COEF_BY_FORMAT[fmt];
   const afs = Math.max(1, row.players);
   const roi = row.roi;

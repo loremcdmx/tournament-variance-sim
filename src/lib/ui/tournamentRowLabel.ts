@@ -6,6 +6,7 @@ import type { TournamentRow } from "@/lib/sim/types";
 const GAME_TYPE_LABEL_KEY: Record<GameType, DictKey> = {
   freezeout: "row.gameType.freezeout",
   pko: "row.gameType.pko",
+  "ocean-ko": "row.gameType.oceanKo",
   mystery: "row.gameType.mystery",
   "mystery-royale": "row.gameType.mysteryRoyale",
 };

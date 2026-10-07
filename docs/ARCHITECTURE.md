@@ -160,6 +160,28 @@ When `row.pkoHeat > 0`, `compileSchedule()` builds `HEAT_BIN_COUNT` alternative 
 
 ## Determinism contract
 
+### Ocean KO
+
+`oceanKo.ts` models a random recursive knockout tree: finishing rank j selects
+its killer uniformly among ranks 1..j-1. Each knockout spins the actual victim
+bounty; half is added to the killer and half paid as cash. Winner cash also
+includes a full final spin on the updated own bounty. The sampler draws only
+the hero's descendant subtree (Beta-binomial size), preserving this model's
+distribution without building every player's tree for every early finish.
+One scratch array is allocated per shard; its separate RNG salt is `0x0cea4b07`.
+
+`compileEntry` preserves physical heads and dollar tier thresholds, then applies
+a fixed payout scale to calibrate bounty EV to the existing finish/ROI model.
+This is a player-edge assumption, not per-tournament conservation. The second
+moment of adaptive Legendary heads is bounded analytically: `secondDollar`
+and `sigmaSingleAnalytic` are **upper bounds** for Ocean entries, with lower
+bounds exposed by `compiledEntryMoments` and the preview. Convergence and
+prove-edge cards label the conservative distance, take full ticket price as
+an input, and have no fitted residual band. `stats.sigmaPerTournamentAnalyticKind`
+preserves this distinction in diagnostic exports. See [Ocean KO](OCEAN_KO.md).
+
+### Seed contract
+
 **A `SimulationInput` with a given seed must produce a byte-identical `SimulationResult` regardless of pool size, shard order, or rebuild.**
 
 This is enforced by `engine.test.ts` and is non-negotiable. Concretely:

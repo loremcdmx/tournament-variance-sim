@@ -6,9 +6,11 @@ import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import type { SimulationInput, TournamentRow } from "@/lib/sim/types";
+import { DEFAULT_OCEAN_RAKE } from "@/lib/sim/gameType";
 import {
   getConvergenceBandPolicy,
   inferRowFormat,
+  type ConvergenceRowFormat,
   type FitBoxSample,
 } from "@/lib/sim/convergencePolicy";
 import {
@@ -16,8 +18,10 @@ import {
   AFS_MIN,
   afsToPos,
   buildExactBreakdown,
+  buildOceanKoSigmaBand,
   ciToZ,
   computeConvergenceRows,
+  defaultOceanKoTicket,
   fmtAfs,
   formatPointRange,
   isRoiControlActive,
@@ -57,6 +61,12 @@ const FORMAT_TAB_ACCENTS: Record<
     border: "rgba(251,113,133,0.42)",
     bg: "rgba(251,113,133,0.16)",
     rail: "rgba(253,164,175,0.88)",
+  },
+  "ocean-ko": {
+    text: "#2dd4bf",
+    border: "rgba(45,212,191,0.42)",
+    bg: "rgba(20,184,166,0.16)",
+    rail: "rgba(94,234,212,0.9)",
   },
   mystery: {
     text: "#38bdf8",
@@ -167,6 +177,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     let fieldWeighted = 0;
     let roiWeighted = 0;
     let pkoCount = 0;
+    let oceanKoCount = 0;
     let mysteryCount = 0;
     let mysteryRoyaleCount = 0;
     if (schedule && schedule.length > 0) {
@@ -180,22 +191,25 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         if (rowFormat === "mystery-royale") mysteryRoyaleCount += c;
         else if (rowFormat === "mystery") mysteryCount += c;
         else if (rowFormat === "pko") pkoCount += c;
+        else if (rowFormat === "ocean-ko") oceanKoCount += c;
       }
     }
     const avgField = countTotal > 0 ? fieldWeighted / countTotal : 1000;
     const roi = countTotal > 0 ? roiWeighted / countTotal : 0.1;
     const pkoShare = countTotal > 0 ? pkoCount / countTotal : 0;
+    const oceanKoShare = countTotal > 0 ? oceanKoCount / countTotal : 0;
     const mysteryShare = countTotal > 0 ? mysteryCount / countTotal : 0;
     const mysteryRoyaleShare =
       countTotal > 0 ? mysteryRoyaleCount / countTotal : 0;
     const freezeShare = Math.max(
       0,
-      1 - pkoShare - mysteryShare - mysteryRoyaleShare,
+      1 - pkoShare - oceanKoShare - mysteryShare - mysteryRoyaleShare,
     );
     return {
       avgField,
       roi,
       pkoShare,
+      oceanKoShare,
       mysteryShare,
       mysteryRoyaleShare,
       freezeShare,
@@ -235,14 +249,13 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   // instead of averaging across AFS/ROI. Disabled when no schedule is loaded.
   const [formatOverride, setFormatOverride] =
     useState<ConvergenceFormat | null>(null);
-  // "mix" aggregates the 3-way {freeze, pko, mystery} tuple — MBR is
-  // deliberately excluded because it's AFS-locked at 18 and ROI-clipped.
-  // So a schedule containing MBR alongside other formats would silently
-  // drop MBR's σ contribution if we defaulted to "mix". Fall back to
-  // "exact" in that case so per-row σ over the real schedule is shown.
+  // The three-way mix has no Ocean or BR component. Mixed schedules that
+  // include either must use the real rows to preserve their variance.
   const baselineFormat: ConvergenceFormat =
     defaultMode === "exact" && hasSchedule
       ? "exact"
+      : baseline.oceanKoShare >= 0.99
+      ? "ocean-ko"
       : baseline.mysteryRoyaleShare >= 0.99
       ? "mystery-royale"
       : baseline.pkoShare >= 0.99
@@ -251,7 +264,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           ? "mystery"
           : baseline.freezeShare >= 0.99
             ? "freeze"
-            : baseline.mysteryRoyaleShare > 0 && hasSchedule
+            : (baseline.mysteryRoyaleShare > 0 || baseline.oceanKoShare > 0) && hasSchedule
               ? "exact"
               : "mix";
   const rawFormat = formatOverride ?? baselineFormat;
@@ -345,7 +358,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   // model directly at the chosen rake, so it doesn't rely on a promoted fit.
   // Default rake still snaps to a realistic baseline on format switch, and
   // users can slide away from it.
-  const formatDefaultRake = format === "mystery-royale" ? 8 : 10;
+  const formatDefaultRake = format === "ocean-ko"
+    ? DEFAULT_OCEAN_RAKE * 100
+    : format === "mystery-royale" ? 8 : 10;
   const [rakeOverridePct, setRakeOverridePct] = useState<number | null>(null);
   const rakePct = rakeOverridePct ?? formatDefaultRake;
   const [rakeDraft, setRakeDraft] = useState<string | null>(null);
@@ -359,6 +374,16 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   };
 
   const gameRoi = effectiveRoi;
+  const [oceanTicketOverride, setOceanTicketOverride] = useState<number | null>(null);
+  const [oceanTicketDraft, setOceanTicketDraft] = useState<string | null>(null);
+  const oceanKoTotalTicket = oceanTicketOverride ?? defaultOceanKoTicket(schedule);
+  const commitOceanTicket = () => {
+    if (oceanTicketDraft !== null) {
+      const n = Number(oceanTicketDraft);
+      if (Number.isFinite(n) && n > 0) setOceanTicketOverride(Math.min(1_000_000, n));
+    }
+    setOceanTicketDraft(null);
+  };
   const roiControlActive = isRoiControlActive(effectiveMode);
 
   // Per-row σ breakdown — only populated in "exact" mode. Each entry carries
@@ -462,19 +487,30 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       hi: syntheticMystery.sigmaEff * (1 + resid),
     };
   }, [effectiveMode, format, effectiveAfs, rakePct, effectiveRoi, finishModel]);
+  const oceanKoSigmaOverride = useMemo<SigmaBand | null>(() => {
+    if (format !== "ocean-ko") return null;
+    return buildOceanKoSigmaBand({
+      afs: effectiveAfs,
+      roi: effectiveRoi,
+      rake: rakePct / 100,
+      totalTicket: oceanKoTotalTicket,
+      finishModel,
+    });
+  }, [format, effectiveAfs, effectiveRoi, rakePct, finishModel, oceanKoTotalTicket]);
   const sigmaOverrides = useMemo<
-    Partial<Record<"freeze" | "pko" | "mystery" | "mystery-royale", SigmaBand>> | undefined
+    Partial<Record<ConvergenceRowFormat, SigmaBand>> | undefined
   >(() => {
     const overrides: Partial<
-      Record<"freeze" | "pko" | "mystery" | "mystery-royale", SigmaBand>
+      Record<ConvergenceRowFormat, SigmaBand>
     > = {};
     if (freezeSigmaOverride) overrides.freeze = freezeSigmaOverride;
     if (mysterySigmaOverride) overrides.mystery = mysterySigmaOverride;
     if (battleRoyaleSigmaOverride) {
       overrides["mystery-royale"] = battleRoyaleSigmaOverride;
     }
+    if (oceanKoSigmaOverride) overrides["ocean-ko"] = oceanKoSigmaOverride;
     return Object.keys(overrides).length > 0 ? overrides : undefined;
-  }, [freezeSigmaOverride, mysterySigmaOverride, battleRoyaleSigmaOverride]);
+  }, [freezeSigmaOverride, mysterySigmaOverride, battleRoyaleSigmaOverride, oceanKoSigmaOverride]);
 
   const rows = useMemo(() => {
     return computeConvergenceRows({
@@ -484,6 +520,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       mix,
       format,
       rakePct,
+      oceanKoTotalTicket,
+      finishModel,
       exactBreakdown,
       sigmaOverrides,
     });
@@ -494,6 +532,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     mix,
     format,
     rakePct,
+    oceanKoTotalTicket,
+    finishModel,
     exactBreakdown,
     sigmaOverrides,
   ]);
@@ -516,6 +556,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     if (
       format === "freeze" ||
       format === "pko" ||
+      format === "ocean-ko" ||
       format === "mystery" ||
       format === "mystery-royale"
     ) {
@@ -539,6 +580,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     [fitBoxSamples],
   );
   const showBand = bandPolicy?.kind === "numeric";
+  const hasOceanKo = fitBoxSamples.some((sample) => sample.format === "ocean-ko");
 
   const fmtInt = (n: number): string => {
     if (!Number.isFinite(n)) return "—";
@@ -611,6 +653,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   const FORMATS: { id: ConvergenceFormat; labelKey: DictKey }[] = [
     { id: "freeze", labelKey: "chart.convergence.format.freeze" },
     { id: "pko", labelKey: "chart.convergence.format.pko" },
+    { id: "ocean-ko", labelKey: "chart.convergence.format.ocean-ko" },
     { id: "mystery", labelKey: "chart.convergence.format.mystery" },
     {
       id: "mystery-royale",
@@ -627,7 +670,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           effectiveMode === "exact" ? t("chart.convergence.mode.hint") : undefined
         }
       >
-        <div className="grid flex-1 grid-cols-2 gap-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 p-1 min-[560px]:grid-cols-3 lg:grid-cols-6">
+        <div className="grid flex-1 grid-cols-2 gap-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/80 p-1 min-[560px]:grid-cols-3 lg:grid-cols-7">
           {FORMATS.map((f) => {
             const active = format === f.id;
             const disabled = f.id === "exact" && !hasSchedule;
@@ -684,6 +727,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             setMixOverride(null);
             setRakeOverridePct(null);
             setRakeDraft(null);
+            setOceanTicketOverride(null);
+            setOceanTicketDraft(null);
           }}
           className="self-end rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-2 py-1 text-[10px] uppercase tracking-[0.14em] hover:bg-[color:var(--color-bg-elev)] sm:self-auto"
           title={`reset to ${baselineFormat}${baselineFormat === "mix" ? ` (${Math.round(baselineMix[0] * 100)}/${Math.round(baselineMix[1] * 100)}/${Math.round(baselineMix[2] * 100)} freeze/PKO/mystery)` : ""}`}
@@ -694,6 +739,28 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       {effectiveMode !== "exact" && hasSchedule && (
         <div className="mb-2 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
           {t("chart.convergence.synthetic.hint")}
+        </div>
+      )}
+      {format === "ocean-ko" && (
+        <div className="mb-3 space-y-1.5 text-[11px] text-[color:var(--color-fg-muted)]">
+          <label className="flex items-center gap-2">
+            <span>{t("oceanKo.totalTicket")}</span>
+            <input
+              type="number"
+              min={0.01}
+              max={1_000_000}
+              step={0.01}
+              value={oceanTicketDraft ?? Number(oceanKoTotalTicket.toFixed(2))}
+              onChange={(e) => setOceanTicketDraft(e.target.value)}
+              onBlur={commitOceanTicket}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              className="number-control w-28 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-1 font-mono text-[color:var(--color-fg)]"
+              aria-label={t("oceanKo.totalTicket")}
+            />
+          </label>
+          <p className="text-[color:var(--color-fg-dim)]">{t("oceanKo.syntheticHint")}</p>
         </div>
       )}
       {format === "mix" && (
@@ -834,7 +901,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       {effectiveMode !== "exact" && (
       <div
         className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
-        title={t("chart.convergence.rake.title")}
+        title={t(format === "ocean-ko" ? "chart.convergence.oceanKo.rakeTitle" : "chart.convergence.rake.title")}
       >
         <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-orange-400/80">
           {t("chart.convergence.rake")}
@@ -928,10 +995,13 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       {effectiveMode === "exact" && exactBreakdown && (
         <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 px-2 py-1.5 text-[11px] leading-snug text-emerald-200">
           {t(
-            showBand
-              ? "chart.convergence.exact.bandedBox"
-              : "chart.convergence.exact.pointOnly",
+            hasOceanKo
+              ? "chart.convergence.oceanKo.upperBound"
+              : showBand
+                ? "chart.convergence.exact.bandedBox"
+                : "chart.convergence.exact.pointOnly",
           )}{" "}
+          {hasOceanKo && <span>· {t("proveEdge.schedule.field")} </span>}
           <span className="font-mono text-emerald-100">
             {fmtAfs(exactBreakdown.avgField, numberLocale)}
           </span>
@@ -939,12 +1009,19 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       )}
       {bandPolicy?.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
-          {t("chart.convergence.bandWarning.outsideFitBox")}
+          {t(hasOceanKo
+            ? "chart.convergence.bandWarning.oceanKo"
+            : "chart.convergence.bandWarning.outsideFitBox")}
         </div>
       )}
       {noiseActive && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
           {t("chart.convergence.noiseCaveat")}
+        </div>
+      )}
+      {hasOceanKo && effectiveMode !== "exact" && (
+        <div className="mb-2 text-[11px] font-semibold text-teal-300">
+          {t("chart.convergence.oceanKo.upperBound")}
         </div>
       )}
       <div className="space-y-2 sm:hidden">

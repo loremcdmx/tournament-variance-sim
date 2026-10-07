@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyGameType,
   DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+  DEFAULT_OCEAN_BOUNTY_FRACTION,
   inferGameType,
   normalizeBrMrConsistency,
   normalizeGameTypeConsistency,
@@ -18,6 +19,33 @@ const row = (overrides: Partial<TournamentRow> = {}): TournamentRow => ({
   payoutStructure: "mtt-standard",
   count: 1,
   ...overrides,
+});
+
+describe("Ocean KO format", () => {
+  it("preserves the total ticket and applies GG's published 42/50/8 split", () => {
+    const source = row({ buyIn: 90, rake: 10 / 90, mysteryBountyVariance: 2, pkoHeat: 0.5 });
+    const ocean = { ...source, ...applyGameType(source, "ocean-ko") };
+    expect(ocean.buyIn).toBeCloseTo(92, 10);
+    expect(ocean.buyIn * ocean.rake).toBeCloseTo(8, 10);
+    expect(ocean.buyIn * ocean.bountyFraction!).toBeCloseTo(50, 10);
+    expect(ocean.buyIn * (1 - ocean.bountyFraction!)).toBeCloseTo(42, 10);
+    expect(inferGameType(ocean)).toBe("ocean-ko");
+    expect(rowHasActiveBounty(ocean)).toBe(true);
+    expect(ocean.mysteryBountyVariance).toBeUndefined();
+    expect(ocean.pkoHeat).toBeUndefined();
+  });
+
+  it("keeps Ocean authoritative over stale BR and Mystery fields", () => {
+    const ocean = normalizeGameTypeConsistency(row({
+      gameType: "ocean-ko", payoutStructure: "battle-royale",
+      mysteryBountyVariance: 3, pkoHeadVar: 10, pkoHeat: 0.5,
+    }));
+    expect(ocean.payoutStructure).toBe("mtt-gg-bounty");
+    expect(ocean.bountyFraction).toBe(DEFAULT_OCEAN_BOUNTY_FRACTION);
+    expect(ocean.mysteryBountyVariance).toBeUndefined();
+    expect(ocean.pkoHeadVar).toBeUndefined();
+    expect(ocean.pkoHeat).toBeUndefined();
+  });
 });
 
 describe("inferGameType", () => {

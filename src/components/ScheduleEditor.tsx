@@ -226,6 +226,7 @@ const PAYOUT_GAMETYPE_ALLOW: Partial<Record<GameType, PayoutStructureId[]>> = {
     "winner-takes-all",
   ],
   pko: ["mtt-gg-bounty"],
+  "ocean-ko": ["mtt-gg-bounty", "mtt-standard", "mtt-flat", "mtt-top-heavy"],
   mystery: ["mtt-gg-mystery"],
   "mystery-royale": ["battle-royale"],
 };
@@ -664,6 +665,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
 const GAME_TYPE_TINT: Record<GameType, string> = {
   freezeout: "var(--c-spade)",
   pko: "var(--c-heart)",
+  "ocean-ko": "var(--c-club)",
   mystery: "var(--c-diamond)",
   "mystery-royale": "var(--c-club)",
 };
@@ -730,7 +732,7 @@ const ScheduleRow = memo(function ScheduleRow({
   const isBattleRoyale = gt === "mystery-royale";
   const uiGt = gt;
   const showBounty =
-    uiGt === "pko" || uiGt === "mystery" || uiGt === "mystery-royale";
+    uiGt === "pko" || uiGt === "ocean-ko" || uiGt === "mystery" || uiGt === "mystery-royale";
   const hasAdv =
     (r.fieldVariability && r.fieldVariability.kind !== "fixed") ||
     !!r.sitThroughPayJumps ||
@@ -766,6 +768,7 @@ const ScheduleRow = memo(function ScheduleRow({
         {
           freezeout: "row.gameType.freezeout",
           pko: "row.gameType.pko",
+          "ocean-ko": "row.gameType.oceanKo",
           mystery: "row.gameType.mystery",
           "mystery-royale": "row.gameType.mysteryRoyale",
         } as const
@@ -811,7 +814,7 @@ const ScheduleRow = memo(function ScheduleRow({
           </SectionLabel>
           <div className="grid min-w-0 gap-2 2xl:grid-cols-[minmax(0,1fr)_minmax(6.6rem,7.4rem)] 2xl:items-center">
             <div className="flex min-w-0 items-center gap-2">
-              <RoomBadge payoutId={r.payoutStructure} />
+              <RoomBadge payoutId={r.payoutStructure} gameType={gt} />
               <TextInput
                 value={r.label ?? ""}
                 onChange={(v) => update(r.id, { label: v })}
@@ -826,6 +829,14 @@ const ScheduleRow = memo(function ScheduleRow({
               }
             />
           </div>
+          {gt === "ocean-ko" && (
+            <p className="text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+              {t("row.oceanKo.hint")}{" "}
+              <a href="https://ggpoker.com/tournaments/ocean-ko/" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                {t("row.oceanKo.rules")}
+              </a>
+            </p>
+          )}
           {gt === "mystery-royale" && (
             <div className="flex min-w-0 flex-col gap-1.5">
               <BrPresetSelect
@@ -1754,6 +1765,8 @@ function GameTypeSelect({
         return t("row.gameType.freezeout");
       case "pko":
         return t("row.gameType.pko");
+      case "ocean-ko":
+        return t("row.gameType.oceanKo");
       case "mystery":
         return t("row.gameType.mystery");
       case "mystery-royale":
@@ -2033,8 +2046,8 @@ function PercentDraftInput({
   );
 }
 
-function RoomBadge({ payoutId }: { payoutId: PayoutStructureId }) {
-  const room = PAYOUT_ROOM[payoutId];
+function RoomBadge({ payoutId, gameType }: { payoutId: PayoutStructureId; gameType?: GameType }) {
+  const room = gameType === "ocean-ko" ? "ggpoker" : PAYOUT_ROOM[payoutId];
   if (!room) return null;
   const meta = ROOM_META[room];
   return (

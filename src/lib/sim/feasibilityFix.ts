@@ -60,7 +60,7 @@ export function chooseClosestFeasibilityFix(
 
   const gt = inferGameType(row);
   const isBountyEnvelope =
-    gt === "mystery" || gt === "mystery-royale" || gt === "pko";
+    gt === "mystery" || gt === "mystery-royale" || gt === "pko" || gt === "ocean-ko";
   candidates.push({
     kind: "clear-locks",
     row: isBountyEnvelope

@@ -10,16 +10,22 @@ import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 export const GAME_TYPE_ORDER: GameType[] = [
   "freezeout",
   "pko",
+  "ocean-ko",
   "mystery",
   "mystery-royale",
 ];
 
 export const DEFAULT_BOUNTY_FRACTION = 0.5;
+// GG's published $100 example: $42 prizes + $50 bounties + $8 fee.
+// buyIn in this app excludes the fee, hence these denominators are 92.
+export const DEFAULT_OCEAN_BOUNTY_FRACTION = 50 / 92;
+export const DEFAULT_OCEAN_RAKE = 8 / 92;
 export const DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION = 0.45;
 export const BATTLE_ROYALE_PLAYERS = 18;
 
 const BOUNTY_GAME_TYPES = new Set<GameType>([
   "pko",
+  "ocean-ko",
   "mystery",
   "mystery-royale",
 ]);
@@ -111,7 +117,7 @@ export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
     const payout =
       row.gameType === "mystery"
         ? "mtt-gg-mystery"
-        : row.gameType === "pko"
+        : row.gameType === "pko" || row.gameType === "ocean-ko"
           ? "mtt-gg-bounty"
           : "mtt-standard";
     return { ...row, payoutStructure: payout };
@@ -126,6 +132,17 @@ export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
 }
 
 export function normalizeGameTypeConsistency(row: TournamentRow): TournamentRow {
+  if (row.gameType === "ocean-ko") {
+    return normalizeBrMrConsistency({
+      ...row,
+      bountyFraction: row.bountyFraction ?? DEFAULT_OCEAN_BOUNTY_FRACTION,
+      mysteryBountyVariance: undefined,
+      pkoHeadVar: undefined,
+      pkoHeat: undefined,
+      battleRoyaleLeaderboardEnabled: undefined,
+      battleRoyaleLeaderboardShare: undefined,
+    });
+  }
   if (row.gameType === "freezeout") {
     const patch: Partial<TournamentRow> = {};
     let changed = false;
@@ -181,6 +198,20 @@ export function applyGameType(
       patch.payoutStructure = "mtt-standard";
       snapAfs(30);
       break;
+    case "ocean-ko": {
+      const totalTicket = row.buyIn * (1 + row.rake);
+      patch.buyIn = totalTicket * 0.92;
+      patch.rake = DEFAULT_OCEAN_RAKE;
+      patch.bountyFraction = DEFAULT_OCEAN_BOUNTY_FRACTION;
+      patch.mysteryBountyVariance = undefined;
+      patch.pkoHeadVar = undefined;
+      patch.pkoHeat = undefined;
+      patch.battleRoyaleLeaderboardEnabled = undefined;
+      patch.battleRoyaleLeaderboardShare = undefined;
+      patch.payoutStructure = "mtt-gg-bounty";
+      snapAfs(2);
+      break;
+    }
     case "pko":
       patch.bountyFraction = bounty > 0 ? bounty : DEFAULT_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = undefined;

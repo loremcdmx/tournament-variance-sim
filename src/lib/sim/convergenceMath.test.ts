@@ -5,8 +5,10 @@ import {
   AFS_MIN,
   afsToPos,
   buildExactBreakdown,
+  buildOceanKoSigmaBand,
   ciToZ,
   computeConvergenceRows,
+  defaultOceanKoTicket,
   formatPointRange,
   isRoiControlActive,
   posToAfs,
@@ -15,6 +17,7 @@ import {
   type MixTuple,
 } from "./convergenceMath";
 import { SIGMA_ROI_MYSTERY_ROYALE, sigmaRoiForRow } from "./convergenceFit";
+import { applyGameType } from "./gameType";
 
 const z95 = ciToZ(0.95);
 const targetRow = 3; // +/-10%
@@ -37,6 +40,93 @@ function kFor(input: {
 }
 
 describe("convergence math", () => {
+  it("Ocean default ticket uses only Ocean entries and weights by tournament count", () => {
+    const base: TournamentRow = {
+      id: "ocean",
+      players: 500,
+      buyIn: 92,
+      rake: 8 / 92,
+      roi: 0.1,
+      payoutStructure: "mtt-gg-bounty",
+      gameType: "ocean-ko",
+      count: 1,
+    };
+    expect(defaultOceanKoTicket()).toBe(100);
+    expect(defaultOceanKoTicket([
+      base,
+      { ...base, id: "ocean-2", buyIn: 184, count: 3 },
+      { ...base, id: "pko", gameType: "pko", buyIn: 10_000, count: 50 },
+    ])).toBeCloseTo(175, 12);
+  });
+
+  it("Ocean synthetic estimates preserve the selected full ticket and rake", () => {
+    const estimates: number[] = [];
+    for (const totalTicket of [5, 10_000]) {
+      const rake = 0.1;
+      const base: TournamentRow = {
+        id: "ticket",
+        players: 200,
+        buyIn: totalTicket / (1 + rake),
+        rake,
+        roi: 0.1,
+        payoutStructure: "mtt-gg-bounty",
+        count: 1,
+      };
+      const ocean = {
+        ...base,
+        ...applyGameType(base, "ocean-ko"),
+        buyIn: base.buyIn,
+        rake,
+      };
+      const direct = buildExactBreakdown([ocean])!;
+      const synthetic = buildOceanKoSigmaBand({ afs: 200, roi: 0.1, rake, totalTicket });
+      expect(synthetic.s).toBe(direct.sigmaEff);
+      estimates.push(synthetic.s);
+    }
+    expect(estimates[0]).not.toBeCloseTo(estimates[1], 6);
+  });
+
+  it("Ocean KO uses runtime variance in both its own tab and a mixed schedule", () => {
+    const base: TournamentRow = {
+      id: "ocean",
+      players: 500,
+      buyIn: 50,
+      rake: 0.1,
+      roi: 0.1,
+      payoutStructure: "mtt-gg-bounty",
+      count: 1,
+    };
+    const ocean = {
+      ...base,
+      ...applyGameType(base, "ocean-ko"),
+      buyIn: base.buyIn,
+      rake: base.rake,
+    };
+    const runtime = buildExactBreakdown([ocean])!;
+    expect(runtime.varianceEstimate).toBe("upper-bound");
+    const rows = computeConvergenceRows({
+      afs: 500,
+      z: z95,
+      roi: 0.1,
+      mix: [0, 1, 0],
+      format: "ocean-ko",
+      rakePct: 10,
+      oceanKoTotalTicket: ocean.buyIn * (1 + ocean.rake),
+    });
+    const point = rows[targetRow];
+    expect(point.tourneys).toBe(Math.ceil(Math.pow(z95 * runtime.sigmaEff / 0.1, 2)));
+    expect(point.tourneysLo).toBe(point.tourneys);
+    expect(point.tourneysHi).toBe(point.tourneys);
+    const mixed = buildExactBreakdown([
+      ocean,
+      { ...base, id: "pko", ...applyGameType(base, "pko") },
+    ])!;
+    expect(mixed.perRow.map((r) => r.format)).toEqual(["ocean-ko", "pko"]);
+    expect(mixed.varianceEstimate).toBe("upper-bound");
+    expect(mixed.sigmaEffLo).toBe(mixed.sigmaEff);
+    expect(mixed.sigmaEffHi).toBe(mixed.sigmaEff);
+    expect(mixed.perRow[0].varShare).toBeGreaterThan(0);
+  });
   it("maps AFS slider endpoints exactly to the validated field box", () => {
     expect(posToAfs(0)).toBe(AFS_MIN);
     expect(posToAfs(1)).toBe(AFS_MAX);
