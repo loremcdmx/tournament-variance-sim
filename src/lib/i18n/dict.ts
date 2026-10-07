@@ -290,14 +290,9 @@ export const DICT = {
     en: "Bounties: 50/92 of the entry excluding the fee. Use My schedule for your own split. Dollar thresholds make the entry cost matter even for variance measured in buy-ins.",
     ru: "Баунти: 50/92 суммы без рейка. Для своих долей используй «Моё расписание». Из-за долларовых порогов цена входа влияет даже на дисперсию в бай-инах.",
   },
-  "row.oceanKo.rules": { en: "GG rules", ru: "Правила GG" },
   "results.oceanKo.model": {
     en: "Ocean KO: the simulation includes progressive bounty transfers, GG multipliers and the champion's final spin. KO opponents are random among survivors; the finish distribution and a bounty scaling factor encode the chosen ROI. Rare jackpots can make sample SD and bankroll estimates unstable. The convergence cards use a conservative variance bound.",
     ru: "Ocean KO: симуляция учитывает передачу прогрессивных баунти, множители GG и финальный спин победителя. Выбивающий выбирается случайно среди оставшихся игроков; заданный ROI отражён в распределении мест и масштабе баунти. Из-за редких джекпотов выборочные σ и оценки банкролла могут заметно колебаться. Карточки сходимости используют консервативную границу дисперсии.",
-  },
-  "row.oceanKo.hint": {
-    en: "Each KO: 50% of the multiplied bounty paid now, 50% added to your head; the winner spins their head for 100% cash. Default split: 42% prizes, 50% bounties, 8% fee. The selected payout curve is a model, not a verified Ocean payout table. Check the curve and split against your lobby.",
-    ru: "Каждый KO: 50% умноженной головы сразу деньгами, 50% в твою голову; победитель разыгрывает свою голову со 100% выплатой. По умолчанию: 42% в призы, 50% в баунти, 8% рейк. Кривая призов — модель, а не подтверждённая таблица Ocean. Сверь выплаты и доли с лобби.",
   },
   "chart.convergence.format.ocean-ko": { en: "Ocean KO", ru: "Ocean KO" },
   "chart.convergence.oceanKo.rakeTitle": {

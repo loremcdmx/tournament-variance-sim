@@ -829,14 +829,6 @@ const ScheduleRow = memo(function ScheduleRow({
               }
             />
           </div>
-          {gt === "ocean-ko" && (
-            <p className="text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
-              {t("row.oceanKo.hint")}{" "}
-              <a href="https://ggpoker.com/tournaments/ocean-ko/" target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                {t("row.oceanKo.rules")}
-              </a>
-            </p>
-          )}
           {gt === "mystery-royale" && (
             <div className="flex min-w-0 flex-col gap-1.5">
               <BrPresetSelect
