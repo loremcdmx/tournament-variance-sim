@@ -38,6 +38,7 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 
 ## Что умеет движок, чего нет у PrimeDope
 
+- **Ocean KO (GGPoker)** — множитель на каждом KO, передача случайных голов, Legendary-уровни и финальный спин победителя. Выбор в строке турнира, готовый пример $100 и сравнение дистанции. [Правила модели, ограничения и численное сравнение](docs/OCEAN_KO.md).
 - **Real finish-position sampling** через power-law / stretched-exp / empirical модели, α-калибровка через бинарный поиск под заданный ROI. PrimeDope использует uniform-lift — структурно зажимает ITM rate и занижает глубину даунсвингов.
 - **PKO bounties** — распределение bounty по местам через harmonic-number elimination-order модель, а не плоская добавка к EV.
 - **KO-доля EV** — слайдер "KOs as % of gross EV" двигает долю
@@ -267,6 +268,7 @@ You feed it a schedule (field, buy-in, rake, ROI, payout structure) and get the 
 
 - **Real finish-position sampling** (power-law / stretched-exp / empirical), α-calibrated via binary search against the target ROI. PrimeDope uses a uniform lift — structurally compresses ITM rate and understates drawdown depth.
 - **PKO bounties** distributed by place via harmonic-number elimination-order model, not a flat EV bump.
+- **Ocean KO (GGPoker)** with tiered multipliers, inherited progressive bounties and the champion's final spin. Runtime convergence uses explicitly labelled conservative variance bounds. [Model and comparison](docs/OCEAN_KO.md).
 - **KO EV share control** reports how much gross EV comes from knockouts. In
   Battle Royale the published envelope mean stays fixed, so the slider trades
   finish depth against expected KO count; fixed-ITM rows reconcile the KO budget

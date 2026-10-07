@@ -279,6 +279,39 @@ export const DICT = {
   "row.gameType": { en: "Game type", ru: "Тип игры" },
   "row.gameType.freezeout": { en: "Freezeout", ru: "Фризаут" },
   "row.gameType.pko": { en: "PKO", ru: "PKO" },
+  "row.gameType.oceanKo": { en: "Ocean KO", ru: "Ocean KO" },
+  "oceanKo.totalTicket": { en: "Total entry cost, $", ru: "Полная цена входа, $" },
+  "oceanKo.sigmaBounds": { en: "Model SD bounds per tournament", ru: "Границы σ одного турнира по модели" },
+  "oceanKo.previewNote": {
+    en: "The interval bounds the model variance; it is not a confidence interval. Bounty EV includes all multipliers; a separate jackpot share has not been estimated.",
+    ru: "Это границы дисперсии модели, а не доверительный интервал. EV баунти включает все множители; отдельная доля джекпотов не оценивалась.",
+  },
+  "oceanKo.syntheticHint": {
+    en: "Bounties: 50/92 of the entry excluding the fee. Use My schedule for your own split. Dollar thresholds make the entry cost matter even for variance measured in buy-ins.",
+    ru: "Баунти: 50/92 суммы без рейка. Для своих долей используй «Моё расписание». Из-за долларовых порогов цена входа влияет даже на дисперсию в бай-инах.",
+  },
+  "results.oceanKo.model": {
+    en: "Ocean KO: the simulation includes progressive bounty transfers, GG multipliers and the champion's final spin. KO opponents are random among survivors; the finish distribution and a bounty scaling factor encode the chosen ROI. Rare jackpots can make sample SD and bankroll estimates unstable. The convergence cards use a conservative variance bound.",
+    ru: "Ocean KO: симуляция учитывает передачу прогрессивных баунти, множители GG и финальный спин победителя. Выбивающий выбирается случайно среди оставшихся игроков; заданный ROI отражён в распределении мест и масштабе баунти. Из-за редких джекпотов выборочные σ и оценки банкролла могут заметно колебаться. Карточки сходимости используют консервативную границу дисперсии.",
+  },
+  "chart.convergence.format.ocean-ko": { en: "Ocean KO", ru: "Ocean KO" },
+  "chart.convergence.oceanKo.rakeTitle": {
+    en: "Fee as a percentage of the entry excluding the fee. The total entry stays fixed; changing the fee recalculates prize and bounty amounts and the variance bound.",
+    ru: "Рейк в процентах от суммы без комиссии. Полная цена входа остаётся фиксированной; изменение рейка пересчитывает призы, баунти и границу дисперсии.",
+  },
+  "chart.convergence.oceanKo.upperBound": {
+    en: "Conservative distance · upper bound on model variance",
+    ru: "Консервативная дистанция · верхняя граница дисперсии модели",
+  },
+  "proveEdge.footnote.oceanKo": {
+    en: "The required volume uses an upper bound on Ocean KO model variance. These are conservative model estimates, without a calibrated uncertainty band.",
+    ru: "Дистанция рассчитана по верхней границе дисперсии модели Ocean KO. Это консервативная оценка модели без калиброванного диапазона погрешности.",
+  },
+  "chart.convergence.bandWarning.oceanKo": {
+    en: "Ocean KO uses an analytic upper bound on the model variance here, so the required distance is conservative. This is not a prediction of the exact variance of real tournaments.",
+    ru: "Для Ocean KO здесь используется аналитическая верхняя граница дисперсии модели: дистанция оценена консервативно. Это не прогноз точной дисперсии реальных турниров.",
+  },
+  "demo.oceanKo": { en: "Ocean KO · GGPoker", ru: "Ocean KO · GGPoker" },
   "row.gameType.mystery": { en: "Mystery", ru: "Мистери" },
   "row.gameType.mysteryRoyale": {
     en: "GG Battle Royal",

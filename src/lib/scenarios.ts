@@ -53,6 +53,24 @@ const BR3 = battleRoyaleRowFromTotalTicket(3);
 
 export const SCENARIOS: DemoScenario[] = [
   {
+    id: "ocean-ko",
+    labelKey: "demo.oceanKo",
+    description: "Ocean KO: вход $100 ($42 призы + $50 баунти + $8 рейк), поле 1000, ROI 10%, дистанция 1000 турниров. Множители GG и прогрессия голов.",
+    schedule: [{
+      id: "ocean-ko-1",
+      label: "Ocean KO $100",
+      gameType: "ocean-ko",
+      players: 1000,
+      buyIn: 92,
+      rake: 8 / 92,
+      bountyFraction: 50 / 92,
+      roi: 0.1,
+      payoutStructure: "mtt-gg-bounty",
+      count: 1000,
+    }],
+    controls: { ...BASE_CONTROLS, scheduleRepeats: 1, itmGlobalEnabled: false },
+  },
+  {
     id: "br-leaderboard",
     labelKey: "demo.brLeaderboard",
     description:

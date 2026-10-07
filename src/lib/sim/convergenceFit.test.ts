@@ -10,6 +10,8 @@ import {
   sigmaRoiForRow,
 } from "./convergenceFit";
 import type { TournamentRow } from "./types";
+import { applyGameType } from "./gameType";
+import { buildScheduleAnalyticBreakdown } from "./compile";
 
 /**
  * Critical canary tests on the σ-fit coefficients. These fits drive every
@@ -144,6 +146,23 @@ describe("sigmaRoiForRow", () => {
     const direct = evalSigma(SIGMA_ROI_FREEZE, 500, 0.10);
     // rakeScale = (1+0.10)/(1+0.10) = 1
     expect(r.sigma).toBeCloseTo(direct, 9);
+  });
+
+  it("Ocean KO evaluates its runtime row and exposes no invented residual fit", () => {
+    const base = makeRow();
+    const ocean = { ...base, ...applyGameType(base, "ocean-ko") };
+    const result = sigmaRoiForRow(ocean);
+    const runtime = buildScheduleAnalyticBreakdown({
+      schedule: [ocean],
+      finishModel: { id: "power-law" },
+    });
+    expect(runtime).not.toBeNull();
+    expect(result.format).toBe("ocean-ko");
+    expect(result.sigma).toBeGreaterThan(0);
+    expect(result.sigma).toBe(runtime!.sigmaRoiPerTourney);
+    expect(result.sigmaLo).toBe(result.sigma);
+    expect(result.sigmaHi).toBe(result.sigma);
+    expect(Object.hasOwn(SIGMA_COEF_BY_FORMAT, "ocean-ko")).toBe(false);
   });
 
   it("returns lo/hi via residual band", () => {

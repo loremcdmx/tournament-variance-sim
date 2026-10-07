@@ -77,6 +77,7 @@ import {
   computeExpectedRakebackCurve,
   shiftResultByRakeback,
   stripJackpots,
+  supportsJackpotFilter,
 } from "@/lib/results/trajectoryTransforms";
 import {
   GLOBAL_UNIT_KEY,
@@ -323,14 +324,7 @@ function ResultsViewImpl({
   // from both charts using the deterministic `jackpotMask` stored on the
   // result. Only surfaced when the schedule contains a mystery row so
   // non-mystery runs don't see a dead checkbox.
-  const hasMysteryRow = useMemo(
-    () =>
-      schedule?.some(
-        (r) =>
-          r.gameType === "mystery" || r.gameType === "mystery-royale",
-      ) ?? false,
-    [schedule],
-  );
+  const canHideJackpots = useMemo(() => supportsJackpotFilter(schedule), [schedule]);
   const hideJackpotsTouchedRef = useRef(false);
   const [hideJackpots, setHideJackpotsState] = useState<boolean>(true);
   const deferredHideJackpots = useDeferredValue(hideJackpots);
@@ -343,10 +337,10 @@ function ResultsViewImpl({
     // default fan unreadable. Sync the default with the detected schedule
     // format until the user explicitly toggles it (ref-guarded so we don't
     // re-stomp their choice).
-    if (hasMysteryRow && !hideJackpotsTouchedRef.current) {
+    if (canHideJackpots && !hideJackpotsTouchedRef.current) {
       setHideJackpotsState(true);
     }
-  }, [hasMysteryRow]);
+  }, [canHideJackpots]);
   // rbFrac change resets each region toggle back to default. Users can flip
   // individual regions after; a new rbFrac (e.g. rakeback % edit in controls)
   // wipes those overrides. Three sets in one pass — React batches them.
@@ -379,17 +373,17 @@ function ResultsViewImpl({
   // filters like "hide jackpots" never leak into the scalar stats panels.
   const resultForCharts = useMemo(
     () =>
-      deferredHideJackpots
+      canHideJackpots && deferredHideJackpots
         ? stripJackpots(lbAdjustedResult)
         : lbAdjustedResult,
-    [lbAdjustedResult, deferredHideJackpots],
+    [lbAdjustedResult, deferredHideJackpots, canHideJackpots],
   );
   const pdChartForCharts = useMemo(
     () =>
-      deferredHideJackpots && lbAdjustedPdChart
+      canHideJackpots && deferredHideJackpots && lbAdjustedPdChart
         ? stripJackpots(lbAdjustedPdChart)
         : lbAdjustedPdChart,
-    [lbAdjustedPdChart, deferredHideJackpots],
+    [lbAdjustedPdChart, deferredHideJackpots, canHideJackpots],
   );
   const resultChartsNoRb = useMemo(
     () =>
@@ -742,6 +736,11 @@ function ResultsViewImpl({
     <MoneyFmtContext.Provider value={moneyFmt}>
     <div className="flex flex-col gap-5">
       <CalibrationNotices result={result} schedule={schedule} />
+      {schedule?.some((row) => row.gameType === "ocean-ko") && (
+        <p role="note" className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-4 py-3 text-xs leading-relaxed text-[color:var(--color-fg-muted)]">
+          {t("results.oceanKo.model")}
+        </p>
+      )}
       {advanced && availableRuns > 0 && onSelectRun ? (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--color-fg-dim)]">
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
@@ -928,7 +927,7 @@ function ResultsViewImpl({
         />
       </div>
 
-      {(rakebackCurve || hasMysteryRow || rbRecomputing || lbCurve) && (
+      {(rakebackCurve || canHideJackpots || rbRecomputing || lbCurve) && (
         <div className="flex items-center justify-between gap-4 -mb-1">
           <div
             className={`flex items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)] transition-opacity duration-150 ${
@@ -945,7 +944,7 @@ function ResultsViewImpl({
             </span>
           </div>
           <div className="flex items-center gap-4">
-          {hasMysteryRow && (
+          {canHideJackpots && (
             <label
               className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
               title={t("chart.hideJackpots.title")}

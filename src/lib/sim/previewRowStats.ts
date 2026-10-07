@@ -15,6 +15,7 @@ import {
 } from "@/lib/sim/battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { inferGameType } from "@/lib/sim/gameType";
+import { buildOceanKoModel } from "./oceanKo";
 import { applySitThroughPayJumps } from "./sitThroughPayJumps";
 import { getPayoutTable } from "@/lib/sim/payouts";
 import { derivePreviewRowEconomics } from "@/lib/sim/previewRowEconomics";
@@ -97,6 +98,11 @@ export interface RowStats {
   itm: number;
   evPerEntry: number;
   payoutStd: number;
+  /** Ocean reports an upper bound; the lower bound is exposed separately. */
+  payoutVarianceBounded?: boolean;
+  payoutStdLower?: number;
+  /** Ocean jackpot ancestry EV is not identifiable from two head moments. */
+  jackpotEvAvailable?: boolean;
   cv: number;
   /** Gross cash-pool EV per entry — sum over places of pmf·prizeByPlace.
    *  For freezeouts this equals evPerEntry; for bounty formats it's the
@@ -369,7 +375,17 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
   // BR) drop an envelope, so the harmonic is restricted to that window.
   // Tier metrics use this as the denominator of "avg bounty per head".
   const bountyBustsAtPos = new Float64Array(N);
-  if (bountyMean > 0 && N >= 2) {
+  const oceanKo = row.gameType === "ocean-ko" && bountyMean > 0
+    ? buildOceanKoModel(N, bountyPerSeat, row.buyIn * (1 + row.rake), pmf, bountyMean)
+    : null;
+  if (oceanKo) {
+    bountyByPlace.set(oceanKo.bountyMeanByPlace);
+    let harmonic = 0;
+    for (let i = N - 2; i >= 0; i--) {
+      harmonic += 1 / (i + 1);
+      bountyBustsAtPos[i] = harmonic;
+    }
+  } else if (bountyMean > 0 && N >= 2) {
     const raw = new Float64Array(N);
     const isMystery =
       row.gameType === "mystery" ||
@@ -447,12 +463,19 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
   const totalByPlace = new Float64Array(N);
   let totalEv = 0;
   let totalEv2 = 0;
+  let totalEv2Lower = 0;
   let cashEv = 0;
   let bountyEv = 0;
   for (let i = 0; i < N; i++) {
     totalByPlace[i] = prizeByPlace[i] + bountyByPlace[i];
     totalEv += pmf[i] * totalByPlace[i];
     totalEv2 += pmf[i] * totalByPlace[i] * totalByPlace[i];
+    totalEv2Lower += pmf[i] * totalByPlace[i] * totalByPlace[i];
+    if (oceanKo) {
+      const bountySquared = bountyByPlace[i] * bountyByPlace[i];
+      totalEv2 += pmf[i] * (oceanKo.bountySecondUpperByPlace[i] - bountySquared);
+      totalEv2Lower += pmf[i] * (oceanKo.bountySecondLowerByPlace[i] - bountySquared);
+    }
     cashEv += pmf[i] * prizeByPlace[i];
     bountyEv += pmf[i] * bountyByPlace[i];
   }
@@ -475,7 +498,7 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
           jackpotShareFrac += brSampler.probs[i] * brSampler.ratios[i];
         }
       }
-    } else if ((row.mysteryBountyVariance ?? 0) > 0) {
+    } else if (!oceanKo && (row.mysteryBountyVariance ?? 0) > 0) {
       const sigma2 = row.mysteryBountyVariance!;
       const sigma = Math.sqrt(sigma2);
       const d = (sigma2 / 2 - Math.log(JACKPOT_THRESHOLD)) / sigma;
@@ -684,13 +707,16 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     itm,
     evPerEntry: totalEv,
     payoutStd,
+    payoutVarianceBounded: oceanKo !== null,
+    payoutStdLower: Math.sqrt(Math.max(0, totalEv2Lower - totalEvPerBullet * totalEvPerBullet)),
+    jackpotEvAvailable: oceanKo === null,
     cv,
     cashEvPerEntry: cashEv,
     bountyEvPerEntry: bountyEv,
     jackpotBountyEvPerEntry: jackpotBountyEv,
     jackpotThreshold: JACKPOT_THRESHOLD,
     bountyShare: bountyShareOfPayout,
-    progressivePko: inferGameType(row) === "pko",
+    progressivePko: inferGameType(row) === "pko" || inferGameType(row) === "ocean-ko",
     topPlaces: Math.max(1, Math.ceil(N * 0.01)),
     tiers,
     halfMassK,

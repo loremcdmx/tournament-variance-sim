@@ -12,6 +12,8 @@
  * revalidated runtime-vs-sim residual bands, but those runtime bands are only
  * signed off inside the same user-facing boxes below. So the policy remains
  * simple: in-box → numeric, outside → warning.
+ * Ocean KO has no promoted residual fit: its runtime variance upper bound
+ * stays unbanded at every field size and ROI.
  */
 
 import type { TournamentRow } from "./types";
@@ -19,6 +21,7 @@ import type { TournamentRow } from "./types";
 export type ConvergenceRowFormat =
   | "freeze"
   | "pko"
+  | "ocean-ko"
   | "mystery"
   | "mystery-royale";
 
@@ -69,6 +72,7 @@ function betweenInclusive(value: number, min: number, max: number): boolean {
  */
 export function inferRowFormat(row: TournamentRow): ConvergenceRowFormat {
   // (1) Explicit gameType wins over every other signal.
+  if (row.gameType === "ocean-ko") return "ocean-ko";
   if (row.gameType === "mystery-royale") return "mystery-royale";
   if (row.gameType === "mystery") return "mystery";
   if (row.gameType === "pko") return "pko";
@@ -113,6 +117,10 @@ export function isInsideFitBox(sample: FitBoxSample): boolean {
       isInsideFitBox({ format, field: sample.fieldMax ?? field, roi });
   }
   switch (format) {
+    case "ocean-ko":
+      // Runtime moments are available, but no independent residual fit is
+      // calibrated for Ocean's random, tier-dependent progressive bounties.
+      return false;
     case "freeze":
       return betweenInclusive(
         field,

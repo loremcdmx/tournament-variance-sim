@@ -3,6 +3,7 @@ import {
   computeExpectedRakebackCurve,
   shiftResultByRakeback,
   stripJackpots,
+  supportsJackpotFilter,
 } from "./trajectoryTransforms";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
@@ -18,6 +19,23 @@ function makeRow(overrides: Partial<TournamentRow>): TournamentRow {
     ...overrides,
   };
 }
+
+describe("supportsJackpotFilter", () => {
+  it("preserves all paths for Ocean, including mixes and a previously enabled filter", () => {
+    const ocean = makeRow({ gameType: "ocean-ko" });
+    const mystery = makeRow({ gameType: "mystery" });
+    expect(supportsJackpotFilter([ocean])).toBe(false);
+    expect(supportsJackpotFilter([mystery, ocean])).toBe(false);
+    expect(supportsJackpotFilter([ocean, makeRow({ gameType: "mystery-royale" })])).toBe(false);
+  });
+
+  it("offers the legacy filter only for Mystery or Battle Royale schedules", () => {
+    expect(supportsJackpotFilter([makeRow({ gameType: "mystery" })])).toBe(true);
+    expect(supportsJackpotFilter([makeRow({ gameType: "mystery-royale" })])).toBe(true);
+    expect(supportsJackpotFilter([makeRow({ gameType: "pko" })])).toBe(false);
+    expect(supportsJackpotFilter(undefined)).toBe(false);
+  });
+});
 
 describe("computeExpectedRakebackCurve", () => {
   it("tracks heterogeneous schedules in engine order", () => {

@@ -5,6 +5,8 @@
  */
 
 export interface CompiledEntry {
+  /** Ocean wheels and recursive KO tree; second moments are rigorous bounds. */
+  oceanKo?: import("./oceanKo").OceanKoModel | null;
   isSatellite?: boolean;
   calibrationWarning?: import("./types").CalibrationWarning;
   rowIdx: number;
@@ -84,7 +86,8 @@ export interface CompiledEntry {
   /**
    * Analytical per-tourney σ from the calibrated pmf — √(E[X²]−E[X]²) on
    * prize + bounty. Cheap, compile-time, and independent of the MC run;
-   * used to cross-check MC σ in diagnostics.
+   * used to cross-check MC σ in diagnostics. For Ocean this is a rigorous
+   * upper bound, with both bounds retained in oceanKo, not a point estimate.
    */
   sigmaSingleAnalytic: number;
   /**

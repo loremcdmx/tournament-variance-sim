@@ -5,6 +5,8 @@
  * simulator produce for this row?" without drawing a single sample, which is
  * what the convergence widgets need. Kept out of the compile stage because it
  * only reads CompiledEntry and never builds one.
+ * Ocean's adaptive head tiers instead provide explicit lower/upper bounds;
+ * secondDollar uses the upper bound, so consumers must label it accordingly.
  */
 import { HEAT_Z_RANGE } from "./engineConstants";
 import { normalCdf } from "./simNumerics";
@@ -61,6 +63,10 @@ function bountySecondMoment(
 export function compiledEntryMoments(entry: CompiledEntry): {
   meanDollar: number;
   secondDollar: number;
+  /** Ocean adaptive tiers have bounds, so secondDollar is their UPPER bound. */
+  secondDollarLower?: number;
+  secondDollarUpper?: number;
+  varianceBounded?: boolean;
   fieldAvg: number;
   fieldMin: number;
   fieldMax: number;
@@ -72,18 +78,49 @@ export function compiledEntryMoments(entry: CompiledEntry): {
     let fieldAvg = 0;
     let fieldMin = Infinity;
     let fieldMax = 0;
+    let secondDollarLower = 0;
+    let varianceBounded = false;
     for (const variant of entry.variants) {
       const m = compiledEntryMoments(variant);
       meanDollar += weight * m.meanDollar;
       secondDollar += weight * m.secondDollar;
+      secondDollarLower += weight * (m.secondDollarLower ?? m.secondDollar);
+      varianceBounded ||= m.varianceBounded === true;
       fieldAvg += weight * m.fieldAvg;
       fieldMin = Math.min(fieldMin, m.fieldMin);
       fieldMax = Math.max(fieldMax, m.fieldMax);
     }
-    return { meanDollar, secondDollar, fieldAvg, fieldMin, fieldMax };
+    return {
+      meanDollar, secondDollar, fieldAvg, fieldMin, fieldMax,
+      ...(varianceBounded ? { secondDollarLower, secondDollarUpper: secondDollar, varianceBounded } : {}),
+    };
   }
 
   const pmf = pmfFromAlias(entry.aliasProb, entry.aliasIdx);
+  if (entry.oceanKo) {
+    const ocean = entry.oceanKo;
+    let meanDollar = 0;
+    let secondDollarLower = 0;
+    let secondDollarUpper = 0;
+    for (let i = 0; i < pmf.length; i++) {
+      const cash = entry.prizeByPlace[i];
+      const bounty = ocean.bountyMeanByPlace[i];
+      const cashTerms = cash * cash + 2 * cash * bounty;
+      meanDollar += pmf[i] * (cash + bounty);
+      secondDollarLower += pmf[i] * (cashTerms + ocean.bountySecondLowerByPlace[i]);
+      secondDollarUpper += pmf[i] * (cashTerms + ocean.bountySecondUpperByPlace[i]);
+    }
+    return {
+      meanDollar,
+      secondDollar: secondDollarUpper,
+      secondDollarLower,
+      secondDollarUpper,
+      varianceBounded: true,
+      fieldAvg: entry.fieldSize,
+      fieldMin: entry.fieldSize,
+      fieldMax: entry.fieldSize,
+    };
+  }
   const perKoSecondMoment =
     entry.brTierRatios !== null &&
     entry.brTierAliasProb !== null &&

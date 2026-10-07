@@ -13,6 +13,7 @@ import { buildBattleRoyalePromoResult } from "./battleRoyaleLeaderboardObserved"
 import type {
   BuildProgressCb,
   CheckpointGrid,
+  CompiledEntry,
   CompiledSchedule,
   RawShard,
 } from "./engineTypes";
@@ -22,6 +23,7 @@ import { buildEnvelopes } from "./resultEnvelopes";
 import { buildLeaderboardResult } from "./resultLeaderboard";
 import { computeScalarStats } from "./resultStats";
 import { buildSwingCatalog, computeStreakStats } from "./resultStreaks";
+import { compiledEntryMoments } from "./scheduleMoments";
 import { histogramFromCounts, histogramOf } from "./simNumerics";
 import type {
   CalibrationMode,
@@ -49,6 +51,9 @@ export function buildResult(
   const bankroll = input.bankroll;
   const numRows = input.schedule.length;
   const { K, checkpointIdx } = grid;
+  const hasOceanKo = compiled.flat.some(
+    (entry) => entry.oceanKo || entry.variants?.some((variant) => variant.oceanKo),
+  );
   const {
     finalProfits,
     pathMatrix,
@@ -279,13 +284,29 @@ export function buildResult(
         // how stdDev/√N is interpreted on the MC side.
         if (compiled.flat.length === 0) return 0;
         let acc = 0;
+        // A schedule-wide upper bound must include field mixtures and every
+        // other format's bounty noise, not just Ocean's contribution.
+        const varianceByEntry = hasOceanKo ? new Map<CompiledEntry, number>() : null;
         for (const e of compiled.flat) {
-          const s = e.sigmaSingleAnalytic;
-          acc += s * s;
+          if (varianceByEntry) {
+            let variance = varianceByEntry.get(e);
+            if (variance === undefined) {
+              const moments = compiledEntryMoments(e);
+              variance = Math.max(0, moments.secondDollar - moments.meanDollar ** 2);
+              varianceByEntry.set(e, variance);
+            }
+            acc += variance;
+          } else {
+            const s = e.sigmaSingleAnalytic;
+            acc += s * s;
+          }
         }
         return Math.sqrt(acc / compiled.flat.length);
       })(),
       sigmaPerTournamentEmpirical: stats.sigmaPerTourn,
+      ...(hasOceanKo
+        ? { sigmaPerTournamentAnalyticKind: "upper-bound" as const }
+        : {}),
     },
   };
 }

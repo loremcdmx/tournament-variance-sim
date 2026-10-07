@@ -209,7 +209,9 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   const roiPerEntry = stats.cost > 1e-9 ? netProfitPerEntry / stats.cost : 0;
   const quickRoi = `${roiPerEntry >= 0 ? "+" : ""}${(roiPerEntry * 100).toFixed(1)}%`;
   const rowTitle = getTournamentRowDisplayLabel(effectiveRow, t);
-  const bountyTag = stats.progressivePko
+  const bountyTag = effectiveRow.gameType === "ocean-ko"
+    ? t("row.gameType.oceanKo")
+    : stats.progressivePko
     ? t("preview.statBountyPko")
     : stats.bountyShare > 0
       ? t("preview.statBountyFlat")
@@ -228,6 +230,12 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       </div>
 
       {/* Buy-in and expected return */}
+      {stats.payoutVarianceBounded && (
+        <div className="rounded-md border border-[color:var(--color-border)] px-3 py-2 text-xs text-[color:var(--color-fg-muted)]">
+          <div>{t("oceanKo.sigmaBounds")}: <span className="font-mono tabular-nums">{moneyFmt(stats.payoutStdLower ?? 0)}–{moneyFmt(stats.payoutStd)}</span></div>
+          <p className="mt-1 text-[11px] leading-relaxed">{t("oceanKo.previewNote")}</p>
+        </div>
+      )}
       <div className="group relative overflow-hidden rounded-md border border-[color:var(--color-border-strong)]/70 bg-[linear-gradient(135deg,var(--color-bg)_0%,var(--color-bg-elev)_60%,rgba(255,222,81,0.08)_100%)] p-3.5 shadow-[0_18px_40px_-32px_rgba(0,0,0,0.9)]">
         <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--color-accent)]/70 to-transparent" />
         <div className="relative">
@@ -276,6 +284,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
           (() => {
           const jp = stats.jackpotBountyEvPerEntry;
           const hasJp =
+            stats.jackpotEvAvailable !== false &&
             hasVisibleBountyEv &&
             jp > MONEY_DISPLAY_EPS &&
             jp / stats.bountyEvPerEntry > 0.001;

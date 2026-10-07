@@ -25,6 +25,7 @@ import {
 } from "./battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "./brBountyTiers";
 import { inferGameType } from "./gameType";
+import { buildOceanKoModel, type OceanKoModel } from "./oceanKo";
 import { HEAT_BIN_COUNT, HEAT_Z_RANGE } from "./engineConstants";
 import type { CompiledEntry } from "./engineTypes";
 import type {
@@ -434,7 +435,17 @@ function compileSingleEntry(
   // below can re-normalize the same shape against its per-bin shifted pmf
   // without redoing the per-gametype math.
   let bountyRaw: Float64Array | null = null;
-  if (bountyMean > 0 && N >= 2) {
+  let oceanKo: OceanKoModel | null = null;
+  if (row.gameType === "ocean-ko" && bountyMean > 0) {
+    oceanKo = buildOceanKoModel(
+      N,
+      row.buyIn * bountyFraction,
+      row.buyIn * (1 + row.rake),
+      pmf,
+      bountyMean,
+    );
+    bountyByPlace = oceanKo.bountyMeanByPlace;
+  } else if (bountyMean > 0 && N >= 2) {
     const raw = new Float64Array(N);
     bountyKmean = new Float64Array(N);
 
@@ -566,7 +577,7 @@ function compileSingleEntry(
   // (exp < 1) flatten it. The player's finish pmf and prize curve are
   // untouched, so ROI stays exactly on target while the right tail of
   // the bounty haul distribution fattens.
-  const pkoHeat = Math.max(0, row.pkoHeat ?? 0);
+  const pkoHeat = row.gameType === "ocean-ko" ? 0 : Math.max(0, row.pkoHeat ?? 0);
   let heatBountyByPlace: Float64Array[] | null = null;
   if (pkoHeat > 0 && bountyMean > 0 && bountyRaw !== null) {
     heatBountyByPlace = new Array(HEAT_BIN_COUNT);
@@ -621,6 +632,7 @@ function compileSingleEntry(
   // ---- analytical per-tourney σ (self-check / diagnostic) ----------------
   // σ² = E[X²] − E[X]² on (prize + bounty − singleCost). Cheap to compute
   // from pmf and used as a sanity metric next to MC σ in the results view.
+  // Ocean's adaptive tiers supply an upper second-moment bound, not a fitted σ.
   let eX = 0;
   let eX2 = 0;
   for (let i = 0; i < N; i++) {
@@ -629,6 +641,10 @@ function compileSingleEntry(
     const prize = prizeByPlace[i] + (bountyByPlace ? bountyByPlace[i] : 0);
     eX += p * prize;
     eX2 += p * prize * prize;
+    if (oceanKo) {
+      const bounty = oceanKo.bountyMeanByPlace[i];
+      eX2 += p * (oceanKo.bountySecondUpperByPlace[i] - bounty * bounty);
+    }
   }
   const varSingle = Math.max(0, eX2 - eX * eX);
   const sigmaSingleAnalytic = Math.sqrt(varSingle);
@@ -640,7 +656,7 @@ function compileSingleEntry(
   const inferredGameType = inferGameType(row);
   const effectivePkoHeadVar =
     row.pkoHeadVar ?? (inferredGameType === "pko" ? 0.4 : 0);
-  const perKoLogVar =
+  const perKoLogVar = row.gameType === "ocean-ko" ? 0 :
     Math.max(0, row.mysteryBountyVariance ?? 0) +
     Math.max(0, effectivePkoHeadVar);
 
@@ -651,6 +667,7 @@ function compileSingleEntry(
   // around `bountyMean` with the configured σ²).
 
   return {
+    oceanKo,
     isSatellite: row.payoutStructure === "satellite-ticket",
     calibrationWarning: calibrationMode === "primedope-binary-itm" && pdFlags.usePdFinishModel && Math.abs(eX - totalWinningsEV) > 1e-3
       ? { rowId: row.id, kind: "primedope-target-clamped", targetWinnings: totalWinningsEV, actualWinnings: eX }

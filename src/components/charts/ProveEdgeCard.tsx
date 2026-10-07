@@ -18,6 +18,7 @@ import {
   AFS_MIN,
   afsToPos,
   ciToZ,
+  defaultOceanKoTicket,
   fmtAfs,
   posToAfs,
 } from "@/lib/sim/convergenceMath";
@@ -28,6 +29,7 @@ import {
   type ProveEdgeFormat,
 } from "@/lib/sim/proveEdge";
 import { inferRowFormat } from "@/lib/sim/convergencePolicy";
+import { DEFAULT_OCEAN_RAKE } from "@/lib/sim/gameType";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import type {
@@ -50,6 +52,7 @@ interface Props {
 const FORMATS: { id: ProveEdgeFormat; labelKey: DictKey }[] = [
   { id: "freeze", labelKey: "chart.convergence.format.freeze" },
   { id: "pko", labelKey: "chart.convergence.format.pko" },
+  { id: "ocean-ko", labelKey: "chart.convergence.format.ocean-ko" },
   { id: "mystery", labelKey: "chart.convergence.format.mystery" },
   { id: "mystery-royale", labelKey: "chart.convergence.format.mystery-royale" },
   { id: "exact", labelKey: "chart.convergence.format.exact" },
@@ -149,10 +152,22 @@ export function ProveEdgeCard({
       : dominantScheduleFormat(schedule),
   );
   const [afsPos, setAfsPos] = useState<number>(afsToPos(200));
-  const [rakePct, setRakePct] = useState<number>(10);
+  const [rakePct, setRakePct] = useState<number>(() =>
+    format === "ocean-ko" ? DEFAULT_OCEAN_RAKE * 100 : 10,
+  );
   const [ciPct, setCiPct] = useState<number>(95);
   const [currentRoiPct, setCurrentRoiPct] = useState<number>(10);
   const [showLosing, setShowLosing] = useState<boolean>(false);
+  const [oceanTicketOverride, setOceanTicketOverride] = useState<number | null>(null);
+  const [oceanTicketDraft, setOceanTicketDraft] = useState<string | null>(null);
+  const oceanKoTotalTicket = oceanTicketOverride ?? defaultOceanKoTicket(schedule);
+  const commitOceanTicket = () => {
+    if (oceanTicketDraft !== null) {
+      const n = Number(oceanTicketDraft);
+      if (Number.isFinite(n) && n > 0) setOceanTicketOverride(Math.min(1_000_000, n));
+    }
+    setOceanTicketDraft(null);
+  };
 
   const isMbr = format === "mystery-royale";
   const isExact = format === "exact";
@@ -170,6 +185,7 @@ export function ProveEdgeCard({
         finishModel,
         afs: effectiveAfsSingle,
         rake: rakePct / 100,
+        oceanKoTotalTicket,
         z: ciToZ(ciPct / 100),
         currentRoi: isExact ? 0 : currentRoiPct / 100,
         candidates,
@@ -181,6 +197,7 @@ export function ProveEdgeCard({
       finishModel,
       effectiveAfsSingle,
       rakePct,
+      oceanKoTotalTicket,
       ciPct,
       currentRoiPct,
       candidates,
@@ -189,6 +206,9 @@ export function ProveEdgeCard({
 
   const scheduleEmpty = isExact && (!schedule || schedule.length === 0);
   const outOfBox = result.bandPolicy === "outside-fit-box";
+  const hasOceanKo = format === "ocean-ko" || (
+    isExact && schedule?.some((row) => inferRowFormat(row) === "ocean-ko")
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -230,7 +250,12 @@ export function ProveEdgeCard({
           <button
             key={f.id}
             type="button"
-            onClick={() => setFormat(f.id)}
+            onClick={() => {
+              setFormat(f.id);
+              if (f.id === "ocean-ko" && format !== "ocean-ko") {
+                setRakePct(DEFAULT_OCEAN_RAKE * 100);
+              }
+            }}
             className={`rounded border px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
               format === f.id
                 ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
@@ -372,6 +397,28 @@ export function ProveEdgeCard({
       )}
 
       {/* Schedule mode — show confidence + read-only effective schedule hints. */}
+      {format === "ocean-ko" && (
+        <div className="space-y-1.5 text-[11px] text-[color:var(--color-fg-muted)]">
+          <label className="flex items-center gap-2">
+            <span>{t("oceanKo.totalTicket")}</span>
+            <input
+              type="number"
+              min={0.01}
+              max={1_000_000}
+              step={0.01}
+              value={oceanTicketDraft ?? Number(oceanKoTotalTicket.toFixed(2))}
+              onChange={(e) => setOceanTicketDraft(e.target.value)}
+              onBlur={commitOceanTicket}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              className="number-control w-28 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-1 font-mono text-[color:var(--color-fg)]"
+              aria-label={t("oceanKo.totalTicket")}
+            />
+          </label>
+          <p className="text-[color:var(--color-fg-dim)]">{t("oceanKo.syntheticHint")}</p>
+        </div>
+      )}
       {isExact && (
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
@@ -438,9 +485,11 @@ export function ProveEdgeCard({
       {/* Out-of-fit-box warning */}
       {!scheduleEmpty && outOfBox && (
         <div className="rounded border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-amber-200/95">
-          {isExact
-            ? t("proveEdge.outOfBox.exact")
-            : t("proveEdge.outOfBox.single")}
+          {hasOceanKo
+            ? t("chart.convergence.bandWarning.oceanKo")
+            : isExact
+              ? t("proveEdge.outOfBox.exact")
+              : t("proveEdge.outOfBox.single")}
         </div>
       )}
 
@@ -475,6 +524,11 @@ export function ProveEdgeCard({
       )}
 
       {/* Candidate-ROI table */}
+      {!scheduleEmpty && hasOceanKo && (
+        <div className="text-[11px] font-semibold text-teal-300">
+          {t("chart.convergence.oceanKo.upperBound")}
+        </div>
+      )}
       {!scheduleEmpty && (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[12px] tabular-nums">
@@ -548,9 +602,11 @@ export function ProveEdgeCard({
       )}
 
       <div className="text-[10.5px] leading-relaxed text-[color:var(--color-fg-dim)]">
-        {result.bandPolicy === "numeric"
-          ? t("proveEdge.footnote.banded")
-          : t("proveEdge.footnote.point")}
+        {hasOceanKo
+          ? t("proveEdge.footnote.oceanKo")
+          : result.bandPolicy === "numeric"
+            ? t("proveEdge.footnote.banded")
+            : t("proveEdge.footnote.point")}
       </div>
       {!scheduleEmpty && (
         <div className="text-[10.5px] leading-relaxed text-[color:var(--color-fg-dim)]">

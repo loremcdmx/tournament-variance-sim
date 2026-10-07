@@ -40,4 +40,6 @@ jobs:
         run: npm run lint
 
       - name: Build
-        run: npm run build
+        # Next 16.3.4's Turbopack font resolver fails on the Fraunces query.
+        # Use the same full production bundler verified by local release checks.
+        run: npm run build -- --webpack

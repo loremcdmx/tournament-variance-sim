@@ -28,6 +28,7 @@ import type {
 import { makeHiResGrid } from "./grids";
 import { mulberry32, mixSeed } from "./rng";
 import { poissonPTRS } from "./simNumerics";
+import { createOceanKoScratch, sampleOceanKoBounty } from "./oceanKo";
 import type { SimulationInput } from "./types";
 
 export type ProgressCb = (done: number, total: number) => void;
@@ -96,6 +97,15 @@ export function simulateShard(
   const rowProfits = new Float64Array(shardSize * numRows);
   const rowBountyProfits = new Float64Array(shardSize * numRows);
   const jackpotMask = new Uint8Array(shardSize);
+  let oceanMaxField = 0;
+  for (const entry of compiled.flat) {
+    if (entry.variants) {
+      for (const variant of entry.variants) {
+        if (variant.oceanKo) oceanMaxField = Math.max(oceanMaxField, variant.fieldSize);
+      }
+    } else if (entry.oceanKo) oceanMaxField = Math.max(oceanMaxField, entry.fieldSize);
+  }
+  const oceanScratch = oceanMaxField > 0 ? createOceanKoScratch(oceanMaxField) : null;
   const leaderboardConfig = normalizeBattleRoyaleLeaderboardConfig(
     input.battleRoyaleLeaderboard,
   );
@@ -213,6 +223,9 @@ export function simulateShard(
     // a bounty flag doesn't perturb the finish-sampling stream (otherwise
     // same-seed comparison tests between bounty and non-bounty runs drift).
     const bRng = mulberry32(mixSeed((input.seed ^ 0xb01dface) >>> 0, s));
+    const oceanRng = oceanScratch
+      ? mulberry32(mixSeed((input.seed ^ 0x0cea4b07) >>> 0, s))
+      : null;
     const leaderboardRng = leaderboardActive
       ? mulberry32(mixSeed((input.seed ^ 0x1eadeb0b) >>> 0, s))
       : null;
@@ -374,7 +387,10 @@ export function simulateShard(
         const place = r0 - i0 < aliasProb[i0] ? i0 : aliasIdx[i0];
         leaderboardPlace = place;
         let bountyDraw = 0;
-        if (bp !== null) {
+        if (t.oceanKo && oceanScratch && oceanRng) {
+          bountyDraw = sampleOceanKoBounty(t.oceanKo, place, oceanRng, oceanScratch);
+          if (oceanScratch.jackpot) jackpotMask[localS] = 1;
+        } else if (bp !== null) {
           const mean = bp[place];
           if (mean > 0 && bkm !== null) {
             const lam = bkm[place];
