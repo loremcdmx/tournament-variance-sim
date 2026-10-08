@@ -320,7 +320,9 @@ presentation misleading. Do not undo these without re-measuring:
   (arcsine law: 0.975-1.000 of the distance at 1k, 5k and 20k entries). Advice to
   "extend the horizon" is wrong for it; the card shows the median, and tables
   print "≈ full distance" from 97% of the distance. The spell below the previous
-  peak is different: its P95 still grows with the horizon at long distances.
+  peak is different: at 1k entries its P95 is also about the whole distance
+  (0.97-1.00 in all four formats), but its share of the distance falls to about
+  0.7-0.96 at 5k and 0.33-0.69 at 20k, so a longer horizon does show more there.
 - Ratios between formats carry Monte Carlo noise in the second digit and change
   with the distance (Ocean / PKO drawdown P95 1.2 / 1.4 / 1.5x at 1k / 5k / 20k).
   Show one digit.
