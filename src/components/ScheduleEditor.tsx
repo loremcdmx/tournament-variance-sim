@@ -75,6 +75,7 @@ export function parseBuyIn(
     return { buyIn: net, rake };
   }
   if (gameType === "ocean-ko") return oceanKoRowFromTotalTicket(net);
+  if (gameType === "mystery-royale") return battleRoyaleRowFromTotalTicket(net);
   return { buyIn: net, rake: currentRake };
 }
 
@@ -1812,7 +1813,7 @@ function BuyInInput({
   const parsed = parseBuyIn(local, rake, gameType);
   const invalid = local.trim() !== "" && parsed === null;
   const snapSuggestion =
-    gameType === "mystery-royale"
+    gameType === "mystery-royale" || gameType === "ocean-ko"
       ? null
       : suggestStandardBuyInFromBrCarryover(buyIn, rake);
   const snapLabel = snapSuggestion

@@ -112,10 +112,17 @@ describe("parseBuyIn", () => {
     });
 
     it("leaves the other formats on the net-buy-in reading", () => {
-      for (const gt of ["freezeout", "pko", "mystery", "mystery-royale"] as const) {
+      for (const gt of ["freezeout", "pko", "mystery"] as const) {
         expect(parseBuyIn("100", 0.1, gt)).toEqual({ buyIn: 100, rake: 0.1 });
       }
       expect(parseBuyIn("100", 0.1)).toEqual({ buyIn: 100, rake: 0.1 });
+    });
+
+    it("reads a single Battle Royale number as the full lobby ticket too", () => {
+      const p = parseBuyIn("10", 0.1, "mystery-royale")!;
+      expect(ticketOf(p)).toBeCloseTo(10, 10);
+      expect(p.buyIn).toBeCloseTo(9.2, 10);
+      expect(parseBuyIn("9.2+0.8", 0.1, "mystery-royale")).toEqual({ buyIn: 9.2, rake: 0.8 / 9.2 });
     });
   });
 });

@@ -82,7 +82,7 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
     const sigmaError = sigmaRelativeError(r.stats);
     return {
       heavyTail,
-      sdError: heavyTail && sigmaError != null ? formatSigmaError(sigmaError) : "",
+      sdError: heavyTail && sigmaError != null ? formatSigmaError(sigmaError, numberLocaleTag(locale)) : "",
       N,
       cost,
       evMath,

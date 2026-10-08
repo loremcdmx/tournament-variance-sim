@@ -27,6 +27,7 @@ describe("σ error readout", () => {
 
   it("prints one decimal under 10% and whole percents above", () => {
     expect(formatSigmaError(0.0432)).toBe("±4.3%");
+    expect(formatSigmaError(0.0432, "ru-RU")).toBe("±4,3%");
     expect(formatSigmaError(0.124)).toBe("±12%");
     expect(formatSigmaError(0.5)).toBe("±50%");
   });

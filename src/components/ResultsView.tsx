@@ -500,11 +500,11 @@ function ResultsViewImpl({
       : undefined;
   const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
   const roi = totalMean / displayResultStats.totalBuyIn;
-  // A fixed-shape skill model never reads the ROI typed into the rows, so say
-  // which ROI the expected profit really stands for.
+  // A fixed-shape skill model or a pinned α never reads the ROI typed into the
+  // rows, so say which ROI the expected profit really stands for.
   const fixedShapeRoiNote =
-    finishModelId != null &&
-    !finishModelSupportsTargetRoi(finishModelId) &&
+    ((finishModelId != null && !finishModelSupportsTargetRoi(finishModelId)) ||
+      settings?.alphaOverride != null) &&
     displayResultStats.totalBuyIn > 0
       ? t("stat.expectedProfit.fixedShape").replace(
           "{roi}",

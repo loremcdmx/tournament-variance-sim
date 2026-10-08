@@ -187,6 +187,7 @@ export function AdvancedStatsCard({
   bankroll: number;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const s = result.stats;
   const notPlus = t("advStats.na.negEv");
   const kellyDefined = s.kellyFraction > 0 && Number.isFinite(s.kellyBankroll);
@@ -204,7 +205,7 @@ export function AdvancedStatsCard({
       unit: t("advStats.unit.sigma"),
       value:
         sigmaError != null && heavyTail
-          ? `${money(s.stdDev)} ${formatSigmaError(sigmaError)}`
+          ? `${money(s.stdDev)} ${formatSigmaError(sigmaError, numberLocaleTag(locale))}`
           : money(s.stdDev),
       tip: t("stat.sigma.tip"),
     },

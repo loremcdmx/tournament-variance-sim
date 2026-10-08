@@ -30,7 +30,8 @@ export function sigmaRelativeError(
 }
 
 /** "±12%" for a fraction; one decimal below 10%, none above. */
-export function formatSigmaError(relative: number): string {
+export function formatSigmaError(relative: number, locale: Intl.LocalesArgument = "en-US"): string {
   const pct = relative * 100;
-  return `±${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%`;
+  const digits = pct < 10 ? 1 : 0;
+  return `±${pct.toLocaleString(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
 }

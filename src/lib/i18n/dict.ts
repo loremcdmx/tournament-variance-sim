@@ -903,8 +903,8 @@ export const DICT = {
     ru: "разброс: {min} → {max}",
   },
   "stat.expectedProfit.fixedShape": {
-    en: "The skill model is a fixed shape and ignores the ROI typed into the rows, so this figure comes from the shape itself: expected ROI {roi}.",
-    ru: "Модель скилла — фиксированная форма и не использует ROI из строк, поэтому эта цифра берётся из самой формы: ожидаемый ROI {roi}.",
+    en: "The finish shape is fixed (a fixed-shape model or a pinned α) and does not follow the ROI typed into the rows, so this figure comes from the shape itself: expected ROI {roi}. In rows with bounties the bounty share still closes the gap to the typed ROI.",
+    ru: "Форма мест фиксирована (модель с готовой формой или закреплённая α) и не подстраивается под ROI из строк, поэтому эта цифра берётся из самой формы: ожидаемый ROI {roi}. В строках с баунти разницу до введённого ROI по-прежнему закрывает баунти.",
   },
   "stat.range.spread": { en: "Range", ru: "Разброс" },
   "stat.range.from": { en: "From", ru: "От" },
@@ -1084,8 +1084,8 @@ export const DICT = {
   "stat.sigma": { en: "Profit σ", ru: "σ профита" },
   "advStats.unit.sigma": { en: "$, per full distance", ru: "$, на всю дистанцию" },
   "stat.sigma.tip": {
-    en: "Standard deviation of final profit over one full simulated distance. On a heavy tail the ± after it is one standard error of this σ, computed from the kurtosis of the simulated profits, so it stays honest when a few rare big scores carry the variance. The normal-theory formula understates that error many times over on jackpot formats (Ocean KO, Mystery, Battle Royale).",
-    ru: "Стандартное отклонение итогового профита за одну полную симулированную дистанцию. При тяжёлом хвосте рядом стоит ± — одна стандартная ошибка самой σ, посчитанная по куртозису симулированных профитов: она остаётся честной, когда дисперсию задают несколько редких крупных заносов. Формула для нормального распределения занижает эту ошибку в разы на форматах с джекпотами (Ocean KO, Mystery, Battle Royale).",
+    en: "Standard deviation of final profit over one full simulated distance. On a heavy tail the ± after it is one standard error of this σ, computed from the kurtosis of the simulated profits: an order of magnitude, since that kurtosis is itself noisy when a few rare big scores carry the variance. The normal-theory formula understates that error many times over on jackpot formats (Ocean KO, Mystery, Battle Royale).",
+    ru: "Стандартное отклонение итогового профита за одну полную симулированную дистанцию. При тяжёлом хвосте рядом стоит ± — одна стандартная ошибка самой σ, посчитанная по куртозису симулированных профитов. Это порядок величины: когда дисперсию задают несколько редких крупных заносов, сам куртозис шумный. Формула для нормального распределения занижает эту ошибку в разы на форматах с джекпотами (Ocean KO, Mystery, Battle Royale).",
   },
   "advStats.heavyTail.badge": {
     en: "unstable · heavy tail",
@@ -2334,8 +2334,8 @@ export const DICT = {
     ru: "AFS — среднее поле (average field size): сколько игроков заявлено. Задаёт места (1..N) для финиш-модели и масштабирует призовой.",
   },
   "help.row.buyIn": {
-    en: "Buy-in in poker format. \"50+5\" = $50 buy-in + $5 rake (before \"+\" goes to pool, after is the room's fee). Just \"50\" keeps the current rake. For Ocean KO a single number is the full ticket as the lobby lists it: \"100\" = $92 prizes + $8 fee. Real entry cost = buyIn + rake. Note on convention: the rake % we show is fee ÷ net buy-in, not fee ÷ total ticket. Entering \"9.20+0.80\" displays as 8.7% rake ($0.80 ÷ $9.20) even though your room calls the same fee 8% of the $10 ticket — same dollars, different denominator.",
-    ru: "Бай-ин в покерном формате. «50+5» = $50 бай-ин + $5 рейк (до «+» идёт в призовой, после — комиссия рума). Просто «50» оставляет текущий рейк. В Ocean KO одно число — полный билет, как в лобби: «100» = $92 призовых + $8 рейка. Реальная цена входа = buyIn + rake. О конвенции: рейк в % считается от чистого бай-ина, а не от полного тикета. «9.20+0.80» показывается как 8.7% рейк ($0.80 ÷ $9.20), хотя в руме ту же сумму называют 8% от $10 тикета — сумма та же, знаменатель другой.",
+    en: "Buy-in in poker format. \"50+5\" = $50 buy-in + $5 rake (before \"+\" goes to pool, after is the room's fee). Just \"50\" keeps the current rake. For Ocean KO and GG Battle Royale a single number is the full ticket as the lobby lists it: \"100\" = $92 prizes + $8 fee. Real entry cost = buyIn + rake. Note on convention: the rake % we show is fee ÷ net buy-in, not fee ÷ total ticket. Entering \"9.20+0.80\" displays as 8.7% rake ($0.80 ÷ $9.20) even though your room calls the same fee 8% of the $10 ticket — same dollars, different denominator.",
+    ru: "Бай-ин в покерном формате. «50+5» = $50 бай-ин + $5 рейк (до «+» идёт в призовой, после — комиссия рума). Просто «50» оставляет текущий рейк. В Ocean KO и GG Battle Royale одно число — полный билет, как в лобби: «100» = $92 призовых + $8 рейка. Реальная цена входа = buyIn + rake. О конвенции: рейк в % считается от чистого бай-ина, а не от полного тикета. «9.20+0.80» показывается как 8.7% рейк ($0.80 ÷ $9.20), хотя в руме ту же сумму называют 8% от $10 тикета — сумма та же, знаменатель другой.",
   },
   "help.row.roi": {
     en: "Target poker ROI before global rakeback, as a % of full ticket cost: profit ÷ (buy-in × (1+rake)). Global rakeback is added separately as a deterministic shift. For Battle Royale rows only, the small RB helper converts a reported ROI with rakeback into this pre-rakeback field.",

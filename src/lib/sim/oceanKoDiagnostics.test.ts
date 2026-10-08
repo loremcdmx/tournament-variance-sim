@@ -53,7 +53,7 @@ describe("Ocean schedule diagnostic upper bound", () => {
     const result = runSimulation(args);
     expect(result.stats.sigmaPerTournamentAnalytic).toBeCloseTo(Math.sqrt(expectedVariance), 8);
     expect(result.stats.sigmaPerTournamentAnalytic).toBeGreaterThan(
-      oceanOnly.stats.sigmaPerTournamentAnalytic * 1.5,
+      oceanOnly.stats.sigmaPerTournamentAnalytic * 5,
     );
     expect(result.stats.sigmaPerTournamentAnalyticKind).toBe("upper-bound");
   });
