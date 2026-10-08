@@ -103,6 +103,8 @@ export interface FormatComparisonSummary {
   everBelowEvProbability: ProbabilityEstimate;
   drawdownRisks: ThresholdRisk[];
   evShortfallRisks: ThresholdRisk[];
+  drawdownRiskCurve: ThresholdRisk[];
+  evShortfallRiskCurve: ThresholdRisk[];
   /** Existing engine definition: trough to first strictly higher profit peak. */
   recovery: {
     recoveredSamples: number;
@@ -110,8 +112,8 @@ export interface FormatComparisonSummary {
     recoveredOnly: DistributionSummary | null;
     unrecoveredProbability: ProbabilityEstimate;
   };
-  /** Pointwise endpoint quantiles, not simultaneous trajectory bands. */
-  downsideCurve: { entries: number; evBI: number; p05BI: number; medianBI: number }[];
+  /** All-sample endpoint extrema and quantiles; adjacent points may belong to different paths. */
+  downsideCurve: { entries: number; evBI: number; minBI: number; p05BI: number; medianBI: number; p95BI: number; maxBI: number }[];
   moments: FormatComparisonMomentRow;
 }
 
@@ -272,12 +274,15 @@ export function estimateProbability(count: number, samples: number): Probability
 }
 
 const RISK_THRESHOLDS_BI = [50, 100, 250, 500, 1000];
+const RISK_CURVE_THRESHOLDS_BI = Array.from({ length: 101 }, (_, i) => i * 10);
 
-function thresholdRisks(values: ArrayLike<number>, ticket: number): ThresholdRisk[] {
-  return RISK_THRESHOLDS_BI.map((thresholdBI) => {
-    let count = 0;
-    for (let i = 0; i < values.length; i++) if (values[i] >= thresholdBI * ticket) count++;
-    return { thresholdBI, probability: estimateProbability(count, values.length) };
+function thresholdRiskCurve(values: ArrayLike<number>, ticket: number): ThresholdRisk[] {
+  const sorted = Float64Array.from(values).sort();
+  let below = 0;
+  return RISK_CURVE_THRESHOLDS_BI.map((thresholdBI) => {
+    const threshold = thresholdBI * ticket;
+    while (below < sorted.length && sorted[below] < threshold) below++;
+    return { thresholdBI, probability: estimateProbability(sorted.length - below, sorted.length) };
   });
 }
 
@@ -294,6 +299,8 @@ export function summarizeFormatComparisonScenario(
     throw new Error("format comparison: a homogeneous collected downside shard is required");
   }
   const ticket = compiled.flat[0].singleCost;
+  const drawdownRiskCurve = thresholdRiskCurve(shard.maxDrawdowns, ticket);
+  const evShortfallRiskCurve = thresholdRiskCurve(collected.maxEvShortfall, ticket);
   const moments = momentRow(scenario, compiled.flat[0]);
   const expectedProfit = (compiled.flat[0].analyticMeanSingle - ticket) * distance;
   const shortfalls = new Float64Array(samples);
@@ -313,15 +320,18 @@ export function summarizeFormatComparisonScenario(
   }
   const curve: FormatComparisonSummary["downsideCurve"] = [];
   const column = new Float64Array(samples);
-  const stride = Math.max(1, Math.ceil(grid.K / 50));
-  for (let j = 0; j <= grid.K; j++) {
-    if (j !== grid.K && j % stride !== 0) continue;
+  const checkpoints = Math.min(grid.K, 200);
+  for (let point = 0; point <= checkpoints; point++) {
+    const j = Math.round(point * grid.K / checkpoints);
     for (let s = 0; s < samples; s++) column[s] = shard.pathMatrix[s * (grid.K + 1) + j];
     column.sort();
     curve.push({
       entries: grid.checkpointIdx[j], evBI: expectedProfit / ticket * grid.checkpointIdx[j] / distance,
+      minBI: column[0] / ticket,
       p05BI: column[Math.floor(0.05 * (samples - 1))] / ticket,
       medianBI: column[Math.floor(0.5 * (samples - 1))] / ticket,
+      p95BI: column[Math.floor(0.95 * (samples - 1))] / ticket,
+      maxBI: column[samples - 1] / ticket,
     });
   }
   return {
@@ -340,8 +350,9 @@ export function summarizeFormatComparisonScenario(
     finalLossProbability: estimateProbability(losses, samples),
     finalBelowEvProbability: estimateProbability(belowEv, samples),
     everBelowEvProbability: estimateProbability(everBelowEv, samples),
-    drawdownRisks: thresholdRisks(shard.maxDrawdowns, ticket),
-    evShortfallRisks: thresholdRisks(collected.maxEvShortfall, ticket),
+    drawdownRisks: drawdownRiskCurve.filter(point => RISK_THRESHOLDS_BI.includes(point.thresholdBI)),
+    evShortfallRisks: evShortfallRiskCurve.filter(point => RISK_THRESHOLDS_BI.includes(point.thresholdBI)),
+    drawdownRiskCurve, evShortfallRiskCurve,
     recovery: {
       recoveredSamples: recovered.length, noDrawdownSamples,
       recoveredOnly: recovered.length ? summarizeDistribution(recovered) : null,

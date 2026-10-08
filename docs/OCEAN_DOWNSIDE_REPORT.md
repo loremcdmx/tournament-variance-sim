@@ -2,6 +2,8 @@
 
 The second MTT tab compares the mechanical engine's downside paths. The first tab remains the full mechanical calculator. The report runs only on request, uses one cancellable worker and reports the configuration actually executed, including seed, number of careers and number of entries per career.
 
+The primary form contains ticket, field, ROI and horizon, with horizon presets. Sample count, seed and Mystery spread remain in the accuracy disclosure. Results show their own scenario snapshot and warn when the draft changes. On narrow screens, depth and duration tables switch between below-peak and below-EV metrics. Recovery, Battle Royale and model diagnostics remain available in disclosures.
+
 ## What is compared
 
 Freezeout, PKO, Mystery and Ocean KO use the same full ticket, field, target ROI, horizon and sample count. The controlled presets use an 8% fee; cash/bounty allocations and native payout shapes remain format-specific and are shown in the report. Equal ROI is a counterfactual comparison, not a claim that one player's skill earns equal ROI in every format. PKO uses head variance 0.4 and no heat; the Mystery log-variance parameter is configurable. No leaderboard, rakeback, re-entry, tilt or changing skill is added.
@@ -28,7 +30,11 @@ Recovery reuses the engine's existing definition: from the trough of the deepest
 
 Probability estimates include Wilson 95% intervals for Monte Carlo sampling uncertainty, conditional on the model. They do not include model error or uncertainty in a player's ROI. An observed zero count still has a positive upper bound. P99 and the largest observed drawdown are particularly unstable with a small sample; the maximum is not a worst-case guarantee.
 
-The lower trajectory graph uses pointwise P05 and median profit at selected endpoints. P05 is not an actual career or a band containing 95% of entire careers. Exact path maxima are reported separately. Independent simulated entries with a fixed player model do not establish serial independence of real tournament results.
+The lower trajectory graph uses pointwise P05 profit minus EV at selected endpoints. P05 is not an actual career or a band containing 95% of entire careers. Exact path maxima are reported separately. Independent simulated entries with a fixed player model do not establish serial independence of real tournament results.
+
+The aggregate best/worst comparison uses pointwise minimum and maximum profit across **all** simulated careers. Up to 201 actual engine checkpoints are retained, including both endpoints; no synthetic interpolation is used to create observations. The two panes have separate vertical scales so rare jackpots do not compress the downside. Profit/EV-deviation controls, format toggles and a shared checkpoint selector expose the exact values. These envelopes combine different careers and become more extreme as the sample size grows; neither is an actual path or a guaranteed bound.
+
+Threshold-risk curves count each career's exact maximum against 101 thresholds from 0 to 1000 BI in steps of 10. Each point uses `maximum >= threshold`; lines simply join observed probabilities. The default display ends one real point after **every** shown format reaches 0.5% or less. If that never happens, it retains the full range. A full-tail checkbox restores 1000 BI, and the data table always retains all 101 points and their Wilson intervals. This display cutoff does not remove outcomes, cap payouts or change probabilities.
 
 Analytic standard deviation is supplementary. Ocean's lower/upper variance bounds are model bounds, not a fitted point estimate or confidence interval. Variance ratios describe final-profit variance or mean-estimation precision under independence; they are not ratios of drawdown depth or streak duration.
 

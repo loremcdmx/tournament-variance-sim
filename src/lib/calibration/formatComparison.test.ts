@@ -124,10 +124,78 @@ describe("downside summary distinguishes EV shortfall from losing money", () => 
     expect(() => estimateProbability(2, 1)).toThrow();
   });
 
+  it("counts 101 genuine risk thresholds including ties, preserving the original reference thresholds", () => {
+    const scenario = buildFormatComparisonScenarios({ ...FORMAT_COMPARISON_DEFAULTS, ticket: 37, players: 18, distance: 100 })[0];
+    const input = { ...scenario.input, samples: 8 };
+    const compiled = compileSchedule(input);
+    const ticket = compiled.flat[0].singleCost;
+    const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+    const shard = simulateShard(input, compiled, 0, input.samples, grid);
+    const drawdowns = [0, 9.99, 10, 49.99, 50, 250, 1000, 1300];
+    const shortfalls = [0, 20, 20, 99.99, 100, 500, 999.99, 1000];
+    shard.maxDrawdowns.set(drawdowns.map(value => value * ticket));
+    shard.downsideReport!.maxEvShortfall.set(shortfalls.map(value => value * ticket));
+    const before = Array.from(shard.maxDrawdowns);
+    const report = summarizeFormatComparisonScenario(scenario, compiled, shard, grid);
+    for (const [curve, reference, values] of [
+      [report.drawdownRiskCurve, report.drawdownRisks, shard.maxDrawdowns],
+      [report.evShortfallRiskCurve, report.evShortfallRisks, shard.downsideReport!.maxEvShortfall],
+    ] as const) {
+      expect(curve).toHaveLength(101);
+      expect(curve[0].thresholdBI).toBe(0);
+      expect(curve[0].probability.value).toBe(1);
+      expect(curve.at(-1)!.thresholdBI).toBe(1000);
+      for (let i = 0; i < curve.length; i++) {
+        const point = curve[i];
+        const count = Array.from(values).filter(value => value >= point.thresholdBI * ticket).length;
+        expect(point.probability).toEqual(estimateProbability(count, input.samples));
+        if (i > 0) {
+          expect(point.thresholdBI - curve[i - 1].thresholdBI).toBe(10);
+          expect(point.probability.value).toBeLessThanOrEqual(curve[i - 1].probability.value);
+        }
+      }
+      expect(reference.map(point => point.thresholdBI)).toEqual([50, 100, 250, 500, 1000]);
+      for (const point of reference) expect(point).toEqual(curve.find(item => item.thresholdBI === point.thresholdBI));
+    }
+    expect(report.drawdownRiskCurve[1].probability.count).toBe(6);
+    expect(report.drawdownRiskCurve.at(-1)!.probability.count).toBe(2);
+    expect(Array.from(shard.maxDrawdowns)).toEqual(before);
+  });
+
   it("uses the engine's empirical order-statistic convention, without interpolation or outcome normality", () => {
     expect(summarizeDistribution([9, 0, 2, 1])).toEqual({ mean: 3, median: 1, p90: 2, p95: 2, p99: 2, max: 9 });
     expect(() => summarizeDistribution([])).toThrow();
     expect(() => summarizeDistribution([NaN])).toThrow();
+  });
+
+  it("keeps 201 real checkpoints and exact all-sample extrema and quantiles, including the final checkpoint", () => {
+    const scenario = buildFormatComparisonScenarios({ ...FORMAT_COMPARISON_DEFAULTS, ticket: 37, players: 18, distance: 503 })[0];
+    const input = { ...scenario.input, samples: 8 };
+    const compiled = compileSchedule(input);
+    const ticket = compiled.flat[0].singleCost;
+    const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+    const shard = simulateShard(input, compiled, 0, input.samples, grid);
+    for (let s = 0; s < input.samples; s++) for (let j = 0; j <= grid.K; j++) {
+      shard.pathMatrix[s * (grid.K + 1) + j] = (((s + j) % input.samples) ** 2 - 9) * j * ticket;
+    }
+    const original = Array.from(shard.pathMatrix);
+    const report = summarizeFormatComparisonScenario(scenario, compiled, shard, grid);
+    expect(report.downsideCurve).toHaveLength(201);
+    expect(report.downsideCurve[0].entries).toBe(0);
+    expect(report.downsideCurve.at(-1)!.entries).toBe(503);
+    for (const point of report.downsideCurve) {
+      const j = Array.from(grid.checkpointIdx).indexOf(point.entries);
+      expect(j).toBeGreaterThanOrEqual(0);
+      const values = Array.from({ length: input.samples }, (_, s) => shard.pathMatrix[s * (grid.K + 1) + j]).sort((a, b) => a - b);
+      expect(point.minBI).toBe(values[0] / ticket);
+      expect(point.p05BI).toBe(values[Math.floor(0.05 * (input.samples - 1))] / ticket);
+      expect(point.medianBI).toBe(values[Math.floor(0.5 * (input.samples - 1))] / ticket);
+      expect(point.p95BI).toBe(values[Math.floor(0.95 * (input.samples - 1))] / ticket);
+      expect(point.maxBI).toBe(values.at(-1)! / ticket);
+      expect(point.evBI).toBeCloseTo(report.expectedProfitBI * point.entries / report.distance, 12);
+    }
+    expect(report.downsideCurve.at(-1)!.maxBI).toBeGreaterThan(report.downsideCurve.at(-1)!.p95BI);
+    expect(Array.from(shard.pathMatrix)).toEqual(original);
   });
 });
 
