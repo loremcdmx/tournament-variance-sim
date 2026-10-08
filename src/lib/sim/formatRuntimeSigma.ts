@@ -7,25 +7,33 @@
  * engine's own analytic twin. No closed-form surface sits between the card
  * and the engine, so a card and a schedule row cannot disagree.
  *
- * Bands are a separate matter: the residual constants and the fit-box gating
- * stay with the callers and describe how far this point can drift from a
- * Monte-Carlo run, not where the point itself comes from.
+ * The band around the point is a separate matter: `runtimeSigmaBandResid` is
+ * how far this analytic σ sat from the engine's own Monte-Carlo σ over the grid
+ * in `runtimeSigmaBands.ts`. The chips, the prove-edge card and schedule mode
+ * all read that one number, and the gate that hides the band outside the grid
+ * is `isInsideFitBox`.
  */
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 import {
   buildExactBreakdown,
-  SIGMA_ROI_MYSTERY_RUNTIME_RESID,
   type ConvergenceFormat,
   type MixTuple,
   type SigmaBand,
 } from "./convergenceMath";
-import { SIGMA_ROI_MYSTERY_ROYALE, SIGMA_ROI_PKO } from "./convergenceFit";
 import type { ConvergenceRowFormat } from "./convergencePolicy";
 import { applyGameType, BATTLE_ROYALE_PLAYERS } from "./gameType";
-import { applyItmTarget, type ItmTargetConfig } from "./itmTarget";
+import {
+  applyItmTarget,
+  resolveItmTarget,
+  type ItmTargetConfig,
+} from "./itmTarget";
+import {
+  runtimeSigmaBandResid,
+  type RuntimeSigmaFormat,
+} from "./runtimeSigmaBands";
 import type { FinishModelConfig, GameType, TournamentRow } from "./types";
 
-export type RuntimeSigmaFormat = Exclude<ConvergenceRowFormat, "ocean-ko">;
+export { runtimeSigmaBandResid, type RuntimeSigmaFormat };
 
 /** Battle Royale is a fixed 18-max sit-and-go; the lobby never changes. */
 export const RUNTIME_SIGMA_BR_FIELD = BATTLE_ROYALE_PLAYERS;
@@ -37,9 +45,6 @@ const NEUTRAL_BUY_IN = 10;
 
 /** Run-path default: the global ITM target is off, rows take the paid share. */
 const DEFAULT_ITM_TARGET: ItmTargetConfig = { enabled: false, pct: 0 };
-
-/** The synthetic freeze band predates the runtime point and stays as it was. */
-const FREEZE_RUNTIME_RESID = 0.5;
 
 const GAME_TYPE_BY_FORMAT: Record<RuntimeSigmaFormat, GameType> = {
   freeze: "freezeout",
@@ -101,9 +106,10 @@ const sigmaCache = new Map<string, number | null>();
 
 function cacheKey(format: RuntimeSigmaFormat, point: RuntimeSigmaPoint): string {
   const afs = format === "mystery-royale" ? RUNTIME_SIGMA_BR_FIELD : point.afs;
-  const itm = point.itmTarget
-    ? `${point.itmTarget.enabled ? 1 : 0}:${point.itmTarget.pct}`
-    : "";
+  // The resolved target, so an off switch and an absent target share an entry.
+  const itm = String(
+    point.itmTarget ? (resolveItmTarget(point.itmTarget) ?? "") : "",
+  );
   const model = point.finishModel ? JSON.stringify(point.finishModel) : "";
   return `${format}|${afs}|${point.roi}|${point.rake}|${itm}|${model}`;
 }
@@ -145,20 +151,6 @@ export function formatRuntimeSigma(
   }
   sigmaCache.set(key, sigma);
   return sigma;
-}
-
-/** Residual half-width of the chip's numeric band around the runtime point. */
-export function runtimeSigmaBandResid(format: RuntimeSigmaFormat): number {
-  switch (format) {
-    case "freeze":
-      return FREEZE_RUNTIME_RESID;
-    case "pko":
-      return SIGMA_ROI_PKO.resid;
-    case "mystery":
-      return SIGMA_ROI_MYSTERY_RUNTIME_RESID;
-    case "mystery-royale":
-      return SIGMA_ROI_MYSTERY_ROYALE.resid;
-  }
 }
 
 export function formatRuntimeSigmaBand(

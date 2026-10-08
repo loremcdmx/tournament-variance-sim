@@ -13,9 +13,9 @@ import {
   isRoiControlActive,
   posToAfs,
   roiControlBoundsForFormat,
-  SIGMA_ROI_MYSTERY_RUNTIME_RESID,
   type MixTuple,
 } from "./convergenceMath";
+import { runtimeSigmaBandResid } from "./runtimeSigmaBands";
 import { SIGMA_ROI_MYSTERY_ROYALE, sigmaRoiForRow } from "./convergenceFit";
 import { applyGameType } from "./gameType";
 
@@ -311,7 +311,7 @@ describe("convergence math", () => {
       Math.abs(fitSigma - runtime!.sigmaEff) / runtime!.sigmaEff,
     ).toBeLessThanOrEqual(SIGMA_ROI_MYSTERY_ROYALE.resid);
 
-    const resid = SIGMA_ROI_MYSTERY_ROYALE.resid;
+    const resid = runtimeSigmaBandResid("mystery-royale");
     const runtimeRows = computeConvergenceRows({
       afs: 18,
       z: z95,
@@ -358,7 +358,7 @@ describe("convergence math", () => {
     });
     expect(runtime).not.toBeNull();
 
-    const resid = SIGMA_ROI_MYSTERY_RUNTIME_RESID;
+    const resid = runtimeSigmaBandResid("mystery");
     const runtimeRows = computeConvergenceRows({
       afs: row.players,
       z: z95,

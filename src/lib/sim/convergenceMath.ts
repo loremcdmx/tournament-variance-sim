@@ -1,14 +1,13 @@
 import {
   evalSigma,
   FIT_RAKE_BY_FORMAT,
-  SIGMA_COEF_BY_FORMAT,
   SIGMA_ROI_FREEZE,
   SIGMA_ROI_MYSTERY,
-  SIGMA_ROI_MYSTERY_RUNTIME_RESID,
   SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
   type SigmaCoef,
 } from "./convergenceFit";
+import { runtimeSigmaBandResid } from "./runtimeSigmaBands";
 import { buildScheduleAnalyticBreakdown } from "./compile";
 import { applyGameType } from "./gameType";
 import {
@@ -28,7 +27,6 @@ export {
   FIT_RAKE_BY_FORMAT,
   SIGMA_ROI_FREEZE,
   SIGMA_ROI_MYSTERY,
-  SIGMA_ROI_MYSTERY_RUNTIME_RESID,
   SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
 };
@@ -240,12 +238,13 @@ export function buildExactBreakdown(
           0,
         )
       : 0;
-  // Schedule-mode residual band: gate on every row sitting inside its
-  // format's validated fit-box, then take the variance-share-weighted
-  // average of per-format residuals. Single-format mode is already a
-  // 1-row case of this formula (varShare = 1 → weightedResid = resid_fmt).
-  // If any row is outside its box the schedule estimate stays point-only,
-  // matching the single-format `outside-fit-box` policy.
+  // Schedule-mode band: gate on every row sitting inside the grid its
+  // format's band was calibrated on, then take the variance-share-weighted
+  // average of the per-format residuals the chips and the prove-edge card
+  // use (`runtimeSigmaBandResid`). Single-format mode is the 1-row case of
+  // this formula (varShare = 1 → weightedResid = resid_fmt). If any row is
+  // outside its box the schedule estimate stays point-only, matching the
+  // single-format `outside-fit-box` policy.
   const allInsideBox = perRowWithoutShare.every((r) =>
     isInsideFitBox({ format: r.format, field: r.afs, fieldMin: r.fieldMin, fieldMax: r.fieldMax, roi: r.roi }),
   );
@@ -256,7 +255,7 @@ export function buildExactBreakdown(
   const weightedResid = allInsideBox
     ? perRowWithShare.reduce(
         (acc, r) => acc + r.varShare * (
-          r.format === "ocean-ko" ? 0 : SIGMA_COEF_BY_FORMAT[r.format].resid
+          r.format === "ocean-ko" ? 0 : runtimeSigmaBandResid(r.format)
         ),
         0,
       )
@@ -265,7 +264,7 @@ export function buildExactBreakdown(
   // reflect the same band the total uses, and to sigmaEff.
   const decoratedPerRow = perRowWithShare.map((r) => {
     const rResid = allInsideBox && r.format !== "ocean-ko"
-      ? SIGMA_COEF_BY_FORMAT[r.format].resid
+      ? runtimeSigmaBandResid(r.format)
       : 0;
     return {
       ...r,

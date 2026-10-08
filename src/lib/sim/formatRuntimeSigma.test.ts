@@ -6,17 +6,19 @@ import {
   computeConvergenceRows,
   type MixTuple,
 } from "./convergenceMath";
-import { SIGMA_ROI_MYSTERY_ROYALE, SIGMA_ROI_PKO } from "./convergenceFit";
 import {
   buildFormatRuntimeRow,
   buildRuntimeSigmaOverrides,
   formatRuntimeSigma,
+  formatRuntimeSigmaBand,
+  hasFormatRuntimeSigma,
   runtimeSigmaBandResid,
   type RuntimeSigmaFormat,
 } from "./formatRuntimeSigma";
 import { applyGameType } from "./gameType";
-import { applyItmTarget } from "./itmTarget";
-import { computeProveEdge } from "./proveEdge";
+import { applyItmTarget, type ItmTargetConfig } from "./itmTarget";
+import { computeProveEdge, proveEdgeRuntimeSigmaPoints } from "./proveEdge";
+import { RUNTIME_SIGMA_BANDS } from "./runtimeSigmaBands";
 import type { GameType, TournamentRow } from "./types";
 
 const z95 = ciToZ(0.95);
@@ -39,6 +41,7 @@ function editorRow(
   afs: number,
   roi: number,
   rake: number,
+  itmTarget: ItmTargetConfig = { enabled: false, pct: 0 },
 ): TournamentRow {
   const isBr = format === "mystery-royale";
   const fresh: TournamentRow = {
@@ -59,7 +62,7 @@ function editorRow(
     roi,
     buyIn: fresh.buyIn,
   };
-  return applyItmTarget([picked], { enabled: false, pct: 0 })[0];
+  return applyItmTarget([picked], itmTarget)[0];
 }
 
 function mixFor(format: RuntimeSigmaFormat): MixTuple {
@@ -228,19 +231,208 @@ describe("buildRuntimeSigmaOverrides", () => {
     expect(buildRuntimeSigmaOverrides({ format: "ocean-ko", mix: [1, 0, 0], point })).toBeUndefined();
   });
 
-  it("bands keep their residual constants around the runtime point", () => {
-    expect(runtimeSigmaBandResid("freeze")).toBe(0.5);
-    expect(runtimeSigmaBandResid("pko")).toBe(SIGMA_ROI_PKO.resid);
-    expect(runtimeSigmaBandResid("mystery")).toBe(0.03);
-    expect(runtimeSigmaBandResid("mystery-royale")).toBe(SIGMA_ROI_MYSTERY_ROYALE.resid);
-    const band = buildRuntimeSigmaOverrides({ format: "pko", mix: [0, 1, 0], point })!.pko!;
-    expect(band.lo).toBeCloseTo(band.s * (1 - SIGMA_ROI_PKO.resid), 12);
-    expect(band.hi).toBeCloseTo(band.s * (1 + SIGMA_ROI_PKO.resid), 12);
+  it("bands are the calibrated residual around the runtime point", () => {
+    for (const format of FORMATS) {
+      expect(runtimeSigmaBandResid(format)).toBe(RUNTIME_SIGMA_BANDS[format].resid);
+      const formatPoint =
+        format === "mystery-royale" ? { afs: 18, roi: 0.1, rake: 0.08 } : point;
+      const band = buildRuntimeSigmaOverrides({
+        format,
+        mix: mixFor(format),
+        point: formatPoint,
+      })![format]!;
+      const resid = RUNTIME_SIGMA_BANDS[format].resid;
+      expect(band.lo, format).toBeCloseTo(band.s * (1 - resid), 12);
+      expect(band.hi, format).toBeCloseTo(band.s * (1 + resid), 12);
+      expect(formatRuntimeSigmaBand(format, formatPoint)).toEqual(band);
+    }
   });
 
   it("memoized σ is stable across repeated calls", () => {
     const a = formatRuntimeSigma("mystery", { afs: 777, roi: 0.123, rake: 0.09 });
     const b = formatRuntimeSigma("mystery", { afs: 777, roi: 0.123, rake: 0.09 });
     expect(b).toBe(a);
+  });
+});
+
+describe("one band for the chip, the prove-edge card and a one-row schedule", () => {
+  const defaults: Record<RuntimeSigmaFormat, { afs: number; rake: number }> = {
+    freeze: { afs: 1000, rake: 0.1 },
+    pko: { afs: 1000, rake: 0.1 },
+    mystery: { afs: 1000, rake: 0.1 },
+    "mystery-royale": { afs: 18, rake: 0.08 },
+  };
+
+  for (const format of FORMATS) {
+    it(`${format}: the three paths show the same half-width, equal to the calibration table`, () => {
+      const { afs, rake } = defaults[format];
+      const roi = 0.1;
+      const resid = RUNTIME_SIGMA_BANDS[format].resid;
+
+      const chip = buildRuntimeSigmaOverrides({
+        format,
+        mix: mixFor(format),
+        point: { afs, roi, rake },
+      })![format]!;
+      const proveEdge = computeProveEdge({
+        format,
+        afs,
+        rake,
+        z: z95,
+        currentRoi: roi,
+        candidates: [roi],
+      });
+      const schedule = buildExactBreakdown([editorRow(format, afs, roi, rake)])!;
+
+      expect(proveEdge.bandPolicy).toBe("numeric");
+      expect(chip.hi / chip.s - 1).toBeCloseTo(resid, 12);
+      expect(1 - chip.lo / chip.s).toBeCloseTo(resid, 12);
+      expect(proveEdge.anchor.sigmaHi / proveEdge.anchor.sigma - 1).toBeCloseTo(resid, 12);
+      expect(1 - proveEdge.anchor.sigmaLo / proveEdge.anchor.sigma).toBeCloseTo(resid, 12);
+      expect(proveEdge.rows[0].sigmaHi / proveEdge.rows[0].sigma - 1).toBeCloseTo(resid, 12);
+      expect(schedule.sigmaEffHi / schedule.sigmaEff - 1).toBeCloseTo(resid, 12);
+      expect(1 - schedule.sigmaEffLo / schedule.sigmaEff).toBeCloseTo(resid, 12);
+
+      // The volumes printed from those σ follow the same band in both cards.
+      const chipRow = computeConvergenceRows({
+        afs,
+        z: z95,
+        roi,
+        mix: mixFor(format),
+        format,
+        rakePct: rake * 100,
+        sigmaOverrides: { [format]: chip },
+      }).find((r) => r.targetPct === 0.05)!;
+      expect(chipRow.tourneysLo).toBe(Math.ceil(Math.pow((z95 * chip.lo) / 0.05, 2)));
+      expect(chipRow.tourneysHi).toBe(Math.ceil(Math.pow((z95 * chip.hi) / 0.05, 2)));
+      expect(proveEdge.anchor.tourneysLo).toBe(
+        Math.ceil(Math.pow((2 * z95 * proveEdge.anchor.sigmaLo) / roi, 2)),
+      );
+      expect(proveEdge.anchor.tourneysHi).toBe(
+        Math.ceil(Math.pow((2 * z95 * proveEdge.anchor.sigmaHi) / roi, 2)),
+      );
+    });
+  }
+});
+
+describe("the global ITM target reaches the planning cards", () => {
+  const target: ItmTargetConfig = { enabled: true, pct: 18.7 };
+  const off: ItmTargetConfig = { enabled: false, pct: 0 };
+  const pointFor = (format: RuntimeSigmaFormat) => ({
+    afs: format === "mystery-royale" ? 18 : 1000,
+    roi: 0.1,
+    rake: format === "mystery-royale" ? 0.08 : 0.1,
+  });
+
+  for (const format of FORMATS) {
+    it(`${format}: chip σ = prove-edge σ = schedule σ of the equivalent row, target on`, () => {
+      const { afs, roi, rake } = pointFor(format);
+      const schedule = buildExactBreakdown([editorRow(format, afs, roi, rake, target)])!.sigmaEff;
+      const chip = buildRuntimeSigmaOverrides({
+        format,
+        mix: mixFor(format),
+        point: { afs, roi, rake, itmTarget: target },
+      })![format]!.s;
+      const proveEdge = computeProveEdge({
+        format,
+        afs,
+        rake,
+        itmTarget: target,
+        z: z95,
+        currentRoi: roi,
+        candidates: [roi],
+      });
+      expect(Math.abs(chip - schedule) / schedule).toBeLessThan(1e-9);
+      expect(Math.abs(proveEdge.anchor.sigma - schedule) / schedule).toBeLessThan(1e-9);
+      expect(Math.abs(proveEdge.rows[0].sigma - schedule) / schedule).toBeLessThan(1e-9);
+    });
+  }
+
+  it("moves σ for freeze, PKO and Mystery and leaves Battle Royale alone", () => {
+    const sigma = (format: RuntimeSigmaFormat, itmTarget: ItmTargetConfig) =>
+      formatRuntimeSigma(format, { ...pointFor(format), itmTarget })!;
+    for (const format of ["freeze", "pko", "mystery"] as const) {
+      // 18.7 % against the payout table's own paid share: a few percent to a quarter of σ.
+      expect(Math.abs(sigma(format, target) / sigma(format, off) - 1), format).toBeGreaterThan(0.05);
+    }
+    // A Battle Royale row carries its own ITM, which wins over the global target.
+    expect(sigma("mystery-royale", target)).toBe(sigma("mystery-royale", off));
+  });
+
+  it("an off switch and an absent target are the same cache entry", () => {
+    formatRuntimeSigma("pko", { afs: 321, roi: 0.07, rake: 0.1 });
+    expect(
+      hasFormatRuntimeSigma("pko", { afs: 321, roi: 0.07, rake: 0.1, itmTarget: off }),
+    ).toBe(true);
+    expect(
+      hasFormatRuntimeSigma("pko", { afs: 321, roi: 0.07, rake: 0.1, itmTarget: target }),
+    ).toBe(false);
+  });
+
+  it("the prove-edge warm-up list carries the target and warms exactly what the table reads", () => {
+    const input = {
+      format: "pko" as const,
+      afs: 777,
+      rake: 0.1,
+      itmTarget: target,
+      z: z95,
+      currentRoi: 0.1,
+      candidates: [0.1, 0.2],
+    };
+    const points = proveEdgeRuntimeSigmaPoints(input);
+    expect(points.every(({ point }) => point.itmTarget === target)).toBe(true);
+    for (const { format, point } of points) formatRuntimeSigma(format, point);
+    expect(computeProveEdge(input).anchor.sigma).toBe(
+      formatRuntimeSigma("pko", points[points.length - 1].point),
+    );
+  });
+});
+
+describe("card σ moves the way the sliders say", () => {
+  const rakeFor = (format: RuntimeSigmaFormat) => (format === "mystery-royale" ? 0.08 : 0.1);
+  const isIncreasing = (values: number[]) =>
+    values.every((v, i) => i === 0 || v > values[i - 1]);
+
+  it("σ rises with the field for freeze, PKO and Mystery across the whole AFS slider", () => {
+    for (const format of ["freeze", "pko", "mystery"] as const) {
+      const sigmas = [50, 100, 500, 1000, 5000, 10_000, 50_000].map(
+        (afs) => formatRuntimeSigma(format, { afs, roi: 0.1, rake: 0.1 })!,
+      );
+      expect(isIncreasing(sigmas), format).toBe(true);
+    }
+  });
+
+  it("σ rises with ROI across each tab's own ROI slider", () => {
+    const rois: Record<RuntimeSigmaFormat, number[]> = {
+      freeze: [-0.3, -0.1, 0, 0.1, 0.5, 1.0],
+      pko: [-0.2, -0.1, 0, 0.1, 0.5, 0.8],
+      mystery: [-0.2, -0.1, 0, 0.1, 0.5, 0.8],
+      "mystery-royale": [-0.1, -0.05, 0, 0.05, 0.1],
+    };
+    for (const format of FORMATS) {
+      const sigmas = rois[format].map(
+        (roi) =>
+          formatRuntimeSigma(format, {
+            afs: format === "mystery-royale" ? 18 : 1000,
+            roi,
+            rake: rakeFor(format),
+          })!,
+      );
+      expect(isIncreasing(sigmas), format).toBe(true);
+    }
+  });
+
+  it("σ falls with rake for freeze, Mystery and Battle Royale (PKO does not: it rises there)", () => {
+    for (const format of ["freeze", "mystery", "mystery-royale"] as const) {
+      const sigmas = [0, 0.08, 0.2].map(
+        (rake) =>
+          formatRuntimeSigma(format, {
+            afs: format === "mystery-royale" ? 18 : 1000,
+            roi: 0,
+            rake,
+          })!,
+      );
+      expect(isIncreasing([...sigmas].reverse()), format).toBe(true);
+    }
   });
 });

@@ -21,7 +21,7 @@
  * Same σ source as ConvergenceChart:
  *   - Single format → per-candidate runtime σ of the format's default one-row
  *     schedule (`formatRuntimeSigma`), the number schedule mode shows for that
- *     row; the fit coefficients only supply the residual band
+ *     row; the calibrated residual supplies the band
  *   - Ocean KO → per-candidate runtime variance upper bound, without a
  *     calibrated residual band
  *   - Schedule mode → schedule-aware `buildExactBreakdown(schedule).sigmaEff`,
@@ -29,17 +29,16 @@
  *     payout shape, rake, and bounty structure
  *
  * Honest about extrapolation: when a candidate ROI (or any schedule row)
- * sits outside its format's validated fit-box, the band gate flags
- * `outside-fit-box` so the UI can suppress the residual range and
- * show only the point estimate, matching the convergence widget's
- * policy.
+ * sits outside the grid its format's band was calibrated on, the band gate
+ * flags `outside-fit-box` so the UI can suppress the range and show only the
+ * point estimate, matching the convergence widget's policy. The band itself is
+ * `runtimeSigmaBandResid`, the same number the convergence chips use.
  */
 import {
   buildExactBreakdown,
   buildOceanKoSigmaBand,
   type ExactBreakdown,
 } from "./convergenceMath";
-import { SIGMA_COEF_BY_FORMAT } from "./convergenceFit";
 import {
   getConvergenceBandPolicy,
   isInsideFitBox,
@@ -48,9 +47,11 @@ import {
 } from "./convergencePolicy";
 import {
   formatRuntimeSigma,
+  runtimeSigmaBandResid,
   type RuntimeSigmaFormat,
   type RuntimeSigmaPoint,
 } from "./formatRuntimeSigma";
+import type { ItmTargetConfig } from "./itmTarget";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
 export type ProveEdgeFormat = ConvergenceRowFormat | "exact";
@@ -118,6 +119,8 @@ export interface ProveEdgeInput {
   rake: number;
   /** Full ticket cost matters for Ocean's dollar-denominated bounty tiers. */
   oceanKoTotalTicket?: number;
+  /** Global ITM target of the run path; ignored for Ocean KO and schedule mode. */
+  itmTarget?: ItmTargetConfig;
   /** Two-tailed z-score from the chosen confidence level. */
   z: number;
   /** Player's current ROI fraction — used to highlight the closest candidate
@@ -169,8 +172,9 @@ function runtimeSigmaPoint(
   rake: number,
   roi: number,
   finishModel?: FinishModelConfig,
+  itmTarget?: ItmTargetConfig,
 ): RuntimeSigmaPoint {
-  return { afs: safeAfs, roi, rake, finishModel };
+  return { afs: safeAfs, roi, rake, finishModel, itmTarget };
 }
 
 function isRuntimeSigmaFormat(format: ProveEdgeFormat): format is RuntimeSigmaFormat {
@@ -191,7 +195,13 @@ export function proveEdgeRuntimeSigmaPoints(
   const safeAfs = Math.max(1, input.afs);
   return [...input.candidates, input.currentRoi].map((roi) => ({
     format,
-    point: runtimeSigmaPoint(safeAfs, input.rake, roi, input.finishModel),
+    point: runtimeSigmaPoint(
+      safeAfs,
+      input.rake,
+      roi,
+      input.finishModel,
+      input.itmTarget,
+    ),
   }));
 }
 
@@ -202,6 +212,7 @@ function singleFormatSigma(
   roi: number,
   finishModel?: FinishModelConfig,
   oceanKoTotalTicket = 100,
+  itmTarget?: ItmTargetConfig,
 ): SigmaTriple {
   if (format === "ocean-ko") {
     const runtime = buildOceanKoSigmaBand({
@@ -214,11 +225,10 @@ function singleFormatSigma(
       insideBox: false,
     };
   }
-  const coef = SIGMA_COEF_BY_FORMAT[format];
   const safeAfs = Math.max(1, afs);
   const sigma = formatRuntimeSigma(
     format,
-    runtimeSigmaPoint(safeAfs, rake, roi, finishModel),
+    runtimeSigmaPoint(safeAfs, rake, roi, finishModel, itmTarget),
   );
   // A one-row schedule with a positive buy-in always compiles; a null here
   // would be an engine regression, not a reason to fall back to a fit.
@@ -226,7 +236,7 @@ function singleFormatSigma(
     throw new Error(`proveEdge: no runtime σ for ${format} at AFS ${safeAfs}`);
   }
   const insideBox = isInsideFitBox({ format, field: safeAfs, roi });
-  const resid = insideBox ? coef.resid : 0;
+  const resid = insideBox ? runtimeSigmaBandResid(format) : 0;
   return {
     sigma,
     sigmaLo: sigma * (1 - resid),
@@ -295,7 +305,13 @@ export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {
 
   const rows: ProveEdgeRow[] = candidates.map((roi, i) => {
     const triple = singleFormatSigma(
-      formatTyped, safeAfs, input.rake, roi, input.finishModel, input.oceanKoTotalTicket,
+      formatTyped,
+      safeAfs,
+      input.rake,
+      roi,
+      input.finishModel,
+      input.oceanKoTotalTicket,
+      input.itmTarget,
     );
     const tourneys = nFromSigma(z, triple.sigma, roi);
     const tourneysLo = nFromSigma(z, triple.sigmaLo, roi);
@@ -323,6 +339,7 @@ export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {
     currentRoi,
     input.finishModel,
     input.oceanKoTotalTicket,
+    input.itmTarget,
   );
   const anchor: ProveEdgeAnchor = {
     roi: currentRoi,
