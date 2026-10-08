@@ -1,5 +1,5 @@
 import { compileSchedule } from "../sim/compile";
-import type { CheckpointGrid, CompiledEntry, CompiledSchedule, RawShard } from "../sim/engineTypes";
+import type { CheckpointGrid, CompiledEntry, CompiledSchedule, DownsideShard } from "../sim/engineTypes";
 import { OCEAN_KO_ODDS } from "../sim/oceanKo";
 import { compiledEntryMoments } from "../sim/scheduleMoments";
 import type { GameType, SimulationInput, TournamentRow } from "../sim/types";
@@ -21,8 +21,8 @@ export const FORMAT_COMPARISON_DEFAULTS: FormatComparisonConfig = {
 };
 
 export const FORMAT_COMPARISON_LIMITS = {
-  ticket: { min: 1, max: 1000 }, players: { min: 18, max: 5000 },
-  roi: { min: -0.2, max: 1 }, distance: { min: 100, max: 20000 },
+  ticket: { min: 1, max: 1000 }, players: { min: 18, max: 100_000 },
+  roi: { min: -0.2, max: 1 }, distance: { min: 100, max: 100_000 },
   samples: { min: 1000, max: 5000 }, mysteryLogVariance: { min: 0, max: 4 },
 } as const;
 
@@ -233,6 +233,10 @@ export function buildFormatComparisonMoments(config: FormatComparisonConfig): Fo
     const compiled = compileSchedule({ ...scenario.input, scheduleRepeats: 1 });
     return momentRow(scenario, compiled.flat[0]);
   });
+  return withOceanRatios(rows);
+}
+
+function withOceanRatios(rows: FormatComparisonMomentRow[]): FormatComparisonMomentRow[] {
   const ocean = rows.find((row) => row.format === "ocean-ko")!;
   for (const row of rows) {
     if (!row.comparable) continue;
@@ -244,6 +248,15 @@ export function buildFormatComparisonMoments(config: FormatComparisonConfig): Fo
     row.oceanSigmaRatio = { lower: Math.sqrt(ratio.lower), upper: Math.sqrt(ratio.upper) };
   }
   return rows;
+}
+
+export function compileFormatComparison(config: FormatComparisonConfig) {
+  const prepared = buildFormatComparisonScenarios(config).map(scenario => {
+    const compiled = compileSchedule(scenario.input);
+    return { scenario, compiled, moments: momentRow(scenario, compiled.flat[0]) };
+  });
+  withOceanRatios(prepared.map(row => row.moments));
+  return prepared;
 }
 
 export function summarizeDistribution(values: ArrayLike<number>, scale = 1): DistributionSummary {
@@ -289,8 +302,9 @@ function thresholdRiskCurve(values: ArrayLike<number>, ticket: number): Threshol
 export function summarizeFormatComparisonScenario(
   scenario: FormatComparisonScenario,
   compiled: CompiledSchedule,
-  shard: RawShard,
+  shard: DownsideShard,
   grid: CheckpointGrid,
+  preparedMoments?: FormatComparisonMomentRow,
 ): FormatComparisonSummary {
   const collected = shard.downsideReport;
   const samples = shard.finalProfits.length;
@@ -301,7 +315,7 @@ export function summarizeFormatComparisonScenario(
   const ticket = compiled.flat[0].singleCost;
   const drawdownRiskCurve = thresholdRiskCurve(shard.maxDrawdowns, ticket);
   const evShortfallRiskCurve = thresholdRiskCurve(collected.maxEvShortfall, ticket);
-  const moments = momentRow(scenario, compiled.flat[0]);
+  const moments = preparedMoments ?? momentRow(scenario, compiled.flat[0]);
   const expectedProfit = (compiled.flat[0].analyticMeanSingle - ticket) * distance;
   const shortfalls = new Float64Array(samples);
   let losses = 0, belowEv = 0, everBelowEv = 0, meanProfit = 0, noDrawdownSamples = 0, unrecovered = 0;

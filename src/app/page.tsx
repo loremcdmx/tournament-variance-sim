@@ -11,12 +11,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { CashApp } from "@/components/CashApp";
-import { OceanComparisonReport } from "@/components/calibration/OceanComparisonReport";
-import empiricalProfile from "@/lib/calibration/space-runtime-profile.json";
-import oceanBridge from "@/lib/calibration/ocean-bridge-profile.json";
-import type { PublicSpaceProfile } from "@/lib/calibration/types";
-import type { EmpiricalBridgeData } from "@/lib/calibration/oceanTransport";
+import dynamic from "next/dynamic";
+import { VolumePlanningPanel } from "@/components/VolumePlanningPanel";
 import { ScheduleEditor } from "@/components/ScheduleEditor";
 import { BattleRoyaleLeaderboardControl } from "@/components/BattleRoyaleLeaderboardControl";
 import { ControlsPanel, type ControlsState } from "@/components/ControlsPanel";
@@ -26,8 +22,6 @@ import { Section, Card } from "@/components/ui/Section";
 import { CornerToggles } from "@/components/ui/CornerToggles";
 import { InfoTooltip } from "@/components/ui/Tooltip";
 import { FinishPMFPreview } from "@/components/charts/FinishPMFPreview";
-import { ConvergenceChart } from "@/components/charts/ConvergenceChart";
-import { ProveEdgeCard } from "@/components/charts/ProveEdgeCard";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import { chooseClosestFeasibilityFix } from "@/lib/sim/feasibilityFix";
@@ -59,6 +53,14 @@ import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { SCENARIOS } from "@/lib/scenarios";
 import { ScheduleToolbarExtras } from "@/components/ScheduleToolbarExtras";
 import { sanitizeControlsForBasicMode } from "@/lib/sim/modelPresets";
+
+function LoadingPanel() {
+  const t = useT();
+  return <p role="status" className="py-4 text-sm text-fg-muted">{t("app.analysisLoading")}</p>;
+}
+
+const CashApp = dynamic(() => import("@/components/CashApp").then(module => module.CashApp), { loading: LoadingPanel });
+const OceanComparisonTab = dynamic(() => import("@/components/calibration/OceanComparisonTab").then(module => module.OceanComparisonTab), { loading: LoadingPanel });
 
 const scenarioDerived = new Map(
   SCENARIOS.map((s) => {
@@ -161,6 +163,8 @@ export default function Home() {
   const [controls, setControls] = useState<ControlsState>(initialControls);
   const [hydrated, setHydrated] = useState(false);
   const [mttModel, setMttModel] = useState<"empirical" | "mechanical">("mechanical");
+  const [oceanVisited, setOceanVisited] = useState(false);
+  const [cashVisited, setCashVisited] = useState(false);
   const initialStateLoadedRef = useRef(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
@@ -195,6 +199,7 @@ export default function Home() {
   const prevPureBattleRoyaleRef = useRef(pureBattleRoyaleSchedule);
   // Advanced mode off → force MTT view regardless of persisted state.
   const activeMode: "mtt" | "cash" = advanced ? mode : "mtt";
+  if (activeMode === "cash" && !cashVisited) setCashVisited(true);
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
   const abi = useMemo(() => {
     const totalCount = schedule.reduce((a, r) => a + Math.max(0, r.count), 0);
@@ -1132,39 +1137,38 @@ export default function Home() {
         </div>
       )}
 
-      <div hidden={activeMode !== "cash"}><CashApp /></div>
+      {cashVisited && <div hidden={activeMode !== "cash"}><CashApp /></div>}
 
-      {activeMode === "mtt" && (
-        <section className="space-y-6" aria-label={t("empirical.modelChoice")}>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2" role="group" aria-label={t("empirical.modelChoice")}>
+        <section hidden={activeMode !== "mtt"} className="space-y-6" aria-label={t("empirical.modelChoice")}>
+          <div className="grid min-w-0 grid-cols-2 gap-2" role="group" aria-label={t("empirical.modelChoice")}>
             {(["mechanical", "empirical"] as const).map((model) => (
               <button
                 key={model}
                 type="button"
                 aria-pressed={mttModel === model}
                 aria-labelledby={`mtt-${model}-title`}
-                aria-describedby={`mtt-${model}-description`}
-                disabled={status === "running" || pdStatus === "running"}
+                disabled={!hydrated || status === "running" || pdStatus === "running"}
                 onClick={() => {
-                  if (model === "empirical") interruptBackground();
+                  if (model === "empirical") {
+                    interruptBackground();
+                    setOceanVisited(true);
+                  }
                   setMttModel(model);
                 }}
-                className={`min-h-20 min-w-0 rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${mttModel === model ? "border-accent bg-accent/10 text-accent" : "border-border bg-bg-elev text-fg hover:border-border-strong hover:bg-bg-elev-2"}`}
+                className={`min-h-14 min-w-0 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${mttModel === model ? "border-accent bg-accent/10 text-accent" : "border-border bg-bg-elev text-fg hover:border-border-strong hover:bg-bg-elev-2"}`}
               >
                 <span id={`mtt-${model}-title`} className="block text-sm font-semibold sm:text-base">
                   {t(model === "empirical" ? "empirical.primary" : "empirical.mechanical")}
                 </span>
-                <span id={`mtt-${model}-description`} className="mt-1 block text-sm font-normal leading-relaxed text-fg-muted">
-                  {t(model === "mechanical" ? "oceanReport.modelMechanicalDesc" : "oceanReport.modelOceanDesc")}
-                </span>
               </button>
             ))}
           </div>
-          {mttModel === "empirical" && (
-            <OceanComparisonReport profile={empiricalProfile as PublicSpaceProfile} bridge={oceanBridge as EmpiricalBridgeData} locale={locale} />
+          {(oceanVisited || mttModel === "empirical") && (
+            <div hidden={mttModel !== "empirical"}>
+              <OceanComparisonTab locale={locale} active={activeMode === "mtt" && mttModel === "empirical"} />
+            </div>
           )}
         </section>
-      )}
 
       {activeMode === "mtt" && mttModel === "mechanical" && (
       <>
@@ -1293,21 +1297,18 @@ export default function Home() {
           </div>
 
           <aside className="flex min-w-0 flex-col gap-3 xl:sticky xl:top-3 xl:self-start">
-            {hydrated && sanityFindings.length > 0 && (
+            {hydrated && sanityFindings.some(finding => finding.id !== "zero-bankroll") && (
               <Card className="border-amber-400/40 bg-amber-400/5 p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/30 text-[11px] font-bold text-amber-100">
                     !
                   </span>
-                  <span className="font-display text-[12px] font-bold uppercase tracking-wider text-amber-100">
+                  <span className="text-sm font-semibold text-fg">
                     {t("sanity.title")}
                   </span>
                 </div>
-                <div className="mb-2 text-[10px] leading-snug text-amber-100/70">
-                  {t("sanity.subtitle")}
-                </div>
-                <ul className="flex flex-col gap-1.5 text-[11px] leading-snug text-amber-200/95">
-                  {sanityFindings.map((f, i) => {
+                <ul className="flex flex-col gap-1.5 text-xs leading-relaxed text-fg-muted">
+                  {sanityFindings.filter(finding => finding.id !== "zero-bankroll").map((f, i) => {
                     const raw = t(`sanity.${f.id}`);
                     const msg = f.rowLabel
                       ? raw.replace("{row}", f.rowLabel)
@@ -1371,29 +1372,11 @@ export default function Home() {
       )}
 
       {!result && (
-        <div className="grid gap-4 4xl:grid-cols-2 4xl:items-start">
-          <Card className="min-w-0 p-5">
-            <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg-dim)]">
-              {t("chart.convergence")}
-            </div>
-            <div className="mb-1 text-[11px] text-[color:var(--color-fg-muted)]">
-              {t("chart.convergence.sub")}
-            </div>
-            <ConvergenceChart
-              schedule={deferredSchedule}
-              finishModel={deferredPreviewModel}
-              noiseActive={noiseChannelsActive(deferredResultsControls)}
-            />
-          </Card>
-
-          <Card className="min-w-0 p-5">
-            <ProveEdgeCard
-              schedule={deferredSchedule}
-              finishModel={deferredPreviewModel}
-              noiseActive={noiseChannelsActive(deferredResultsControls)}
-            />
-          </Card>
-        </div>
+        <VolumePlanningPanel
+          schedule={deferredSchedule}
+          finishModel={deferredPreviewModel}
+          noiseActive={noiseChannelsActive(deferredResultsControls)}
+        />
       )}
 
       {result && resultInput && resultControls && (

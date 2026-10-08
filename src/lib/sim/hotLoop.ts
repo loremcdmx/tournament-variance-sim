@@ -23,6 +23,7 @@ import {
 import type {
   CheckpointGrid,
   CompiledSchedule,
+  DownsideShard,
   RawShard,
 } from "./engineTypes";
 import { makeHiResGrid } from "./grids";
@@ -77,6 +78,32 @@ export function simulateShard(
   grid: CheckpointGrid,
   onProgress?: ProgressCb,
 ): RawShard {
+  return simulateShardInternal(input, compiled, sStart, sEnd, grid, onProgress, true);
+}
+
+export function simulateDownsideShard(
+  input: SimulationInput,
+  compiled: CompiledSchedule,
+  sStart: number,
+  sEnd: number,
+  grid: CheckpointGrid,
+  onProgress?: ProgressCb,
+): DownsideShard {
+  if (!input.collectDownsideReport) throw new Error("engine: downside collection must be enabled");
+  const { finalProfits, pathMatrix, maxDrawdowns, recoveryLengths, downsideReport } =
+    simulateShardInternal(input, compiled, sStart, sEnd, grid, onProgress, false);
+  return { finalProfits, pathMatrix, maxDrawdowns, recoveryLengths, downsideReport };
+}
+
+function simulateShardInternal(
+  input: SimulationInput,
+  compiled: CompiledSchedule,
+  sStart: number,
+  sEnd: number,
+  grid: CheckpointGrid,
+  onProgress: ProgressCb | undefined,
+  collectDetails: boolean,
+): RawShard {
   const { K, checkpointIdx } = grid;
   const K1 = K + 1;
   const N = compiled.tournamentsPerSample;
@@ -105,13 +132,13 @@ export function simulateShard(
   // Per-sample reusable scratch for the breakeven/first-return post-loop:
   // segLo[jj]/segHi[jj] cache the min/max of checkpoint segment (jj-1, jj) so
   // the two O(K1²) chord scans don't recompute them on every starting point.
-  const segLo = new Float64Array(K1);
-  const segHi = new Float64Array(K1);
+  const segLo = new Float64Array(collectDetails ? K1 : 0);
+  const segHi = new Float64Array(collectDetails ? K1 : 0);
   const maxDrawdowns = new Float64Array(shardSize);
   const maxRunUps = new Float64Array(shardSize);
   const runningMins = new Float64Array(shardSize);
-  const longestBreakevens = new Float64Array(shardSize);
-  const breakevenStreakAvgs = new Float64Array(shardSize);
+  const longestBreakevens = new Float64Array(collectDetails ? shardSize : 0);
+  const breakevenStreakAvgs = new Float64Array(collectDetails ? shardSize : 0);
   const longestCashless = new Int32Array(shardSize);
   const recoveryLengths = new Int32Array(shardSize);
   const satelliteSeatsWon = compiled.flat.some((entry) => entry.isSatellite)
@@ -158,20 +185,20 @@ export function simulateShard(
   // count so it's allocated at N+1. Breakeven is indexed by chord-grid
   // position (0..K) to keep the downstream histogram aligned to the
   // chord quantum — see histogramFromCounts call at buildResult.
-  const breakevenStreakCounts = new Int32Array(K + 1);
+  const breakevenStreakCounts = new Int32Array(collectDetails ? K + 1 : 0);
   const cashlessStreakCounts = new Int32Array(N + 1);
   let ruinedCount = 0;
 
   // Hi-res capture. Allocated per-shard regardless of shard size so the
   // RawShard contract stays uniform (mergeShards can safely read fields
   // even on single-sample shards).
-  const hiGrid = makeHiResGrid(N);
+  const hiGrid = collectDetails ? makeHiResGrid(N) : { K: 0, checkpointIdx: new Int32Array(0) };
   const hiK = hiGrid.K;
-  const hiK1 = hiK + 1;
+  const hiK1 = collectDetails ? hiK + 1 : 0;
   const hiCheckpointIdx = hiGrid.checkpointIdx;
   // Select global sample indices so sharding cannot change the visible runs.
   const HI_RES_GLOBAL_CAP = 1000;
-  const wantHiResPaths = Math.max(0, Math.min(sEnd, HI_RES_GLOBAL_CAP) - sStart);
+  const wantHiResPaths = collectDetails ? Math.max(0, Math.min(sEnd, HI_RES_GLOBAL_CAP) - sStart) : 0;
   const hiResPaths: Float64Array[] = new Array(wantHiResPaths);
   for (let i = 0; i < wantHiResPaths; i++) hiResPaths[i] = new Float64Array(hiK1);
   const hiResSampleIndices = new Int32Array(wantHiResPaths);
@@ -298,7 +325,7 @@ export function simulateShard(
     // Hi-res scratch starts at 0 (pre-tournament profit). We always capture
     // into scratch so the shardBest/Worst swap at end-of-sample sees the full
     // trajectory regardless of which sample turns out extreme.
-    hiResScratch[0] = 0;
+    if (collectDetails) hiResScratch[0] = 0;
     let nextHiCp = 1;
     let nextHiCpIdx = hiCheckpointIdx[1];
 
@@ -565,11 +592,11 @@ export function simulateShard(
       hiResPaths[localS].set(hiResScratch);
       hiResSampleIndices[localS] = s;
     }
-    if (profit > hiResBestFinal) {
+    if (collectDetails && profit > hiResBestFinal) {
       hiResBestFinal = profit;
       hiResBestPath.set(hiResScratch);
     }
-    if (profit < hiResWorstFinal) {
+    if (collectDetails && profit < hiResWorstFinal) {
       hiResWorstFinal = profit;
       hiResWorstPath.set(hiResScratch);
     }
@@ -578,79 +605,83 @@ export function simulateShard(
     // was never terminated — count it so the histogram reflects it.
     if (cashlessRun > 0) cashlessStreakCounts[cashlessRun]++;
 
-    // "Playing for nothing" = longest horizontal chord of the profit
-    // trajectory starting at time i: max(j − i) such that the path,
-    // interpolated between checkpoint samples, revisits level profit[i]
-    // at time j. Computed on the K=240 checkpoint grid; the inner loop
-    // breaks on the first (furthest) match, so per-i cost is the gap
-    // from i to the first enclosing segment. Each starting point's
-    // longest chord contributes to the histogram — that turns the shape
-    // into a decay-right distribution ("how common is each streak
-    // length across all time points in all runs") instead of the
-    // extreme-value distribution of per-sample max chords.
-    let longestChordGrid = 0;
-    // Parallel forward-scan for the "any streak" metric: for each starting
-    // point ii, find the FIRST jj>ii where the path returns to Y[ii]. That
-    // first-return distance is the streak length the user would perceive
-    // when they say "I went up to X, dropped, climbed back to X — that
-    // span counts." Sum them per sample; divide by count to get the
-    // per-sample mean first-return chord.
-    let firstReturnSum = 0;
-    let firstReturnCount = 0;
-    // Precompute each segment's min/max once (O(K1)). The chord scans below
-    // are still O(K1²) but now just read segLo/segHi instead of recomputing
-    // `a < b ? …` on every starting point — the dominant cost in this
-    // post-loop. Same ternary form, so the straddle test is bit-identical.
-    for (let jj = 1; jj < K1; jj++) {
-      const a = pathMatrix[pathBase + jj - 1];
-      const b = pathMatrix[pathBase + jj];
-      segLo[jj] = a < b ? a : b;
-      segHi[jj] = a < b ? b : a;
-    }
-    for (let ii = 0; ii < K1 - 1; ii++) {
-      const Pi = pathMatrix[pathBase + ii];
-      let chordLen = 0;
-      for (let jj = K1 - 1; jj > ii; jj--) {
-        if (segLo[jj] <= Pi && Pi <= segHi[jj]) {
-          // Skip the trivial case where the segment only touches Pi at
-          // its left endpoint (which is time ii itself): that isn't a
-          // distinct second point.
-          if (jj === ii + 1) {
-            const a = pathMatrix[pathBase + jj - 1];
-            const b = pathMatrix[pathBase + jj];
-            if (a === Pi && b !== Pi) break;
+    let longestBreakeven = 0;
+    let breakevenStreakAvg = 0;
+    if (collectDetails) {
+      // "Playing for nothing" = longest horizontal chord of the profit
+      // trajectory starting at time i: max(j − i) such that the path,
+      // interpolated between checkpoint samples, revisits level profit[i]
+      // at time j. Computed on the K=240 checkpoint grid; the inner loop
+      // breaks on the first (furthest) match, so per-i cost is the gap
+      // from i to the first enclosing segment. Each starting point's
+      // longest chord contributes to the histogram — that turns the shape
+      // into a decay-right distribution ("how common is each streak
+      // length across all time points in all runs") instead of the
+      // extreme-value distribution of per-sample max chords.
+      let longestChordGrid = 0;
+      // Parallel forward-scan for the "any streak" metric: for each starting
+      // point ii, find the FIRST jj>ii where the path returns to Y[ii]. That
+      // first-return distance is the streak length the user would perceive
+      // when they say "I went up to X, dropped, climbed back to X — that
+      // span counts." Sum them per sample; divide by count to get the
+      // per-sample mean first-return chord.
+      let firstReturnSum = 0;
+      let firstReturnCount = 0;
+      // Precompute each segment's min/max once (O(K1)). The chord scans below
+      // are still O(K1²) but now just read segLo/segHi instead of recomputing
+      // `a < b ? …` on every starting point — the dominant cost in this
+      // post-loop. Same ternary form, so the straddle test is bit-identical.
+      for (let jj = 1; jj < K1; jj++) {
+        const a = pathMatrix[pathBase + jj - 1];
+        const b = pathMatrix[pathBase + jj];
+        segLo[jj] = a < b ? a : b;
+        segHi[jj] = a < b ? b : a;
+      }
+      for (let ii = 0; ii < K1 - 1; ii++) {
+        const Pi = pathMatrix[pathBase + ii];
+        let chordLen = 0;
+        for (let jj = K1 - 1; jj > ii; jj--) {
+          if (segLo[jj] <= Pi && Pi <= segHi[jj]) {
+            // Skip the trivial case where the segment only touches Pi at
+            // its left endpoint (which is time ii itself): that isn't a
+            // distinct second point.
+            if (jj === ii + 1) {
+              const a = pathMatrix[pathBase + jj - 1];
+              const b = pathMatrix[pathBase + jj];
+              if (a === Pi && b !== Pi) break;
+            }
+            chordLen = jj - ii;
+            break;
           }
-          chordLen = jj - ii;
-          break;
         }
-      }
-      if (chordLen > 0 && chordLen <= K) {
-        breakevenStreakCounts[chordLen]++;
-      }
-      if (chordLen > longestChordGrid) longestChordGrid = chordLen;
+        if (chordLen > 0 && chordLen <= K) {
+          breakevenStreakCounts[chordLen]++;
+        }
+        if (chordLen > longestChordGrid) longestChordGrid = chordLen;
 
-      let firstLen = 0;
-      for (let jj = ii + 1; jj < K1; jj++) {
-        if (segLo[jj] <= Pi && Pi <= segHi[jj]) {
-          if (jj === ii + 1) {
-            const a = pathMatrix[pathBase + jj - 1];
-            const b = pathMatrix[pathBase + jj];
-            if (a === Pi && b !== Pi) continue;
+        let firstLen = 0;
+        for (let jj = ii + 1; jj < K1; jj++) {
+          if (segLo[jj] <= Pi && Pi <= segHi[jj]) {
+            if (jj === ii + 1) {
+              const a = pathMatrix[pathBase + jj - 1];
+              const b = pathMatrix[pathBase + jj];
+              if (a === Pi && b !== Pi) continue;
+            }
+            firstLen = jj - ii;
+            break;
           }
-          firstLen = jj - ii;
-          break;
+        }
+        if (firstLen > 0) {
+          firstReturnSum += firstLen;
+          firstReturnCount++;
         }
       }
-      if (firstLen > 0) {
-        firstReturnSum += firstLen;
-        firstReturnCount++;
-      }
+      longestBreakeven = K > 0 ? (longestChordGrid / K) * N : 0;
+      breakevenStreakAvg =
+        firstReturnCount > 0 && K > 0
+          ? (firstReturnSum / firstReturnCount / K) * N
+          : 0;
     }
-    const longestBreakeven = K > 0 ? (longestChordGrid / K) * N : 0;
-    const breakevenStreakAvg =
-      firstReturnCount > 0 && K > 0
-        ? (firstReturnSum / firstReturnCount / K) * N
-        : 0;
 
     if (
       leaderboardConfig !== null &&
@@ -678,8 +709,10 @@ export function simulateShard(
     maxDrawdowns[localS] = maxDD;
     maxRunUps[localS] = maxUp;
     runningMins[localS] = runningMin;
-    longestBreakevens[localS] = longestBreakeven;
-    breakevenStreakAvgs[localS] = breakevenStreakAvg;
+    if (collectDetails) {
+      longestBreakevens[localS] = longestBreakeven;
+      breakevenStreakAvgs[localS] = breakevenStreakAvg;
+    }
     longestCashless[localS] = longestCashlessRun;
     recoveryLengths[localS] = maxDD > 0 ? sampleRecoveryLen : -2;
     if (leaderboardPoints !== null) leaderboardPoints[localS] = leaderboardTotalPoints;

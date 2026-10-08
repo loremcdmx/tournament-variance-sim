@@ -7,6 +7,13 @@ import { DICT, LOCALES } from "./dict";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 describe("i18n dict", () => {
+  it("uses tournament terminology instead of paid-entry labels in the UI", () => {
+    for (const [key, entry] of Object.entries(DICT)) {
+      expect(entry.ru, `${key}.ru`).not.toMatch(/платн[а-яё]*\s+вход[а-яё]*/iu);
+      expect(entry.en, `${key}.en`).not.toMatch(/\bpaid[\s-]+entr(?:y|ies)\b/i);
+    }
+  });
+
   it.each(["chart.longestCashless.tip", "chart.recovery.tip"] as const)(
     "keeps the English statistical explanation in English: %s", (key) => {
       expect(DICT[key].en).not.toMatch(/[А-Яа-яЁё]/);

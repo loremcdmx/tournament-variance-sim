@@ -231,10 +231,15 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
 
       {/* Buy-in and expected return */}
       {stats.payoutVarianceBounded && (
-        <div className="rounded-md border border-[color:var(--color-border)] px-3 py-2 text-xs text-[color:var(--color-fg-muted)]">
-          <div>{t("oceanKo.sigmaBounds")}: <span className="font-mono tabular-nums">{moneyFmt(stats.payoutStdLower ?? 0)}–{moneyFmt(stats.payoutStd)}</span></div>
-          <p className="mt-1 text-[11px] leading-relaxed">{t("oceanKo.previewNote")}</p>
-        </div>
+        <details className="text-xs text-[color:var(--color-fg-muted)]">
+          <summary className="w-fit cursor-pointer rounded py-1 font-semibold text-[color:var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]">
+            {t("oceanKo.previewDetails")}
+          </summary>
+          <div className="mt-1 rounded-md border border-[color:var(--color-border)] px-3 py-2 leading-relaxed">
+            <div>{t("oceanKo.sigmaBounds")}: <span className="font-mono tabular-nums">{moneyFmt(stats.payoutStdLower ?? 0)}–{moneyFmt(stats.payoutStd)}</span></div>
+            <p className="mt-1">{t("oceanKo.previewNote")}</p>
+          </div>
+        </details>
       )}
       <div className="group relative overflow-hidden rounded-md border border-[color:var(--color-border-strong)]/70 bg-[linear-gradient(135deg,var(--color-bg)_0%,var(--color-bg-elev)_60%,rgba(255,222,81,0.08)_100%)] p-3.5 shadow-[0_18px_40px_-32px_rgba(0,0,0,0.9)]">
         <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--color-accent)]/70 to-transparent" />

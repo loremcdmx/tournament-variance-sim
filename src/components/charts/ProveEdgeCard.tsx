@@ -216,29 +216,6 @@ export function ProveEdgeCard({
         <div className="text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--color-fg)]">
           {t("proveEdge.title")}
         </div>
-        <div className="mt-0.5 text-[11px] italic text-[color:var(--color-fg-dim)]">
-          {t("proveEdge.question")}
-        </div>
-      </div>
-
-      <div className="text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
-        {t("proveEdge.intro")}
-      </div>
-
-      <div className="grid gap-2 md:grid-cols-3">
-        {READING_GUIDE.map((item) => (
-          <div
-            key={item.titleKey}
-            className="rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/35 px-3 py-2"
-          >
-            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--color-accent)]">
-              {t(item.titleKey)}
-            </div>
-            <div className="mt-1 text-[11px] leading-snug text-[color:var(--color-fg-muted)]">
-              {t(item.bodyKey)}
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Format tabs */}
@@ -416,7 +393,6 @@ export function ProveEdgeCard({
               aria-label={t("oceanKo.totalTicket")}
             />
           </label>
-          <p className="text-[color:var(--color-fg-dim)]">{t("oceanKo.syntheticHint")}</p>
         </div>
       )}
       {isExact && (
@@ -601,18 +577,33 @@ export function ProveEdgeCard({
         </div>
       )}
 
-      <div className="text-[10.5px] leading-relaxed text-[color:var(--color-fg-dim)]">
-        {hasOceanKo
-          ? t("proveEdge.footnote.oceanKo")
-          : result.bandPolicy === "numeric"
-            ? t("proveEdge.footnote.banded")
-            : t("proveEdge.footnote.point")}
-      </div>
-      {!scheduleEmpty && (
-        <div className="text-[10.5px] leading-relaxed text-[color:var(--color-fg-dim)]">
-          {t("convergence.skewNote")}
+      <details className="border-t border-[color:var(--color-border)] pt-2 text-xs text-[color:var(--color-fg-muted)]">
+        <summary className="w-fit cursor-pointer rounded py-1 font-semibold text-[color:var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]">
+          {t("proveEdge.readingGuide")}
+        </summary>
+        <div className="mt-2 space-y-3 leading-relaxed">
+          <p>{t("proveEdge.intro")}</p>
+          {format === "ocean-ko" && <p>{t("oceanKo.syntheticHint")}</p>}
+          <div className="grid gap-2 md:grid-cols-3">
+            {READING_GUIDE.map((item) => (
+              <div key={item.titleKey}>
+                <div className="font-semibold text-[color:var(--color-fg)]">
+                  {t(item.titleKey)}
+                </div>
+                <p className="mt-1">{t(item.bodyKey)}</p>
+              </div>
+            ))}
+          </div>
+          <p>
+            {hasOceanKo
+              ? t("proveEdge.footnote.oceanKo")
+              : result.bandPolicy === "numeric"
+                ? t("proveEdge.footnote.banded")
+                : t("proveEdge.footnote.point")}
+          </p>
+          {!scheduleEmpty && <p>{t("convergence.skewNote")}</p>}
         </div>
-      )}
+      </details>
     </div>
   );
 }
