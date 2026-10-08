@@ -34,6 +34,7 @@ import {
   type SigmaBand,
 } from "@/lib/sim/convergenceMath";
 import { buildRuntimeSigmaOverrides } from "@/lib/sim/formatRuntimeSigma";
+import { fillRuntimeSigmaZone } from "@/lib/sim/runtimeSigmaBands";
 
 interface Props {
   schedule?: TournamentRow[];
@@ -161,6 +162,7 @@ function RangeBandValue({
     </div>
   );
 }
+
 
 export const ConvergenceChart = memo(function ConvergenceChart({
   schedule,
@@ -398,8 +400,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     return buildExactBreakdown(schedule, { finishModel });
   }, [effectiveMode, schedule, finishModel]);
   // Chips take their point σ from the same runtime compile as schedule mode
-  // and the prove-edge card (see formatRuntimeSigma); only bands keep the
-  // per-format residual constants.
+  // and the prove-edge card (see formatRuntimeSigma); the band half-width
+  // comes from the Monte Carlo calibration table in runtimeSigmaBands.
   const runtimeSigmaOverrides = useMemo(() => {
     if (effectiveMode === "exact") return undefined;
     return buildRuntimeSigmaOverrides({
@@ -473,7 +475,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     if (effectiveMode === "exact") {
       // Schedule mode: each row contributes its own (format, afs, roi) sample.
       // The band policy is "numeric" only when *every* row sits inside its
-      // format's validated fit-box; if any row is out of box, the schedule
+      // format's Monte Carlo calibration zone; if any row is outside it, the schedule
       // estimate stays point-only — same gate as single-format mode.
       if (!exactBreakdown) return [];
       return exactBreakdown.perRow.map((r) => ({
@@ -940,9 +942,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       )}
       {bandPolicy?.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
-          {t(hasOceanKo
-            ? "chart.convergence.bandWarning.oceanKo"
-            : "chart.convergence.bandWarning.outsideFitBox")}
+          {hasOceanKo
+            ? t("chart.convergence.bandWarning.oceanKo")
+            : fillRuntimeSigmaZone(t("chart.convergence.bandWarning.outsideFitBox"), numberLocale)}
         </div>
       )}
       {noiseActive && (

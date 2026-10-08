@@ -1635,8 +1635,8 @@ export const DICT = {
     ru: "Веса в Миксе — это доли турниров в синтетическом миксе, а не доли долларового риска.",
   },
   "chart.convergence.bandWarning.outsideFitBox": {
-    en: "Current AFS / ROI sits outside the zone where the range was checked against the engine's Monte Carlo (freeze, PKO and Mystery: field 50–50 000, ROI −30..+100 %; Battle Royale: field fixed at 18, ROI −20..+100 %). The point is still the engine's own number, but the ± range would be extrapolation here, so it's hidden.",
-    ru: "Текущие AFS / ROI вне зоны, где диапазон сверен с Монте-Карло движка (фриз, ПКО и Мистери: поле 50–50 000, ROI −30..+100 %; Battle Royale: поле строго 18, ROI −20..+100 %). Точка по-прежнему посчитана самим движком, но ± диапазон здесь был бы экстраполяцией, поэтому его скрыли.",
+    en: "Current AFS / ROI sits outside the zone where the range was checked against the engine's Monte Carlo (freeze, PKO and Mystery: field {afsMin}–{afsMax}, ROI {roiMin}..{roiMax}; Battle Royale: field fixed at {brAfs}, ROI {brRoiMin}..{brRoiMax}). The point is still the engine's own number, but the ± range would be extrapolation here, so it's hidden.",
+    ru: "Текущие AFS / ROI вне зоны, где диапазон сверен с Монте-Карло движка (фриз, ПКО и Мистери: поле {afsMin}–{afsMax}, ROI {roiMin}..{roiMax}; Battle Royale: поле строго {brAfs}, ROI {brRoiMin}..{brRoiMax}). Точка по-прежнему посчитана самим движком, но ± диапазон здесь был бы экстраполяцией, поэтому его скрыли.",
   },
   "chart.convergence.bandNote": {
     en: "The range is how far the analytic σ sits from the engine's Monte Carlo. It does not cover the gap between the model and real play.",

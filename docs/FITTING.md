@@ -153,8 +153,11 @@ What the numbers say:
 
 - The analytic σ and the engine agree to within 1.0 % in every cell of freezeout,
   PKO and Mystery, and to a few tenths of a percent below 10 000 players. The band is
-  therefore mostly Monte-Carlo noise (2 SE): the SE grows with the field (0.0–0.1 % at
-  50 players, 0.5–0.7 % at 50 000), and so does the worst cell behind `resid`.
+  therefore mostly Monte-Carlo noise (2 SE). For freezeout and PKO the SE grows with
+  the field (0.0–0.1 % at 50 players, 0.5–0.7 % at 50 000); Mystery's SE is not
+  monotone in the field (up to 0.4 % at 50 players). The freezeout 3 % comes from one
+  noisy cell (AFS 50 000, ROI −30 %); an independent re-run of single cells put the
+  real gap at about 0.1 % for freezeout and PKO, MC slightly above the analytic σ.
 - Battle Royale is noise-limited. One 10 000x envelope is hit about once per 2.5 M
   tournaments and carries most of the variance, so even 4 G tournaments per cell leave
   SE at 0.6–1.1 % (1 G on the probes: 1.8–2.2 %). The cells cannot separate a gap
@@ -163,7 +166,8 @@ What the numbers say:
   measured error: it is the same rule (gap + 2 SE, worst cell, rounded up) applied to
   data that cannot resolve more.
 - Rake, finish model and the global ITM target do not move the gap beyond noise
-  (probes below), so none of them is gated. The box is the extent of the grid: the
+  (probes below), so none of them is gated. The ITM probes cover field 1 000 at
+  ROI +10 % only; an independent check at targets 5–40 % stayed within the bands. The box is the extent of the grid: the
   full AFS slider (50–50 000) and the ROI range of the sliders and of the prove-edge
   candidates; outside it (a row with 200 000 players, ROI +150 %) the cards show the
   point only. The old gate had no ROI limit for freezeout and stopped PKO and Mystery

@@ -40,6 +40,44 @@ export const RUNTIME_SIGMA_BANDS: Record<RuntimeSigmaFormat, RuntimeSigmaBandSpe
   "mystery-royale": { resid: 0.06, afsMin: 18, afsMax: 18, roiMin: -0.2, roiMax: 1.0 },
 };
 
+/**
+ * The calibration zone as the out-of-zone warning states it: one range shared by
+ * freeze, PKO and Mystery, and Battle Royale's own. Throws if the shared range
+ * stops being shared, so the sentence cannot silently go wrong after a refit.
+ */
+export function runtimeSigmaZoneForCopy(): {
+  mtt: Pick<RuntimeSigmaBandSpec, "afsMin" | "afsMax" | "roiMin" | "roiMax">;
+  br: Pick<RuntimeSigmaBandSpec, "afsMin" | "roiMin" | "roiMax">;
+} {
+  const { freeze, pko, mystery } = RUNTIME_SIGMA_BANDS;
+  for (const other of [pko, mystery]) {
+    if (other.afsMin !== freeze.afsMin || other.afsMax !== freeze.afsMax
+      || other.roiMin !== freeze.roiMin || other.roiMax !== freeze.roiMax) {
+      throw new Error("runtime sigma bands: freeze, PKO and Mystery no longer share one zone");
+    }
+  }
+  const br = RUNTIME_SIGMA_BANDS["mystery-royale"];
+  return {
+    mtt: { afsMin: freeze.afsMin, afsMax: freeze.afsMax, roiMin: freeze.roiMin, roiMax: freeze.roiMax },
+    br: { afsMin: br.afsMin, roiMin: br.roiMin, roiMax: br.roiMax },
+  };
+}
+
+/** Fills the calibration zone into the out-of-zone warning from the band table. */
+export function fillRuntimeSigmaZone(template: string, locale: Intl.LocalesArgument): string {
+  const zone = runtimeSigmaZoneForCopy();
+  const field = (n: number) => n.toLocaleString(locale);
+  const roi = (r: number) => `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.round(Math.abs(r) * 100)}`;
+  return template
+    .replace("{afsMin}", field(zone.mtt.afsMin))
+    .replace("{afsMax}", field(zone.mtt.afsMax))
+    .replace("{roiMin}", roi(zone.mtt.roiMin))
+    .replace("{roiMax}", `${roi(zone.mtt.roiMax)} %`)
+    .replace("{brAfs}", field(zone.br.afsMin))
+    .replace("{brRoiMin}", roi(zone.br.roiMin))
+    .replace("{brRoiMax}", `${roi(zone.br.roiMax)} %`);
+}
+
 /** Half-width of the numeric band around the runtime σ of a format. */
 export function runtimeSigmaBandResid(format: RuntimeSigmaFormat): number {
   return RUNTIME_SIGMA_BANDS[format].resid;

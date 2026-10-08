@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import calibration from "../../../scripts/fit_runtime_sigma_bands.json";
+import { DICT } from "../i18n/dict";
 import {
   isInsideRuntimeSigmaBox,
   RUNTIME_SIGMA_BANDS,
   runtimeSigmaBandResid,
+  runtimeSigmaZoneForCopy,
+  fillRuntimeSigmaZone,
   type RuntimeSigmaFormat,
 } from "./runtimeSigmaBands";
 
@@ -82,5 +85,30 @@ describe("isInsideRuntimeSigmaBox", () => {
     expect(isInsideRuntimeSigmaBox("mystery-royale", 18, 0.1)).toBe(true);
     expect(isInsideRuntimeSigmaBox("mystery-royale", 19, 0.1)).toBe(false);
     expect(isInsideRuntimeSigmaBox("mystery-royale", 18, -0.25)).toBe(false);
+  });
+});
+
+describe("runtimeSigmaZoneForCopy (the out-of-zone warning)", () => {
+  it("states the same zone the gate uses, so the copy cannot drift from the table", () => {
+    const zone = runtimeSigmaZoneForCopy();
+    for (const format of ["freeze", "pko", "mystery"] as const) {
+      const box = RUNTIME_SIGMA_BANDS[format];
+      expect(zone.mtt).toEqual({ afsMin: box.afsMin, afsMax: box.afsMax, roiMin: box.roiMin, roiMax: box.roiMax });
+    }
+    const br = RUNTIME_SIGMA_BANDS["mystery-royale"];
+    expect(zone.br).toEqual({ afsMin: br.afsMin, roiMin: br.roiMin, roiMax: br.roiMax });
+  });
+});
+
+describe("fillRuntimeSigmaZone", () => {
+  it("leaves no placeholder in either language and prints the table's zone", () => {
+    const entry = DICT["chart.convergence.bandWarning.outsideFitBox"];
+    const ru = fillRuntimeSigmaZone(entry.ru, "ru-RU");
+    const en = fillRuntimeSigmaZone(entry.en, "en-US");
+    expect(ru).not.toMatch(/[{}]/);
+    expect(en).not.toMatch(/[{}]/);
+    expect(ru).toContain("ROI −30..+100 %");
+    expect(en).toContain("field 50–50,000, ROI −30..+100 %");
+    expect(en).toContain("field fixed at 18, ROI −20..+100 %");
   });
 });
