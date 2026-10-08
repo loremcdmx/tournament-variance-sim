@@ -1478,8 +1478,8 @@ export const DICT = {
   },
   "chart.convergence.rake": { en: "rake", ru: "рейк" },
   "chart.convergence.rake.title": {
-    en: "Room rake — fraction of buy-in taken per entry. σ fits were measured at rake = 10 %, so shifting this knob rescales σ by (1+0.10)/(1+rake). Higher rake compresses σ in ROI units (same $-variance spread over a bigger cost basis) and also scales the RB→ROI conversion, since RB is expressed as a fraction of rake.",
-    ru: "Рейк — доля бай-ина, которую забирает рум с каждого входа. σ измерена при рейке 10 %, так что ползунок пересчитывает σ как (1+0,10)/(1+рейк). Рост рейка сжимает σ в ROI-единицах (та же $-дисперсия, но делится на больший бай-ин+рейк) и одновременно меняет перевод РБ в ROI, ведь РБ задаётся в % от рейка.",
+    en: "Room rake — fraction of buy-in taken per entry. σ is recompiled at the chosen rake. Higher rake compresses σ in ROI units (same $-variance spread over a bigger cost basis) and also scales the RB→ROI conversion, since RB is expressed as a fraction of rake.",
+    ru: "Рейк — доля бай-ина, которую забирает рум с каждого входа. σ пересчитывается при выбранном рейке. Рост рейка сжимает σ в ROI-единицах (та же $-дисперсия, но делится на больший бай-ин+рейк) и одновременно меняет перевод РБ в ROI, ведь РБ задаётся в % от рейка.",
   },
   "chart.convergence.roi.invariant": {
     en: "Hidden here: this fit is ROI-invariant, so moving ROI would not change the table.",
@@ -1601,8 +1601,8 @@ export const DICT = {
     ru: "Показать и минусовые строки",
   },
   "chart.convergence.mode.hint": {
-    en: "Averaged: generic planning mode. Freeze, Mystery, and Battle Royale use runtime single-row compiles at the chosen controls, while PKO uses the promoted format fit. Mix weights are shares of tournaments in the synthetic mix. Schedule: compiles the real rows and aggregates per-row dollar variance, field variability, payout shape, rake, and bounty structure into one schedule-aware σ_ROI.",
-    ru: "Усреднённо: общий planning-режим. Для Фриза, Мистери и Battle Royale берётся runtime single-row компиляция на выбранных контролах, а для ПКО используется промоутнутый format-fit. В Миксе веса означают долю турниров в синтетическом миксе. Расписание: компилирует реальные строки и агрегирует долларовую дисперсию по строкам, field variability, payout-shape, рейк и bounty-структуру в один schedule-aware σ_ROI.",
+    en: "Averaged: generic planning mode. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); fitted constants only set the width of the range. Mix weights are shares of tournaments in the synthetic mix. Schedule: compiles the real rows and aggregates per-row dollar variance, field variability, payout shape, rake, and bounty structure into one schedule-aware σ_ROI.",
+    ru: "Усреднённо: общий planning-режим. Фриз, ПКО, Мистери и Battle Royale считают σ через runtime-компиляцию строки этого формата по умолчанию на выбранных контролах (та же σ, что в режиме Расписание); подогнанные константы задают только ширину диапазона. В Миксе веса означают долю турниров в синтетическом миксе. Расписание: компилирует реальные строки и агрегирует долларовую дисперсию по строкам, field variability, payout-shape, рейк и bounty-структуру в один schedule-aware σ_ROI.",
   },
   "chart.convergence.exact.breakdown": {
     en: "Variance contribution per row",
@@ -1639,8 +1639,8 @@ export const DICT = {
     ru: "Как читать строку",
   },
   "chart.convergence.assumptions": {
-    en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, Mystery, and Battle Royale use runtime format-specific estimates; PKO uses a validated fitted model, and Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where they are validated; outside that safe zone the table falls back to a point estimate.",
-    ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, Мистери и Battle Royale считают это через runtime-модель своего формата; ПКО использует проверенную аппроксимацию, а Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где он провалидирован; вне безопасной зоны таблица оставляет только точечную оценку.",
+    en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); fitted constants only set the width of the range. Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where they are validated; outside that safe zone the table falls back to a point estimate.",
+    ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, ПКО, Мистери и Battle Royale считают σ через runtime-компиляцию строки этого формата по умолчанию на выбранных контролах (та же σ, что в режиме Расписание); подогнанные константы задают только ширину диапазона. Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где он провалидирован; вне безопасной зоны таблица оставляет только точечную оценку.",
   },
 
   "unit.money": { en: "$", ru: "$" },
