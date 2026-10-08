@@ -1436,15 +1436,11 @@ export function buildTrajectoryAssets(
   };
 }
 
-// Y-axis fits the visible mass (p025/p975 ≈ 95% coverage + mean) PLUS every
-// path the user has actually revealed via the visibleRuns slider. p0015/p9985
-// are deliberately excluded as a baseline: on heavy-tailed PKO/Mystery
-// distributions their ±3σ tail reaches jackpot territory ($25k+) while the
-// bulk of paths live in a few $k. But once the user raises visibleRuns toward
-// the cap, the rendered flock extends past p975 (5% of N paths fall outside),
-// so we union in the min/max of exactly the paths `TrajectoryPlot` will show.
+// Visible tail bands must fit independently of the best/worst-run toggles.
+// Retain the zero-run baseline: optional p5/p95 lines can still be displayed
+// when sampled paths and their percentile bands are hidden.
 export function computeYRange(
-  results: readonly SimulationResult[],
+  results: readonly Pick<SimulationResult, "envelopes" | "samplePaths" | "expectedProfit">[],
   extremeStyles: ExtremeStyles,
   visibleRuns: number,
   runMode: RunMode,
@@ -1472,14 +1468,16 @@ export function computeYRange(
   const includeP025 = trimBotPct < 2.5;
   const includeP15 = trimBotPct < 15;
   for (const r of results) {
-    if (wantHi && includeP9985) max(r.envelopes.p9985);
-    if (wantLo && includeP0015) min(r.envelopes.p0015);
+    if ((visibleRuns > 0 || wantHi) && includeP9985) max(r.envelopes.p9985);
+    if ((visibleRuns > 0 || wantLo) && includeP0015) min(r.envelopes.p0015);
     if (includeP025) min(r.envelopes.p025);
     if (includeP975) max(r.envelopes.p975);
     if (includeP15) min(r.envelopes.p15);
     if (includeP85) max(r.envelopes.p85);
     min(r.envelopes.mean);
     max(r.envelopes.mean);
+    min([0, r.expectedProfit]);
+    max([0, r.expectedProfit]);
     if (extremeStyles.realBest.enabled && trimTopPct <= 0) max(r.samplePaths.best);
     if (extremeStyles.realWorst.enabled && trimBotPct <= 0) min(r.samplePaths.worst);
     if (extremeStyles.aggBest.enabled && trimTopPct <= 0) max(r.envelopes.max);
