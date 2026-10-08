@@ -107,11 +107,12 @@ export function buildFinishPMF(
     case "mystery-realdata-tilt":
       return buildMysteryCashPMF(N, "tilt", alpha);
     case "powerlaw-realdata-influenced": {
-      // Same power-law shape as the plain "power-law" model. The
-      // "real-data-influenced" label means the surrounding defaults (global
-      // ITM = 18.7%, matching the reference sample) shape the distribution;
-      // α is still solved upstream against the user's target ROI so this
-      // model obeys global/per-row ROI settings instead of pinning them.
+      // Same power-law shape as the plain "power-law" model; the id is
+      // historical and the shape is not fitted to real tournament data. α is
+      // solved upstream against the row's target ROI, and the cashing share is
+      // the row's itmRate, which the run path fills with the payout table's
+      // paid-places share unless the row or the global ITM target sets one
+      // (that target is optional; 18.7% is only its default value).
       let s = 0;
       for (let i = 1; i <= N; i++) {
         const v = Math.pow(i, -alpha);

@@ -404,8 +404,8 @@ export const DICT = {
     ru: "Мистери по реал-дате (гибрид tilt)",
   },
   "model.powerlaw-realdata-influenced": {
-    en: "Power-law (real-data influenced α)",
-    ru: "Power-law (α под реал-дату)",
+    en: "Power-law (α from ROI, ITM from the row)",
+    ru: "Power-law (α под ROI, ITM строки)",
   },
 
   // Sections
@@ -2281,8 +2281,8 @@ export const DICT = {
     ru: "Сколько альтернативных вариантов прогнать. Больше — точнее хвосты и худшие раны, но дольше. 5k — быстро, 50k — с запасом.",
   },
   "help.finishModel": {
-    en: "How your skill distributes across finish places — does it mostly show up as deep runs, or as lots of small cashes?\n\nOptions:\n• Power-law — skill pays off deep; the closer to 1st, the bigger the lift. (default, best match to real samples)\n• Linear skill — steady lift toward the top, less dramatic\n• Stretched-exp — middle ground between those two\n• Plackett–Luce — classic ranking model, mathematically sound\n• Uniform — every paid place gets the same lift (PrimeDope-style — understates swings)\n• Empirical — built from a CSV of your own real finish history",
-    ru: "Как скилл распределяется по местам: глубокие финиши или много мин-кешей?\n\nОпции:\n• Power-law — скилл работает в глубоких финишах; чем ближе к 1-му, тем сильнее лифт (дефолт, лучше всего ложится на реальные выборки)\n• Linear skill — плавный лифт к топу, менее драматичный\n• Stretched-exp — промежуточный вариант\n• Plackett–Luce — классическая модель ранжирования, математически чистая\n• Uniform — все призовые получают одинаковый буст (как у PrimeDope — занижает свинги)\n• Empirical — по CSV реальных финишей",
+    en: "How your skill distributes across finish places — does it mostly show up as deep runs, or as lots of small cashes?\n\nOptions:\n• Power-law — skill pays off deep; the closer to 1st, the bigger the lift. (default: α is solved to hit your ROI and ITM comes from the schedule row — a power-law shape, not a fit to real tournament data)\n• Linear skill — steady lift toward the top, less dramatic\n• Stretched-exp — middle ground between those two\n• Plackett–Luce — classic ranking model, mathematically sound\n• Uniform — every paid place gets the same lift (PrimeDope-style — understates swings)\n• Empirical — built from a CSV of your own real finish history",
+    ru: "Как скилл распределяется по местам: глубокие финиши или много мин-кешей?\n\nОпции:\n• Power-law — скилл работает в глубоких финишах; чем ближе к 1-му, тем сильнее лифт (дефолт: α подбирается под твой ROI, ITM берётся из строки расписания; форма степенная, не подгонка под реальные турниры)\n• Linear skill — плавный лифт к топу, менее драматичный\n• Stretched-exp — промежуточный вариант\n• Plackett–Luce — классическая модель ранжирования, математически чистая\n• Uniform — все призовые получают одинаковый буст (как у PrimeDope — занижает свинги)\n• Empirical — по CSV реальных финишей",
   },
   "help.alphaOverride": {"en":"Adjust the three real-data tilt models from −0.5 to 0.5; blank or 0 keeps the neutral reference shape. Other models use the fixed-ITM calibration or their fixed shape, so manual alpha is unavailable. Switching models clears the override.","ru":"Настройка трёх real-data tilt моделей от −0,5 до 0,5; пустое поле или 0 сохраняет нейтральную форму референса. В других моделях действует калибровка под заданный ITM или фиксированная форма, поэтому ручной alpha недоступен. При смене модели значение сбрасывается."},
   "help.roiStdErr": {
@@ -3011,7 +3011,7 @@ export const DICT = {
   "finishModel.mystery-realdata-step": { en: "Mystery / real-data — step", ru: "Mystery / real-data — ступень" },
   "finishModel.mystery-realdata-linear": { en: "Mystery / real-data — linear", ru: "Mystery / real-data — линейно" },
   "finishModel.mystery-realdata-tilt": { en: "Mystery / real-data — tilt (α)", ru: "Mystery / real-data — наклон (α)" },
-  "finishModel.powerlaw-realdata-influenced": { en: "Power-law — real-data α", ru: "Степенной — real-data α" },
+  "finishModel.powerlaw-realdata-influenced": { en: "Power-law — α from ROI, row ITM", ru: "Степенной — α под ROI, ITM строки" },
 
   // Error boundaries (app/error.tsx, app/global-error.tsx)
   "errorPage.title": { en: "Something went wrong", ru: "Что-то пошло не так" },
