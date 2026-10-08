@@ -19,7 +19,9 @@
  * N = ((z + z)·σ/|ROI|)². At C = 95 % that is ~4× the old median.
  *
  * Same σ source as ConvergenceChart:
- *   - Single format → per-candidate `evalSigma(coef, afs, roi) · rakeScale`
+ *   - Single format → per-candidate runtime σ of the format's default one-row
+ *     schedule (`formatRuntimeSigma`), the number schedule mode shows for that
+ *     row; the fit coefficients only supply the residual band
  *   - Ocean KO → per-candidate runtime variance upper bound, without a
  *     calibrated residual band
  *   - Schedule mode → schedule-aware `buildExactBreakdown(schedule).sigmaEff`,
@@ -48,6 +50,7 @@ import {
   type ConvergenceRowFormat,
   type FitBoxSample,
 } from "./convergencePolicy";
+import { formatRuntimeSigma } from "./formatRuntimeSigma";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
 export type ProveEdgeFormat = ConvergenceRowFormat | "exact";
@@ -181,10 +184,11 @@ function singleFormatSigma(
     };
   }
   const coef = SIGMA_COEF_BY_FORMAT[format];
-  const fitRake = FIT_RAKE_BY_FORMAT[format];
-  const rakeScale = (1 + fitRake) / (1 + Math.max(0, rake));
   const safeAfs = Math.max(1, afs);
-  const sigma = evalSigma(coef, safeAfs, roi) * rakeScale;
+  const sigma =
+    formatRuntimeSigma(format, { afs: safeAfs, roi, rake, finishModel }) ??
+    evalSigma(coef, safeAfs, roi) *
+      ((1 + FIT_RAKE_BY_FORMAT[format]) / (1 + Math.max(0, rake)));
   const insideBox = isInsideFitBox({ format, field: safeAfs, roi });
   const resid = insideBox ? coef.resid : 0;
   return {

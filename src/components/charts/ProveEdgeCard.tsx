@@ -3,16 +3,16 @@
 /**
  * Companion to the convergence widget. Answers a planning question:
  * "how many tournaments are needed before a non-zero ROI is likely
- * distinguishable from normal variance?" It uses the same per-format σ
- * fits and the same schedule-aware `buildExactBreakdown` machinery for
- * schedule mode.
+ * distinguishable from normal variance?" It uses the same per-format runtime σ
+ * as the convergence chips and the same schedule-aware
+ * `buildExactBreakdown` machinery for schedule mode.
  *
  * Self-contained: own format / mode controls. Reads the user's schedule
  * via prop only when the Schedule tab is active. Does not modify
  * ConvergenceChart state, so the existing widget stays exactly as it is.
  */
 import { RangeInput } from "@/components/ui/RangeInput";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import {
   AFS_MAX,
   AFS_MIN,
@@ -177,19 +177,18 @@ export function ProveEdgeCard({
     ? PROVE_EDGE_DEFAULT_CANDIDATES
     : PROVE_EDGE_POSITIVE_CANDIDATES;
 
-  const result = useMemo(
-    () =>
-      computeProveEdge({
-        format,
-        schedule: isExact ? (schedule ?? null) : null,
-        finishModel,
-        afs: effectiveAfsSingle,
-        rake: rakePct / 100,
-        oceanKoTotalTicket,
-        z: ciToZ(ciPct / 100),
-        currentRoi: isExact ? 0 : currentRoiPct / 100,
-        candidates,
-      }),
+  const proveEdgeInput = useMemo(
+    () => ({
+      format,
+      schedule: isExact ? (schedule ?? null) : null,
+      finishModel,
+      afs: effectiveAfsSingle,
+      rake: rakePct / 100,
+      oceanKoTotalTicket,
+      z: ciToZ(ciPct / 100),
+      currentRoi: isExact ? 0 : currentRoiPct / 100,
+      candidates,
+    }),
     [
       format,
       isExact,
@@ -202,6 +201,13 @@ export function ProveEdgeCard({
       currentRoiPct,
       candidates,
     ],
+  );
+  // Each candidate ROI is a runtime compile; on a 50k field the table takes
+  // hundreds of milliseconds, so dragging a slider must not queue one per tick.
+  const deferredProveEdgeInput = useDeferredValue(proveEdgeInput);
+  const result = useMemo(
+    () => computeProveEdge(deferredProveEdgeInput),
+    [deferredProveEdgeInput],
   );
 
   const scheduleEmpty = isExact && (!schedule || schedule.length === 0);
