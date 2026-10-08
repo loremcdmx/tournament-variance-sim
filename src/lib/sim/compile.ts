@@ -10,6 +10,7 @@
  * module is the orchestrator over the three.
  */
 import { compileRowVariants } from "./compileEntry";
+import { isAlphaAdjustable } from "./finishModel";
 import { compiledEntryMoments } from "./scheduleMoments";
 import { buildSchedulePassOrder } from "./schedulePassOrder";
 import { normalizeGameTypeConsistency } from "./gameType";
@@ -112,6 +113,10 @@ export function compileSchedule(
     row.reduce((sum, { entry, share }) => sum + share * entry.analyticMeanSingle, 0),
   );
   const rowTargetClamped = variants.map((row) => row.some(({ entry }) => entry.calibrationWarning));
+  // Fixed-shape models (uniform, empirical, *-realdata-*) and a pinned α never
+  // solve for the row's ROI, so the typed ROI says nothing about their mean:
+  // the expected profit has to come from the finish pmf they actually produce.
+  const rowIgnoresRoi = !usePdFinishModel && !isAlphaAdjustable(input.finishModel);
 
   const flat: CompiledEntry[] = [];
   let totalBuyIn = 0;
@@ -158,7 +163,7 @@ export function compileSchedule(
       const directRbMean = rowDirectRakebackMeans[rowIdx];
       flat.push(entry);
       totalBuyIn += entry.singleCost;
-      expectedProfit += (rowTargetClamped[rowIdx]
+      expectedProfit += (rowTargetClamped[rowIdx] || rowIgnoresRoi
         ? rowExpectedWinnings[rowIdx] - entry.singleCost
         : entry.singleCost * input.schedule[rowIdx].roi) + directRbMean;
       expectedDirectRakeback += directRbMean;

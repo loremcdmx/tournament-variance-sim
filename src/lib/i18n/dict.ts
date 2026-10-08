@@ -902,6 +902,10 @@ export const DICT = {
     en: "range: {min} → {max}",
     ru: "разброс: {min} → {max}",
   },
+  "stat.expectedProfit.fixedShape": {
+    en: "The skill model is a fixed shape and ignores the ROI typed into the rows, so this figure comes from the shape itself: expected ROI {roi}.",
+    ru: "Модель скилла — фиксированная форма и не использует ROI из строк, поэтому эта цифра берётся из самой формы: ожидаемый ROI {roi}.",
+  },
   "stat.range.spread": { en: "Range", ru: "Разброс" },
   "stat.range.from": { en: "From", ru: "От" },
   "stat.range.to": { en: "To", ru: "До" },

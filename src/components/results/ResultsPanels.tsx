@@ -16,6 +16,7 @@ import {
 } from "@/lib/results/sigmaReliability";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
 
 export function PrimeDopeWeaknessCard() {
   const t = useT();
@@ -356,6 +357,7 @@ export function SettingsDumpCard({
   const realizedRoi =
     result.totalBuyIn > 0 ? result.stats.mean / result.totalBuyIn : 0;
   const alphaPinned = settings.alphaOverride != null;
+  const fixedShape = !finishModelSupportsTargetRoi(settings.finishModelId);
   const roiDiverges = Math.abs(realizedRoi - r.roi) > 0.005;
   const totalEntries =
     schedule.reduce((acc, row) => acc + row.count, 0) * settings.scheduleRepeats;
@@ -384,7 +386,11 @@ export function SettingsDumpCard({
     [
       "realized ROI",
       `${(realizedRoi * 100).toFixed(1)}%${
-        alphaPinned && roiDiverges ? "  ⚠ α-pinned, target ignored" : ""
+        roiDiverges && alphaPinned
+          ? "  ⚠ α-pinned, target ignored"
+          : roiDiverges && fixedShape
+            ? "  ⚠ fixed shape, target ignored"
+            : ""
       }`,
     ],
     ["—", "—"],

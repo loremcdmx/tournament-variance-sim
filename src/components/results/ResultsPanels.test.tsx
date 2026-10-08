@@ -3,8 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { runSimulation } from "@/lib/sim/engine";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
-import type { SimulationResult } from "@/lib/sim/types";
-import { AdvancedStatsCard } from "./ResultsPanels";
+import type { ControlsState } from "@/components/ControlsPanel";
+import type { FinishModelConfig, SimulationResult, TournamentRow } from "@/lib/sim/types";
+import { AdvancedStatsCard, SettingsDumpCard } from "./ResultsPanels";
 import { PrimedopeReportCard } from "./PrimedopeDiagnostics";
 
 const base = runSimulation({
@@ -46,5 +47,32 @@ describe("heavy-tail marking in the results panels", () => {
     expect(heavyMarkup).toContain("±12%");
     const lightMarkup = render(<PrimedopeReportCard result={light} />);
     expect(lightMarkup).not.toContain("завышено при тяжёлом хвосте");
+  });
+});
+
+describe("settings dump on a fixed-shape skill model", () => {
+  const schedule: TournamentRow[] = [{
+    id: "t", players: 1000, buyIn: 50, rake: 0.1, roi: 0.1,
+    payoutStructure: "mtt-standard", count: 200,
+  }];
+  const settings = (finishModelId: string) => ({
+    samples: 6000, scheduleRepeats: 1, bankroll: 0, finishModelId, alphaOverride: null,
+    modelPresetId: "custom", compareEnabled: false, compareMode: "random", roiStdErr: 0,
+  }) as unknown as ControlsState;
+  const dump = (model: FinishModelConfig) => {
+    const result = runSimulation({
+      schedule, scheduleRepeats: 1, samples: 6000, bankroll: 0, seed: 5, finishModel: model,
+    });
+    return render(
+      <SettingsDumpCard settings={settings(model.id)} schedule={schedule} result={result} />,
+    );
+  };
+
+  it("says the typed ROI is ignored when the realized ROI differs", () => {
+    expect(dump({ id: "freeze-realdata-step" })).toContain("fixed shape, target ignored");
+  });
+
+  it("stays quiet for a calibrated model that hits its target", () => {
+    expect(dump({ id: "power-law" })).not.toContain("target ignored");
   });
 });

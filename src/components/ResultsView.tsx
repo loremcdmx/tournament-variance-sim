@@ -20,6 +20,7 @@ import type {
   TournamentRow,
 } from "@/lib/sim/types";
 import { rowHasActiveBounty } from "@/lib/sim/gameType";
+import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
 import { noiseChannelsActive } from "@/lib/sim/convergencePolicy";
 import { type RunMode } from "@/lib/trajectorySelection";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
@@ -499,6 +500,17 @@ function ResultsViewImpl({
       : undefined;
   const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
   const roi = totalMean / displayResultStats.totalBuyIn;
+  // A fixed-shape skill model never reads the ROI typed into the rows, so say
+  // which ROI the expected profit really stands for.
+  const fixedShapeRoiNote =
+    finishModelId != null &&
+    !finishModelSupportsTargetRoi(finishModelId) &&
+    displayResultStats.totalBuyIn > 0
+      ? t("stat.expectedProfit.fixedShape").replace(
+          "{roi}",
+          `${((totalExpectedProfit / displayResultStats.totalBuyIn) * 100).toFixed(1)}%`,
+        )
+      : "";
   // Browsing the cached seed batch swaps the displayed run without touching
   // the controls, so the exported seed is the active run's, not settings'.
   const runExportSeed = (activeSeed ?? settings?.seed ?? 0) >>> 0;
@@ -823,10 +835,15 @@ function ResultsViewImpl({
           sub={t("stat.expectedProfit.sub")
             .replace("{min}", money(totalMin))
             .replace("{max}", money(totalMax))}
-          tip={t("stat.expectedProfit.tip")
-            .replace("{mean}", money(totalMean))
-            .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
-            .replace("{median}", money(totalMedian))}
+          tip={[
+            t("stat.expectedProfit.tip")
+              .replace("{mean}", money(totalMean))
+              .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
+              .replace("{median}", money(totalMedian)),
+            fixedShapeRoiNote,
+          ]
+            .filter(Boolean)
+            .join(" ")}
           tone={totalExpectedProfit >= 0 ? "pos" : "neg"}
           pdValue={pdExpectedProfit != null ? money(pdExpectedProfit) : undefined}
           pdDelta={

@@ -28,12 +28,12 @@ const FIXED_SHAPE_MODELS: ReadonlySet<FinishModelId> = new Set<FinishModelId>([
 
 /**
  * True when the model calibrates its α (or shell mass) so that
- * Σ pmf·prize = singleCost·(1+ROI). False for embedded empirical shapes
- * that ignore the ROI target by design. Used in UI to label the row and
- * to suppress "target not hit" warnings on realdata-* models.
+ * Σ pmf·prize = singleCost·(1+ROI). False for the fixed shapes that ignore
+ * the ROI target by design: every realdata-* model, uniform and empirical.
+ * Used in UI to label the model and to word the expected-profit readout.
  */
 export function finishModelSupportsTargetRoi(id: FinishModelId): boolean {
-  return !REFERENCE_SHAPE_MODELS.has(id);
+  return !FIXED_SHAPE_MODELS.has(id);
 }
 
 /**
