@@ -41,6 +41,12 @@
 .snapshot { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; font-size: .875rem; }
 .snapshot span { padding: .4rem .6rem; background: var(--c-bg-elev); border-radius: 4px; color: var(--c-fg-muted); }
 .summary { padding: 1.5rem; border: 1px solid var(--c-border-strong); border-left: 4px solid var(--c-accent); border-radius: 8px; background: var(--c-bg-elev); }
+.ratios { width: 100%; max-width: 32rem; margin-top: .6rem; border-collapse: collapse; font-size: .875rem; }
+.ratios th, .ratios td { padding: .4rem .6rem; border-top: 1px solid var(--c-border); }
+.ratios thead th { border-top: 0; color: var(--c-fg-muted); font-size: .8rem; font-weight: 500; text-align: right; }
+.ratios thead th:first-child, .ratios tbody th { text-align: left; }
+.ratios tbody th { font-weight: 600; }
+.ratios td { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; margin-block: 1.5rem; }
 .stats > div { min-width: 0; }
 .stats dt { color: var(--c-fg-muted); font-size: .875rem; line-height: 1.5; }

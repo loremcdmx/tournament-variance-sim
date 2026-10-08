@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
-import type {
-  ComparisonFormat, FormatComparisonSummary, ProbabilityEstimate, ThresholdRisk,
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
+import {
+  commonRiskCurves,
+  type ComparisonFormat, type FormatComparisonSummary, type ProbabilityEstimate, type RiskMetric,
 } from "@/lib/calibration/formatComparison";
 import type { DictKey } from "@/lib/i18n/dict";
 import { riskChartMaximum } from "./riskChartDomain";
@@ -10,7 +11,6 @@ import styles from "./OceanReportCharts.module.css";
 
 type Translate = (key: DictKey) => string;
 type NumberFormat = (value: number, digits?: number) => string;
-type RiskKind = "drawdownRisks" | "evShortfallRisks";
 
 const names: Record<ComparisonFormat, DictKey> = {
   freezeout: "oceanReport.freezeout", pko: "oceanReport.pko", mystery: "oceanReport.mystery",
@@ -28,8 +28,15 @@ function interpolate(template: string, values: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole);
 }
 
-function risks(row: FormatComparisonSummary, kind: RiskKind): ThresholdRisk[] {
-  return (kind === "drawdownRisks" ? row.drawdownRiskCurve : row.evShortfallRiskCurve) ?? row[kind];
+/** About five evenly spaced labelled ticks at 1 / 2 / 2.5 / 5 times a power of ten. */
+function axisTicks(maximum: number): { ticks: number[]; digits: number } {
+  if (!(maximum > 0)) return { ticks: [0], digits: 0 };
+  const raw = maximum / 6;
+  const base = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(mantissa => mantissa * base).find(candidate => candidate >= raw) ?? 10 * base;
+  const ticks: number[] = [];
+  for (let index = 0; index * step <= maximum * (1 + 1e-9); index++) ticks.push(Number((index * step).toPrecision(12)));
+  return { ticks, digits: Number.isInteger(step) ? 0 : step >= 1 ? 1 : 2 };
 }
 
 function Swatch({ format, solid = false }: { format: ComparisonFormat; solid?: boolean }) {
@@ -57,31 +64,34 @@ function Probability({ probability, pct, interval = false }: { probability: Prob
   </span>;
 }
 
-export function SurvivalChart({ rows, kind, t, n, pct }: {
-  rows: FormatComparisonSummary[]; kind: RiskKind; t: Translate; n: NumberFormat; pct: (value: number) => string;
+export function SurvivalChart({ rows, metric, t, n, pct }: {
+  rows: FormatComparisonSummary[]; metric: RiskMetric; t: Translate; n: NumberFormat; pct: (value: number) => string;
 }) {
   const id = useId();
-  const [threshold, setThreshold] = useState(250);
+  const [threshold, setThreshold] = useState<number | null>(null);
   const [fullTail, setFullTail] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
-  const points = rows[0] ? risks(rows[0], kind) : [];
-  const curves = rows.map(row => risks(row, kind));
+  const common = useMemo(() => commonRiskCurves(rows, metric), [rows, metric]);
+  const grid = common.thresholds;
+  const gridMaximum = grid.at(-1) ?? 0;
+  const curves = rows.map(row => common.curves[row.format] ?? []);
   const maximum = riskChartMaximum(curves, fullTail);
-  const autoClipped = !fullTail && maximum < riskChartMaximum(curves, true);
-  const shownPoints = points.filter(point => point.thresholdBI <= maximum);
-  const axisThresholds = [...new Set([0, .25, .5, .75, 1].map(fraction => Math.min(maximum, Math.round(fraction * maximum / 10) * 10)))];
-  const selectedIndex = shownPoints.reduce((best, point, index) => Math.abs(point.thresholdBI - threshold) < Math.abs(shownPoints[best].thresholdBI - threshold) ? index : best, 0);
-  const selected = shownPoints[selectedIndex]?.thresholdBI ?? 0;
+  const autoClipped = !fullTail && maximum < gridMaximum;
+  const shown = grid.filter(value => value <= maximum);
+  const wanted = threshold ?? maximum * 0.35;
+  const selectedIndex = shown.reduce((best, value, index) => Math.abs(value - wanted) < Math.abs(shown[best] - wanted) ? index : best, 0);
+  const selected = shown[selectedIndex] ?? 0;
   const x = (value: number) => 70 + value / maximum * 395;
   const y = (value: number) => 220 - value * 185;
-  const title = t(kind === "drawdownRisks" ? "oceanReport.survivalDD" : "oceanReport.survivalEV");
+  const title = t(metric === "drawdown" ? "oceanReport.survivalDD" : "oceanReport.survivalEV");
+  const axis = axisTicks(maximum);
   const selectAtPointer = (event: PointerEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const plotX = (event.clientX - bounds.left) / bounds.width * 500;
     setThreshold(Math.max(0, Math.min(maximum, (plotX - 70) / 395 * maximum)));
   };
   const gridDescription = interpolate(t("oceanReport.chartGrid"), {
-    points: n(shownPoints.length, 0), step: n((points[1]?.thresholdBI ?? 0) - (points[0]?.thresholdBI ?? 0), 0),
+    points: n(shown.length, 0), step: n((grid[1] ?? 0) - (grid[0] ?? 0), 2),
   });
   return <section className={styles.panel}>
     <header className={styles.header}>
@@ -94,31 +104,31 @@ export function SurvivalChart({ rows, kind, t, n, pct }: {
         <line x1="70" x2="465" y1={y(value)} y2={y(value)} stroke="var(--c-border)" />
         <text x="59" y={y(value) + 5} fill="var(--c-fg-muted)" textAnchor="end">{n(value * 100, 0)}%</text>
       </g>)}
-      {axisThresholds.map(value => <text key={value} x={x(value)} y="250"
-        textAnchor={value === 0 ? "start" : value === maximum ? "end" : "middle"} fill="var(--c-fg-muted)">{n(value, 0)}</text>)}
+      {axis.ticks.map(value => <text key={value} x={x(value)} y="250"
+        textAnchor={value === 0 ? "start" : value >= maximum ? "end" : "middle"} fill="var(--c-fg-muted)">{n(value, axis.digits)}</text>)}
       <line x1={x(selected)} x2={x(selected)} y1="35" y2="220" stroke="var(--c-fg-dim)" strokeDasharray="3 4" />
-      {rows.map(row => <g key={row.format}>
+      {rows.map((row, rowIndex) => <g key={row.format}>
         <polyline fill="none" stroke={colors[row.format]} strokeWidth={row.format === "ocean-ko" ? 3 : 2}
           strokeDasharray={dashes[row.format]} strokeLinejoin="round"
-          points={risks(row, kind).filter(point => point.thresholdBI <= maximum).map(point => `${x(point.thresholdBI)},${y(point.probability.value)}`).join(" ")} />
-        {risks(row, kind).filter(point => point.thresholdBI === selected).map(point => <circle key={point.thresholdBI}
+          points={curves[rowIndex].filter(point => point.thresholdBI <= maximum).map(point => `${x(point.thresholdBI)},${y(point.probability.value)}`).join(" ")} />
+        {curves[rowIndex].filter(point => point.thresholdBI === selected).map(point => <circle key={point.thresholdBI}
           cx={x(point.thresholdBI)} cy={y(point.probability.value)} r={row.format === "ocean-ko" ? 4 : 3}
           stroke="var(--c-bg-elev)" strokeWidth="1.5" fill={colors[row.format]} />)}
       </g>)}
     </svg>
-    <label className={styles.showBest}><input type="checkbox" checked={fullTail} onChange={event => setFullTail(event.target.checked)} />{t("oceanReport.fullRiskTail")}</label>
+    <label className={styles.showBest}><input type="checkbox" checked={fullTail} onChange={event => setFullTail(event.target.checked)} />{interpolate(t("oceanReport.fullRiskTail"), { max: n(gridMaximum, 2) })}</label>
     <div className={`${styles.threshold} ${styles.riskThreshold}`}>
       <label htmlFor={`${id}-threshold`}>{t("oceanReport.threshold")}</label>
-      <output htmlFor={`${id}-threshold`}>{n(selected, 0)} <span>BI</span></output>
+      <output htmlFor={`${id}-threshold`}>{n(selected, 2)} <span>BI</span></output>
     </div>
-    <input id={`${id}-threshold`} className={styles.slider} type="range" min="0" max={Math.max(0, shownPoints.length - 1)} step="1"
-      value={selectedIndex} onChange={event => setThreshold(shownPoints[Number(event.target.value)]?.thresholdBI ?? 0)}
-      aria-valuetext={`${n(selected, 0)} BI`} aria-describedby={`${id}-help`} disabled={shownPoints.length === 0}
-      style={{ "--range-progress": `${selectedIndex / Math.max(1, shownPoints.length - 1) * 100}%` } as CSSProperties} />
+    <input id={`${id}-threshold`} className={styles.slider} type="range" min="0" max={Math.max(0, shown.length - 1)} step="1"
+      value={selectedIndex} onChange={event => setThreshold(shown[Number(event.target.value)] ?? 0)}
+      aria-valuetext={`${n(selected, 2)} BI`} aria-describedby={`${id}-help`} disabled={shown.length === 0}
+      style={{ "--range-progress": `${selectedIndex / Math.max(1, shown.length - 1) * 100}%` } as CSSProperties} />
     <p id={`${id}-help`} className="sr-only">{t("oceanReport.chartInteract")}</p>
     <ul className={styles.readouts}>
-      {rows.map(row => {
-        const point = risks(row, kind).find(item => item.thresholdBI === selected);
+      {rows.map((row, rowIndex) => {
+        const point = curves[rowIndex][selectedIndex];
         return <li key={row.format} className={row.format === "ocean-ko" ? styles.oceanReadout : undefined}>
           <span className={styles.readoutName}><Swatch format={row.format} />{t(names[row.format])}</span>
           {point && <Probability probability={point.probability} pct={pct} />}
@@ -128,13 +138,14 @@ export function SurvivalChart({ rows, kind, t, n, pct }: {
     <details className={styles.details} onToggle={event => setDataOpen(event.currentTarget.open)}>
       <summary>{t("oceanReport.chartData")}</summary>
       <p className={styles.detailNote}>{gridDescription}</p>
-      {autoClipped && <p className={styles.detailNote}>{t("oceanReport.riskAutoRange")}</p>}
+      <p className={styles.detailNote}>{interpolate(t("oceanReport.chartSharedGrid"), { max: n(gridMaximum, 2) })}</p>
+      {autoClipped && <p className={styles.detailNote}>{interpolate(t("oceanReport.riskAutoRange"), { max: n(gridMaximum, 2) })}</p>}
       <p className={styles.detailNote}>{t("oceanReport.chartDenseNote")}</p>
       {dataOpen && <DataTable label={title}>
         <thead><tr><th scope="col">{t("oceanReport.threshold")}</th>{rows.map(row => <th scope="col" key={row.format}>{t(names[row.format])}</th>)}</tr></thead>
-        <tbody>{points.map(({ thresholdBI }) => <tr key={thresholdBI}>
-          <th scope="row">{n(thresholdBI, 0)}</th>{rows.map(row => {
-            const point = risks(row, kind).find(item => item.thresholdBI === thresholdBI);
+        <tbody>{grid.map((thresholdBI, index) => <tr key={thresholdBI}>
+          <th scope="row">{n(thresholdBI, 2)}</th>{rows.map((row, rowIndex) => {
+            const point = curves[rowIndex][index];
             return <td key={row.format}>{point ? <>
               <Probability probability={point.probability} pct={pct} interval />
               <small className={styles.count}>{interpolate(t("oceanReport.chartCount"), { count: n(point.probability.count, 0), samples: n(point.probability.samples, 0) })}</small>
