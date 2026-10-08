@@ -5,7 +5,10 @@
  * Pure data + small helpers — no side effects, no RNG.
  */
 import type { GameType, TournamentRow } from "./types";
-import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
+import {
+  battleRoyaleBountyShareOfNetPool,
+  battleRoyaleRowFromTotalTicket,
+} from "./battleRoyaleTicket";
 
 export const GAME_TYPE_ORDER: GameType[] = [
   "freezeout",
@@ -36,8 +39,10 @@ export function oceanKoRowFromTotalTicket(totalTicket: number): {
     rake: DEFAULT_OCEAN_RAKE,
   };
 }
-export const DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION = 0.45;
 export const BATTLE_ROYALE_PLAYERS = 18;
+// GG's envelope table, not a rounded guess: 21/46 = 0.4565 of the net pool.
+export const DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION =
+  battleRoyaleBountyShareOfNetPool(BATTLE_ROYALE_PLAYERS);
 
 const BOUNTY_GAME_TYPES = new Set<GameType>([
   "pko",

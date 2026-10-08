@@ -156,7 +156,7 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 3 / 22,
         roi: 0.12,
         payoutStructure: "mtt-gg-bounty",
-        bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+        bountyFraction: 0.45,
         guarantee: 50_000,
         count: 40,
       },
@@ -576,7 +576,7 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.05,
         payoutStructure: "battle-royale",
         gameType: "mystery-royale",
-        bountyFraction: 0.5,
+        bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
         count: 120,
       },
       {
