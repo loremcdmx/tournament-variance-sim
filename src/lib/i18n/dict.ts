@@ -392,16 +392,16 @@ export const DICT = {
     ru: "ПКО по реал-дате (гибрид tilt)",
   },
   "model.mystery-realdata-step": {
-    en: "Mystery real-data (step)",
-    ru: "Мистери по реал-дате (шаги)",
+    en: "Mystery, PKO + freezeout splice (step)",
+    ru: "Мистери, склейка PKO + фризаут (шаги)",
   },
   "model.mystery-realdata-linear": {
-    en: "Mystery real-data (linear)",
-    ru: "Мистери по реал-дате (линейная)",
+    en: "Mystery, PKO + freezeout splice (linear)",
+    ru: "Мистери, склейка PKO + фризаут (линейная)",
   },
   "model.mystery-realdata-tilt": {
-    en: "Mystery real-data (hybrid tilt)",
-    ru: "Мистери по реал-дате (гибрид tilt)",
+    en: "Mystery, PKO + freezeout splice (hybrid tilt)",
+    ru: "Мистери, склейка PKO + фризаут (гибрид tilt)",
   },
   "model.powerlaw-realdata-influenced": {
     en: "Power-law (α from ROI, ITM from the row)",
@@ -3038,9 +3038,9 @@ export const DICT = {
   "finishModel.pko-realdata-step": { en: "PKO / real-data — step", ru: "PKO / real-data — ступень" },
   "finishModel.pko-realdata-linear": { en: "PKO / real-data — linear", ru: "PKO / real-data — линейно" },
   "finishModel.pko-realdata-tilt": { en: "PKO / real-data — tilt (α)", ru: "PKO / real-data — наклон (α)" },
-  "finishModel.mystery-realdata-step": { en: "Mystery / real-data — step", ru: "Mystery / real-data — ступень" },
-  "finishModel.mystery-realdata-linear": { en: "Mystery / real-data — linear", ru: "Mystery / real-data — линейно" },
-  "finishModel.mystery-realdata-tilt": { en: "Mystery / real-data — tilt (α)", ru: "Mystery / real-data — наклон (α)" },
+  "finishModel.mystery-realdata-step": { en: "Mystery / PKO + freeze splice — step", ru: "Mystery / склейка PKO + фриз — ступень" },
+  "finishModel.mystery-realdata-linear": { en: "Mystery / PKO + freeze splice — linear", ru: "Mystery / склейка PKO + фриз — линейно" },
+  "finishModel.mystery-realdata-tilt": { en: "Mystery / PKO + freeze splice — tilt (α)", ru: "Mystery / склейка PKO + фриз — наклон (α)" },
   "finishModel.powerlaw-realdata-influenced": { en: "Power-law — α from ROI, row ITM", ru: "Степенной — α под ROI, ITM строки" },
 
   // Error boundaries (app/error.tsx, app/global-error.tsx)

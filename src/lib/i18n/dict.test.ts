@@ -21,6 +21,20 @@ describe("i18n dict", () => {
     },
   );
 
+  it.each(["step", "linear", "tilt"] as const)(
+    "does not present the spliced Mystery finish shape (%s) as real Mystery data", (variant) => {
+      for (const key of [
+        `model.mystery-realdata-${variant}`,
+        `finishModel.mystery-realdata-${variant}`,
+      ] as const) {
+        expect(DICT[key].en, key).not.toMatch(/real[s-]?data/i);
+        expect(DICT[key].ru, key).not.toMatch(/реал/i);
+        expect(DICT[key].en, key).toMatch(/PKO.*(freeze|freezeout)/i);
+        expect(DICT[key].ru, key).toMatch(/склейк.*PKO.*(фриз|фризаут)/i);
+      }
+    },
+  );
+
   it("every entry covers every locale with a non-empty string", () => {
     for (const [key, entry] of Object.entries(DICT)) {
       for (const loc of LOCALES) {
