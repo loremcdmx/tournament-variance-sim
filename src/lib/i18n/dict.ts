@@ -585,12 +585,12 @@ export const DICT = {
     ru: "Консервативная дистанция · верхняя граница дисперсии модели",
   },
   "proveEdge.footnote.oceanKo": {
-    en: "The required volume uses an upper bound on Ocean KO model variance. These are conservative model estimates, without a calibrated uncertainty band.",
-    ru: "Дистанция рассчитана по верхней границе дисперсии модели Ocean KO. Это консервативная оценка модели без калиброванного диапазона погрешности.",
+    en: "The required volume uses an upper bound on Ocean KO model variance. The bound sits about 2.5–4.5× above the model's Monte-Carlo σ, so the distance can be 6–20× longer than typical for the model. These are conservative model estimates, without a calibrated uncertainty band.",
+    ru: "Дистанция рассчитана по верхней границе дисперсии модели Ocean KO. Граница примерно в 2,5–4,5 раза выше модельной σ по Монте-Карло, поэтому дистанция может быть в 6–20 раз больше типичной для модели. Это консервативная оценка модели без калиброванного диапазона погрешности.",
   },
   "chart.convergence.bandWarning.oceanKo": {
-    en: "Ocean KO uses an analytic upper bound on the model variance here, so the required distance is conservative. This is not a prediction of the exact variance of real tournaments.",
-    ru: "Для Ocean KO здесь используется аналитическая верхняя граница дисперсии модели: дистанция оценена консервативно. Это не прогноз точной дисперсии реальных турниров.",
+    en: "Ocean KO uses an analytic upper bound on the model variance here, so the required distance is conservative. The bound sits about 2.5–4.5× above the model's Monte-Carlo σ, so the distance can be 6–20× longer than typical for the model. This is not a prediction of the exact variance of real tournaments.",
+    ru: "Для Ocean KO здесь используется аналитическая верхняя граница дисперсии модели: дистанция оценена консервативно. Граница примерно в 2,5–4,5 раза выше модельной σ по Монте-Карло, поэтому дистанция может быть в 6–20 раз больше типичной для модели. Это не прогноз точной дисперсии реальных турниров.",
   },
   "demo.oceanKo": { en: "Ocean KO · GGPoker", ru: "Ocean KO · GGPoker" },
   "row.gameType.mystery": { en: "Mystery", ru: "Мистери" },
