@@ -21,7 +21,7 @@ const RATIO_FORMATS: ComparisonFormat[] = ["freezeout", "pko", "mystery"];
 
 type RatioRow = Pick<FormatComparisonSummary, "format" | "maxDrawdownBI" | "maxEvShortfallBI">;
 
-/** Ocean P95 against every other comparable format. Unrounded: callers round to
+/** Ocean P95 against every other format in the report. Unrounded: callers round to
  * one digit because the second one is inside Monte Carlo noise. */
 export function oceanRatios(rows: readonly RatioRow[]): OceanFormatRatio[] {
   const ocean = rows.find((row) => row.format === "ocean-ko");

@@ -9,7 +9,7 @@ type NumberFormat = (value: number, digits?: number) => string;
 
 const formatNames: Record<ComparisonFormat, DictKey> = {
   freezeout: "oceanReport.freezeout", pko: "oceanReport.pko", mystery: "oceanReport.mystery",
-  "ocean-ko": "oceanReport.ocean", "mystery-royale": "oceanReport.battle",
+  "ocean-ko": "oceanReport.ocean",
 };
 
 /** The headline card. The longest spell below EV is shown as a median: its P95

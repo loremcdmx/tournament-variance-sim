@@ -34,8 +34,8 @@ describe("Ocean against the other formats", () => {
     expect(ratios.map(item => item.evShortfall!.toFixed(1))).toEqual(["0.6", "1.2", "0.8"]);
   });
 
-  it("leaves a ratio empty when the other format has no drawdown, and skips Battle Royale", () => {
-    const ratios = oceanRatios([row("freezeout", 0, 10), row("mystery-royale", 105, 151.6), rows[3]]);
+  it("leaves a ratio empty when the other format has no drawdown, and skips formats that did not run", () => {
+    const ratios = oceanRatios([row("freezeout", 0, 10), rows[3]]);
     expect(ratios).toHaveLength(1);
     expect(ratios[0]).toEqual({ format: "freezeout", drawdown: null, evShortfall: 256.3 / 10 });
     expect(oceanRatios(rows.slice(0, 3))).toEqual([]);
