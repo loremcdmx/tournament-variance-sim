@@ -3,7 +3,7 @@ import { createFormatComparisonCache } from "./formatComparisonCache";
 import { FORMAT_COMPARISON_DEFAULTS, type FormatComparisonSummary } from "./formatComparison";
 
 const config = { ...FORMAT_COMPARISON_DEFAULTS };
-const rows = ["freezeout", "pko", "mystery", "ocean-ko", "mystery-royale"].map(format => ({
+const rows = ["freezeout", "pko", "mystery", "ocean-ko"].map(format => ({
   format, seed: config.seed, downsideCurve: [{ entries: 100, minBI: -17 }],
 })) as FormatComparisonSummary[];
 
@@ -42,12 +42,16 @@ describe("completed comparison cache", () => {
     expect(cache.get({ ...config, seed: 4 })).toEqual(rows);
   });
 
-  it("does not cache incomplete or duplicated format sets", () => {
+  it("only caches the complete set of four distinct formats", () => {
     const cache = createFormatComparisonCache();
-    cache.put(config, rows.slice(0, 4));
+    cache.put(config, rows.slice(0, 3));
     expect(cache.get(config)).toBeUndefined();
-    cache.put(config, [...rows.slice(0, 4), rows[0]]);
+    cache.put(config, [...rows.slice(0, 3), rows[0]]);
     expect(cache.get(config)).toBeUndefined();
+    cache.put(config, [...rows, rows[0]]);
+    expect(cache.get(config)).toBeUndefined();
+    cache.put(config, rows);
+    expect(cache.get(config)).toEqual(rows);
     expect(() => createFormatComparisonCache(-1)).toThrow();
   });
 });

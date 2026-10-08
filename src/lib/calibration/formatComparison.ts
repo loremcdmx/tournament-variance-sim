@@ -2,9 +2,10 @@ import { compileSchedule } from "../sim/compile";
 import type { CheckpointGrid, CompiledEntry, CompiledSchedule, DownsideShard } from "../sim/engineTypes";
 import { OCEAN_KO_ODDS } from "../sim/oceanKo";
 import { compiledEntryMoments } from "../sim/scheduleMoments";
-import type { GameType, SimulationInput, TournamentRow } from "../sim/types";
+import type { SimulationInput, TournamentRow } from "../sim/types";
 
-export type ComparisonFormat = GameType;
+export const FORMAT_COMPARISON_FORMATS = ["freezeout", "pko", "mystery", "ocean-ko"] as const;
+export type ComparisonFormat = typeof FORMAT_COMPARISON_FORMATS[number];
 export interface FormatComparisonConfig {
   ticket: number;
   players: number;
@@ -28,8 +29,6 @@ export const FORMAT_COMPARISON_LIMITS = {
 
 export interface FormatComparisonScenario {
   format: ComparisonFormat;
-  /** Battle Royale keeps its native 18-player field and $10 ticket. */
-  comparable: boolean;
   input: SimulationInput;
 }
 
@@ -55,7 +54,6 @@ export interface ThresholdRisk {
 }
 export interface FormatComparisonMomentRow {
   format: ComparisonFormat;
-  comparable: boolean;
   ticket: number;
   players: number;
   feeFractionOfTicket: number;
@@ -81,7 +79,6 @@ export interface FormatComparisonMomentRow {
 
 export interface FormatComparisonSummary {
   format: ComparisonFormat;
-  comparable: boolean;
   ticket: number;
   players: number;
   distance: number;
@@ -142,26 +139,23 @@ export function validateFormatComparisonConfig(config: FormatComparisonConfig): 
 
 export function buildFormatComparisonScenarios(config: FormatComparisonConfig): FormatComparisonScenario[] {
   validateFormatComparisonConfig(config);
-  const formats: ComparisonFormat[] = ["freezeout", "pko", "mystery", "ocean-ko", "mystery-royale"];
-  return formats.map((format) => {
-    const isBr = format === "mystery-royale";
-    const ticket = isBr ? 10 : config.ticket;
-    const buyIn = ticket * 0.92;
+  return FORMAT_COMPARISON_FORMATS.map((format) => {
+    const buyIn = config.ticket * 0.92;
     const row: TournamentRow = {
       id: `comparison-${format}`, gameType: format,
-      players: isBr ? 18 : config.players, buyIn, rake: 8 / 92,
+      players: config.players, buyIn, rake: 8 / 92,
       roi: config.roi, count: 1,
       payoutStructure: format === "freezeout" ? "mtt-gg"
         : format === "mystery" ? "mtt-gg-mystery"
-          : isBr ? "battle-royale" : "mtt-gg-bounty",
+          : "mtt-gg-bounty",
       ...(format !== "freezeout" ? {
-        bountyFraction: format === "ocean-ko" ? 50 / 92 : isBr ? 42 / 92 : 0.5,
+        bountyFraction: format === "ocean-ko" ? 50 / 92 : 0.5,
       } : {}),
       ...(format === "mystery" ? { mysteryBountyVariance: config.mysteryLogVariance } : {}),
       ...(format === "pko" ? { pkoHeadVar: 0.4, pkoHeat: 0 } : {}),
     };
     return {
-      format, comparable: !isBr,
+      format,
       input: {
         schedule: [row], scheduleRepeats: config.distance, samples: config.samples,
         bankroll: 0, seed: config.seed, finishModel: { id: "power-law" },
@@ -209,7 +203,7 @@ function momentRow(scenario: FormatComparisonScenario, entry: CompiledEntry): Fo
   const twiceCashBountyCovarianceBI2 = 2 * (cross - cashMean * bountyMean) / square;
   const distance = scenario.input.scheduleRepeats;
   return {
-    format: scenario.format, comparable: scenario.comparable, ticket, players: entry.fieldSize,
+    format: scenario.format, ticket, players: entry.fieldSize,
     feeFractionOfTicket: 0.08,
     cashPoolFractionOfTicket: 0.92 * (1 - (row.bountyFraction ?? 0)),
     bountyPoolFractionOfTicket: 0.92 * (row.bountyFraction ?? 0),
@@ -239,7 +233,6 @@ export function buildFormatComparisonMoments(config: FormatComparisonConfig): Fo
 function withOceanRatios(rows: FormatComparisonMomentRow[]): FormatComparisonMomentRow[] {
   const ocean = rows.find((row) => row.format === "ocean-ko")!;
   for (const row of rows) {
-    if (!row.comparable) continue;
     const ratio = row === ocean ? { lower: 1, upper: 1 } : {
       lower: ocean.varianceBI2.lower / row.varianceBI2.upper,
       upper: ocean.varianceBI2.upper / row.varianceBI2.lower,
@@ -349,7 +342,7 @@ export function summarizeFormatComparisonScenario(
     });
   }
   return {
-    format: scenario.format, comparable: scenario.comparable, ticket,
+    format: scenario.format, ticket,
     players: compiled.flat[0].fieldSize, distance, samples, seed: scenario.input.seed,
     expectedProfitBI: expectedProfit / ticket,
     realisedMeanProfitBI: meanProfit / samples / ticket,

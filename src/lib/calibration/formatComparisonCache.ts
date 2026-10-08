@@ -1,6 +1,4 @@
-import type { FormatComparisonConfig, FormatComparisonSummary } from "./formatComparison";
-
-const REQUIRED_FORMATS = ["freezeout", "pko", "mystery", "ocean-ko", "mystery-royale"] as const;
+import { FORMAT_COMPARISON_FORMATS, type FormatComparisonConfig, type FormatComparisonSummary } from "./formatComparison";
 
 function configKey(config: FormatComparisonConfig): string {
   return JSON.stringify([
@@ -23,7 +21,7 @@ export function createFormatComparisonCache(capacity = 3) {
       return structuredClone(rows);
     },
     put(config: FormatComparisonConfig, rows: FormatComparisonSummary[]): void {
-      if (rows.length !== REQUIRED_FORMATS.length || !REQUIRED_FORMATS.every((format, index) => rows[index].format === format)) return;
+      if (rows.length !== FORMAT_COMPARISON_FORMATS.length || !FORMAT_COMPARISON_FORMATS.every((format, index) => rows[index].format === format)) return;
       const key = configKey(config);
       entries.delete(key);
       entries.set(key, structuredClone(rows));

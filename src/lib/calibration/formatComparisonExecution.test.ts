@@ -17,7 +17,7 @@ describe("comparison execution without unused calculator collectors", () => {
       distance: FORMAT_COMPARISON_LIMITS.distance.max,
     };
     for (const { scenario, compiled, moments } of compileFormatComparison(config)) {
-      expect(compiled.flat[0].fieldSize).toBe(scenario.comparable ? config.players : 18);
+      expect(compiled.flat[0].fieldSize).toBe(config.players);
       expect(compiled.tournamentsPerSample).toBe(config.distance);
       const input = { ...scenario.input, samples: 2 };
       const grid = grids.makeCheckpointGrid(compiled.tournamentsPerSample);
@@ -37,12 +37,13 @@ describe("comparison execution without unused calculator collectors", () => {
     }
   });
 
-  it("compiles five formats once and derives the exact same analytic comparison", () => {
+  it("compiles four formats once and derives the exact same analytic comparison", () => {
     const config = { ...FORMAT_COMPARISON_DEFAULTS, players: 100, distance: 503 };
     const before = buildFormatComparisonMoments(config);
     const compile = vi.spyOn(compilation, "compileSchedule");
     const prepared = compileFormatComparison(config);
-    expect(compile).toHaveBeenCalledTimes(5);
+    expect(compile).toHaveBeenCalledTimes(4);
+    expect(prepared.map(row => row.scenario.format)).toEqual(["freezeout", "pko", "mystery", "ocean-ko"]);
     expect(prepared.map(row => row.moments)).toEqual(before);
   });
 

@@ -5,29 +5,26 @@ import { simulateShard } from "../sim/hotLoop";
 import { compiledEntryMoments } from "../sim/scheduleMoments";
 import {
   buildFormatComparisonMoments, buildFormatComparisonScenarios, estimateProbability,
-  FORMAT_COMPARISON_DEFAULTS, oceanWheelCutoffs, summarizeDistribution, summarizeFormatComparisonScenario,
+  FORMAT_COMPARISON_DEFAULTS, FORMAT_COMPARISON_FORMATS, oceanWheelCutoffs, summarizeDistribution, summarizeFormatComparisonScenario,
 } from "./formatComparison";
 
 describe("format comparison's common cost and native mechanics", () => {
   it("compares four MTTs on the same total cost, field, ROI, distance and samples", () => {
     const config = { ...FORMAT_COMPARISON_DEFAULTS, ticket: 37, players: 500, distance: 300 };
     const scenarios = buildFormatComparisonScenarios(config);
-    for (const scenario of scenarios.filter((row) => row.comparable)) {
+    expect(FORMAT_COMPARISON_FORMATS).toEqual(["freezeout", "pko", "mystery", "ocean-ko"]);
+    expect(scenarios.map((row) => row.format)).toEqual(FORMAT_COMPARISON_FORMATS);
+    for (const scenario of scenarios) {
       const row = scenario.input.schedule[0];
       expect(row.buyIn * (1 + row.rake)).toBeCloseTo(config.ticket, 12);
       expect(row.players).toBe(500);
       expect(row.roi).toBe(config.roi);
       expect(scenario.input.scheduleRepeats).toBe(300);
+      expect(scenario.input.samples).toBe(config.samples);
       expect(scenario.input.collectDownsideReport).toBe(true);
       expect(scenario.input.rakebackFracOfRake).toBeUndefined();
       expect(scenario.input.battleRoyaleLeaderboard).toBeUndefined();
     }
-    const battle = scenarios.find((row) => row.format === "mystery-royale")!;
-    expect(battle.comparable).toBe(false);
-    expect(battle.input.schedule[0].players).toBe(18);
-    expect(battle.input.schedule[0].buyIn).toBeCloseTo(9.2, 12);
-    expect(battle.input.schedule[0].buyIn * battle.input.schedule[0].bountyFraction!).toBeCloseTo(4.2, 12);
-    expect(battle.input.schedule[0].buyIn * (1 - battle.input.schedule[0].bountyFraction!) * 18).toBeCloseTo(90, 12);
   });
 
   it("reads analytic bounds and decomposes the same compiled second moment", () => {
@@ -52,8 +49,8 @@ describe("format comparison's common cost and native mechanics", () => {
     expect(ocean.sigmaBI.upper).toBeGreaterThan(ocean.sigmaBI.lower);
     expect(ocean.oceanSigmaRatio).toEqual({ lower: 1, upper: 1 });
     expect(rows[0].bountyVarianceBI2).toEqual({ lower: 0, upper: 0 });
-    expect(rows.at(-1)!.oceanDistanceRatio).toBeNull();
-    for (const row of rows.filter((r) => r.comparable)) {
+    expect(ocean.oceanDistanceRatio).toEqual({ lower: 1, upper: 1 });
+    for (const row of rows) {
       expect(row.oceanSigmaRatio!.upper ** 2).toBeCloseTo(row.oceanDistanceRatio!.upper, 10);
     }
   });

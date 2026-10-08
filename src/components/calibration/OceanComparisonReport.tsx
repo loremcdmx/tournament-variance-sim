@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
   FORMAT_COMPARISON_DEFAULTS,
+  FORMAT_COMPARISON_FORMATS,
   FORMAT_COMPARISON_LIMITS,
   oceanWheelCutoffs,
   type ComparisonFormat,
@@ -28,11 +29,11 @@ const th = "px-4 py-3 text-right font-medium text-fg-muted";
 const td = "px-4 py-3 text-right tabular-nums";
 const formatNames: Record<ComparisonFormat, DictKey> = {
   freezeout: "oceanReport.freezeout", pko: "oceanReport.pko", mystery: "oceanReport.mystery",
-  "ocean-ko": "oceanReport.ocean", "mystery-royale": "oceanReport.battle",
+  "ocean-ko": "oceanReport.ocean",
 };
 const payoutNames: Record<string, DictKey> = {
   "mtt-gg": "oceanReport.payoutGG", "mtt-gg-bounty": "oceanReport.payoutKO",
-  "mtt-gg-mystery": "oceanReport.payoutMystery", "battle-royale": "oceanReport.payoutBR",
+  "mtt-gg-mystery": "oceanReport.payoutMystery",
 };
 type Translate = (key: DictKey) => string;
 type Draft = Record<keyof FormatComparisonConfig, string>;
@@ -122,9 +123,8 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
   }, [draft]);
   const snapshot = report.configSnapshot;
   const stale = snapshot !== null && draftKeys.some(key => parsed.config[key] !== snapshot[key]);
-  const rows = report.rows.filter(row => row.comparable);
+  const rows = report.rows;
   const ocean = rows.find(row => row.format === "ocean-ko");
-  const battle = report.rows.find(row => !row.comparable);
   const complete = report.status === "done" && report.completed === report.total;
   const running = report.status === "running";
   const wheel = useMemo(() => oceanWheelCutoffs(), []);
@@ -138,7 +138,6 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
   const mechanics: { format: ComparisonFormat; key: DictKey }[] = [
     { format: "freezeout", key: "oceanReport.mechanicsFreeze" }, { format: "pko", key: "oceanReport.mechanicsPKO" },
     { format: "mystery", key: "oceanReport.mechanicsMystery" }, { format: "ocean-ko", key: "oceanReport.mechanicsOcean" },
-    { format: "mystery-royale", key: "oceanReport.mechanicsBattle" },
   ];
 
   const field = ({ key, label, step }: typeof controls[number]) => {
@@ -151,7 +150,6 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
     </label>;
   };
   const pko = rows.find(row => row.format === "pko");
-  const formatOrder: ComparisonFormat[] = ["freezeout", "pko", "mystery", "ocean-ko", "mystery-royale"];
 
   return <article className={`${styles.report} min-w-0 space-y-6`} aria-labelledby={`${id}-title`}>
     <header className="space-y-2 pt-2">
@@ -191,7 +189,7 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
       </div>}
       {parsed.invalid.length === 0 && parsed.config.distance * parsed.config.samples > 10_000_000 && <p className="mt-4 text-sm leading-relaxed text-fg-muted">{interpolate(t("oceanReport.largeRun"), { n: n(parsed.config.distance * parsed.config.samples, 0) })}</p>}
       {running && <div className="mt-4 space-y-2" role="status">
-        <p className="text-sm">{interpolate(t("oceanReport.currentFormat"), { format: t(formatNames[formatOrder[Math.min(report.completed, 4)]]), progress: n(report.progress * 100, 0) })}</p>
+        <p className="text-sm">{interpolate(t("oceanReport.currentFormat"), { format: t(formatNames[FORMAT_COMPARISON_FORMATS[Math.min(report.completed, report.total - 1)]]), progress: n(report.progress * 100, 0) })}</p>
         <progress max={1} value={report.progress} aria-label={t("oceanReport.resultRunning")} className="h-2 w-full accent-accent" />
       </div>}
     </form>
@@ -237,7 +235,6 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
         <section className="min-w-0 space-y-3"><ScrollTable label={t("oceanReport.losingEntries")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th><th scope="col" className={th}>{t("oceanReport.losingEntries")}</th><th scope="col" className={th}>{t("oceanReport.timeBelow")}</th></tr></thead><tbody>{rows.map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>{n(row.longestLosingEntries.p95, 0)}</td><td className={td}>{pct(row.fractionEntriesBelowEv.median)}</td></tr>)}</tbody></ScrollTable><p className={prose}>{t("oceanReport.timeBelowNote")}</p></section>
         </div></details>
       </>}
-      {battle && <details className={styles.disclosure}><summary className={focus}>{t("oceanReport.battleTitle")}</summary><div className="space-y-3"><p className={prose}>{t("oceanReport.battleNote")}</p><p className={prose}>{t("oceanReport.battleFixed")}</p><MetricTable rows={[battle]} kind="depth" t={t} n={n} /><MetricTable rows={[battle]} kind="duration" t={t} n={n} /></div></details>}
     </section>
 
     <details className={styles.disclosure}><summary className={focus}>{t("oceanReport.jackpotTitle")}</summary><div className="space-y-3"><p className={prose}>{t("oceanReport.jackpotText")}</p><p className={prose}>{t("oceanReport.jackpotBoundary")}</p>
