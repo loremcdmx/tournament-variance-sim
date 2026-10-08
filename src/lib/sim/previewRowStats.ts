@@ -15,6 +15,8 @@ import {
 } from "@/lib/sim/battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { inferGameType } from "@/lib/sim/gameType";
+import { compileRowVariants } from "@/lib/sim/compileEntry";
+import { compiledEntryMoments } from "@/lib/sim/scheduleMoments";
 import { buildOceanKoModel } from "./oceanKo";
 import { applySitThroughPayJumps } from "./sitThroughPayJumps";
 import { getPayoutTable } from "@/lib/sim/payouts";
@@ -97,6 +99,13 @@ export interface RowStats {
   cost: number;
   itm: number;
   evPerEntry: number;
+  /**
+   * σ of one entry's total payout (prize + bounty). Taken from the compiled
+   * entry's moments — the same figure the simulator samples, with the per-KO
+   * bounty noise, the PKO heat bank and the field-size mixture — whenever the
+   * row has a bounty channel or a variable field. Otherwise (and for Ocean, whose
+   * preview carries its own bounds) it is the between-place σ computed here.
+   */
   payoutStd: number;
   /** Ocean reports an upper bound; the lower bound is exposed separately. */
   payoutVarianceBounded?: boolean;
@@ -175,12 +184,56 @@ function stdNormalCdf(x: number): number {
   return 0.5 * (1 + erf);
 }
 
+interface CompiledPayoutStd {
+  std: number;
+  stdLower?: number;
+}
+
+/**
+ * σ of one entry's payout as the engine compiles the row: every field-size
+ * variant, the per-KO bounty noise and the PKO heat bank included. Null when
+ * the compile rejects the row (the preview must keep rendering a half-typed
+ * row the run path would refuse).
+ */
+function compiledPayoutStd(
+  row: TournamentRow,
+  model: FinishModelConfig,
+): CompiledPayoutStd | null {
+  try {
+    const variants = compileRowVariants(row, 0, model, "alpha", false, false);
+    const first = variants[0].entry;
+    const slot =
+      variants.length === 1
+        ? first
+        : { ...first, variants: variants.map((v) => v.entry) };
+    const moments = compiledEntryMoments(slot);
+    const sigma = (second: number) =>
+      Math.sqrt(Math.max(0, second - moments.meanDollar * moments.meanDollar));
+    return {
+      std: sigma(moments.secondDollar),
+      stdLower:
+        moments.secondDollarLower !== undefined
+          ? sigma(moments.secondDollarLower)
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Full per-entry EV decomposition for one row: prize + bounty, place by place,
  * then bucketed into tiers. Mirrors the bounty math used in the engine so the
  * preview matches what the simulator will actually sample.
+ *
+ * `skipCompiledSigma` is for callers that only read EV shares (the KO-slider
+ * probes): it spares the extra compile that `payoutStd` costs on bounty rows.
  */
-export function computeRowStats(row: TournamentRow, model: FinishModelConfig): RowStats {
+export function computeRowStats(
+  row: TournamentRow,
+  model: FinishModelConfig,
+  options: { skipCompiledSigma?: boolean } = {},
+): RowStats {
   const economics = derivePreviewRowEconomics(row);
   const N = economics.fieldSize;
   const payouts = getPayoutTable(row.payoutStructure, N, row.customPayouts);
@@ -506,8 +559,14 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     }
   }
   const jackpotBountyEv = bountyEv * jackpotShareFrac;
-  const payoutVar = payoutVarPerBullet;
-  const payoutStd = Math.sqrt(payoutVar);
+  const fieldVaries =
+    row.fieldVariability != null && row.fieldVariability.kind !== "fixed";
+  const compiledSigma =
+    !options.skipCompiledSigma &&
+    ((bountyMean > 0 && oceanKo === null) || fieldVaries)
+      ? compiledPayoutStd(row, model)
+      : null;
+  const payoutStd = compiledSigma?.std ?? Math.sqrt(payoutVarPerBullet);
   const cv = totalEv > 1e-9 ? payoutStd / totalEv : 0;
 
   let itm = 0;
@@ -708,7 +767,9 @@ export function computeRowStats(row: TournamentRow, model: FinishModelConfig): R
     evPerEntry: totalEv,
     payoutStd,
     payoutVarianceBounded: oceanKo !== null,
-    payoutStdLower: Math.sqrt(Math.max(0, totalEv2Lower - totalEvPerBullet * totalEvPerBullet)),
+    payoutStdLower:
+      compiledSigma?.stdLower ??
+      Math.sqrt(Math.max(0, totalEv2Lower - totalEvPerBullet * totalEvPerBullet)),
     jackpotEvAvailable: oceanKo === null,
     cv,
     cashEvPerEntry: cashEv,

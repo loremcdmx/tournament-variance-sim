@@ -1086,9 +1086,10 @@ export interface SimulationResult {
      */
     maxDrawdownBuyIns: number;
     /**
-     * Analytical per-tourney σ from the calibrated pmf (√(E[X²]−E[X]²) on
-     * prize+bounty), schedule-weighted. Independent of the MC run and used
-     * as a self-check next to the empirical per-tourney σ.
+     * Analytical per-tourney σ of the compiled schedule (√(E[X²]−E[X]²) on
+     * prize+bounty, including the per-KO bounty noise, the PKO heat bank and
+     * field-size variability), schedule-weighted. Independent of the MC run
+     * and used as a self-check next to the empirical per-tourney σ.
      */
     sigmaPerTournamentAnalytic: number;
     /** Ocean adaptive-tier variance is bounded, not an exact analytic point. */

@@ -84,13 +84,6 @@ export interface CompiledEntry {
    *  per-tourney divide with a multiply. Zero where bountyKmean is zero. */
   bountyKmeanInv: Float64Array | null;
   /**
-   * Analytical per-tourney σ from the calibrated pmf — √(E[X²]−E[X]²) on
-   * prize + bounty. Cheap, compile-time, and independent of the MC run;
-   * used to cross-check MC σ in diagnostics. For Ocean this is a rigorous
-   * upper bound, with both bounds retained in oceanKo, not a point estimate.
-   */
-  sigmaSingleAnalytic: number;
-  /**
    * Analytical per-bullet E[prize + bounty] from the calibrated pmf. Should
    * equal `singleCost · (1 + row.roi)` to within float tolerance for any
    * calibrated model; realdata-* models return the reference-shape mean and
