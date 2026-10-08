@@ -39,18 +39,18 @@ import {
   buildOceanKoSigmaBand,
   type ExactBreakdown,
 } from "./convergenceMath";
-import {
-  FIT_RAKE_BY_FORMAT,
-  SIGMA_COEF_BY_FORMAT,
-  evalSigma,
-} from "./convergenceFit";
+import { SIGMA_COEF_BY_FORMAT } from "./convergenceFit";
 import {
   getConvergenceBandPolicy,
   isInsideFitBox,
   type ConvergenceRowFormat,
   type FitBoxSample,
 } from "./convergencePolicy";
-import { formatRuntimeSigma } from "./formatRuntimeSigma";
+import {
+  formatRuntimeSigma,
+  type RuntimeSigmaFormat,
+  type RuntimeSigmaPoint,
+} from "./formatRuntimeSigma";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
 export type ProveEdgeFormat = ConvergenceRowFormat | "exact";
@@ -164,6 +164,37 @@ interface SigmaTriple {
   insideBox: boolean;
 }
 
+function runtimeSigmaPoint(
+  safeAfs: number,
+  rake: number,
+  roi: number,
+  finishModel?: FinishModelConfig,
+): RuntimeSigmaPoint {
+  return { afs: safeAfs, roi, rake, finishModel };
+}
+
+function isRuntimeSigmaFormat(format: ProveEdgeFormat): format is RuntimeSigmaFormat {
+  return format !== "exact" && format !== "ocean-ko";
+}
+
+/**
+ * Every runtime σ `computeProveEdge` reads for this input (each candidate ROI
+ * plus the exact anchor), keyed exactly as it reads them. On large fields one
+ * σ costs tens of milliseconds, so the card warms these one per task before
+ * it asks for the whole table. Empty for schedule mode and Ocean KO.
+ */
+export function proveEdgeRuntimeSigmaPoints(
+  input: ProveEdgeInput,
+): { format: RuntimeSigmaFormat; point: RuntimeSigmaPoint }[] {
+  const { format } = input;
+  if (!isRuntimeSigmaFormat(format)) return [];
+  const safeAfs = Math.max(1, input.afs);
+  return [...input.candidates, input.currentRoi].map((roi) => ({
+    format,
+    point: runtimeSigmaPoint(safeAfs, input.rake, roi, input.finishModel),
+  }));
+}
+
 function singleFormatSigma(
   format: ConvergenceRowFormat,
   afs: number,
@@ -185,10 +216,15 @@ function singleFormatSigma(
   }
   const coef = SIGMA_COEF_BY_FORMAT[format];
   const safeAfs = Math.max(1, afs);
-  const sigma =
-    formatRuntimeSigma(format, { afs: safeAfs, roi, rake, finishModel }) ??
-    evalSigma(coef, safeAfs, roi) *
-      ((1 + FIT_RAKE_BY_FORMAT[format]) / (1 + Math.max(0, rake)));
+  const sigma = formatRuntimeSigma(
+    format,
+    runtimeSigmaPoint(safeAfs, rake, roi, finishModel),
+  );
+  // A one-row schedule with a positive buy-in always compiles; a null here
+  // would be an engine regression, not a reason to fall back to a fit.
+  if (sigma === null) {
+    throw new Error(`proveEdge: no runtime σ for ${format} at AFS ${safeAfs}`);
+  }
   const insideBox = isInsideFitBox({ format, field: safeAfs, roi });
   const resid = insideBox ? coef.resid : 0;
   return {

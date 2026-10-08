@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   computeProveEdge,
+  proveEdgeRuntimeSigmaPoints,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
 } from "./proveEdge";
+import {
+  formatRuntimeSigma,
+  hasFormatRuntimeSigma,
+  runtimeSigmaCacheSize,
+} from "./formatRuntimeSigma";
 import type { TournamentRow } from "./types";
 import { buildOceanKoSigmaBand } from "./convergenceMath";
 
@@ -152,6 +158,34 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     });
     expect(rows).toHaveLength(4);
     rows.forEach((r) => expect(r.tourneys).toBeGreaterThan(0));
+  });
+});
+
+describe("proveEdgeRuntimeSigmaPoints (card warm-up list)", () => {
+  it("lists exactly the σ computeProveEdge reads, so a warmed table is cache-only", () => {
+    for (const format of ["freeze", "pko", "mystery", "mystery-royale"] as const) {
+      const input = {
+        ...baseFreeze,
+        format,
+        afs: 12_345,
+        rake: 0.07,
+        currentRoi: 0.123,
+        candidates: PROVE_EDGE_DEFAULT_CANDIDATES,
+      };
+      const points = proveEdgeRuntimeSigmaPoints(input);
+      expect(points).toHaveLength(PROVE_EDGE_DEFAULT_CANDIDATES.length + 1);
+      for (const { format: f, point } of points) formatRuntimeSigma(f, point);
+      expect(points.every(({ format: f, point }) => hasFormatRuntimeSigma(f, point))).toBe(true);
+      const before = runtimeSigmaCacheSize();
+      const result = computeProveEdge(input);
+      expect(runtimeSigmaCacheSize()).toBe(before);
+      expect(result.anchor.sigma).toBe(formatRuntimeSigma(format, points[points.length - 1].point));
+    }
+  });
+
+  it("is empty for schedule mode and Ocean KO, which do not use the runtime σ cache", () => {
+    expect(proveEdgeRuntimeSigmaPoints({ ...baseFreeze, format: "ocean-ko" })).toEqual([]);
+    expect(proveEdgeRuntimeSigmaPoints({ ...baseFreeze, format: "exact", schedule: [] })).toEqual([]);
   });
 });
 

@@ -108,6 +108,19 @@ function cacheKey(format: RuntimeSigmaFormat, point: RuntimeSigmaPoint): string 
   return `${format}|${afs}|${point.roi}|${point.rake}|${itm}|${model}`;
 }
 
+/** Number of memoized σ points; lets tests prove a call was cache-only. */
+export function runtimeSigmaCacheSize(): number {
+  return sigmaCache.size;
+}
+
+/** Whether `formatRuntimeSigma` would answer this point from the cache. */
+export function hasFormatRuntimeSigma(
+  format: RuntimeSigmaFormat,
+  point: RuntimeSigmaPoint,
+): boolean {
+  return sigmaCache.has(cacheKey(format, point));
+}
+
 /**
  * σ of ROI per tournament for the format's default one-row schedule, in
  * buy-ins. `null` only when the engine reports no schedule at all.

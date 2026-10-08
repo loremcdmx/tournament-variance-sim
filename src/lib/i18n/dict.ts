@@ -1187,8 +1187,8 @@ export const DICT = {
     ru: "{pct} прогонов",
   },
   "chart.hideJackpots.title": {
-    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. On long runs that is no longer a handful: {pct} of this run's samples carry one, and the average of the rest sits below the true EV. The filter starts on only when it hides 5% of runs or fewer. It reshapes the charts only — the scalar stats (mean, max, VaR, skew) still count ALL samples, and the trajectory envelopes are rebuilt from the ~1000 stored hi-res paths.",
-    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. На длинной дистанции это уже не горстка: такой конверт есть у {pct} сэмплов этого прогона, и среднее оставшихся ниже честного EV. По умолчанию фильтр включён, только если скрывает не больше 5% прогонов. Он меняет только графики: скалярные статы (среднее, макс, VaR, скос) считаются по ВСЕМ сэмплам, а огибающие траектории пересобираются из ~1000 сохранённых hi-res путей.",
+    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. In this run that is {pct} of samples. The longer the distance, the larger that share, and the average of the remaining runs sits below the true EV. The filter starts on only when it hides 5% of runs or fewer. It reshapes the charts only — the scalar stats (mean, max, VaR, skew) still count ALL samples, and the trajectory envelopes are rebuilt from the ~1000 stored hi-res paths.",
+    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. В этом прогоне таких {pct} сэмплов. Чем длиннее дистанция, тем их больше, а среднее оставшихся ниже честного EV. По умолчанию фильтр включён, только если скрывает не больше 5% прогонов. Он меняет только графики: скалярные статы (среднее, макс, VaR, скос) считаются по ВСЕМ сэмплам, а огибающие траектории пересобираются из ~1000 сохранённых hi-res путей.",
   },
   "chart.trajectory.withRakeback": {
     en: "RB in chart",
@@ -1599,6 +1599,10 @@ export const DICT = {
   "proveEdge.showLosing": {
     en: "Show losing ROI rows too",
     ru: "Показать и минусовые строки",
+  },
+  "proveEdge.pending": {
+    en: "Recalculating for this field size…",
+    ru: "Пересчитываю под этот размер поля…",
   },
   "chart.convergence.mode.hint": {
     en: "Averaged: generic planning mode. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); fitted constants only set the width of the range. Mix weights are shares of tournaments in the synthetic mix. Schedule: compiles the real rows and aggregates per-row dollar variance, field variability, payout shape, rake, and bounty structure into one schedule-aware σ_ROI.",
