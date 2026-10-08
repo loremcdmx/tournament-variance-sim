@@ -11,6 +11,15 @@ import {
   type ExposureComponents,
 } from "@/lib/calibration/oceanTransport";
 import { interpolate } from "@/lib/calibration/oceanReportView";
+import {
+  passesPrecisionGate,
+  precisionCount,
+  precisionRowFor,
+  roundSignificant,
+  ROI_DECIMALS,
+  SIGMA_DECIMALS,
+  sigmaRange,
+} from "@/lib/calibration/explorerView";
 import { useT } from "@/lib/i18n/LocaleProvider";
 
 const MAX_CALIBRATION_ENTRIES = 1_000_000;
@@ -40,7 +49,11 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
   const [distanceDraft, setDistanceDraft] = useState("20000");
   const entries = parseEntryDistance(distanceDraft, 1000);
   const n = (value: number, digits = 2) => new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
+  const fixed = (value: number, digits: number) => new Intl.NumberFormat(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
   const pct = (value: number) => `${n(value * 100)}%`;
+  const date = (iso: string) => new Intl.DateTimeFormat(locale === "ru" ? "ru" : "en-GB",
+    locale === "ru" ? { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" } : { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" },
+  ).format(new Date(`${iso}T00:00:00Z`));
   const anchorModel = profile.anchors.find(model => model.capBountyBI === cap);
   const anchor = anchorModel ? exposureComponents(anchorModel.moments) : null;
   const bridgeRecords = (weight: number) => ({
@@ -60,13 +73,11 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
   const sigmaGap = current && currentRecords.source && currentRecords.target
     ? oceanSigmaGap(current, currentRecords.source.support, currentRecords.target.support) : null;
   const precision = bridge.numericPrecision;
-  const selectedPrecision = precision?.rows.find(row => row.theta === theta && row.capBountyBI === cap && row.target === `ocean-usd${ticket}`);
-  const passesPrecision = (row: NonNullable<EmpiricalBridgeData["numericPrecision"]>["rows"][number]) => !!precision
-    && row.bountyResidualSdRatioRelativeSE <= precision.gates.maxResidualSdRatioRelativeSE
-    && row.bountyMeanRatioRelativeSE <= precision.gates.maxMeanRatioRelativeSE;
+  const selectedPrecision = precisionRowFor(precision, theta, cap, ticket);
   const alternatives = thetaValues.map(weight => ({ weight, result: transport(weight) }));
   const allAlternativesSupported = alternatives.every(item => item.result !== null);
-  const scenarioSigmas = alternatives.flatMap(item => item.result ? [item.result.transported.sigma] : []);
+  const range = sigmaRange(alternatives.flatMap(item => item.result ? [{ theta: item.weight, sigma: item.result.transported.sigma }] : []), precision, cap, ticket);
+  const preliminary = current?.bridgeNumericalStatus === "pilot";
   const distance = current && entries !== null ? oceanTransportDistance(current, entries) : null;
   const terms = [
     { label: t("empiricalOcean.cash"), value: (value: ExposureComponents) => value.cashVariance },
@@ -82,6 +93,11 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
       <p className={`${muted} max-w-3xl`}>{t("empiricalOcean.intro")}</p>
       <p className="text-sm font-medium">{t("empiricalOcean.scope")}</p>
       {anchorModel && <p className="text-xs text-fg-muted">{n(profile.trainingEntries, 0)} {t("empiricalOcean.paidEntries")} · {n(profile.trainingEvents, 0)} {t("empiricalOcean.trainingCount")}</p>}
+      {anchorModel && <p className="text-xs leading-relaxed text-fg-muted">{interpolate(t("empiricalOcean.cohort"), {
+        from: date(profile.training.from), through: date(profile.training.through), months: n(profile.training.months, 0),
+        field: n(profile.training.meanFieldEntries, 0), range: profile.training.allFieldsRange.replace("-", "–"),
+        players: n(roundSignificant(profile.training.playersAllFields), 0),
+      })}</p>}
     </header>
 
     <section className={panel}>
@@ -107,37 +123,40 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
       {anchor && current ? <>
         <p className="mb-4 rounded-lg border border-accent/30 bg-accent/5 px-4 py-3 text-sm leading-relaxed">{t("empiricalOcean.tailNote")}</p>
         <div className="grid gap-4 md:grid-cols-2">
-          {[{ title: t("empiricalOcean.space"), data: anchor, currency: "€10", sd: entries === null ? null : anchor.sigma * Math.sqrt(entries) },
-            { title: t("empiricalOcean.ocean"), data: current.transported, currency: `$${ticket}`, sd: distance?.profitSdBI ?? null }].map(card => <section key={card.title} className={panel}>
+          {[{ title: t("empiricalOcean.space"), data: anchor, currency: "€10", sd: entries === null ? null : anchor.sigma * Math.sqrt(entries), error: anchorModel?.uncertainty },
+            { title: t("empiricalOcean.ocean"), data: current.transported, currency: `$${ticket}`, sd: distance?.profitSdBI ?? null, error: undefined }].map(card => <section key={card.title} className={panel}>
             <h3 className="text-sm font-semibold text-fg-muted">{card.title} · {card.currency}</h3>
             <p className="mt-4 text-xs text-fg-muted">{t("empiricalOcean.sigma")}</p>
-            <p className="mt-1 font-mono text-4xl font-semibold tabular-nums text-accent">{n(card.data.sigma)} <span className="text-base font-normal">BI</span></p>
+            <p className="mt-1 font-mono text-4xl font-semibold tabular-nums text-accent">{fixed(card.data.sigma, SIGMA_DECIMALS)}{card.error && <span className="text-xl font-normal text-fg-muted"> ± {fixed(card.error.sigmaSE, SIGMA_DECIMALS)}</span>} <span className="text-base font-normal">BI</span></p>
             <p className="mt-1 text-xs text-fg-muted">{t("empiricalOcean.perEntry")}</p>
             <dl className="mt-5 space-y-3 border-t border-border pt-4 text-sm">
-              <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.roi")}</dt><dd className="font-mono tabular-nums">{pct(card.data.roi)}</dd></div>
-              <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.sd")}</dt><dd className="font-mono tabular-nums">{card.sd === null ? "—" : `${n(card.sd)} BI`}</dd></div>
-              <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.roiSd")}</dt><dd className="font-mono tabular-nums">{entries === null ? "—" : `${n(card.data.sigma / Math.sqrt(entries) * 100)} ${t("empiricalOcean.pp")}`}</dd></div>
+              <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.roi")}</dt><dd className="font-mono tabular-nums">{fixed(card.data.roi * 100, ROI_DECIMALS)}%{card.error && ` ± ${fixed(card.error.roiSE * 100, ROI_DECIMALS)} ${t("empiricalOcean.pp")}`}</dd></div>
+              <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.sd")}</dt><dd className="font-mono tabular-nums">{card.sd === null ? "—" : `≈ ${n(roundSignificant(card.sd), 0)} BI`}</dd></div>
+              <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.roiSd")}</dt><dd className="font-mono tabular-nums">{entries === null ? "—" : `${fixed(card.data.sigma / Math.sqrt(entries) * 100, 1)} ${t("empiricalOcean.pp")}`}</dd></div>
             </dl>
           </section>)}
         </div>
+        {anchorModel && <p className={`${muted} mt-3`}>{interpolate(t("empiricalOcean.anchorError"), { months: n(anchorModel.uncertainty.months, 0) })}</p>}
         {sigmaGap && <p className={`${muted} mt-3`}>{interpolate(t("empiricalOcean.sigmaGap"), {
-          delta: n(sigmaGap.gap), percent: n(sigmaGap.gap / sigmaGap.anchorSigma * 100, 1), share: n(sigmaGap.prizeShare * 100, 0),
+          delta: fixed(sigmaGap.gap, SIGMA_DECIMALS), percent: n(sigmaGap.gap / sigmaGap.anchorSigma * 100, 1), share: n(sigmaGap.prizeShare * 100, 0),
           ocean: n(sigmaGap.cashPoolTarget * 100, 0), space: n(sigmaGap.cashPoolSource * 100, 0), ratio: n(sigmaGap.cashMeanRatio),
         })}</p>}
         <p className={`${muted} mt-3`}>{t("empiricalOcean.roiNote")}</p>
         <p id={`${id}-distance-note`} className={`${muted} mt-2`}>{t("empiricalOcean.horizonNote")}</p>
-        {allAlternativesSupported && <section className={`${panel} mt-5`}>
-          <div className="flex flex-wrap items-baseline justify-between gap-3"><h3 className="font-semibold">{t("empiricalOcean.sensitivity")}</h3><p className="font-mono text-xl tabular-nums">{n(Math.min(...scenarioSigmas))}–{n(Math.max(...scenarioSigmas))} BI</p></div>
+        {allAlternativesSupported && range && <section className={`${panel} mt-5`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-3"><h3 className="font-semibold">{t("empiricalOcean.sensitivity")}</h3><p className="font-mono text-xl tabular-nums">{fixed(range.lower.sigma, SIGMA_DECIMALS)}–{fixed(range.upper.sigma, SIGMA_DECIMALS)} BI</p></div>
           <p className={`${muted} mt-2`}>{t("empiricalOcean.sensitivityNote")}</p>
-          <div className="mt-4 grid grid-cols-3 gap-2">{alternatives.map(item => <div key={item.weight} className={`rounded-lg border p-3 text-center ${theta === item.weight ? "border-accent bg-accent/5" : "border-border bg-bg"}`}><p className="text-xs text-fg-muted">θ = {n(item.weight, 1)}</p><p className="mt-1 font-mono text-sm tabular-nums">{n(item.result!.transported.sigma)} BI</p></div>)}</div>
+          <div className="mt-4 grid grid-cols-3 gap-2">{alternatives.map(item => <div key={item.weight} className={`rounded-lg border p-3 text-center ${theta === item.weight ? "border-accent bg-accent/5" : "border-border bg-bg"}`}><p className="text-xs text-fg-muted">θ = {n(item.weight, 1)}</p><p className="mt-1 font-mono text-sm tabular-nums">{fixed(item.result!.transported.sigma, SIGMA_DECIMALS)} BI</p></div>)}</div>
+          {range.upper.meetsPrecision === false && <p className="mt-3 text-xs leading-relaxed text-fg-muted">{interpolate(t("empiricalOcean.rangeEndUpper"), { theta: n(range.upper.theta, 1) })}</p>}
+          {range.lower.meetsPrecision === false && <p className="mt-3 text-xs leading-relaxed text-fg-muted">{interpolate(t("empiricalOcean.rangeEndLower"), { theta: n(range.lower.theta, 1) })}</p>}
           {precision && selectedPrecision ? <div className="mt-4 space-y-2 border-t border-border pt-3 text-xs leading-relaxed">
             <p className="font-semibold">{t("empiricalOcean.precision")}</p>
             <p className="text-fg-muted">{t("empiricalOcean.precisionSd")}: <span className="font-mono text-fg">{n(selectedPrecision.bountyResidualSdRatioRelativeSE * 100, 3)}%</span> · {t("empiricalOcean.precisionGate")} {pct(precision.gates.maxResidualSdRatioRelativeSE)}</p>
             <p className="text-fg-muted">{t("empiricalOcean.precisionMean")}: <span className="font-mono text-fg">{n(selectedPrecision.bountyMeanRatioRelativeSE * 100, 3)}%</span> · {t("empiricalOcean.precisionGate")} {pct(precision.gates.maxMeanRatioRelativeSE)}</p>
-            <p className={passesPrecision(selectedPrecision) ? "text-fg-muted" : "text-danger"}>{passesPrecision(selectedPrecision) ? t("empiricalOcean.precisionPass") : t("empiricalOcean.precisionFail")}</p>
-            <p className="text-fg-muted">{t("empiricalOcean.precisionAll").replace("{passed}", n(precision.rows.filter(passesPrecision).length, 0)).replace("{total}", n(precision.rows.length, 0))}</p>
+            <p className={passesPrecisionGate(selectedPrecision, precision.gates) ? "text-fg-muted" : "text-danger"}>{passesPrecisionGate(selectedPrecision, precision.gates) ? t("empiricalOcean.precisionPass") : t("empiricalOcean.precisionFail")}</p>
+            <p className="text-fg-muted">{interpolate(t(preliminary ? "empiricalOcean.precisionPilot" : "empiricalOcean.precisionAll"), { passed: n(precisionCount(precision).passed, 0), total: n(precisionCount(precision).total, 0) })}</p>
             {!precision.passes && <p className="text-fg-muted">{t("empiricalOcean.precisionSome")}</p>}
-          </div> : current.bridgeNumericalStatus === "pilot" && <p className="mt-3 text-xs leading-relaxed text-fg-muted">{t("empiricalOcean.pilot")}</p>}
+          </div> : preliminary && <p className="mt-3 text-xs leading-relaxed text-fg-muted">{t("empiricalOcean.pilot")}</p>}
         </section>}
       </> : <p role="status" className={`${panel} text-sm text-fg-muted`}>{t("empiricalOcean.unavailable")}</p>}
     </div>
