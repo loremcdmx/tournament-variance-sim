@@ -107,7 +107,9 @@ describe("every-entry downside observation", () => {
     expect(legacy).toEqual(off);
   });
 
-  it("matches independently reconstructed full-resolution paths", () => {
+  // Wiring check only: it replays the stored paths through the same observer and the
+  // engine's own EV table. The independent reference is the describe block below.
+  it("feeds the observer every entry of the stored full-resolution path", () => {
     const input = { ...smallInput(), collectDownsideReport: true };
     const compiled = compileSchedule(input);
     const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
@@ -154,5 +156,120 @@ describe("every-entry downside observation", () => {
     expect(detailed.downsideReport!.maxEvShortfall).toHaveLength(3);
     expect(detailed.downsideReport).toEqual(sparse.downsideReport);
     expect(detailed.finalProfits).toEqual(sparse.finalProfits);
+  });
+});
+
+/** Longest stretch of consecutive `true` flags. */
+function longestRun(flags: readonly boolean[]): number {
+  let best = 0;
+  let run = 0;
+  for (const flag of flags) {
+    run = flag ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  return best;
+}
+
+/**
+ * Plain-loop reference for one career. It shares nothing with `observeDownsideReport`:
+ * no streaming state, one flag per entry, the running peak and the EV line rebuilt
+ * from scratch. `path[0]` is the start; entry t moves `path[t-1]` to `path[t]`, with
+ * the EV gained and the ticket paid by that entry given per entry. A tie is a gap of
+ * at most 1e-9 of that entry's ticket.
+ */
+function referenceDownside(path: ArrayLike<number>, evGain: readonly number[], tickets: readonly number[]) {
+  const entries = path.length - 1;
+  const below: boolean[] = [];
+  const underwater: boolean[] = [];
+  const losing: boolean[] = [];
+  let ev = 0;
+  let maxShortfall = 0;
+  let maxDrawdown = 0;
+  for (let t = 1; t <= entries; t++) {
+    const tie = 1e-9 * tickets[t - 1];
+    ev += evGain[t - 1];
+    const peakBefore = Math.max(...Array.from({ length: t }, (_, index) => path[index]));
+    const peakNow = Math.max(peakBefore, path[t]);
+    below.push(ev - path[t] > tie);
+    underwater.push(path[t] < peakBefore - tie);
+    losing.push(path[t] - path[t - 1] < -tie);
+    maxShortfall = Math.max(maxShortfall, ev - path[t]);
+    maxDrawdown = Math.max(maxDrawdown, peakNow - path[t]);
+  }
+  return {
+    maxEvShortfall: maxShortfall,
+    maxDrawdown,
+    entriesBelowEv: below.filter(Boolean).length,
+    longestBelowEv: longestRun(below),
+    longestUnderwater: longestRun(underwater),
+    longestLosingEntries: longestRun(losing),
+  };
+}
+
+/** What the row promises per entry, from its inputs alone: ROI on the full ticket plus the rakeback credit. */
+function promisedEvGain(input: SimulationInput, rowIdx: number) {
+  const row = input.schedule[rowIdx];
+  const ticket = row.buyIn * (1 + row.rake);
+  return { ticket, evGain: row.roi * ticket + (input.rakebackFracOfRake ?? 0) * row.rake * row.buyIn };
+}
+
+function mixedInput(): SimulationInput {
+  return {
+    schedule: [
+      { id: "freeze", gameType: "freezeout", players: 200, buyIn: 20, rake: 0.1, roi: 0.05, count: 25, payoutStructure: "mtt-standard" },
+      { id: "pko", gameType: "pko", players: 100, buyIn: 50, rake: 0.1, bountyFraction: 0.5, roi: -0.1, count: 20, payoutStructure: "mtt-gg-bounty" },
+      { id: "ocean", gameType: "ocean-ko", players: 30, buyIn: 92, rake: 8 / 92, bountyFraction: 50 / 92, roi: 0.2, count: 15, payoutStructure: "mtt-gg-bounty" },
+    ],
+    scheduleRepeats: 1, samples: 40, seed: 20261008, bankroll: 1000, finishModel: { id: "power-law" }, rakebackFracOfRake: 0.3,
+  };
+}
+
+describe("downside metrics against a separate plain-loop reference", () => {
+  it("gets the hand-worked path of the observer test right", () => {
+    const reference = referenceDownside([0, 5, 3, 3, 5, 4, 3, 4, 8], Array(8).fill(1), Array(8).fill(1));
+    expect(reference).toEqual({
+      maxEvShortfall: 3, maxDrawdown: 2, entriesBelowEv: 3, longestBelowEv: 3, longestUnderwater: 3, longestLosingEntries: 2,
+    });
+    // A tie with the peak or with EV is not below it; float noise of a break-even entry is a tie too.
+    const ties = referenceDownside([0, 30, 30 - 1.78e-15, 30 - 1.78e-15, 30 - 0.01], [5, 5, 5, 5], [10, 10, 10, 10]);
+    expect(ties.longestUnderwater).toBe(1);
+    expect(ties.longestLosingEntries).toBe(1);
+  });
+
+  it("agrees on twenty Ocean careers and on forty careers of a mixed schedule with rakeback", () => {
+    expect(DOWNSIDE_TIE_TOLERANCE).toBe(1e-9);
+    for (const base of [smallInput(), mixedInput()]) {
+      const input = { ...base, collectDownsideReport: true };
+      const compiled = compileSchedule(input);
+      const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+      const shard = simulateShard(input, compiled, 0, input.samples, grid);
+      const promised = compiled.flat.map(entry => promisedEvGain(input, entry.rowIdx));
+      compiled.flat.forEach((entry, index) => {
+        expect(promised[index].ticket).toBeCloseTo(entry.singleCost, 9);
+        expect(promised[index].evGain).toBeCloseTo(entry.analyticMeanSingle - entry.singleCost + entry.rakebackBonusPerBullet, 9);
+      });
+      const evGain = promised.map(item => item.evGain);
+      const tickets = promised.map(item => item.ticket);
+      const underwaterLengths = new Set<number>();
+      const drawdowns = new Set<number>();
+      for (let sample = 0; sample < input.samples; sample++) {
+        const path = shard.hiResPaths[sample];
+        expect(path).toHaveLength(compiled.tournamentsPerSample + 1);
+        const reference = referenceDownside(path, evGain, tickets);
+        const report = shard.downsideReport!;
+        expect(report.maxEvShortfall[sample]).toBeCloseTo(reference.maxEvShortfall, 9);
+        expect(report.entriesBelowEv[sample]).toBe(reference.entriesBelowEv);
+        expect(report.longestBelowEv[sample]).toBe(reference.longestBelowEv);
+        expect(report.longestUnderwater[sample]).toBe(reference.longestUnderwater);
+        expect(report.longestLosingEntries[sample]).toBe(reference.longestLosingEntries);
+        expect(shard.maxDrawdowns[sample]).toBeCloseTo(reference.maxDrawdown, 9);
+        expect(shard.finalProfits[sample]).toBe(path[path.length - 1]);
+        underwaterLengths.add(reference.longestUnderwater);
+        drawdowns.add(reference.maxDrawdown);
+      }
+      // The agreement would prove little if every career looked the same.
+      expect(underwaterLengths.size).toBeGreaterThan(3);
+      expect(drawdowns.size).toBeGreaterThan(10);
+    }
   });
 });
