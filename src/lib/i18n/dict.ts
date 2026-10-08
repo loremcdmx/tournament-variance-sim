@@ -501,6 +501,10 @@ export const DICT = {
   "row.label": { en: "Label", ru: "Турнир" },
   "row.players": { en: "AFS", ru: "AFS" },
   "row.buyIn": { en: "Buy-in", ru: "Бай-ин" },
+  "row.buyIn.oceanTitle": {
+    en: "Ocean KO: a single number is the full ticket, 100 = $92 prizes + $8 fee. \"92+8\" spells out the same row.",
+    ru: "Ocean KO: одно число — полный билет, 100 = $92 призовых + $8 рейка. «92+8» задаёт ту же строку.",
+  },
   "row.buyIn.normalizeBr": {
     en: "standard {value}",
     ru: "станд. {value}",
@@ -2326,8 +2330,8 @@ export const DICT = {
     ru: "AFS — среднее поле (average field size): сколько игроков заявлено. Задаёт места (1..N) для финиш-модели и масштабирует призовой.",
   },
   "help.row.buyIn": {
-    en: "Buy-in in poker format. \"50+5\" = $50 buy-in + $5 rake (before \"+\" goes to pool, after is the room's fee). Just \"50\" keeps the current rake. Real entry cost = buyIn + rake. Note on convention: the rake % we show is fee ÷ net buy-in, not fee ÷ total ticket. Entering \"9.20+0.80\" displays as 8.7% rake ($0.80 ÷ $9.20) even though your room calls the same fee 8% of the $10 ticket — same dollars, different denominator.",
-    ru: "Бай-ин в покерном формате. «50+5» = $50 бай-ин + $5 рейк (до «+» идёт в призовой, после — комиссия рума). Просто «50» оставляет текущий рейк. Реальная цена входа = buyIn + rake. О конвенции: рейк в % считается от чистого бай-ина, а не от полного тикета. «9.20+0.80» показывается как 8.7% рейк ($0.80 ÷ $9.20), хотя в руме ту же сумму называют 8% от $10 тикета — сумма та же, знаменатель другой.",
+    en: "Buy-in in poker format. \"50+5\" = $50 buy-in + $5 rake (before \"+\" goes to pool, after is the room's fee). Just \"50\" keeps the current rake. For Ocean KO a single number is the full ticket as the lobby lists it: \"100\" = $92 prizes + $8 fee. Real entry cost = buyIn + rake. Note on convention: the rake % we show is fee ÷ net buy-in, not fee ÷ total ticket. Entering \"9.20+0.80\" displays as 8.7% rake ($0.80 ÷ $9.20) even though your room calls the same fee 8% of the $10 ticket — same dollars, different denominator.",
+    ru: "Бай-ин в покерном формате. «50+5» = $50 бай-ин + $5 рейк (до «+» идёт в призовой, после — комиссия рума). Просто «50» оставляет текущий рейк. В Ocean KO одно число — полный билет, как в лобби: «100» = $92 призовых + $8 рейка. Реальная цена входа = buyIn + rake. О конвенции: рейк в % считается от чистого бай-ина, а не от полного тикета. «9.20+0.80» показывается как 8.7% рейк ($0.80 ÷ $9.20), хотя в руме ту же сумму называют 8% от $10 тикета — сумма та же, знаменатель другой.",
   },
   "help.row.roi": {
     en: "Target poker ROI before global rakeback, as a % of full ticket cost: profit ÷ (buy-in × (1+rake)). Global rakeback is added separately as a deterministic shift. For Battle Royale rows only, the small RB helper converts a reported ROI with rakeback into this pre-rakeback field.",

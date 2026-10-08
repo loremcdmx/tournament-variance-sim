@@ -78,6 +78,44 @@ describe("parseBuyIn", () => {
     expect(parseBuyIn("50+5000", 0.1)).toBeNull();
     expect(parseBuyIn("$50 + $51", 0.1)).toBeNull();
   });
+
+  describe("Ocean KO tickets", () => {
+    const ticketOf = (p: { buyIn: number; rake: number }) => p.buyIn * (1 + p.rake);
+
+    it("reads a single number as the full ticket, fee included", () => {
+      const p = parseBuyIn("100", 0.1, "ocean-ko")!;
+      expect(p.buyIn).toBeCloseTo(92, 10);
+      expect(p.buyIn * p.rake).toBeCloseTo(8, 10);
+      expect(ticketOf(p)).toBeCloseTo(100, 10);
+      expect(ticketOf(p) * 0.5).toBeCloseTo(50, 10);
+    });
+
+    it("ignores the row's previous rake for a single number", () => {
+      const p = parseBuyIn("$25", 0.5, "ocean-ko")!;
+      expect(ticketOf(p)).toBeCloseTo(25, 10);
+      expect(p.rake).toBeCloseTo(8 / 92, 12);
+    });
+
+    it("keeps 92+8 as the same $100 row and still honours a custom fee", () => {
+      const p = parseBuyIn("92+8", 0.1, "ocean-ko")!;
+      expect(p.buyIn).toBe(92);
+      expect(p.rake).toBeCloseTo(8 / 92, 12);
+      expect(ticketOf(p)).toBeCloseTo(100, 10);
+      expect(parseBuyIn("92+10", 0.1, "ocean-ko")).toEqual({ buyIn: 92, rake: 10 / 92 });
+    });
+
+    it("still rejects malformed Ocean input", () => {
+      expect(parseBuyIn("100abc", 0.1, "ocean-ko")).toBeNull();
+      expect(parseBuyIn("0", 0.1, "ocean-ko")).toBeNull();
+    });
+
+    it("leaves the other formats on the net-buy-in reading", () => {
+      for (const gt of ["freezeout", "pko", "mystery", "mystery-royale"] as const) {
+        expect(parseBuyIn("100", 0.1, gt)).toEqual({ buyIn: 100, rake: 0.1 });
+      }
+      expect(parseBuyIn("100", 0.1)).toEqual({ buyIn: 100, rake: 0.1 });
+    });
+  });
 });
 
 describe("atomic schedule import", () => {

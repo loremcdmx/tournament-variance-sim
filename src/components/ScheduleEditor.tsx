@@ -20,6 +20,7 @@ import {
   BATTLE_ROYALE_PLAYERS,
   inferGameType,
   applyGameType,
+  oceanKoRowFromTotalTicket,
   normalizeGameTypeConsistency,
   rowHasActiveBounty,
   GAME_TYPE_ORDER,
@@ -48,9 +49,13 @@ const MAX_BUY_IN_RAKE = 1;
 // Parse "50+5", "50 + 5", "55", "$50+$5" → { buyIn: 50, rake: 0.1 }.
 // Plain single number is treated as net buy-in (prize-pool portion); the
 // caller keeps the existing rake in that case by passing `currentRake`.
+// Ocean KO is the exception: GG lists its ticket as one number that already
+// includes the fee, so "100" is the full $100 ticket ($92 + $8), and "92+8"
+// still spells the same row out.
 export function parseBuyIn(
   raw: string,
   currentRake: number,
+  gameType?: GameType,
 ): { buyIn: number; rake: number } | null {
   const cleaned = raw.replace(/[$\s]/g, "");
   if (cleaned === "") return null;
@@ -69,6 +74,7 @@ export function parseBuyIn(
     if (!isFinite(rake) || rake < 0 || rake > MAX_BUY_IN_RAKE) return null;
     return { buyIn: net, rake };
   }
+  if (gameType === "ocean-ko") return oceanKoRowFromTotalTicket(net);
   return { buyIn: net, rake: currentRake };
 }
 
@@ -1801,7 +1807,7 @@ function BuyInInput({
   const [local, setLocal] = useState(canonical);
   const [focused, setFocused] = useState(false);
   if (!focused && local !== canonical) setLocal(canonical);
-  const parsed = parseBuyIn(local, rake);
+  const parsed = parseBuyIn(local, rake, gameType);
   const invalid = local.trim() !== "" && parsed === null;
   const snapSuggestion =
     gameType === "mystery-royale"
@@ -1821,7 +1827,7 @@ function BuyInInput({
         onFocus={() => setFocused(true)}
         onBlur={() => {
           setFocused(false);
-          const p = parseBuyIn(local, rake);
+          const p = parseBuyIn(local, rake, gameType);
           if (p) {
             startTransition(() => onChange(p.buyIn, p.rake));
             setLocal(formatBuyIn(p.buyIn, p.rake));
@@ -1831,11 +1837,15 @@ function BuyInInput({
         }}
         onChange={(e) => {
           setLocal(e.target.value);
-          const p = parseBuyIn(e.target.value, rake);
+          const p = parseBuyIn(e.target.value, rake, gameType);
           if (p) startTransition(() => onChange(p.buyIn, p.rake));
         }}
-        placeholder="50+5"
-        title="50+5 = $50 buy-in + $5 rake (or just a number)"
+        placeholder={gameType === "ocean-ko" ? "100" : "50+5"}
+        title={
+          gameType === "ocean-ko"
+            ? t("row.buyIn.oceanTitle")
+            : "50+5 = $50 buy-in + $5 rake (or just a number)"
+        }
         className={
           INPUT_BASE +
           " number-control w-full text-center tabular-nums " +
