@@ -84,6 +84,12 @@ const MBR_FIXED_AFS = 18;
 /** Same default rake the Battle Royale convergence chip uses. */
 const DEFAULT_BR_RAKE_PCT = 8;
 
+function defaultRakePct(format: ProveEdgeFormat): number {
+  if (format === "ocean-ko") return DEFAULT_OCEAN_RAKE * 100;
+  if (format === "mystery-royale") return DEFAULT_BR_RAKE_PCT;
+  return 10;
+}
+
 /** Above this field one runtime σ compiles in ~40–150 ms, so the 19-σ table
  *  would freeze the page for up to seconds if built inside a render. */
 const PROGRESSIVE_SIGMA_FIELD = 10_000;
@@ -208,13 +214,10 @@ export function ProveEdgeCard({
       : dominantScheduleFormat(schedule),
   );
   const [afsPos, setAfsPos] = useState<number>(afsToPos(200));
-  const [rakePct, setRakePct] = useState<number>(() =>
-    format === "ocean-ko"
-      ? DEFAULT_OCEAN_RAKE * 100
-      : format === "mystery-royale"
-        ? DEFAULT_BR_RAKE_PCT
-        : 10,
-  );
+  // Like the convergence chips: each format opens at its own default rake
+  // until the user moves the control, then their value sticks across tabs.
+  const [rakeOverridePct, setRakePct] = useState<number | null>(null);
+  const rakePct = rakeOverridePct ?? defaultRakePct(format);
   const [ciPct, setCiPct] = useState<number>(95);
   const [currentRoiPct, setCurrentRoiPct] = useState<number>(10);
   const [showLosing, setShowLosing] = useState<boolean>(false);
@@ -290,15 +293,7 @@ export function ProveEdgeCard({
           <button
             key={f.id}
             type="button"
-            onClick={() => {
-              setFormat(f.id);
-              if (f.id === "ocean-ko" && format !== "ocean-ko") {
-                setRakePct(DEFAULT_OCEAN_RAKE * 100);
-              }
-              if (f.id === "mystery-royale" && format !== "mystery-royale") {
-                setRakePct(DEFAULT_BR_RAKE_PCT);
-              }
-            }}
+            onClick={() => setFormat(f.id)}
             className={`rounded border px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
               format === f.id
                 ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
