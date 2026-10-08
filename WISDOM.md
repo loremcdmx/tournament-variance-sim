@@ -324,7 +324,7 @@ presentation misleading. Do not undo these without re-measuring:
   (0.97-1.00 in all four formats), but its share of the distance falls to about
   0.7-0.96 at 5k and 0.33-0.69 at 20k, so a longer horizon does show more there.
 - Ratios between formats carry Monte Carlo noise in the second digit and change
-  with the distance (Ocean / PKO drawdown P95 1.2 / 1.4 / 1.5x at 1k / 5k / 20k).
+  with the distance (Ocean / PKO drawdown P95 about 1.2 / 1.4 / 1.4-1.5x at 1k / 5k / 20k).
   Show one digit.
 - Risk curves use one dynamic grid per metric, shared by every format in a chart
   and ending at a round number strictly above the deepest career. A fixed 0-1000 BI

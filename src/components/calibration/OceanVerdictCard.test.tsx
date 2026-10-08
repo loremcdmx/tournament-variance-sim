@@ -52,7 +52,9 @@ describe("headline card", () => {
 
   it("says the ratios depend on the distance and that the second digit is noise", () => {
     expect(plain).toContain("Отношения зависят от дистанции");
-    expect(plain).toContain("1,2× на 1000 турниров, 1,4× на 5000 и 1,5× на 20 000");
+    expect(plain).toContain("Ocean относительно PKO становится глубже");
+    // Hard-coded example ratios go stale with any model change; the card must not carry them.
+    expect(plain).not.toMatch(/1,5× на 20/);
     expect(plain).toContain("второй знак — шум Монте-Карло");
   });
 });
