@@ -171,7 +171,7 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
       </fieldset>
       <div className={styles.presets} role="group" aria-label={t("oceanReport.quickDistance")}>
         <span className="mr-1 text-xs text-fg-muted">{t("oceanReport.distance")}</span>
-        {[1000, 5000, 20000].map(distance => <button type="button" key={distance} className={focus} disabled={running} aria-pressed={Number(draft.distance) === distance} onClick={() => setDraft(previous => ({ ...previous, distance: String(distance) }))}>{n(distance, 0)}</button>)}
+        {[1000, 5000, 20000, 50000, 100000].map(distance => <button type="button" key={distance} className={focus} disabled={running} aria-pressed={Number(draft.distance) === distance} onClick={() => setDraft(previous => ({ ...previous, distance: String(distance) }))}>{n(distance, 0)}</button>)}
       </div>
       <div className={styles.actions}>
         <button type="submit" disabled={running || parsed.invalid.length > 0} className={`rounded-lg bg-accent px-5 py-3 font-semibold text-bg disabled:cursor-not-allowed disabled:opacity-50 ${focus}`}>{t(stale ? "oceanReport.recalculate" : "oceanReport.run")}</button>

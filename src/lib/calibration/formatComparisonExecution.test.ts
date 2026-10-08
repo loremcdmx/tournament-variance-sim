@@ -4,12 +4,39 @@ import * as grids from "../sim/grids";
 import { simulateDownsideShard, simulateShard } from "../sim/hotLoop";
 import {
   buildFormatComparisonMoments, buildFormatComparisonScenarios,
-  compileFormatComparison, FORMAT_COMPARISON_DEFAULTS, summarizeFormatComparisonScenario,
+  compileFormatComparison, FORMAT_COMPARISON_DEFAULTS, FORMAT_COMPARISON_LIMITS, summarizeFormatComparisonScenario,
 } from "./formatComparison";
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("comparison execution without unused calculator collectors", () => {
+  it("executes the full expanded field and distance without truncating the report", () => {
+    const config = {
+      ...FORMAT_COMPARISON_DEFAULTS,
+      players: FORMAT_COMPARISON_LIMITS.players.max,
+      distance: FORMAT_COMPARISON_LIMITS.distance.max,
+    };
+    for (const { scenario, compiled, moments } of compileFormatComparison(config)) {
+      expect(compiled.flat[0].fieldSize).toBe(scenario.comparable ? config.players : 18);
+      expect(compiled.tournamentsPerSample).toBe(config.distance);
+      const input = { ...scenario.input, samples: 2 };
+      const grid = grids.makeCheckpointGrid(compiled.tournamentsPerSample);
+      const raw = simulateDownsideShard(input, compiled, 0, input.samples, grid);
+      const summary = summarizeFormatComparisonScenario({ ...scenario, input }, compiled, raw, grid, moments);
+      expect(summary.distance).toBe(config.distance);
+      expect(summary.samples).toBe(input.samples);
+      expect(summary.downsideCurve.at(-1)?.entries).toBe(config.distance);
+      expect(summary.downsideCurve).toHaveLength(201);
+      expect(summary.expectedProfitBI).toBeCloseTo(config.roi * config.distance, 3);
+      expect(raw.finalProfits.every(Number.isFinite)).toBe(true);
+      expect(summary.longestBelowEv.max).toBeLessThanOrEqual(config.distance);
+      expect(summary.maxDrawdownBI.max).toBeGreaterThan(0);
+    }
+    for (const patch of [{ players: config.players + 1 }, { distance: config.distance + 1 }]) {
+      expect(() => buildFormatComparisonScenarios({ ...config, ...patch })).toThrow();
+    }
+  });
+
   it("compiles five formats once and derives the exact same analytic comparison", () => {
     const config = { ...FORMAT_COMPARISON_DEFAULTS, players: 100, distance: 503 };
     const before = buildFormatComparisonMoments(config);

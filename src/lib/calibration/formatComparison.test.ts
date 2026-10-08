@@ -70,7 +70,7 @@ describe("format comparison's common cost and native mechanics", () => {
   });
 
   it("keeps finite moments and the ROI contract at every configured field, edge and ticket corner", () => {
-    for (const players of [18, 5000]) for (const roi of [-0.2, 1]) for (const ticket of [1, 1000]) {
+    for (const players of [18, 100_000]) for (const roi of [-0.2, 1]) for (const ticket of [1, 1000]) {
       for (const row of buildFormatComparisonMoments({ ...FORMAT_COMPARISON_DEFAULTS, players, roi, ticket })) {
         expect(row.roi).toBeCloseTo(roi, 6);
         expect(Number.isFinite(row.sigmaBI.upper)).toBe(true);

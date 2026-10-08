@@ -21,8 +21,8 @@ export const FORMAT_COMPARISON_DEFAULTS: FormatComparisonConfig = {
 };
 
 export const FORMAT_COMPARISON_LIMITS = {
-  ticket: { min: 1, max: 1000 }, players: { min: 18, max: 5000 },
-  roi: { min: -0.2, max: 1 }, distance: { min: 100, max: 20000 },
+  ticket: { min: 1, max: 1000 }, players: { min: 18, max: 100_000 },
+  roi: { min: -0.2, max: 1 }, distance: { min: 100, max: 100_000 },
   samples: { min: 1000, max: 5000 }, mysteryLogVariance: { min: 0, max: 4 },
 } as const;
 
