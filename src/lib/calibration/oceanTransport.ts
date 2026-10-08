@@ -236,3 +236,43 @@ export function oceanTransportDistance(result: OceanTransportResult, entries: nu
     assumption: "stationary-independent-cluster-renewal-approximation" as const,
   };
 }
+
+export interface OceanSigmaGap {
+  anchorSigma: number;
+  /** σ if only the regular-prize components were scaled to Ocean and the bounty components stayed Space's. */
+  prizeOnlySigma: number;
+  transportedSigma: number;
+  /** transportedSigma - anchorSigma, BI per tournament. */
+  gap: number;
+  /** Share of the gap that the prize scale alone produces; the rest is the bounties. */
+  prizeShare: number;
+  /** Ocean / Space mean regular prize. */
+  cashMeanRatio: number;
+  /** Regular prizes as a fraction of the full ticket. */
+  cashPoolSource: number;
+  cashPoolTarget: number;
+}
+
+/** Splits the σ difference between the Space anchor and the transported Ocean
+ * scenario. The prize part is the σ obtained when only the regular-prize
+ * variance and its covariance with the bounty are rescaled; the full transport
+ * rescales the bounty variance as well. */
+export function oceanSigmaGap(
+  result: OceanTransportResult, source: MechanisticMomentSupport, target: MechanisticMomentSupport,
+): OceanSigmaGap | null {
+  if (!result.supported) return null;
+  const { anchor, transported } = result;
+  const gap = transported.sigma - anchor.sigma;
+  if (!(Math.abs(gap) > 1e-9 * anchor.sigma)) return null;
+  const cashScale = result.residualSdRatios.cash;
+  const prizeOnlyVariance = anchor.cashVariance * cashScale ** 2 + anchor.bountyVariance
+    + 2 * anchor.cashBountyCovariance * cashScale;
+  const prizeOnlySigma = Math.sqrt(Math.max(0, prizeOnlyVariance));
+  return {
+    anchorSigma: anchor.sigma, prizeOnlySigma, transportedSigma: transported.sigma, gap,
+    prizeShare: (prizeOnlySigma - anchor.sigma) / gap,
+    cashMeanRatio: result.meanRatios.cash,
+    cashPoolSource: 1 - source.bountyFraction - source.rakeFraction,
+    cashPoolTarget: 1 - target.bountyFraction - target.rakeFraction,
+  };
+}
