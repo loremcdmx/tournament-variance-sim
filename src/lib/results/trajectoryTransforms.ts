@@ -9,6 +9,26 @@ export function supportsJackpotFilter(schedule?: readonly TournamentRow[]): bool
     && !schedule.some((row) => row.gameType === "ocean-ko");
 }
 
+// Above this share of hidden runs the filter stops being a tidy-up of a few
+// outliers and reshapes the distribution (it also drops the high end, so the
+// mean of what is left sits under EV). The checkbox then starts off.
+export const JACKPOT_AUTO_HIDE_MAX_SHARE = 0.05;
+
+// Fraction of runs `stripJackpots` removes: the flagged part of `jackpotMask`.
+export function jackpotHiddenShare(
+  result: Pick<SimulationResult, "jackpotMask">,
+): number {
+  const mask = result.jackpotMask;
+  if (!mask || mask.length === 0) return 0;
+  let hidden = 0;
+  for (let i = 0; i < mask.length; i++) if (mask[i]) hidden++;
+  return hidden / mask.length;
+}
+
+export function hideJackpotsByDefault(hiddenShare: number): boolean {
+  return hiddenShare <= JACKPOT_AUTO_HIDE_MAX_SHARE;
+}
+
 // Deterministic cumulative rakeback curve aligned to `xCheckpoints` (tournament
 // indices into the flat schedule). Walks schedule passes in the same weighted
 // interleave order as `compileSchedule()`, so heterogeneous schedules don't

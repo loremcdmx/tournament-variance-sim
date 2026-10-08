@@ -1182,9 +1182,13 @@ export const DICT = {
     en: "hide jackpots",
     ru: "скрыть джекпоты",
   },
+  "chart.hideJackpots.share": {
+    en: "{pct} of runs",
+    ru: "{pct} прогонов",
+  },
   "chart.hideJackpots.title": {
-    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. A handful of jackpot samples stretch the distribution x-axis and the trajectory y-axis into unreadable territory even though they're statistically rare. Note: this only reshapes the charts — the scalar stats panels (mean, max, VaR, skew) still reflect ALL samples including jackpots, and the trajectory envelopes are rebuilt from the ~1000 stored hi-res paths.",
-    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. Пара джекпотных сэмплов растягивает ось X гистограммы и ось Y траектории так, что остальной график становится нечитаемым, хотя статистически такие раны редки. Важно: это меняет только графики — скалярные статы (среднее, макс, VaR, скос) по-прежнему считаются по ВСЕМ сэмплам, включая джекпоты, а огибающие траектории пересобираются из ~1000 сохранённых hi-res путей.",
+    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. On long runs that is no longer a handful: {pct} of this run's samples carry one, and the average of the rest sits below the true EV. The filter starts on only when it hides 5% of runs or fewer. It reshapes the charts only — the scalar stats (mean, max, VaR, skew) still count ALL samples, and the trajectory envelopes are rebuilt from the ~1000 stored hi-res paths.",
+    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. На длинной дистанции это уже не горстка: такой конверт есть у {pct} сэмплов этого прогона, и среднее оставшихся ниже честного EV. По умолчанию фильтр включён, только если скрывает не больше 5% прогонов. Он меняет только графики: скалярные статы (среднее, макс, VaR, скос) считаются по ВСЕМ сэмплам, а огибающие траектории пересобираются из ~1000 сохранённых hi-res путей.",
   },
   "chart.trajectory.withRakeback": {
     en: "RB in chart",

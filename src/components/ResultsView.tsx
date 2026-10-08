@@ -3,7 +3,6 @@
 import { RangeInput } from "@/components/ui/RangeInput";
 import {
   memo,
-  useCallback,
   useContext,
   useDeferredValue,
   useEffect,
@@ -76,6 +75,8 @@ import {
   computeExpectedLeaderboardCurve,
   computeExpectedRakebackCurve,
   shiftResultByRakeback,
+  hideJackpotsByDefault,
+  jackpotHiddenShare,
   stripJackpots,
   supportsJackpotFilter,
 } from "@/lib/results/trajectoryTransforms";
@@ -317,29 +318,26 @@ function ResultsViewImpl({
   useEffect(() => {
     setLbIncluded(lbExpectedPayout > 0);
   }, [lbExpectedPayout]);
-  // Mystery / mystery-royale jackpot runs are a handful of samples out of
-  // hundreds of thousands, but their ratio ≥ 100× mean envelope blows up
-  // the distribution x-axis and the trajectory y-axis. Toggle strips them
-  // from both charts using the deterministic `jackpotMask` stored on the
-  // result. Only surfaced when the schedule contains a mystery row so
-  // non-mystery runs don't see a dead checkbox.
+  // Mystery / mystery-royale runs whose envelope draw reaches ≥ 100× the mean
+  // blow up the distribution x-axis and the trajectory y-axis. The toggle
+  // strips them from both charts using the deterministic `jackpotMask` stored
+  // on the result. Only surfaced when the schedule contains a mystery row so
+  // non-mystery runs don't see a dead checkbox. How many runs that removes
+  // grows with the distance (a few percent at 2k tournaments, most of the
+  // sample at 100k), so the filter starts on only while it hides a small
+  // share; the share itself is shown next to the checkbox.
   const canHideJackpots = useMemo(() => supportsJackpotFilter(schedule), [schedule]);
-  const hideJackpotsTouchedRef = useRef(false);
-  const [hideJackpots, setHideJackpotsState] = useState<boolean>(true);
+  const jackpotShare = useMemo(
+    () => jackpotHiddenShare({ jackpotMask: result.jackpotMask }),
+    [result.jackpotMask],
+  );
+  // null = the user has not chosen yet and the share-based default applies.
+  const [hideJackpotsChoice, setHideJackpots] = useState<boolean | null>(null);
+  const hideJackpots = hideJackpotsChoice ?? hideJackpotsByDefault(jackpotShare);
   const deferredHideJackpots = useDeferredValue(hideJackpots);
-  const setHideJackpots = useCallback((next: boolean) => {
-    hideJackpotsTouchedRef.current = true;
-    setHideJackpotsState(next);
-  }, []);
-  useEffect(() => {
-    // Mystery/BR tails are real data, but one early jackpot can make the
-    // default fan unreadable. Sync the default with the detected schedule
-    // format until the user explicitly toggles it (ref-guarded so we don't
-    // re-stomp their choice).
-    if (canHideJackpots && !hideJackpotsTouchedRef.current) {
-      setHideJackpotsState(true);
-    }
-  }, [canHideJackpots]);
+  const jackpotShareLabel = `${(jackpotShare * 100).toLocaleString(numberLocale, {
+    maximumFractionDigits: jackpotShare < 0.1 ? 1 : 0,
+  })}%`;
   // rbFrac change resets each region toggle back to default. Users can flip
   // individual regions after; a new rbFrac (e.g. rakeback % edit in controls)
   // wipes those overrides. Three sets in one pass — React batches them.
@@ -942,7 +940,7 @@ function ResultsViewImpl({
           {canHideJackpots && (
             <label
               className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
-              title={t("chart.hideJackpots.title")}
+              title={t("chart.hideJackpots.title").replace("{pct}", jackpotShareLabel)}
             >
               <input
                 type="checkbox"
@@ -952,6 +950,9 @@ function ResultsViewImpl({
               />
               <span className="uppercase tracking-wider text-amber-400/80">
                 {t("chart.hideJackpots")}
+              </span>
+              <span className="font-mono tabular-nums text-[color:var(--color-fg-dim)]">
+                {t("chart.hideJackpots.share").replace("{pct}", jackpotShareLabel)}
               </span>
             </label>
           )}
