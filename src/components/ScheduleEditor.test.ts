@@ -2,6 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  AdvancedRowPanel,
   parseBuyIn,
   displayItmPct,
   parseImportCSV,
@@ -13,6 +14,7 @@ import { battleRoyaleRowFromTotalTicket } from "@/lib/sim/battleRoyaleTicket";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 import { AdvancedModeProvider } from "@/lib/ui/AdvancedModeProvider";
 import { DICT } from "@/lib/i18n/dict";
+import type { TournamentRow } from "@/lib/sim/types";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -249,5 +251,35 @@ describe("parseImportCSV", () => {
       payoutStructure: "battle-royale",
       count: 12,
     });
+  });
+});
+
+describe("advanced row panel: Mystery σ²", () => {
+  const row = (over: Partial<TournamentRow>): TournamentRow => ({
+    id: "r", players: 500, buyIn: 10, rake: 0.1, roi: 0.1,
+    payoutStructure: "mtt-standard", count: 1, bountyFraction: 0.5, ...over,
+  });
+  const panel = (r: TournamentRow) =>
+    renderToStaticMarkup(
+      React.createElement(LocaleProvider, null,
+        React.createElement(AdvancedRowPanel, { row: r, onChange: vi.fn() })),
+    );
+
+  it("is editable for a plain Mystery row", () => {
+    const html = panel(row({ gameType: "mystery", mysteryBountyVariance: 2 }));
+    expect(html).toContain(DICT["row.mystery"].ru);
+  });
+
+  it("is not offered for Battle Royale, where the engine ignores it", () => {
+    const html = panel(row({
+      gameType: "mystery-royale", payoutStructure: "battle-royale", players: 18,
+      mysteryBountyVariance: 1.8,
+    }));
+    expect(html).not.toContain(DICT["row.mystery"].ru);
+    expect(html).not.toContain(DICT["row.mysteryHint"].ru);
+  });
+
+  it.each(["freezeout", "pko", "ocean-ko"] as const)("is not offered for %s", (gameType) => {
+    expect(panel(row({ gameType }))).not.toContain(DICT["row.mystery"].ru);
   });
 });

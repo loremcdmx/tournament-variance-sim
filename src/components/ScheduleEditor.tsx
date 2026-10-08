@@ -1200,7 +1200,7 @@ function SectionLabel({
   );
 }
 
-function AdvancedRowPanel({
+export function AdvancedRowPanel({
   row,
   onChange,
 }: {
@@ -1213,6 +1213,8 @@ function AdvancedRowPanel({
   const fv: FieldVariability = isBattleRoyale
     ? { kind: "fixed" }
     : (row.fieldVariability ?? { kind: "fixed" });
+  // Only plain Mystery draws its envelopes from the log-normal; Battle Royale
+  // uses GG's discrete envelope table and Ocean its wheel, so σ² is dead there.
   const showMysteryVar = gt === "mystery";
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
