@@ -71,6 +71,19 @@
 .metricTable tbody th, .metricTable td { border-top: 1px solid var(--c-border); }
 .metricTable tbody td:nth-of-type(even) { font-weight: 650; }
 .tableHint { font-size: .75rem; color: var(--c-fg-muted); margin-top: .65rem; }
+.comparisonGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem 1.25rem; }
+.comparisonBlock { min-width: 0; display: flex; flex-direction: column; gap: .5rem; }
+.comparisonBlock h3 { font-size: 1rem; font-weight: 600; line-height: 1.5; }
+.comparisonBlock > h3, .comparisonBlock > .sectionHeading { min-height: 44px; display: flex; align-items: center; }
+.comparisonNote { font-size: .75rem; line-height: 1.5; color: var(--c-fg-muted); }
+.comparisonGrid .table th, .comparisonGrid .table td { padding: .45rem .6rem; }
+.comparisonGrid .table { font-size: .8125rem; }
+.comparisonGrid .table th[scope="row"] { font-size: .8125rem; }
+.comparisonGrid .table thead th { font-size: .75rem; }
+.comparisonGrid .table th[scope="row"], .comparisonGrid .table thead tr:first-child th:first-child { text-align: left; }
+@media (max-width: 1023px) {
+  .comparisonGrid { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 767px) {
   .report { --report-scroll-offset: 4.5rem; }
   .fields, .advanced .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -98,6 +111,8 @@
   .compactTable .table tbody th, .compactTable .table td { font-size: .8rem; }
   .compactTable .table td span > span + span { font-size: .65rem; }
   .nav a { padding-inline: .65rem; font-size: .8rem; }
+  .comparisonGrid .table th, .comparisonGrid .table td { padding: .4rem .45rem; }
+  .comparisonGrid .metricSwitch { margin-bottom: .4rem; }
 }
 @media (max-width: 359px) {
   .advanced .fields { grid-template-columns: 1fr; }
