@@ -12,6 +12,7 @@ import {
   type NumericBounds,
   type ProbabilityEstimate,
 } from "@/lib/calibration/formatComparison";
+import { isNearFullDistance, oceanRatios } from "@/lib/calibration/oceanReportView";
 import { useFormatComparison } from "@/lib/calibration/useFormatComparison";
 import type { EmpiricalBridgeData } from "@/lib/calibration/oceanTransport";
 import type { PublicSpaceProfile } from "@/lib/calibration/types";
@@ -19,6 +20,7 @@ import { useT } from "@/lib/i18n/LocaleProvider";
 import type { DictKey, Locale } from "@/lib/i18n/dict";
 import { EmpiricalOceanExplorer } from "./EmpiricalOceanExplorer";
 import { SurvivalChart, LowerPathChart, AggregateRunsChart } from "./OceanReportCharts";
+import { OceanVerdictCard } from "./OceanVerdictCard";
 import styles from "./OceanComparisonReport.module.css";
 
 const panel = "min-w-0 rounded-xl border border-border bg-bg-elev p-4 sm:p-6";
@@ -62,7 +64,7 @@ function Probability({ value, format, interval }: { value: ProbabilityEstimate; 
   return <span className="inline-flex flex-col items-end gap-0.5"><span>{format(value.value)}</span>{interval && <span className="text-xs text-fg-muted">{format(value.wilson95.lower)}–{format(value.wilson95.upper)}</span>}</span>;
 }
 
-function MetricTable({ rows, kind, t, n, compact = false }: { rows: FormatComparisonSummary[]; kind: "depth" | "duration"; t: Translate; n: (value: number, digits?: number) => string; compact?: boolean }) {
+export function MetricTable({ rows, kind, t, n, compact = false }: { rows: FormatComparisonSummary[]; kind: "depth" | "duration"; t: Translate; n: (value: number, digits?: number) => string; compact?: boolean }) {
   const [metric, setMetric] = useState(kind === "depth" ? 0 : 1);
   const first = kind === "depth" ? "maxDrawdownBI" : "longestUnderwater";
   const second = kind === "depth" ? "maxEvShortfallBI" : "longestBelowEv";
@@ -81,15 +83,19 @@ function MetricTable({ rows, kind, t, n, compact = false }: { rows: FormatCompar
         </tr><tr>{[0, 1].map(group => <FragmentHeaders key={group} t={t} className={visibility(group)} />)}</tr></thead>
         <tbody>{rows.map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format}>
           <RowName row={row} t={t} />
-          {([first, second] as const).map((key, group) => <MetricCells key={key} median={row[key].median} p95={row[key].p95} className={visibility(group)} n={value => n(value, kind === "duration" ? 0 : 1)} />)}
+          {([first, second] as const).map((key, group) => <MetricCells key={key} median={row[key].median} p95={row[key].p95} className={visibility(group)} n={value => n(value, kind === "duration" ? 0 : 1)} distance={kind === "duration" ? row.distance : undefined} t={t} />)}
         </tr>)}</tbody>
       </table>
     </div>
   </div>;
 }
 
-function MetricCells({ median, p95, className, n }: { median: number; p95: number; className: string; n: (value: number) => string }) {
-  return <><td className={`${td} ${className}`}>{n(median)}</td><td className={`${td} ${className}`}>{n(p95)}</td></>;
+function MetricCells({ median, p95, className, n, distance, t }: { median: number; p95: number; className: string; n: (value: number) => string; distance?: number; t: Translate }) {
+  const saturated = distance !== undefined && isNearFullDistance(p95, distance);
+  const hint = distance !== undefined && saturated ? interpolate(t("oceanReport.fullDistanceHint"), { value: n(p95), distance: n(distance) }) : "";
+  return <><td className={`${td} ${className}`}>{n(median)}</td><td className={`${td} ${className}`}>{saturated
+    ? <span title={hint}>{t("oceanReport.fullDistance")}<span className="sr-only"> ({hint})</span></span>
+    : n(p95)}</td></>;
 }
 
 function FragmentHeaders({ t, className }: { t: Translate; className: string }) {
@@ -149,7 +155,6 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
       <span id={`${id}-${key}-range`} className={parsed.invalid.includes(key) ? "text-xs text-danger" : "sr-only"}>{interpolate(t("oceanReport.range"), { min: n(limit.min * factor, 0), max: n(limit.max * factor, 0) })}</span>
     </label>;
   };
-  const pko = rows.find(row => row.format === "pko");
 
   return <article className={`${styles.report} min-w-0 space-y-6`} aria-labelledby={`${id}-title`}>
     <header className="space-y-2 pt-2">
@@ -204,21 +209,10 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
       {report.status === "error" && <div role="alert" className="rounded-lg border border-danger/40 p-4"><p className="text-sm">{t("oceanReport.error")}</p>{report.error && <details className="mt-2 text-xs text-fg-muted"><summary className={`cursor-pointer ${focus}`}>{t("oceanReport.errorDetails")}</summary><p className="mt-2 break-words">{report.error}</p></details>}</div>}
       {report.status === "cancelled" && report.rows.length === 0 && <p role="status" className="text-sm text-fg-muted">{t("oceanReport.cancelledEmpty")}</p>}
       {!complete && !running && report.rows.length > 0 && <p role="status" className="text-sm text-fg-muted">{t("oceanReport.stopped")}</p>}
-      {complete && ocean && <section className={styles.summary}>
-        <h3 className="display text-2xl">{t("oceanReport.verdict")}</h3>
-        <dl className={styles.stats}>
-          {([
-            { label: "oceanReport.summaryDD", values: ocean.maxDrawdownBI, unit: "BI", digits: 1 },
-            { label: "oceanReport.summaryEV", values: ocean.maxEvShortfallBI, unit: "BI", digits: 1 },
-            { label: "oceanReport.summaryTime", values: ocean.longestBelowEv, unit: t("oceanReport.entryShort"), digits: 0 },
-          ] as const).map(item => <div key={item.label}><dt>{t(item.label)}</dt><dd><span className={styles.statValue}>{n(item.values.p95, item.digits)} <small>{item.unit}</small></span><span className={styles.statSecondary}>{interpolate(t("oceanReport.summaryMedian"), { value: n(item.values.median, item.digits) })}</span></dd></div>)}
-        </dl>
-        <p className="text-sm leading-relaxed">{t("oceanReport.p95Note")}</p>
-        {pko && pko.maxDrawdownBI.p95 > 0 && pko.maxEvShortfallBI.p95 > 0 && <p className="mt-4 border-t border-border pt-4 text-sm leading-relaxed">{interpolate(t("oceanReport.summaryPKO"), { dd: n(ocean.maxDrawdownBI.p95 / pko.maxDrawdownBI.p95, 2), ev: n(ocean.maxEvShortfallBI.p95 / pko.maxEvShortfallBI.p95, 2) })}</p>}
-      </section>}
+      {complete && ocean && <OceanVerdictCard ocean={ocean} rows={rows} t={t} n={n} locale={locale} />}
 
       {rows.length > 0 && <>
-        <div id={`${id}-charts`} className="space-y-6"><AggregateRunsChart rows={rows} expectedRoi={snapshot?.roi ?? 0} t={t} n={n} /><div className="grid min-w-0 gap-5 xl:grid-cols-2"><SurvivalChart rows={rows} kind="drawdownRisks" t={t} n={n} pct={pct} /><SurvivalChart rows={rows} kind="evShortfallRisks" t={t} n={n} pct={pct} /></div></div>
+        <div id={`${id}-charts`} className="space-y-6"><AggregateRunsChart rows={rows} expectedRoi={snapshot?.roi ?? 0} t={t} n={n} /><div className="grid min-w-0 gap-5 xl:grid-cols-2"><SurvivalChart rows={rows} metric="drawdown" t={t} n={n} pct={pct} /><SurvivalChart rows={rows} metric="evShortfall" t={t} n={n} pct={pct} /></div></div>
         <LowerPathChart rows={rows} t={t} n={n} />
         <div className={styles.comparisonGrid}>
         <section className={styles.comparisonBlock}><h3>{t("oceanReport.depthCompact")}</h3><MetricTable compact rows={rows} kind="depth" t={t} n={n} /><p className={styles.comparisonNote}>{t("oceanReport.maximumNote")}</p></section>
@@ -227,7 +221,7 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
           <div className={styles.sectionHeading}><h3>{t("oceanReport.probabilities")}</h3><label className={styles.intervalToggle}><input type="checkbox" checked={showIntervals} onChange={event => setShowIntervals(event.target.checked)} />{t("oceanReport.showIntervals")}</label></div>
           <ScrollTable compact={!showIntervals} label={t("oceanReport.probabilities")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th>{["oceanReport.loss", "oceanReport.belowEV", "oceanReport.unrecovered"].map(key => <th key={key} scope="col" className={th}>{t(key as DictKey)}</th>)}</tr></thead><tbody>{rows.map(row => <tr data-ocean={row.format === "ocean-ko"} className={`border-t border-border ${row.format === "ocean-ko" ? "bg-accent/5" : ""}`} key={row.format}><RowName row={row} t={t} />{[row.finalLossProbability, row.finalBelowEvProbability, row.recovery.unrecoveredProbability].map((probability, index) => <td key={index} className={td}><Probability value={probability} format={pct} interval={showIntervals} /></td>)}</tr>)}</tbody></ScrollTable>
         </section>
-        {complete && ocean && <section className={styles.comparisonBlock}><h3>{t("oceanReport.relative")}</h3><ScrollTable compact label={t("oceanReport.relative")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th><th scope="col" className={th}>{t("oceanReport.ratioDD")}</th><th scope="col" className={th}>{t("oceanReport.ratioEV")}</th></tr></thead><tbody>{rows.filter(row => row.format !== "ocean-ko").map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>{row.maxDrawdownBI.p95 > 0 ? `${n(ocean.maxDrawdownBI.p95 / row.maxDrawdownBI.p95, 2)}×` : "—"}</td><td className={td}>{row.maxEvShortfallBI.p95 > 0 ? `${n(ocean.maxEvShortfallBI.p95 / row.maxEvShortfallBI.p95, 2)}×` : "—"}</td></tr>)}</tbody></ScrollTable><p className={styles.comparisonNote}>{t("oceanReport.relativeCompact")}</p></section>}
+        {complete && ocean && <section className={styles.comparisonBlock}><h3>{t("oceanReport.relative")}</h3><ScrollTable compact label={t("oceanReport.relative")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th><th scope="col" className={th}>{t("oceanReport.ratioDD")}</th><th scope="col" className={th}>{t("oceanReport.ratioEV")}</th></tr></thead><tbody>{oceanRatios(rows).map(item => <tr key={item.format} className="border-t border-border"><RowName row={rows.find(row => row.format === item.format)!} t={t} /><td className={td}>{item.drawdown === null ? "—" : `${n(item.drawdown, 1)}×`}</td><td className={td}>{item.evShortfall === null ? "—" : `${n(item.evShortfall, 1)}×`}</td></tr>)}</tbody></ScrollTable><p className={styles.comparisonNote}>{t("oceanReport.relativeCompact")}</p></section>}
         </div>
         <details className={styles.inlineDetails}><summary className={focus}>{t("oceanReport.tableGuide")}</summary><div className="space-y-3"><p className={prose}>{t("oceanReport.comparisonNote")}</p><p className={prose}>{t("oceanReport.durationNote")}</p><p className={prose}>{t("oceanReport.censor")}</p><p className={prose}>{t("oceanReport.finishNote")}</p><p className={prose}>{t("oceanReport.belowEVNote")}</p><p className={prose}>{t("oceanReport.recoveryNote")}</p><p className={prose}>{t("oceanReport.probabilityNote")}</p></div></details>
         <details className={styles.disclosure}><summary className={focus}>{t("oceanReport.moreMetrics")}</summary><div className="space-y-6">

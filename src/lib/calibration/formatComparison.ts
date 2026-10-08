@@ -98,10 +98,13 @@ export interface FormatComparisonSummary {
   finalLossProbability: ProbabilityEstimate;
   finalBelowEvProbability: ProbabilityEstimate;
   everBelowEvProbability: ProbabilityEstimate;
+  /** Reference thresholds (50 / 100 / 250 / 500 / 1000 BI). */
   drawdownRisks: ThresholdRisk[];
   evShortfallRisks: ThresholdRisk[];
-  drawdownRiskCurve: ThresholdRisk[];
-  evShortfallRiskCurve: ThresholdRisk[];
+  /** Every career's maximum in BI, ascending. The risk curves are built from
+   * these in the UI so that all formats share one grid that reaches the
+   * deepest observation of any of them. */
+  careerMaxima: { drawdownBI: Float64Array; evShortfallBI: Float64Array };
   /** Existing engine definition: trough to first strictly higher profit peak. */
   recovery: {
     recoveredSamples: number;
@@ -280,16 +283,63 @@ export function estimateProbability(count: number, samples: number): Probability
 }
 
 const RISK_THRESHOLDS_BI = [50, 100, 250, 500, 1000];
-const RISK_CURVE_THRESHOLDS_BI = Array.from({ length: 101 }, (_, i) => i * 10);
+export const RISK_CURVE_POINTS = 101;
+const NICE_MANTISSAS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
 
-function thresholdRiskCurve(values: ArrayLike<number>, ticket: number): ThresholdRisk[] {
-  const sorted = Float64Array.from(values).sort();
+/** Smallest round number (1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6 or 8 times a power of ten)
+ * strictly above `value`. Strictly, so that a grid ending there has no career
+ * at or beyond its last threshold. */
+export function niceCeilingAbove(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  for (let exponent = Math.floor(Math.log10(value)); ; exponent++) {
+    for (const mantissa of NICE_MANTISSAS) {
+      const candidate = Number((mantissa * 10 ** exponent).toPrecision(12));
+      if (candidate > value) return candidate;
+    }
+  }
+}
+
+/** 101 equally spaced thresholds from 0 to the round number above `maximumBI`. */
+export function riskThresholdGrid(maximumBI: number): number[] {
+  const upper = niceCeilingAbove(maximumBI);
+  const last = RISK_CURVE_POINTS - 1;
+  return Array.from({ length: RISK_CURVE_POINTS }, (_, i) => i === last ? upper : upper * i / last);
+}
+
+/** Share of careers whose maximum reached each threshold (`maximum >= threshold`).
+ * `sortedBI` must be ascending; the grid must be ascending too. */
+export function thresholdRiskCurve(sortedBI: ArrayLike<number>, grid: readonly number[]): ThresholdRisk[] {
   let below = 0;
-  return RISK_CURVE_THRESHOLDS_BI.map((thresholdBI) => {
-    const threshold = thresholdBI * ticket;
-    while (below < sorted.length && sorted[below] < threshold) below++;
-    return { thresholdBI, probability: estimateProbability(sorted.length - below, sorted.length) };
+  return grid.map((thresholdBI) => {
+    while (below < sortedBI.length && sortedBI[below] < thresholdBI) below++;
+    return { thresholdBI, probability: estimateProbability(sortedBI.length - below, sortedBI.length) };
   });
+}
+
+export type RiskMetric = "drawdown" | "evShortfall";
+export interface CommonRiskCurves {
+  thresholds: number[];
+  /** The deepest observation of any shown format, BI. */
+  observedMaximumBI: number;
+  curves: Partial<Record<ComparisonFormat, ThresholdRisk[]>>;
+}
+
+/** One grid per metric, shared by every format in the chart: its top is the
+ * round number above the deepest career of any of them, so no tail is cut and
+ * each curve ends at zero. */
+export function commonRiskCurves(
+  rows: readonly Pick<FormatComparisonSummary, "format" | "careerMaxima">[],
+  metric: RiskMetric,
+): CommonRiskCurves {
+  const key = metric === "drawdown" ? "drawdownBI" : "evShortfallBI";
+  let observedMaximumBI = 0;
+  for (const row of rows) {
+    for (const value of row.careerMaxima[key]) if (value > observedMaximumBI) observedMaximumBI = value;
+  }
+  const thresholds = riskThresholdGrid(observedMaximumBI);
+  const curves: CommonRiskCurves["curves"] = {};
+  for (const row of rows) curves[row.format] = thresholdRiskCurve(row.careerMaxima[key], thresholds);
+  return { thresholds, observedMaximumBI, curves };
 }
 
 export function summarizeFormatComparisonScenario(
@@ -306,8 +356,10 @@ export function summarizeFormatComparisonScenario(
     throw new Error("format comparison: a homogeneous collected downside shard is required");
   }
   const ticket = compiled.flat[0].singleCost;
-  const drawdownRiskCurve = thresholdRiskCurve(shard.maxDrawdowns, ticket);
-  const evShortfallRiskCurve = thresholdRiskCurve(collected.maxEvShortfall, ticket);
+  const careerMaxima = {
+    drawdownBI: Float64Array.from(shard.maxDrawdowns, (value) => value / ticket).sort(),
+    evShortfallBI: Float64Array.from(collected.maxEvShortfall, (value) => value / ticket).sort(),
+  };
   const moments = preparedMoments ?? momentRow(scenario, compiled.flat[0]);
   const expectedProfit = (compiled.flat[0].analyticMeanSingle - ticket) * distance;
   const shortfalls = new Float64Array(samples);
@@ -357,9 +409,9 @@ export function summarizeFormatComparisonScenario(
     finalLossProbability: estimateProbability(losses, samples),
     finalBelowEvProbability: estimateProbability(belowEv, samples),
     everBelowEvProbability: estimateProbability(everBelowEv, samples),
-    drawdownRisks: drawdownRiskCurve.filter(point => RISK_THRESHOLDS_BI.includes(point.thresholdBI)),
-    evShortfallRisks: evShortfallRiskCurve.filter(point => RISK_THRESHOLDS_BI.includes(point.thresholdBI)),
-    drawdownRiskCurve, evShortfallRiskCurve,
+    drawdownRisks: thresholdRiskCurve(careerMaxima.drawdownBI, RISK_THRESHOLDS_BI),
+    evShortfallRisks: thresholdRiskCurve(careerMaxima.evShortfallBI, RISK_THRESHOLDS_BI),
+    careerMaxima,
     recovery: {
       recoveredSamples: recovered.length, noDrawdownSamples,
       recoveredOnly: recovered.length ? summarizeDistribution(recovered) : null,

@@ -4,8 +4,10 @@ import { makeCheckpointGrid } from "../sim/grids";
 import { simulateShard } from "../sim/hotLoop";
 import { compiledEntryMoments } from "../sim/scheduleMoments";
 import {
-  buildFormatComparisonMoments, buildFormatComparisonScenarios, estimateProbability,
-  FORMAT_COMPARISON_DEFAULTS, FORMAT_COMPARISON_FORMATS, oceanWheelCutoffs, summarizeDistribution, summarizeFormatComparisonScenario,
+  buildFormatComparisonMoments, buildFormatComparisonScenarios, commonRiskCurves, estimateProbability,
+  FORMAT_COMPARISON_DEFAULTS, FORMAT_COMPARISON_FORMATS, niceCeilingAbove, oceanWheelCutoffs, RISK_CURVE_POINTS,
+  riskThresholdGrid, summarizeDistribution, summarizeFormatComparisonScenario, thresholdRiskCurve,
+  type ComparisonFormat, type FormatComparisonSummary,
 } from "./formatComparison";
 
 describe("format comparison's common cost and native mechanics", () => {
@@ -121,41 +123,34 @@ describe("downside summary distinguishes EV shortfall from losing money", () => 
     expect(() => estimateProbability(2, 1)).toThrow();
   });
 
-  it("counts 101 genuine risk thresholds including ties, preserving the original reference thresholds", () => {
+  it("keeps every career's maximum in BI, ascending, and counts ties at the reference thresholds", () => {
     const scenario = buildFormatComparisonScenarios({ ...FORMAT_COMPARISON_DEFAULTS, ticket: 37, players: 18, distance: 100 })[0];
     const input = { ...scenario.input, samples: 8 };
     const compiled = compileSchedule(input);
     const ticket = compiled.flat[0].singleCost;
     const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
     const shard = simulateShard(input, compiled, 0, input.samples, grid);
-    const drawdowns = [0, 9.99, 10, 49.99, 50, 250, 1000, 1300];
+    const drawdowns = [1300, 0, 9.99, 10, 49.99, 50, 250, 1000];
     const shortfalls = [0, 20, 20, 99.99, 100, 500, 999.99, 1000];
     shard.maxDrawdowns.set(drawdowns.map(value => value * ticket));
     shard.downsideReport!.maxEvShortfall.set(shortfalls.map(value => value * ticket));
     const before = Array.from(shard.maxDrawdowns);
     const report = summarizeFormatComparisonScenario(scenario, compiled, shard, grid);
-    for (const [curve, reference, values] of [
-      [report.drawdownRiskCurve, report.drawdownRisks, shard.maxDrawdowns],
-      [report.evShortfallRiskCurve, report.evShortfallRisks, shard.downsideReport!.maxEvShortfall],
+    for (const [maxima, reference, source] of [
+      [report.careerMaxima.drawdownBI, report.drawdownRisks, drawdowns],
+      [report.careerMaxima.evShortfallBI, report.evShortfallRisks, shortfalls],
     ] as const) {
-      expect(curve).toHaveLength(101);
-      expect(curve[0].thresholdBI).toBe(0);
-      expect(curve[0].probability.value).toBe(1);
-      expect(curve.at(-1)!.thresholdBI).toBe(1000);
-      for (let i = 0; i < curve.length; i++) {
-        const point = curve[i];
-        const count = Array.from(values).filter(value => value >= point.thresholdBI * ticket).length;
-        expect(point.probability).toEqual(estimateProbability(count, input.samples));
-        if (i > 0) {
-          expect(point.thresholdBI - curve[i - 1].thresholdBI).toBe(10);
-          expect(point.probability.value).toBeLessThanOrEqual(curve[i - 1].probability.value);
-        }
-      }
+      const inBI = source.map(value => (value * ticket) / ticket).sort((a, b) => a - b);
+      expect(Array.from(maxima)).toEqual(inBI);
       expect(reference.map(point => point.thresholdBI)).toEqual([50, 100, 250, 500, 1000]);
-      for (const point of reference) expect(point).toEqual(curve.find(item => item.thresholdBI === point.thresholdBI));
+      for (const point of reference) {
+        const count = inBI.filter(value => value >= point.thresholdBI).length;
+        expect(point.probability).toEqual(estimateProbability(count, input.samples));
+      }
     }
-    expect(report.drawdownRiskCurve[1].probability.count).toBe(6);
-    expect(report.drawdownRiskCurve.at(-1)!.probability.count).toBe(2);
+    expect(report.drawdownRisks[0].probability.count).toBe(4);
+    expect(report.drawdownRisks.at(-1)!.probability.count).toBe(2);
+    expect(report.evShortfallRisks.at(-1)!.probability.count).toBe(1);
     expect(Array.from(shard.maxDrawdowns)).toEqual(before);
   });
 
@@ -193,6 +188,79 @@ describe("downside summary distinguishes EV shortfall from losing money", () => 
     }
     expect(report.downsideCurve.at(-1)!.maxBI).toBeGreaterThan(report.downsideCurve.at(-1)!.p95BI);
     expect(Array.from(shard.pathMatrix)).toEqual(original);
+  });
+});
+
+function fakeRow(format: ComparisonFormat, drawdownBI: number[], evShortfallBI = drawdownBI) {
+  return {
+    format,
+    careerMaxima: { drawdownBI: Float64Array.from(drawdownBI).sort(), evShortfallBI: Float64Array.from(evShortfallBI).sort() },
+  } satisfies Pick<FormatComparisonSummary, "format" | "careerMaxima">;
+}
+
+describe("risk curves share one grid that reaches the deepest observation", () => {
+  it("rounds up to a round number strictly above the value", () => {
+    const table: [number, number][] = [
+      [0, 1], [-5, 1], [NaN, 1], [0.4, 0.5], [99, 100], [100, 120], [196.2, 200], [357.4, 400], [410.8, 500],
+      [500, 600], [999.9, 1000], [1000, 1200], [1346, 1500], [2040.2, 2500], [12345, 15000], [60000, 80000], [80000, 100000],
+    ];
+    for (const [value, expected] of table) expect(niceCeilingAbove(value)).toBe(expected);
+    for (const value of [0.0123, 7, 33, 410.8, 4999.9, 123456]) {
+      const ceiling = niceCeilingAbove(value);
+      expect(ceiling).toBeGreaterThan(value);
+      expect(ceiling / value).toBeLessThanOrEqual(1.34);
+    }
+  });
+
+  it("builds 101 evenly spaced thresholds from 0 to the round number", () => {
+    for (const maximum of [37.2, 357.4, 410.8, 1346, 2040.2, 25000]) {
+      const grid = riskThresholdGrid(maximum);
+      expect(grid).toHaveLength(RISK_CURVE_POINTS);
+      expect(grid[0]).toBe(0);
+      expect(grid.at(-1)).toBe(niceCeilingAbove(maximum));
+      expect(grid.at(-1)!).toBeGreaterThan(maximum);
+      const step = grid[1] - grid[0];
+      for (let i = 1; i < grid.length; i++) expect(grid[i] - grid[i - 1]).toBeCloseTo(step, 9);
+    }
+  });
+
+  it("uses one grid for every format and never cuts a tail, separately for each metric", () => {
+    const rows = [
+      fakeRow("freezeout", [10, 150, 480, 1346, 2040], [20, 300, 900, 2500, 3100]),
+      fakeRow("pko", [5, 60, 90, 300, 700], [8, 100, 200, 600, 1500]),
+      fakeRow("ocean-ko", [20, 120, 410, 1100, 1900], [30, 250, 700, 2100, 2800]),
+    ];
+    const drawdown = commonRiskCurves(rows, "drawdown");
+    const shortfall = commonRiskCurves(rows, "evShortfall");
+    expect(drawdown.observedMaximumBI).toBe(2040);
+    expect(drawdown.thresholds.at(-1)).toBe(2500);
+    expect(shortfall.observedMaximumBI).toBe(3100);
+    expect(shortfall.thresholds.at(-1)).toBe(4000);
+    for (const common of [drawdown, shortfall]) {
+      expect(common.thresholds).toHaveLength(RISK_CURVE_POINTS);
+      for (const row of rows) {
+        const curve = common.curves[row.format]!;
+        expect(curve.map(point => point.thresholdBI)).toEqual(common.thresholds);
+        expect(curve[0].probability.value).toBe(1);
+        expect(curve.at(-1)!.probability.count).toBe(0);
+        expect(curve.at(-1)!.probability.value).toBe(0);
+        for (let i = 1; i < curve.length; i++) {
+          expect(curve[i].probability.value).toBeLessThanOrEqual(curve[i - 1].probability.value);
+        }
+      }
+    }
+    // The old fixed 0-1000 BI grid would have shown 40% here and nothing beyond it.
+    const atThousand = drawdown.curves.freezeout!.find(point => point.thresholdBI === 1000)!;
+    expect(atThousand.probability.value).toBe(0.4);
+    const beyond = drawdown.curves.freezeout!.find(point => point.thresholdBI === 1500)!;
+    expect(beyond.probability.value).toBe(0.2);
+  });
+
+  it("counts maximum >= threshold on the shared grid, including ties", () => {
+    const grid = [0, 10, 20, 30];
+    const curve = thresholdRiskCurve([0, 10, 10, 25], grid);
+    expect(curve.map(point => point.probability.count)).toEqual([4, 3, 1, 0]);
+    expect(commonRiskCurves([], "drawdown").thresholds.at(-1)).toBe(1);
   });
 });
 

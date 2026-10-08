@@ -21,6 +21,20 @@ describe("completed comparison cache", () => {
     expect(cache.get(config)).toEqual(rows);
   });
 
+  it("keeps the per-career maxima used for the shared risk grid as independent typed arrays", () => {
+    const cache = createFormatComparisonCache();
+    const withMaxima = structuredClone(rows);
+    withMaxima[0].careerMaxima = { drawdownBI: Float64Array.of(1, 2, 3), evShortfallBI: Float64Array.of(4, 5, 6) };
+    cache.put(config, withMaxima);
+    withMaxima[0].careerMaxima.drawdownBI[0] = 99;
+    const restored = cache.get(config)!;
+    expect(restored[0].careerMaxima.drawdownBI).toBeInstanceOf(Float64Array);
+    expect(Array.from(restored[0].careerMaxima.drawdownBI)).toEqual([1, 2, 3]);
+    expect(Array.from(restored[0].careerMaxima.evShortfallBI)).toEqual([4, 5, 6]);
+    restored[0].careerMaxima.evShortfallBI[0] = 77;
+    expect(cache.get(config)![0].careerMaxima.evShortfallBI[0]).toBe(4);
+  });
+
   it("never reuses a report after any calculation input changes", () => {
     const cache = createFormatComparisonCache();
     cache.put(config, rows);

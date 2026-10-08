@@ -325,6 +325,29 @@ Consequences to remember:
 - Saved trajectories now select the first 1000 global sample indices. Do not reintroduce proportional per-shard rounding; both the selected paths and aggregate results must be independent of shard boundaries/order.
 - `smoke:cash` uses the actual `?admin=1` route. Browser readiness waits for product elements, not `networkidle`; dev HMR and analytics can keep the network active. `SMOKE_BROWSER_CHANNEL=chrome` uses an installed Chrome when Playwright's bundled browser is unavailable.
 
+## Ocean Downside Report Readouts
+
+The 8 October 2026 audit found the arithmetic of the Ocean tab correct and its
+presentation misleading. Do not undo these without re-measuring:
+
+- The longest spell below EV has a P95 of about the whole distance in every format
+  (arcsine law: 0.975-1.000 of the distance at 1k, 5k and 20k entries). Advice to
+  "extend the horizon" is wrong for it; the card shows the median, and tables
+  print "≈ full distance" from 97% of the distance. The spell below the previous
+  peak is different: at 1k entries its P95 is also about the whole distance
+  (0.97-1.00 in all four formats), but its share of the distance falls to about
+  0.7-0.96 at 5k and 0.33-0.69 at 20k, so a longer horizon does show more there.
+- Ratios between formats carry Monte Carlo noise in the second digit and change
+  with the distance (Ocean / PKO drawdown P95 about 1.2 / 1.4 / 1.4-1.5x at 1k / 5k / 20k).
+  Show one digit.
+- Risk curves use one dynamic grid per metric, shared by every format in a chart
+  and ending at a round number strictly above the deepest career. A fixed 0-1000 BI
+  grid cut 12% of the freezeout careers (drawdown) and 34-37% (EV shortfall) at 20k.
+- All formats share the seed, so their careers are positively correlated (Spearman
+  0.56-0.89 of final profit). Monte Carlo intervals are per format, not for differences.
+- Streak ties use a tolerance of 1e-9 of a ticket: a Battle Royale break-even entry
+  can sum to -1.78e-15 and must not count as a loss.
+
 ## Good Defaults For New Agents
 
 - Start read-only.

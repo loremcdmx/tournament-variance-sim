@@ -501,7 +501,7 @@ function simulateShardInternal(
         if (place < pc) cashedThisSlot = true;
       }
       profit += delta;
-      if (downsideState && expectedProfitPrefix) observeDownsideReport(downsideState, profit, expectedProfitPrefix[i], delta);
+      if (downsideState && expectedProfitPrefix) observeDownsideReport(downsideState, profit, expectedProfitPrefix[i], delta, single);
       rowProfits[rowBase + t.rowIdx] += delta;
       if (satelliteSeatsWon && t.isSatellite && t.prizeByPlace[leaderboardPlace] > 0) {
         satelliteSeatsWon[rowBase + t.rowIdx]++;

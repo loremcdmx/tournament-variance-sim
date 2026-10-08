@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { exposureComponents, oceanTransportDistance, transportOceanMoments } from "./oceanTransport";
-import type { MechanisticMomentSupport, OceanTransportInput } from "./oceanTransport";
+import { exposureComponents, oceanSigmaGap, oceanTransportDistance, transportOceanMoments } from "./oceanTransport";
+import type { EmpiricalBridgeData, MechanisticMomentSupport, OceanTransportInput } from "./oceanTransport";
 import type { SpaceJointMoments } from "./types";
 import profile from "./space-runtime-profile.json";
+import bridgeProfile from "./ocean-bridge-profile.json";
 
 type Atom = { p: number; c: number; b: number; k: number };
 function moments(atoms: Atom[]): SpaceJointMoments {
@@ -136,5 +137,63 @@ describe("Ocean moment transport", () => {
     expect(oceanTransportDistance(result,NaN)).toBeNull();
     expect(oceanTransportDistance(result,1000.5)).toBeNull();
     expect(oceanTransportDistance(result,1_000_001)).toBeNull();
+  });
+});
+
+describe("σ gap between the Space anchor and the Ocean scenario", () => {
+  const bridge = bridgeProfile as unknown as EmpiricalBridgeData;
+  function gapFor(cap: 25 | 100, ticket: 10 | 100, theta = 1) {
+    const anchorModel = profile.anchors.find(model => model.capBountyBI === cap)!;
+    const pick = (roomId: string) => bridge.records.find(record => record.theta === theta && record.roomId === roomId && record.support.capBountyBI === cap)!;
+    const source = pick("space-eur10"), target = pick(`ocean-usd${ticket}`);
+    const result = transportOceanMoments({ anchor: anchorModel.moments, capBountyBI: cap, anchorProfileId: profile.profileId,
+      anchorFieldBin: "1000-1499", source, target, allowSingleEntryBridge: true, allowRepresentativeField: true });
+    return { result, gap: oceanSigmaGap(result, source.support, target.support) };
+  }
+
+  it("takes about two thirds of the default gap from the prize pool and the rest from bounties", () => {
+    const { result, gap } = gapFor(100, 100);
+    expect(result.supported).toBe(true);
+    expect(gap).not.toBeNull();
+    expect(gap!.anchorSigma).toBeCloseTo(7.0813, 3);
+    expect(gap!.prizeOnlySigma).toBeCloseTo(7.2844, 3);
+    expect(gap!.transportedSigma).toBeCloseTo(7.3897, 3);
+    expect(gap!.gap).toBeCloseTo(gap!.transportedSigma - gap!.anchorSigma, 12);
+    expect(gap!.prizeShare).toBeCloseTo(0.659, 2);
+    expect(gap!.cashPoolSource).toBeCloseTo(0.40, 12);
+    expect(gap!.cashPoolTarget).toBeCloseTo(0.42, 12);
+    expect(gap!.cashMeanRatio).toBeCloseTo(1.05, 10);
+    // Prize-only σ is Space's σ scaled by the cash residual-SD ratio on the cash part alone.
+    if (result.supported) expect(result.residualSdRatios.cash).toBeCloseTo(1.05, 10);
+  });
+
+  it("follows the selected cap, ticket and knockout scenario instead of fixed numbers", () => {
+    const shares = ([[25, 100], [25, 10], [100, 10]] as const).map(([cap, ticket]) => gapFor(cap, ticket).gap!.prizeShare);
+    expect(shares[0]).toBeCloseTo(0.886, 2);
+    expect(shares[1]).toBeCloseTo(0.900, 2);
+    expect(shares[2]).toBeCloseTo(0.800, 2);
+    expect(gapFor(100, 100, 0.5).gap!.prizeShare).toBeCloseTo(0.496, 2);
+    for (const [cap, ticket] of [[25, 100], [100, 100]] as const) {
+      const { gap } = gapFor(cap, ticket);
+      expect(gap!.prizeShare).toBeGreaterThan(0);
+      expect(gap!.prizeShare).toBeLessThan(1);
+    }
+  });
+
+  it("attributes the whole gap to the prizes when only they change, and none when only bounties do", () => {
+    const cashOnly = input();
+    cashOnly.target.moments = moments(sourceAtoms.map(a => ({ ...a, c: 3 * a.c })));
+    const bountyOnly = input();
+    bountyOnly.target.moments = moments(sourceAtoms.map(a => ({ ...a, b: 0.5 * a.b })));
+    const cash = transportOceanMoments(cashOnly), bounty = transportOceanMoments(bountyOnly);
+    expect(oceanSigmaGap(cash, cashOnly.source.support, cashOnly.target.support)!.prizeShare).toBeCloseTo(1, 10);
+    expect(oceanSigmaGap(bounty, bountyOnly.source.support, bountyOnly.target.support)!.prizeShare).toBeCloseTo(0, 10);
+  });
+
+  it("returns nothing for an unsupported transport or for identical sigma", () => {
+    const data = input();
+    expect(oceanSigmaGap({ supported: false, reason: "invalid-moments" }, data.source.support, data.target.support)).toBeNull();
+    const identity = transportOceanMoments(data);
+    expect(oceanSigmaGap(identity, data.source.support, data.target.support)).toBeNull();
   });
 });

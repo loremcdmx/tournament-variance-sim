@@ -24,6 +24,7 @@ For each component, empirical means are multiplied by the target/source mechanic
 
 - This transports capped Space moments. It does not identify a capped Ocean payoff law or the full jackpot variance.
 - Ocean observations have not validated the transfer. Applying single-entry mechanical ratios to re-entry clusters and representing a field bin by N=1000 are assumptions.
+- The reference ROI is computed with capped bounties, so it is lower than the uncapped ROI: on the training window by 2.3 percentage points at the 100 BI cap and 10.1 at the 25 BI cap (audit of 8 October 2026). The UI states the meaning, not these numbers.
 - Two moments do not determine trajectories, quantiles, loss probability or required bankroll. These are not reported in this view.
 - Numerical precision and model accuracy are separate. Ten of twelve coefficient scenarios meet the fixed numerical thresholds; both theta=0.5/cap100 cases narrowly fail. The UI retains those warnings.
 

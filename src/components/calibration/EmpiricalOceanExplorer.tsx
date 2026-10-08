@@ -4,11 +4,13 @@ import { useId, useState } from "react";
 import type { PublicSpaceProfile } from "@/lib/calibration/types";
 import {
   exposureComponents,
+  oceanSigmaGap,
   oceanTransportDistance,
   transportOceanMoments,
   type EmpiricalBridgeData,
   type ExposureComponents,
 } from "@/lib/calibration/oceanTransport";
+import { interpolate } from "@/lib/calibration/oceanReportView";
 import { useT } from "@/lib/i18n/LocaleProvider";
 
 const MAX_CALIBRATION_ENTRIES = 1_000_000;
@@ -41,16 +43,22 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
   const pct = (value: number) => `${n(value * 100)}%`;
   const anchorModel = profile.anchors.find(model => model.capBountyBI === cap);
   const anchor = anchorModel ? exposureComponents(anchorModel.moments) : null;
+  const bridgeRecords = (weight: number) => ({
+    source: bridge.records.find(record => record.theta === weight && record.roomId === "space-eur10" && record.support.capBountyBI === cap),
+    target: bridge.records.find(record => record.theta === weight && record.roomId === `ocean-usd${ticket}` && record.support.capBountyBI === cap),
+  });
   const transport = (weight: number) => {
     if (!anchorModel || !bridge.receipt.sourceStable) return null;
-    const source = bridge.records.find(record => record.theta === weight && record.roomId === "space-eur10" && record.support.capBountyBI === cap);
-    const target = bridge.records.find(record => record.theta === weight && record.roomId === `ocean-usd${ticket}` && record.support.capBountyBI === cap);
+    const { source, target } = bridgeRecords(weight);
     if (!source || !target) return null;
     const result = transportOceanMoments({ anchor: anchorModel.moments, capBountyBI: cap, anchorProfileId: profile.profileId,
       anchorFieldBin: fieldBin, source, target, allowSingleEntryBridge: true, allowRepresentativeField: true });
     return result.supported ? result : null;
   };
   const current = transport(theta);
+  const currentRecords = bridgeRecords(theta);
+  const sigmaGap = current && currentRecords.source && currentRecords.target
+    ? oceanSigmaGap(current, currentRecords.source.support, currentRecords.target.support) : null;
   const precision = bridge.numericPrecision;
   const selectedPrecision = precision?.rows.find(row => row.theta === theta && row.capBountyBI === cap && row.target === `ocean-usd${ticket}`);
   const passesPrecision = (row: NonNullable<EmpiricalBridgeData["numericPrecision"]>["rows"][number]) => !!precision
@@ -112,6 +120,10 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
             </dl>
           </section>)}
         </div>
+        {sigmaGap && <p className={`${muted} mt-3`}>{interpolate(t("empiricalOcean.sigmaGap"), {
+          delta: n(sigmaGap.gap), percent: n(sigmaGap.gap / sigmaGap.anchorSigma * 100, 1), share: n(sigmaGap.prizeShare * 100, 0),
+          ocean: n(sigmaGap.cashPoolTarget * 100, 0), space: n(sigmaGap.cashPoolSource * 100, 0), ratio: n(sigmaGap.cashMeanRatio),
+        })}</p>}
         <p className={`${muted} mt-3`}>{t("empiricalOcean.roiNote")}</p>
         <p id={`${id}-distance-note`} className={`${muted} mt-2`}>{t("empiricalOcean.horizonNote")}</p>
         {allAlternativesSupported && <section className={`${panel} mt-5`}>
