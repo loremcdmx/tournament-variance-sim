@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormatComparisonConfig, FormatComparisonSummary } from "./formatComparison";
+import { FORMAT_COMPARISON_FORMATS, type FormatComparisonConfig, type FormatComparisonSummary } from "./formatComparison";
 import type { FormatComparisonRequest, FormatComparisonResponse } from "./formatComparisonProtocol";
 import { formatComparisonCache } from "./formatComparisonCache";
 
@@ -83,5 +83,5 @@ export function useFormatComparison() {
     setState((previous) => previous.status === "running" ? { ...previous, status: "cancelled" } : previous);
   }, [stopWorker]);
 
-  return { ...state, completed: state.rows.length, total: 5, run, cancel };
+  return { ...state, completed: state.rows.length, total: FORMAT_COMPARISON_FORMATS.length, run, cancel };
 }

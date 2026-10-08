@@ -31,7 +31,7 @@ class TestWorker {
   emit(message: FormatComparisonResponse) { this.onmessage?.({ data: message } as MessageEvent<FormatComparisonResponse>); }
   complete() {
     const jobId = this.request!.jobId;
-    for (const format of ["freezeout", "pko", "mystery", "ocean-ko", "mystery-royale"] as const) {
+    for (const format of ["freezeout", "pko", "mystery", "ocean-ko"] as const) {
       this.emit({ type: "row", jobId, row: { format } as FormatComparisonSummary });
     }
     this.emit({ type: "done", jobId });
@@ -56,6 +56,7 @@ describe("comparison worker lifecycle and repeat calculation", () => {
   it("keeps the executed snapshot and restores a complete run without constructing a worker", async () => {
     const { useFormatComparison } = await import("./useFormatComparison");
     const report = useFormatComparison();
+    expect(report.total).toBe(4);
     const draft = { ...config };
     report.run(draft);
     const worker = TestWorker.instances[0];
@@ -63,11 +64,34 @@ describe("comparison worker lifecycle and repeat calculation", () => {
     expect(worker.request!.config).toEqual(config);
     worker.complete();
     expect(worker.terminated).toBe(true);
-    expect(reactHarness.state).toMatchObject({ status: "done", progress: 1, configSnapshot: config });
+    expect(reactHarness.state).toMatchObject({
+      status: "done", progress: 1, configSnapshot: config,
+      rows: ["freezeout", "pko", "mystery", "ocean-ko"].map(format => ({ format })),
+    });
     const completed = reactHarness.state;
     report.run(config);
     expect(TestWorker.instances).toHaveLength(1);
     expect(reactHarness.state).toEqual(completed);
+  });
+
+  it("tracks progress through all four formats and finishes after Ocean KO", async () => {
+    const { useFormatComparison } = await import("./useFormatComparison");
+    const report = useFormatComparison();
+    report.run(config);
+    const worker = TestWorker.instances[0];
+    const jobId = worker.request!.jobId;
+    const formats = ["freezeout", "pko", "mystery", "ocean-ko"] as const;
+    for (const [index, format] of formats.entries()) {
+      worker.emit({ type: "row", jobId, row: { format } as FormatComparisonSummary });
+      worker.emit({ type: "progress", jobId, progress: (index + 1) / formats.length });
+      expect(reactHarness.state).toMatchObject({
+        status: "running", progress: (index + 1) / 4,
+        rows: formats.slice(0, index + 1).map(format => ({ format })),
+      });
+    }
+    worker.emit({ type: "done", jobId });
+    expect(reactHarness.state).toMatchObject({ status: "done", progress: 1 });
+    expect(worker.terminated).toBe(true);
   });
 
   it("terminates immediately on cancel, ignores late messages and never caches partial rows", async () => {

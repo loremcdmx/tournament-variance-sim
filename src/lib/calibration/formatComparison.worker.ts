@@ -19,7 +19,7 @@ self.onmessage = (event: MessageEvent<FormatComparisonRequest>) => {
   try {
     const scenarios = compileFormatComparison(config);
     // Only a compact summary crosses the worker boundary. Each raw shard can
-    // be reclaimed before the next format, rather than retaining five runs.
+    // be reclaimed before the next format, rather than retaining all runs.
     for (let i = 0; i < scenarios.length; i++) {
       const { scenario, compiled, moments } = scenarios[i];
       const grid = makeCheckpointGrid(compiled.tournamentsPerSample);

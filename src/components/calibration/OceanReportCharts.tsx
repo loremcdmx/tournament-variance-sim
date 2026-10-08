@@ -14,14 +14,14 @@ type RiskKind = "drawdownRisks" | "evShortfallRisks";
 
 const names: Record<ComparisonFormat, DictKey> = {
   freezeout: "oceanReport.freezeout", pko: "oceanReport.pko", mystery: "oceanReport.mystery",
-  "ocean-ko": "oceanReport.ocean", "mystery-royale": "oceanReport.battle",
+  "ocean-ko": "oceanReport.ocean",
 };
 const colors: Record<ComparisonFormat, string> = {
   freezeout: "var(--c-spade)", pko: "var(--c-club)", mystery: "var(--c-rival)",
-  "ocean-ko": "var(--c-accent)", "mystery-royale": "var(--c-heart)",
+  "ocean-ko": "var(--c-accent)",
 };
 const dashes: Record<ComparisonFormat, string | undefined> = {
-  freezeout: "2 5", pko: "9 4", mystery: "3 3 10 3", "ocean-ko": undefined, "mystery-royale": "8 4",
+  freezeout: "2 5", pko: "9 4", mystery: "3 3 10 3", "ocean-ko": undefined,
 };
 
 function interpolate(template: string, values: Record<string, string>): string {
