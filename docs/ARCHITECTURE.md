@@ -53,7 +53,11 @@ This document describes the data flow, module boundaries, and invariants of the 
 
 ## UI surface map
 
-The default MTT view is `EmpiricalOceanExplorer`, a deterministic comparison of two public Space moment anchors and paired Ocean mechanical coefficients. `src/lib/calibration/oceanTransport.ts` computes component means and exposure covariance; it does not sample a payoff distribution or invoke the worker pool. The public JSON files contain runtime parameters only. Detailed research pages and evaluations are excluded. Switching to the mechanical view restores the existing schedule/worker/results flow; importing a shared mechanical scenario selects that view automatically.
+The default MTT view is the mechanical schedule/worker/results calculator. The second tab, `OceanComparisonReport`, compares downside trajectories for the five supported formats. Its dedicated `formatComparison.worker.ts` runs formats sequentially and returns compact summaries; `useFormatComparison.ts` terminates that worker on cancellation, replacement or unmount. Results own a configuration snapshot. No simulation starts on mount.
+
+The optional `collectDownsideReport` input collects EV shortfall, time below EV, time below the previous profit high and consecutive losing entries at every tournament endpoint, for every sample. It adds no randomness and leaves the normal simulation outputs unchanged. Per-path maxima are computed before quantiles; plotted endpoint percentiles are not simultaneous trajectory bands. Recovery statistics remain conditional on recovery and include the unrecovered fraction at the selected horizon. See [Downside comparison](OCEAN_DOWNSIDE_REPORT.md).
+
+The report also embeds `EmpiricalOceanExplorer`, a deterministic comparison of two public Space moment anchors and paired Ocean mechanical coefficients. `src/lib/calibration/oceanTransport.ts` computes component means and exposure covariance; it does not sample a payoff distribution or validate streak durations. The public JSON files contain runtime parameters only. Detailed research pages and evaluations remain excluded. Imported mechanical scenarios open in the first tab.
 
 The simulator UI is no longer one undifferentiated `ResultsView.tsx` blob.
 The current split is:

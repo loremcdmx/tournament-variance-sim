@@ -162,6 +162,9 @@ function collectShardTransfers(shard: RawShard): Transferable[] {
     shard.hiResMax.buffer,
   ];
   if (shard.satelliteSeatsWon) out.push(shard.satelliteSeatsWon.buffer);
+  if (shard.downsideReport) {
+    for (const values of Object.values(shard.downsideReport)) out.push(values.buffer);
+  }
   if (shard.leaderboardPoints) out.push(shard.leaderboardPoints.buffer);
   if (shard.leaderboardPayouts) out.push(shard.leaderboardPayouts.buffer);
   if (shard.leaderboardExpectedPayouts) {

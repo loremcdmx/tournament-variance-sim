@@ -1,6 +1,6 @@
 # Space-based Ocean comparison
 
-The default MTT view compares an empirical Space KO anchor with an experimental Ocean KO scenario. The mechanical simulator remains available for all formats, configurable ROI, trajectories and distributional metrics. Existing shared scenarios open in that simulator.
+The default MTT view is the mechanical simulator for all formats, configurable ROI, trajectories and distributional metrics. The second Ocean KO tab contains a [downside comparison report](OCEAN_DOWNSIDE_REPORT.md), followed by the empirical Space KO anchor and experimental Ocean KO moment transfer documented here. Existing shared scenarios open in the mechanical simulator.
 
 ## Scope
 

@@ -12,7 +12,7 @@ import {
   useState,
 } from "react";
 import { CashApp } from "@/components/CashApp";
-import { EmpiricalOceanExplorer } from "@/components/calibration/EmpiricalOceanExplorer";
+import { OceanComparisonReport } from "@/components/calibration/OceanComparisonReport";
 import empiricalProfile from "@/lib/calibration/space-runtime-profile.json";
 import oceanBridge from "@/lib/calibration/ocean-bridge-profile.json";
 import type { PublicSpaceProfile } from "@/lib/calibration/types";
@@ -160,7 +160,7 @@ export default function Home() {
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
   const [hydrated, setHydrated] = useState(false);
-  const [mttModel, setMttModel] = useState<"empirical" | "mechanical">("empirical");
+  const [mttModel, setMttModel] = useState<"empirical" | "mechanical">("mechanical");
   const initialStateLoadedRef = useRef(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
@@ -1137,7 +1137,7 @@ export default function Home() {
       {activeMode === "mtt" && (
         <section className="space-y-3" aria-label={t("empirical.modelChoice")}>
           <div className="flex flex-wrap gap-2" role="group" aria-label={t("empirical.modelChoice")}>
-            {(["empirical", "mechanical"] as const).map((model) => (
+            {(["mechanical", "empirical"] as const).map((model) => (
               <button
                 key={model}
                 type="button"
@@ -1154,7 +1154,7 @@ export default function Home() {
             ))}
           </div>
           {mttModel === "empirical" && (
-            <EmpiricalOceanExplorer profile={empiricalProfile as PublicSpaceProfile} bridge={oceanBridge as EmpiricalBridgeData} locale={locale} />
+            <OceanComparisonReport profile={empiricalProfile as PublicSpaceProfile} bridge={oceanBridge as EmpiricalBridgeData} locale={locale} />
           )}
         </section>
       )}

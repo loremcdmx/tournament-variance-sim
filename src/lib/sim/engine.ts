@@ -21,6 +21,7 @@ import { makeCheckpointGrid } from "./grids";
 import { simulateShard, type ProgressCb } from "./hotLoop";
 import { buildResult } from "./buildResult";
 import type { RawShard } from "./engineTypes";
+import { createDownsideReportArrays } from "./downsideReport";
 import type {
   CalibrationMode,
   SimulationInput,
@@ -92,6 +93,11 @@ export function mergeShards(
     return shards[0];
   }
   const sorted = shards.slice().sort((a, b) => a.sStart - b.sStart);
+  const hasDownsideReport = sorted.some((shard) => shard.downsideReport !== undefined);
+  if (hasDownsideReport && sorted.some((shard) => shard.downsideReport === undefined)) {
+    throw new Error("Cannot merge collected and uncollected downside shards");
+  }
+  const downsideReport = hasDownsideReport ? createDownsideReportArrays(S) : undefined;
   const finalProfits = new Float64Array(S);
   const pathMatrix = new Float64Array(S * K1);
   const maxDrawdowns = new Float64Array(S);
@@ -126,6 +132,11 @@ export function mergeShards(
   const cashlessStreakCounts = new Int32Array(clCountsLen);
   let ruinedCount = 0;
   for (const sh of sorted) {
+    if (downsideReport && sh.downsideReport) {
+      for (const key of Object.keys(downsideReport) as (keyof typeof downsideReport)[]) {
+        downsideReport[key].set(sh.downsideReport[key], sh.sStart);
+      }
+    }
     finalProfits.set(sh.finalProfits, sh.sStart);
     maxDrawdowns.set(sh.maxDrawdowns, sh.sStart);
     maxRunUps.set(sh.maxRunUps, sh.sStart);
@@ -197,6 +208,7 @@ export function mergeShards(
     }
   }
   return {
+    ...(downsideReport ? { downsideReport } : {}),
     satelliteSeatsWon,
     sStart: 0,
     sEnd: S,

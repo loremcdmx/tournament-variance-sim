@@ -176,7 +176,16 @@ export interface ScheduleAnalyticBreakdown {
   tournamentsPerPass: number;
 }
 
+export interface DownsideReportArrays {
+  maxEvShortfall: Float64Array;
+  entriesBelowEv: Uint32Array;
+  longestBelowEv: Uint32Array;
+  longestUnderwater: Uint32Array;
+  longestLosingEntries: Uint32Array;
+}
+
 export interface RawShard {
+  downsideReport?: DownsideReportArrays;
   satelliteSeatsWon?: Uint32Array | null;
   sStart: number;
   sEnd: number;
