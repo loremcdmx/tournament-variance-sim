@@ -209,7 +209,7 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
       {report.status === "error" && <div role="alert" className="rounded-lg border border-danger/40 p-4"><p className="text-sm">{t("oceanReport.error")}</p>{report.error && <details className="mt-2 text-xs text-fg-muted"><summary className={`cursor-pointer ${focus}`}>{t("oceanReport.errorDetails")}</summary><p className="mt-2 break-words">{report.error}</p></details>}</div>}
       {report.status === "cancelled" && report.rows.length === 0 && <p role="status" className="text-sm text-fg-muted">{t("oceanReport.cancelledEmpty")}</p>}
       {!complete && !running && report.rows.length > 0 && <p role="status" className="text-sm text-fg-muted">{t("oceanReport.stopped")}</p>}
-      {complete && ocean && <OceanVerdictCard ocean={ocean} rows={rows} t={t} n={n} />}
+      {complete && ocean && <OceanVerdictCard ocean={ocean} rows={rows} t={t} n={n} locale={locale} />}
 
       {rows.length > 0 && <>
         <div id={`${id}-charts`} className="space-y-6"><AggregateRunsChart rows={rows} expectedRoi={snapshot?.roi ?? 0} t={t} n={n} /><div className="grid min-w-0 gap-5 xl:grid-cols-2"><SurvivalChart rows={rows} metric="drawdown" t={t} n={n} pct={pct} /><SurvivalChart rows={rows} metric="evShortfall" t={t} n={n} pct={pct} /></div></div>

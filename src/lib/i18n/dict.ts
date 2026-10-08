@@ -79,7 +79,6 @@ export const DICT = {
   "oceanReport.summaryDistanceNote": {"en":"The ratios depend on the distance: on a long one rare jackpots weigh more and Ocean gets deeper relative to PKO. Rerun the scenario at a longer distance to see by how much.","ru":"Отношения зависят от дистанции: на длинной редкие джекпоты весят больше, и Ocean относительно PKO становится глубже. Насколько — видно, если пересчитать сценарий на более длинной дистанции."},
   "oceanReport.fullDistance": {"en":"≈ full distance","ru":"≈ вся дистанция"},
   "oceanReport.fullDistanceHint": {"en":"P95 = {value} of {distance} tournaments","ru":"P95 = {value} из {distance} турниров"},
-  "oceanReport.entryShort": {"en":"tournaments","ru":"турниров"},
   "oceanReport.resultDone": {"en":"Comparison complete","ru":"Сравнение готово"},
   "oceanReport.resultRunning": {"en":"Comparison in progress","ru":"Сравнение считается"},
   "oceanReport.resultPartial": {"en":"Comparison incomplete","ru":"Сравнение не завершено"},

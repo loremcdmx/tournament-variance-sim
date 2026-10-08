@@ -26,8 +26,16 @@ const rows = [
 const text = (markup: string) => markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 describe("headline card", () => {
-  const markup = renderToStaticMarkup(<OceanVerdictCard ocean={rows[3]} rows={rows} t={t} n={n} />);
+  const markup = renderToStaticMarkup(<OceanVerdictCard ocean={rows[3]} rows={rows} t={t} n={n} locale="ru" />);
   const plain = text(markup);
+
+  it("declines the tournament unit by the number (434 турнира, not турниров)", () => {
+    expect(markup).toMatch(/434 <small>турнира<\/small>/);
+    const one = rows[3].longestBelowEv;
+    const eleven = { ...rows[3], longestBelowEv: { ...one, median: 11 } };
+    expect(renderToStaticMarkup(<OceanVerdictCard ocean={eleven} rows={rows} t={t} n={n} locale="ru" />)).toMatch(/11 <small>турниров<\/small>/);
+    expect(renderToStaticMarkup(<OceanVerdictCard ocean={rows[3]} rows={rows} t={t} n={n} locale="en" />)).toMatch(/434 <small>tournaments<\/small>/);
+  });
 
   it("shows the median of the longest spell below EV, not its P95 that equals the distance", () => {
     expect(plain).toContain("Самый долгий период ниже EV · медиана");

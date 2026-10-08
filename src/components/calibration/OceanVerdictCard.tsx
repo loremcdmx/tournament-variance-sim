@@ -1,6 +1,7 @@
 import type { ComparisonFormat, FormatComparisonSummary } from "@/lib/calibration/formatComparison";
 import { interpolate, oceanRatios } from "@/lib/calibration/oceanReportView";
-import type { DictKey } from "@/lib/i18n/dict";
+import type { DictKey, Locale } from "@/lib/i18n/dict";
+import { plural, WORDS } from "@/lib/i18n/plural";
 import styles from "./OceanComparisonReport.module.css";
 
 type Translate = (key: DictKey) => string;
@@ -15,13 +16,14 @@ const formatNames: Record<ComparisonFormat, DictKey> = {
  * is about the whole distance in every format and says nothing about the
  * difference between them. Ratios are rounded to one digit, because the second
  * one is inside Monte Carlo noise. */
-export function OceanVerdictCard({ ocean, rows, t, n }: {
-  ocean: FormatComparisonSummary; rows: FormatComparisonSummary[]; t: Translate; n: NumberFormat;
+export function OceanVerdictCard({ ocean, rows, t, n, locale }: {
+  ocean: FormatComparisonSummary; rows: FormatComparisonSummary[]; t: Translate; n: NumberFormat; locale: Locale;
 }) {
+  const spell = ocean.longestBelowEv.median;
   const stats = [
     { label: "oceanReport.summaryDD", main: ocean.maxDrawdownBI.p95, median: ocean.maxDrawdownBI.median, unit: "BI", digits: 1, medianIsMain: false },
     { label: "oceanReport.summaryEV", main: ocean.maxEvShortfallBI.p95, median: ocean.maxEvShortfallBI.median, unit: "BI", digits: 1, medianIsMain: false },
-    { label: "oceanReport.summaryTime", main: ocean.longestBelowEv.median, median: ocean.longestBelowEv.median, unit: t("oceanReport.entryShort"), digits: 0, medianIsMain: true },
+    { label: "oceanReport.summaryTime", main: spell, median: spell, unit: plural(locale, Math.round(spell), WORDS.tournament), digits: 0, medianIsMain: true },
   ] as const;
   const ratios = oceanRatios(rows);
   const ratio = (value: number | null) => value === null ? "—" : `${n(value, 1)}×`;
