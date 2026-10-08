@@ -48,18 +48,32 @@ This area produced the most false confidence. Remember:
 
 ### Current mental model
 
-- Freeze is runtime-first rather than "just trust one old closed form".
 - Exact schedule mode is point-first and schedule-aware.
-- Mystery now centers on runtime single-row estimates and shows numeric bands
-  only inside its validated UI box.
-- Battle Royale also centers on runtime single-row estimates; its numeric band
-  is valid only inside the fixed BR box (AFS 18, ROI +/-10%).
+- All four single-format planning cards (freeze, PKO, Mystery, Battle Royale)
+  take their point σ from `formatRuntimeSigma`: the format's default one-row
+  schedule, built the way the editor builds it (`applyGameType` +
+  `applyItmTarget`) and compiled by the engine. The ConvergenceChart chips and
+  the prove-edge card call the same function, and a test ties both to
+  `buildExactBreakdown` of that row. Do not add a hand-built synthetic row
+  to a card: the old BR chip used a $50 buy-in (so the engine picked the $25
+  envelope table, 5.8 BI vs 7.8) and the old Mystery chip added a PKO
+  head-size channel the editor's row does not have, and nothing noticed for
+  months.
+- Mystery shows numeric bands only inside its validated UI box; Battle Royale's
+  numeric band is valid only inside the fixed BR box (AFS 18, ROI +/-10%).
 - Battle Royale KO EV split now centers on the row's configured
   `bountyFraction` baseline. Do not resurrect older "BR is always 50/50
   cash/KO at slider center" wording without re-checking `compileEntry.ts` (the
   bounty-split lives there now) and `previewRowStats.ts`.
-- PKO keeps the promoted averaged fit band, and only inside the validated
-  training box.
+- PKO keeps the promoted fit's residual as its band, and only inside the
+  validated training box; the point is the runtime compile like the others.
+  The closed-form surfaces (`SIGMA_ROI_*`) now only supply those residuals
+  and the fallback of `computeConvergenceRows`.
+- A card's σ is only as honest as the ITM it assumes. The run path pins every
+  row's ITM (`applyItmTarget`: the payout table's paid share unless the row or
+  the global target says otherwise); a free-α row gives 3-5% lower σ (Mystery
+  field 1000, ROI +10%: 6.03 vs 6.33 BI). The cards assume the default (global
+  target off).
 
 ### Policy taxonomy to remember
 
