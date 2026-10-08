@@ -1024,7 +1024,7 @@ function BountyShareSlider({
               aria-label={title}
               aria-invalid={manualOutOfRange || undefined}
               inputMode="decimal"
-              className={`${PREVIEW_SLIDER_VALUE_INPUT} w-14 text-[15px]`}
+              className={`${PREVIEW_SLIDER_VALUE_INPUT} pmf-slider-value-input w-14 text-[15px]`}
             />
             <span className={`${PREVIEW_SLIDER_VALUE_SUFFIX} text-[12px]`}>
               %
@@ -1052,14 +1052,6 @@ function BountyShareSlider({
             className="pmf-slider-track"
           >
             <div
-              className="absolute inset-y-0 left-0 bg-[color:var(--color-bg-elev)]"
-              style={{ width: `${centerPct}%` }}
-            />
-            <div
-              className="absolute inset-y-0 right-0 bg-[color:var(--color-accent)]/25"
-              style={{ width: `${100 - centerPct}%` }}
-            />
-            <div
               className="absolute inset-y-0 rounded-full bg-[color:var(--color-accent)]/85"
               style={{ left: `${tiltLeft}%`, width: `${tiltWidth}%` }}
             />
@@ -1067,7 +1059,7 @@ function BountyShareSlider({
           <span
             aria-hidden
             className="pointer-events-none absolute top-1/2 h-4 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color:var(--color-border-strong)]"
-            style={{ left: `${centerPct}%` }}
+            style={{ left: `calc(${centerPct}% + ${10 - centerPct / 5}px)` }}
           />
           <span
             aria-hidden
@@ -1293,7 +1285,7 @@ function TopHeavyPlacementSlider({
               aria-label={title}
               aria-invalid={manualOutOfRange || undefined}
               inputMode="decimal"
-              className={`${PREVIEW_SLIDER_VALUE_INPUT} w-16 text-[17px]`}
+              className={`${PREVIEW_SLIDER_VALUE_INPUT} pmf-slider-value-input w-16 text-[17px]`}
             />
             <span className={`${PREVIEW_SLIDER_VALUE_SUFFIX} text-[13px]`}>
               %
@@ -1321,14 +1313,6 @@ function TopHeavyPlacementSlider({
             className="pmf-slider-track"
           >
             <div
-              className="absolute inset-y-0 left-0 bg-[color:var(--color-bg-elev)]"
-              style={{ width: `${centerPct}%` }}
-            />
-            <div
-              className="absolute inset-y-0 right-0 bg-[color:var(--color-accent)]/25"
-              style={{ width: `${100 - centerPct}%` }}
-            />
-            <div
               className="absolute inset-y-0 rounded-full bg-[color:var(--color-accent)]/85"
               style={{ left: `${tiltLeft}%`, width: `${tiltWidth}%` }}
             />
@@ -1336,7 +1320,7 @@ function TopHeavyPlacementSlider({
           <span
             aria-hidden
             className="pointer-events-none absolute top-1/2 h-5 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color:var(--color-border-strong)]"
-            style={{ left: `${centerPct}%` }}
+            style={{ left: `calc(${centerPct}% + ${10 - centerPct / 5}px)` }}
           />
           <span
             aria-hidden
