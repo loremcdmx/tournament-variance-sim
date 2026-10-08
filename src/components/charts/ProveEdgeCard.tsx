@@ -37,6 +37,7 @@ import {
 } from "@/lib/sim/formatRuntimeSigma";
 import { inferRowFormat } from "@/lib/sim/convergencePolicy";
 import { DEFAULT_OCEAN_RAKE } from "@/lib/sim/gameType";
+import type { ItmTargetConfig } from "@/lib/sim/itmTarget";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import type {
@@ -51,6 +52,9 @@ interface Props {
   /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
    *  excludes them, so the displayed volume is an optimistic floor. */
   noiseActive?: boolean;
+  /** The run's global ITM target; single-format tabs compile their row with it,
+   *  as the run path does. Required so a new call site cannot forget it. */
+  itmTarget: ItmTargetConfig;
   /** "exact" opens on the Schedule tab so the card agrees with the
    *  schedule-mode convergence widget it sits next to post-run. */
   defaultMode?: "avg" | "exact";
@@ -202,6 +206,7 @@ export function ProveEdgeCard({
   schedule,
   finishModel,
   noiseActive,
+  itmTarget,
   defaultMode = "avg",
 }: Props) {
   const t = useT();
@@ -248,6 +253,7 @@ export function ProveEdgeCard({
       afs: effectiveAfsSingle,
       rake: rakePct / 100,
       oceanKoTotalTicket,
+      itmTarget,
       z: ciToZ(ciPct / 100),
       currentRoi: isExact ? 0 : currentRoiPct / 100,
       candidates,
@@ -260,6 +266,7 @@ export function ProveEdgeCard({
       effectiveAfsSingle,
       rakePct,
       oceanKoTotalTicket,
+      itmTarget,
       ciPct,
       currentRoiPct,
       candidates,

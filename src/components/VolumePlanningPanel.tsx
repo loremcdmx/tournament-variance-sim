@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import type { ItmTargetConfig } from "@/lib/sim/itmTarget";
 import type { FinishModelConfig, TournamentRow } from "@/lib/sim/types";
 import { LazyDisclosure } from "./ui/LazyDisclosure";
 
@@ -12,11 +13,13 @@ export function VolumePlanningPanel({
   schedule,
   finishModel,
   noiseActive,
+  itmTarget,
   defaultMode,
 }: {
   schedule?: TournamentRow[];
   finishModel?: FinishModelConfig;
   noiseActive?: boolean;
+  itmTarget: ItmTargetConfig;
   defaultMode?: "avg" | "exact";
 }) {
   const t = useT();
@@ -26,10 +29,10 @@ export function VolumePlanningPanel({
         <section className="min-w-0">
           <h3 className="mb-2 text-base font-semibold">{t("chart.convergence")}</h3>
           <p className="mb-3 text-xs text-fg-muted">{t("chart.convergence.sub")}</p>
-          <ConvergenceChart schedule={schedule} finishModel={finishModel} noiseActive={noiseActive} defaultMode={defaultMode} />
+          <ConvergenceChart schedule={schedule} finishModel={finishModel} noiseActive={noiseActive} itmTarget={itmTarget} defaultMode={defaultMode} />
         </section>
         <section className="min-w-0 border-t border-border pt-5 4xl:border-t-0 4xl:border-l 4xl:pl-5 4xl:pt-0">
-          <ProveEdgeCard schedule={schedule} finishModel={finishModel} noiseActive={noiseActive} defaultMode={defaultMode} />
+          <ProveEdgeCard schedule={schedule} finishModel={finishModel} noiseActive={noiseActive} itmTarget={itmTarget} defaultMode={defaultMode} />
         </section>
       </div>
     </LazyDisclosure>

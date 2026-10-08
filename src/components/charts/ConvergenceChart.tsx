@@ -7,6 +7,7 @@ import type { DictKey } from "@/lib/i18n/dict";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import type { SimulationInput, TournamentRow } from "@/lib/sim/types";
 import { DEFAULT_OCEAN_RAKE } from "@/lib/sim/gameType";
+import type { ItmTargetConfig } from "@/lib/sim/itmTarget";
 import {
   getConvergenceBandPolicy,
   inferRowFormat,
@@ -40,6 +41,10 @@ interface Props {
   /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
    *  excludes them, so the displayed volume is an optimistic floor. */
   noiseActive?: boolean;
+  /** The run's global ITM target (checkbox + % in the run settings). The
+   *  single-format tabs compile their row with it, as the run path does, so
+   *  they agree with Schedule mode. Required so a new call site cannot forget it. */
+  itmTarget: ItmTargetConfig;
   /** "exact" opens on the Schedule tab (post-run, next to the Monte-Carlo
    *  card it must agree with); default keeps the synthetic planning mode. */
   defaultMode?: "avg" | "exact";
@@ -161,6 +166,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   schedule,
   finishModel,
   noiseActive,
+  itmTarget,
   defaultMode = "avg",
 }: Props) {
   const { locale, t } = useLocale();
@@ -271,10 +277,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     rawFormat === "exact" && !hasSchedule ? "mix" : rawFormat;
   const effectiveMode: "avg" | "exact" = format === "exact" ? "exact" : "avg";
 
-  // Format-dependent ROI bounds. Bounty formats are clipped to their validated
-  // training boxes, so regular UI controls cannot land on a point where the
-  // range band must be hidden as extrapolation. effectiveRoi is clamped on read
-  // so the user's preferred ROI is preserved across format switches.
+  // Format-dependent ROI bounds. The sliders stay inside the grid the band was
+  // measured on (`RUNTIME_SIGMA_BANDS`), so regular UI controls cannot land on
+  // a point where the range must be hidden as extrapolation. effectiveRoi is
+  // clamped on read so the user's preferred ROI is preserved across format
+  // switches.
   const { min: roiMin, max: roiMax } = roiControlBoundsForFormat(format);
   const effectiveRoi = Math.max(
     roiMin,
@@ -403,9 +410,19 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         roi: effectiveRoi,
         rake: rakePct / 100,
         finishModel,
+        itmTarget,
       },
     });
-  }, [effectiveMode, format, mix, effectiveAfs, effectiveRoi, rakePct, finishModel]);
+  }, [
+    effectiveMode,
+    format,
+    mix,
+    effectiveAfs,
+    effectiveRoi,
+    rakePct,
+    finishModel,
+    itmTarget,
+  ]);
   const oceanKoSigmaOverride = useMemo<SigmaBand | null>(() => {
     if (format !== "ocean-ko") return null;
     return buildOceanKoSigmaBand({
@@ -1162,6 +1179,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           <div className="mt-1">{t("chart.convergence.assumptions")}</div>
         </details>
         <div className="mt-1">{t("convergence.skewNote")}</div>
+        {showBand && (
+          <div className="mt-1">{t("chart.convergence.bandNote")}</div>
+        )}
       </div>
     </div>
   );
