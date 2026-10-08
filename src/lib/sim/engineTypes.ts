@@ -267,6 +267,11 @@ export interface RawShard {
   hiResMax: Float64Array;
 }
 
+/** The comparison report consumes no chord statistics or individual hi-res paths. */
+export type DownsideShard = Pick<RawShard,
+  "finalProfits" | "pathMatrix" | "maxDrawdowns" | "recoveryLengths" | "downsideReport"
+>;
+
 export interface CheckpointGrid {
   K: number;
   checkpointIdx: Int32Array;

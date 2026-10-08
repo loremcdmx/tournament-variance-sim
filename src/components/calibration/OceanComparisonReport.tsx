@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
   FORMAT_COMPARISON_DEFAULTS,
   FORMAT_COMPARISON_LIMITS,
@@ -43,11 +43,11 @@ function interpolate(template: string, values: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole);
 }
 
-function ScrollTable({ label, children }: { label: string; children: ReactNode }) {
+function ScrollTable({ label, children, compact = false }: { label: string; children: ReactNode; compact?: boolean }) {
   const t = useT();
   return <div className="min-w-0">
-    <p className={styles.scrollHint}>{t("oceanReport.scrollTable")}</p>
-    <div className={`${styles.scrollTable} ${focus}`} tabIndex={0} role="region" aria-label={label}>
+    {!compact && <p className={styles.scrollHint}>{t("oceanReport.scrollTable")}</p>}
+    <div className={`${styles.scrollTable} ${compact ? styles.compactTable : ""} ${focus}`} tabIndex={0} role="region" aria-label={label}>
       <table className={styles.table}>{children}</table>
     </div>
   </div>;
@@ -57,8 +57,8 @@ function RowName({ row, t }: { row: FormatComparisonSummary; t: Translate }) {
   return <th scope="row" className={`whitespace-nowrap px-4 py-3 text-left font-medium ${row.format === "ocean-ko" ? "text-accent" : "text-fg"}`}>{t(formatNames[row.format])}</th>;
 }
 
-function Probability({ value, format }: { value: ProbabilityEstimate; format: (n: number) => string }) {
-  return <span className="inline-flex flex-col items-end gap-0.5"><span>{format(value.value)}</span><span className="text-xs text-fg-muted">{format(value.wilson95.lower)}–{format(value.wilson95.upper)}</span></span>;
+function Probability({ value, format, interval }: { value: ProbabilityEstimate; format: (n: number) => string; interval: boolean }) {
+  return <span className="inline-flex flex-col items-end gap-0.5"><span>{format(value.value)}</span>{interval && <span className="text-xs text-fg-muted">{format(value.wilson95.lower)}–{format(value.wilson95.upper)}</span>}</span>;
 }
 
 function MetricTable({ rows, kind, t, n }: { rows: FormatComparisonSummary[]; kind: "depth" | "duration"; t: Translate; n: (value: number, digits?: number) => string }) {
@@ -95,14 +95,21 @@ function FragmentHeaders({ t, className }: { t: Translate; className: string }) 
   return <><th scope="col" className={`text-right ${className}`}>{t("oceanReport.p50Label")}</th><th scope="col" className={`text-right ${className}`}>{t("oceanReport.p95Label")}</th></>;
 }
 
-export function OceanComparisonReport({ profile, bridge, locale }: { profile: PublicSpaceProfile; bridge: EmpiricalBridgeData; locale: Locale }) {
+export function OceanComparisonReport({ profile, bridge, locale, active = true }: { profile: PublicSpaceProfile; bridge: EmpiricalBridgeData; locale: Locale; active?: boolean }) {
   const t = useT();
   const id = useId();
   const [draft, setDraft] = useState<Draft>(initialDraft);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [showIntervals, setShowIntervals] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const report = useFormatComparison();
-  const n = (value: number, digits = 1) => new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
-  const pct = (value: number) => `${n(value * 100, 1)}%`;
+  const { status: comparisonStatus, cancel: cancelComparison } = report;
+  useEffect(() => {
+    if (!active && comparisonStatus === "running") cancelComparison();
+  }, [active, comparisonStatus, cancelComparison]);
+  const numberFormats = useMemo(() => Array.from({ length: 5 }, (_, maximumFractionDigits) => new Intl.NumberFormat(locale, { maximumFractionDigits })), [locale]);
+  const n = useCallback((value: number, digits = 1) => numberFormats[digits].format(value), [numberFormats]);
+  const pct = useCallback((value: number) => `${n(value * 100, 1)}%`, [n]);
   const bounds = (value: NumericBounds) => Math.abs(value.upper - value.lower) < 0.00001 ? n(value.lower, 2) : `${n(value.lower, 2)}–${n(value.upper, 2)}`;
   const parsed = useMemo(() => {
     const config = Object.fromEntries(draftKeys.map(key => [key, draft[key].trim() ? Number(draft[key]) / (key === "roi" ? 100 : 1) : NaN])) as unknown as FormatComparisonConfig;
@@ -140,24 +147,24 @@ export function OceanComparisonReport({ profile, bridge, locale }: { profile: Pu
     return <label key={key} htmlFor={`${id}-${key}`}>
       <span className="font-medium">{t(label)}</span>
       <input id={`${id}-${key}`} aria-label={t(label)} type="number" inputMode={key === "roi" ? "decimal" : "numeric"} min={limit.min * factor} max={limit.max * factor} step={step} value={draft[key]} onChange={event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} aria-invalid={parsed.invalid.includes(key)} aria-describedby={`${id}-${key}-range`} className={input} />
-      <span id={`${id}-${key}-range`} className="text-xs text-fg-muted">{interpolate(t("oceanReport.range"), { min: n(limit.min * factor, 0), max: n(limit.max * factor, 0) })}</span>
+      <span id={`${id}-${key}-range`} className={parsed.invalid.includes(key) ? "text-xs text-danger" : "sr-only"}>{interpolate(t("oceanReport.range"), { min: n(limit.min * factor, 0), max: n(limit.max * factor, 0) })}</span>
     </label>;
   };
   const pko = rows.find(row => row.format === "pko");
   const formatOrder: ComparisonFormat[] = ["freezeout", "pko", "mystery", "ocean-ko", "mystery-royale"];
 
-  return <article className={`${styles.report} min-w-0 space-y-8`} aria-labelledby={`${id}-title`}>
-    <header className="space-y-3 pt-2">
+  return <article className={`${styles.report} min-w-0 space-y-6`} aria-labelledby={`${id}-title`}>
+    <header className="space-y-2 pt-2">
       <h2 id={`${id}-title`} className="display max-w-4xl text-3xl leading-tight sm:text-4xl">{t("oceanReport.title")}</h2>
       <p className="max-w-3xl text-base leading-relaxed">{t("oceanReport.intro")}</p>
-      <p className={prose}>{t("oceanReport.modelScope")}</p>
     </header>
-    <nav className={styles.nav} aria-label={t("oceanReport.title")}>
-      {([["settings", "oceanReport.settingsShort"], ["results", "oceanReport.jumpResults"], ["charts", "oceanReport.chartsShort"], ["evidence", "oceanReport.jumpEvidence"], ["method", "oceanReport.jumpMethod"]] as const).filter(([target]) => target !== "charts" || rows.length > 0).map(([target, key]) => <a key={target} className={focus} href={`#${id}-${target}`}>{t(key)}</a>)}
-    </nav>
+    {snapshot && <nav className={styles.nav} aria-label={t("oceanReport.title")}>
+      {([["settings", "oceanReport.settingsShort"], ["results", "oceanReport.jumpResults"], ["charts", "oceanReport.chartsShort"], ["evidence", "oceanReport.jumpEvidence"], ["method", "oceanReport.jumpMethod"]] as const).filter(([target]) => target !== "charts" || rows.length > 0).map(([target, key]) => <a key={target} className={focus} href={`#${id}-${target}`} onClick={() => { const section = document.getElementById(`${id}-${target}`); if (section instanceof HTMLDetailsElement) section.open = true; }}>{t(key)}</a>)}
+    </nav>}
 
     <form id={`${id}-settings`} className={styles.settings} onSubmit={event => { event.preventDefault(); if (!parsed.invalid.length && !running) report.run(parsed.config); }}>
-      <h3 className="text-xl font-semibold">{t("oceanReport.settings")}</h3><p className={`${prose} mt-2`}>{t("oceanReport.settingsNote")}</p>
+      <div className={styles.settingsHeading}><h3 className="text-lg font-semibold">{t("oceanReport.settings")}</h3><span>{t("oceanReport.modelEstimate")}</span></div>
+      <p className={`${prose} mt-2`}>{t("oceanReport.settingsNote")}</p>
       <fieldset disabled={running} className={`${styles.fields} disabled:opacity-70`}>
         <label><span className="font-medium">{t("oceanReport.ticket")}</span><select className={input} value={draft.ticket} onChange={event => setDraft(previous => ({ ...previous, ticket: event.target.value }))}><option value="10">$10</option><option value="100">$100</option></select></label>
         {controls.slice(0, 3).map(field)}
@@ -165,6 +172,10 @@ export function OceanComparisonReport({ profile, bridge, locale }: { profile: Pu
       <div className={styles.presets} role="group" aria-label={t("oceanReport.quickDistance")}>
         <span className="mr-1 text-xs text-fg-muted">{t("oceanReport.distance")}</span>
         {[1000, 5000, 20000].map(distance => <button type="button" key={distance} className={focus} disabled={running} aria-pressed={Number(draft.distance) === distance} onClick={() => setDraft(previous => ({ ...previous, distance: String(distance) }))}>{n(distance, 0)}</button>)}
+      </div>
+      <div className={styles.actions}>
+        <button type="submit" disabled={running || parsed.invalid.length > 0} className={`rounded-lg bg-accent px-5 py-3 font-semibold text-bg disabled:cursor-not-allowed disabled:opacity-50 ${focus}`}>{t(stale ? "oceanReport.recalculate" : "oceanReport.run")}</button>
+        {running && <button type="button" className={`rounded-lg border border-border-strong px-5 py-3 font-medium ${focus}`} onClick={report.cancel}>{t("oceanReport.cancel")}</button>}
       </div>
       <details className={styles.advanced} open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)}>
         <summary className={focus}>{t("oceanReport.advanced")}</summary>
@@ -179,13 +190,8 @@ export function OceanComparisonReport({ profile, bridge, locale }: { profile: Pu
         {parsed.invalid.some(key => ["samples", "seed", "mysteryLogVariance"].includes(key)) && !advancedOpen && <button type="button" className={`min-h-11 underline underline-offset-4 ${focus}`} onClick={() => setAdvancedOpen(true)}>{t("oceanReport.openAdvanced")}</button>}
       </div>}
       {parsed.invalid.length === 0 && parsed.config.distance * parsed.config.samples > 10_000_000 && <p className="mt-4 text-sm leading-relaxed text-fg-muted">{interpolate(t("oceanReport.largeRun"), { n: n(parsed.config.distance * parsed.config.samples, 0) })}</p>}
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={running || parsed.invalid.length > 0} className={`rounded-lg bg-accent px-5 py-3 font-semibold text-bg disabled:cursor-not-allowed disabled:opacity-50 ${focus}`}>{t(stale ? "oceanReport.recalculate" : "oceanReport.run")}</button>
-        {running && <button type="button" className={`rounded-lg border border-border-strong px-5 py-3 font-medium ${focus}`} onClick={report.cancel}>{t("oceanReport.cancel")}</button>}
-      </div>
       {running && <div className="mt-4 space-y-2" role="status">
         <p className="text-sm">{interpolate(t("oceanReport.currentFormat"), { format: t(formatNames[formatOrder[Math.min(report.completed, 4)]]), progress: n(report.progress * 100, 0) })}</p>
-        <p className="text-xs text-fg-muted">{interpolate(t("oceanReport.running"), { done: String(report.completed), total: String(report.total) })}</p>
         <progress max={1} value={report.progress} aria-label={t("oceanReport.resultRunning")} className="h-2 w-full accent-accent" />
       </div>}
     </form>
@@ -198,7 +204,6 @@ export function OceanComparisonReport({ profile, bridge, locale }: { profile: Pu
       </div>}
       {stale && <p role="status" className="rounded-lg border border-accent/40 bg-accent/5 p-4 text-sm leading-relaxed">{t("oceanReport.stale")}</p>}
       {report.status === "error" && <div role="alert" className="rounded-lg border border-danger/40 p-4"><p className="text-sm">{t("oceanReport.error")}</p>{report.error && <details className="mt-2 text-xs text-fg-muted"><summary className={`cursor-pointer ${focus}`}>{t("oceanReport.errorDetails")}</summary><p className="mt-2 break-words">{report.error}</p></details>}</div>}
-      {report.status === "idle" && <p className={`${panel} text-sm leading-relaxed text-fg-muted`}>{t("oceanReport.idle")}</p>}
       {report.status === "cancelled" && report.rows.length === 0 && <p role="status" className="text-sm text-fg-muted">{t("oceanReport.cancelledEmpty")}</p>}
       {!complete && !running && report.rows.length > 0 && <p role="status" className="text-sm text-fg-muted">{t("oceanReport.stopped")}</p>}
       {complete && ocean && <section className={styles.summary}>
@@ -211,17 +216,21 @@ export function OceanComparisonReport({ profile, bridge, locale }: { profile: Pu
           ] as const).map(item => <div key={item.label}><dt>{t(item.label)}</dt><dd><span className={styles.statValue}>{n(item.values.p95, item.digits)} <small>{item.unit}</small></span><span className={styles.statSecondary}>{interpolate(t("oceanReport.summaryMedian"), { value: n(item.values.median, item.digits) })}</span></dd></div>)}
         </dl>
         <p className="text-sm leading-relaxed">{t("oceanReport.p95Note")}</p>
-        <p className="mt-2 text-xs leading-relaxed text-fg-muted">{t("oceanReport.censor")}</p>
         {pko && pko.maxDrawdownBI.p95 > 0 && pko.maxEvShortfallBI.p95 > 0 && <p className="mt-4 border-t border-border pt-4 text-sm leading-relaxed">{interpolate(t("oceanReport.summaryPKO"), { dd: n(ocean.maxDrawdownBI.p95 / pko.maxDrawdownBI.p95, 2), ev: n(ocean.maxEvShortfallBI.p95 / pko.maxEvShortfallBI.p95, 2) })}</p>}
       </section>}
 
       {rows.length > 0 && <>
         <section className="min-w-0 space-y-3"><h3 className="display text-2xl">{t("oceanReport.comparison")}</h3><p className={prose}>{t("oceanReport.comparisonNote")}</p><MetricTable rows={rows} kind="depth" t={t} n={n} /></section>
         <section className="min-w-0 space-y-3"><h3 className="display text-2xl">{t("oceanReport.duration")}</h3><p className={prose}>{t("oceanReport.durationNote")}</p><MetricTable rows={rows} kind="duration" t={t} n={n} /><p className={prose}>{t("oceanReport.censor")}</p></section>
-        <div id={`${id}-charts`} className="space-y-6"><AggregateRunsChart rows={rows} t={t} n={n} /><p className={prose}>{t("oceanReport.survivalNote")}</p><div className="grid min-w-0 gap-5 xl:grid-cols-2"><SurvivalChart rows={rows} kind="drawdownRisks" t={t} n={n} pct={pct} /><SurvivalChart rows={rows} kind="evShortfallRisks" t={t} n={n} pct={pct} /></div></div>
+        <div id={`${id}-charts`} className="space-y-6"><AggregateRunsChart rows={rows} t={t} n={n} /><div className="grid min-w-0 gap-5 xl:grid-cols-2"><SurvivalChart rows={rows} kind="drawdownRisks" t={t} n={n} pct={pct} /><SurvivalChart rows={rows} kind="evShortfallRisks" t={t} n={n} pct={pct} /></div></div>
         <LowerPathChart rows={rows} t={t} n={n} />
-        <section className="min-w-0 space-y-3"><h3 className="display text-2xl">{t("oceanReport.probabilities")}</h3><ScrollTable label={t("oceanReport.probabilities")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th>{["oceanReport.loss", "oceanReport.belowEV", "oceanReport.unrecovered"].map(key => <th key={key} scope="col" className={th}>{t(key as DictKey)}</th>)}</tr></thead><tbody>{rows.map(row => <tr data-ocean={row.format === "ocean-ko"} className={`border-t border-border ${row.format === "ocean-ko" ? "bg-accent/5" : ""}`} key={row.format}><RowName row={row} t={t} />{[row.finalLossProbability, row.finalBelowEvProbability, row.recovery.unrecoveredProbability].map((probability, index) => <td key={index} className={td}><Probability value={probability} format={pct} /></td>)}</tr>)}</tbody></ScrollTable><p className="text-xs text-fg-muted">{t("oceanReport.interval")}</p><p className={prose}>{t("oceanReport.probabilityNote")}</p><p className={prose}>{t("oceanReport.belowEVNote")}</p><p className={prose}>{t("oceanReport.recoveryNote")}</p></section>
-        {complete && ocean && <section className={`${panel} space-y-3`}><h3 className="text-xl font-semibold">{t("oceanReport.relative")}</h3><p className={prose}>{t("oceanReport.relativeNote")}</p><ScrollTable label={t("oceanReport.relative")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th><th scope="col" className={th}>{t("oceanReport.ratioDD")}</th><th scope="col" className={th}>{t("oceanReport.ratioEV")}</th></tr></thead><tbody>{rows.filter(row => row.format !== "ocean-ko").map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>{row.maxDrawdownBI.p95 > 0 ? `${n(ocean.maxDrawdownBI.p95 / row.maxDrawdownBI.p95, 2)}×` : "—"}</td><td className={td}>{row.maxEvShortfallBI.p95 > 0 ? `${n(ocean.maxEvShortfallBI.p95 / row.maxEvShortfallBI.p95, 2)}×` : "—"}</td></tr>)}</tbody></ScrollTable><p className={prose}>{t("oceanReport.ratioExplain")}</p></section>}
+        <section className="min-w-0 space-y-3">
+          <div className={styles.sectionHeading}><h3 className="display text-2xl">{t("oceanReport.probabilities")}</h3><label className={styles.intervalToggle}><input type="checkbox" checked={showIntervals} onChange={event => setShowIntervals(event.target.checked)} />{t("oceanReport.showIntervals")}</label></div>
+          <ScrollTable compact={!showIntervals} label={t("oceanReport.probabilities")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th>{["oceanReport.loss", "oceanReport.belowEV", "oceanReport.unrecovered"].map(key => <th key={key} scope="col" className={th}>{t(key as DictKey)}</th>)}</tr></thead><tbody>{rows.map(row => <tr data-ocean={row.format === "ocean-ko"} className={`border-t border-border ${row.format === "ocean-ko" ? "bg-accent/5" : ""}`} key={row.format}><RowName row={row} t={t} />{[row.finalLossProbability, row.finalBelowEvProbability, row.recovery.unrecoveredProbability].map((probability, index) => <td key={index} className={td}><Probability value={probability} format={pct} interval={showIntervals} /></td>)}</tr>)}</tbody></ScrollTable>
+          <p className={prose}>{t("oceanReport.finishNote")}</p>
+          <details className={styles.inlineDetails}><summary className={focus}>{t("oceanReport.metricDefinitions")}</summary><div className="space-y-3"><p className={prose}>{t("oceanReport.belowEVNote")}</p><p className={prose}>{t("oceanReport.recoveryNote")}</p><p className={prose}>{t("oceanReport.probabilityNote")}</p></div></details>
+        </section>
+        {complete && ocean && <section className={`${panel} space-y-3`}><h3 className="text-xl font-semibold">{t("oceanReport.relative")}</h3><p className={prose}>{t("oceanReport.relativeNote")}</p><ScrollTable compact label={t("oceanReport.relative")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th><th scope="col" className={th}>{t("oceanReport.ratioDD")}</th><th scope="col" className={th}>{t("oceanReport.ratioEV")}</th></tr></thead><tbody>{rows.filter(row => row.format !== "ocean-ko").map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>{row.maxDrawdownBI.p95 > 0 ? `${n(ocean.maxDrawdownBI.p95 / row.maxDrawdownBI.p95, 2)}×` : "—"}</td><td className={td}>{row.maxEvShortfallBI.p95 > 0 ? `${n(ocean.maxEvShortfallBI.p95 / row.maxEvShortfallBI.p95, 2)}×` : "—"}</td></tr>)}</tbody></ScrollTable></section>}
         <details className={styles.disclosure}><summary className={focus}>{t("oceanReport.moreMetrics")}</summary><div className="space-y-6">
         <section className="min-w-0 space-y-3"><h3 className="text-xl font-semibold">{t("oceanReport.recoveryTime")}</h3><p className={prose}>{t("oceanReport.recoveryTimeNote")}</p><ScrollTable label={t("oceanReport.recoveryTime")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th><th scope="col" className={th}>{t("oceanReport.recoveredCount")}</th><th scope="col" className={th}>{t("oceanReport.noDrawdown")}</th><th scope="col" className={th}>{t("oceanReport.median")}</th><th scope="col" className={th}>{t("oceanReport.tail")}</th></tr></thead><tbody>{rows.map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>{n(row.recovery.recoveredSamples, 0)} / {n(row.samples, 0)}</td><td className={td}>{n(row.recovery.noDrawdownSamples, 0)}</td><td className={td}>{row.recovery.recoveredOnly ? n(row.recovery.recoveredOnly.median, 0) : "—"}</td><td className={td}>{row.recovery.recoveredOnly ? n(row.recovery.recoveredOnly.p95, 0) : "—"}</td></tr>)}</tbody></ScrollTable><p className="text-xs text-fg-muted">{t("oceanReport.entry")}</p></section>
         <section className="min-w-0 space-y-3"><ScrollTable label={t("oceanReport.losingEntries")}><thead className="bg-bg"><tr><th scope="col" className={`${th} text-left`}>{t("oceanReport.format")}</th><th scope="col" className={th}>{t("oceanReport.losingEntries")}</th><th scope="col" className={th}>{t("oceanReport.timeBelow")}</th></tr></thead><tbody>{rows.map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>{n(row.longestLosingEntries.p95, 0)}</td><td className={td}>{pct(row.fractionEntriesBelowEv.median)}</td></tr>)}</tbody></ScrollTable><p className={prose}>{t("oceanReport.timeBelowNote")}</p></section>
@@ -230,25 +239,24 @@ export function OceanComparisonReport({ profile, bridge, locale }: { profile: Pu
       {battle && <details className={styles.disclosure}><summary className={focus}>{t("oceanReport.battleTitle")}</summary><div className="space-y-3"><p className={prose}>{t("oceanReport.battleNote")}</p><p className={prose}>{t("oceanReport.battleFixed")}</p><MetricTable rows={[battle]} kind="depth" t={t} n={n} /><MetricTable rows={[battle]} kind="duration" t={t} n={n} /></div></details>}
     </section>
 
-    <section className="space-y-3 border-t border-border pt-7"><h3 className="display text-2xl">{t("oceanReport.jackpotTitle")}</h3><p className={prose}>{t("oceanReport.jackpotText")}</p><p className={prose}>{t("oceanReport.jackpotBoundary")}</p>
+    <details className={styles.disclosure}><summary className={focus}>{t("oceanReport.jackpotTitle")}</summary><div className="space-y-3"><p className={prose}>{t("oceanReport.jackpotText")}</p><p className={prose}>{t("oceanReport.jackpotBoundary")}</p>
       <details className={`${panel} mt-4`}><summary className={`cursor-pointer font-semibold text-accent ${focus}`}>{t("oceanReport.wheelTitle")}</summary><div className="mt-4 space-y-3"><p className={prose}>{t("oceanReport.wheelIntro")}</p><ScrollTable label={t("oceanReport.wheelTitle")}><thead className="bg-bg"><tr>{["oceanReport.wheelCap", "oceanReport.wheelAbove", "oceanReport.wheelMean", "oceanReport.wheelEV", "oceanReport.wheelVar"].map(key => <th key={key} scope="col" className={th}>{t(key as DictKey)}</th>)}</tr></thead><tbody>{wheel.map(row => <tr key={row.cap} className="border-t border-border"><th scope="row" className={th}>{row.cap >= 400 ? t("oceanReport.noCap") : `${n(row.cap, 1)}×`}</th><td className={td}>{n(row.probabilityAbove * 100, 4)}%</td><td className={td}>{n(row.meanAfter, 4)}×</td><td className={td}>{pct(row.evRemovedFraction)}</td><td className={td}>{n(row.varianceAfter, 4)}</td></tr>)}</tbody></ScrollTable><p className={prose}>{t("oceanReport.wheelBoundary")}</p><a href="https://br-1.ggpoker.com/tournaments/ocean-ko/" target="_blank" rel="noreferrer" className={`inline-block text-sm text-accent underline underline-offset-4 ${focus}`}>{t("oceanReport.rules")}</a></div></details>
-    </section>
+    </div></details>
 
-    <section id={`${id}-evidence`} className="scroll-mt-6 space-y-3 border-t border-border pt-7"><h3 className="display text-2xl">{t("oceanReport.evidenceTitle")}</h3><p className={prose}>{interpolate(t("oceanReport.evidenceIntro"), { entries: n(profile.trainingEntries, 0), events: n(profile.trainingEvents, 0) })}</p><p className={prose}>{t("oceanReport.evidenceBoundary")}</p><p className={prose}>{t("oceanReport.evidenceCaps")}</p><details className={panel}><summary className={`cursor-pointer font-semibold text-accent ${focus}`}>{t("oceanReport.evidenceOpen")}</summary><div className="mt-6"><EmpiricalOceanExplorer profile={profile} bridge={bridge} locale={locale} /></div></details></section>
+    <details id={`${id}-evidence`} className={styles.disclosure}><summary className={focus}>{t("oceanReport.evidenceTitle")}</summary><div className="space-y-3"><p className={prose}>{interpolate(t("oceanReport.evidenceIntro"), { entries: n(profile.trainingEntries, 0), events: n(profile.trainingEvents, 0) })}</p><p className={prose}>{t("oceanReport.evidenceBoundary")}</p><p className={prose}>{t("oceanReport.evidenceCaps")}</p><details className={panel} onToggle={event => setEvidenceOpen(event.currentTarget.open)}><summary className={`cursor-pointer font-semibold text-accent ${focus}`}>{t("oceanReport.evidenceOpen")}</summary>{evidenceOpen && <div className="mt-6"><EmpiricalOceanExplorer profile={profile} bridge={bridge} locale={locale} /></div>}</details></div></details>
 
-    <section id={`${id}-method`} className="scroll-mt-6 space-y-4 border-t border-border pt-7"><h3 className="display text-2xl">{t("oceanReport.method")}</h3><p className={prose}>{t("oceanReport.methodLimit")}</p><details className={styles.disclosure}><summary className={focus}>{t("oceanReport.methodOpen")}</summary><div className="max-w-3xl space-y-3">{["oceanReport.methodEngine", "oceanReport.methodParameters", "oceanReport.methodEV", "oceanReport.methodROI", "oceanReport.methodSeed", "oceanReport.methodTail"].map(key => <p key={key} className={prose}>{t(key as DictKey)}</p>)}</div>
-      <h4 className="pt-3 text-xl font-semibold">{t("oceanReport.mechanics")}</h4><dl className="max-w-4xl divide-y divide-border">{mechanics.map(item => <div key={item.format} className="grid gap-2 py-4 sm:grid-cols-[10rem_minmax(0,1fr)]"><dt className="font-semibold">{t(formatNames[item.format])}</dt><dd className={prose}>{t(item.key)}</dd></div>)}</dl></details>
-    </section>
+    <details id={`${id}-method`} className={styles.disclosure}><summary className={focus}>{t("oceanReport.method")}</summary><div className="space-y-4"><p className={prose}>{t("oceanReport.modelScope")}</p><p className={prose}>{t("oceanReport.methodLimit")}</p><div className="max-w-3xl space-y-3">{["oceanReport.methodEngine", "oceanReport.methodParameters", "oceanReport.methodEV", "oceanReport.methodROI", "oceanReport.methodSeed", "oceanReport.methodTail"].map(key => <p key={key} className={prose}>{t(key as DictKey)}</p>)}</div>
+      <h4 className="pt-3 text-xl font-semibold">{t("oceanReport.mechanics")}</h4><dl className="max-w-4xl divide-y divide-border">{mechanics.map(item => <div key={item.format} className="grid gap-2 py-4 sm:grid-cols-[10rem_minmax(0,1fr)]"><dt className="font-semibold">{t(formatNames[item.format])}</dt><dd className={prose}>{t(item.key)}</dd></div>)}</dl></div></details>
 
     {report.rows.length > 0 && <details className={styles.disclosure}><summary className={focus}>{t("oceanReport.rowParameters")}</summary><div className="min-w-0 space-y-3"><p className={prose}>{t("oceanReport.rowParametersNote")}</p><ScrollTable label={t("oceanReport.rowParameters")}><thead className="bg-bg"><tr>{["oceanReport.format", "oceanReport.ticket", "oceanReport.field", "oceanReport.payout", "oceanReport.rake", "oceanReport.cashPool", "oceanReport.bountyShare"].map(key => <th key={key} scope="col" className={th}>{t(key as DictKey)}</th>)}</tr></thead><tbody>{report.rows.map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>${n(row.ticket, 0)}</td><td className={td}>{n(row.players, 0)}</td><td className={`${td} text-xs`}>{t(payoutNames[row.moments.payoutStructure] ?? "oceanReport.noEstimate")}</td><td className={td}>{pct(row.moments.feeFractionOfTicket)}</td><td className={td}>{pct(row.moments.cashPoolFractionOfTicket)}</td><td className={td}>{pct(row.moments.bountyPoolFractionOfTicket)}</td></tr>)}</tbody></ScrollTable>
       <ScrollTable label={t("oceanReport.sigma")}><thead className="bg-bg"><tr>{["oceanReport.format", "oceanReport.compiledROI", "oceanReport.sampleROI", "oceanReport.itm", "oceanReport.sigma", "oceanReport.expected"].map(key => <th key={key} scope="col" className={th}>{t(key as DictKey)}</th>)}</tr></thead><tbody>{report.rows.map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>{pct(row.moments.roi)}</td><td className={td}>{pct(row.realisedMeanRoi)}</td><td className={td}>{pct(row.moments.itm)}</td><td className={td}>{bounds(row.moments.sigmaBI)}</td><td className={td}>{n(row.expectedProfitBI, 1)}</td></tr>)}</tbody></ScrollTable><p className={prose}>{t("oceanReport.sigmaBound")}</p>
       <details className={panel}><summary className={`cursor-pointer font-semibold text-accent ${focus}`}>{t("oceanReport.diagnosticOpen")}</summary><div className="mt-4 space-y-3"><ScrollTable label={t("oceanReport.diagnosticOpen")}><thead className="bg-bg"><tr>{["oceanReport.format", "oceanReport.cashMean", "oceanReport.bountyMean", "oceanReport.varianceCash", "oceanReport.varianceBounty", "oceanReport.covariance"].map(key => <th key={key} scope="col" className={th}>{t(key as DictKey)}</th>)}</tr></thead><tbody>{report.rows.map(row => <tr data-ocean={row.format === "ocean-ko"} key={row.format} className="border-t border-border"><RowName row={row} t={t} /><td className={td}>{n(row.moments.cashMeanBI, 3)}</td><td className={td}>{n(row.moments.bountyMeanBI, 3)}</td><td className={td}>{n(row.moments.cashVarianceBI2, 2)}</td><td className={td}>{bounds(row.moments.bountyVarianceBI2)}</td><td className={td}>{n(row.moments.twiceCashBountyCovarianceBI2, 2)}</td></tr>)}</tbody></ScrollTable><p className={prose}>{t("oceanReport.varianceNote")}</p></div></details>
     </div></details>}
 
-    <section className="space-y-4 border-t border-border pt-7"><h3 className="display text-2xl">{t("oceanReport.glossary")}</h3>{[
+    <details className={styles.disclosure}><summary className={focus}>{t("oceanReport.glossary")}</summary><div className="space-y-4">{[
       ["oceanReport.faqDD", "oceanReport.faqDDAnswer"], ["oceanReport.faq95", "oceanReport.faq95Answer"],
       ["oceanReport.faqLoss", "oceanReport.faqLossAnswer"], ["oceanReport.faqSpace", "oceanReport.faqSpaceAnswer"],
       ["oceanReport.faqScale", "oceanReport.faqScaleAnswer"],
-    ].map(([question, answer]) => <details key={question} className="border-b border-border pb-4"><summary className={`cursor-pointer font-medium ${focus}`}>{t(question as DictKey)}</summary><p className={`${prose} mt-3`}>{t(answer as DictKey)}</p></details>)}<p className={`${prose} pt-2`}>{t("oceanReport.methodologyFoot")}</p></section>
+    ].map(([question, answer]) => <details key={question} className="border-b border-border pb-4"><summary className={`cursor-pointer font-medium ${focus}`}>{t(question as DictKey)}</summary><p className={`${prose} mt-3`}>{t(answer as DictKey)}</p></details>)}</div></details>
   </article>;
 }

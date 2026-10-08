@@ -50,10 +50,10 @@ function DataTable({ label, children }: { label: string; children: ReactNode }) 
   </div>;
 }
 
-function Probability({ probability, pct }: { probability: ProbabilityEstimate; pct: (value: number) => string }) {
+function Probability({ probability, pct, interval = false }: { probability: ProbabilityEstimate; pct: (value: number) => string; interval?: boolean }) {
   return <span className={styles.probability}>
     <span>{pct(probability.value)}</span>
-    <small>{pct(probability.wilson95.lower)}–{pct(probability.wilson95.upper)}</small>
+    {interval && <small>{pct(probability.wilson95.lower)}–{pct(probability.wilson95.upper)}</small>}
   </span>;
 }
 
@@ -63,6 +63,7 @@ export function SurvivalChart({ rows, kind, t, n, pct }: {
   const id = useId();
   const [threshold, setThreshold] = useState(250);
   const [fullTail, setFullTail] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   const points = rows[0] ? risks(rows[0], kind) : [];
   const curves = rows.map(row => risks(row, kind));
   const maximum = riskChartMaximum(curves, fullTail);
@@ -84,7 +85,7 @@ export function SurvivalChart({ rows, kind, t, n, pct }: {
   });
   return <section className={styles.panel}>
     <header className={styles.header}>
-      <h3>{title}</h3><p>{gridDescription}</p>
+      <h3>{title}</h3><p>{t("oceanReport.riskBrief")}</p>
     </header>
     <svg viewBox="0 0 500 270" className={styles.riskChart} role="img" aria-labelledby={`${id}-title ${id}-desc`}
       onPointerDown={selectAtPointer} onPointerMove={event => { if (event.pointerType === "mouse") selectAtPointer(event); }}>
@@ -106,7 +107,6 @@ export function SurvivalChart({ rows, kind, t, n, pct }: {
       </g>)}
     </svg>
     <label className={styles.showBest}><input type="checkbox" checked={fullTail} onChange={event => setFullTail(event.target.checked)} />{t("oceanReport.fullRiskTail")}</label>
-    {autoClipped && <p className={styles.hint}>{t("oceanReport.riskAutoRange")}</p>}
     <div className={`${styles.threshold} ${styles.riskThreshold}`}>
       <label htmlFor={`${id}-threshold`}>{t("oceanReport.threshold")}</label>
       <output htmlFor={`${id}-threshold`}>{n(selected, 0)} <span>BI</span></output>
@@ -115,7 +115,7 @@ export function SurvivalChart({ rows, kind, t, n, pct }: {
       value={selectedIndex} onChange={event => setThreshold(shownPoints[Number(event.target.value)]?.thresholdBI ?? 0)}
       aria-valuetext={`${n(selected, 0)} BI`} aria-describedby={`${id}-help`} disabled={shownPoints.length === 0}
       style={{ "--range-progress": `${selectedIndex / Math.max(1, shownPoints.length - 1) * 100}%` } as CSSProperties} />
-    <p id={`${id}-help`} className={styles.hint}>{t("oceanReport.chartInteract")}</p>
+    <p id={`${id}-help`} className="sr-only">{t("oceanReport.chartInteract")}</p>
     <ul className={styles.readouts}>
       {rows.map(row => {
         const point = risks(row, kind).find(item => item.thresholdBI === selected);
@@ -125,22 +125,23 @@ export function SurvivalChart({ rows, kind, t, n, pct }: {
         </li>;
       })}
     </ul>
-    <p className={styles.hint}>{t("oceanReport.chartMC")}</p>
-    <details className={styles.details}>
+    <details className={styles.details} onToggle={event => setDataOpen(event.currentTarget.open)}>
       <summary>{t("oceanReport.chartData")}</summary>
+      <p className={styles.detailNote}>{gridDescription}</p>
+      {autoClipped && <p className={styles.detailNote}>{t("oceanReport.riskAutoRange")}</p>}
       <p className={styles.detailNote}>{t("oceanReport.chartDenseNote")}</p>
-      <DataTable label={title}>
+      {dataOpen && <DataTable label={title}>
         <thead><tr><th scope="col">{t("oceanReport.threshold")}</th>{rows.map(row => <th scope="col" key={row.format}>{t(names[row.format])}</th>)}</tr></thead>
         <tbody>{points.map(({ thresholdBI }) => <tr key={thresholdBI}>
           <th scope="row">{n(thresholdBI, 0)}</th>{rows.map(row => {
             const point = risks(row, kind).find(item => item.thresholdBI === thresholdBI);
             return <td key={row.format}>{point ? <>
-              <Probability probability={point.probability} pct={pct} />
+              <Probability probability={point.probability} pct={pct} interval />
               <small className={styles.count}>{interpolate(t("oceanReport.chartCount"), { count: n(point.probability.count, 0), samples: n(point.probability.samples, 0) })}</small>
             </> : "—"}</td>;
           })}
         </tr>)}</tbody>
-      </DataTable><p className={styles.detailNote}>{t("oceanReport.interval")}</p>
+      </DataTable>}<p className={styles.detailNote}>{t("oceanReport.interval")}</p>
     </details>
   </section>;
 }
@@ -292,7 +293,6 @@ export function AggregateRunsChart({ rows, t, n }: { rows: FormatComparisonSumma
         <Swatch format={row.format} />{t(names[row.format])}
       </button>)}
     </div>
-    <p className={styles.hint}>{t("oceanReport.aggregateScale")}</p>
     <AggregatePane rows={visibleRows} side="worst" measure={measure} selectedEntry={entry} onSelect={setSelectedEntry} t={t} n={n} />
     {showBest && <AggregatePane rows={visibleRows} side="best" measure={measure} selectedEntry={entry} onSelect={setSelectedEntry} t={t} n={n} />}
     <div className={styles.threshold}><label htmlFor={`${id}-checkpoint`}>{t("oceanReport.entry")}</label><output htmlFor={`${id}-checkpoint`}>{n(entry, 0)}</output></div>
@@ -300,7 +300,7 @@ export function AggregateRunsChart({ rows, t, n }: { rows: FormatComparisonSumma
       disabled={points.length === 0} onChange={event => setSelectedEntry(points[Number(event.target.value)]?.entries ?? 0)}
       aria-valuetext={`${t("oceanReport.entry")}: ${n(entry, 0)}`} aria-describedby={`${id}-help`}
       style={{ "--range-progress": `${selectedIndex / Math.max(1, points.length - 1) * 100}%` } as CSSProperties} />
-    <p id={`${id}-help`} className={styles.hint}>{t("oceanReport.aggregateSelect")}</p>
+    <p id={`${id}-help`} className="sr-only">{t("oceanReport.aggregateSelect")}</p>
     <div className={styles.aggregateReadouts}>
       {visibleRows.map(row => {
         const point = nearestPoint(row.downsideCurve, entry);
@@ -313,5 +313,6 @@ export function AggregateRunsChart({ rows, t, n }: { rows: FormatComparisonSumma
         </div>;
       })}
     </div>
+    <details className={styles.details}><summary>{t("oceanReport.chartHelp")}</summary><p className={styles.detailNote}>{t("oceanReport.aggregateScale")}</p><p className={styles.detailNote}>{t("oceanReport.aggregateSampleNote")}</p></details>
   </section>;
 }

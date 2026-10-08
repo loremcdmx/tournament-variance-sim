@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormatComparisonConfig, FormatComparisonSummary } from "./formatComparison";
 import type { FormatComparisonRequest, FormatComparisonResponse } from "./formatComparisonProtocol";
+import { formatComparisonCache } from "./formatComparisonCache";
 
 export type FormatComparisonStatus = "idle" | "running" | "done" | "error" | "cancelled";
 
@@ -32,7 +33,13 @@ export function useFormatComparison() {
     stopWorker();
     const jobId = ++jobRef.current;
     const configSnapshot = { ...config };
+    const cachedRows = formatComparisonCache.get(configSnapshot);
+    if (cachedRows) {
+      setState({ status: "done", progress: 1, rows: cachedRows, configSnapshot, error: null });
+      return;
+    }
     setState({ status: "running", progress: 0, rows: [], configSnapshot, error: null });
+    const completedRows: FormatComparisonSummary[] = [];
     try {
       const worker = new Worker(new URL("./formatComparison.worker.ts", import.meta.url), { type: "module" });
       workerRef.current = worker;
@@ -48,10 +55,13 @@ export function useFormatComparison() {
         if (message.type === "error") {
           fail(message.error);
         } else if (message.type === "progress") {
-          setState((previous) => ({ ...previous, progress: message.progress }));
+          setState((previous) => message.progress > previous.progress
+            ? { ...previous, progress: message.progress } : previous);
         } else if (message.type === "row") {
+          completedRows.push(message.row);
           setState((previous) => ({ ...previous, rows: [...previous.rows, message.row] }));
         } else if (message.type === "done") {
+          formatComparisonCache.put(configSnapshot, completedRows);
           stopWorker();
           setState((previous) => ({ ...previous, status: "done", progress: 1 }));
         }

@@ -32,7 +32,7 @@
 .legend { display: flex; flex-wrap: wrap; gap: .6rem 1.25rem; margin: 0; padding: 0; list-style: none; font-size: .8rem; }
 .legend li { display: flex; align-items: center; gap: .5rem; }
 .details { margin-top: 1.15rem; }
-.details summary { width: fit-content; padding-block: .3rem; cursor: pointer; color: var(--c-accent); font-size: .875rem; font-weight: 550; }
+.details summary { width: fit-content; min-height: 44px; padding-block: .65rem; cursor: pointer; color: var(--c-fg-muted); font-size: .8rem; font-weight: 500; }
 .details summary:focus-visible, .tableScroll:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 4px; }
 .tableScroll { max-width: 100%; overflow: auto; max-height: 32rem; border: 1px solid var(--c-border); border-radius: 8px; }
 .table { width: 100%; min-width: 36rem; border-collapse: collapse; font-size: .8rem; }
@@ -67,6 +67,10 @@
 
 @media (min-width: 640px) {
   .panel { padding: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .aggregateReadouts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+  .aggregateReadouts dl { gap: .5rem .8rem; }
 }
 @media (max-width: 639px) {
   .panel { padding: 1rem; }

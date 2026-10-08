@@ -102,8 +102,7 @@ import {
 } from "./results/UnitContext";
 import type { ControlsState } from "./ControlsPanel";
 import { DistributionChart } from "./charts/DistributionChart";
-import { ConvergenceChart } from "./charts/ConvergenceChart";
-import { ProveEdgeCard } from "./charts/ProveEdgeCard";
+import { VolumePlanningPanel } from "./VolumePlanningPanel";
 import {
   BigStat,
   MiniStat,
@@ -737,9 +736,10 @@ function ResultsViewImpl({
     <div className="flex flex-col gap-5">
       <CalibrationNotices result={result} schedule={schedule} />
       {schedule?.some((row) => row.gameType === "ocean-ko") && (
-        <p role="note" className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-4 py-3 text-xs leading-relaxed text-[color:var(--color-fg-muted)]">
-          {t("results.oceanKo.model")}
-        </p>
+        <details className="rounded-lg border border-border bg-bg-elev px-4 py-3 text-xs leading-relaxed text-fg-muted">
+          <summary className="cursor-pointer rounded-sm font-medium text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">{t("oceanKo.modelShort")}</summary>
+          <p className="mt-3 max-w-3xl">{t("results.oceanKo.model")}</p>
+        </details>
       )}
       {advanced && availableRuns > 0 && onSelectRun ? (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--color-fg-dim)]">
@@ -777,10 +777,9 @@ function ResultsViewImpl({
         </div>
       ) : null}
       {rakebackCurve && (
-        <div className="flex items-center justify-end -mb-1">
+        <div className="flex items-center justify-end gap-2 -mb-1">
           <label
             className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
-            title={t("chart.rakeback.profitOnly.title")}
           >
             <input
               type="checkbox"
@@ -792,11 +791,7 @@ function ResultsViewImpl({
               {t("chart.stats.withRakeback")}
             </span>
           </label>
-        </div>
-      )}
-      {rakebackCurve && (
-        <div className="-mt-1 mb-1 text-right text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-          {t("chart.rakeback.fullSampleNote")}
+          <InfoTooltip content={t("chart.rakeback.profitOnly.title")} />
         </div>
       )}
 
@@ -1290,10 +1285,9 @@ function ResultsViewImpl({
       </StatGroup>
 
       {rakebackCurve && (
-        <div className="flex items-center justify-end -mb-1">
+        <div className="flex items-center justify-end gap-2 -mb-1">
           <label
             className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)]"
-            title={t("chart.rakeback.profitOnly.title")}
           >
             <input
               type="checkbox"
@@ -1305,11 +1299,7 @@ function ResultsViewImpl({
               {t("chart.dist.withRakeback")}
             </span>
           </label>
-        </div>
-      )}
-      {rakebackCurve && (
-        <div className="-mt-3 mb-1 text-right text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
-          {t("chart.rakeback.fullSampleNote")}
+          <InfoTooltip content={t("chart.rakeback.profitOnly.title")} />
         </div>
       )}
 
@@ -1317,7 +1307,6 @@ function ResultsViewImpl({
         <UnitScope id="dist.profit">
           <MoneyDistributionCard
             title={t("chart.dist")}
-            subtitle={`${result.samples.toLocaleString(numberLocale)} ${t("app.samples")} · 60 bins`}
             binEdges={displayResultDist.histogram.binEdges}
             counts={displayResultDist.histogram.counts}
             color="#34d399"
@@ -1358,33 +1347,14 @@ function ResultsViewImpl({
         </UnitScope>
       </div>
 
-      <div
-        className={`grid grid-cols-1 gap-3 ${
-          result.downswings.length > 0 ? "xl:grid-cols-2" : ""
-        }`}
-      >
-        <div className="flex min-w-0 flex-col gap-3">
-          <Card className="p-5">
-            <ChartHeader
-              title={t("chart.convergence")}
-              subtitle={t("chart.convergence.sub")}
-              showUnitToggle={false}
-            />
-            <ConvergenceChart
-              schedule={schedule}
-              finishModel={finishModel}
-              noiseActive={noiseChannelsActive(settings ?? {})}
-              defaultMode="exact"
-            />
-          </Card>
-          <Card className="p-5">
-            <ProveEdgeCard
-              schedule={schedule}
-              finishModel={finishModel}
-              noiseActive={noiseChannelsActive(settings ?? {})}
-              defaultMode="exact"
-            />
-          </Card>
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="order-2 min-w-0">
+          <VolumePlanningPanel
+            schedule={schedule}
+            finishModel={finishModel}
+            noiseActive={noiseChannelsActive(settings ?? {})}
+            defaultMode="exact"
+          />
         </div>
         {result.downswings.length > 0 && (
           <UnitScope id="downswings">
@@ -2415,7 +2385,7 @@ function MoneyDistributionCard({
   xDomain,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   binEdges: number[];
   counts: number[];
   color: string;

@@ -4,6 +4,10 @@ The second MTT tab compares the mechanical engine's downside paths. The first ta
 
 The primary form contains ticket, field, ROI and horizon, with horizon presets. Sample count, seed and Mystery spread remain in the accuracy disclosure. Results show their own scenario snapshot and warn when the draft changes. On narrow screens, depth and duration tables switch between below-peak and below-EV metrics. Recovery, Battle Royale and model diagnostics remain available in disclosures.
 
+The report prioritizes values and comparisons. Longer explanations, empirical evidence, jackpot mechanics and numerical precision are disclosures, while model status, censored durations and pointwise-envelope semantics stay beside the affected values. Results and inputs survive switching to the mechanical tab; leaving during calculation cancels the worker. Up to three complete reports are reused in memory for an exact configuration match, never across reloads or releases. Reuse does not generate additional samples.
+
+For cold runs each format is compiled once. The report-specific collector skips unused chord scans and individual high-resolution paths; the ordinary simulation collector is unchanged. Regression checks compare every report value with the full collector across formats, fields, ROI and jackpot cases. All per-entry observations and up to 201 checkpoint values used by this report are preserved.
+
 ## What is compared
 
 Freezeout, PKO, Mystery and Ocean KO use the same full ticket, field, target ROI, horizon and sample count. The controlled presets use an 8% fee; cash/bounty allocations and native payout shapes remain format-specific and are shown in the report. Equal ROI is a counterfactual comparison, not a claim that one player's skill earns equal ROI in every format. PKO uses head variance 0.4 and no heat; the Mystery log-variance parameter is configurable. No leaderboard, rakeback, re-entry, tilt or changing skill is added.

@@ -20,11 +20,19 @@
 .nav a { flex-shrink: 0; padding: .65rem .8rem; border-radius: 6px; color: var(--c-fg-muted); font-size: .875rem; }
 .nav a:hover, .nav a:focus-visible { color: var(--c-accent); background: var(--c-bg-elev); }
 .settings { background: var(--c-bg-elev); border: 1px solid var(--c-border); border-radius: 12px; padding: 1.25rem; }
+.settingsHeading, .sectionHeading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
+.settingsHeading > span { color: var(--c-fg-muted); font-size: .75rem; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-top: 1.1rem; }
+.intervalToggle { display: inline-flex; align-items: center; min-height: 44px; gap: .5rem; color: var(--c-fg-muted); font-size: .8rem; cursor: pointer; }
+.intervalToggle input { accent-color: var(--c-accent); }
+.inlineDetails { font-size: .875rem; }
+.inlineDetails > summary { width: fit-content; min-height: 44px; padding-block: .7rem; cursor: pointer; color: var(--c-fg-muted); }
+.inlineDetails[open] > summary { margin-bottom: .4rem; }
 .fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-top: 1.25rem; }
 .fields label { min-width: 0; display: flex; flex-direction: column; gap: .5rem; font-size: .875rem; }
 .fields input, .fields select { min-height: 44px; }
 .fields [aria-invalid="true"] { border-color: var(--c-danger); }
-.advanced { margin-top: 1.25rem; border-top: 1px solid var(--c-border); padding-top: 1rem; }
+.advanced { margin-top: 1rem; border-top: 1px solid var(--c-border); padding-top: .4rem; }
 .advanced summary { cursor: pointer; color: var(--c-fg-muted); font-size: .875rem; padding-block: .4rem; }
 .advanced .fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .presets { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .8rem; }
@@ -49,10 +57,12 @@
 .table td { white-space: nowrap; }
 .scrollTable { max-width: 100%; overflow-x: auto; border: 1px solid var(--c-border); border-radius: 8px; }
 .scrollTable .table { min-width: 36rem; }
+.compactTable .table { min-width: 0; table-layout: fixed; }
+.compactTable th:first-child { width: 30%; }
 .scrollHint { display: none; font-size: .75rem; color: var(--c-fg-muted); margin-bottom: .4rem; }
 .metricSwitch { display: none; }
-.disclosure { border-block: 1px solid var(--c-border); padding-block: 1rem; }
-.disclosure > summary { cursor: pointer; font-size: 1.05rem; font-weight: 600; padding-block: .4rem; }
+.disclosure { border-top: 1px solid var(--c-border); padding-top: .5rem; }
+.disclosure > summary { cursor: pointer; min-height: 44px; font-size: .95rem; font-weight: 550; padding-block: .65rem; }
 .disclosure[open] > summary { margin-bottom: 1.25rem; }
 .metricTable { overflow-x: auto; border: 1px solid var(--c-border); border-radius: 8px; }
 .metricTable th, .metricTable td { padding: .85rem 1rem; }
@@ -83,10 +93,13 @@
   .metricTable thead th { font-size: .72rem; }
   .scrollHint { display: block; }
   .scrollTable .table tbody th { max-width: 9rem; white-space: normal; }
+  .compactTable .table th, .compactTable .table td { padding: .75rem .4rem; }
+  .compactTable .table thead th { font-size: .7rem; }
+  .compactTable .table tbody th, .compactTable .table td { font-size: .8rem; }
+  .compactTable .table td span > span + span { font-size: .65rem; }
   .nav a { padding-inline: .65rem; font-size: .8rem; }
 }
 @media (max-width: 359px) {
-  .fields { grid-template-columns: 1fr; }
   .advanced .fields { grid-template-columns: 1fr; }
   .metricTable th, .metricTable td { padding-inline: .4rem; }
 }
