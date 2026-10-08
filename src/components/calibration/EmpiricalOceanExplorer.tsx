@@ -12,13 +12,16 @@ import {
 } from "@/lib/calibration/oceanTransport";
 import { interpolate } from "@/lib/calibration/oceanReportView";
 import {
+  DISTANCE_SD_STEP_BI,
   passesPrecisionGate,
   precisionCount,
   precisionRowFor,
   roundSignificant,
+  roundToStep,
   ROI_DECIMALS,
   SIGMA_DECIMALS,
   sigmaRange,
+  THETA_SIGMA_DECIMALS,
 } from "@/lib/calibration/explorerView";
 import { useT } from "@/lib/i18n/LocaleProvider";
 
@@ -131,7 +134,7 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
             <p className="mt-1 text-xs text-fg-muted">{t("empiricalOcean.perEntry")}</p>
             <dl className="mt-5 space-y-3 border-t border-border pt-4 text-sm">
               <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.roi")}</dt><dd className="font-mono tabular-nums">{fixed(card.data.roi * 100, ROI_DECIMALS)}%{card.error && ` ± ${fixed(card.error.roiSE * 100, ROI_DECIMALS)} ${t("empiricalOcean.pp")}`}</dd></div>
-              <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.sd")}</dt><dd className="font-mono tabular-nums">{card.sd === null ? "—" : `≈ ${n(roundSignificant(card.sd), 0)} BI`}</dd></div>
+              <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.sd")}</dt><dd className="font-mono tabular-nums">{card.sd === null ? "—" : `≈ ${n(roundToStep(card.sd, DISTANCE_SD_STEP_BI), 0)} BI`}</dd></div>
               <div className="flex flex-wrap justify-between gap-2"><dt className="text-fg-muted">{t("empiricalOcean.roiSd")}</dt><dd className="font-mono tabular-nums">{entries === null ? "—" : `${fixed(card.data.sigma / Math.sqrt(entries) * 100, 1)} ${t("empiricalOcean.pp")}`}</dd></div>
             </dl>
           </section>)}
@@ -144,9 +147,9 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
         <p className={`${muted} mt-3`}>{t("empiricalOcean.roiNote")}</p>
         <p id={`${id}-distance-note`} className={`${muted} mt-2`}>{t("empiricalOcean.horizonNote")}</p>
         {allAlternativesSupported && range && <section className={`${panel} mt-5`}>
-          <div className="flex flex-wrap items-baseline justify-between gap-3"><h3 className="font-semibold">{t("empiricalOcean.sensitivity")}</h3><p className="font-mono text-xl tabular-nums">{fixed(range.lower.sigma, SIGMA_DECIMALS)}–{fixed(range.upper.sigma, SIGMA_DECIMALS)} BI</p></div>
+          <div className="flex flex-wrap items-baseline justify-between gap-3"><h3 className="font-semibold">{t("empiricalOcean.sensitivity")}</h3><p className="font-mono text-xl tabular-nums">{fixed(range.lower.sigma, THETA_SIGMA_DECIMALS)}–{fixed(range.upper.sigma, THETA_SIGMA_DECIMALS)} BI</p></div>
           <p className={`${muted} mt-2`}>{t("empiricalOcean.sensitivityNote")}</p>
-          <div className="mt-4 grid grid-cols-3 gap-2">{alternatives.map(item => <div key={item.weight} className={`rounded-lg border p-3 text-center ${theta === item.weight ? "border-accent bg-accent/5" : "border-border bg-bg"}`}><p className="text-xs text-fg-muted">θ = {n(item.weight, 1)}</p><p className="mt-1 font-mono text-sm tabular-nums">{fixed(item.result!.transported.sigma, SIGMA_DECIMALS)} BI</p></div>)}</div>
+          <div className="mt-4 grid grid-cols-3 gap-2">{alternatives.map(item => <div key={item.weight} className={`rounded-lg border p-3 text-center ${theta === item.weight ? "border-accent bg-accent/5" : "border-border bg-bg"}`}><p className="text-xs text-fg-muted">θ = {n(item.weight, 1)}</p><p className="mt-1 font-mono text-sm tabular-nums">{fixed(item.result!.transported.sigma, THETA_SIGMA_DECIMALS)} BI</p></div>)}</div>
           {range.upper.meetsPrecision === false && <p className="mt-3 text-xs leading-relaxed text-fg-muted">{interpolate(t("empiricalOcean.rangeEndUpper"), { theta: n(range.upper.theta, 1) })}</p>}
           {range.lower.meetsPrecision === false && <p className="mt-3 text-xs leading-relaxed text-fg-muted">{interpolate(t("empiricalOcean.rangeEndLower"), { theta: n(range.lower.theta, 1) })}</p>}
           {precision && selectedPrecision ? <div className="mt-4 space-y-2 border-t border-border pt-3 text-xs leading-relaxed">

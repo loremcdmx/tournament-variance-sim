@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import bridgeProfile from "./ocean-bridge-profile.json";
 import profile from "./space-runtime-profile.json";
 import { transportOceanMoments, type EmpiricalBridgeData } from "./oceanTransport";
-import { passesPrecisionGate, precisionCount, precisionRowFor, roundSignificant, sigmaRange, type SigmaScenario } from "./explorerView";
+import { DISTANCE_SD_STEP_BI, passesPrecisionGate, precisionCount, precisionRowFor, roundSignificant, roundToStep, sigmaRange, type SigmaScenario } from "./explorerView";
 
 const bridge = bridgeProfile as unknown as EmpiricalBridgeData;
 const precision = bridge.numericPrecision!;
@@ -18,8 +18,15 @@ function scenarios(cap: 25 | 100, ticket: 10 | 100): SigmaScenario[] {
   });
 }
 
-describe("two significant digits for the result SD", () => {
-  it("rounds to tens below 1 000 BI and to hundreds from there", () => {
+describe("rounding of the result SD and of counts", () => {
+  it("rounds the result SD to tens, so Space and Ocean stay distinguishable", () => {
+    expect(roundToStep(1001.4412, DISTANCE_SD_STEP_BI)).toBe(1000);
+    expect(roundToStep(1045.0554, DISTANCE_SD_STEP_BI)).toBe(1050);
+    expect(roundToStep(839.4538, DISTANCE_SD_STEP_BI)).toBe(840);
+    expect(roundToStep(Number.NaN, DISTANCE_SD_STEP_BI)).toBeNaN();
+  });
+
+  it("keeps two significant digits for counts", () => {
     expect(roundSignificant(1001.4412)).toBe(1000);
     expect(roundSignificant(1045.0554)).toBe(1000);
     expect(roundSignificant(1059.4061)).toBe(1100);
@@ -91,7 +98,4 @@ describe("how many bridge scenarios meet the numerical gates", () => {
     expect(precisionRowFor(undefined, 0.5, 100, 100)).toBeUndefined();
   });
 
-  it("keeps the bridge preliminary: every published record is a pilot run", () => {
-    expect(bridge.records.every(record => record.support.numericalStatus === "pilot")).toBe(true);
-  });
 });

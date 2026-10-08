@@ -25,7 +25,7 @@ describe("Space → Ocean explorer at its default scenario", () => {
     expect(plain).toContain("31,0% ± 2,1 п.п.");
     expect(plain).not.toMatch(/7,08|30,99|1 001,44|1 045,06|5,01\b|5,23\b/);
     const sd = [...plain.matchAll(/SD результата на дистанции ([^B]*BI)/g)].map(match => match[1].trim());
-    expect(sd).toEqual(["≈ 1 000 BI", "≈ 1 000 BI"]);
+    expect(sd).toEqual(["≈ 1 000 BI", "≈ 1 050 BI"]);
     const roiSd = [...plain.matchAll(/SD среднего ROI ([\d,]+ п\.п\.)/g)].map(match => match[1]);
     expect(roiSd).toEqual(["5,0 п.п.", "5,2 п.п."]);
     expect(plain).toContain("Ocean · сценарий, баунти до порога · $100 Масштаб разброса σ 7,4 BI");
@@ -36,7 +36,7 @@ describe("Space → Ocean explorer at its default scenario", () => {
     expect(plain).toContain("± у Space — стандартная ошибка основы: σ и ROI пересчитаны 17 раз");
     expect(plain).toContain("диапазон θ ниже её не включает");
     expect(plain).toContain("Вклад сценария θ");
-    expect(plain).toContain("7,4–7,5 BI");
+    expect(plain).toContain("7,38–7,49 BI");
     expect(plain).toContain("отдельно от ошибки данных основы Space");
   });
 

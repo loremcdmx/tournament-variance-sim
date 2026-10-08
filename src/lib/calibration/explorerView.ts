@@ -7,8 +7,17 @@ export type PrecisionRow = Precision["rows"][number];
 /** σ, its standard error and ROI are shown to one decimal: the anchor's own error is two to three percent. */
 export const SIGMA_DECIMALS = 1;
 export const ROI_DECIMALS = 1;
-/** The result SD over a distance keeps two significant digits: tens below 1 000 BI, hundreds above. */
+/** The θ block exists to show differences of a few hundredths of a BI; one decimal would print "6,2–6,2". */
+export const THETA_SIGMA_DECIMALS = 2;
+/** The result SD over a distance is rounded to tens of BI: hundreds would print Space and Ocean as the same "≈ 1 000". */
+export const DISTANCE_SD_STEP_BI = 10;
+/** Counts such as players keep two significant digits. */
 export const DISTANCE_SD_SIGNIFICANT_DIGITS = 2;
+
+export function roundToStep(value: number, step: number): number {
+  if (!Number.isFinite(value) || !(step > 0)) return value;
+  return Math.round(value / step) * step;
+}
 
 export function roundSignificant(value: number, digits = DISTANCE_SD_SIGNIFICANT_DIGITS): number {
   if (!Number.isFinite(value) || value === 0) return value;
