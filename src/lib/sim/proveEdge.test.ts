@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   computeProveEdge,
+  proveEdgeRuntimeSigmaPoints,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
 } from "./proveEdge";
+import {
+  formatRuntimeSigma,
+  hasFormatRuntimeSigma,
+  runtimeSigmaCacheSize,
+} from "./formatRuntimeSigma";
 import type { TournamentRow } from "./types";
 import { buildOceanKoSigmaBand } from "./convergenceMath";
 
@@ -60,15 +66,18 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     expect(rows.find((r) => r.isCurrent)?.roi).toBe(0.05);
   });
 
-  it("N grows quadratically as ROI shrinks (freeze: σ is ROI-invariant)", () => {
+  it("N grows just under quadratically as ROI shrinks (freeze σ falls a little with ROI)", () => {
+    // The old flat surface (C1 = 0) gave exactly 4× per halving. The engine
+    // row's σ rises with ROI, so halving the ROI quadruples the 1/ROI² factor
+    // but shaves the σ² factor: the ratio sits below 4, not on it.
     const rows = computeProveEdgeRows(baseFreeze);
     const r10 = rows.find((r) => r.roi === 0.10)!;
     const r5 = rows.find((r) => r.roi === 0.05)!;
     const r25 = rows.find((r) => r.roi === 0.025)!;
-    expect(r5.tourneys / r10.tourneys).toBeGreaterThan(3.9);
-    expect(r5.tourneys / r10.tourneys).toBeLessThan(4.1);
-    expect(r25.tourneys / r5.tourneys).toBeGreaterThan(3.9);
-    expect(r25.tourneys / r5.tourneys).toBeLessThan(4.1);
+    expect(r5.tourneys / r10.tourneys).toBeGreaterThan(3.4);
+    expect(r5.tourneys / r10.tourneys).toBeLessThan(4.0);
+    expect(r25.tourneys / r5.tourneys).toBeGreaterThan(3.4);
+    expect(r25.tourneys / r5.tourneys).toBeLessThan(4.0);
   });
 
   it("sizes for detection power: N = ((2z)·σ/ROI)², ~4× the 50%-power median", () => {
@@ -83,10 +92,15 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     expect(r10.tourneys / naiveMedian).toBeLessThan(4.05);
   });
 
-  it("freeze σ is ROI-invariant — same σ across the candidate grid", () => {
+  it("freeze σ grows with ROI across the candidate grid (the old fit was flat in ROI)", () => {
+    // Candidates run from +30 % down to +0.1 %; σ must fall monotonically.
     const rows = computeProveEdgeRows(baseFreeze);
-    const sigmas = new Set(rows.map((r) => r.sigma.toFixed(6)));
-    expect(sigmas.size).toBe(1);
+    for (let i = 1; i < rows.length; i++) {
+      expect(rows[i].sigma).toBeLessThan(rows[i - 1].sigma);
+    }
+    const r30 = rows.find((r) => r.roi === 0.30)!;
+    const r1 = rows.find((r) => r.roi === 0.01)!;
+    expect(r30.sigma).toBeGreaterThan(r1.sigma * 1.1);
   });
 
   it("PKO σ grows with ROI — non-trivial spread across the grid", () => {
@@ -105,10 +119,11 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     expect(Number.isFinite(rows[1].tourneys)).toBe(true);
   });
 
-  it("|−5 %| matches |+5 %| for freeze (ROI-invariant σ)", () => {
+  it("|−5 %| needs fewer tournaments than |+5 %| for freeze (σ rises with ROI)", () => {
     const positive = computeProveEdgeRows({ ...baseFreeze, candidates: [0.05] })[0];
     const negative = computeProveEdgeRows({ ...baseFreeze, candidates: [-0.05] })[0];
-    expect(negative.tourneys).toBe(positive.tourneys);
+    expect(negative.sigma).toBeLessThan(positive.sigma);
+    expect(negative.tourneys).toBeLessThan(positive.tourneys);
   });
 
   it("rake adjustment scales σ proportionally", () => {
@@ -146,6 +161,34 @@ describe("computeProveEdgeRows (single-format mode)", () => {
   });
 });
 
+describe("proveEdgeRuntimeSigmaPoints (card warm-up list)", () => {
+  it("lists exactly the σ computeProveEdge reads, so a warmed table is cache-only", () => {
+    for (const format of ["freeze", "pko", "mystery", "mystery-royale"] as const) {
+      const input = {
+        ...baseFreeze,
+        format,
+        afs: 12_345,
+        rake: 0.07,
+        currentRoi: 0.123,
+        candidates: PROVE_EDGE_DEFAULT_CANDIDATES,
+      };
+      const points = proveEdgeRuntimeSigmaPoints(input);
+      expect(points).toHaveLength(PROVE_EDGE_DEFAULT_CANDIDATES.length + 1);
+      for (const { format: f, point } of points) formatRuntimeSigma(f, point);
+      expect(points.every(({ format: f, point }) => hasFormatRuntimeSigma(f, point))).toBe(true);
+      const before = runtimeSigmaCacheSize();
+      const result = computeProveEdge(input);
+      expect(runtimeSigmaCacheSize()).toBe(before);
+      expect(result.anchor.sigma).toBe(formatRuntimeSigma(format, points[points.length - 1].point));
+    }
+  });
+
+  it("is empty for schedule mode and Ocean KO, which do not use the runtime σ cache", () => {
+    expect(proveEdgeRuntimeSigmaPoints({ ...baseFreeze, format: "ocean-ko" })).toEqual([]);
+    expect(proveEdgeRuntimeSigmaPoints({ ...baseFreeze, format: "exact", schedule: [] })).toEqual([]);
+  });
+});
+
 describe("computeProveEdge — band policy + anchor + fit-box", () => {
   it("inside fit-box → numeric band, sigmaLo < sigma < sigmaHi", () => {
     const result = computeProveEdge(baseFreeze);
@@ -178,8 +221,7 @@ describe("computeProveEdge — band policy + anchor + fit-box", () => {
 
   it("anchor uses precise σ at user's exact ROI, not snapped to grid", () => {
     // currentRoi = 0.072 snaps to 0.05 candidate, but anchor σ should be
-    // computed at 0.072 exactly. For freeze (ROI-invariant) σ is the same;
-    // for PKO σ differs per ROI.
+    // computed at 0.072 exactly; σ differs per ROI in both formats.
     const freezeRes = computeProveEdge({ ...baseFreeze, currentRoi: 0.072 });
     const pkoRes = computeProveEdge({
       ...baseFreeze,
@@ -188,6 +230,10 @@ describe("computeProveEdge — band policy + anchor + fit-box", () => {
     });
     expect(freezeRes.anchor.roi).toBe(0.072);
     expect(pkoRes.anchor.roi).toBe(0.072);
+    const freezeAt5 = freezeRes.rows.find((r) => r.roi === 0.05)!;
+    const freezeAt10 = freezeRes.rows.find((r) => r.roi === 0.10)!;
+    expect(freezeRes.anchor.sigma).toBeGreaterThan(freezeAt5.sigma);
+    expect(freezeRes.anchor.sigma).toBeLessThan(freezeAt10.sigma);
     // PKO anchor σ at 0.072 sits between σ at 0.05 and σ at 0.10
     const pkoAt5 = pkoRes.rows.find((r) => r.roi === 0.05)!;
     const pkoAt10 = pkoRes.rows.find((r) => r.roi === 0.10)!;
@@ -201,12 +247,13 @@ describe("computeProveEdge — band policy + anchor + fit-box", () => {
     expect(PROVE_EDGE_DEFAULT_CANDIDATES.includes(0)).toBe(false);
   });
 
-  it("|+5 %| and |−5 %| give identical tourneys for freeze (σ ROI-invariant)", () => {
+  it("|+5 %| and |−5 %| differ for freeze too (runtime σ rises with ROI)", () => {
     const result = computeProveEdge({
       ...baseFreeze,
       candidates: [0.05, -0.05],
     });
-    expect(result.rows[0].tourneys).toBe(result.rows[1].tourneys);
+    expect(result.rows[0].sigma).toBeGreaterThan(result.rows[1].sigma);
+    expect(result.rows[0].tourneys).toBeGreaterThan(result.rows[1].tourneys);
   });
 
   it("|+5 %| and |−5 %| differ for PKO (σ asymmetric in ROI sign — b1·ROI term in fit)", () => {
@@ -215,8 +262,8 @@ describe("computeProveEdge — band policy + anchor + fit-box", () => {
       format: "pko",
       candidates: [0.05, -0.05],
     });
-    // σ at +5% > σ at -5% because PKO fit's b1 = +0.673 (winners realize
-    // edge through deeper finishes → higher per-tournament variance).
+    // σ at +5% > σ at -5%: winners realize their edge through deeper
+    // finishes, which carry more per-tournament variance.
     expect(result.rows[0].sigma).toBeGreaterThan(result.rows[1].sigma);
     // Therefore N to prove +5% > N to prove -5%.
     expect(result.rows[0].tourneys).toBeGreaterThan(result.rows[1].tourneys);

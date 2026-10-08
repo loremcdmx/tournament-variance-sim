@@ -67,8 +67,23 @@ non-linearities (PKO heat bins, mystery bounty log-normal noise,
 min-cash plateau). So we sweep the engine over a grid, measure σ, and
 fit a simple surface to the measurements.
 
-The fit is what the **ConvergenceChart** uses at interactive speed; the
-full engine is only run when the user hits "Run".
+The planning cards (**ConvergenceChart** chips and the prove-edge card) do
+not evaluate these surfaces for their point estimate any more:
+`src/lib/sim/formatRuntimeSigma.ts` builds the format's default one-row
+schedule (the row the schedule editor produces, with the run path's ITM
+default) and returns the engine's own `buildExactBreakdown(...).sigmaEff`, so
+a card and a one-row schedule agree to rounding. What the fits still do: the
+`resid` constants set the half-width of the numeric band around that point
+(and the fit-box gates it), `computeConvergenceRows` falls back to the surface
+when no override is passed, and the sweep scripts keep measuring them.
+
+The price is one compile per ROI candidate. A full prove-edge table (18
+candidates plus the anchor) measured 2026-10-08 on one node process: about
+10–20 ms on a 1 000 field, 40 ms on 5 000, 70–90 ms on 10 000, 0.4–0.8 s on
+50 000 (the slider cap) and 1–2.4 s on 100 000; a repeat with the same inputs
+is free (memoized by format, field, ROI, rake and finish model), and the card
+defers its input so a slider drag does not queue one table per tick. Ocean KO
+has always been runtime; it is a strict upper bound with no band.
 
 ## Quickstart
 

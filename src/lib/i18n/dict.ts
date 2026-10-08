@@ -398,8 +398,8 @@ export const DICT = {
     ru: "Мистери по реал-дате (гибрид tilt)",
   },
   "model.powerlaw-realdata-influenced": {
-    en: "Power-law (real-data influenced α)",
-    ru: "Power-law (α под реал-дату)",
+    en: "Power-law (α from ROI, ITM from the row)",
+    ru: "Power-law (α под ROI, ITM строки)",
   },
 
   // Sections
@@ -579,12 +579,12 @@ export const DICT = {
     ru: "Консервативная дистанция · верхняя граница дисперсии модели",
   },
   "proveEdge.footnote.oceanKo": {
-    en: "The required volume uses an upper bound on Ocean KO model variance. These are conservative model estimates, without a calibrated uncertainty band.",
-    ru: "Дистанция рассчитана по верхней границе дисперсии модели Ocean KO. Это консервативная оценка модели без калиброванного диапазона погрешности.",
+    en: "The required volume uses an upper bound on Ocean KO model variance. The bound sits about 2.5–4.5× above the model's Monte-Carlo σ, so the distance can be 6–20× longer than typical for the model. These are conservative model estimates, without a calibrated uncertainty band.",
+    ru: "Дистанция рассчитана по верхней границе дисперсии модели Ocean KO. Граница примерно в 2,5–4,5 раза выше модельной σ по Монте-Карло, поэтому дистанция может быть в 6–20 раз больше типичной для модели. Это консервативная оценка модели без калиброванного диапазона погрешности.",
   },
   "chart.convergence.bandWarning.oceanKo": {
-    en: "Ocean KO uses an analytic upper bound on the model variance here, so the required distance is conservative. This is not a prediction of the exact variance of real tournaments.",
-    ru: "Для Ocean KO здесь используется аналитическая верхняя граница дисперсии модели: дистанция оценена консервативно. Это не прогноз точной дисперсии реальных турниров.",
+    en: "Ocean KO uses an analytic upper bound on the model variance here, so the required distance is conservative. The bound sits about 2.5–4.5× above the model's Monte-Carlo σ, so the distance can be 6–20× longer than typical for the model. This is not a prediction of the exact variance of real tournaments.",
+    ru: "Для Ocean KO здесь используется аналитическая верхняя граница дисперсии модели: дистанция оценена консервативно. Граница примерно в 2,5–4,5 раза выше модельной σ по Монте-Карло, поэтому дистанция может быть в 6–20 раз больше типичной для модели. Это не прогноз точной дисперсии реальных турниров.",
   },
   "demo.oceanKo": { en: "Ocean KO · GGPoker", ru: "Ocean KO · GGPoker" },
   "row.gameType.mystery": { en: "Mystery", ru: "Мистери" },
@@ -1176,9 +1176,13 @@ export const DICT = {
     en: "hide jackpots",
     ru: "скрыть джекпоты",
   },
+  "chart.hideJackpots.share": {
+    en: "{pct} of runs",
+    ru: "{pct} прогонов",
+  },
   "chart.hideJackpots.title": {
-    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. A handful of jackpot samples stretch the distribution x-axis and the trajectory y-axis into unreadable territory even though they're statistically rare. Note: this only reshapes the charts — the scalar stats panels (mean, max, VaR, skew) still reflect ALL samples including jackpots, and the trajectory envelopes are rebuilt from the ~1000 stored hi-res paths.",
-    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. Пара джекпотных сэмплов растягивает ось X гистограммы и ось Y траектории так, что остальной график становится нечитаемым, хотя статистически такие раны редки. Важно: это меняет только графики — скалярные статы (среднее, макс, VaR, скос) по-прежнему считаются по ВСЕМ сэмплам, включая джекпоты, а огибающие траектории пересобираются из ~1000 сохранённых hi-res путей.",
+    en: "Hide mystery / mystery-royale runs that drew an envelope ≥ 100× the mean. In this run that is {pct} of samples. The longer the distance, the larger that share, and the average of the remaining runs sits below the true EV. The filter starts on only when it hides 5% of runs or fewer. It reshapes the charts only — the scalar stats (mean, max, VaR, skew) still count ALL samples, and the trajectory envelopes are rebuilt from the ~1000 stored hi-res paths.",
+    ru: "Скрыть mystery / mystery-royale раны, где вытянулся конверт ≥ 100× от среднего. В этом прогоне таких {pct} сэмплов. Чем длиннее дистанция, тем их больше, а среднее оставшихся ниже честного EV. По умолчанию фильтр включён, только если скрывает не больше 5% прогонов. Он меняет только графики: скалярные статы (среднее, макс, VaR, скос) считаются по ВСЕМ сэмплам, а огибающие траектории пересобираются из ~1000 сохранённых hi-res путей.",
   },
   "chart.trajectory.withRakeback": {
     en: "RB in chart",
@@ -1468,8 +1472,8 @@ export const DICT = {
   },
   "chart.convergence.rake": { en: "rake", ru: "рейк" },
   "chart.convergence.rake.title": {
-    en: "Room rake — fraction of buy-in taken per entry. σ fits were measured at rake = 10 %, so shifting this knob rescales σ by (1+0.10)/(1+rake). Higher rake compresses σ in ROI units (same $-variance spread over a bigger cost basis) and also scales the RB→ROI conversion, since RB is expressed as a fraction of rake.",
-    ru: "Рейк — доля бай-ина, которую забирает рум с каждого входа. σ измерена при рейке 10 %, так что ползунок пересчитывает σ как (1+0,10)/(1+рейк). Рост рейка сжимает σ в ROI-единицах (та же $-дисперсия, но делится на больший бай-ин+рейк) и одновременно меняет перевод РБ в ROI, ведь РБ задаётся в % от рейка.",
+    en: "Room rake — fraction of buy-in taken per entry. σ is recompiled at the chosen rake. Higher rake compresses σ in ROI units (same $-variance spread over a bigger cost basis) and also scales the RB→ROI conversion, since RB is expressed as a fraction of rake.",
+    ru: "Рейк — доля бай-ина, которую забирает рум с каждого входа. σ пересчитывается при выбранном рейке. Рост рейка сжимает σ в ROI-единицах (та же $-дисперсия, но делится на больший бай-ин+рейк) и одновременно меняет перевод РБ в ROI, ведь РБ задаётся в % от рейка.",
   },
   "chart.convergence.roi.invariant": {
     en: "Hidden here: this fit is ROI-invariant, so moving ROI would not change the table.",
@@ -1590,9 +1594,13 @@ export const DICT = {
     en: "Show losing ROI rows too",
     ru: "Показать и минусовые строки",
   },
+  "proveEdge.pending": {
+    en: "Recalculating for this field size…",
+    ru: "Пересчитываю под этот размер поля…",
+  },
   "chart.convergence.mode.hint": {
-    en: "Averaged: generic planning mode. Freeze, Mystery, and Battle Royale use runtime single-row compiles at the chosen controls, while PKO uses the promoted format fit. Mix weights are shares of tournaments in the synthetic mix. Schedule: compiles the real rows and aggregates per-row dollar variance, field variability, payout shape, rake, and bounty structure into one schedule-aware σ_ROI.",
-    ru: "Усреднённо: общий planning-режим. Для Фриза, Мистери и Battle Royale берётся runtime single-row компиляция на выбранных контролах, а для ПКО используется промоутнутый format-fit. В Миксе веса означают долю турниров в синтетическом миксе. Расписание: компилирует реальные строки и агрегирует долларовую дисперсию по строкам, field variability, payout-shape, рейк и bounty-структуру в один schedule-aware σ_ROI.",
+    en: "Averaged: generic planning mode. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); fitted constants only set the width of the range. Mix weights are shares of tournaments in the synthetic mix. Schedule: compiles the real rows and aggregates per-row dollar variance, field variability, payout shape, rake, and bounty structure into one schedule-aware σ_ROI.",
+    ru: "Усреднённо: общий planning-режим. Фриз, ПКО, Мистери и Battle Royale считают σ через runtime-компиляцию строки этого формата по умолчанию на выбранных контролах (та же σ, что в режиме Расписание); подогнанные константы задают только ширину диапазона. В Миксе веса означают долю турниров в синтетическом миксе. Расписание: компилирует реальные строки и агрегирует долларовую дисперсию по строкам, field variability, payout-shape, рейк и bounty-структуру в один schedule-aware σ_ROI.",
   },
   "chart.convergence.exact.breakdown": {
     en: "Variance contribution per row",
@@ -1629,8 +1637,8 @@ export const DICT = {
     ru: "Как читать строку",
   },
   "chart.convergence.assumptions": {
-    en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, Mystery, and Battle Royale use runtime format-specific estimates; PKO uses a validated fitted model, and Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where they are validated; outside that safe zone the table falls back to a point estimate.",
-    ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, Мистери и Battle Royale считают это через runtime-модель своего формата; ПКО использует проверенную аппроксимацию, а Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где он провалидирован; вне безопасной зоны таблица оставляет только точечную оценку.",
+    en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); fitted constants only set the width of the range. Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where they are validated; outside that safe zone the table falls back to a point estimate.",
+    ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, ПКО, Мистери и Battle Royale считают σ через runtime-компиляцию строки этого формата по умолчанию на выбранных контролах (та же σ, что в режиме Расписание); подогнанные константы задают только ширину диапазона. Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где он провалидирован; вне безопасной зоны таблица оставляет только точечную оценку.",
   },
 
   "unit.money": { en: "$", ru: "$" },
@@ -2271,8 +2279,8 @@ export const DICT = {
     ru: "Сколько альтернативных вариантов прогнать. Больше — точнее хвосты и худшие раны, но дольше. 5k — быстро, 50k — с запасом.",
   },
   "help.finishModel": {
-    en: "How your skill distributes across finish places — does it mostly show up as deep runs, or as lots of small cashes?\n\nOptions:\n• Power-law — skill pays off deep; the closer to 1st, the bigger the lift. (default, best match to real samples)\n• Linear skill — steady lift toward the top, less dramatic\n• Stretched-exp — middle ground between those two\n• Plackett–Luce — classic ranking model, mathematically sound\n• Uniform — every paid place gets the same lift (PrimeDope-style — understates swings)\n• Empirical — built from a CSV of your own real finish history",
-    ru: "Как скилл распределяется по местам: глубокие финиши или много мин-кешей?\n\nОпции:\n• Power-law — скилл работает в глубоких финишах; чем ближе к 1-му, тем сильнее лифт (дефолт, лучше всего ложится на реальные выборки)\n• Linear skill — плавный лифт к топу, менее драматичный\n• Stretched-exp — промежуточный вариант\n• Plackett–Luce — классическая модель ранжирования, математически чистая\n• Uniform — все призовые получают одинаковый буст (как у PrimeDope — занижает свинги)\n• Empirical — по CSV реальных финишей",
+    en: "How your skill distributes across finish places — does it mostly show up as deep runs, or as lots of small cashes?\n\nOptions:\n• Power-law — skill pays off deep; the closer to 1st, the bigger the lift. (default: α is solved to hit your ROI and ITM comes from the schedule row — a power-law shape, not a fit to real tournament data)\n• Linear skill — steady lift toward the top, less dramatic\n• Stretched-exp — middle ground between those two\n• Plackett–Luce — classic ranking model, mathematically sound\n• Uniform — every paid place gets the same lift (PrimeDope-style — understates swings)\n• Empirical — built from a CSV of your own real finish history",
+    ru: "Как скилл распределяется по местам: глубокие финиши или много мин-кешей?\n\nОпции:\n• Power-law — скилл работает в глубоких финишах; чем ближе к 1-му, тем сильнее лифт (дефолт: α подбирается под твой ROI, ITM берётся из строки расписания; форма степенная, не подгонка под реальные турниры)\n• Linear skill — плавный лифт к топу, менее драматичный\n• Stretched-exp — промежуточный вариант\n• Plackett–Luce — классическая модель ранжирования, математически чистая\n• Uniform — все призовые получают одинаковый буст (как у PrimeDope — занижает свинги)\n• Empirical — по CSV реальных финишей",
   },
   "help.alphaOverride": {"en":"Adjust the three real-data tilt models from −0.5 to 0.5; blank or 0 keeps the neutral reference shape. Other models use the fixed-ITM calibration or their fixed shape, so manual alpha is unavailable. Switching models clears the override.","ru":"Настройка трёх real-data tilt моделей от −0,5 до 0,5; пустое поле или 0 сохраняет нейтральную форму референса. В других моделях действует калибровка под заданный ITM или фиксированная форма, поэтому ручной alpha недоступен. При смене модели значение сбрасывается."},
   "help.roiStdErr": {
@@ -3001,7 +3009,7 @@ export const DICT = {
   "finishModel.mystery-realdata-step": { en: "Mystery / real-data — step", ru: "Mystery / real-data — ступень" },
   "finishModel.mystery-realdata-linear": { en: "Mystery / real-data — linear", ru: "Mystery / real-data — линейно" },
   "finishModel.mystery-realdata-tilt": { en: "Mystery / real-data — tilt (α)", ru: "Mystery / real-data — наклон (α)" },
-  "finishModel.powerlaw-realdata-influenced": { en: "Power-law — real-data α", ru: "Степенной — real-data α" },
+  "finishModel.powerlaw-realdata-influenced": { en: "Power-law — α from ROI, row ITM", ru: "Степенной — α под ROI, ITM строки" },
 
   // Error boundaries (app/error.tsx, app/global-error.tsx)
   "errorPage.title": { en: "Something went wrong", ru: "Что-то пошло не так" },

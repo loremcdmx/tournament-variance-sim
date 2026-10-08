@@ -28,12 +28,11 @@ import {
   normalizeMix,
   posToAfs,
   roiControlBoundsForFormat,
-  SIGMA_ROI_MYSTERY_RUNTIME_RESID,
-  SIGMA_ROI_MYSTERY_ROYALE,
   type ConvergenceFormat,
   type MixTuple,
   type SigmaBand,
 } from "@/lib/sim/convergenceMath";
+import { buildRuntimeSigmaOverrides } from "@/lib/sim/formatRuntimeSigma";
 
 interface Props {
   schedule?: TournamentRow[];
@@ -170,8 +169,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   // Baseline avgField / roi are taken from the current schedule when present;
   // if the user hasn't loaded a schedule yet, fall back to neutral defaults
   // (1000-player field, +10 % ROI) so the widget is fully usable before any
-  // simulation has been run. Bounty tabs use promoted runtime fits; freeze
-  // uses a synthetic single-row runtime compile at the chosen AFS / ROI.
+  // simulation has been run. Every single-format tab takes its σ from a
+  // synthetic single-row runtime compile at the chosen AFS / ROI / rake.
   const baseline = useMemo(() => {
     let countTotal = 0;
     let fieldWeighted = 0;
@@ -290,7 +289,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
 
   // 3-way mix: [freeze, pko, mystery], each 0..1, sum = 1.
   // null → use schedule-derived baseline. Mystery in the mix uses the
-  // Mystery (not Battle Royale) σ fit — BR is a distinct format selection.
+  // Mystery (not Battle Royale) σ — BR is a distinct format selection.
   const [mixOverride, setMixOverride] = useState<MixTuple | null>(null);
   const baselineMix = useMemo<MixTuple>(
     () => normalizeMix([baseline.freezeShare, baseline.pkoShare, baseline.mysteryShare]),
@@ -351,13 +350,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     }
   };
 
-  // Rake — fraction of buy-in taken by the room. Fit-based tabs were measured
-  // at format-specific baselines (see scripts/fit_sigma_parallel.ts): 10% for
-  // PKO/mystery, 8% for Mystery Battle Royale. Those tabs rescale σ by
-  // (1+FIT_RAKE_format)/(1+rake). Freeze now compiles a runtime single-row
-  // model directly at the chosen rake, so it doesn't rely on a promoted fit.
-  // Default rake still snaps to a realistic baseline on format switch, and
-  // users can slide away from it.
+  // Rake — fraction of buy-in taken by the room. Each tab compiles its
+  // single-row model directly at the chosen rake. The default snaps to a
+  // realistic baseline on format switch (10 %, Battle Royale 8 %), and users
+  // can slide away from it.
   const formatDefaultRake = format === "ocean-ko"
     ? DEFAULT_OCEAN_RAKE * 100
     : format === "mystery-royale" ? 8 : 10;
@@ -394,99 +390,22 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     // rake slider is hidden so there's nothing to override with.
     return buildExactBreakdown(schedule, { finishModel });
   }, [effectiveMode, schedule, finishModel]);
-  const freezeSigmaOverride = useMemo<SigmaBand | null>(() => {
-    if (effectiveMode === "exact") return null;
-    if (format !== "freeze" && format !== "mix") return null;
-    const syntheticFreeze = buildExactBreakdown(
-      [
-        {
-          id: "convergence-freeze-runtime",
-          label: "Freeze",
-          players: Math.max(2, Math.round(effectiveAfs)),
-          buyIn: 10,
-          rake: rakePct / 100,
-          roi: effectiveRoi,
-          payoutStructure: "mtt-standard",
-          gameType: "freezeout",
-          count: 1,
-        },
-      ],
-      { finishModel },
-    );
-    if (!syntheticFreeze) return null;
-    // Runtime single-row freeze sigma is the point estimate we trust most.
-    // The surrounding ± band is intentionally conservative: a sweep over the
-    // full UI box (AFS 50..50k, ROI -30..+100%) showed up to ~50% drift
-    // versus the old generic freeze surface, so we show a coarse 50% envelope
-    // instead of pretending freeze is point-only.
-    const resid = 0.5;
-    return {
-      s: syntheticFreeze.sigmaEff,
-      lo: syntheticFreeze.sigmaEff * (1 - resid),
-      hi: syntheticFreeze.sigmaEff * (1 + resid),
-    };
-  }, [effectiveMode, format, effectiveAfs, rakePct, effectiveRoi, finishModel]);
-  const battleRoyaleSigmaOverride = useMemo<SigmaBand | null>(() => {
-    if (effectiveMode === "exact") return null;
-    if (format !== "mystery-royale") return null;
-    const syntheticBattleRoyale = buildExactBreakdown(
-      [
-        {
-          id: "convergence-br-runtime",
-          label: "Battle Royale",
-          players: BR_FIXED_AFS,
-          buyIn: 50,
-          rake: rakePct / 100,
-          roi: effectiveRoi,
-          payoutStructure: "battle-royale",
-          gameType: "mystery-royale",
-          bountyFraction: 0.5,
-          mysteryBountyVariance: 1.8,
-          pkoHeadVar: 0,
-          itmRate: 0.18,
-          count: 1,
-        },
-      ],
-      { finishModel },
-    );
-    if (!syntheticBattleRoyale) return null;
-    const resid = SIGMA_ROI_MYSTERY_ROYALE.resid;
-    return {
-      s: syntheticBattleRoyale.sigmaEff,
-      lo: syntheticBattleRoyale.sigmaEff * (1 - resid),
-      hi: syntheticBattleRoyale.sigmaEff * (1 + resid),
-    };
-  }, [effectiveMode, format, rakePct, effectiveRoi, finishModel]);
-  const mysterySigmaOverride = useMemo<SigmaBand | null>(() => {
-    if (effectiveMode === "exact") return null;
-    if (format !== "mystery" && format !== "mix") return null;
-    const syntheticMystery = buildExactBreakdown(
-      [
-        {
-          id: "convergence-mystery-runtime",
-          label: "Mystery",
-          players: Math.max(2, Math.round(effectiveAfs)),
-          buyIn: 50,
-          rake: rakePct / 100,
-          roi: effectiveRoi,
-          payoutStructure: "mtt-gg-mystery",
-          gameType: "mystery",
-          bountyFraction: 0.5,
-          mysteryBountyVariance: 2.0,
-          pkoHeadVar: 0.4,
-          count: 1,
-        },
-      ],
-      { finishModel },
-    );
-    if (!syntheticMystery) return null;
-    const resid = SIGMA_ROI_MYSTERY_RUNTIME_RESID;
-    return {
-      s: syntheticMystery.sigmaEff,
-      lo: syntheticMystery.sigmaEff * (1 - resid),
-      hi: syntheticMystery.sigmaEff * (1 + resid),
-    };
-  }, [effectiveMode, format, effectiveAfs, rakePct, effectiveRoi, finishModel]);
+  // Chips take their point σ from the same runtime compile as schedule mode
+  // and the prove-edge card (see formatRuntimeSigma); only bands keep the
+  // per-format residual constants.
+  const runtimeSigmaOverrides = useMemo(() => {
+    if (effectiveMode === "exact") return undefined;
+    return buildRuntimeSigmaOverrides({
+      format,
+      mix,
+      point: {
+        afs: effectiveAfs,
+        roi: effectiveRoi,
+        rake: rakePct / 100,
+        finishModel,
+      },
+    });
+  }, [effectiveMode, format, mix, effectiveAfs, effectiveRoi, rakePct, finishModel]);
   const oceanKoSigmaOverride = useMemo<SigmaBand | null>(() => {
     if (format !== "ocean-ko") return null;
     return buildOceanKoSigmaBand({
@@ -499,18 +418,13 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   }, [format, effectiveAfs, effectiveRoi, rakePct, finishModel, oceanKoTotalTicket]);
   const sigmaOverrides = useMemo<
     Partial<Record<ConvergenceRowFormat, SigmaBand>> | undefined
-  >(() => {
-    const overrides: Partial<
-      Record<ConvergenceRowFormat, SigmaBand>
-    > = {};
-    if (freezeSigmaOverride) overrides.freeze = freezeSigmaOverride;
-    if (mysterySigmaOverride) overrides.mystery = mysterySigmaOverride;
-    if (battleRoyaleSigmaOverride) {
-      overrides["mystery-royale"] = battleRoyaleSigmaOverride;
-    }
-    if (oceanKoSigmaOverride) overrides["ocean-ko"] = oceanKoSigmaOverride;
-    return Object.keys(overrides).length > 0 ? overrides : undefined;
-  }, [freezeSigmaOverride, mysterySigmaOverride, battleRoyaleSigmaOverride, oceanKoSigmaOverride]);
+  >(
+    () =>
+      oceanKoSigmaOverride
+        ? { ...runtimeSigmaOverrides, "ocean-ko": oceanKoSigmaOverride }
+        : runtimeSigmaOverrides,
+    [runtimeSigmaOverrides, oceanKoSigmaOverride],
+  );
 
   const rows = useMemo(() => {
     return computeConvergenceRows({

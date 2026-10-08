@@ -7,10 +7,10 @@
  * non-MBR, field !== 18 for MBR) is extrapolation and not band-worthy —
  * policy reports `outside-fit-box`.
  *
- * PKO still uses its promoted fit directly. Mystery and Battle Royale now
- * center the user-facing chart on runtime single-row compiles with separately
- * revalidated runtime-vs-sim residual bands, but those runtime bands are only
- * signed off inside the same user-facing boxes below. So the policy remains
+ * Every single-format card (freeze, PKO, Mystery, Battle Royale) centers its
+ * point σ on a runtime single-row compile (`formatRuntimeSigma`); the fitted
+ * residual constants only set the half-width of the band around it, and that
+ * band is signed off only inside the boxes below. So the policy remains
  * simple: in-box → numeric, outside → warning.
  * Ocean KO has no promoted residual fit: its runtime variance upper bound
  * stays unbanded at every field size and ROI.
@@ -95,12 +95,11 @@ export function inferRowFormat(row: TournamentRow): ConvergenceRowFormat {
  * extrapolation of the closed-form σ fit — the point estimate is still
  * shown as a directional ballpark, but the numeric ±band is suppressed.
  *
- * Freeze: field ∈ [50, 50 000]; ROI unrestricted because the current
- * production fit is ROI-invariant (`C1 === 0` in `SIGMA_ROI_FREEZE`).
- * If that ever changes — i.e. if `C1 != 0` — this contract MUST be
- * updated. A canary test (`freeze ROI-invariant contract`) in
- * `convergencePolicy.test.ts` will fail the moment `C1` changes, making
- * the drift impossible to miss.
+ * Freeze: field ∈ [50, 50 000]; ROI unrestricted. That box was set when the
+ * freeze fit was ROI-invariant (`C1 === 0` in `SIGMA_ROI_FREEZE`; a canary
+ * test in `convergencePolicy.test.ts` still pins it). The point σ is now the
+ * runtime compile and does rise with ROI, so the band's ROI range has not been
+ * re-validated; only the point estimate is.
  *
  * PKO / Mystery: field ∈ [50, 50 000], ROI ∈ [−0.20, +0.80] — the 11×18
  * grid the 2D log-poly was fit on (scripts/fit_beta_{pko,mystery}.json).

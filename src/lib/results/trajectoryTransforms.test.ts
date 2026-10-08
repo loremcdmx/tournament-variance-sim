@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   computeExpectedRakebackCurve,
+  hideJackpotsByDefault,
+  jackpotHiddenShare,
+  JACKPOT_AUTO_HIDE_MAX_SHARE,
   shiftResultByRakeback,
   stripJackpots,
   supportsJackpotFilter,
@@ -34,6 +37,36 @@ describe("supportsJackpotFilter", () => {
     expect(supportsJackpotFilter([makeRow({ gameType: "mystery-royale" })])).toBe(true);
     expect(supportsJackpotFilter([makeRow({ gameType: "pko" })])).toBe(false);
     expect(supportsJackpotFilter(undefined)).toBe(false);
+  });
+});
+
+describe("jackpot filter default", () => {
+  const maskWith = (hidden: number, total: number) => {
+    const mask = new Uint8Array(total);
+    mask.fill(1, 0, hidden);
+    return { jackpotMask: mask };
+  };
+
+  it("reports the share of runs stripJackpots would remove", () => {
+    expect(jackpotHiddenShare(maskWith(0, 1000))).toBe(0);
+    expect(jackpotHiddenShare(maskWith(210, 1000))).toBeCloseTo(0.21, 12);
+    expect(jackpotHiddenShare(maskWith(1000, 1000))).toBe(1);
+  });
+
+  it("treats a missing or empty mask as nothing to hide", () => {
+    expect(jackpotHiddenShare({ jackpotMask: new Uint8Array(0) })).toBe(0);
+    expect(jackpotHiddenShare({} as Pick<SimulationResult, "jackpotMask">)).toBe(0);
+  });
+
+  it("starts on only while the filter hides at most 5% of runs", () => {
+    expect(JACKPOT_AUTO_HIDE_MAX_SHARE).toBe(0.05);
+    // Battle Royale $10 at +10% ROI: ~4% at 2k tournaments, 21% at 10k, 69% at 50k.
+    expect(hideJackpotsByDefault(0.04)).toBe(true);
+    expect(hideJackpotsByDefault(0.05)).toBe(true);
+    expect(hideJackpotsByDefault(0.0501)).toBe(false);
+    expect(hideJackpotsByDefault(0.21)).toBe(false);
+    expect(hideJackpotsByDefault(0.69)).toBe(false);
+    expect(hideJackpotsByDefault(0)).toBe(true);
   });
 });
 

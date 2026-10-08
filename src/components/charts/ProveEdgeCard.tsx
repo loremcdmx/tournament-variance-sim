@@ -3,16 +3,16 @@
 /**
  * Companion to the convergence widget. Answers a planning question:
  * "how many tournaments are needed before a non-zero ROI is likely
- * distinguishable from normal variance?" It uses the same per-format σ
- * fits and the same schedule-aware `buildExactBreakdown` machinery for
- * schedule mode.
+ * distinguishable from normal variance?" It uses the same per-format runtime σ
+ * as the convergence chips and the same schedule-aware
+ * `buildExactBreakdown` machinery for schedule mode.
  *
  * Self-contained: own format / mode controls. Reads the user's schedule
  * via prop only when the Schedule tab is active. Does not modify
  * ConvergenceChart state, so the existing widget stays exactly as it is.
  */
 import { RangeInput } from "@/components/ui/RangeInput";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   AFS_MAX,
   AFS_MIN,
@@ -24,10 +24,17 @@ import {
 } from "@/lib/sim/convergenceMath";
 import {
   computeProveEdge,
+  proveEdgeRuntimeSigmaPoints,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
   type ProveEdgeFormat,
+  type ProveEdgeInput,
+  type ProveEdgeResult,
 } from "@/lib/sim/proveEdge";
+import {
+  formatRuntimeSigma,
+  hasFormatRuntimeSigma,
+} from "@/lib/sim/formatRuntimeSigma";
 import { inferRowFormat } from "@/lib/sim/convergencePolicy";
 import { DEFAULT_OCEAN_RAKE } from "@/lib/sim/gameType";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
@@ -74,6 +81,61 @@ const READING_GUIDE: { titleKey: DictKey; bodyKey: DictKey }[] = [
 ];
 
 const MBR_FIXED_AFS = 18;
+/** Same default rake the Battle Royale convergence chip uses. */
+const DEFAULT_BR_RAKE_PCT = 8;
+
+function defaultRakePct(format: ProveEdgeFormat): number {
+  if (format === "ocean-ko") return DEFAULT_OCEAN_RAKE * 100;
+  if (format === "mystery-royale") return DEFAULT_BR_RAKE_PCT;
+  return 10;
+}
+
+/** Above this field one runtime σ compiles in ~40–150 ms, so the 19-σ table
+ *  would freeze the page for up to seconds if built inside a render. */
+const PROGRESSIVE_SIGMA_FIELD = 10_000;
+
+/**
+ * `computeProveEdge` for the card. Small fields compute in the render. On
+ * large fields every σ the table needs is first warmed in the shared cache,
+ * one per macrotask, while the previous table stays on screen marked as
+ * pending; the final call then reads only cached σ and is instant.
+ */
+function useProveEdgeResult(input: ProveEdgeInput): {
+  result: ProveEdgeResult;
+  pending: boolean;
+} {
+  const points = useMemo(() => proveEdgeRuntimeSigmaPoints(input), [input]);
+  const [warmedInput, setWarmedInput] = useState<ProveEdgeInput | null>(null);
+  const [shown, setShown] = useState<ProveEdgeResult | null>(null);
+  const cold =
+    input.afs > PROGRESSIVE_SIGMA_FIELD &&
+    points.some(({ format, point }) => !hasFormatRuntimeSigma(format, point));
+  const ready = !cold || warmedInput === input || shown === null;
+  const fresh = useMemo(
+    () => (ready ? computeProveEdge(input) : null),
+    [ready, input],
+  );
+  if (fresh !== null && fresh !== shown) setShown(fresh);
+
+  useEffect(() => {
+    if (ready) return;
+    let next = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const step = () => {
+      const target = points[next++];
+      if (target) {
+        formatRuntimeSigma(target.format, target.point);
+        timer = setTimeout(step, 0);
+      } else {
+        setWarmedInput(input);
+      }
+    };
+    timer = setTimeout(step, 0);
+    return () => clearTimeout(timer);
+  }, [ready, points, input]);
+
+  return { result: fresh ?? (shown as ProveEdgeResult), pending: !ready };
+}
 
 /** Opening tab: whichever format the user actually plays most of. Showing PKO
  *  numbers to a freezeout-only schedule is a silent lie. */
@@ -152,9 +214,10 @@ export function ProveEdgeCard({
       : dominantScheduleFormat(schedule),
   );
   const [afsPos, setAfsPos] = useState<number>(afsToPos(200));
-  const [rakePct, setRakePct] = useState<number>(() =>
-    format === "ocean-ko" ? DEFAULT_OCEAN_RAKE * 100 : 10,
-  );
+  // Like the convergence chips: each format opens at its own default rake
+  // until the user moves the control, then their value sticks across tabs.
+  const [rakeOverridePct, setRakePct] = useState<number | null>(null);
+  const rakePct = rakeOverridePct ?? defaultRakePct(format);
   const [ciPct, setCiPct] = useState<number>(95);
   const [currentRoiPct, setCurrentRoiPct] = useState<number>(10);
   const [showLosing, setShowLosing] = useState<boolean>(false);
@@ -177,19 +240,18 @@ export function ProveEdgeCard({
     ? PROVE_EDGE_DEFAULT_CANDIDATES
     : PROVE_EDGE_POSITIVE_CANDIDATES;
 
-  const result = useMemo(
-    () =>
-      computeProveEdge({
-        format,
-        schedule: isExact ? (schedule ?? null) : null,
-        finishModel,
-        afs: effectiveAfsSingle,
-        rake: rakePct / 100,
-        oceanKoTotalTicket,
-        z: ciToZ(ciPct / 100),
-        currentRoi: isExact ? 0 : currentRoiPct / 100,
-        candidates,
-      }),
+  const proveEdgeInput = useMemo(
+    () => ({
+      format,
+      schedule: isExact ? (schedule ?? null) : null,
+      finishModel,
+      afs: effectiveAfsSingle,
+      rake: rakePct / 100,
+      oceanKoTotalTicket,
+      z: ciToZ(ciPct / 100),
+      currentRoi: isExact ? 0 : currentRoiPct / 100,
+      candidates,
+    }),
     [
       format,
       isExact,
@@ -203,6 +265,10 @@ export function ProveEdgeCard({
       candidates,
     ],
   );
+  // Each candidate ROI is a runtime compile; dragging a slider must not queue
+  // one table per tick, and large fields are warmed off the render path.
+  const deferredProveEdgeInput = useDeferredValue(proveEdgeInput);
+  const { result, pending } = useProveEdgeResult(deferredProveEdgeInput);
 
   const scheduleEmpty = isExact && (!schedule || schedule.length === 0);
   const outOfBox = result.bandPolicy === "outside-fit-box";
@@ -227,12 +293,7 @@ export function ProveEdgeCard({
           <button
             key={f.id}
             type="button"
-            onClick={() => {
-              setFormat(f.id);
-              if (f.id === "ocean-ko" && format !== "ocean-ko") {
-                setRakePct(DEFAULT_OCEAN_RAKE * 100);
-              }
-            }}
+            onClick={() => setFormat(f.id)}
             className={`rounded border px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
               format === f.id
                 ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
@@ -478,7 +539,7 @@ export function ProveEdgeCard({
 
       {/* Anchor summary */}
       {!scheduleEmpty && (
-        <div className="rounded border-l-2 border-[color:var(--color-accent)]/60 bg-[color:var(--color-accent)]/5 px-3 py-2 text-[11px] leading-snug text-[color:var(--color-fg-muted)]">
+        <div className={`rounded border-l-2 border-[color:var(--color-accent)]/60 bg-[color:var(--color-accent)]/5 px-3 py-2 text-[11px] leading-snug text-[color:var(--color-fg-muted)] transition-opacity ${pending ? "opacity-50" : ""}`}>
           <span className="text-[color:var(--color-accent)]">
             {t("proveEdge.anchor.prefix")}
           </span>{" "}
@@ -505,8 +566,16 @@ export function ProveEdgeCard({
           {t("chart.convergence.oceanKo.upperBound")}
         </div>
       )}
+      {!scheduleEmpty && pending && (
+        <div role="status" className="text-[11px] text-[color:var(--color-fg-dim)]">
+          {t("proveEdge.pending")}
+        </div>
+      )}
       {!scheduleEmpty && (
-        <div className="overflow-x-auto">
+        <div
+          className={`overflow-x-auto transition-opacity ${pending ? "opacity-50" : ""}`}
+          aria-busy={pending}
+        >
           <table className="w-full border-collapse text-[12px] tabular-nums">
             <thead>
               <tr className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
