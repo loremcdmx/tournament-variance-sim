@@ -1073,6 +1073,24 @@ export const DICT = {
     ru: "E[ln роста], на всю дистанцию",
   },
   "advStats.na.negEv": { en: "n/a — not +EV", ru: "н/д — не в плюсе" },
+  "stat.sigma": { en: "Profit σ", ru: "σ профита" },
+  "advStats.unit.sigma": { en: "$, per full distance", ru: "$, на всю дистанцию" },
+  "stat.sigma.tip": {
+    en: "Standard deviation of final profit over one full simulated distance. On a heavy tail the ± after it is one standard error of this σ, computed from the kurtosis of the simulated profits, so it stays honest when a few rare big scores carry the variance. The normal-theory formula understates that error many times over on jackpot formats (Ocean KO, Mystery, Battle Royale).",
+    ru: "Стандартное отклонение итогового профита за одну полную симулированную дистанцию. При тяжёлом хвосте рядом стоит ± — одна стандартная ошибка самой σ, посчитанная по куртозису симулированных профитов: она остаётся честной, когда дисперсию задают несколько редких крупных заносов. Формула для нормального распределения занижает эту ошибку в разы на форматах с джекпотами (Ocean KO, Mystery, Battle Royale).",
+  },
+  "advStats.heavyTail.badge": {
+    en: "unstable · heavy tail",
+    ru: "неустойчиво · тяжёлый хвост",
+  },
+  "advStats.heavyTail.tip": {
+    en: "Heavy right tail: σ² here is set by a few rare big scores, so this figure can move several-fold between seeds. Read it as an order of magnitude, not a target. The bankroll from the simulated paths (the ruin rows) is the stable one.",
+    ru: "Тяжёлый правый хвост: σ² задают несколько редких крупных заносов, поэтому цифра может меняться в разы от сида к сиду. Это порядок величины, а не ориентир. Устойчив банкролл по симулированным путям (строки про разорение).",
+  },
+  "pd.report.heavyTail": {
+    en: "overstated on heavy tails",
+    ru: "завышено при тяжёлом хвосте",
+  },
   "advStats.rowKelly": {
     en: "Per-row Kelly — fraction · bankroll",
     ru: "Келли по строкам — доля · банкролл",

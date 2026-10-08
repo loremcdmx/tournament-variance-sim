@@ -1017,8 +1017,11 @@ export interface SimulationResult {
      * the user "bumping samples higher makes the numbers N times tighter".
      *
      * - seMean   = stdDev / √S — 1σ noise on the reported mean.
-     * - seStdDev = stdDev / √(2·(S−1)) — 1σ noise on the reported stdDev
-     *   (Gaussian approximation; conservative for skewed distributions).
+     * - seStdDev = stdDev/2 · √((κ−1)/(S−1)), κ = plain kurtosis of the final
+     *   profits — 1σ noise on the reported stdDev. For κ = 3 (normal data)
+     *   this is the textbook stdDev / √(2·(S−1)); the normal formula UNDER-
+     *   states the error on skewed, heavy-tailed profits (Ocean KO, Mystery,
+     *   Battle Royale), where κ runs to hundreds.
      * - ci95HalfWidthMean = 1.96 × seMean — 95 % CI half-width on mean.
      * - roiMcErrorPct — MC-uncertainty of the reported ROI as a percentage
      *   of it, i.e. |1.96·seMean / mean|. Answers "is this +ROI real or

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { mulberry32 } from "./rng";
 import { computeScalarStats } from "./resultStats";
 
 // Right-skewed by construction: a fat cluster of small losses and two big
@@ -236,5 +237,67 @@ describe("computeScalarStats probUpNeverBusted", () => {
   it("is null without a bankroll", () => {
     const out = stats(finals, runningMins, 0);
     expect(out.probUpNeverBusted).toBeNull();
+  });
+});
+
+describe("computeScalarStats standard error of σ", () => {
+  // Log-normal profits: right-skewed with a heavy tail, like a bounty format.
+  function logNormalSample(rng: () => number, n: number, s: number): Float64Array {
+    const xs = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const u = Math.max(1e-12, rng());
+      const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng());
+      xs[i] = s === 0 ? z : Math.exp(s * z);
+    }
+    return xs;
+  }
+
+  function sdOfSd(s: number) {
+    const n = 4000;
+    const reps = 60;
+    const rng = mulberry32(12345);
+    const sds: number[] = [];
+    const reported: number[] = [];
+    const normalTheory: number[] = [];
+    for (let r = 0; r < reps; r++) {
+      const xs = logNormalSample(rng, n, s);
+      const out = computeScalarStats(xs, new Float64Array(n), n, N, 0, TOTAL_BUY_IN);
+      sds.push(out.stdDev);
+      reported.push(out.mcSeStdDev);
+      normalTheory.push(out.stdDev / Math.sqrt(2 * (n - 1)));
+    }
+    return {
+      actual: sampleSd(sds),
+      reported: mean(reported),
+      normalTheory: mean(normalTheory),
+    };
+  }
+
+  it("reduces to the textbook σ/√(2(S−1)) when the profits are normal", () => {
+    const { actual, reported, normalTheory } = sdOfSd(0);
+    expect(reported / normalTheory).toBeCloseTo(1, 1);
+    expect(reported / actual).toBeGreaterThan(0.8);
+    expect(reported / actual).toBeLessThan(1.25);
+  });
+
+  it("tracks the real run-to-run spread of σ on a heavy-tailed sample", () => {
+    const { actual, reported, normalTheory } = sdOfSd(0.6);
+    expect(reported / actual).toBeGreaterThan(0.7);
+    expect(reported / actual).toBeLessThan(1.4);
+    expect(normalTheory / actual).toBeLessThan(0.6);
+  });
+
+  it("is the kurtosis form σ/2·√((κ−1)/(S−1)) of the sample's own kurtosis", () => {
+    const out = stats(SKEWED, SKEWED.map((v) => Math.min(0, v) - 1), 0);
+    const kappa = g2Kurtosis(SKEWED) + 3;
+    expect(out.mcSeStdDev).toBeCloseTo(
+      (sampleSd(SKEWED) / 2) * Math.sqrt((kappa - 1) / (S - 1)),
+      12,
+    );
+  });
+
+  it("falls back to the normal-theory error below four samples", () => {
+    const out = stats([1, 5, 12], [0, 0, 0], 0);
+    expect(out.mcSeStdDev).toBeCloseTo(sampleSd([1, 5, 12]) / Math.sqrt(2 * 2), 12);
   });
 });

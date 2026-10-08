@@ -10,6 +10,11 @@ import type { DictKey } from "@/lib/i18n/dict";
 import { formatMinimumBankroll, money as usdMoney, pct } from "@/lib/results/formatters";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { relativeDifferencePct, summarizePdStats } from "@/lib/results/primedopeDiagnostics";
+import {
+  formatSigmaError,
+  hasHeavyTail,
+  sigmaRelativeError,
+} from "@/lib/results/sigmaReliability";
 import type { ControlsState } from "../ControlsPanel";
 import { useMoneyFmt } from "./UnitContext";
 import { Card } from "../ui/Section";
@@ -73,7 +78,11 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
     const ci95 = ci(1.96);
     const ci997 = ci(3);
     const probLoss = 1 - r.stats.probProfit;
+    const heavyTail = hasHeavyTail(r.stats);
+    const sigmaError = sigmaRelativeError(r.stats);
     return {
+      heavyTail,
+      sdError: heavyTail && sigmaError != null ? formatSigmaError(sigmaError) : "",
       N,
       cost,
       evMath,
@@ -105,9 +114,12 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
       <div className="grid grid-cols-1 gap-1 font-mono text-[11px]">{children}</div>
     </div>
   );
-  const Line = ({ k, v }: { k: string; v: string }) => (
+  const Line = ({ k, v, note }: { k: string; v: string; note?: string }) => (
     <div className="flex justify-between gap-3">
-      <span className="text-[color:var(--color-fg-dim)]">{k}</span>
+      <span className="text-[color:var(--color-fg-dim)]">
+        {k}
+        {note && <span className="ml-1 text-amber-400/80">· {note}</span>}
+      </span>
       <span className="tabular-nums text-[color:var(--color-fg)]">{v}</span>
     </div>
   );
@@ -142,7 +154,10 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
               <Line k={t("pd.report.mean")} v={fmt$(col.data.meanSim)} />
               <Line k={t("pd.report.expectedRoi")} v={fmtPct(col.data.roiMath)} />
               <Line k={t("pd.report.realizedRoi")} v={fmtPct(col.data.roiSim)} />
-              <Line k={t("pd.report.stdDev")} v={fmt$(col.data.sdSim)} />
+              <Line
+                k={t("pd.report.stdDev")}
+                v={`${fmt$(col.data.sdSim)}${col.data.sdError ? ` ${col.data.sdError}` : ""}`}
+              />
             </Section>
             <Section title={t("pd.report.intervals")}>
               <Line
@@ -163,8 +178,16 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
               <Line k={t("pd.report.ror15")} v={minimumBankroll(col.data.ror15)} />
               <Line k={t("pd.report.ror5")} v={minimumBankroll(col.data.ror5)} />
               <Line k={t("pd.report.ror1")} v={minimumBankroll(col.data.ror1)} />
-              <Line k={t("pd.report.ror5Gaussian")} v={minimumBankroll(col.data.ror5Gauss)} />
-              <Line k={t("pd.report.ror1Gaussian")} v={minimumBankroll(col.data.ror1Gauss)} />
+              <Line
+                k={t("pd.report.ror5Gaussian")}
+                v={minimumBankroll(col.data.ror5Gauss)}
+                note={col.data.heavyTail ? t("pd.report.heavyTail") : undefined}
+              />
+              <Line
+                k={t("pd.report.ror1Gaussian")}
+                v={minimumBankroll(col.data.ror1Gauss)}
+                note={col.data.heavyTail ? t("pd.report.heavyTail") : undefined}
+              />
               <Line
                 k={t("pd.report.neverBelow")}
                 v={`${Math.round(col.data.neverBelow * col.res.samples)} / ${col.res.samples.toLocaleString()}`}

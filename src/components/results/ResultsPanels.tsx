@@ -9,6 +9,11 @@ import type { ControlsState } from "@/components/ControlsPanel";
 import { Card } from "@/components/ui/Section";
 import { InfoTooltip } from "@/components/ui/Tooltip";
 import { money } from "@/lib/results/formatters";
+import {
+  formatSigmaError,
+  hasHeavyTail,
+  sigmaRelativeError,
+} from "@/lib/results/sigmaReliability";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 
@@ -184,12 +189,24 @@ export function AdvancedStatsCard({
   const s = result.stats;
   const notPlus = t("advStats.na.negEv");
   const kellyDefined = s.kellyFraction > 0 && Number.isFinite(s.kellyBankroll);
+  const heavyTail = hasHeavyTail(s);
+  const sigmaError = sigmaRelativeError(s);
   const stats: Array<{
     label: string;
     unit: string;
     value: string;
     tip: string;
+    unstable?: boolean;
   }> = [
+    {
+      label: t("stat.sigma"),
+      unit: t("advStats.unit.sigma"),
+      value:
+        sigmaError != null && heavyTail
+          ? `${money(s.stdDev)} ${formatSigmaError(sigmaError)}`
+          : money(s.stdDev),
+      tip: t("stat.sigma.tip"),
+    },
     {
       label: t("stat.sharpe"),
       unit: t("advStats.unit.perDistance"),
@@ -219,12 +236,14 @@ export function AdvancedStatsCard({
       unit: t("advStats.unit.kellyShare"),
       value: kellyDefined ? s.kellyFraction.toFixed(4) : notPlus,
       tip: t("stat.kelly.tip"),
+      unstable: kellyDefined && heavyTail,
     },
     {
       label: t("stat.kellyBR"),
       unit: t("advStats.unit.kellyBr"),
       value: kellyDefined ? money(s.kellyBankroll) : notPlus,
       tip: t("stat.kellyBR.tip"),
+      unstable: kellyDefined && heavyTail,
     },
     {
       label: t("stat.logG"),
@@ -248,11 +267,22 @@ export function AdvancedStatsCard({
             <span className="flex min-w-0 flex-col">
               <span className="flex items-center gap-1 text-[color:var(--color-fg-dim)]">
                 {stat.label}
-                <InfoTooltip content={stat.tip} />
+                <InfoTooltip
+                  content={
+                    stat.unstable
+                      ? `${stat.tip} ${t("advStats.heavyTail.tip")}`
+                      : stat.tip
+                  }
+                />
               </span>
               <span className="text-[10px] text-[color:var(--color-fg-muted)]">
                 {stat.unit}
               </span>
+              {stat.unstable && (
+                <span className="text-[10px] text-amber-400/80">
+                  {t("advStats.heavyTail.badge")}
+                </span>
+              )}
             </span>
             <span className="shrink-0 font-mono tabular-nums text-[color:var(--color-fg)]">
               {stat.value}
@@ -265,7 +295,18 @@ export function AdvancedStatsCard({
         <>
           <div className="group mt-4 mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             {t("advStats.rowKelly")}
-            <InfoTooltip content={t("advStats.rowKelly.tip")} />
+            <InfoTooltip
+              content={
+                heavyTail
+                  ? `${t("advStats.rowKelly.tip")} ${t("advStats.heavyTail.tip")}`
+                  : t("advStats.rowKelly.tip")
+              }
+            />
+            {heavyTail && (
+              <span className="font-normal normal-case tracking-normal text-amber-400/80">
+                {t("advStats.heavyTail.badge")}
+              </span>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-x-6 gap-y-1 font-mono text-[11px] sm:grid-cols-2 lg:grid-cols-3">
             {result.decomposition.map((row) => {
