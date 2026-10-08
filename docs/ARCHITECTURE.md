@@ -53,6 +53,8 @@ This document describes the data flow, module boundaries, and invariants of the 
 
 ## UI surface map
 
+The default MTT view is `EmpiricalOceanExplorer`, a deterministic comparison of two public Space moment anchors and paired Ocean mechanical coefficients. `src/lib/calibration/oceanTransport.ts` computes component means and exposure covariance; it does not sample a payoff distribution or invoke the worker pool. The public JSON files contain runtime parameters only. Detailed research pages and evaluations are excluded. Switching to the mechanical view restores the existing schedule/worker/results flow; importing a shared mechanical scenario selects that view automatically.
+
 The simulator UI is no longer one undifferentiated `ResultsView.tsx` blob.
 The current split is:
 

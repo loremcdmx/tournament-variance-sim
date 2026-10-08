@@ -1,0 +1,42 @@
+{
+  "profileId": "space-ko-tt-eur10-field500-1999-v1",
+  "fieldBin": "1000-1499",
+  "trainingEvents": 64136,
+  "trainingEntries": 73383,
+  "anchors": [
+    {
+      "capBountyBI": 25,
+      "moments": {
+        "meanK": 1.1441779967568917,
+        "secondK": 1.4475021828614194,
+        "meanProfit": 0.26542195630086063,
+        "secondProfit": 40.30508551126958,
+        "crossProfitK": 0.14831933562261448,
+        "meanCash": 0.7600885213805507,
+        "secondCash": 22.22775847166724,
+        "crossCashK": 0.8590087944217756,
+        "meanBounty": 0.6494743463654891,
+        "secondBounty": 5.132166135106994,
+        "crossBountyK": 0.7367609930189751,
+        "crossCashBounty": 7.344572271055523
+      }
+    },
+    {
+      "capBountyBI": 100,
+      "moments": {
+        "meanK": 1.1441779967568917,
+        "secondK": 1.4475021828614194,
+        "meanProfit": 0.3545988908971248,
+        "secondProfit": 57.391285550950606,
+        "crossProfitK": 0.25223940369790754,
+        "meanCash": 0.7600885213805507,
+        "secondCash": 22.22775847166724,
+        "crossCashK": 0.8590087944217756,
+        "meanBounty": 0.738651280961753,
+        "secondBounty": 13.88139767024615,
+        "crossBountyK": 0.8406810610942683,
+        "crossCashBounty": 11.616968427189505
+      }
+    }
+  ]
+}
