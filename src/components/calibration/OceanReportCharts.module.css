@@ -47,14 +47,13 @@
 .measureToggle button[aria-pressed="true"] { background: var(--c-bg-elev-2); color: var(--c-fg); border-color: var(--c-border-strong); }
 .showBest { display: flex; align-items: center; gap: .5rem; min-height: 44px; color: var(--c-fg-muted); font-size: .85rem; cursor: pointer; }
 .showBest input { accent-color: var(--c-accent); }
+.runToggles { display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
 .formatToggles { display: flex; flex-wrap: wrap; gap: .4rem; margin-block: .75rem; }
 .formatToggles button { display: flex; align-items: center; gap: .5rem; min-height: 40px; padding: .45rem .7rem; color: var(--c-fg); border: 1px solid var(--c-border); font-size: .8rem; }
 .formatToggles button[aria-pressed="false"] { opacity: .5; text-decoration: line-through; }
 .formatToggles button:disabled { cursor: default; opacity: 1; }
 .measureToggle button:focus-visible, .formatToggles button:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 3px; }
 .aggregatePane { min-width: 0; padding-top: 1rem; }
-.aggregatePane h4 { margin: 0 0 .3rem; color: var(--c-fg-muted); font-size: .875rem; font-weight: 550; }
-.worstPane h4 { color: var(--c-fg); font-weight: 650; }
 .aggregateChart { display: block; width: 100%; cursor: crosshair; overflow: hidden; }
 .aggregateChart text { font-size: 12px; font-variant-numeric: tabular-nums; }
 .aggregateReadouts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1.5rem; margin-top: 1rem; }

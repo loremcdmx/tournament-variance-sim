@@ -32,9 +32,9 @@ function risks(row: FormatComparisonSummary, kind: RiskKind): ThresholdRisk[] {
   return (kind === "drawdownRisks" ? row.drawdownRiskCurve : row.evShortfallRiskCurve) ?? row[kind];
 }
 
-function Swatch({ format }: { format: ComparisonFormat }) {
+function Swatch({ format, solid = false }: { format: ComparisonFormat; solid?: boolean }) {
   return <svg width="26" height="10" aria-hidden="true" className={styles.swatch}>
-    <line x1="0" y1="5" x2="26" y2="5" stroke={colors[format]} strokeWidth={format === "ocean-ko" ? 3 : 2} strokeDasharray={dashes[format]} />
+    <line x1="0" y1="5" x2="26" y2="5" stroke={colors[format]} strokeWidth={format === "ocean-ko" ? 3 : 2} strokeDasharray={solid ? undefined : dashes[format]} />
   </svg>;
 }
 
@@ -199,8 +199,9 @@ function nearestPoint(points: CurvePoint[], target: number): CurvePoint | undefi
   return points.reduce<CurvePoint | undefined>((best, point) => !best || Math.abs(point.entries - target) < Math.abs(best.entries - target) ? point : best, undefined);
 }
 
-function AggregatePane({ rows, side, measure, selectedEntry, onSelect, t, n }: {
-  rows: FormatComparisonSummary[]; side: AggregateSide; measure: AggregateMeasure; selectedEntry: number;
+function AggregatePlot({ rows, sides, showEV, expectedRoi, measure, selectedEntry, onSelect, t, n }: {
+  rows: FormatComparisonSummary[]; sides: AggregateSide[]; showEV: boolean; expectedRoi: number;
+  measure: AggregateMeasure; selectedEntry: number;
   onSelect: (entry: number) => void; t: Translate; n: NumberFormat;
 }) {
   const id = useId();
@@ -216,10 +217,12 @@ function AggregatePane({ rows, side, measure, selectedEntry, onSelect, t, n }: {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const height = side === "worst" ? 300 : 250;
+  const height = width < 600 ? 320 : 400;
   const left = 67, right = Math.max(left + 1, width - 16), top = 18, bottom = height - 48;
   const maximumX = Math.max(1, ...rows.map(row => row.distance));
-  const values = rows.flatMap(row => row.downsideCurve.map(point => aggregateValue(point, side, measure)));
+  const evAt = (entry: number) => measure === "ev" ? 0 : expectedRoi * entry;
+  const values = rows.flatMap(row => sides.flatMap(side => row.downsideCurve.map(point => aggregateValue(point, side, measure))));
+  if (showEV) values.push(0, evAt(maximumX));
   const floor = Math.min(0, ...values), ceiling = Math.max(1 + floor, 0, ...values);
   const span = ceiling - floor;
   const minimumY = floor - span * 0.04, maximumY = ceiling + span * 0.04;
@@ -227,14 +230,13 @@ function AggregatePane({ rows, side, measure, selectedEntry, onSelect, t, n }: {
   const y = (value: number) => bottom - (value - minimumY) / (maximumY - minimumY) * (bottom - top);
   const axisNumber = (value: number) => Math.abs(value) >= 1e6 ? `${n(value / 1e6, 1)}M`
     : Math.abs(value) >= 1000 ? `${n(value / 1000, 1)}k` : n(value, 0);
-  const title = t(side === "worst" ? "oceanReport.aggregateWorst" : "oceanReport.aggregateBest");
+  const title = t("oceanReport.aggregateTitle");
   const selectAtPointer = (event: PointerEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const position = (event.clientX - rect.left) / rect.width * width;
     onSelect(Math.max(0, Math.min(maximumX, (position - left) / (right - left) * maximumX)));
   };
-  return <div ref={container} className={`${styles.aggregatePane} ${side === "worst" ? styles.worstPane : ""}`}>
-    <h4>{title}</h4>
+  return <div ref={container} className={styles.aggregatePane}>
     <svg viewBox={`0 0 ${width} ${height}`} style={{ height }} className={styles.aggregateChart} role="img"
       aria-labelledby={`${id}-title ${id}-description`} onPointerDown={selectAtPointer}
       onPointerMove={event => { if (event.pointerType === "mouse") selectAtPointer(event); }}>
@@ -246,28 +248,36 @@ function AggregatePane({ rows, side, measure, selectedEntry, onSelect, t, n }: {
           <text x={left - 9} y={y(tick) + 4} textAnchor="end" fill="var(--c-fg-muted)">{axisNumber(tick)}</text>
         </g>;
       })}
-      <line x1={left} x2={right} y1={y(0)} y2={y(0)} stroke="var(--c-fg-dim)" strokeDasharray="3 4" />
+      <line x1={left} x2={right} y1={y(0)} y2={y(0)} stroke="var(--c-fg-dim)" />
       {[0, .25, .5, .75, 1].map(fraction => <text key={fraction} x={x(fraction * maximumX)} y={height - 24}
         textAnchor={fraction === 0 ? "start" : fraction === 1 ? "end" : "middle"} fill="var(--c-fg-muted)">{axisNumber(fraction * maximumX)}</text>)}
       <line x1={x(selectedEntry)} x2={x(selectedEntry)} y1={top} y2={bottom} stroke="var(--c-fg-dim)" strokeDasharray="3 4" />
-      {rows.map(row => {
+      {rows.flatMap(row => sides.map(side => {
         const selected = nearestPoint(row.downsideCurve, selectedEntry);
-        return <g key={row.format}>
-          <polyline fill="none" stroke={colors[row.format]} strokeWidth={row.format === "ocean-ko" ? 2.8 : 1.8}
-            strokeDasharray={dashes[row.format]} strokeLinejoin="round"
+        return <g key={`${row.format}-${side}`} data-format={row.format} data-side={side}>
+          <title>{t(names[row.format])}: {t(side === "worst" ? "oceanReport.aggregateWorst" : "oceanReport.aggregateBest")}</title>
+          <polyline fill="none" stroke={colors[row.format]} strokeWidth={side === "worst" ? 2.5 : 1.8}
+            strokeDasharray={side === "best" ? "7 4" : undefined} strokeLinejoin="round"
             points={row.downsideCurve.map(point => `${x(point.entries)},${y(aggregateValue(point, side, measure))}`).join(" ")} />
           {selected && <circle cx={x(selected.entries)} cy={y(aggregateValue(selected, side, measure))} r={row.format === "ocean-ko" ? 4 : 3}
             fill={colors[row.format]} stroke="var(--c-bg-elev)" strokeWidth="1.5" />}
         </g>;
-      })}
+      }))}
+      {showEV && <g data-reference="ev">
+        <title>{t("oceanReport.aggregateShowEV")}</title>
+        <line x1={left} x2={right} y1={y(0)} y2={y(evAt(maximumX))} stroke="var(--c-fg)" strokeWidth="1.5" strokeDasharray="2 5" />
+        <text x={right - 4} y={y(evAt(maximumX)) - 8} textAnchor="end" fill="var(--c-fg)">EV</text>
+      </g>}
     </svg>
   </div>;
 }
 
-export function AggregateRunsChart({ rows, t, n }: { rows: FormatComparisonSummary[]; t: Translate; n: NumberFormat }) {
+export function AggregateRunsChart({ rows, expectedRoi, t, n }: { rows: FormatComparisonSummary[]; expectedRoi: number; t: Translate; n: NumberFormat }) {
   const id = useId();
   const [measure, setMeasure] = useState<AggregateMeasure>("profit");
+  const [showWorst, setShowWorst] = useState(true);
   const [showBest, setShowBest] = useState(true);
+  const [showEV, setShowEV] = useState(true);
   const [hidden, setHidden] = useState<ComparisonFormat[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<number | null>(null);
   const visibleRows = rows.filter(row => !hidden.includes(row.format));
@@ -275,6 +285,8 @@ export function AggregateRunsChart({ rows, t, n }: { rows: FormatComparisonSumma
   const selected = selectedEntry === null ? points.at(-1) : nearestPoint(points, selectedEntry);
   const selectedIndex = selected ? points.indexOf(selected) : 0;
   const entry = selected?.entries ?? 0;
+  const sides: AggregateSide[] = [...(showBest ? ["best" as const] : []), ...(showWorst ? ["worst" as const] : [])];
+  const shownKinds = Number(showWorst) + Number(showBest) + Number(showEV);
   const toggleFormat = (format: ComparisonFormat) => setHidden(current => current.includes(format)
     ? current.filter(item => item !== format) : [...current, format]);
   return <section className={styles.panel}>
@@ -285,34 +297,43 @@ export function AggregateRunsChart({ rows, t, n }: { rows: FormatComparisonSumma
         {(["profit", "ev"] as const).map(value => <button key={value} type="button" aria-pressed={measure === value}
           onClick={() => setMeasure(value)}>{t(value === "profit" ? "oceanReport.aggregateProfit" : "oceanReport.aggregateEv")}</button>)}
       </div>
-      <label className={styles.showBest}><input type="checkbox" checked={showBest} onChange={event => setShowBest(event.target.checked)} />{t("oceanReport.aggregateShowBest")}</label>
+      <div className={styles.runToggles}>
+        {([
+          { key: "worst", label: "oceanReport.aggregateShowWorst", checked: showWorst, set: setShowWorst, dash: undefined },
+          { key: "best", label: "oceanReport.aggregateShowBest", checked: showBest, set: setShowBest, dash: "7 4" },
+          { key: "ev", label: "oceanReport.aggregateShowEV", checked: showEV, set: setShowEV, dash: "2 5" },
+        ] as const).map(control => <label key={control.key} className={styles.showBest}>
+          <input type="checkbox" checked={control.checked} disabled={control.checked && shownKinds === 1} onChange={event => control.set(event.target.checked)} />
+          <svg width="26" height="10" aria-hidden="true" className={styles.swatch}><line x1="0" x2="26" y1="5" y2="5" stroke="currentColor" strokeWidth={control.key === "worst" ? 2.5 : 1.8} strokeDasharray={control.dash} /></svg>
+          {t(control.label)}
+        </label>)}
+      </div>
     </div>
     <div className={styles.formatToggles} role="group" aria-label={t("oceanReport.format")}>
       {rows.map(row => <button type="button" key={row.format} aria-pressed={!hidden.includes(row.format)}
         disabled={visibleRows.length === 1 && visibleRows[0].format === row.format} onClick={() => toggleFormat(row.format)}>
-        <Swatch format={row.format} />{t(names[row.format])}
+        <Swatch format={row.format} solid />{t(names[row.format])}
       </button>)}
     </div>
-    <AggregatePane rows={visibleRows} side="worst" measure={measure} selectedEntry={entry} onSelect={setSelectedEntry} t={t} n={n} />
-    {showBest && <AggregatePane rows={visibleRows} side="best" measure={measure} selectedEntry={entry} onSelect={setSelectedEntry} t={t} n={n} />}
+    <AggregatePlot rows={visibleRows} sides={sides} showEV={showEV} expectedRoi={expectedRoi} measure={measure} selectedEntry={entry} onSelect={setSelectedEntry} t={t} n={n} />
     <div className={styles.threshold}><label htmlFor={`${id}-checkpoint`}>{t("oceanReport.entry")}</label><output htmlFor={`${id}-checkpoint`}>{n(entry, 0)}</output></div>
     <input id={`${id}-checkpoint`} className={styles.slider} type="range" min="0" max={Math.max(0, points.length - 1)} step="1" value={selectedIndex}
       disabled={points.length === 0} onChange={event => setSelectedEntry(points[Number(event.target.value)]?.entries ?? 0)}
       aria-valuetext={`${t("oceanReport.entry")}: ${n(entry, 0)}`} aria-describedby={`${id}-help`}
       style={{ "--range-progress": `${selectedIndex / Math.max(1, points.length - 1) * 100}%` } as CSSProperties} />
     <p id={`${id}-help`} className="sr-only">{t("oceanReport.aggregateSelect")}</p>
-    <div className={styles.aggregateReadouts}>
+    {sides.length > 0 && <div className={styles.aggregateReadouts}>
       {visibleRows.map(row => {
         const point = nearestPoint(row.downsideCurve, entry);
         return <div key={row.format} className={row.format === "ocean-ko" ? styles.oceanReadout : undefined}>
-          <span className={styles.readoutName}><Swatch format={row.format} />{t(names[row.format])}</span>
+          <span className={styles.readoutName}><Swatch format={row.format} solid />{t(names[row.format])}</span>
           {point && <dl>
-            <div><dt>{t("oceanReport.aggregateWorstValue")}</dt><dd>{n(aggregateValue(point, "worst", measure), 1)} <small>BI</small></dd></div>
+            {showWorst && <div><dt>{t("oceanReport.aggregateWorstValue")}</dt><dd>{n(aggregateValue(point, "worst", measure), 1)} <small>BI</small></dd></div>}
             {showBest && <div><dt>{t("oceanReport.aggregateBestValue")}</dt><dd>{n(aggregateValue(point, "best", measure), 1)} <small>BI</small></dd></div>}
           </dl>}
         </div>;
       })}
-    </div>
+    </div>}
     <details className={styles.details}><summary>{t("oceanReport.chartHelp")}</summary><p className={styles.detailNote}>{t("oceanReport.aggregateScale")}</p><p className={styles.detailNote}>{t("oceanReport.aggregateSampleNote")}</p></details>
   </section>;
 }

@@ -220,7 +220,7 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
       </section>}
 
       {rows.length > 0 && <>
-        <div id={`${id}-charts`} className="space-y-6"><AggregateRunsChart rows={rows} t={t} n={n} /><div className="grid min-w-0 gap-5 xl:grid-cols-2"><SurvivalChart rows={rows} kind="drawdownRisks" t={t} n={n} pct={pct} /><SurvivalChart rows={rows} kind="evShortfallRisks" t={t} n={n} pct={pct} /></div></div>
+        <div id={`${id}-charts`} className="space-y-6"><AggregateRunsChart rows={rows} expectedRoi={snapshot?.roi ?? 0} t={t} n={n} /><div className="grid min-w-0 gap-5 xl:grid-cols-2"><SurvivalChart rows={rows} kind="drawdownRisks" t={t} n={n} pct={pct} /><SurvivalChart rows={rows} kind="evShortfallRisks" t={t} n={n} pct={pct} /></div></div>
         <LowerPathChart rows={rows} t={t} n={n} />
         <div className={styles.comparisonGrid}>
         <section className={styles.comparisonBlock}><h3>{t("oceanReport.depthCompact")}</h3><MetricTable compact rows={rows} kind="depth" t={t} n={n} /><p className={styles.comparisonNote}>{t("oceanReport.maximumNote")}</p></section>
