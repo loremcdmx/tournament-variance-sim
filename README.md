@@ -4,9 +4,9 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 
 **🔗 Live:** https://tournament-variance-sim.vercel.app
 
-**Основной режим Space → Ocean:** сравнение на эмпирической основе Space KO с учётом реэнтри и связи призовых с баунти. Доступны два отсечения базы, билеты Ocean $10/$100 и сценарии участия в KO. Полный хвост джекпотов этим расчётом не подтверждён; подробная сверка остаётся вне публичного приложения. Прежний симулятор всех форматов доступен отдельной кнопкой. [Метод и границы применимости](docs/OCEAN_EMPIRICAL_MODEL.md).
+**Основная вкладка — механический калькулятор.** Вторая вкладка Ocean KO сравнивает просадки, недобор относительно EV и длительность стриков всех поддерживаемых форматов. Параметры и дистанция задаются явно; показатели считаются по каждому турниру всех прогонов. Ниже сохранено сравнение Space → Ocean на публичных эмпирических моментах с учётом реэнтри и связи призовых с баунти. Оно проверяет масштаб, но не подтверждает распределение стриков или полный хвост джекпотов. [Метод отчёта](docs/OCEAN_DOWNSIDE_REPORT.md) · [Эмпирическая основа](docs/OCEAN_EMPIRICAL_MODEL.md).
 
-**Primary Space → Ocean view:** an empirical Space anchor with re-entry and cash/bounty dependence, transported through Ocean mechanics. It does not establish the full jackpot distribution. The mechanical simulator remains available separately; detailed research evaluations are not published. [Method and scope](docs/OCEAN_EMPIRICAL_MODEL.md).
+**The mechanical calculator is the default tab.** The second Ocean KO tab compares drawdowns, EV shortfall and streak duration across the supported formats, measured at every entry of every simulated career. The public empirical Space → Ocean moment comparison remains below it; those moments do not validate streak distributions or the full jackpot tail. [Report method](docs/OCEAN_DOWNSIDE_REPORT.md) · [Empirical scope](docs/OCEAN_EMPIRICAL_MODEL.md).
 
 **v0.7.8:** обновлены ползунки и числовые поля в существующем оформлении: заполненная дорожка, более удобная область захвата, видимый фокус и подсветка неверного значения. Сохранены диапазоны и точный ввод; исправлено применение быстрых движений и клавиш у ползунков EV. Проект, CI и Vercel используют Node 24 LTS; обновлены инструменты разработки с исправлениями безопасности.
 

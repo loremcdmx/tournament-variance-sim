@@ -29,6 +29,13 @@ import { makeHiResGrid } from "./grids";
 import { mulberry32, mixSeed } from "./rng";
 import { poissonPTRS } from "./simNumerics";
 import { createOceanKoScratch, sampleOceanKoBounty } from "./oceanKo";
+import {
+  createDownsideReportArrays,
+  createDownsideReportState,
+  observeDownsideReport,
+  resetDownsideReportState,
+  saveDownsideReportState,
+} from "./downsideReport";
 import type { SimulationInput } from "./types";
 
 export type ProgressCb = (done: number, total: number) => void;
@@ -76,6 +83,22 @@ export function simulateShard(
   const numRows = input.schedule.length;
   const bankroll = input.bankroll;
   const shardSize = sEnd - sStart;
+
+  const downsideReport = input.collectDownsideReport ? createDownsideReportArrays(shardSize) : undefined;
+  const downsideState = downsideReport ? createDownsideReportState() : null;
+  const expectedProfitPrefix = downsideReport ? new Float64Array(N) : null;
+  if (expectedProfitPrefix) {
+    let expectedProfit = 0;
+    for (let i = 0; i < N; i++) {
+      const entry = compiled.flat[i];
+      const variants = entry.variants;
+      const mean = variants?.length
+        ? variants.reduce((sum, variant) => sum + variant.analyticMeanSingle - variant.singleCost + variant.rakebackBonusPerBullet, 0) / variants.length
+        : entry.analyticMeanSingle - entry.singleCost + entry.rakebackBonusPerBullet;
+      expectedProfit += mean;
+      expectedProfitPrefix[i] = expectedProfit;
+    }
+  }
 
   const finalProfits = new Float64Array(shardSize);
   const pathMatrix = new Float64Array(shardSize * K1);
@@ -215,6 +238,7 @@ export function simulateShard(
 
   for (let s = sStart; s < sEnd; s++) {
     const localS = s - sStart;
+    if (downsideState) resetDownsideReportState(downsideState);
     const rng = mulberry32(mixSeed(input.seed, s));
     // Per-sample shock RNG — decoupled from finish draws and
     // independent of shard boundaries.
@@ -450,6 +474,7 @@ export function simulateShard(
         if (place < pc) cashedThisSlot = true;
       }
       profit += delta;
+      if (downsideState && expectedProfitPrefix) observeDownsideReport(downsideState, profit, expectedProfitPrefix[i], delta);
       rowProfits[rowBase + t.rowIdx] += delta;
       if (satelliteSeatsWon && t.isSatellite && t.prizeByPlace[leaderboardPlace] > 0) {
         satelliteSeatsWon[rowBase + t.rowIdx]++;
@@ -649,6 +674,7 @@ export function simulateShard(
     }
 
     finalProfits[localS] = profit;
+    if (downsideReport && downsideState) saveDownsideReportState(downsideReport, localS, downsideState);
     maxDrawdowns[localS] = maxDD;
     maxRunUps[localS] = maxUp;
     runningMins[localS] = runningMin;
@@ -678,6 +704,7 @@ export function simulateShard(
   onProgress?.(shardSize, shardSize);
 
   return {
+    ...(downsideReport ? { downsideReport } : {}),
     satelliteSeatsWon,
     sStart,
     sEnd,

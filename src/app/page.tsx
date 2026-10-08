@@ -12,7 +12,7 @@ import {
   useState,
 } from "react";
 import { CashApp } from "@/components/CashApp";
-import { EmpiricalOceanExplorer } from "@/components/calibration/EmpiricalOceanExplorer";
+import { OceanComparisonReport } from "@/components/calibration/OceanComparisonReport";
 import empiricalProfile from "@/lib/calibration/space-runtime-profile.json";
 import oceanBridge from "@/lib/calibration/ocean-bridge-profile.json";
 import type { PublicSpaceProfile } from "@/lib/calibration/types";
@@ -160,7 +160,7 @@ export default function Home() {
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
   const [hydrated, setHydrated] = useState(false);
-  const [mttModel, setMttModel] = useState<"empirical" | "mechanical">("empirical");
+  const [mttModel, setMttModel] = useState<"empirical" | "mechanical">("mechanical");
   const initialStateLoadedRef = useRef(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
@@ -1135,26 +1135,33 @@ export default function Home() {
       <div hidden={activeMode !== "cash"}><CashApp /></div>
 
       {activeMode === "mtt" && (
-        <section className="space-y-3" aria-label={t("empirical.modelChoice")}>
-          <div className="flex flex-wrap gap-2" role="group" aria-label={t("empirical.modelChoice")}>
-            {(["empirical", "mechanical"] as const).map((model) => (
+        <section className="space-y-6" aria-label={t("empirical.modelChoice")}>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2" role="group" aria-label={t("empirical.modelChoice")}>
+            {(["mechanical", "empirical"] as const).map((model) => (
               <button
                 key={model}
                 type="button"
                 aria-pressed={mttModel === model}
+                aria-labelledby={`mtt-${model}-title`}
+                aria-describedby={`mtt-${model}-description`}
                 disabled={status === "running" || pdStatus === "running"}
                 onClick={() => {
                   if (model === "empirical") interruptBackground();
                   setMttModel(model);
                 }}
-                className={`rounded-lg border px-4 py-3 text-sm font-semibold disabled:opacity-50 ${mttModel === model ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-black" : "border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]"}`}
+                className={`min-h-20 min-w-0 rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${mttModel === model ? "border-accent bg-accent/10 text-accent" : "border-border bg-bg-elev text-fg hover:border-border-strong hover:bg-bg-elev-2"}`}
               >
-                {t(model === "empirical" ? "empirical.primary" : "empirical.mechanical")}
+                <span id={`mtt-${model}-title`} className="block text-sm font-semibold sm:text-base">
+                  {t(model === "empirical" ? "empirical.primary" : "empirical.mechanical")}
+                </span>
+                <span id={`mtt-${model}-description`} className="mt-1 block text-sm font-normal leading-relaxed text-fg-muted">
+                  {t(model === "mechanical" ? "oceanReport.modelMechanicalDesc" : "oceanReport.modelOceanDesc")}
+                </span>
               </button>
             ))}
           </div>
           {mttModel === "empirical" && (
-            <EmpiricalOceanExplorer profile={empiricalProfile as PublicSpaceProfile} bridge={oceanBridge as EmpiricalBridgeData} locale={locale} />
+            <OceanComparisonReport profile={empiricalProfile as PublicSpaceProfile} bridge={oceanBridge as EmpiricalBridgeData} locale={locale} />
           )}
         </section>
       )}

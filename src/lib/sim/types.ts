@@ -431,6 +431,9 @@ export type BattleRoyaleLeaderboardPromoConfig =
 export type CalibrationMode = "alpha" | "primedope-binary-itm";
 
 export interface SimulationInput {
+  /** Opt-in observation of every entry for the format-comparison report.
+   * Uses the fixed compiled EV baseline; does not change payouts or RNG. */
+  collectDownsideReport?: boolean;
   schedule: TournamentRow[];
   scheduleRepeats: number;
   samples: number;
