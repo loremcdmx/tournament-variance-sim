@@ -1,0 +1,1033 @@
+{
+  "schemaVersion": 1,
+  "status": "experimental-paired-component-bridge",
+  "records": [
+    {
+      "theta": 0.5,
+      "roomId": "space-eur10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": -0.24880204375283316,
+        "secondProfit": 8.808913906346346,
+        "crossProfitK": -0.24880204375283316,
+        "meanCash": 0.4888888888889072,
+        "secondCash": 4.794007527032396,
+        "crossCashK": 0.4888888888889072,
+        "meanBounty": 0.262309067358285,
+        "secondBounty": 1.5571736441989705,
+        "crossBountyK": 0.262309067358285,
+        "crossCashBounty": 1.4800643238047815
+      },
+      "support": {
+        "format": "space-ko",
+        "ticket": 10,
+        "currency": "EUR",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-0.5",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.1,
+        "ruleVersion": "winamax-space-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0007392192259219079,
+        "secondBountyBatchSE": 0.016159723272956953,
+        "covarianceCashBounty": 1.351824335318504,
+        "varianceCash": 4.554995181353366,
+        "varianceBounty": 1.4883675973805972,
+        "profitSigma": 2.9575346911525418,
+        "varianceBatchSE": 0.030884040004829763,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 0.5,
+      "roomId": "space-eur10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": -0.22645657109782777,
+        "secondProfit": 11.587273268801106,
+        "crossProfitK": -0.22645657109782777,
+        "meanCash": 0.4888888888889072,
+        "secondCash": 4.794007527032396,
+        "crossCashK": 0.4888888888889072,
+        "meanBounty": 0.2846545400132903,
+        "secondBounty": 3.7193817226516215,
+        "crossBountyK": 0.2846545400132903,
+        "crossCashBounty": 1.8104854384608589
+      },
+      "support": {
+        "format": "space-ko",
+        "ticket": 10,
+        "currency": "EUR",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-0.5",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.1,
+        "ruleVersion": "winamax-space-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0012426505259845622,
+        "secondBountyBatchSE": 0.0914598686210424,
+        "covarianceCashBounty": 1.6713209966765783,
+        "varianceCash": 4.554995181353366,
+        "varianceBounty": 3.6383535155014437,
+        "profitSigma": 3.3964673839458137,
+        "varianceBatchSE": 0.12216304600157787,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 0.5,
+      "roomId": "ocean-usd10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": -0.229559645005982,
+        "secondProfit": 9.245148914018754,
+        "crossProfitK": -0.229559645005982,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.2571070216606919,
+        "secondBounty": 1.5828867664886266,
+        "crossBountyK": 0.2571070216606919,
+        "crossCashBounty": 1.4588747794826056
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 10,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-0.5",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0007805124507196007,
+        "secondBountyBatchSE": 0.01675851223128794,
+        "covarianceCashBounty": 1.32689317503012,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 1.5167827459013952,
+        "profitSigma": 3.0319055531799606,
+        "varianceBatchSE": 0.032586860709619504,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 0.5,
+      "roomId": "ocean-usd10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": -0.20519878230225388,
+        "secondProfit": 12.409130723709149,
+        "crossProfitK": -0.20519878230225388,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.28146788436442016,
+        "secondBounty": 4.049014224514719,
+        "crossBountyK": 0.28146788436442016,
+        "crossCashBounty": 1.8321628180184901
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 10,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-0.5",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.001331817937713833,
+        "secondBountyBatchSE": 0.1016385431091692,
+        "covarianceCashBounty": 1.6876759707114244,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 3.9697900545861367,
+        "profitSigma": 3.5166780039478764,
+        "varianceBatchSE": 0.13647798212688236,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 0.5,
+      "roomId": "ocean-usd100",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": -0.2293018371075978,
+        "secondProfit": 9.260032339435002,
+        "crossProfitK": -0.2293018371075978,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.2573648295590762,
+        "secondBounty": 1.5911859010716276,
+        "crossBountyK": 0.2573648295590762,
+        "crossCashBounty": 1.4624247327976134
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 100,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-0.5",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0007830877296466889,
+        "secondBountyBatchSE": 0.01683601637182355,
+        "covarianceCashBounty": 1.3303107869572908,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 1.5249492455776552,
+        "profitSigma": 3.034378520708002,
+        "varianceBatchSE": 0.03272899882036669,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 0.5,
+      "roomId": "ocean-usd100",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": -0.2035360292126261,
+        "secondProfit": 12.6476581806349,
+        "crossProfitK": -0.2035360292126261,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.283130637454048,
+        "secondBounty": 4.2334179255193085,
+        "crossBountyK": 0.283130637454048,
+        "crossCashBounty": 1.8608874490686875
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 100,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-0.5",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0013653708032630935,
+        "secondBountyBatchSE": 0.10669719619936793,
+        "covarianceCashBounty": 1.715547055175613,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 4.153254967654173,
+        "profitSigma": 3.5505254914515483,
+        "varianceBatchSE": 0.14311830715926258,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 1,
+      "roomId": "space-eur10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": -0.013021431726295728,
+        "secondProfit": 11.52722246250752,
+        "crossProfitK": -0.013021431726295728,
+        "meanCash": 0.4888888888889072,
+        "secondCash": 4.794007527032396,
+        "crossCashK": 0.4888888888889072,
+        "meanBounty": 0.4980896793848225,
+        "secondBounty": 3.050041622772608,
+        "crossBountyK": 0.4980896793848225,
+        "crossCashBounty": 2.3285652246250965
+      },
+      "support": {
+        "format": "space-ko",
+        "ticket": 10,
+        "currency": "EUR",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-1",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.1,
+        "ruleVersion": "winamax-space-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0009901466248687532,
+        "secondBountyBatchSE": 0.021563021374126794,
+        "covarianceCashBounty": 2.0850547147036185,
+        "varianceCash": 4.554995181353366,
+        "varianceBounty": 2.8019482940629326,
+        "profitSigma": 3.395151381724137,
+        "varianceBatchSE": 0.0351834639203609,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 1,
+      "roomId": "space-eur10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.027540646272689775,
+        "secondProfit": 16.43329659105945,
+        "crossProfitK": 0.027540646272689775,
+        "meanCash": 0.4888888888889072,
+        "secondCash": 4.794007527032396,
+        "crossCashK": 0.4888888888889072,
+        "meanBounty": 0.5386517573838088,
+        "secondBounty": 6.977397624104661,
+        "crossBountyK": 0.5386517573838088,
+        "crossCashBounty": 2.8584863662340028
+      },
+      "support": {
+        "format": "space-ko",
+        "ticket": 10,
+        "currency": "EUR",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-1",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.1,
+        "ruleVersion": "winamax-space-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0016723870112884528,
+        "secondBountyBatchSE": 0.12492216679093483,
+        "covarianceCashBounty": 2.595145507068575,
+        "varianceCash": 4.554995181353366,
+        "varianceBounty": 6.687251908371995,
+        "profitSigma": 4.053706711623613,
+        "varianceBatchSE": 0.15759734155205174,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 1,
+      "roomId": "ocean-usd10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.002898840442647204,
+        "secondProfit": 12.051533213408026,
+        "crossProfitK": 0.002898840442647204,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.48956550710932173,
+        "secondBounty": 3.1190007705279146,
+        "crossBountyK": 0.48956550710932173,
+        "crossCashBounty": 2.3264684126062343
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 10,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-1",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.001065775164830032,
+        "secondBountyBatchSE": 0.022822116229218044,
+        "covarianceCashBounty": 2.075158118956788,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 2.879326384776707,
+        "profitSigma": 3.471530614891955,
+        "varianceBatchSE": 0.038381415437491094,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 1,
+      "roomId": "ocean-usd10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.04373772298165568,
+        "secondProfit": 17.178923664612473,
+        "crossProfitK": 0.04373772298165568,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.5304043896483299,
+        "secondBounty": 7.19654307256489,
+        "crossBountyK": 0.5304043896483299,
+        "crossCashBounty": 2.89223136972898
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 10,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-1",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0017571661978165857,
+        "secondBountyBatchSE": 0.1330071634901314,
+        "covarianceCashBounty": 2.619957116376177,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 6.9152142560066725,
+        "profitSigma": 4.144515734823654,
+        "varianceBatchSE": 0.17082813026002397,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 1,
+      "roomId": "ocean-usd100",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.0032815123986264273,
+        "secondProfit": 12.07359549600589,
+        "crossProfitK": 0.0032815123986264273,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.489948179065301,
+        "secondBounty": 3.1319779944893873,
+        "crossBountyK": 0.489948179065301,
+        "crossCashBounty": 2.331393613880404
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 100,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-1",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0010683082085045578,
+        "secondBountyBatchSE": 0.02290717729774513,
+        "covarianceCashBounty": 2.079886881960222,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 2.891928776319983,
+        "profitSigma": 3.4747064232366838,
+        "varianceBatchSE": 0.03854610066270963,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 1,
+      "roomId": "ocean-usd100",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.04612882334557145,
+        "secondProfit": 17.483601402638634,
+        "crossProfitK": 0.04612882334557145,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.5327954900122457,
+        "secondBounty": 7.44604485096234,
+        "crossBountyK": 0.5327954900122457,
+        "crossCashBounty": 2.9222104499072525
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 100,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-1",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0017947622730410716,
+        "secondBountyBatchSE": 0.13858324961180465,
+        "covarianceCashBounty": 2.648708765034306,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 7.162173816784951,
+        "profitSigma": 4.181085210121337,
+        "varianceBatchSE": 0.1769522897059825,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 2,
+      "roomId": "space-eur10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.43714196729320903,
+        "secondProfit": 16.89340565019853,
+        "crossProfitK": 0.43714196729320903,
+        "meanCash": 0.4888888888889072,
+        "secondCash": 4.794007527032396,
+        "crossCashK": 0.4888888888889072,
+        "meanBounty": 0.9482530784043263,
+        "secondBounty": 6.55415504263326,
+        "crossBountyK": 0.9482530784043263,
+        "crossCashBounty": 3.709763507559779
+      },
+      "support": {
+        "format": "space-ko",
+        "ticket": 10,
+        "currency": "EUR",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-2",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.1,
+        "ruleVersion": "winamax-space-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0013267529461359307,
+        "secondBountyBatchSE": 0.03059851366242138,
+        "covarianceCashBounty": 3.246173113673202,
+        "varianceCash": 4.554995181353366,
+        "varianceBounty": 5.654971141929979,
+        "profitSigma": 4.086846284193908,
+        "varianceBatchSE": 0.04248121496650152,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 2,
+      "roomId": "space-eur10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.5145878533415633,
+        "secondProfit": 25.99161118201506,
+        "crossProfitK": 0.5145878533415633,
+        "meanCash": 0.4888888888889072,
+        "secondCash": 4.794007527032396,
+        "crossCashK": 0.4888888888889072,
+        "meanBounty": 1.0256989644526808,
+        "secondBounty": 13.9653853669569,
+        "crossBountyK": 1.0256989644526808,
+        "crossCashBounty": 4.6306969973545495
+      },
+      "support": {
+        "format": "space-ko",
+        "ticket": 10,
+        "currency": "EUR",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-2",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.1,
+        "ruleVersion": "winamax-space-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.002259242656098968,
+        "secondBountyBatchSE": 0.16932688859763073,
+        "covarianceCashBounty": 4.129244170288776,
+        "varianceCash": 4.554995181353366,
+        "varianceBounty": 12.913327001277597,
+        "profitSigma": 5.072160340841798,
+        "varianceBatchSE": 0.20529773224146533,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 2,
+      "roomId": "ocean-usd10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.448711707353759,
+        "secondProfit": 17.605524303170892,
+        "crossProfitK": 0.448711707353759,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.9353783740204341,
+        "secondBounty": 6.718368095922451,
+        "crossBountyK": 0.9353783740204341,
+        "crossCashBounty": 3.7495931617015126
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 10,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-2",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0013891517275068474,
+        "secondBountyBatchSE": 0.03116976023925914,
+        "covarianceCashBounty": 3.2694322630377006,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 5.84343539333734,
+        "profitSigma": 4.171831984494889,
+        "varianceBatchSE": 0.04503073485635048,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 2,
+      "roomId": "ocean-usd10",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.5261156388647349,
+        "secondProfit": 26.87885353227346,
+        "crossProfitK": 0.5261156388647349,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 1.0127823055314085,
+        "secondBounty": 14.308960673501348,
+        "crossBountyK": 1.0127823055314085,
+        "crossCashBounty": 4.668365418974313
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 10,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-2",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0023182598923393127,
+        "secondBountyBatchSE": 0.17644041611373776,
+        "covarianceCashBounty": 4.1484705021348685,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 13.283232675103832,
+        "profitSigma": 5.1577180871791946,
+        "varianceBatchSE": 0.21497983260032683,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 2,
+      "roomId": "ocean-usd100",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.4490828160760399,
+        "secondProfit": 17.623612180174014,
+        "crossProfitK": 0.4490828160760399,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 0.9357494827427141,
+        "secondBounty": 6.730595122645229,
+        "crossBountyK": 0.9357494827427141,
+        "crossCashBounty": 3.752894695563975
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 100,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 25,
+        "latentFamily": "weighted-hero-recursive-tree-theta-2",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0013904397030867202,
+        "secondBountyBatchSE": 0.031222420484827873,
+        "covarianceCashBounty": 3.272543294422726,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 5.854968028191973,
+        "profitSigma": 4.173959367851971,
+        "varianceBatchSE": 0.04509093655806876,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    },
+    {
+      "theta": 2,
+      "roomId": "ocean-usd100",
+      "moments": {
+        "meanK": 1,
+        "secondK": 1,
+        "meanProfit": 0.5297475670405238,
+        "secondProfit": 27.38400829006618,
+        "crossProfitK": 0.5297475670405238,
+        "meanCash": 0.5133333333333217,
+        "secondCash": 5.285393298552798,
+        "crossCashK": 0.5133333333333217,
+        "meanBounty": 1.016414233707198,
+        "secondBounty": 14.737592919128566,
+        "crossBountyK": 1.016414233707198,
+        "crossCashBounty": 4.710258603232857
+      },
+      "support": {
+        "format": "ocean-ko",
+        "ticket": 100,
+        "currency": "USD",
+        "fieldSize": 1000,
+        "capBountyBI": 100,
+        "latentFamily": "weighted-hero-recursive-tree-theta-2",
+        "finishProfileId": "power-law-source-roi10-rake10-n1000-f446f1b348da5ef9",
+        "cashProfileId": "mtt-gg-bounty-relative-shape-n1000-303ac756a32bacec",
+        "bountyFraction": 0.5,
+        "rakeFraction": 0.08,
+        "ruleVersion": "gg-ocean-official-2026-10-07",
+        "grain": "single-entry",
+        "terminalPayoutScale": 1,
+        "numericalStatus": "pilot"
+      },
+      "diagnostics": {
+        "meanBountyBatchSE": 0.0023644505204921088,
+        "secondBountyBatchSE": 0.18366098321419014,
+        "covarianceCashBounty": 4.1884992965965075,
+        "varianceCash": 5.021882187441698,
+        "varianceBounty": 13.704495024645976,
+        "profitSigma": 5.206090260961754,
+        "varianceBatchSE": 0.2234638870578491,
+        "uncertaintyKind": "Monte-Carlo-diagnostic-not-structural-confidence-interval"
+      }
+    }
+  ],
+  "numericPrecision": {
+    "gates": {
+      "maxResidualSdRatioRelativeSE": 0.01,
+      "maxMeanRatioRelativeSE": 0.005
+    },
+    "passes": false,
+    "batches": 2000,
+    "method": "Paired delta-method batch standard errors include numerator/denominator covariance and estimation of both means. SE only; structural scenario spread and empirical uncertainty are separate. Passing this numerical gate is not model validation.",
+    "rows": [
+      {
+        "theta": 0.5,
+        "capBountyBI": 25,
+        "target": "ocean-usd10",
+        "bountyMeanRatio": 0.9801682581925858,
+        "bountyMeanRatioPairedBatchSE": 0.0016804335468714009,
+        "bountyMeanRatioRelativeSE": 0.001714433754435277,
+        "bountyResidualSdRatio": 1.009500611975264,
+        "bountyResidualSdRatioPairedBatchSE": 0.0035884688370947768,
+        "bountyResidualSdRatioRelativeSE": 0.0035546970398297345,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0091798591395782,
+          1.009835082127271
+        ],
+        "passes": true
+      },
+      {
+        "theta": 0.5,
+        "capBountyBI": 25,
+        "target": "ocean-usd100",
+        "bountyMeanRatio": 0.9811510984008206,
+        "bountyMeanRatioPairedBatchSE": 0.0016925379873279198,
+        "bountyMeanRatioRelativeSE": 0.0017250533481403523,
+        "bountyResidualSdRatio": 1.0122145864991305,
+        "bountyResidualSdRatioPairedBatchSE": 0.0036212050521921683,
+        "bountyResidualSdRatioRelativeSE": 0.0035775072800685024,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0118968678343134,
+          1.012550780263935
+        ],
+        "passes": true
+      },
+      {
+        "theta": 0.5,
+        "capBountyBI": 100,
+        "target": "ocean-usd10",
+        "bountyMeanRatio": 0.9888051824196397,
+        "bountyMeanRatioPairedBatchSE": 0.002994286643390646,
+        "bountyMeanRatioRelativeSE": 0.003028186640429539,
+        "bountyResidualSdRatio": 1.0445550246052833,
+        "bountyResidualSdRatioPairedBatchSE": 0.010711484447562794,
+        "bountyResidualSdRatioRelativeSE": 0.010254590897794449,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0430785096607849,
+          1.0457106793385211
+        ],
+        "passes": false
+      },
+      {
+        "theta": 0.5,
+        "capBountyBI": 100,
+        "target": "ocean-usd100",
+        "bountyMeanRatio": 0.9946464842641498,
+        "bountyMeanRatioPairedBatchSE": 0.0030978597486792155,
+        "bountyMeanRatioRelativeSE": 0.0031145334525271517,
+        "bountyResidualSdRatio": 1.0684196071654857,
+        "bountyResidualSdRatioPairedBatchSE": 0.01114820868789885,
+        "bountyResidualSdRatioRelativeSE": 0.010434298110154509,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0666836097539996,
+          1.0696082531591888
+        ],
+        "passes": false
+      },
+      {
+        "theta": 1,
+        "capBountyBI": 25,
+        "target": "ocean-usd10",
+        "bountyMeanRatio": 0.9828862700266571,
+        "bountyMeanRatioPairedBatchSE": 0.0012408664658373246,
+        "bountyMeanRatioRelativeSE": 0.0012624720719760089,
+        "bountyResidualSdRatio": 1.013713873230139,
+        "bountyResidualSdRatioPairedBatchSE": 0.0025878121092581283,
+        "bountyResidualSdRatioRelativeSE": 0.0025528032885771,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0134621279310558,
+          1.0139150025669232
+        ],
+        "passes": true
+      },
+      {
+        "theta": 1,
+        "capBountyBI": 25,
+        "target": "ocean-usd100",
+        "bountyMeanRatio": 0.9836545492579231,
+        "bountyMeanRatioPairedBatchSE": 0.0012434660561542062,
+        "bountyMeanRatioRelativeSE": 0.0012641288113721296,
+        "bountyResidualSdRatio": 1.015929889952198,
+        "bountyResidualSdRatioPairedBatchSE": 0.0025977984754521717,
+        "bountyResidualSdRatioRelativeSE": 0.002557064715926809,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0156801125497221,
+          1.0161319311146373
+        ],
+        "passes": true
+      },
+      {
+        "theta": 1,
+        "capBountyBI": 100,
+        "target": "ocean-usd10",
+        "bountyMeanRatio": 0.9846888687868843,
+        "bountyMeanRatioPairedBatchSE": 0.0019851299669504216,
+        "bountyMeanRatioRelativeSE": 0.00201599716405453,
+        "bountyResidualSdRatio": 1.0169017122192687,
+        "bountyResidualSdRatioPairedBatchSE": 0.007058642602559957,
+        "bountyResidualSdRatioRelativeSE": 0.006941322369450335,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0161258385673917,
+          1.0176418856066909
+        ],
+        "passes": true
+      },
+      {
+        "theta": 1,
+        "capBountyBI": 100,
+        "target": "ocean-usd100",
+        "bountyMeanRatio": 0.9891279155942857,
+        "bountyMeanRatioPairedBatchSE": 0.0020295349984377083,
+        "bountyMeanRatioRelativeSE": 0.0020518428066185227,
+        "bountyResidualSdRatio": 1.0349004757878617,
+        "bountyResidualSdRatioPairedBatchSE": 0.007234815249693209,
+        "bountyResidualSdRatioRelativeSE": 0.006990831890559718,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0340960908719885,
+          1.035661564226754
+        ],
+        "passes": true
+      },
+      {
+        "theta": 2,
+        "capBountyBI": 25,
+        "target": "ocean-usd10",
+        "bountyMeanRatio": 0.9864227127998814,
+        "bountyMeanRatioPairedBatchSE": 0.0008506442534783392,
+        "bountyMeanRatioRelativeSE": 0.0008623526632551415,
+        "bountyResidualSdRatio": 1.016527019717281,
+        "bountyResidualSdRatioPairedBatchSE": 0.0016764285528956362,
+        "bountyResidualSdRatioRelativeSE": 0.0016491726440895672,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0164006843988265,
+          1.0166825857931776
+        ],
+        "passes": true
+      },
+      {
+        "theta": 2,
+        "capBountyBI": 25,
+        "target": "ocean-usd100",
+        "bountyMeanRatio": 0.9868140732190898,
+        "bountyMeanRatioPairedBatchSE": 0.0008511607958568618,
+        "bountyMeanRatioRelativeSE": 0.0008625341074436515,
+        "bountyResidualSdRatio": 1.0175296368073041,
+        "bountyResidualSdRatioPairedBatchSE": 0.001676689215331339,
+        "bountyResidualSdRatioRelativeSE": 0.0016478038129604513,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.017400453489449,
+          1.017685736207685
+        ],
+        "passes": true
+      },
+      {
+        "theta": 2,
+        "capBountyBI": 100,
+        "target": "ocean-usd10",
+        "bountyMeanRatio": 0.987406968936383,
+        "bountyMeanRatioPairedBatchSE": 0.0014205166207864287,
+        "bountyMeanRatioRelativeSE": 0.0014386333755741906,
+        "bountyResidualSdRatio": 1.0142215068651623,
+        "bountyResidualSdRatioPairedBatchSE": 0.004906374263603471,
+        "bountyResidualSdRatioRelativeSE": 0.004837576634288193,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0136328622315276,
+          1.0146619780787558
+        ],
+        "passes": true
+      },
+      {
+        "theta": 2,
+        "capBountyBI": 100,
+        "target": "ocean-usd100",
+        "bountyMeanRatio": 0.9909478988794366,
+        "bountyMeanRatioPairedBatchSE": 0.0014608896428099053,
+        "bountyMeanRatioRelativeSE": 0.0014742345631509775,
+        "bountyResidualSdRatio": 1.0301784112259202,
+        "bountyResidualSdRatioPairedBatchSE": 0.005090472316051836,
+        "bountyResidualSdRatioRelativeSE": 0.004941350217186297,
+        "cashMeanRatio": 1.0499999999999368,
+        "cashResidualSdRatio": 1.0499999999999594,
+        "leaveOneBatchSdRatioRange": [
+          1.0295394571732546,
+          1.0306300622036892
+        ],
+        "passes": true
+      }
+    ]
+  },
+  "receipt": {
+    "sourceStable": true,
+    "sourceSha256": "df0d75c06e8601036cb013581672884b6d991d7efb3888c3a4cefa99af721e02"
+  },
+  "sources": {
+    "space": "https://www.winamax.fr/space-ko",
+    "ocean": "https://br-1.ggpoker.com/tournaments/ocean-ko/"
+  }
+}

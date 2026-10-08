@@ -12,6 +12,11 @@ import {
   useState,
 } from "react";
 import { CashApp } from "@/components/CashApp";
+import { EmpiricalOceanExplorer } from "@/components/calibration/EmpiricalOceanExplorer";
+import empiricalProfile from "@/lib/calibration/space-runtime-profile.json";
+import oceanBridge from "@/lib/calibration/ocean-bridge-profile.json";
+import type { PublicSpaceProfile } from "@/lib/calibration/types";
+import type { EmpiricalBridgeData } from "@/lib/calibration/oceanTransport";
 import { ScheduleEditor } from "@/components/ScheduleEditor";
 import { BattleRoyaleLeaderboardControl } from "@/components/BattleRoyaleLeaderboardControl";
 import { ControlsPanel, type ControlsState } from "@/components/ControlsPanel";
@@ -155,6 +160,7 @@ export default function Home() {
   const [schedule, setSchedule] = useState<TournamentRow[]>(initialSchedule);
   const [controls, setControls] = useState<ControlsState>(initialControls);
   const [hydrated, setHydrated] = useState(false);
+  const [mttModel, setMttModel] = useState<"empirical" | "mechanical">("empirical");
   const initialStateLoadedRef = useRef(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
@@ -243,6 +249,8 @@ export default function Home() {
     // what-if edits are comparable; "new seed" redraws it on demand.
     const freshSeed = drawFreshSeed();
     startTransition(() => {
+      // Existing share links describe the mechanical simulator's controls.
+      if (fromUrl) setMttModel("mechanical");
       if (fromLocal) {
         setSchedule(fromLocal.schedule);
         setControls({
@@ -458,7 +466,7 @@ export default function Home() {
   const [runRequest, setRunRequest] = useState(0);
   const handledRunRequestRef = useRef(0);
   const onRun = useCallback(() => {
-    if (activeMode !== "mtt" || status === "running" || pdStatus === "running") return;
+    if (activeMode !== "mtt" || mttModel !== "mechanical" || status === "running" || pdStatus === "running") return;
     const active = document.activeElement;
     if (
       active instanceof HTMLInputElement ||
@@ -468,12 +476,12 @@ export default function Home() {
       active.blur();
     }
     startTransition(() => setRunRequest((n) => n + 1));
-  }, [activeMode, status, pdStatus]);
+  }, [activeMode, mttModel, status, pdStatus]);
 
   useEffect(() => {
     if (runRequest === 0 || handledRunRequestRef.current === runRequest) return;
     handledRunRequestRef.current = runRequest;
-    if (activeMode !== "mtt" || status === "running" || pdStatus === "running") return;
+    if (activeMode !== "mtt" || mttModel !== "mechanical" || status === "running" || pdStatus === "running") return;
     clearPendingInterrupt();
     const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
     if (!liveFeasibility.ok) return;
@@ -492,6 +500,7 @@ export default function Home() {
     run,
     buildInput,
     activeMode,
+    mttModel,
     status,
     pdStatus,
     schedule,
@@ -559,6 +568,7 @@ export default function Home() {
     const s = SCENARIOS.find((x) => x.id === id);
     if (!s) return;
     queueInterruptBackground();
+    setMttModel("mechanical");
     setSchedule(s.schedule);
     setControls((c) => ({ ...initialControls, ...s.controls, seed: c.seed }));
     setActiveScenarioId(id);
@@ -799,6 +809,7 @@ export default function Home() {
 
   const onLoadUserPreset = (p: UserPreset) => {
     queueInterruptBackground();
+    setMttModel("mechanical");
     setSchedule(p.state.schedule);
     setControls({ ...initialControls, ...p.state.controls });
     setActiveScenarioId(p.id);
@@ -1124,6 +1135,31 @@ export default function Home() {
       <div hidden={activeMode !== "cash"}><CashApp /></div>
 
       {activeMode === "mtt" && (
+        <section className="space-y-3" aria-label={t("empirical.modelChoice")}>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("empirical.modelChoice")}>
+            {(["empirical", "mechanical"] as const).map((model) => (
+              <button
+                key={model}
+                type="button"
+                aria-pressed={mttModel === model}
+                disabled={status === "running" || pdStatus === "running"}
+                onClick={() => {
+                  if (model === "empirical") interruptBackground();
+                  setMttModel(model);
+                }}
+                className={`rounded-lg border px-4 py-3 text-sm font-semibold disabled:opacity-50 ${mttModel === model ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-black" : "border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]"}`}
+              >
+                {t(model === "empirical" ? "empirical.primary" : "empirical.mechanical")}
+              </button>
+            ))}
+          </div>
+          {mttModel === "empirical" && (
+            <EmpiricalOceanExplorer profile={empiricalProfile as PublicSpaceProfile} bridge={oceanBridge as EmpiricalBridgeData} locale={locale} />
+          )}
+        </section>
+      )}
+
+      {activeMode === "mtt" && mttModel === "mechanical" && (
       <>
       {/* Schedule infeasibility — sticky-top banner only when MULTIPLE rows
           are broken (single-row issues live inline inside the row card; see
