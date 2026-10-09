@@ -284,22 +284,19 @@ export function buildResult(
         // how stdDev/√N is interpreted on the MC side.
         if (compiled.flat.length === 0) return 0;
         let acc = 0;
-        // A schedule-wide upper bound must include field mixtures and every
-        // other format's bounty noise, not just Ocean's contribution.
-        const varianceByEntry = hasOceanKo ? new Map<CompiledEntry, number>() : null;
+        // Each distinct slot entry appears many times in `flat`; its moments
+        // carry the per-KO bounty noise, the heat bank and the field-size
+        // mixture, so the figure matches what the hot loop samples (for Ocean
+        // it is the upper bound).
+        const varianceByEntry = new Map<CompiledEntry, number>();
         for (const e of compiled.flat) {
-          if (varianceByEntry) {
-            let variance = varianceByEntry.get(e);
-            if (variance === undefined) {
-              const moments = compiledEntryMoments(e);
-              variance = Math.max(0, moments.secondDollar - moments.meanDollar ** 2);
-              varianceByEntry.set(e, variance);
-            }
-            acc += variance;
-          } else {
-            const s = e.sigmaSingleAnalytic;
-            acc += s * s;
+          let variance = varianceByEntry.get(e);
+          if (variance === undefined) {
+            const moments = compiledEntryMoments(e);
+            variance = Math.max(0, moments.secondDollar - moments.meanDollar ** 2);
+            varianceByEntry.set(e, variance);
           }
+          acc += variance;
         }
         return Math.sqrt(acc / compiled.flat.length);
       })(),

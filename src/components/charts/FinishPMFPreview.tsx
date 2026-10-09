@@ -176,14 +176,17 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
         maxBountyShare: 0,
       };
     }
-    const baseStats = computeRowStats(shareProbeBaseRow, model);
+    const probe = { skipCompiledSigma: true };
+    const baseStats = computeRowStats(shareProbeBaseRow, model, probe);
     const lowKoStats = computeRowStats(
       { ...shareProbeBaseRow, bountyEvBias: MAX_BOUNTY_BIAS },
       model,
+      probe,
     );
     const highKoStats = computeRowStats(
       { ...shareProbeBaseRow, bountyEvBias: MIN_BOUNTY_BIAS },
       model,
+      probe,
     );
     return {
       defaultBountyShare: clampUnit(baseStats.bountyShare),

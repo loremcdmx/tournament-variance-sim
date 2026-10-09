@@ -3,6 +3,7 @@ import type { ControlsState } from "@/components/ControlsPanel";
 import type { TournamentRow } from "./sim/types";
 import { STANDARD_PRESETS, applyModelPatch } from "./sim/modelPresets";
 import { applyItmTarget } from "./sim/itmTarget";
+import { DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION } from "./sim/gameType";
 import { redistributeScheduleCounts } from "./sim/scheduleTarget";
 import {
   decodeState,
@@ -451,7 +452,7 @@ describe("persistence validation", () => {
     ).toMatchObject({
       gameType: "mystery-royale",
       payoutStructure: "battle-royale",
-      bountyFraction: 0.45,
+      bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
     });
     expect(
       decodeState(encoded({ v: 2, schedule: [brRow], controls }))?.schedule[0],
@@ -459,7 +460,7 @@ describe("persistence validation", () => {
     expect(
       decodeState(encoded({ v: 2, schedule: [{ ...brRow, bountyFraction: undefined }], controls }))
         ?.schedule[0],
-    ).toMatchObject({ bountyFraction: 0.45 });
+    ).toMatchObject({ bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION });
   });
 
   it("clamps persisted row knobs back into the engine/UI contract before hydration", () => {

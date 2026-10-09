@@ -182,8 +182,8 @@ One scratch array is allocated per shard; its separate RNG salt is `0x0cea4b07`.
 a fixed payout scale to calibrate bounty EV to the existing finish/ROI model.
 This is a player-edge assumption, not per-tournament conservation. The second
 moment of adaptive Legendary heads is bounded analytically: `secondDollar`
-and `sigmaSingleAnalytic` are **upper bounds** for Ocean entries, with lower
-bounds exposed by `compiledEntryMoments` and the preview. Convergence and
+and `stats.sigmaPerTournamentAnalytic` are **upper bounds** for Ocean entries,
+with lower bounds exposed by `compiledEntryMoments` and the preview. Convergence and
 prove-edge cards label the conservative distance, take full ticket price as
 an input, and have no fitted residual band. `stats.sigmaPerTournamentAnalyticKind`
 preserves this distinction in diagnostic exports. See [Ocean KO](OCEAN_KO.md).

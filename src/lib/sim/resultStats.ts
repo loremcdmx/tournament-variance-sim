@@ -149,7 +149,13 @@ export function computeScalarStats(
 
   // Monte Carlo precision readouts -----------------------------------------
   const mcSeMean = S > 0 ? stdDev / Math.sqrt(S) : 0;
-  const mcSeStdDev = S > 1 ? stdDev / Math.sqrt(2 * (S - 1)) : 0;
+  // SE(σ) ≈ σ/2 · √((κ−1)/(S−1)) with κ the plain (non-excess) kurtosis. For
+  // a normal sample κ = 3 and this is the textbook σ/√(2(S−1)); a heavy right
+  // tail makes κ hundreds and the error many times larger. The plug-in κ is
+  // itself noisy there, so read the result as an order of magnitude.
+  const kappa = S >= 4 && stdDev > 0 ? kurtosis + 3 : 3;
+  const mcSeStdDev =
+    S > 1 ? (stdDev / 2) * Math.sqrt(Math.max(0, kappa - 1) / (S - 1)) : 0;
   const mcCi95HalfWidthMean = 1.96 * mcSeMean;
   const mcRoiErrorPct =
     Math.abs(mean) > 1e-6

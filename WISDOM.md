@@ -360,6 +360,33 @@ presentation misleading. Do not undo these without re-measuring:
 - Streak ties use a tolerance of 1e-9 of a ticket: a Battle Royale break-even entry
   can sum to -1.78e-15 and must not count as a loss.
 
+## Heavy-Tail Readouts And Fixed Shapes
+
+The 8 October 2026 audit found readouts that were arithmetically right and
+statistically misleading. Do not undo these without re-measuring:
+
+- `stats.mcSeStdDev` is σ/2·√((κ−1)/(S−1)) with the sample's own kurtosis. The
+  normal-theory σ/√(2(S−1)) showed 0.7% for an Ocean KO run (10 000 samples ×
+  1000 entries) whose σ moved by 12% between seeds (7.05-10.13 BI over 10 seeds);
+  the kurtosis form reports about 10%. The plug-in κ is itself noisy on a heavy
+  tail, so the UI prints it as "±X%", never as a precise figure.
+- Kelly (σ²/μ) and the Gaussian 1% / 5% bankrolls are marked unstable / overstated
+  when the excess kurtosis is above 6 (`sigmaReliability.ts`, i.e. σ at least
+  twice as uncertain as the normal formula says). The path-based risk of ruin and
+  minimum bankroll are the stable ones and stay unmarked.
+- Models that ignore the row ROI (uniform, empirical, `*-realdata-*`, a pinned α)
+  report `expectedProfit` from their own finish pmf; a bounty row on such a model
+  still reads cost × ROI because the bounty channel closes the gap. A test that
+  expects cost × ROI for a fixed-shape model without a bounty is wrong.
+- The diagnostic σ (the preview's `payoutStd` and `stats.sigmaPerTournamentAnalytic`)
+  is `compiledEntryMoments`; do not write a second σ formula next to it. The old
+  place-only σ was 2.5% low for PKO, 23% for Mystery and 3.8x for Battle Royale.
+- The default Battle Royale bounty share is computed from GG's envelope table
+  (`battleRoyaleBountyShareOfNetPool`, 21/46 = 0.4565), which leaves exactly the
+  published 40/30/20 cash split. Do not put a rounded literal back.
+- `mystery-realdata-*` is a splice of the PKO cash zone and the freezeout tail, not
+  measured Mystery data; keep the labels saying so.
+
 ## Good Defaults For New Agents
 
 - Start read-only.

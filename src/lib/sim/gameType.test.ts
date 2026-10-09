@@ -6,6 +6,7 @@ import {
   inferGameType,
   normalizeBrMrConsistency,
   normalizeGameTypeConsistency,
+  oceanKoRowFromTotalTicket,
   rowHasActiveBounty,
 } from "./gameType";
 import type { TournamentRow } from "./types";
@@ -22,6 +23,17 @@ const row = (overrides: Partial<TournamentRow> = {}): TournamentRow => ({
 });
 
 describe("Ocean KO format", () => {
+  it("turns a full lobby ticket into the prize-pool part and the 8% fee", () => {
+    const ticket = oceanKoRowFromTotalTicket(100);
+    expect(ticket.buyIn).toBeCloseTo(92, 10);
+    expect(ticket.buyIn * ticket.rake).toBeCloseTo(8, 10);
+    expect(ticket.buyIn * (1 + ticket.rake)).toBeCloseTo(100, 10);
+    const source = row({ buyIn: 25, rake: 0 });
+    const switched = applyGameType(source, "ocean-ko");
+    expect(switched.buyIn).toBe(oceanKoRowFromTotalTicket(25).buyIn);
+    expect(switched.rake).toBe(oceanKoRowFromTotalTicket(25).rake);
+  });
+
   it("preserves the total ticket and applies GG's published 42/50/8 split", () => {
     const source = row({ buyIn: 90, rake: 10 / 90, mysteryBountyVariance: 2, pkoHeat: 0.5 });
     const ocean = { ...source, ...applyGameType(source, "ocean-ko") };

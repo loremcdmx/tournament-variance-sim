@@ -629,25 +629,16 @@ function compileSingleEntry(
     }
   }
 
-  // ---- analytical per-tourney σ (self-check / diagnostic) ----------------
-  // σ² = E[X²] − E[X]² on (prize + bounty − singleCost). Cheap to compute
-  // from pmf and used as a sanity metric next to MC σ in the results view.
-  // Ocean's adaptive tiers supply an upper second-moment bound, not a fitted σ.
+  // ---- analytical per-bullet mean ----------------------------------------
+  // E[prize + bounty] over the calibrated pmf. The matching σ lives in
+  // `compiledEntryMoments`, which also carries the per-KO bounty noise, the
+  // heat bank and the field-size mixture.
   let eX = 0;
-  let eX2 = 0;
   for (let i = 0; i < N; i++) {
     const p = pmf[i];
     if (p <= 0) continue;
-    const prize = prizeByPlace[i] + (bountyByPlace ? bountyByPlace[i] : 0);
-    eX += p * prize;
-    eX2 += p * prize * prize;
-    if (oceanKo) {
-      const bounty = oceanKo.bountyMeanByPlace[i];
-      eX2 += p * (oceanKo.bountySecondUpperByPlace[i] - bounty * bounty);
-    }
+    eX += p * (prizeByPlace[i] + (bountyByPlace ? bountyByPlace[i] : 0));
   }
-  const varSingle = Math.max(0, eX2 - eX * eX);
-  const sigmaSingleAnalytic = Math.sqrt(varSingle);
 
   // Combined per-KO log-variance: mystery bounty noise + PKO head-size noise.
   // Both are independent log-normal sources, so variances add in log-space.
@@ -689,7 +680,6 @@ function compileSingleEntry(
     mysteryBountyLogVar: perKoLogVar,
     mysteryBountyLogSigma: perKoLogVar > 0 ? Math.sqrt(perKoLogVar) : 0,
     mysteryBountyExpMinus1: perKoLogVar > 0 ? Math.exp(perKoLogVar) - 1 : 0,
-    sigmaSingleAnalytic,
     analyticMeanSingle: eX,
     heatBountyByPlace,
     brTierRatios: bountyByPlace !== null ? brSampler?.ratios ?? null : null,

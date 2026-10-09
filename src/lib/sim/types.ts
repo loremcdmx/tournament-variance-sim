@@ -1017,8 +1017,11 @@ export interface SimulationResult {
      * the user "bumping samples higher makes the numbers N times tighter".
      *
      * - seMean   = stdDev / √S — 1σ noise on the reported mean.
-     * - seStdDev = stdDev / √(2·(S−1)) — 1σ noise on the reported stdDev
-     *   (Gaussian approximation; conservative for skewed distributions).
+     * - seStdDev = stdDev/2 · √((κ−1)/(S−1)), κ = plain kurtosis of the final
+     *   profits — 1σ noise on the reported stdDev. For κ = 3 (normal data)
+     *   this is the textbook stdDev / √(2·(S−1)); the normal formula UNDER-
+     *   states the error on skewed, heavy-tailed profits (Ocean KO, Mystery,
+     *   Battle Royale), where κ runs to hundreds.
      * - ci95HalfWidthMean = 1.96 × seMean — 95 % CI half-width on mean.
      * - roiMcErrorPct — MC-uncertainty of the reported ROI as a percentage
      *   of it, i.e. |1.96·seMean / mean|. Answers "is this +ROI real or
@@ -1083,9 +1086,10 @@ export interface SimulationResult {
      */
     maxDrawdownBuyIns: number;
     /**
-     * Analytical per-tourney σ from the calibrated pmf (√(E[X²]−E[X]²) on
-     * prize+bounty), schedule-weighted. Independent of the MC run and used
-     * as a self-check next to the empirical per-tourney σ.
+     * Analytical per-tourney σ of the compiled schedule (√(E[X²]−E[X]²) on
+     * prize+bounty, including the per-KO bounty noise, the PKO heat bank and
+     * field-size variability), schedule-weighted. Independent of the MC run
+     * and used as a self-check next to the empirical per-tourney σ.
      */
     sigmaPerTournamentAnalytic: number;
     /** Ocean adaptive-tier variance is bounded, not an exact analytic point. */

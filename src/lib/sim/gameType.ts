@@ -5,7 +5,10 @@
  * Pure data + small helpers — no side effects, no RNG.
  */
 import type { GameType, TournamentRow } from "./types";
-import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
+import {
+  battleRoyaleBountyShareOfNetPool,
+  battleRoyaleRowFromTotalTicket,
+} from "./battleRoyaleTicket";
 
 export const GAME_TYPE_ORDER: GameType[] = [
   "freezeout",
@@ -20,8 +23,26 @@ export const DEFAULT_BOUNTY_FRACTION = 0.5;
 // buyIn in this app excludes the fee, hence these denominators are 92.
 export const DEFAULT_OCEAN_BOUNTY_FRACTION = 50 / 92;
 export const DEFAULT_OCEAN_RAKE = 8 / 92;
-export const DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION = 0.45;
+const OCEAN_PRIZE_SHARE_OF_TICKET = 0.92;
+
+/**
+ * GG lists an Ocean KO ticket as one number ("$100") that already contains the
+ * 8% fee; the simulator stores the prize-pool part as buyIn and the fee as a
+ * share of it. Same job as battleRoyaleRowFromTotalTicket for Battle Royale.
+ */
+export function oceanKoRowFromTotalTicket(totalTicket: number): {
+  buyIn: number;
+  rake: number;
+} {
+  return {
+    buyIn: totalTicket * OCEAN_PRIZE_SHARE_OF_TICKET,
+    rake: DEFAULT_OCEAN_RAKE,
+  };
+}
 export const BATTLE_ROYALE_PLAYERS = 18;
+// GG's envelope table, not a rounded guess: 21/46 = 0.4565 of the net pool.
+export const DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION =
+  battleRoyaleBountyShareOfNetPool(BATTLE_ROYALE_PLAYERS);
 
 const BOUNTY_GAME_TYPES = new Set<GameType>([
   "pko",
@@ -199,9 +220,9 @@ export function applyGameType(
       snapAfs(30);
       break;
     case "ocean-ko": {
-      const totalTicket = row.buyIn * (1 + row.rake);
-      patch.buyIn = totalTicket * 0.92;
-      patch.rake = DEFAULT_OCEAN_RAKE;
+      const ticket = oceanKoRowFromTotalTicket(row.buyIn * (1 + row.rake));
+      patch.buyIn = ticket.buyIn;
+      patch.rake = ticket.rake;
       patch.bountyFraction = DEFAULT_OCEAN_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = undefined;
       patch.pkoHeadVar = undefined;
