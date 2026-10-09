@@ -51,6 +51,18 @@ const BOUNTY_GAME_TYPES = new Set<GameType>([
   "mystery-royale",
 ]);
 
+// GG fixes the bounty share (and the 8% fee) of these formats. Their share is
+// structure, not a player's choice, so it must not survive a switch to PKO or
+// Mystery, and a PKO / Mystery share must not survive a switch into them.
+const FIXED_SPLIT_GAME_TYPES = new Set<GameType>(["ocean-ko", "mystery-royale"]);
+// Formats where the bounty share is the player's own number.
+const FREE_SPLIT_GAME_TYPES = new Set<GameType>(["pko", "mystery"]);
+
+const isShare = (v: number | undefined): v is number =>
+  typeof v === "number" && v > 0 && v <= 0.9;
+const isRake = (v: number | undefined): v is number =>
+  typeof v === "number" && v >= 0 && v <= 1;
+
 const BOUNTY_PAYOUT_STRUCTURES = new Set<TournamentRow["payoutStructure"]>([
   "mtt-gg-bounty",
   "mtt-gg-mystery",
@@ -104,9 +116,10 @@ export function inferGameType(row: TournamentRow): GameType {
  *   - PKO: 50 % of prize pool in the bounty pool.
  *   - Mystery: 50 % bounty, σ² = 0.8 (moderate right tail).
  *   - Mystery royale: 45 % bounty, 18-max, σ² = 1.8 (jackpot-tier tail).
- * Existing values that the new format *still uses* are preserved when
- * possible (e.g. switching between mystery ↔ mystery-royale keeps the
- * current bountyFraction), so the user's manual tweaks survive.
+ * A manual bounty share survives PKO ↔ Mystery. Ocean KO and Battle Royale
+ * always take GG's structural share; leaving them restores the share (and,
+ * for Ocean, the fee split of the same total ticket) the row had before, or
+ * the format default — never the structural share.
  */
 /**
  * Normalize the gameType ↔ payoutStructure invariant. Mystery Battle Royale
@@ -199,6 +212,35 @@ export function applyGameType(
     if ((row.players ?? 0) < min) patch.players = min;
   };
 
+  // Remember the player's own split on the way into a fixed-split format
+  // (carried unchanged between Ocean and BR), forget it on the way out.
+  const from = inferGameType(row);
+  const fromFixed = FIXED_SPLIT_GAME_TYPES.has(from);
+  const remembered = fromFixed ? row.splitBeforeFixedFormat : undefined;
+  patch.splitBeforeFixedFormat = !FIXED_SPLIT_GAME_TYPES.has(next)
+    ? undefined
+    : fromFixed
+      ? remembered
+      : {
+          rake: row.rake,
+          bountyFraction: FREE_SPLIT_GAME_TYPES.has(from) ? row.bountyFraction : undefined,
+        };
+  const rememberedShare = remembered?.bountyFraction;
+  const rememberedRake = remembered?.rake;
+  const ownShare = (): number => {
+    if (fromFixed) {
+      return isShare(rememberedShare) ? rememberedShare : DEFAULT_BOUNTY_FRACTION;
+    }
+    return bounty > 0 ? bounty : DEFAULT_BOUNTY_FRACTION;
+  };
+  // Ocean converted the player's ticket to GG's 8% fee keeping the total; on
+  // the way out keep the total (it may have been edited) and split it with
+  // the fee the player had before.
+  if (from === "ocean-ko" && next !== "ocean-ko" && isRake(rememberedRake)) {
+    patch.buyIn = (row.buyIn * (1 + row.rake)) / (1 + rememberedRake);
+    patch.rake = rememberedRake;
+  }
+
   // Format-specific ITM knobs: previous format may have left a pinned
   // `itmRate` (e.g. BR's structural 20 % or a hand-tuned freezeout 16 %)
   // and / or `finishBuckets` shape pins behind. Carrying those into a
@@ -234,7 +276,7 @@ export function applyGameType(
       break;
     }
     case "pko":
-      patch.bountyFraction = bounty > 0 ? bounty : DEFAULT_BOUNTY_FRACTION;
+      patch.bountyFraction = ownShare();
       patch.mysteryBountyVariance = undefined;
       patch.pkoHeadVar = row.pkoHeadVar ?? 0.4;
       patch.battleRoyaleLeaderboardEnabled = undefined;
@@ -248,7 +290,7 @@ export function applyGameType(
       snapAfs(2);
       break;
     case "mystery":
-      patch.bountyFraction = bounty > 0 ? bounty : DEFAULT_BOUNTY_FRACTION;
+      patch.bountyFraction = ownShare();
       // σ² = 2.0 is a stopgap — log-normal structurally can't match GG's
       // real envelope distribution (jackpot tier ~10000× mean w/ prob ~6e-7,
       // see #92's scraped BR tiers), but σ² = 2.0 gives P(X > 100×mean) ≈
@@ -264,8 +306,9 @@ export function applyGameType(
       break;
     case "mystery-royale": {
       const brDefault = battleRoyaleRowFromTotalTicket(10);
-      patch.bountyFraction =
-        bounty > 0 ? bounty : DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION;
+      // GG's envelope table, like Ocean's 50/92: a PKO / Mystery share would
+      // misprice the 40/30/20 cash part.
+      patch.bountyFraction = DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = 1.8;
       patch.rake = brDefault.rake;
       patch.buyIn = brDefault.buyIn;

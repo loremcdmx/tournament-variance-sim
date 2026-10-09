@@ -174,6 +174,15 @@ export interface TournamentRow {
   bountyFraction?: number;
 
   /**
+   * The player's own fee and bounty share from before the row was switched
+   * into a format whose split GG fixes (Ocean KO 42/50/8, Battle Royale
+   * 21/46 of the pool). Switching back out restores them, so GG's split does
+   * not leak into a PKO / Mystery row. Set and read only by `applyGameType`;
+   * the engine never reads it.
+   */
+  splitBeforeFixedFormat?: { rake?: number; bountyFraction?: number };
+
+  /**
    * "Sit through pay jumps" play style — the player refuses to fold their
    * way into mincashes and instead plays for deeper stacks. The transform
    * is EV-preserving: a fraction `payJumpAggression` ∈ (0, 1] of the

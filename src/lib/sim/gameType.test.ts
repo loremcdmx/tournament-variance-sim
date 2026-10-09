@@ -9,7 +9,7 @@ import {
   oceanKoRowFromTotalTicket,
   rowHasActiveBounty,
 } from "./gameType";
-import type { TournamentRow } from "./types";
+import type { GameType, TournamentRow } from "./types";
 
 const row = (overrides: Partial<TournamentRow> = {}): TournamentRow => ({
   id: "r1",
@@ -183,6 +183,109 @@ describe("applyGameType defaults", () => {
   it("uses 45% bounty share for fresh Battle Royale rows", () => {
     const patch = applyGameType(row({ bountyFraction: undefined }), "mystery-royale");
     expect(patch.bountyFraction).toBe(DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION);
+  });
+});
+
+describe("applyGameType format switches", () => {
+  const switchTo = (r: TournamentRow, next: GameType): TournamentRow => ({
+    ...r,
+    ...applyGameType(r, next),
+  });
+  // The main calculator's starting row (5000 players, 50+5) switched to PKO.
+  const pko5000 = () =>
+    switchTo(row({ players: 5000, buyIn: 50, rake: 0.1, gameType: "freezeout" }), "pko");
+  const cashPool = (r: TournamentRow) => r.players * r.buyIn * (1 - r.bountyFraction!);
+  const bountyPool = (r: TournamentRow) => r.players * r.buyIn * r.bountyFraction!;
+
+  it("PKO → Ocean → PKO returns the 50/50 split and the 50+5 ticket", () => {
+    const start = pko5000();
+    expect(cashPool(start)).toBeCloseTo(125_000, 6);
+    const ocean = switchTo(start, "ocean-ko");
+    expect(ocean.bountyFraction).toBe(DEFAULT_OCEAN_BOUNTY_FRACTION);
+    expect(ocean.buyIn * (1 + ocean.rake)).toBeCloseTo(55, 10);
+    const back = switchTo(ocean, "pko");
+    expect(back.bountyFraction).toBe(0.5);
+    expect(back.buyIn).toBeCloseTo(50, 10);
+    expect(back.rake).toBeCloseTo(0.1, 12);
+    expect(cashPool(back)).toBeCloseTo(125_000, 6);
+    expect(bountyPool(back)).toBeCloseTo(125_000, 6);
+    expect(back.splitBeforeFixedFormat).toBeUndefined();
+  });
+
+  it("Ocean → Mystery drops Ocean's 50/92 share", () => {
+    const viaOcean = switchTo(switchTo(pko5000(), "ocean-ko"), "mystery");
+    expect(viaOcean.bountyFraction).toBe(0.5);
+    expect(viaOcean.buyIn).toBeCloseTo(50, 10);
+    expect(viaOcean.rake).toBeCloseTo(0.1, 12);
+    // A row that started as Ocean has no earlier split: format default share,
+    // the GG ticket stays as it is.
+    const bornOcean = row({
+      gameType: "ocean-ko",
+      payoutStructure: "mtt-gg-bounty",
+      bountyFraction: DEFAULT_OCEAN_BOUNTY_FRACTION,
+      ...oceanKoRowFromTotalTicket(100),
+    });
+    const mystery = switchTo(bornOcean, "mystery");
+    expect(mystery.bountyFraction).toBe(0.5);
+    expect(mystery.buyIn).toBeCloseTo(92, 10);
+    expect(mystery.buyIn * mystery.rake).toBeCloseTo(8, 10);
+  });
+
+  it("keeps a manual PKO share (40%) when switching to Mystery and back", () => {
+    const manual = { ...pko5000(), bountyFraction: 0.4 };
+    const mystery = switchTo(manual, "mystery");
+    expect(mystery.bountyFraction).toBe(0.4);
+    expect(switchTo(mystery, "pko").bountyFraction).toBe(0.4);
+  });
+
+  it("keeps a manual PKO share through a trip into Ocean and back", () => {
+    const manual = { ...pko5000(), bountyFraction: 0.4 };
+    const ocean = switchTo(manual, "ocean-ko");
+    expect(ocean.bountyFraction).toBe(DEFAULT_OCEAN_BOUNTY_FRACTION);
+    expect(switchTo(ocean, "mystery").bountyFraction).toBe(0.4);
+    expect(switchTo(ocean, "pko").bountyFraction).toBe(0.4);
+  });
+
+  it("re-splits an Ocean ticket edited in Ocean with the player's earlier fee", () => {
+    const ocean = { ...switchTo(pko5000(), "ocean-ko"), ...oceanKoRowFromTotalTicket(110) };
+    const back = switchTo(ocean, "pko");
+    expect(back.buyIn * (1 + back.rake)).toBeCloseTo(110, 10);
+    expect(back.rake).toBeCloseTo(0.1, 12);
+    expect(back.buyIn).toBeCloseTo(100, 10);
+  });
+
+  it("Ocean → freezeout restores the 50+5 ticket", () => {
+    const freeze = switchTo(switchTo(pko5000(), "ocean-ko"), "freezeout");
+    expect(freeze.bountyFraction).toBeUndefined();
+    expect(freeze.buyIn).toBeCloseTo(50, 10);
+    expect(freeze.rake).toBeCloseTo(0.1, 12);
+  });
+
+  it("keeps Battle Royale's 21/46 share out of PKO / Mystery and theirs out of BR", () => {
+    const manual = { ...pko5000(), bountyFraction: 0.4 };
+    const br = switchTo(manual, "mystery-royale");
+    expect(br.bountyFraction).toBe(DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION);
+    expect(switchTo(br, "mystery").bountyFraction).toBe(0.4);
+    const freshBr = switchTo(row(), "mystery-royale");
+    expect(switchTo(freshBr, "pko").bountyFraction).toBe(0.5);
+    expect(switchTo(freshBr, "mystery").bountyFraction).toBe(0.5);
+    // Ocean ↔ BR carries the player's own split along.
+    const viaBoth = switchTo(switchTo(switchTo(manual, "ocean-ko"), "mystery-royale"), "pko");
+    expect(viaBoth.bountyFraction).toBe(0.4);
+  });
+
+  it("ignores a broken remembered split from an old or edited link", () => {
+    const ocean = row({
+      gameType: "ocean-ko",
+      payoutStructure: "mtt-gg-bounty",
+      bountyFraction: DEFAULT_OCEAN_BOUNTY_FRACTION,
+      ...oceanKoRowFromTotalTicket(100),
+      splitBeforeFixedFormat: { rake: Number.NaN, bountyFraction: 5 },
+    });
+    const pko = switchTo(ocean, "pko");
+    expect(pko.bountyFraction).toBe(0.5);
+    expect(pko.buyIn).toBe(ocean.buyIn);
+    expect(pko.rake).toBe(ocean.rake);
   });
 });
 
