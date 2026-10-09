@@ -62,6 +62,9 @@ export function getPayoutTable(
     case "mtt-gg":
       return ggTable(players);
 
+    case "mtt-gg-freeze":
+      return ggFreezeTable(players);
+
     case "mtt-sunday-million":
       return sundayMillionTable(players);
 
@@ -177,6 +180,41 @@ function ggTable(players: number): number[] {
     firstShare: firstShareForField(0.178, 0.115, players),
     ftRatio: 1.41,
     minCashBuyIns: 1.84,
+  });
+}
+
+/**
+ * GGPoker freezeout curve fitted to aggregated real results: per-place
+ * average prizes of single entries in fields of 250–9,999 runners,
+ * Jan–Oct 2026, set the parameters; the 2025 results of the same filter
+ * checked them. The fit target is the σ of an entry with a uniform finish,
+ * the part of the variance the payout table alone decides. On 2025 the
+ * table matches it within 2 % in every field band with tight error bars
+ * (250–2,499); `mtt-gg` misses it by 5–11 % from 500 runners up.
+ *
+ *   1. 1st is 16.9 % of the pool at 250 runners and 8.3 % at 10,000,
+ *      log-linear in between. Real GG freezeouts pay the winner much less
+ *      than the CoinPoker sample behind `mtt-gg` (16.7 % at 911 runners);
+ *      at 1,000–2,500 runners it is 12–13 %.
+ *   2. The top step is flatter than the rest of the final table:
+ *      2nd = 1st / 1.22, then 1.31 per place.
+ *   3. 14.5 % of the field is paid; min-cash is 2.24 buy-ins.
+ */
+function ggFreezeTable(players: number): number[] {
+  const paid = Math.max(1, Math.floor(players * 0.145));
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      (Math.log10(Math.max(players, 2)) - Math.log10(250)) /
+        (Math.log10(10_000) - Math.log10(250)),
+    ),
+  );
+  return buildRealisticCurve(paid, players, {
+    firstShare: 0.169 * (1 - t) + 0.0827 * t,
+    topRatio: 1.22,
+    ftRatio: 1.31,
+    minCashBuyIns: 2.24,
   });
 }
 
@@ -317,6 +355,11 @@ interface RealisticCurveParams {
   minCashBuyIns: number;
   /** If true, 1st = 2nd (PKO bounty regular side). */
   flatTop2?: boolean;
+  /**
+   * 1st / 2nd ratio when the top step differs from the rest of the FT
+   * (`ftRatio` then applies from 2nd down). Ignored when `flatTop2`.
+   */
+  topRatio?: number;
 }
 
 /**
@@ -348,13 +391,13 @@ function buildRealisticCurve(
   if (paid <= 0) return [1];
   if (paid === 1) return [1];
 
-  const { firstShare, ftRatio, minCashBuyIns, flatTop2 = false } = params;
+  const { firstShare, ftRatio, minCashBuyIns, flatTop2 = false, topRatio } = params;
   const ftLen = Math.min(9, paid);
 
   const ft = new Array<number>(ftLen);
   ft[0] = firstShare;
-  if (flatTop2 && ftLen >= 2) {
-    ft[1] = firstShare;
+  if ((flatTop2 || topRatio !== undefined) && ftLen >= 2) {
+    ft[1] = flatTop2 ? firstShare : firstShare / topRatio!;
     for (let i = 2; i < ftLen; i++) ft[i] = ft[i - 1] / ftRatio;
   } else {
     for (let i = 1; i < ftLen; i++) ft[i] = ft[i - 1] / ftRatio;

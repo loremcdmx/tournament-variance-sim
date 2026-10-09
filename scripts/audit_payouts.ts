@@ -18,6 +18,7 @@ const STRUCTURES: PayoutStructureId[] = [
   "mtt-primedope",
   "mtt-pokerstars",
   "mtt-gg",
+  "mtt-gg-freeze",
   "mtt-sunday-million",
   "mtt-gg-bounty",
 ];

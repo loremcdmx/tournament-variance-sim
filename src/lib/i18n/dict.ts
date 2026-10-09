@@ -94,6 +94,7 @@ export const DICT = {
   "oceanReport.noDrawdown": {"en":"No drawdown","ru":"Без просадки"},
   "oceanReport.methodParameters": {"en":"Finish model: power-law, calibrated separately for each format to the shared target ROI. PKO uses head-variance parameter 0.4 and heat 0. Mystery uses the log-variance in the calculated scenario. The exact payout profile and funded pool shares are listed below.","ru":"Модель финишей: power-law, отдельно калиброванная для каждого формата под общий целевой ROI. В PKO параметр разброса голов 0,4, heat 0. В Mystery используется лог-дисперсия из рассчитанного сценария. Точный профиль выплат и доли фондов указаны ниже."},
   "oceanReport.payoutGG": {"en":"GG MTT · mtt-gg","ru":"GG MTT · mtt-gg"},
+  "oceanReport.payoutGGFreeze": {"en":"GG freezeout · mtt-gg-freeze","ru":"GG фризаут · mtt-gg-freeze"},
   "oceanReport.payoutKO": {"en":"GG bounty · mtt-gg-bounty","ru":"GG bounty · mtt-gg-bounty"},
   "oceanReport.payoutMystery": {"en":"GG mystery · mtt-gg-mystery","ru":"GG mystery · mtt-gg-mystery"},
   "oceanReport.largeRun": {"en":"A long distance takes longer to calculate. You can stop at any time.","ru":"Большая дистанция считается дольше. Расчёт можно остановить."},

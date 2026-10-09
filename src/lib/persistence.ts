@@ -131,6 +131,7 @@ const VALID_PAYOUT_STRUCTURE_IDS = new Set<PayoutStructureId>([
   "battle-royale",
   "mtt-pokerstars",
   "mtt-gg",
+  "mtt-gg-freeze",
   "mtt-sunday-million",
   "mtt-gg-bounty",
   "mtt-gg-mystery",
