@@ -195,22 +195,30 @@ function sundayMillionTable(players: number): number[] {
 }
 
 /**
- * GGPoker Bounty Builder / PKO reference curve. In a PKO the visible
- * "regular" prize-pool column has two distinctive features we model
- * explicitly:
+ * GGPoker Bounty Builder / PKO reference curve for the regular column.
+ * The engine applies this table to the regular pool only: compile takes
+ * `bountyFraction` of the buy-in off the pool before paying places, so
+ * every share here is a share of that half, not of the whole pool.
  *
- *   1. Half of each buy-in goes to the bounty pool, so the regular
- *      column is effectively half of a non-bounty table. Real 1st
- *      share lands around 6.5–7.5 % instead of 14–17 %.
- *   2. The top of the table is flat (1st ≈ 2nd) because the real EV
- *      boost for winning the whole thing is attached to bounties, not
- *      the regular column.
- *
- * Anchored to the Mini CoinHunter PKO sample in `data/payout-samples/`.
+ *   1. 1st ≈ 13.8 % of the regular column at 541 runners. The Mini
+ *      CoinHunter sample in `data/payout-samples/` lists
+ *      `prizePool` = 5474 = 541 × ₹11 × 0.92, the whole net pool, while
+ *      its places sum to about half of it; 377.61 is 6.9 % of the whole
+ *      pool and 13.8 % of the regular column. The table used to take
+ *      6.9 % as its 1st share, which halved the bounty pool twice and
+ *      left PKO σ about a fifth too low on mid-size fields.
+ *   2. The share falls with the field on the same log scale as the GG
+ *      freezeout table (`ggTable`, 0.178 → 0.115), scaled by
+ *      13.8 / 17.65 so the curve passes through the sample: 0.139 at
+ *      ≤ 500 runners, 0.090 at ≥ 15,000.
+ *   3. The top is flat (1st ≈ 2nd: 377.61 vs 377.54) because the real
+ *      EV boost for winning the whole thing is the winner's own head,
+ *      not the regular column. Below 2nd the sample steps down by
+ *      1.32–1.36 per place, hence `ftRatio` 1.35.
  *
  * Below ~50 runners the big-field shape is wrong: the formula's
  * `Math.max(9, …)` floor would force 9 paid even at N=10 (paying 90 %
- * of the field), and the 6.9 % flat-top winner-share assumes deep-FT
+ * of the field), and the flat-top winner share assumes deep-FT
  * bounty muting that doesn't apply at single-table sizes. A
  * single-table PKO regular column behaves like an SNG: top 1–3 paid,
  * winner takes a much bigger fraction of regular. So at small N we
@@ -220,14 +228,9 @@ function sundayMillionTable(players: number): number[] {
 function ggBountyTable(players: number): number[] {
   if (players < 50) return smallFieldBountyTable(players);
   const paid = Math.max(9, Math.floor(players * 0.115));
-  // ftRatio=1.26 rather than 1.40: a bounty FT with 1st=6.9 % and a
-  // 1.40 cascade leaves ft[8]≈0.65 %, which caps the tail too low to
-  // absorb the remaining 70 % of the pool (infeasible). A shallower
-  // cascade keeps ft[8] high enough that the bisection solver can hit
-  // both the min-cash and the sum-to-1 constraints.
   return buildRealisticCurve(paid, players, {
-    firstShare: 0.069,
-    ftRatio: 1.26,
+    firstShare: firstShareForField(0.139, 0.09, players),
+    ftRatio: 1.35,
     minCashBuyIns: 1.71,
     flatTop2: true,
   });

@@ -184,13 +184,15 @@ describe("validateSchedule", () => {
     // The shelled cash side cannot hit targetRegular here: first-place mass is
     // already too valuable. Engine compile then reconciles the actual bounty
     // budget as totalWinningsEV - cashEV, so the total row EV is still pinned.
+    // 3 % at 1st: with the regular column's 1st at ~13 % of its pool, a 5 %
+    // lock is worth more than the whole ROI target (the case below).
     const r = row({
       gameType: "pko",
       payoutStructure: "mtt-gg-bounty",
       roi: 1,
       itmRate: 0.20,
       bountyFraction: 0.5,
-      finishBuckets: { first: 0.05 },
+      finishBuckets: { first: 0.03 },
     });
 
     expect(validateSchedule([r], baseModel).ok).toBe(true);
