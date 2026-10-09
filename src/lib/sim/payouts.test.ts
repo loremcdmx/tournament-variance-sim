@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getPayoutTable, parsePayoutString } from "./payouts";
 import type { PayoutStructureId } from "./types";
+import coinHunter from "../../../data/payout-samples/gg-mini-coinhunter-pko-2026-04-14.json";
 
 const STRUCTURES: PayoutStructureId[] = [
   "mtt-standard",
@@ -157,11 +158,38 @@ describe("payout tables", () => {
       expect(big[0]).toBeLessThan(small[0]);
     });
 
-    it("real-world 911-runner Mini CoinHunter sample is unchanged", () => {
-      const t = getPayoutTable("mtt-gg-bounty", 911);
-      expect(t.length).toBeGreaterThan(100);
-      expect(t[0]).toBeCloseTo(0.069, 2);
-      expect(t[1]).toBeCloseTo(t[0], 2);
+    it("Mini CoinHunter sample: prizePool is the whole net pool, not the regular column", () => {
+      const s = coinHunter;
+      // 541 × ₹11 × 0.92 = 5475: the listed pool already includes the bounty half.
+      expect(Math.abs(s.prizePool - s.entries * s.buyIn * 0.92)).toBeLessThan(2);
+      // If 5474 were the regular column alone, places 35–62 would average
+      // far more than place 34 pays — impossible for a payout table.
+      const captured = s.places.reduce((a, p) => a + (p.to - p.from + 1) * p.prize, 0);
+      const lastCaptured = s.places[s.places.length - 1];
+      const missing = s.paid - lastCaptured.to;
+      expect((s.prizePool - captured) / missing).toBeGreaterThan(lastCaptured.prize);
+    });
+
+    it("PKO regular column matches the Mini CoinHunter final table", () => {
+      const s = coinHunter;
+      const regular = s.prizePool * (1 - s.bounty.pctOfBuyIn / 100);
+      const t = getPayoutTable("mtt-gg-bounty", s.entries);
+      expect(t).toHaveLength(s.paid);
+      // 377.61 of a ₹2737 regular column: 13.8 %, not the 6.9 % share of
+      // the whole pool the table used to take.
+      expect(t[0]).toBeCloseTo(s.places[0].prize / regular, 3);
+      expect(t[1]).toBeCloseTo(t[0], 9);
+      for (const p of s.places.filter((x) => x.to <= 9)) {
+        expect(t[p.from - 1] / (p.prize / regular)).toBeGreaterThan(0.95);
+        expect(t[p.from - 1] / (p.prize / regular)).toBeLessThan(1.05);
+      }
+    });
+
+    it("PKO 1st share falls with the field like the GG freezeout table", () => {
+      const shares = [500, 1000, 2000, 5000, 15000].map((N) => getPayoutTable("mtt-gg-bounty", N)[0]);
+      expect(shares[0]).toBeCloseTo(0.139, 3);
+      expect(shares[4]).toBeCloseTo(0.09, 3);
+      for (let i = 1; i < shares.length; i++) expect(shares[i]).toBeLessThan(shares[i - 1]);
     });
 
     it("small-field PKO sums to 1 and is monotonic", () => {
