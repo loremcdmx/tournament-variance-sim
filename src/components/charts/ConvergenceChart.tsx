@@ -7,6 +7,7 @@ import type { DictKey } from "@/lib/i18n/dict";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import type { SimulationInput, TournamentRow } from "@/lib/sim/types";
 import { DEFAULT_OCEAN_RAKE } from "@/lib/sim/gameType";
+import type { ItmTargetConfig } from "@/lib/sim/itmTarget";
 import {
   getConvergenceBandPolicy,
   inferRowFormat,
@@ -33,6 +34,7 @@ import {
   type SigmaBand,
 } from "@/lib/sim/convergenceMath";
 import { buildRuntimeSigmaOverrides } from "@/lib/sim/formatRuntimeSigma";
+import { fillRuntimeSigmaZone } from "@/lib/sim/runtimeSigmaBands";
 
 interface Props {
   schedule?: TournamentRow[];
@@ -40,6 +42,10 @@ interface Props {
   /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
    *  excludes them, so the displayed volume is an optimistic floor. */
   noiseActive?: boolean;
+  /** The run's global ITM target (checkbox + % in the run settings). The
+   *  single-format tabs compile their row with it, as the run path does, so
+   *  they agree with Schedule mode. Required so a new call site cannot forget it. */
+  itmTarget: ItmTargetConfig;
   /** "exact" opens on the Schedule tab (post-run, next to the Monte-Carlo
    *  card it must agree with); default keeps the synthetic planning mode. */
   defaultMode?: "avg" | "exact";
@@ -157,10 +163,12 @@ function RangeBandValue({
   );
 }
 
+
 export const ConvergenceChart = memo(function ConvergenceChart({
   schedule,
   finishModel,
   noiseActive,
+  itmTarget,
   defaultMode = "avg",
 }: Props) {
   const { locale, t } = useLocale();
@@ -271,10 +279,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     rawFormat === "exact" && !hasSchedule ? "mix" : rawFormat;
   const effectiveMode: "avg" | "exact" = format === "exact" ? "exact" : "avg";
 
-  // Format-dependent ROI bounds. Bounty formats are clipped to their validated
-  // training boxes, so regular UI controls cannot land on a point where the
-  // range band must be hidden as extrapolation. effectiveRoi is clamped on read
-  // so the user's preferred ROI is preserved across format switches.
+  // Format-dependent ROI bounds. The sliders stay inside the grid the band was
+  // measured on (`RUNTIME_SIGMA_BANDS`), so regular UI controls cannot land on
+  // a point where the range must be hidden as extrapolation. effectiveRoi is
+  // clamped on read so the user's preferred ROI is preserved across format
+  // switches.
   const { min: roiMin, max: roiMax } = roiControlBoundsForFormat(format);
   const effectiveRoi = Math.max(
     roiMin,
@@ -391,8 +400,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     return buildExactBreakdown(schedule, { finishModel });
   }, [effectiveMode, schedule, finishModel]);
   // Chips take their point σ from the same runtime compile as schedule mode
-  // and the prove-edge card (see formatRuntimeSigma); only bands keep the
-  // per-format residual constants.
+  // and the prove-edge card (see formatRuntimeSigma); the band half-width
+  // comes from the Monte Carlo calibration table in runtimeSigmaBands.
   const runtimeSigmaOverrides = useMemo(() => {
     if (effectiveMode === "exact") return undefined;
     return buildRuntimeSigmaOverrides({
@@ -403,9 +412,19 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         roi: effectiveRoi,
         rake: rakePct / 100,
         finishModel,
+        itmTarget,
       },
     });
-  }, [effectiveMode, format, mix, effectiveAfs, effectiveRoi, rakePct, finishModel]);
+  }, [
+    effectiveMode,
+    format,
+    mix,
+    effectiveAfs,
+    effectiveRoi,
+    rakePct,
+    finishModel,
+    itmTarget,
+  ]);
   const oceanKoSigmaOverride = useMemo<SigmaBand | null>(() => {
     if (format !== "ocean-ko") return null;
     return buildOceanKoSigmaBand({
@@ -456,7 +475,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     if (effectiveMode === "exact") {
       // Schedule mode: each row contributes its own (format, afs, roi) sample.
       // The band policy is "numeric" only when *every* row sits inside its
-      // format's validated fit-box; if any row is out of box, the schedule
+      // format's Monte Carlo calibration zone; if any row is outside it, the schedule
       // estimate stays point-only — same gate as single-format mode.
       if (!exactBreakdown) return [];
       return exactBreakdown.perRow.map((r) => ({
@@ -923,9 +942,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       )}
       {bandPolicy?.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
-          {t(hasOceanKo
-            ? "chart.convergence.bandWarning.oceanKo"
-            : "chart.convergence.bandWarning.outsideFitBox")}
+          {hasOceanKo
+            ? t("chart.convergence.bandWarning.oceanKo")
+            : fillRuntimeSigmaZone(t("chart.convergence.bandWarning.outsideFitBox"), numberLocale)}
         </div>
       )}
       {noiseActive && (
@@ -1162,6 +1181,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           <div className="mt-1">{t("chart.convergence.assumptions")}</div>
         </details>
         <div className="mt-1">{t("convergence.skewNote")}</div>
+        {showBand && (
+          <div className="mt-1">{t("chart.convergence.bandNote")}</div>
+        )}
       </div>
     </div>
   );

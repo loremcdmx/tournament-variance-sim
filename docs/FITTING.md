@@ -35,13 +35,21 @@ Current production fits (raw grid data in `scripts/fit_beta_*.json`,
 runtime constants in `SIGMA_ROI_{FREEZE,PKO,MYSTERY,MYSTERY_ROYALE}`
 near the top of `src/lib/sim/convergenceFit.ts`):
 
-| Format                      | Runtime form  | Coefficients |
-| --------------------------- | ------------- | ------------ |
-| freezeout (realdata-linear) | single-β      | C0=0.6564, C1=0, β=0.3694 |
-| PKO                         | 2D log-poly   | a0=1.21374, a1=-0.21789, a2=0.03473, b1=0.67318, b2=-0.03445, c=-0.05298 |
-| Mystery Bounty              | 2D log-poly   | a0=2.33290, a1=-0.27564, a2=0.02917, b1=1.14218, b2=-0.09962, c=-0.08406 |
-| Mystery Battle Royale       | fixed-AFS runtime-helper line | C0=5.48538, C1=3.11864, β=0, resid=10% |
-| mix freeze/PKO              | exact σ² composition | no promoted `{C,β}` |
+| Format                      | Runtime form  | Coefficients | resid of the surface |
+| --------------------------- | ------------- | ------------ | -------------------- |
+| freezeout (realdata-linear) | single-β      | C0=0.6564, C1=0, β=0.3694 | 6% |
+| PKO                         | 2D log-poly   | a0=1.22829, a1=-0.22862, a2=0.03549, b1=1.40175, b2=-0.14989, c=-0.10421 | 11% |
+| Mystery Bounty              | 2D log-poly   | a0=2.18541, a1=-0.27892, a2=0.03057, b1=2.29124, b2=-0.35711, c=-0.16149 | 13% |
+| Mystery Battle Royale       | fixed-AFS runtime-helper line | C0=5.48538, C1=3.11864, β=0 | 10% |
+| mix freeze/PKO              | exact σ² composition | no promoted `{C,β}` | — |
+
+These are the constants in `src/lib/sim/convergenceFit.ts` (the code wins if the
+two ever disagree). **They are no longer what the planning cards show.** The
+chips and the prove-edge card take their point from the engine's own analytic
+compile and their band from the Monte-Carlo calibration below; the surfaces
+above are only the fallback path of `computeConvergenceRows` when no runtime
+override is passed, and the `resid` column is that surface's error against its
+own grid, not a card's band.
 
 The mix row is effective-only: σ²\_mix = p·σ²\_PKO + (1−p)·σ²\_freeze
 is a composition of two runtime surfaces, so no single `{C,β}` fits
@@ -71,11 +79,14 @@ The planning cards (**ConvergenceChart** chips and the prove-edge card) do
 not evaluate these surfaces for their point estimate any more:
 `src/lib/sim/formatRuntimeSigma.ts` builds the format's default one-row
 schedule (the row the schedule editor produces, with the run path's ITM
-default) and returns the engine's own `buildExactBreakdown(...).sigmaEff`, so
-a card and a one-row schedule agree to rounding. What the fits still do: the
-`resid` constants set the half-width of the numeric band around that point
-(and the fit-box gates it), `computeConvergenceRows` falls back to the surface
-when no override is passed, and the sweep scripts keep measuring them.
+rule: the payout table's paid share, or the global ITM target when the run
+settings switch it on) and returns the engine's own
+`buildExactBreakdown(...).sigmaEff`, so a card and a one-row schedule agree to
+rounding. The band around that point is not a fit residual either: it is
+measured against the engine's Monte Carlo, see
+[Runtime σ band](#runtime-σ-band-what-the-cards-show). What the closed-form
+surfaces still do: `computeConvergenceRows` falls back to them when no
+override is passed, and the sweep scripts keep measuring them.
 
 The price is one compile per ROI candidate. A full prove-edge table (18
 candidates plus the anchor) measured 2026-10-08 on one node process: about
@@ -84,6 +95,160 @@ candidates plus the anchor) measured 2026-10-08 on one node process: about
 is free (memoized by format, field, ROI, rake and finish model), and the card
 defers its input so a slider drag does not queue one table per tick. Ocean KO
 has always been runtime; it is a strict upper bound with no band.
+
+## Runtime σ band: what the cards show
+
+The point on a planning card is the engine's analytic σ for the format's default
+one-row schedule (`formatRuntimeSigma`). The band printed around it answers one
+question: **how far can that analytic σ sit from what the engine actually
+samples?** It does not say anything about how far the model sits from real
+play; the cards' footnotes say so.
+
+`scripts/fit_runtime_sigma_bands.ts` measures it. For every cell of the grid it
+builds the card's own row (`buildFormatRuntimeRow`, the default finish model
+`powerlaw-realdata-influenced`), runs the real hot loop (`simulateShard`) on it
+and takes the Monte-Carlo σ of one tournament in buy-ins, `sd(final profit) /
+sqrt(N) / cost`. The tables below are `MC / analytic − 1` in percent, with the
+standard error of the MC σ in brackets. The SE is the larger of a kurtosis
+estimate, `½·sqrt((κ−1)/n)`, and a batch-means estimate; the normal-theory SE
+is not used because the right tail (bounties, BR envelopes) makes it far too
+small.
+
+How a format's `resid` is derived: `dev = |MC/analytic − 1| + 2·SE` per cell,
+`resid` = the largest `dev` over the cells inside the format's box, rounded up
+to a whole percent, never below 1 %. The box is the extent of the grid, and
+`isInsideFitBox` hides the band outside it (the point stays). Rake is not
+gated: the grid probes it (rake 0 and 20 %), and so it does two other finish
+models (`power-law`, `linear-skill`) and two global ITM targets (12 % and 25 %,
+the run setting the cards now take). Everything lives in
+`src/lib/sim/runtimeSigmaBands.ts`, which `formatRuntimeSigma.ts` re-exports
+and which the chips, the prove-edge card and schedule mode all read; a test pins
+that table to `scripts/fit_runtime_sigma_bands.json`.
+
+Re-run it (heavy: take a lock slot; about 16 minutes on 12 workers, 47 G tournaments) when the
+compile, the hot loop or a payout table changes, then paste the printed
+`RUNTIME_SIGMA_BANDS` literal:
+
+```bash
+BANDS_WORKERS=12 npx tsx scripts/fit_runtime_sigma_bands.ts
+```
+
+### Result (47.8 G tournaments, engine at `12e7d5f`)
+
+| format | cells | box: field, ROI | largest gap | largest SE | `resid` |
+| --- | ---: | --- | ---: | ---: | ---: |
+| freezeout | 55 | 50–50000, -30..+100% | 0.98% | 0.72% | **3%** |
+| PKO | 55 | 50–50000, -30..+100% | 0.37% | 0.55% | **2%** |
+| Mystery | 55 | 50–50000, -30..+100% | 0.59% | 0.66% | **2%** |
+| Battle Royale | 10 | 18, -20..+100% | 1.82% | 2.15% | **6%** |
+
+The band before this calibration, for the record: freezeout ±50 % on the chips and
+±6 % on the prove-edge card, PKO ±11 %, Mystery ±3 % on the chips and ±13 % on the
+prove-edge card, Battle Royale ±10 %, and schedule mode used the 6/11/13/10 % of the
+closed-form surfaces. The 6, 11, 13 and 10 % are those surfaces' own errors against
+their own grids; they stopped describing anything once the point moved to the
+engine's compile.
+
+What the numbers say:
+
+- The analytic σ and the engine agree to within 1.0 % in every cell of freezeout,
+  PKO and Mystery, and to a few tenths of a percent below 10 000 players. The band is
+  therefore mostly Monte-Carlo noise (2 SE). For freezeout and PKO the SE grows with
+  the field (0.0–0.1 % at 50 players, 0.5–0.7 % at 50 000); Mystery's SE is not
+  monotone in the field (up to 0.4 % at 50 players). The freezeout 3 % comes from one
+  noisy cell (AFS 50 000, ROI −30 %); an independent re-run of single cells put the
+  real gap at about 0.1 % for freezeout and PKO, MC slightly above the analytic σ.
+- Battle Royale is noise-limited. One 10 000x envelope is hit about once per 2.5 M
+  tournaments and carries most of the variance, so even 4 G tournaments per cell leave
+  SE at 0.6–1.1 % (1 G on the probes: 1.8–2.2 %). The cells cannot separate a gap
+  under about 1–2 % from zero; pooled over the six grid cells the gap is
+  +0.73% ± 0.33 % (inverse-variance). The 6 % is a noise-limited constant, not a
+  measured error: it is the same rule (gap + 2 SE, worst cell, rounded up) applied to
+  data that cannot resolve more.
+- Rake, finish model and the global ITM target do not move the gap beyond noise
+  (probes below), so none of them is gated. The ITM probes cover field 1 000 at
+  ROI +10 % only; an independent check at targets 5–40 % stayed within the bands. The box is the extent of the grid: the
+  full AFS slider (50–50 000) and the ROI range of the sliders and of the prove-edge
+  candidates; outside it (a row with 200 000 players, ROI +150 %) the cards show the
+  point only. The old gate had no ROI limit for freezeout and stopped PKO and Mystery
+  at −20..+80 %, with no measurement behind either.
+- `k ∝ σ²`: ±3 % on σ is about ±6 % on the volume the cards print.
+
+Rake, finish-model and global-ITM probes (field 1 000 and ROI +10 %; Battle Royale at
+its 18-max field; a Battle Royale row carries its own ITM, so the target is not probed
+there), in the same units:
+
+| format | rake | finish model | global ITM | MC/analytic − 1 | SE |
+| --- | ---: | --- | ---: | ---: | ---: |
+| freezeout | 0 | default | off | +0.03% | 0.09% |
+| freezeout | 0.2 | default | off | +0.01% | 0.07% |
+| freezeout | 0.1 | power-law | off | +0.10% | 0.07% |
+| freezeout | 0.1 | linear-skill | off | +0.06% | 0.08% |
+| freezeout | 0.1 | default | 12 % | +0.12% | 0.07% |
+| freezeout | 0.1 | default | 25 % | +0.11% | 0.08% |
+| PKO | 0 | default | off | +0.18% | 0.06% |
+| PKO | 0.2 | default | off | +0.03% | 0.06% |
+| PKO | 0.1 | power-law | off | +0.09% | 0.07% |
+| PKO | 0.1 | linear-skill | off | +0.12% | 0.06% |
+| PKO | 0.1 | default | 12 % | +0.09% | 0.07% |
+| PKO | 0.1 | default | 25 % | +0.22% | 0.09% |
+| Mystery | 0 | default | off | -0.19% | 0.19% |
+| Mystery | 0.2 | default | off | +0.02% | 0.16% |
+| Mystery | 0.1 | power-law | off | +0.22% | 0.25% |
+| Mystery | 0.1 | linear-skill | off | +0.49% | 0.28% |
+| Mystery | 0.1 | default | 12 % | -0.08% | 0.18% |
+| Mystery | 0.1 | default | 25 % | +0.44% | 0.31% |
+| Battle Royale | 0 | default | off | -0.44% | 2.15% |
+| Battle Royale | 0.2 | default | off | +0.24% | 1.77% |
+| Battle Royale | 0.08 | power-law | off | +0.60% | 1.91% |
+| Battle Royale | 0.08 | linear-skill | off | -1.78% | 1.91% |
+
+Per-cell tables, MC/analytic − 1 in percent with the SE in brackets (field down, ROI across):
+
+**freezeout, rake 0.1: MC/analytic − 1 in % (SE in %)**
+
+| AFS ↓ ROI → | -30% | -20% | 0% | 10% | 30% | 60% | 100% |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 50 | +0.1% (0.0) | +0.0% (0.0) | +0.1% (0.0) | +0.0% (0.0) | +0.0% (0.0) | +0.0% (0.0) | -0.0% (0.0) |
+| 100 | +0.0% (0.0) | +0.0% (0.0) | +0.1% (0.0) | +0.0% (0.0) | +0.0% (0.0) | +0.1% (0.0) | +0.0% (0.0) |
+| 300 | +0.1% (0.1) | +0.1% (0.1) | -0.0% (0.0) | +0.1% (0.0) | +0.1% (0.0) | +0.0% (0.0) | +0.0% (0.0) |
+| 1000 | +0.2% (0.1) | +0.1% (0.1) | +0.1% (0.1) | +0.0% (0.1) | -0.0% (0.1) | +0.0% (0.1) | +0.1% (0.1) |
+| 3000 | +0.4% (0.2) | +0.1% (0.2) | +0.4% (0.1) | +0.2% (0.1) | +0.0% (0.1) | -0.1% (0.1) | +0.1% (0.1) |
+| 10000 | +0.2% (0.3) | +0.8% (0.3) | +0.3% (0.3) | -0.1% (0.2) | -0.1% (0.2) | +0.0% (0.2) | -0.0% (0.2) |
+| 50000 | +1.0% (0.7) | -0.0% (0.7) | -0.1% (0.5) | +0.4% (0.5) | +0.1% (0.4) | -0.2% (0.5) | +0.8% (0.4) |
+
+**PKO, rake 0.1: MC/analytic − 1 in % (SE in %)**
+
+| AFS ↓ ROI → | -30% | -20% | 0% | 10% | 30% | 60% | 100% |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 50 | +0.1% (0.0) | +0.0% (0.0) | +0.0% (0.0) | -0.0% (0.0) | -0.0% (0.0) | -0.0% (0.0) | +0.0% (0.0) |
+| 100 | +0.0% (0.0) | +0.1% (0.0) | +0.0% (0.0) | +0.1% (0.0) | -0.0% (0.0) | +0.0% (0.0) | +0.0% (0.0) |
+| 300 | -0.0% (0.1) | +0.2% (0.0) | +0.1% (0.0) | +0.1% (0.0) | +0.1% (0.0) | +0.0% (0.0) | +0.0% (0.0) |
+| 1000 | +0.0% (0.1) | +0.0% (0.1) | +0.1% (0.1) | +0.1% (0.1) | -0.1% (0.1) | +0.0% (0.0) | -0.1% (0.0) |
+| 3000 | +0.0% (0.1) | -0.1% (0.1) | +0.1% (0.1) | +0.3% (0.1) | +0.1% (0.1) | -0.0% (0.1) | -0.0% (0.1) |
+| 10000 | -0.1% (0.2) | +0.1% (0.2) | +0.2% (0.2) | +0.0% (0.2) | +0.3% (0.2) | +0.1% (0.2) | -0.2% (0.1) |
+| 50000 | +0.1% (0.5) | +0.4% (0.5) | +0.4% (0.4) | -0.1% (0.3) | +0.2% (0.3) | -0.3% (0.3) | +0.3% (0.2) |
+
+**Mystery, rake 0.1: MC/analytic − 1 in % (SE in %)**
+
+| AFS ↓ ROI → | -30% | -20% | 0% | 10% | 30% | 60% | 100% |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 50 | +0.2% (0.4) | +0.4% (0.3) | +0.1% (0.2) | +0.3% (0.3) | +0.0% (0.2) | -0.1% (0.1) | +0.1% (0.2) |
+| 100 | +0.3% (0.3) | -0.3% (0.3) | +0.0% (0.3) | -0.1% (0.2) | +0.1% (0.2) | -0.1% (0.2) | -0.3% (0.1) |
+| 300 | +0.5% (0.4) | +0.3% (0.3) | +0.3% (0.4) | +0.1% (0.2) | -0.0% (0.2) | +0.1% (0.2) | -0.2% (0.1) |
+| 1000 | +0.0% (0.3) | -0.1% (0.2) | -0.2% (0.2) | +0.2% (0.2) | -0.2% (0.2) | +0.1% (0.1) | +0.1% (0.2) |
+| 3000 | -0.3% (0.2) | +0.4% (0.2) | +0.1% (0.2) | +0.0% (0.1) | +0.1% (0.2) | +0.0% (0.3) | +0.1% (0.1) |
+| 10000 | -0.2% (0.2) | -0.1% (0.2) | +0.1% (0.2) | +0.0% (0.2) | +0.3% (0.2) | +0.0% (0.2) | +0.1% (0.1) |
+| 50000 | +0.4% (0.7) | +0.2% (0.5) | -0.1% (0.5) | +0.6% (0.4) | +0.2% (0.4) | +0.4% (0.3) | +0.2% (0.3) |
+
+**Battle Royale, rake 0.08: MC/analytic − 1 in % (SE in %)**
+
+| AFS ↓ ROI → | -20% | 0% | 10% | 30% | 60% | 100% |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 18 | +1.8% (1.1) | -0.0% (1.0) | -0.5% (1.0) | +0.9% (0.8) | +0.3% (0.7) | +1.3% (0.6) |
+
+Every raw number, including kurtosis, both SE estimators and the realized ROI of each
+cell, is in `scripts/fit_runtime_sigma_bands.json`.
 
 ## Quickstart
 
@@ -271,6 +436,11 @@ Pitfalls:
   narrow the field range.
 
 ## Wiring a fit into the UI
+
+This wires the closed-form fallback surfaces only. What the planning cards
+print comes from the engine's compile and from `runtimeSigmaBands.ts`; to change
+a card's band, re-run `fit_runtime_sigma_bands.ts` (see
+[Runtime σ band](#runtime-σ-band-what-the-cards-show)).
 
 Never promote a probe fit without first running `fit_drift_report.ts`
 and confirming that user-zone residuals don't regress. A fit with better

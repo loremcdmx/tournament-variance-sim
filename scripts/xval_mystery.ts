@@ -19,7 +19,7 @@ import {
   buildScheduleAnalyticBreakdown,
   runSimulation,
 } from "../src/lib/sim/engine";
-import { SIGMA_ROI_MYSTERY_RUNTIME_RESID } from "../src/lib/sim/convergenceFit";
+import { runtimeSigmaBandResid } from "../src/lib/sim/runtimeSigmaBands";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
 const N_TOURNEYS = 500;
@@ -168,7 +168,7 @@ async function main() {
     `  buckets: ${OFF_GRID.length} off-grid + ${EDGE_BOX.length} edge-of-box`,
   );
   console.log(
-    `  runtime band candidate: ±${(SIGMA_ROI_MYSTERY_RUNTIME_RESID * 100).toFixed(1)}%`,
+    `  runtime band candidate: ±${(runtimeSigmaBandResid("mystery") * 100).toFixed(1)}%`,
   );
   console.log("");
   console.log(
@@ -211,13 +211,13 @@ async function main() {
 
   const runtimeMaxAbsPct = Math.max(...rows.map((r) => Math.abs(r.runtimePct)));
   console.log("");
-  if (runtimeMaxAbsPct <= SIGMA_ROI_MYSTERY_RUNTIME_RESID * 100) {
+  if (runtimeMaxAbsPct <= runtimeSigmaBandResid("mystery") * 100) {
     console.log(
-      `  VERDICT: runtime Mystery predictor fits inside the validated ±${(SIGMA_ROI_MYSTERY_RUNTIME_RESID * 100).toFixed(1)}% residual band.`,
+      `  VERDICT: runtime Mystery predictor fits inside the validated ±${(runtimeSigmaBandResid("mystery") * 100).toFixed(1)}% residual band.`,
     );
   } else {
     console.log(
-      `  VERDICT: runtime Mystery predictor exceeds the proposed ±${(SIGMA_ROI_MYSTERY_RUNTIME_RESID * 100).toFixed(1)}% residual band.`,
+      `  VERDICT: runtime Mystery predictor exceeds the proposed ±${(runtimeSigmaBandResid("mystery") * 100).toFixed(1)}% residual band.`,
     );
   }
   console.log(`  total: ${((Date.now() - t0) / 1000).toFixed(1)}s`);

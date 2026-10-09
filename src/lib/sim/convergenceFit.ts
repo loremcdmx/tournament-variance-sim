@@ -5,6 +5,15 @@ import {
 import type { TournamentRow } from "./types";
 import { buildScheduleAnalyticBreakdown } from "./compile";
 
+/**
+ * Closed-form σ_ROI surfaces. The planning cards no longer read them for their
+ * point (`formatRuntimeSigma` compiles the format's default row) nor for their
+ * band (`runtimeSigmaBands.ts`, measured against the engine's Monte Carlo).
+ * They are the fallback path of `computeConvergenceRows` when no runtime
+ * override is passed, and the `resid` of each is the error of THAT surface
+ * against its own grid, not the band a card shows.
+ */
+
 export type SigmaCoefSingleBeta = {
   kind: "single-beta";
   C0: number;
@@ -80,21 +89,12 @@ export const SIGMA_ROI_MYSTERY: SigmaCoef = {
   resid: 0.13,
 };
 
-// The user-facing Mystery convergence tab now centers on a runtime single-row
-// compile instead of this promoted 2D surface. Independent fresh-sim checks
-// across off-grid and edge-of-box points stayed within roughly 1.2% of sigma,
-// so the chart uses a conservative symmetric runtime residual band of ±3%.
-// The legacy 2D coefficients remain useful for diagnostics / generic helpers.
-export const SIGMA_ROI_MYSTERY_RUNTIME_RESID = 0.03;
-
 export const SIGMA_ROI_MYSTERY_ROYALE: SigmaCoef = {
   // BR is locked to AFS=18 in the widget, so the user-facing tab centers on
   // the runtime single-row compile rather than this helper. These coefficients
   // are still kept in sync with the current runtime line inside the full BR UI
-  // box (ROI ±10%, rake 8%) for diagnostics and generic helpers. Independent
-  // hold-out sim checks across the BR UI box stayed within roughly 10% of
-  // sigma, so the chart uses a conservative symmetric ±10% band around the
-  // runtime point rather than pretending the runtime helper is tighter.
+  // box (ROI ±10%, rake 8%) for diagnostics and the fallback path. The band the
+  // BR card shows is `runtimeSigmaBands.ts`, not this `resid`.
   kind: "single-beta",
   C0: 5.48538,
   C1: 3.11864,

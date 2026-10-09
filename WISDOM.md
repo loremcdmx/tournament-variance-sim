@@ -39,7 +39,7 @@ Use this file as a guardrail against those mistakes.
 
 This area produced the most false confidence. Remember:
 
-- Every closed-form sigma fit must have an explicit training box.
+- Every numeric band must have an explicit box: the grid it was measured on.
 - Runtime policy must know when it leaves that box.
 - If the point is acceptable but the band is not, hide the band.
 - "Looks close on average" is not enough if the UI exposes bad grid edges.
@@ -59,21 +59,33 @@ This area produced the most false confidence. Remember:
   envelope table, 5.8 BI vs 7.8) and the old Mystery chip added a PKO
   head-size channel the editor's row does not have, and nothing noticed for
   months.
-- Mystery shows numeric bands only inside its validated UI box; Battle Royale's
-  numeric band is valid only inside the fixed BR box (AFS 18, ROI +/-10%).
+- The band around that point is the gap between the analytic σ and the engine's
+  own Monte Carlo, measured by `scripts/fit_runtime_sigma_bands.ts` and kept in
+  `runtimeSigmaBands.ts` (resid per format and the box it holds on; a test pins it
+  to `scripts/fit_runtime_sigma_bands.json`). The chips, the prove-edge card and
+  schedule mode all read that one number. The earlier constants (freeze ±50 % /
+  ±6 %, PKO ±11 %, Mystery ±3 % / ±13 %, BR ±10 %) belonged to closed-form
+  surfaces that no longer feed the cards; do not bring them back. The gap
+  itself is small (under 1 % for freeze, PKO and Mystery over the whole slider
+  range), so the band is mostly 2 SE of Monte-Carlo noise, and BR's 6 % is
+  noise-limited (the 10 000x envelope), not a measured error. The band does not
+  cover the gap between the model and real play, and the footnotes say so.
 - Battle Royale KO EV split now centers on the row's configured
   `bountyFraction` baseline. Do not resurrect older "BR is always 50/50
   cash/KO at slider center" wording without re-checking `compileEntry.ts` (the
   bounty-split lives there now) and `previewRowStats.ts`.
-- PKO keeps the promoted fit's residual as its band, and only inside the
-  validated training box; the point is the runtime compile like the others.
-  The closed-form surfaces (`SIGMA_ROI_*`) now only supply those residuals
-  and the fallback of `computeConvergenceRows`.
+- The closed-form surfaces (`SIGMA_ROI_*`) are only the fallback of
+  `computeConvergenceRows` when no runtime override is passed; their `resid` is
+  their own error against their own grid, not a card's band.
 - A card's σ is only as honest as the ITM it assumes. The run path pins every
   row's ITM (`applyItmTarget`: the payout table's paid share unless the row or
   the global target says otherwise); a free-α row gives 3-5% lower σ (Mystery
-  field 1000, ROI +10%: 6.03 vs 6.33 BI). The cards assume the default (global
-  target off).
+  field 1000, ROI +10%: 6.03 vs 6.33 BI). The global target (run settings,
+  `itmGlobalEnabled` / `itmGlobalPct`) reaches the cards through
+  `VolumePlanningPanel` (a required prop at every layer, so a new call site
+  cannot forget it); at 18.7 % it moves σ by -7 % / -25 % / -13 % for freeze /
+  PKO / Mystery at field 1000, ROI +10 %. A BR row carries its own ITM, so the
+  target does not touch it.
 
 ### Policy taxonomy to remember
 

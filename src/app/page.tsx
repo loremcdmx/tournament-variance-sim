@@ -1376,6 +1376,7 @@ export default function Home() {
           schedule={deferredSchedule}
           finishModel={deferredPreviewModel}
           noiseActive={noiseChannelsActive(deferredResultsControls)}
+          itmTarget={itmTargetCfg}
         />
       )}
 

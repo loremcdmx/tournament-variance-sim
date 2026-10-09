@@ -165,11 +165,15 @@ describe("bughunt: convergence and sharding", () => {
     expect(computeProveEdge({ format: "exact", schedule, afs: 50, rake: .1, z: 1.96, currentRoi: .05, candidates: [.05] }).bandPolicy).toBe("outside-fit-box");
   });
 
-  it("BR anchor remains in-box while out-of-box candidate rows keep only points", () => {
-    const proof = computeProveEdge({ format: "mystery-royale", afs: 18, rake: .08, z: 1.96, currentRoi: .05, candidates: PROVE_EDGE_POSITIVE_CANDIDATES });
+  it("BR anchor remains in-box while candidate rows beyond the calibrated ROI range keep only points", () => {
+    const proof = computeProveEdge({ format: "mystery-royale", afs: 18, rake: .08, z: 1.96, currentRoi: .05, candidates: [...PROVE_EDGE_POSITIVE_CANDIDATES, 1.5] });
     expect(proof.bandPolicy).toBe("numeric");
     expect(proof.anchor.sigmaLo).toBeLessThan(proof.anchor.sigma);
-    expect(proof.rows.find(r => r.roi === .3)?.sigmaLo).toBe(proof.rows.find(r => r.roi === .3)?.sigma);
+    const inside = proof.rows.find(r => r.roi === .3)!;
+    const beyond = proof.rows.find(r => r.roi === 1.5)!;
+    expect(inside.sigmaLo).toBeLessThan(inside.sigma);
+    expect(beyond.sigmaLo).toBe(beyond.sigma);
+    expect(beyond.sigmaHi).toBe(beyond.sigma);
   });
 
   it("full retained path output is invariant to pool size and shard arrival order", () => {

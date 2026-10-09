@@ -237,6 +237,12 @@ function ResultsViewImpl({
   // RB > 0; toggling OFF reveals the game-only view. Drawdown / streak stats
   // stay as engine output since RB reshapes those nonlinearly.
   const rbFrac = Math.max(0, (settings?.rakebackPct ?? 0) / 100);
+  const itmGlobalEnabled = settings?.itmGlobalEnabled ?? false;
+  const itmGlobalPct = settings?.itmGlobalPct ?? 0;
+  const planningItmTarget = useMemo(
+    () => ({ enabled: itmGlobalEnabled, pct: itmGlobalPct }),
+    [itmGlobalEnabled, itmGlobalPct],
+  );
   // Rakeback %, schedule, and repeats all feed a chain of heavy post-hoc
   // memos below (share-curve rebuild + shifted trajectory/distribution
   // clones on the stored chart assets).
@@ -1354,6 +1360,7 @@ function ResultsViewImpl({
             schedule={schedule}
             finishModel={finishModel}
             noiseActive={noiseChannelsActive(settings ?? {})}
+            itmTarget={planningItmTarget}
             defaultMode="exact"
           />
         </div>

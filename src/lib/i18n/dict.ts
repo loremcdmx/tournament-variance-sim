@@ -1557,8 +1557,8 @@ export const DICT = {
   "proveEdge.col.tourneys": { en: "Play this many", ru: "Нужно сыграть" },
   "proveEdge.col.fields": { en: "Full fields", ru: "Полных полей" },
   "proveEdge.footnote.banded": {
-    en: "Ranges include the model's residual noise buffer. Near 0% ROI the required volume explodes, because a tiny positive result is almost indistinguishable from normal tournament variance.",
-    ru: "Диапазоны включают запас на остаточную ошибку модели. Рядом с 0% нужный объем резко растет, потому что маленький плюс почти неотличим от обычной турнирной дисперсии.",
+    en: "The range is how far the analytic σ sits from the engine's Monte Carlo. It does not cover the gap between the model and real play. Near 0% ROI the required volume explodes, because a tiny positive result is almost indistinguishable from normal tournament variance.",
+    ru: "Диапазон — это расхождение расчётной σ с Монте-Карло движка. Разницу между моделью и реальной игрой он не покрывает. Рядом с 0% нужный объём резко растёт, потому что маленький плюс почти неотличим от обычной турнирной дисперсии.",
   },
   "proveEdge.footnote.point": {
     en: "Point estimate only: the current field size or ROI is outside the validated model zone, so the range is hidden. Use the number as a rough planning estimate.",
@@ -1605,8 +1605,8 @@ export const DICT = {
     ru: "Пересчитываю под этот размер поля…",
   },
   "chart.convergence.mode.hint": {
-    en: "Averaged: generic planning mode. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); fitted constants only set the width of the range. Mix weights are shares of tournaments in the synthetic mix. Schedule: compiles the real rows and aggregates per-row dollar variance, field variability, payout shape, rake, and bounty structure into one schedule-aware σ_ROI.",
-    ru: "Усреднённо: общий planning-режим. Фриз, ПКО, Мистери и Battle Royale считают σ через runtime-компиляцию строки этого формата по умолчанию на выбранных контролах (та же σ, что в режиме Расписание); подогнанные константы задают только ширину диапазона. В Миксе веса означают долю турниров в синтетическом миксе. Расписание: компилирует реальные строки и агрегирует долларовую дисперсию по строкам, field variability, payout-shape, рейк и bounty-структуру в один schedule-aware σ_ROI.",
+    en: "Averaged: generic planning mode. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); the width of the range comes from calibrating that σ against the engine's Monte Carlo. Mix weights are shares of tournaments in the synthetic mix. Schedule: compiles the real rows and aggregates per-row dollar variance, field variability, payout shape, rake, and bounty structure into one schedule-aware σ_ROI.",
+    ru: "Усреднённо: общий planning-режим. Фриз, ПКО, Мистери и Battle Royale считают σ через runtime-компиляцию строки этого формата по умолчанию на выбранных контролах (та же σ, что в режиме Расписание); ширина диапазона взята из сверки этой σ с Монте-Карло движка. В Миксе веса означают долю турниров в синтетическом миксе. Расписание: компилирует реальные строки и агрегирует долларовую дисперсию по строкам, field variability, payout-shape, рейк и bounty-структуру в один schedule-aware σ_ROI.",
   },
   "chart.convergence.exact.breakdown": {
     en: "Variance contribution per row",
@@ -1617,8 +1617,8 @@ export const DICT = {
     ru: "Режим Расписание даёт точечную оценку: CI по-прежнему меняет доверительность, а «Сыграно AFS» считается по скомпилированному среднему полю расписания:",
   },
   "chart.convergence.exact.bandedBox": {
-    en: "Every row is inside its format's validated fit-box — schedule shows a numeric ±band weighted by per-row variance contribution. AFS played uses the compiled mean field:",
-    ru: "Все строки внутри провалидированных fit-boxов своих форматов — расписание показывает численный ±диапазон, взвешенный по вкладам в дисперсию. «Сыграно AFS» считается по скомпилированному среднему полю:",
+    en: "Every row is inside the zone its format's range was calibrated on — schedule shows a numeric ±range weighted by per-row variance contribution. AFS played uses the compiled mean field:",
+    ru: "Все строки внутри зоны, на которой откалиброван диапазон их формата, — расписание показывает численный ±диапазон, взвешенный по вкладам в дисперсию. «Сыграно AFS» считается по скомпилированному среднему полю:",
   },
   "chart.convergence.exact.rowCol.row": { en: "Row", ru: "Ряд" },
   "chart.convergence.exact.rowCol.afs": { en: "AFS", ru: "AFS" },
@@ -1635,16 +1635,20 @@ export const DICT = {
     ru: "Веса в Миксе — это доли турниров в синтетическом миксе, а не доли долларового риска.",
   },
   "chart.convergence.bandWarning.outsideFitBox": {
-    en: "Current AFS / ROI sits outside the validated training box for this format (freeze & PKO / Mystery field 50–50 000, PKO / Mystery ROI −20..+80 %, MBR field fixed at 18 with ROI ±10 %). The point estimate is still a ballpark, but the ± band would be extrapolation territory so it's suppressed.",
-    ru: "Текущий AFS / ROI выходит за пределы validated training box для этого формата (фриз и ПКО / Мистери поле 50–50 000, ПКО / Мистери ROI −20..+80 %, MBR поле строго 18 и ROI ±10 %). Точка всё ещё ориентир, но ± полоса здесь уже была бы экстраполяцией, поэтому её скрыли.",
+    en: "Current AFS / ROI sits outside the zone where the range was checked against the engine's Monte Carlo (freeze, PKO and Mystery: field {afsMin}–{afsMax}, ROI {roiMin}..{roiMax}; Battle Royale: field fixed at {brAfs}, ROI {brRoiMin}..{brRoiMax}). The point is still the engine's own number, but the ± range would be extrapolation here, so it's hidden.",
+    ru: "Текущие AFS / ROI вне зоны, где диапазон сверен с Монте-Карло движка (фриз, ПКО и Мистери: поле {afsMin}–{afsMax}, ROI {roiMin}..{roiMax}; Battle Royale: поле строго {brAfs}, ROI {brRoiMin}..{brRoiMax}). Точка по-прежнему посчитана самим движком, но ± диапазон здесь был бы экстраполяцией, поэтому его скрыли.",
+  },
+  "chart.convergence.bandNote": {
+    en: "The range is how far the analytic σ sits from the engine's Monte Carlo. It does not cover the gap between the model and real play.",
+    ru: "Диапазон — расхождение расчётной σ с Монте-Карло движка. Разницу между моделью и реальной игрой он не покрывает.",
   },
   "chart.convergence.assumptions.summary": {
     en: "How to read a row",
     ru: "Как читать строку",
   },
   "chart.convergence.assumptions": {
-    en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); fitted constants only set the width of the range. Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where they are validated; outside that safe zone the table falls back to a point estimate.",
-    ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, ПКО, Мистери и Battle Royale считают σ через runtime-компиляцию строки этого формата по умолчанию на выбранных контролах (та же σ, что в режиме Расписание); подогнанные константы задают только ширину диапазона. Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где он провалидирован; вне безопасной зоны таблица оставляет только точечную оценку.",
+    en: "Read a row like this: this is roughly how many tournaments you need before your observed ROI usually stays inside the chosen band around the true ROI at the selected confidence level. Freeze, PKO, Mystery, and Battle Royale compile the default single row of that format at the chosen controls (the same σ as in Schedule mode); the width of the range comes from calibrating that σ against the engine's Monte Carlo. Mix blends the formats by their tournament weights. Schedule mode does not use the global AFS / ROI / rake sliders: it evaluates each row with its own settings and then combines the full schedule variance. Numeric ranges are shown only where that calibration was done; outside that zone the table falls back to a point estimate.",
+    ru: "Читай строку так: примерно столько турниров нужно, чтобы при выбранной доверительности наблюдаемый ROI обычно держался внутри указанного диапазона вокруг истинного ROI. Фриз, ПКО, Мистери и Battle Royale считают σ через runtime-компиляцию строки этого формата по умолчанию на выбранных контролах (та же σ, что в режиме Расписание); ширина диапазона взята из сверки этой σ с Монте-Карло движка. Микс объединяет форматы по весам турниров. Режим Расписание не использует глобальные ползунки AFS / ROI / рейка: он считает каждую строку отдельно с её собственными настройками, а потом собирает общую дисперсию всего расписания. Числовой диапазон показывается только там, где проведена эта сверка; вне такой зоны таблица оставляет только точечную оценку.",
   },
 
   "unit.money": { en: "$", ru: "$" },

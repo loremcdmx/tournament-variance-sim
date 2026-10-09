@@ -2,18 +2,15 @@ import { describe, it, expect } from "vitest";
 import {
   CONVERGENCE_FIELD_MAX,
   CONVERGENCE_FIELD_MIN,
-  CONVERGENCE_KO_ROI_MAX,
-  CONVERGENCE_KO_ROI_MIN,
   CONVERGENCE_MBR_FIELD,
-  CONVERGENCE_MBR_ROI_MAX,
-  CONVERGENCE_MBR_ROI_MIN,
   getConvergenceBandPolicy,
   inferRowFormat,
   isInsideFitBox,
   noiseChannelsActive,
   type FitBoxSample,
 } from "./convergencePolicy";
-import { SIGMA_ROI_FREEZE } from "./convergenceFit";
+import { roiControlBoundsForFormat } from "./convergenceMath";
+import { RUNTIME_SIGMA_BANDS } from "./runtimeSigmaBands";
 import type { TournamentRow } from "./types";
 
 // Minimal row builder — only the fields inferRowFormat reads.
@@ -137,7 +134,7 @@ describe("inferRowFormat — precedence", () => {
   });
 });
 
-describe("isInsideFitBox — per-format training boxes", () => {
+describe("isInsideFitBox — per-format band boxes", () => {
   it("Ocean KO has no validated residual band, including inside the PKO box", () => {
     for (const field of [50, 500, 50_000]) {
       expect(isInsideFitBox(s("ocean-ko", field, 0.1))).toBe(false);
@@ -147,107 +144,54 @@ describe("isInsideFitBox — per-format training boxes", () => {
       s("ocean-ko", 1000, 0.1),
     ])).toEqual({ kind: "warning", reason: "outside-fit-box" });
   });
-  describe("freeze — field [50, 50_000], ROI unrestricted", () => {
-    it("inside field bounds", () => {
-      expect(isInsideFitBox(s("freeze", CONVERGENCE_FIELD_MIN, 0))).toBe(true);
-      expect(isInsideFitBox(s("freeze", CONVERGENCE_FIELD_MAX, 0))).toBe(true);
-      expect(isInsideFitBox(s("freeze", 1000, 0.5))).toBe(true);
+  for (const format of ["freeze", "pko", "mystery", "mystery-royale"] as const) {
+    const box = RUNTIME_SIGMA_BANDS[format];
+    describe(`${format} — the grid its band was measured on`, () => {
+      it("corners are inside", () => {
+        for (const field of [box.afsMin, box.afsMax]) {
+          for (const roi of [box.roiMin, box.roiMax]) {
+            expect(isInsideFitBox(s(format, field, roi))).toBe(true);
+          }
+        }
+        expect(
+          isInsideFitBox(s(format, Math.sqrt(box.afsMin * box.afsMax), (box.roiMin + box.roiMax) / 2)),
+        ).toBe(true);
+      });
+      it("one step past any edge is outside", () => {
+        expect(isInsideFitBox(s(format, box.afsMin - 1, box.roiMin))).toBe(false);
+        expect(isInsideFitBox(s(format, box.afsMax + 1, box.roiMax))).toBe(false);
+        expect(isInsideFitBox(s(format, box.afsMin, box.roiMin - 0.01))).toBe(false);
+        expect(isInsideFitBox(s(format, box.afsMax, box.roiMax + 0.01))).toBe(false);
+      });
+      it("tolerates floating-point noise on slider endpoints", () => {
+        expect(isInsideFitBox(s(format, box.afsMin - 1e-12, box.roiMin - 1e-12))).toBe(true);
+        expect(isInsideFitBox(s(format, box.afsMax + 1e-10, box.roiMax + 1e-10))).toBe(true);
+      });
+      it("every point the card sliders can reach carries a band", () => {
+        const { min, max } = roiControlBoundsForFormat(format);
+        const fields =
+          format === "mystery-royale"
+            ? [CONVERGENCE_MBR_FIELD]
+            : [CONVERGENCE_FIELD_MIN, CONVERGENCE_FIELD_MAX];
+        for (const field of fields) {
+          for (const roi of [min, max]) {
+            expect(isInsideFitBox(s(format, field, roi))).toBe(true);
+          }
+        }
+      });
     });
-    it("outside field bounds", () => {
-      expect(isInsideFitBox(s("freeze", 49, 0))).toBe(false);
-      expect(isInsideFitBox(s("freeze", 50_001, 0))).toBe(false);
-      expect(isInsideFitBox(s("freeze", 1_000_000, 0))).toBe(false);
-    });
-    it("tolerates floating-point noise on slider endpoints", () => {
-      expect(isInsideFitBox(s("freeze", CONVERGENCE_FIELD_MIN - 1e-12, 0))).toBe(
-        true,
-      );
-      expect(isInsideFitBox(s("freeze", CONVERGENCE_FIELD_MAX + 1e-10, 0))).toBe(
-        true,
-      );
-    });
-    it("ROI is unrestricted because freeze fit is ROI-invariant (C1=0)", () => {
-      // Canary contract: if SIGMA_ROI_FREEZE.C1 ever becomes non-zero, the
-      // freeze fit stops being ROI-invariant and this policy needs a ROI
-      // range. We don't import the constant here (keeps policy pure), so
-      // the canary test in the block below pins the contract by reading
-      // ConvergenceChart.
-      expect(isInsideFitBox(s("freeze", 1000, -0.99))).toBe(true);
-      expect(isInsideFitBox(s("freeze", 1000, 10.0))).toBe(true);
-    });
+  }
+
+  it("Battle Royale is an 18-max format: any other field is outside", () => {
+    expect(isInsideFitBox(s("mystery-royale", 17, 0))).toBe(false);
+    expect(isInsideFitBox(s("mystery-royale", 19, 0))).toBe(false);
+    expect(isInsideFitBox(s("mystery-royale", 500, 0))).toBe(false);
   });
 
-  describe("pko — field [50, 50_000], ROI [−0.20, +0.80]", () => {
-    it("inside box", () => {
-      expect(isInsideFitBox(s("pko", 1000, 0.1))).toBe(true);
-      expect(
-        isInsideFitBox(
-          s("pko", CONVERGENCE_FIELD_MIN, CONVERGENCE_KO_ROI_MIN),
-        ),
-      ).toBe(true);
-      expect(
-        isInsideFitBox(
-          s("pko", CONVERGENCE_FIELD_MAX, CONVERGENCE_KO_ROI_MAX),
-        ),
-      ).toBe(true);
-    });
-    it("field out of box", () => {
-      expect(isInsideFitBox(s("pko", 49, 0.1))).toBe(false);
-      expect(isInsideFitBox(s("pko", 200_000, 0.1))).toBe(false);
-    });
-    it("ROI out of box (the P1 #2 gap from audit)", () => {
-      expect(isInsideFitBox(s("pko", 1000, -0.30))).toBe(false);
-      expect(isInsideFitBox(s("pko", 1000, 1.00))).toBe(false);
-      expect(isInsideFitBox(s("pko", 1000, -0.21))).toBe(false);
-      expect(isInsideFitBox(s("pko", 1000, 0.81))).toBe(false);
-    });
-  });
-
-  describe("mystery — field [50, 50_000], ROI [−0.20, +0.80]", () => {
-    it("inside box", () => {
-      expect(isInsideFitBox(s("mystery", 1000, 0.1))).toBe(true);
-      expect(isInsideFitBox(s("mystery", 50, -0.2))).toBe(true);
-      expect(isInsideFitBox(s("mystery", 50_000, 0.8))).toBe(true);
-    });
-    it("outside box", () => {
-      expect(isInsideFitBox(s("mystery", 60_000, 0.1))).toBe(false);
-      expect(isInsideFitBox(s("mystery", 1000, 0.90))).toBe(false);
-    });
-  });
-
-  describe("mystery-royale — field === 18 strict, ROI [−0.10, +0.10]", () => {
-    it("at AFS=18 inside ROI range", () => {
-      expect(isInsideFitBox(s("mystery-royale", CONVERGENCE_MBR_FIELD, 0))).toBe(
-        true,
-      );
-      expect(
-        isInsideFitBox(
-          s(
-            "mystery-royale",
-            CONVERGENCE_MBR_FIELD,
-            CONVERGENCE_MBR_ROI_MIN,
-          ),
-        ),
-      ).toBe(true);
-      expect(
-        isInsideFitBox(
-          s(
-            "mystery-royale",
-            CONVERGENCE_MBR_FIELD,
-            CONVERGENCE_MBR_ROI_MAX,
-          ),
-        ),
-      ).toBe(true);
-    });
-    it("any field !== 18 → outside", () => {
-      expect(isInsideFitBox(s("mystery-royale", 17, 0))).toBe(false);
-      expect(isInsideFitBox(s("mystery-royale", 19, 0))).toBe(false);
-      expect(isInsideFitBox(s("mystery-royale", 500, 0))).toBe(false);
-    });
-    it("ROI outside UI band → outside", () => {
-      expect(isInsideFitBox(s("mystery-royale", 18, -0.15))).toBe(false);
-      expect(isInsideFitBox(s("mystery-royale", 18, 0.15))).toBe(false);
-    });
+  it("freeze is gated on ROI as well as on the field", () => {
+    expect(isInsideFitBox(s("freeze", 1000, 5))).toBe(false);
+    expect(isInsideFitBox(s("freeze", 1000, -0.99))).toBe(false);
+    expect(isInsideFitBox(s("freeze", 1000, 0.5))).toBe(true);
   });
 });
 
@@ -309,12 +253,13 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     ).toEqual({ kind: "numeric" });
   });
 
-  it("PKO out of ROI box (validated audit case) → warning outside-fit-box", () => {
-    expect(getConvergenceBandPolicy([s("pko", 1000, -0.30)])).toEqual({
+  it("PKO beyond the ROI the band was measured on → warning outside-fit-box", () => {
+    const { roiMin, roiMax } = RUNTIME_SIGMA_BANDS.pko;
+    expect(getConvergenceBandPolicy([s("pko", 1000, roiMin - 0.1)])).toEqual({
       kind: "warning",
       reason: "outside-fit-box",
     });
-    expect(getConvergenceBandPolicy([s("pko", 1000, 1.0)])).toEqual({
+    expect(getConvergenceBandPolicy([s("pko", 1000, roiMax + 0.5)])).toEqual({
       kind: "warning",
       reason: "outside-fit-box",
     });
@@ -344,9 +289,10 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     ).toEqual({ kind: "numeric" });
   });
 
-  it("freeze extreme ROI is still numeric (fit is ROI-invariant)", () => {
+  it("freeze extreme ROI → warning outside-fit-box (the point follows ROI, the band was not measured there)", () => {
     expect(getConvergenceBandPolicy([s("freeze", 1000, 5)])).toEqual({
-      kind: "numeric",
+      kind: "warning",
+      reason: "outside-fit-box",
     });
   });
 
@@ -411,19 +357,6 @@ describe("getConvergenceBandPolicy — overall verdict", () => {
     ]) {
       const permuted = permute.map((i) => samples[i]);
       expect(getConvergenceBandPolicy(permuted)).toEqual({ kind: "numeric" });
-    }
-  });
-});
-
-// Canary: if SIGMA_ROI_FREEZE ever gains a non-zero C1 (i.e. freeze sigma_ROI
-// starts depending on ROI), isInsideFitBox must learn a freeze ROI range.
-// This imports the real runtime constant and fails the moment the contract
-// shifts, making drift impossible to miss.
-describe("freeze ROI-invariant contract (canary)", () => {
-  it("SIGMA_ROI_FREEZE.C1 must stay 0 — or policy needs a ROI range for freeze", () => {
-    expect(SIGMA_ROI_FREEZE.kind).toBe("single-beta");
-    if (SIGMA_ROI_FREEZE.kind === "single-beta") {
-      expect(SIGMA_ROI_FREEZE.C1).toBe(0);
     }
   });
 });

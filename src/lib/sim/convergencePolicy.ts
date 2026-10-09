@@ -2,20 +2,21 @@
  * Policy for the ConvergenceChart numeric ±band. Separated from the chart so
  * the contract lives in one place and can be unit-tested without rendering.
  *
- * Numeric bands are only validated inside an explicit per-format box.
- * Anything outside (e.g. ROI=−30 % for PKO/Mystery, field > 50 000 for
- * non-MBR, field !== 18 for MBR) is extrapolation and not band-worthy —
- * policy reports `outside-fit-box`.
+ * Numeric bands are only validated inside an explicit per-format box: the
+ * (field, ROI) grid the band was measured on against the engine's Monte Carlo
+ * (`RUNTIME_SIGMA_BANDS`). Anything outside it is extrapolation and not
+ * band-worthy — policy reports `outside-fit-box`.
  *
  * Every single-format card (freeze, PKO, Mystery, Battle Royale) centers its
- * point σ on a runtime single-row compile (`formatRuntimeSigma`); the fitted
- * residual constants only set the half-width of the band around it, and that
- * band is signed off only inside the boxes below. So the policy remains
- * simple: in-box → numeric, outside → warning.
- * Ocean KO has no promoted residual fit: its runtime variance upper bound
+ * point σ on a runtime single-row compile (`formatRuntimeSigma`); the
+ * calibrated residual only sets the half-width of the band around it, and that
+ * band is signed off only inside the box. So the policy remains simple:
+ * in-box → numeric, outside → warning.
+ * Ocean KO has no calibrated residual: its runtime variance upper bound
  * stays unbanded at every field size and ROI.
  */
 
+import { isInsideRuntimeSigmaBox } from "./runtimeSigmaBands";
 import type { TournamentRow } from "./types";
 
 export type ConvergenceRowFormat =
@@ -40,6 +41,7 @@ export interface FitBoxSample {
   roi: number;
 }
 
+/** Slider ends of the planning cards (what the user can dial), not the band box. */
 export const CONVERGENCE_FIELD_MIN = 50;
 export const CONVERGENCE_FIELD_MAX = 50_000;
 export const CONVERGENCE_KO_ROI_MIN = -0.20;
@@ -47,12 +49,6 @@ export const CONVERGENCE_KO_ROI_MAX = 0.80;
 export const CONVERGENCE_MBR_FIELD = 18;
 export const CONVERGENCE_MBR_ROI_MIN = -0.10;
 export const CONVERGENCE_MBR_ROI_MAX = 0.10;
-
-const FIT_BOX_EPS = 1e-9;
-
-function betweenInclusive(value: number, min: number, max: number): boolean {
-  return value >= min - FIT_BOX_EPS && value <= max + FIT_BOX_EPS;
-}
 
 /**
  * Map a TournamentRow to its ConvergenceChart format classification.
@@ -91,23 +87,14 @@ export function inferRowFormat(row: TournamentRow): ConvergenceRowFormat {
 }
 
 /**
- * Per-format training-box bounds. A sample outside this box is an
- * extrapolation of the closed-form σ fit — the point estimate is still
- * shown as a directional ballpark, but the numeric ±band is suppressed.
+ * Per-format band box. A sample outside it is an extrapolation of the
+ * calibrated band — the point estimate is still shown (it is the engine's own
+ * compile), but the numeric ±band is suppressed.
  *
- * Freeze: field ∈ [50, 50 000]; ROI unrestricted. That box was set when the
- * freeze fit was ROI-invariant (`C1 === 0` in `SIGMA_ROI_FREEZE`; a canary
- * test in `convergencePolicy.test.ts` still pins it). The point σ is now the
- * runtime compile and does rise with ROI, so the band's ROI range has not been
- * re-validated; only the point estimate is.
- *
- * PKO / Mystery: field ∈ [50, 50 000], ROI ∈ [−0.20, +0.80] — the 11×18
- * grid the 2D log-poly was fit on (scripts/fit_beta_{pko,mystery}.json).
- *
- * Mystery Battle Royale: `field === 18` strictly. MBR is a structural
- * 18-max format at GG; non-18 rows are a different game and the
- * `fit_beta_mystery_royale.json` coefficients don't generalize.
- * ROI ∈ [−0.10, +0.10] matches the UI slider range the fit covers.
+ * The box is the grid `scripts/fit_runtime_sigma_bands.ts` measured the band
+ * on, kept in `RUNTIME_SIGMA_BANDS` (field and ROI ranges per format; rake is
+ * not gated, the grid probes it). Mystery Battle Royale is a structural 18-max
+ * format, so its field is exactly 18.
  */
 export function isInsideFitBox(sample: FitBoxSample): boolean {
   const { format, field, roi } = sample;
@@ -121,38 +108,10 @@ export function isInsideFitBox(sample: FitBoxSample): boolean {
       // calibrated for Ocean's random, tier-dependent progressive bounties.
       return false;
     case "freeze":
-      return betweenInclusive(
-        field,
-        CONVERGENCE_FIELD_MIN,
-        CONVERGENCE_FIELD_MAX,
-      );
     case "pko":
-      return (
-        betweenInclusive(
-          field,
-          CONVERGENCE_FIELD_MIN,
-          CONVERGENCE_FIELD_MAX,
-        ) &&
-        betweenInclusive(roi, CONVERGENCE_KO_ROI_MIN, CONVERGENCE_KO_ROI_MAX)
-      );
     case "mystery":
-      return (
-        betweenInclusive(
-          field,
-          CONVERGENCE_FIELD_MIN,
-          CONVERGENCE_FIELD_MAX,
-        ) &&
-        betweenInclusive(roi, CONVERGENCE_KO_ROI_MIN, CONVERGENCE_KO_ROI_MAX)
-      );
     case "mystery-royale":
-      return (
-        Math.abs(field - CONVERGENCE_MBR_FIELD) <= FIT_BOX_EPS &&
-        betweenInclusive(
-          roi,
-          CONVERGENCE_MBR_ROI_MIN,
-          CONVERGENCE_MBR_ROI_MAX,
-        )
-      );
+      return isInsideRuntimeSigmaBox(format, field, roi);
   }
 }
 

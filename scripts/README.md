@@ -11,18 +11,26 @@ product workflow.
 
 Use these when changing coefficients that feed the shipped UI:
 
+- `fit_runtime_sigma_bands.ts`
 - `fit_br_fixed18.ts`
 - `xval_br.ts`
 - `fit_sigma_parallel.ts`
 - `fit_drift_report.ts`
+- `fit_runtime_sigma_bands.json`
 - `fit_beta_freeze_realdata.json`
 - `fit_beta_pko.json`
 - `fit_beta_mystery.json`
 - `fit_beta_mystery_royale.json`
 
-For BR specifically, `fit_br_fixed18.ts` rebuilds the runtime helper line for
-the validated UI box, while `xval_br.ts` is the independent sim check for the
-advertised residual band around that runtime center.
+`fit_runtime_sigma_bands.ts` is what sets the numeric band the planning cards
+show: it runs the engine's hot loop on the cards' own rows over a (format x
+field x ROI) grid and compares the Monte-Carlo sigma with the analytic one.
+Its table feeds `src/lib/sim/runtimeSigmaBands.ts`. It is a heavy run (tens of
+billions of tournaments); take a lock slot first.
+
+The `fit_br_fixed18.ts` / `xval_br.ts` pair and the `fit_beta_*` artifacts now
+back only the closed-form fallback surfaces in `convergenceFit.ts` (used by
+`computeConvergenceRows` when no runtime override is passed).
 
 Read [`docs/FITTING.md`](../docs/FITTING.md) first. Promotion without a drift
 report is not considered complete.
@@ -48,7 +56,6 @@ Use these when validating user-visible behavior outside the main app flow:
 - `smoke.ts`
 - `smoke_fixed_itm.ts`
 - `smoke_cash_release.mjs`
-- `verify_convergence_tabs.ts`
 - `verify_rakeback.ts`
 - `check_primedope.ts`
 
