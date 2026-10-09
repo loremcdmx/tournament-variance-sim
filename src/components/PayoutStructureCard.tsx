@@ -291,10 +291,12 @@ function PoolSplit({
   };
   const cashColor = "var(--color-accent)";
   const bountyColor = isBr ? "hsl(35, 85%, 58%)" : "hsl(270, 62%, 62%)";
+  // The empty place / value columns line the split up with the bars below;
+  // on a phone they would eat 208 px of ~320, so the split spans the card.
   return (
     <div className="mb-3 flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <div className={`${PLACE_COL_CLASS} shrink-0`} />
+        <div className={`${PLACE_COL_CLASS} hidden shrink-0 sm:block`} />
         <div className="flex h-5 flex-1 overflow-hidden rounded-sm bg-[color:var(--color-bg)]">
           <div
             className="flex items-center justify-start px-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-bg)]"
@@ -309,10 +311,10 @@ function PoolSplit({
             {bountyShare >= 0.18 && `${Math.round(bountyShare * 100)}%`}
           </div>
         </div>
-        <div className={`${VALUE_COL_CLASS} shrink-0`} />
+        <div className={`${VALUE_COL_CLASS} hidden shrink-0 sm:block`} />
       </div>
       <div className="flex items-center gap-2 text-[10px] text-[color:var(--color-fg-dim)]">
-        <div className={`${PLACE_COL_CLASS} shrink-0`} />
+        <div className={`${PLACE_COL_CLASS} hidden shrink-0 sm:block`} />
         <div className="flex flex-1 items-center justify-between gap-3">
           <div className="flex items-center gap-1.5">
             <span
@@ -339,14 +341,14 @@ function PoolSplit({
             </span>
           </div>
         </div>
-        <div className={`${VALUE_COL_CLASS} shrink-0`} />
+        <div className={`${VALUE_COL_CLASS} hidden shrink-0 sm:block`} />
       </div>
       <div className="flex items-start gap-2">
-        <div className={`${PLACE_COL_CLASS} shrink-0`} />
+        <div className={`${PLACE_COL_CLASS} hidden shrink-0 sm:block`} />
         <div className="flex-1 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
           {t(noteKey)}
         </div>
-        <div className={`${VALUE_COL_CLASS} shrink-0`} />
+        <div className={`${VALUE_COL_CLASS} hidden shrink-0 sm:block`} />
       </div>
     </div>
   );
