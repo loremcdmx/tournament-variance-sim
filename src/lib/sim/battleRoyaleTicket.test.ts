@@ -59,9 +59,11 @@ describe("Battle Royale bounty share of the net pool", () => {
     expect(brRows[0].bountyFraction).toBe(DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION);
   });
 
-  it("does not leak into the Romeo PKO demo row that used to borrow the constant", () => {
+  it("does not leak into the Romeo PKO demo rows, which all use the PKO half", () => {
     const romeo = SCENARIOS.find((s) => s.id === "romeo-pro")!;
     expect(romeo.schedule[0].gameType ?? "pko").not.toBe("mystery-royale");
-    expect(romeo.schedule[0].bountyFraction).toBe(0.45);
+    const pkoRows = romeo.schedule.filter((r) => r.payoutStructure === "mtt-gg-bounty");
+    expect(pkoRows.length).toBeGreaterThan(1);
+    for (const r of pkoRows) expect(r.bountyFraction).toBe(0.5);
   });
 });
