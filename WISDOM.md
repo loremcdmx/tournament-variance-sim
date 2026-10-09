@@ -337,6 +337,32 @@ Consequences to remember:
 - Saved trajectories now select the first 1000 global sample indices. Do not reintroduce proportional per-shard rounding; both the selected paths and aggregate results must be independent of shard boundaries/order.
 - `smoke:cash` uses the actual `?admin=1` route. Browser readiness waits for product elements, not `networkidle`; dev HMR and analytics can keep the network active. `SMOKE_BROWSER_CHANNEL=chrome` uses an installed Chrome when Playwright's bundled browser is unavailable.
 
+## Space → Ocean Explorer Readouts
+
+The 8 October 2026 audit found the page showing less uncertainty than the
+anchor really has. Do not undo these without re-measuring:
+
+- The ± next to the Space σ and ROI is a delete-one-month jackknife of the
+  training months (`scripts/anchor_uncertainty.ts` writes it into
+  `space-runtime-profile.json`; `--check` verifies it). It is about 2-3% of σ
+  and about 2 percentage points of ROI, three to ten times the spread of the
+  θ range and the bridge SE. Regenerate it with the script, never by hand.
+- Display is rounded to what that error supports: σ and ROI to one decimal, the
+  distance SD to tens of BI (hundreds printed Space and Ocean as the same
+  "≈ 1 000"), the SD of the average ROI to 0.1 percentage point, and the θ
+  block to two decimals (it shows differences of a few hundredths). The
+  unrounded values behind them did not change.
+- An end of the θ range may come from a scenario that fails the numerical
+  gates (θ = 0.5 at the 100 BI threshold does). The note is derived from the
+  precision table; do not type the θ into the text.
+- Every bridge record is a pilot run. The status is shown together with the
+  count of scenarios that pass the gates, whether or not the table is present.
+- The 1,087 players in the profile are the whole 500–1,999 field window; the
+  published 1000–1499 bin is a subset of them and its own count is not stored.
+- Realised σ and ROI of Ocean over thousands of simulated careers are unstable
+  (heavy tail), so the downside report's σ column is an analytic bound and the
+  caption says so. Do not compare it with a sample σ.
+
 ## Ocean Downside Report Readouts
 
 The 8 October 2026 audit found the arithmetic of the Ocean tab correct and its

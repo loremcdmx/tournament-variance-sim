@@ -3,6 +3,14 @@
   "fieldBin": "1000-1499",
   "trainingEvents": 64136,
   "trainingEntries": 73383,
+  "training": {
+    "from": "2025-02-02",
+    "through": "2026-06-30",
+    "months": 17,
+    "playersAllFields": 1087,
+    "allFieldsRange": "500-1999",
+    "meanFieldEntries": 1236.1
+  },
   "anchors": [
     {
       "capBountyBI": 25,
@@ -19,6 +27,12 @@
         "secondBounty": 5.132166135106994,
         "crossBountyK": 0.7367609930189751,
         "crossCashBounty": 7.344572271055523
+      },
+      "uncertainty": {
+        "method": "delete-one-month-jackknife",
+        "months": 17,
+        "sigmaSE": 0.1190879289192529,
+        "roiSE": 0.019996573639495203
       }
     },
     {
@@ -36,6 +50,12 @@
         "secondBounty": 13.88139767024615,
         "crossBountyK": 0.8406810610942683,
         "crossCashBounty": 11.616968427189505
+      },
+      "uncertainty": {
+        "method": "delete-one-month-jackknife",
+        "months": 17,
+        "sigmaSE": 0.1775585037557894,
+        "roiSE": 0.020586844131338333
       }
     }
   ]

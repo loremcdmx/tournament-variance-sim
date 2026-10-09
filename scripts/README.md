@@ -79,6 +79,12 @@ to boot a temporary dev server, then runs desktop/mobile checks, a mixed-stakes
 renorm path, and an hourly-disabled path. Screenshots and `report.json` land
 in `scripts/smoke-out/cash-release/`.
 
+`anchor_uncertainty.ts` recomputes the sampling error (month jackknife) and the
+training-window facts behind the Space → Ocean block in
+`src/lib/calibration/space-runtime-profile.json`. It needs the monthly moment
+table and QA export, which stay outside the repo; `--check` verifies the stored
+profile without writing. Details in `docs/OCEAN_EMPIRICAL_MODEL.md`.
+
 ### PrimeDope parity and ingestion research
 
 These support compare-mode investigation and data import work. Useful, but not
