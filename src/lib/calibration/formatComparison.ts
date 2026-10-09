@@ -148,7 +148,7 @@ export function buildFormatComparisonScenarios(config: FormatComparisonConfig): 
       id: `comparison-${format}`, gameType: format,
       players: config.players, buyIn, rake: 8 / 92,
       roi: config.roi, count: 1,
-      payoutStructure: format === "freezeout" ? "mtt-gg"
+      payoutStructure: format === "freezeout" ? "mtt-gg-freeze"
         : format === "mystery" ? "mtt-gg-mystery"
           : "mtt-gg-bounty",
       ...(format !== "freezeout" ? {

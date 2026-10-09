@@ -127,6 +127,12 @@ const STRUCTURES: {
     real: true,
   },
   {
+    id: "mtt-gg-freeze",
+    short: "GG Freezeout (2026)",
+    full: "GGPoker freezeouts · fitted to real 2026 prizes, checked on 2025",
+    real: true,
+  },
+  {
     id: "mtt-gg-bounty",
     short: "Mini CoinHunter PKO (2026)",
     full: "CoinPoker Mini CoinHunter PKO · calibrated to 2026-04-14 sample",
@@ -197,6 +203,7 @@ const PAYOUT_COMPAT: Partial<Record<PayoutStructureId, CompatRange>> = {
   "battle-royale": { min: BATTLE_ROYALE_PLAYERS, max: BATTLE_ROYALE_PLAYERS },
   "mtt-pokerstars": { min: 50, max: Infinity },
   "mtt-gg": { min: 50, max: Infinity },
+  "mtt-gg-freeze": { min: 50, max: Infinity },
   "mtt-sunday-million": { min: 2000, max: Infinity },
   // PKO / Mystery were originally floored at 500 because the GG-side payout
   // curves were tuned for big fields, then dropped to 50 to unblock small-
@@ -226,6 +233,7 @@ const PAYOUT_GAMETYPE_ALLOW: Partial<Record<GameType, PayoutStructureId[]>> = {
     "mtt-top-heavy",
     "mtt-pokerstars",
     "mtt-gg",
+    "mtt-gg-freeze",
     "mtt-sunday-million",
     "satellite-ticket",
     "sng-50-30-20",
@@ -270,6 +278,7 @@ const PAYOUT_ROOM: Partial<Record<PayoutStructureId, PokerRoom>> = {
   "mtt-gg-mystery": "ggpoker",
   "battle-royale": "ggpoker",
   "mtt-gg": "coinpoker",
+  "mtt-gg-freeze": "ggpoker",
   "mtt-gg-bounty": "coinpoker",
 };
 const ROOM_META: Record<PokerRoom, { label: string; src: string }> = {
@@ -285,6 +294,7 @@ const PAYOUT_IDS: PayoutStructureId[] = [
   "battle-royale",
   "mtt-pokerstars",
   "mtt-gg",
+  "mtt-gg-freeze",
   "mtt-sunday-million",
   "mtt-gg-bounty",
   "mtt-gg-mystery",

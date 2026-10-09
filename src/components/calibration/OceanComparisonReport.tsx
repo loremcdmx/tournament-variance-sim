@@ -34,7 +34,8 @@ const formatNames: Record<ComparisonFormat, DictKey> = {
   "ocean-ko": "oceanReport.ocean",
 };
 const payoutNames: Record<string, DictKey> = {
-  "mtt-gg": "oceanReport.payoutGG", "mtt-gg-bounty": "oceanReport.payoutKO",
+  "mtt-gg": "oceanReport.payoutGG", "mtt-gg-freeze": "oceanReport.payoutGGFreeze",
+  "mtt-gg-bounty": "oceanReport.payoutKO",
   "mtt-gg-mystery": "oceanReport.payoutMystery",
 };
 type Translate = (key: DictKey) => string;

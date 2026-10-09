@@ -11,6 +11,7 @@ const STRUCTURES: PayoutStructureId[] = [
   "battle-royale",
   "mtt-pokerstars",
   "mtt-gg",
+  "mtt-gg-freeze",
   "mtt-sunday-million",
   "mtt-gg-bounty",
   "mtt-gg-mystery",
@@ -202,6 +203,43 @@ describe("payout tables", () => {
         }
       }
     });
+  });
+});
+
+describe("mtt-gg-freeze (GG freezeouts, fitted to real prizes)", () => {
+  it("pays the winner 16.9 % at 250 runners and 8.27 % at 10,000, log-linear between", () => {
+    expect(getPayoutTable("mtt-gg-freeze", 250)[0]).toBeCloseTo(0.169, 6);
+    expect(getPayoutTable("mtt-gg-freeze", 10_000)[0]).toBeCloseTo(0.0827, 6);
+    const mid = Math.round(Math.sqrt(250 * 10_000));
+    expect(getPayoutTable("mtt-gg-freeze", mid)[0]).toBeCloseTo((0.169 + 0.0827) / 2, 3);
+  });
+
+  it("stays well below the CoinPoker-sample table at the fields it was fitted on", () => {
+    for (const N of [1000, 2000, 5000]) {
+      const gg = getPayoutTable("mtt-gg", N)[0];
+      const fit = getPayoutTable("mtt-gg-freeze", N)[0];
+      expect(fit).toBeLessThan(gg - 0.025);
+    }
+    const t = getPayoutTable("mtt-gg-freeze", 1972)[0];
+    expect(t).toBeGreaterThan(0.115);
+    expect(t).toBeLessThan(0.125);
+  });
+
+  it("keeps the flat top step, the FT ratio, the paid share and the min-cash", () => {
+    const N = 2000;
+    const t = getPayoutTable("mtt-gg-freeze", N);
+    expect(t).toHaveLength(Math.floor(N * 0.145));
+    expect(t[0] / t[1]).toBeCloseTo(1.22, 9);
+    for (let i = 2; i < 9; i++) expect(t[i - 1] / t[i]).toBeCloseTo(1.31, 9);
+    expect(t[t.length - 1] * N).toBeCloseTo(2.24, 9);
+  });
+
+  it("sums to 1 and never rises across the field range", () => {
+    for (const N of [50, 100, 250, 700, 2500, 10_000, 30_000]) {
+      const t = getPayoutTable("mtt-gg-freeze", N);
+      expect(t.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+      for (let i = 1; i < t.length; i++) expect(t[i]).toBeLessThanOrEqual(t[i - 1] + 1e-12);
+    }
   });
 });
 

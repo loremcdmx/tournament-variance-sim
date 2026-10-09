@@ -603,6 +603,53 @@ npx tsx scripts/compare_real_samples.ts
 This diffs every sample against `buildRealisticCurve()` and prints
 per-sample % error at places 1, FT, and min-cash.
 
+### GG freezeouts — `mtt-gg-freeze` (aggregate fit, Oct 2026)
+
+`mtt-gg` copies one CoinPoker tournament (Mini CoinMasters, ₹25, 911
+entries with re-entries). Real GGPoker freezeouts pay the winner much
+less, so `mtt-gg-freeze` is fitted to aggregated real results instead of
+a single sample: per-place average prizes of single entries in GG
+freezeouts of 250–9,999 runners (no satellites, steps, T$ builders,
+multi-day stages or rebuys), bucketed as places 1–9 and then by share of
+the field. Only those per-bucket averages were used; no player-level data
+is in this repo.
+
+| | Value |
+|---|---|
+| 1st place | 16.9 % of the pool at 250 runners, 8.27 % at 10,000, log-linear in between, flat outside |
+| 2nd | 1st / 1.22 (`topRatio`) |
+| 3rd–9th | each 1.31× smaller than the one above (`ftRatio`) |
+| Paid | 14.5 % of the field |
+| Min-cash | 2.24 buy-ins |
+
+How it was fitted and checked:
+
+1. **Target.** The σ of one entry with a *uniform* finish. With no skill
+   in the picture, that σ depends on the payout table alone, so it tests
+   the table without assuming any finish model.
+2. **Train.** Jan–Oct 2026, seven field bands (250–499 … 5,000–9,999).
+   The parameters minimise the miss on that σ per band, with the shares of
+   places 1, top-3 and top-9, the paid share and the min-cash as secondary
+   terms.
+3. **Hold-out.** The whole of 2025, same filter and bands, untouched while
+   fitting. Pass rule fixed in advance: in every band the
+   data / table σ ratio is within 1.00 ± max(2 SE, 0.03), and the pooled
+   ratio is within 1.00 ± 0.03. Result: 0.98–0.99 in the five bands from
+   250 to 2,499 runners, 1.01 and 1.10 in the two big-field bands (their
+   SE is 5–11 %: only 2–3 wins), 1.02 pooled. `mtt-gg` gives 0.89–0.95
+   from 500 runners up and 0.90 pooled.
+4. **What it does not cover.** The table fixes the prize ladder only.
+   Skilled players also cash more often than the finish model's ITM
+   shell (paid share) assumes, which keeps the full model σ ~5 % above
+   real results even on this table. Fields above 10,000 and below 250
+   are extrapolated. The flat top (2nd ≈ 82 % of 1st) may partly come
+   from final-table deals; the aggregates cannot tell.
+
+A first attempt that kept `mtt-gg`'s field slope and trained on 700–2,499
+only passed 2025 in those fields but failed in 250–699 (the table paid
+13.5 % to 1st where real tournaments pay 15–17 %); hence the wider
+training range and the table's own slope.
+
 ## Related docs
 
 - **`docs/ARCHITECTURE.md`** — engine data flow, determinism contract,

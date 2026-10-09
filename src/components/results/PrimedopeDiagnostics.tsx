@@ -224,6 +224,8 @@ function buildPrimedopeCheatSheet(
       ? 12
       : r.payoutStructure === "mtt-gg"
       ? 18
+      : r.payoutStructure === "mtt-gg-freeze"
+      ? 14.5
       : r.payoutStructure === "mtt-gg-bounty"
       ? 11.5
       : r.payoutStructure === "mtt-gg-mystery"
