@@ -156,7 +156,7 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 3 / 22,
         roi: 0.12,
         payoutStructure: "mtt-gg-bounty",
-        bountyFraction: 0.45,
+        bountyFraction: 0.5,
         guarantee: 50_000,
         count: 40,
       },
