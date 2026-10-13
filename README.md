@@ -51,7 +51,7 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
   fixed-ITM ряды закрывают KO-бюджет остатком после cash EV, чтобы общий ROI
   не ехал.
 - **Field variability** — per-sample ресэмплинг размера поля вместо compile-time сглаживания.
-- **Empirical finish model** — можно скормить свой гистограмм finish-places вместо параметрической модели.
+- **Empirical finish model** — можно скормить свой гистограмм finish-places вместо параметрической модели. Вставка и CSV понимают колонку или список мест, а также таблицу с заголовком `place` / `место`; после загрузки видно, сколько записей принято и пропущено.
 - **Compare mode** — тумблер «посчитать как PrimeDope» прогоняет обе калибровки на том же сиде, рисует две колонки + диф-строку.
 - **Tilt/skill-noise модели** — три канала ROI-шума (per-tourney, per-session, slow AR(1) drift) + fast tanh tilt + slow state-machine tilt с hysteresis.
 
@@ -278,7 +278,7 @@ You feed it a schedule (field, buy-in, rake, ROI, payout structure) and get the 
   finish depth against expected KO count; fixed-ITM rows reconcile the KO budget
   as residual after cash EV so total ROI remains pinned.
 - **Field variability**: per-sample resampling of field size instead of compile-time smoothing.
-- **Empirical finish model**: feed it your own histogram.
+- **Empirical finish model**: feed it your own histogram. Paste or CSV accepts a column or list of places, or a table with a `place` header; the panel reports how many entries were accepted and skipped.
 - **Compare mode**: toggle runs both calibrations on the same seed and shows side-by-side results.
 - **Tilt / ROI-noise channels**: per-tournament, per-session, and slow AR(1) drift, plus fast tanh tilt and slow state-machine tilt with hysteresis.
 
