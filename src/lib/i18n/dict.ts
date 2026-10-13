@@ -2364,7 +2364,6 @@ export const DICT = {
   },
   "emp.clear": { en: "Clear", ru: "Очистить" },
   "emp.loaded": { en: "Loaded", ru: "Загружено" },
-  "emp.entries": { en: "entries", ru: "записей" },
   "emp.none": { en: "No data — model falls back to power-law.", ru: "Нет данных — откат на power-law." },
   "emp.report": {
     en: "Accepted {accepted} · skipped {skipped} · worst place {worst}",

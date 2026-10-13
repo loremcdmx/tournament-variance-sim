@@ -16,6 +16,7 @@ import {
 import type { ProgressStage } from "@/lib/sim/useSimulation";
 import type { DictKey } from "@/lib/i18n/dict";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import { plural, WORDS } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { formatDuration, formatRoughDuration } from "@/lib/ui/durationFormat";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
@@ -558,7 +559,7 @@ export const ControlsPanel = memo(function ControlsPanel({
                   <span className="tabular-nums text-[color:var(--color-fg)]">
                     {empLoadedEntries}
                   </span>{" "}
-                  {t("emp.entries")}
+                  {plural(locale, empLoadedEntries, WORDS.record)}
                 </span>
               ) : (
                 <span>{t("emp.none")}</span>

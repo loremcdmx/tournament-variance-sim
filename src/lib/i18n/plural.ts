@@ -64,4 +64,8 @@ export const WORDS = {
     en: { one: "finish", other: "finishes" },
     ru: { one: "финиш", few: "финиша", many: "финишей" },
   },
+  record: {
+    en: { one: "entry", other: "entries" },
+    ru: { one: "запись", few: "записи", many: "записей" },
+  },
 } as const satisfies Record<string, PluralForms>;
