@@ -75,6 +75,14 @@ describe("parsePlaces: plain lists", () => {
   it("keeps a list wrapped onto lines of different length as a list", () => {
     expect(parsePlaces("1 2 3\n4 5")).toMatchObject({ places: [1, 2, 3, 4, 5], method: "list" });
   });
+
+  it("keeps a list wrapped by spaces onto lines of equal length as a list", () => {
+    expect(parsePlaces("1 2 3\n4 5 6")).toMatchObject({
+      places: [1, 2, 3, 4, 5, 6],
+      method: "list",
+      warnings: [],
+    });
+  });
 });
 
 describe("parsePlaces: tables with a header", () => {

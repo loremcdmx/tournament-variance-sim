@@ -9,7 +9,9 @@
  *    position, finish, pos, rank, место, позиция). Only that column is read.
  *  - `first-column`: a table with several columns and no place header. The
  *    first column is read and the caller gets a warning, because the other
- *    columns (field size, buy-in) are not places.
+ *    columns (field size, buy-in) are not places. Without any header line this
+ *    needs a tab, semicolon or comma between cells: space-separated rows of
+ *    equal length stay a wrapped list.
  *
  * A candidate counts only if it is a whole number in 1..MAX_PLACE. Everything
  * else, and anything past MAX_ENTRIES, lands in `skipped`.
@@ -117,7 +119,9 @@ function detectTable(lines: readonly string[]): Table | null {
     return null;
   }
 
-  if (body.every((row) => row.length === head.length)) {
+  // Without a header, spaces mean a wrapped list ("1 2 3" / "4 5 6"); only a
+  // real cell separator (tab, semicolon, comma) makes an unnamed table.
+  if (delimiter !== WHITESPACE && body.every((row) => row.length === head.length)) {
     return { method: "first-column", column: 0, columns: head.length, body };
   }
   return null;
