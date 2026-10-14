@@ -1,7 +1,14 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AlphaOverrideInput, changeFinishModel, type ControlsState } from "./ControlsPanel";
+import {
+  AlphaOverrideInput,
+  changeFinishModel,
+  placesReportText,
+  placesWarningText,
+  type ControlsState,
+} from "./ControlsPanel";
+import { DICT, type DictKey } from "@/lib/i18n/dict";
 import type { FinishModelId } from "@/lib/sim/types";
 
 beforeEach(() => vi.stubGlobal("React", React));
@@ -39,5 +46,34 @@ describe("manual alpha control", () => {
     const next = changeFinishModel(before, "mystery-realdata-tilt");
     expect(next).toMatchObject({ finishModelId: "mystery-realdata-tilt", alphaOverride: null, modelPresetId: "custom" });
     expect(before.alphaOverride).toBe(3);
+  });
+});
+
+describe("empirical import report", () => {
+  const report = { accepted: 3, skipped: 2, maxPlace: 7, warnings: [] };
+
+  it("shows accepted, skipped and the worst place in both locales", () => {
+    expect(placesReportText(report, (key) => DICT[key].en)).toBe(
+      "Accepted 3 · skipped 2 · worst place 7",
+    );
+    expect(placesReportText(report, (key) => DICT[key].ru)).toBe(
+      "Принято 3 · пропущено 2 · худшее место 7",
+    );
+  });
+
+  it("shows a dash instead of a worst place when nothing was accepted", () => {
+    const empty = { ...report, accepted: 0, skipped: 4, maxPlace: 0 };
+    expect(placesReportText(empty, (key) => DICT[key].ru)).toBe(
+      "Принято 0 · пропущено 4 · худшее место —",
+    );
+  });
+
+  it.each(["en", "ru"] as const)("fills every placeholder of the warnings in %s", (locale) => {
+    const t = (key: DictKey) => DICT[key][locale];
+    const first = placesWarningText({ code: "first-column", columns: 3 }, t);
+    const capped = placesWarningText({ code: "capped", limit: 500_000 }, t);
+    expect(first).toContain("3");
+    expect(capped).toContain("500000");
+    for (const text of [first, capped]) expect(text).not.toMatch(/[{}]/);
   });
 });

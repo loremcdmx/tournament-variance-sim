@@ -1,6 +1,12 @@
 "use client";
 
-import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  parsePlaces,
+  placesToBuckets,
+  type ParsedPlaces,
+  type PlacesWarning,
+} from "@/lib/empirical/parsePlaces";
 import type { FinishModelId } from "@/lib/sim/types";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
 import {
@@ -8,7 +14,9 @@ import {
   applyModelPatch,
 } from "@/lib/sim/modelPresets";
 import type { ProgressStage } from "@/lib/sim/useSimulation";
+import type { DictKey } from "@/lib/i18n/dict";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import { plural, WORDS } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { formatDuration, formatRoughDuration } from "@/lib/ui/durationFormat";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
@@ -147,6 +155,33 @@ interface Props {
   runBlockedScrollTarget?: string | null;
 }
 
+type EmpiricalImportReport = Pick<
+  ParsedPlaces,
+  "accepted" | "skipped" | "maxPlace" | "warnings"
+>;
+
+export function placesReportText(
+  report: EmpiricalImportReport,
+  t: (key: DictKey) => string,
+): string {
+  return t("emp.report")
+    .replace("{accepted}", String(report.accepted))
+    .replace("{skipped}", String(report.skipped))
+    .replace("{worst}", report.accepted > 0 ? String(report.maxPlace) : "—");
+}
+
+export function placesWarningText(
+  warning: PlacesWarning,
+  t: (key: DictKey) => string,
+): string {
+  switch (warning.code) {
+    case "first-column":
+      return t("emp.warn.firstColumn").replace("{cols}", String(warning.columns));
+    case "capped":
+      return t("emp.warn.capped").replace("{max}", String(warning.limit));
+  }
+}
+
 function formatCount(n: number, locale = "en"): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
   if (n >= 10_000) return `${Math.round(n / 1000)}k`;
@@ -230,6 +265,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   const fieldId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empError, setEmpError] = useState<string | null>(null);
+  const [empReport, setEmpReport] = useState<EmpiricalImportReport | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   // Track elapsed-since-run-start via interval-driven state. The start
   // timestamp is captured inside the effect closure, so nothing impure
@@ -277,6 +313,16 @@ export const ControlsPanel = memo(function ControlsPanel({
   const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
   const maxTournamentsPerSample = Math.min(Number.MAX_SAFE_INTEGER, scheduleTournaments * 100_000);
   const manualAlpha = supportsManualAlpha(value.finishModelId);
+  const empLoadedEntries = useMemo(
+    () => value.empiricalBuckets?.reduce((a, b) => a + b, 0) ?? 0,
+    [value.empiricalBuckets],
+  );
+  // The report describes the text that produced the current buckets, so it is
+  // hidden once they change from outside (scenario load, imported state).
+  const empReportIsCurrent =
+    empReport !== null &&
+    empReport.accepted === empLoadedEntries &&
+    empReport.maxPlace === (value.empiricalBuckets?.length ?? 0);
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>
     onChange({ ...value, [k]: v });
   const setTournamentTarget = (target: number) => {
@@ -290,27 +336,14 @@ export const ControlsPanel = memo(function ControlsPanel({
 
   const handleEmpiricalPaste = (raw: string) => {
     setEmpError(null);
-    // Caps to keep a pasted 100-MB file from pegging the main thread and to
-    // stop a malicious buckets[Number.MAX_SAFE_INTEGER-1] allocation.
-    const MAX_ENTRIES = 500_000;
-    const MAX_PLACE = 100_000;
-    const positions: number[] = [];
-    for (const tok of raw.split(/[\s,;]+/)) {
-      if (positions.length >= MAX_ENTRIES) break;
-      if (!/^\d+$/.test(tok)) continue;
-      const n = Number(tok);
-      if (!Number.isFinite(n) || n < 1 || n > MAX_PLACE) continue;
-      positions.push(n);
-    }
-    if (positions.length === 0) {
-      onChange({ ...value, empiricalBuckets: undefined });
-      return;
-    }
-    let maxPlace = 0;
-    for (const p of positions) if (p > maxPlace) maxPlace = p;
-    const buckets = new Array<number>(maxPlace).fill(0);
-    for (const p of positions) buckets[p - 1] += 1;
-    onChange({ ...value, empiricalBuckets: buckets });
+    const parsed = parsePlaces(raw);
+    setEmpReport({
+      accepted: parsed.accepted,
+      skipped: parsed.skipped,
+      maxPlace: parsed.maxPlace,
+      warnings: parsed.warnings,
+    });
+    onChange({ ...value, empiricalBuckets: placesToBuckets(parsed) });
   };
 
   const handleFile = async (file: File) => {
@@ -524,16 +557,19 @@ export const ControlsPanel = memo(function ControlsPanel({
                 <span>
                   {t("emp.loaded")}:{" "}
                   <span className="tabular-nums text-[color:var(--color-fg)]">
-                    {value.empiricalBuckets.reduce((a, b) => a + b, 0)}
+                    {empLoadedEntries}
                   </span>{" "}
-                  {t("emp.entries")}
+                  {plural(locale, empLoadedEntries, WORDS.record)}
                 </span>
               ) : (
                 <span>{t("emp.none")}</span>
               )}
               <button
                 type="button"
-                onClick={() => onChange({ ...value, empiricalBuckets: undefined })}
+                onClick={() => {
+                  setEmpReport(null);
+                  onChange({ ...value, empiricalBuckets: undefined });
+                }}
                 className="rounded border border-[color:var(--color-border)] px-2 py-0.5 text-[10px] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg)]"
               >
                 {t("emp.clear")}
@@ -566,6 +602,21 @@ export const ControlsPanel = memo(function ControlsPanel({
                 }}
               />
               <div className="leading-relaxed">{t("controls.empHint")}</div>
+              {empReport && empReportIsCurrent && (
+                <>
+                  <div className="tabular-nums text-[color:var(--color-fg-muted)]">
+                    {placesReportText(empReport, t)}
+                  </div>
+                  {empReport.warnings.map((warning) => (
+                    <div
+                      key={warning.code}
+                      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 leading-snug text-amber-300"
+                    >
+                      {placesWarningText(warning, t)}
+                    </div>
+                  ))}
+                </>
+              )}
               {empError && <div className="text-[color:var(--color-danger)]">{empError}</div>}
             </div>
           </div>

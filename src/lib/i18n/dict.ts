@@ -2364,8 +2364,19 @@ export const DICT = {
   },
   "emp.clear": { en: "Clear", ru: "Очистить" },
   "emp.loaded": { en: "Loaded", ru: "Загружено" },
-  "emp.entries": { en: "entries", ru: "записей" },
   "emp.none": { en: "No data — model falls back to power-law.", ru: "Нет данных — откат на power-law." },
+  "emp.report": {
+    en: "Accepted {accepted} · skipped {skipped} · worst place {worst}",
+    ru: "Принято {accepted} · пропущено {skipped} · худшее место {worst}",
+  },
+  "emp.warn.firstColumn": {
+    en: "No column named “place” in the header, so the first of {cols} columns was used. Name the column “place” or paste a single column.",
+    ru: "Колонка «место» в заголовке не найдена, взята первая из {cols}. Назови колонку «место» или вставь одну колонку.",
+  },
+  "emp.warn.capped": {
+    en: "Only the first {max} entries are used; the rest count as skipped.",
+    ru: "Используются только первые {max} записей, остальные считаются пропущенными.",
+  },
 
   // Cash-game mode (advanced only)
   "mode.tab.mtt": { en: "MTT", ru: "Турниры" },
