@@ -6,7 +6,7 @@ import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 import type { ControlsState } from "@/components/ControlsPanel";
 import type { FinishModelConfig, SimulationResult, TournamentRow } from "@/lib/sim/types";
 import { AdvancedStatsCard, SettingsDumpCard } from "./ResultsPanels";
-import { PrimedopeReportCard } from "./PrimedopeDiagnostics";
+import { CalibrationNotices, PrimedopeReportCard } from "./PrimedopeDiagnostics";
 
 const base = runSimulation({
   schedule: [{ id: "t", players: 100, buyIn: 10, rake: 0.1, roi: 0.2,
@@ -74,5 +74,44 @@ describe("settings dump on a fixed-shape skill model", () => {
 
   it("stays quiet for a calibrated model that hits its target", () => {
     expect(dump({ id: "power-law" })).not.toContain("target ignored");
+  });
+});
+
+describe("calibration notices print the row label as typed", () => {
+  const schedule: TournamentRow[] = [{
+    id: "t", label: "$$$ Mid $& {target}", players: 1000, buyIn: 50, rake: 0.1, roi: 0.1,
+    payoutStructure: "mtt-standard", count: 1,
+  }];
+  const result = {
+    ...base,
+    calibrationWarnings: [{ rowId: "t", targetWinnings: 55, actualWinnings: 50 }],
+  } as unknown as SimulationResult;
+
+  it("keeps $ sequences and braces in a user label out of the template engine", () => {
+    const markup = render(<CalibrationNotices result={result} schedule={schedule} />);
+    expect(markup).toContain("$$$ Mid $&amp; {target}");
+    expect(markup).not.toContain("{row}");
+  });
+});
+
+describe("settings dump money", () => {
+  it("prints a Battle Royale ticket without float noise", () => {
+    const br = [{
+      id: "br", players: 18, buyIn: 3 * (1 - 0.08), rake: 0.08 / 0.92, roi: 0.03,
+      payoutStructure: "battle-royale" as const, count: 10,
+    }];
+    const markup = render(
+      <SettingsDumpCard
+        settings={{
+          samples: 100, scheduleRepeats: 1, bankroll: 0, finishModelId: "power-law",
+          alphaOverride: null, modelPresetId: "naive", compareEnabled: false,
+          compareMode: "primedope", roiStdErr: 0,
+        } as unknown as ControlsState}
+        schedule={br}
+        result={base}
+      />,
+    );
+    expect(markup).toContain("$2.76");
+    expect(markup).not.toContain("2.7600000000000002");
   });
 });

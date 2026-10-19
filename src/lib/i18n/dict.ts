@@ -438,6 +438,10 @@ export const DICT = {
     en: "Replace the current schedule with a single default row?",
     ru: "Заменить текущее расписание одной строкой-дефолтом?",
   },
+  "demo.loadConfirm": {
+    en: "Replace your current schedule and settings with this example? What you have now will be overwritten.",
+    ru: "Заменить текущее расписание и настройки этим примером? То, что сейчас на экране, будет перезаписано.",
+  },
   "demo.brLeaderboard": {
     en: "BR leaderboard promo",
     ru: "BR leaderboard promo",
@@ -502,6 +506,19 @@ export const DICT = {
     en: "Delete this preset?",
     ru: "Удалить пресет?",
   },
+  "userPreset.saveFailed": {
+    en: "The preset was not saved: browser storage is full or blocked.",
+    ru: "Пресет не сохранён: хранилище браузера заполнено или заблокировано.",
+  },
+  "notice.shareLinkInvalid": {
+    en: "This share link could not be read (it may have been cut off, or it comes from an incompatible version), so nothing was loaded from it.",
+    ru: "Эту ссылку не удалось прочитать (возможно, она обрезана или создана несовместимой версией), поэтому из неё ничего не загружено.",
+  },
+  "notice.storageFailed": {
+    en: "Browser storage is full or blocked, so this schedule is not being saved and will be gone after a reload.",
+    ru: "Хранилище браузера заполнено или заблокировано: расписание не сохраняется и пропадёт после перезагрузки страницы.",
+  },
+  "notice.dismiss": { en: "Dismiss", ru: "Скрыть" },
 
   // Schedule editor
   "row.label": { en: "Label", ru: "Турнир" },
@@ -801,6 +818,10 @@ export const DICT = {
   "controls.memoryHint": {
     en: "Projected memory ≈ {gb} GB while building results — the tab may run out of memory. Lower Simulations to stay safe.",
     ru: "Прогноз памяти ≈ {gb} ГБ на сборке результата — вкладке может не хватить памяти. Уменьшите число симуляций.",
+  },
+  "controls.memoryHintBasic": {
+    en: "Projected memory ≈ {gb} GB while building results — the tab may run out of memory. Lower the number of tournaments to stay safe.",
+    ru: "Прогноз памяти ≈ {gb} ГБ на сборке результата — вкладке может не хватить памяти. Уменьшите число турниров.",
   },
   "controls.bankroll": { en: "Bankroll", ru: "Банкролл" },
   "controls.compareMode": { en: "Twin-run mode", ru: "Режим сравнения" },
@@ -1845,6 +1866,10 @@ export const DICT = {
   "presets.importDone": {
     en: "Imported {n} {_preset}.",
     ru: "Импортировано {n} {_preset}.",
+  },
+  "presets.importStorageFull": {
+    en: "Nothing was imported: browser storage is full or blocked.",
+    ru: "Ничего не импортировано: хранилище браузера заполнено или заблокировано.",
   },
   "changelog.title": { en: "Changelog", ru: "Чейнджлог" },
   "changelog.v076.title": { en: "v0.7.6 — 2026-04-22", ru: "v0.7.6 — 2026-04-22" },

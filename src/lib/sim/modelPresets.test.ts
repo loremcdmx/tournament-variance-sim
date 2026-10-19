@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import type { ControlsState } from "@/components/ControlsPanel";
 import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS } from "@/lib/sim/battleRoyaleLeaderboardUi";
+import { SCENARIOS } from "@/lib/scenarios";
 import {
+  BASIC_MODE_MAX_SAMPLES,
   STANDARD_PRESETS,
   applyModelPatch,
   sanitizeControlsForBasicMode,
@@ -82,8 +84,6 @@ describe("sanitizeControlsForBasicMode", () => {
       tiltSlowGain: 0.05,
       tiltSlowThreshold: 4500,
     });
-    expect(next.modelPresetId).toBe("custom");
-    expect(next.finishModelId).toBe(baseState.finishModelId);
     expect(next.roiStdErr).toBe(0);
     expect(next.roiShockPerTourney).toBe(0);
     expect(next.roiShockPerSession).toBe(0);
@@ -92,6 +92,34 @@ describe("sanitizeControlsForBasicMode", () => {
     expect(next.tiltFastScale).toBe(0);
     expect(next.tiltSlowGain).toBe(0);
     expect(next.tiltSlowThreshold).toBe(0);
+  });
+
+  it("does not honour a hand-picked finish model that basic mode cannot show or change", () => {
+    const naive = STANDARD_PRESETS.find((preset) => preset.id === "naive")!.patch;
+    for (const finishModelId of ["uniform", "empirical", "power-law", "pko-realdata-tilt"] as const) {
+      const next = sanitizeControlsForBasicMode({
+        ...baseState,
+        modelPresetId: "custom",
+        finishModelId,
+        alphaOverride: finishModelId === "pko-realdata-tilt" ? 0.2 : null,
+        usePrimedopePayouts: false,
+        usePrimedopeFinishModel: false,
+        usePrimedopeRakeMath: false,
+      });
+      expect(next.modelPresetId, finishModelId).toBe("naive");
+      expect(next.finishModelId, finishModelId).toBe(naive.finishModelId);
+      expect(next.alphaOverride, finishModelId).toBeNull();
+      expect(next.usePrimedopePayouts, finishModelId).toBe(naive.usePrimedopePayouts);
+      expect(next.usePrimedopeFinishModel, finishModelId).toBe(naive.usePrimedopeFinishModel);
+      expect(next.usePrimedopeRakeMath, finishModelId).toBe(naive.usePrimedopeRakeMath);
+    }
+  });
+
+  it("leaves the stored state alone", () => {
+    const stored = { ...baseState, modelPresetId: "custom", finishModelId: "uniform" as const };
+    sanitizeControlsForBasicMode(stored);
+    expect(stored.modelPresetId).toBe("custom");
+    expect(stored.finishModelId).toBe("uniform");
   });
 
   it("drops built-in advanced presets back to naive in basic mode", () => {
@@ -106,6 +134,25 @@ describe("sanitizeControlsForBasicMode", () => {
     expect(next.roiStdErr).toBe(0);
     expect(next.roiShockPerTourney).toBe(0);
     expect(next.tiltSlowGain).toBe(0);
+  });
+});
+
+describe("sanitizeControlsForBasicMode and the hidden simulation count", () => {
+  it("caps a stored count that basic mode has no field to lower", () => {
+    const next = sanitizeControlsForBasicMode({ ...baseState, samples: 1_000_000 });
+    expect(next.samples).toBe(BASIC_MODE_MAX_SAMPLES);
+  });
+
+  it("keeps a count at or under the cap, so a lighter run stays lighter", () => {
+    for (const samples of [100, 2_000, BASIC_MODE_MAX_SAMPLES]) {
+      expect(sanitizeControlsForBasicMode({ ...baseState, samples }).samples).toBe(samples);
+    }
+  });
+
+  it("covers every demo scenario, which basic users can load", () => {
+    for (const scenario of SCENARIOS) {
+      expect(scenario.controls.samples, scenario.id).toBeLessThanOrEqual(BASIC_MODE_MAX_SAMPLES);
+    }
   });
 });
 

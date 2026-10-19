@@ -373,6 +373,7 @@ export function useSimulation() {
     setStatus("idle");
     setProgress(0);
     setStage(null);
+    setError(null);
     setBackgroundStatus("idle");
     setPdStatus("idle");
     setPdProgress(0);
@@ -893,8 +894,16 @@ export function useSimulation() {
   const deriveSiblingSeed = (baseSeed: number, i: number): number =>
     ((baseSeed + i * 0x9e3779b1) >>> 0);
 
+  // `precomputeSiblings` fills the run switcher with the other seeds of the
+  // batch; where nothing can show them (basic mode) they are four runs of
+  // compute and retained results for no reader.
   const run = useCallback(
-    async (input: SimulationInput, source?: PersistedState) => {
+    async (
+      input: SimulationInput,
+      source?: PersistedState,
+      options?: { precomputeSiblings?: boolean },
+    ) => {
+      const precomputeSiblings = options?.precomputeSiblings ?? true;
       const pool = poolRef.current;
       if (!pool) return;
       if (pool.poisoned != null) {
@@ -996,6 +1005,8 @@ export function useSimulation() {
         return;
       }
 
+      if (!precomputeSiblings) return;
+
       // Background precompute loop. Runs sibling seeds on the same pool,
       // sequentially, until `MAX_CACHED_RUNS` is reached or a newer
       // foreground run bumps `batchRef.current.version`. Each sibling reuses
@@ -1086,6 +1097,7 @@ export function useSimulation() {
       const myPdJob = ++pdJobIdRef.current;
       const myJobId = ++jobIdRef.current;
       pendingPdInputRef.current = input;
+      setError(null);
       setPdPendingFlags({ usePrimedopePayouts: input.usePrimedopePayouts,
         usePrimedopeFinishModel: input.usePrimedopeFinishModel,
         usePrimedopeRakeMath: input.usePrimedopeRakeMath });

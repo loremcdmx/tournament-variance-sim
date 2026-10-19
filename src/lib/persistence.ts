@@ -69,8 +69,11 @@ function isPersistedState(
   if (v.v !== 1 && v.v !== PERSISTED_STATE_VERSION) return false;
   // Rows past the editor cap are dropped on read, so one malformed row out
   // there must not reject the payload (the autosave would then overwrite it).
+  // The editor never lets the last row go, so a state with none is damage:
+  // loaded, it runs zero tournaments and prints NaN.
   if (
     !Array.isArray(v.schedule) ||
+    v.schedule.length === 0 ||
     v.schedule.length > MAX_PERSISTED_SCHEDULE_ROWS ||
     !v.schedule.slice(0, MAX_SCHEDULE_ROWS).every(isTournamentRowLike)
   ) {
@@ -179,10 +182,9 @@ const VALID_PAYOUT_STRUCTURE_IDS = new Set<PayoutStructureId>([
   "winner-takes-all",
   "custom",
 ]);
-const VALID_COMPARE_MODES = new Set<ControlsState["compareMode"]>([
-  "random",
-  "primedope",
-]);
+// The twin-run "random" mode predates the PrimeDope comparison; the results
+// only ever draw a PrimeDope pane, so a saved "random" is read as that.
+const VALID_COMPARE_MODES = new Set<ControlsState["compareMode"]>(["primedope"]);
 const MAX_EMPIRICAL_BUCKETS = 100_000;
 const PERSISTED_ROW_PLAYERS_MIN = 2;
 const PERSISTED_ROW_PLAYERS_MAX = 1_000_000;
@@ -470,7 +472,10 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
     delete next.finishModelId;
     changed = true;
   }
-  if ("compareMode" in next && !isValidCompareMode(next.compareMode)) {
+  if (next.compareMode === "random") {
+    next.compareMode = "primedope";
+    changed = true;
+  } else if ("compareMode" in next && !isValidCompareMode(next.compareMode)) {
     delete next.compareMode;
     changed = true;
   }
@@ -750,11 +755,13 @@ export function decodeState(encoded: string): PersistedState | null {
   }
 }
 
-export function saveLocal(state: PersistedState) {
+/** False when the browser refused the write (quota, blocked storage, SSR). */
+export function saveLocal(state: PersistedState): boolean {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(state));
+    return true;
   } catch {
-    // ignore quota / SSR
+    return false;
   }
 }
 
@@ -776,11 +783,26 @@ export function loadLocal(): PersistedState | null {
   }
 }
 
-export function loadFromUrlHash(): PersistedState | null {
-  if (typeof window === "undefined") return null;
-  const hash = window.location.hash.replace(/^#s=/, "");
-  if (!hash) return null;
-  return decodeState(hash);
+export type ShareHashImport =
+  | { kind: "none" }
+  | { kind: "state"; state: PersistedState }
+  | { kind: "invalid" };
+
+/**
+ * A `#s=` hash that does not decode (a link cut off by a chat app, a version
+ * this build does not read) is "invalid", not "none": the caller has to say so,
+ * or the recipient takes their own saved state for the shared one.
+ */
+export function readShareHash(hash: string): ShareHashImport {
+  const encoded = hash.replace(/^#s=/, "");
+  const state = encoded ? decodeState(encoded) : null;
+  if (state) return { kind: "state", state };
+  return hash.startsWith("#s=") ? { kind: "invalid" } : { kind: "none" };
+}
+
+export function loadFromUrlHash(): ShareHashImport {
+  if (typeof window === "undefined") return { kind: "none" };
+  return readShareHash(window.location.hash);
 }
 
 // User-defined presets — saved schedules + controls, named by the user.
@@ -822,11 +844,13 @@ export function loadUserPresets(): UserPreset[] {
   }
 }
 
-export function saveUserPresets(presets: UserPreset[]) {
+/** False when the browser refused the write (quota, blocked storage, SSR). */
+export function saveUserPresets(presets: UserPreset[]): boolean {
   try {
     localStorage.setItem(PRESETS_KEY, JSON.stringify(presets.filter(isValidUserPreset)));
+    return true;
   } catch {
-    // ignore quota
+    return false;
   }
 }
 

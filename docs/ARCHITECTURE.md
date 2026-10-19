@@ -125,7 +125,7 @@ The current split is:
 
 5. **Shard merging.** When a worker returns `ShardResultMsg`, the hook stores the `RawShard`. Once every shard of every pass has arrived, the hook posts one `BuildRequest` per pass (worker `i % W`), carrying that pass's shards. That worker, not the main thread, runs `mergeShards([...])` (concatenates the shard-local buffers, picks the global best/worst path, sums histograms) and then `buildResult()` for the post-processing: percentile envelopes, downswings catalog, row decomposition, risk-of-ruin integration, convergence curves. It posts `build-progress` messages while it works and the `SimulationResult` when it is done.
 
-6. **Twin run (compare mode).** When `compareMode` is set, `buildPasses` adds a second pass to the same job: `"primedope"` runs `calibrationMode: "primedope-binary-itm"` on the same seed (on a PKO schedule, the same schedule with its bounties stripped), `"random"` runs the same model on a different seed. The second pass is not queued behind the first: both passes' shards go into the one pool together, each pass gets its own `BuildRequest`, and the result is attached as `result.comparison`. Under the "Like PrimeDope" preset the two calibrations swap panes (`pdPresetFlip`).
+6. **Twin run (compare mode).** When `compareMode` is set, `buildPasses` adds a second pass to the same job: `"primedope"` runs `calibrationMode: "primedope-binary-itm"` on the same seed (on a PKO schedule, the same schedule with its bounties stripped), `"random"` runs the same model on a different seed (an engine option only: the UI never sends it, and persistence reads a saved `"random"` as `"primedope"`, since the results draw no pane for it). The second pass is not queued behind the first: both passes' shards go into the one pool together, each pass gets its own `BuildRequest`, and the result is attached as `result.comparison`. Under the "Like PrimeDope" preset the two calibrations swap panes (`pdPresetFlip`).
 
 ## Key types
 
@@ -300,7 +300,7 @@ Add new tests next to the file they cover. Keep them fast — the whole suite ru
 - **`src/components/results/ResultsPanels.tsx`** — explanatory/report panels
   that would otherwise bloat `ResultsView.tsx`.
 - **`src/lib/scenarios.ts`** — declarative demo presets. Read by the scenario grid in `page.tsx`.
-- **`src/lib/persistence.ts`** — localStorage + share-URL. Stores only the serializable state, no worker state. `buildShareUrl` leaves the sender's ResultHub nicknames out of the link (`withoutShareIdentifiers`).
+- **`src/lib/persistence.ts`** — localStorage + share-URL. Stores only the serializable state, no worker state. `buildShareUrl` leaves the sender's ResultHub nicknames out of the link (`withoutShareIdentifiers`). A state with no rows is refused on read. `readShareHash` tells a link that carries nothing from a `#s=` link that does not decode, and the page clears the second kind and says so. `saveLocal` and `saveUserPresets` return whether the browser took the write; the page shows a notice for a refused autosave and an alert for a refused preset save or import.
 - **`src/lib/lineStyles.ts`** — tracker-inspired color/width presets for the trajectory chart (HM2, H2N, HM3, PT4, PokerCraft, PokerDope).
 
 ## Remaining structural debt

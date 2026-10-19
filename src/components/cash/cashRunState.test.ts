@@ -54,6 +54,14 @@ describe("cash run error text", () => {
     expect(cashRunErrorText(error, dictT("ru"))).toContain("Симуляция кэша не удалась: boom.");
   });
 
+  it("prints a worker message that contains replacement patterns as typed", () => {
+    for (const detail of ["cost $& more", "a $$ b", "x $' y", "p $` q", "$1 $<n>"]) {
+      expect(cashRunErrorText({ detail }, dictT("en"))).toBe(
+        `Cash simulation failed: ${detail}. Fix the inputs or run again — the worker pool has been reset.`,
+      );
+    }
+  });
+
   it("says what happened to a worker that never started instead of printing 'error'", () => {
     const en = cashRunErrorText({ detail: null }, dictT("en"));
     expect(en).toContain(DICT["cash.error.workerStart"].en);

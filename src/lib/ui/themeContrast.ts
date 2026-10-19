@@ -209,6 +209,7 @@ export const STATUS_SITES: StatusSite[] = [
   { id: "feasibility banner badge", where: "page", fg: { token: "--c-bad-panel-fg-2" }, base: "page", layers: [roseBanner, { palette: "rose-500", alpha: 0.3 }] },
   { id: "feasibility banner button", where: "page", fg: { token: "--c-bad-panel-fg" }, base: "page", layers: [roseBanner, { palette: "rose-500", alpha: 0.3 }] },
   { id: "sanity badge", where: "page", fg: { token: "--c-warn-fg-strong" }, base: "card", layers: [amber5, { palette: "amber-400", alpha: 0.3 }] },
+  { id: "storage / share-link notice", where: "page", fg: { token: "--c-warn-fg" }, base: "page", layers: [{ palette: "amber-500", alpha: 0.1 }] },
   { id: "run error box", where: "page, CashApp", fg: { token: "--c-err-fg" }, base: "page", layers: [{ palette: "red-500", alpha: 0.1 }] },
   // ScheduleEditor
   { id: "payout select, disabled structure", where: "ScheduleEditor", fg: { token: "--c-bad-fg" }, base: "card", layers: [{ palette: "rose-500", alpha: 0.1 }] },

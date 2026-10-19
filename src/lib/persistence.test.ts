@@ -26,6 +26,7 @@ import {
   OVERCAP_STATE_BACKUP_KEY,
   PERSISTED_STATE_VERSION,
   presetOvercapBackupKey,
+  readShareHash,
   removeUserPreset,
   saveLocal,
   saveUserPresets,
@@ -1410,5 +1411,117 @@ describe("a persisted alpha override stays inside the field's range", () => {
     };
     expect(meanFor(10)).toBe(meanFor(0.5));
     expect(meanFor(-10)).toBe(meanFor(-0.5));
+  });
+});
+
+describe("a state with no rows is not a state", () => {
+  const empty = { v: PERSISTED_STATE_VERSION, schedule: [], controls };
+
+  it("is refused from a link and from the autosave, so the app starts from its default", () => {
+    expect(decodeState(encoded(empty))).toBeNull();
+    expect(loadLocalFromPayload(empty)).toBeNull();
+  });
+
+  it("drops a preset with no rows instead of loading a page that runs zero tournaments", () => {
+    memoryStorage({
+      "tvs:user-presets": JSON.stringify([
+        { id: "e", name: "Empty", createdAt: 1, state: empty },
+        { id: "ok", name: "Ok", createdAt: 2, state: { ...empty, schedule: [row] } },
+      ]),
+    });
+    try {
+      expect(loadUserPresets().map((p) => p.id)).toEqual(["ok"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("a legacy twin-run compare mode", () => {
+  const legacy = {
+    v: PERSISTED_STATE_VERSION,
+    schedule: [row],
+    controls: { compareEnabled: true, compareMode: "random" },
+  };
+
+  it("is read as the PrimeDope comparison the checkbox is labelled with, never as a hidden second run", () => {
+    expect(decodeState(encoded(legacy))?.controls.compareMode).toBe("primedope");
+    expect(loadLocalFromPayload(legacy)?.controls.compareMode).toBe("primedope");
+  });
+
+  it("is migrated inside saved presets as well", () => {
+    memoryStorage({
+      "tvs:user-presets": JSON.stringify([{ id: "p", name: "P", createdAt: 1, state: legacy }]),
+    });
+    try {
+      expect(loadUserPresets()[0].state.controls.compareMode).toBe("primedope");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps rejecting values that were never a mode", () => {
+    const state = decodeState(
+      encoded({ ...legacy, controls: { compareEnabled: true, compareMode: "oops" } }),
+    );
+    expect(state?.controls.compareMode).toBeUndefined();
+  });
+});
+
+describe("reading the share hash", () => {
+  const valid = { v: PERSISTED_STATE_VERSION, schedule: [row], controls };
+
+  it("separates a link that carries nothing from one that could not be read", () => {
+    expect(readShareHash("")).toEqual({ kind: "none" });
+    expect(readShareHash("#")).toEqual({ kind: "none" });
+    expect(readShareHash("#changelog")).toEqual({ kind: "none" });
+    expect(readShareHash("#s=").kind).toBe("invalid");
+    expect(readShareHash("#s=not-a-state").kind).toBe("invalid");
+  });
+
+  it("reports a link cut off by a chat app as unreadable instead of as no link", () => {
+    const full = encodeState(valid as PersistedState);
+    expect(readShareHash(`#s=${full}`).kind).toBe("state");
+    expect(readShareHash(`#s=${full.slice(0, Math.floor(full.length / 2))}`).kind).toBe("invalid");
+  });
+
+  it("reports a link from a newer or hand-broken version as unreadable", () => {
+    expect(readShareHash(`#s=${encoded({ ...valid, v: 3 })}`).kind).toBe("invalid");
+    expect(readShareHash(`#s=${encoded({ ...valid, schedule: [] })}`).kind).toBe("invalid");
+  });
+
+  it("hands back the decoded state of a good link", () => {
+    const result = readShareHash(`#s=${encodeState(valid as PersistedState)}`);
+    expect(result.kind === "state" && result.state.schedule).toHaveLength(1);
+  });
+});
+
+describe("saves say whether they landed", () => {
+  const state: PersistedState = { v: PERSISTED_STATE_VERSION, schedule: [row], controls };
+  const preset: UserPreset = { id: "p", name: "P", createdAt: 1, state };
+
+  it("reports a refused autosave write", () => {
+    memoryStorage({});
+    expect(saveLocal(state)).toBe(true);
+    vi.unstubAllGlobals();
+    memoryStorage({}, ["tvs:state"]);
+    try {
+      expect(saveLocal(state)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("reports a refused preset write, and a missing localStorage", () => {
+    memoryStorage({});
+    expect(saveUserPresets([preset])).toBe(true);
+    vi.unstubAllGlobals();
+    memoryStorage({}, ["tvs:user-presets"]);
+    try {
+      expect(saveUserPresets([preset])).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(saveUserPresets([preset])).toBe(false);
   });
 });

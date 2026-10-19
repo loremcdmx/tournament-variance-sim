@@ -7,7 +7,7 @@ import type {
 } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
-import { formatMinimumBankroll, money as usdMoney, pct } from "@/lib/results/formatters";
+import { fmt, formatMinimumBankroll, money as usdMoney, pct } from "@/lib/results/formatters";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { relativeDifferencePct, summarizePdStats } from "@/lib/results/primedopeDiagnostics";
 import {
@@ -31,10 +31,11 @@ export function CalibrationNotices({ result, schedule }: {
     <ul role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-[color:var(--c-warn-fg-soft)]">
       {warnings.map((warning, index) => (
         <li key={`${warning.rowId}-${index}`}>
-          {t("pd.calibrationClamped")
-            .replace("{row}", schedule?.find((row) => row.id === warning.rowId)?.label || warning.rowId)
-            .replace("{target}", usdMoney(warning.targetWinnings))
-            .replace("{actual}", usdMoney(warning.actualWinnings))}
+          {fmt(t("pd.calibrationClamped"), {
+            row: schedule?.find((row) => row.id === warning.rowId)?.label || warning.rowId,
+            target: usdMoney(warning.targetWinnings),
+            actual: usdMoney(warning.actualWinnings),
+          })}
         </li>
       ))}
     </ul>

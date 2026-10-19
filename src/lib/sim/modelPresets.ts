@@ -128,9 +128,16 @@ const NAIVE_PRESET = (() => {
   return preset;
 })();
 
-const ADVANCED_ONLY_PRESET_IDS = new Set(
-  STANDARD_PRESETS.filter((preset) => preset.id !== "naive").map((preset) => preset.id),
-);
+// "custom" is what the finish-model picker writes, and that picker is advanced
+// only, so a custom model reaching basic mode (a stale autosave, an advanced
+// user's link) is one nobody there can see or change.
+const ADVANCED_ONLY_PRESET_IDS = new Set([
+  ...STANDARD_PRESETS.filter((preset) => preset.id !== "naive").map((preset) => preset.id),
+  "custom",
+]);
+
+/** The simulation count every demo scenario and the first visit start from; basic mode has no field to change it. */
+export const BASIC_MODE_MAX_SAMPLES = 10_000;
 
 /** Apply a model patch to a ControlsState, returning a new state. */
 export function applyModelPatch(
@@ -144,8 +151,10 @@ export function applyModelPatch(
 /**
  * Basic mode intentionally ignores the experimental variance-profile layer.
  * Users can keep advanced presets in local state, but once advanced mode is
- * off we zero the extra noise/tilt channels and drop built-in profile ids
- * back to the clean baseline so normal-mode runs stay unchanged.
+ * off we zero the extra noise/tilt channels and drop built-in and custom
+ * profile ids back to the clean baseline so normal-mode runs stay unchanged.
+ * A simulation count above the default is capped for the same reason: only the
+ * advanced panel can lower it.
  */
 export function sanitizeControlsForBasicMode(
   state: ControlsState,
@@ -163,6 +172,7 @@ export function sanitizeControlsForBasicMode(
     tiltSlowMinDuration: 500,
     tiltSlowRecoveryFrac: 0.5,
     compareEnabled: false,
+    samples: Math.min(state.samples, BASIC_MODE_MAX_SAMPLES),
   };
   if (!ADVANCED_ONLY_PRESET_IDS.has(state.modelPresetId)) return stripped;
   return {

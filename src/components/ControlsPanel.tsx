@@ -25,6 +25,7 @@ import {
   normalizeNumericDraft,
 } from "@/lib/ui/numberDraft";
 import { isStopClickTooEarly } from "@/lib/ui/runButtonGuard";
+import { focusRunBlocker } from "@/lib/ui/runBlockedTarget";
 import type { BattleRoyaleLeaderboardControls } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
   COMPLETING_HOLD_MS,
@@ -393,7 +394,7 @@ export const ControlsPanel = memo(function ControlsPanel({
 
       {memoryHintGb != null && (
         <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-[color:var(--c-warn-fg)]">
-          {t("controls.memoryHint").replace("{gb}", memoryHintGb)}
+          {t(advanced ? "controls.memoryHint" : "controls.memoryHintBasic").replace("{gb}", memoryHintGb)}
         </div>
       )}
 
@@ -719,20 +720,12 @@ export function RunActionButton({
     // up before this prop existed.
     <button
       type="button"
-      onClick={() => {
-        const targetId = runBlockedScrollTarget ?? "feasibility-banner";
-        const el = document.getElementById(targetId);
-        if (!el) return;
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        // Brief rose-ring pulse on the target so the user sees where
+      onClick={() =>
+        // Scroll plus a brief rose-ring pulse, so the user sees where
         // attention should land — especially for an inline row where
         // the inline mini-banner is the actual fix surface.
-        el.classList.add("ring-2", "ring-rose-500/70");
-        window.setTimeout(
-          () => el.classList.remove("ring-2", "ring-rose-500/70"),
-          1800,
-        );
-      }}
+        focusRunBlocker(document, runBlockedScrollTarget ?? "feasibility-banner")
+      }
       className="inline-flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-rose-500/70 bg-[color:var(--c-bad-panel-bg)]/55 px-5 text-sm font-semibold text-[color:var(--c-bad-panel-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-rose-400 hover:bg-[color:var(--c-bad-panel-bg-2)]/65"
       title={runBlockedReason}
     >

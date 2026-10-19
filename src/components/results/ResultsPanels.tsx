@@ -9,6 +9,7 @@ import type { ControlsState } from "@/components/ControlsPanel";
 import { Card } from "@/components/ui/Section";
 import { InfoTooltip } from "@/components/ui/Tooltip";
 import { money } from "@/lib/results/formatters";
+import { buyInLabel } from "@/lib/ui/presetCardSummary";
 import {
   formatSigmaError,
   hasHeavyTail,
@@ -379,7 +380,7 @@ export function SettingsDumpCard({
     ["bankroll", `$${settings.bankroll.toLocaleString(numberLocale)}`],
     ["—", "—"],
     ["players", r.players.toLocaleString(numberLocale)],
-    ["buyIn", `$${r.buyIn}`],
+    ["buyIn", buyInLabel(r.buyIn)],
     ["rake", `${(r.rake * 100).toFixed(1)}%`],
     ["bountyFraction", `${((r.bountyFraction ?? 0) * 100).toFixed(0)}%`],
     ["payoutStructure", r.payoutStructure],

@@ -55,6 +55,12 @@ import { plural, WORDS } from "@/lib/i18n/plural";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { blurFocusedField } from "@/lib/ui/blurFocusedField";
 import { canStartRun } from "@/lib/ui/runGate";
+import { controlsForLoadedState } from "@/lib/ui/loadedControls";
+import { focusRunBlocker, runBlockedScrollTarget } from "@/lib/ui/runBlockedTarget";
+import { presetCardSummary } from "@/lib/ui/presetCardSummary";
+import { replacingNeedsConfirm } from "@/lib/ui/replaceStateGuard";
+import { sanityMessage } from "@/lib/ui/sanityMessage";
+import { nextStorageNotice, type StorageNotice } from "@/lib/ui/storageNotice";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
@@ -72,17 +78,10 @@ const CashApp = dynamic(() => import("@/components/CashApp").then(module => modu
 const OceanComparisonTab = dynamic(() => import("@/components/calibration/OceanComparisonTab").then(module => module.OceanComparisonTab), { loading: LoadingPanel });
 
 const scenarioDerived = new Map(
-  SCENARIOS.map((s) => {
-    const total = s.schedule.reduce((n, r) => n + r.count, 0);
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const r of s.schedule) {
-      if (r.buyIn < lo) lo = r.buyIn;
-      if (r.buyIn > hi) hi = r.buyIn;
-    }
-    const range = lo === hi ? `$${lo}` : `$${lo}–${hi}`;
-    return [s.id, { total, range }] as const;
-  }),
+  SCENARIOS.map((s) => [
+    s.id,
+    presetCardSummary(s.schedule, s.controls.scheduleRepeats),
+  ] as const),
 );
 const APP_VERSION = "v0.7.8";
 import type {
@@ -116,6 +115,17 @@ const initialSchedule: TournamentRow[] = [
     count: 1,
   },
 ];
+
+const RESET_ROW: Omit<TournamentRow, "id"> = {
+  label: "",
+  players: 500,
+  buyIn: 10,
+  rake: 0.1,
+  roi: 0.2,
+  payoutStructure: "mtt-standard",
+  gameType: "freezeout",
+  count: 1,
+};
 
 function drawFreshSeed(): number {
   return (
@@ -155,6 +165,11 @@ const initialControls: ControlsState = {
   battleRoyaleLeaderboard: DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
 };
 
+const UNTOUCHED_STATES = [
+  { schedule: initialSchedule, controls: initialControls },
+  { schedule: [{ id: "reset", ...RESET_ROW }], controls: initialControls },
+];
+
 const DEFAULT_BR_GLOBAL_ITM_PCT = 20;
 
 function isPureBattleRoyaleSchedule(schedule: TournamentRow[]): boolean {
@@ -176,6 +191,8 @@ export default function Home() {
   const [cashVisited, setCashVisited] = useState(false);
   const initialStateLoadedRef = useRef(false);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [shareLinkInvalid, setShareLinkInvalid] = useState(false);
+  const [storageNotice, setStorageNotice] = useState<StorageNotice>("ok");
   const [userPresets, setUserPresets] = useLocalStorageState<UserPreset[]>(
     "tvs:user-presets",
     loadUserPresets,
@@ -247,16 +264,19 @@ export default function Home() {
     // so a second read would replace it with the older local autosave.
     if (initialStateLoadedRef.current) return;
     initialStateLoadedRef.current = true;
-    const fromUrl = loadFromUrlHash();
-    if (fromUrl) {
+    const share = loadFromUrlHash();
+    if (share.kind !== "none") {
       // A share link is a one-shot import: once applied, the hash must not
-      // keep winning over the user's own autosaved edits on every reload.
+      // keep winning over the user's own autosaved edits on every reload. One
+      // that failed to decode goes too, or it would sit in the address bar
+      // looking like the state on screen and get re-shared.
       window.history.replaceState(
         null,
         "",
         window.location.pathname + window.location.search,
       );
     }
+    const fromUrl = share.kind === "state" ? share.state : null;
     const fromLocal = fromUrl ?? loadLocal();
     // Fresh random seed on every mount — users shouldn't see a pinned
     // "42" or a stale saved seed in the field. Run keeps this seed so
@@ -265,6 +285,7 @@ export default function Home() {
     startTransition(() => {
       // Existing share links describe the mechanical simulator's controls.
       if (fromUrl) setMttModel("mechanical");
+      if (share.kind === "invalid") setShareLinkInvalid(true);
       if (fromLocal) {
         setSchedule(fromLocal.schedule);
         setControls({
@@ -283,7 +304,8 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return;
     const timeoutId = window.setTimeout(() => {
-      saveLocal({ v: PERSISTED_STATE_VERSION, schedule, controls });
+      const saved = saveLocal({ v: PERSISTED_STATE_VERSION, schedule, controls });
+      setStorageNotice((prev) => nextStorageNotice(prev, saved));
     }, 200);
     return () => window.clearTimeout(timeoutId);
   }, [schedule, controls, hydrated]);
@@ -406,33 +428,43 @@ export default function Home() {
   );
   const deferredResultsControls = useDeferredValue(effectiveResultsControls);
 
+  // Validation and previews read the model the run will use. In basic mode that
+  // is the sanitized one: a hidden model that only the stored state still
+  // carries must not block Run or draw the preview.
   const previewModel = useMemo(
     () => ({
-      id: controls.finishModelId,
-      alpha: manualAlphaFor(controls.finishModelId, controls.alphaOverride),
-      empiricalBuckets:
-        controls.finishModelId === "empirical"
-          ? controls.empiricalBuckets
-          : undefined,
-    }),
-    [controls.finishModelId, controls.alphaOverride, controls.empiricalBuckets],
-  );
-  const deferredPreviewModel = useMemo(
-    () => ({
-      id: deferredControls.finishModelId,
+      id: effectiveResultsControls.finishModelId,
       alpha: manualAlphaFor(
-        deferredControls.finishModelId,
-        deferredControls.alphaOverride,
+        effectiveResultsControls.finishModelId,
+        effectiveResultsControls.alphaOverride,
       ),
       empiricalBuckets:
-        deferredControls.finishModelId === "empirical"
-          ? deferredControls.empiricalBuckets
+        effectiveResultsControls.finishModelId === "empirical"
+          ? effectiveResultsControls.empiricalBuckets
           : undefined,
     }),
     [
-      deferredControls.finishModelId,
-      deferredControls.alphaOverride,
-      deferredControls.empiricalBuckets,
+      effectiveResultsControls.finishModelId,
+      effectiveResultsControls.alphaOverride,
+      effectiveResultsControls.empiricalBuckets,
+    ],
+  );
+  const deferredPreviewModel = useMemo(
+    () => ({
+      id: deferredResultsControls.finishModelId,
+      alpha: manualAlphaFor(
+        deferredResultsControls.finishModelId,
+        deferredResultsControls.alphaOverride,
+      ),
+      empiricalBuckets:
+        deferredResultsControls.finishModelId === "empirical"
+          ? deferredResultsControls.empiricalBuckets
+          : undefined,
+    }),
+    [
+      deferredResultsControls.finishModelId,
+      deferredResultsControls.alphaOverride,
+      deferredResultsControls.empiricalBuckets,
     ],
   );
 
@@ -451,24 +483,24 @@ export default function Home() {
     () =>
       checkInputSanity(
         {
-          tiltFastGain: deferredControls.tiltFastGain,
-          tiltFastScale: deferredControls.tiltFastScale,
-          tiltSlowGain: deferredControls.tiltSlowGain,
-          tiltSlowThreshold: deferredControls.tiltSlowThreshold,
-          bankroll: deferredControls.bankroll,
-          finishModelId: deferredControls.finishModelId,
-          empiricalBuckets: deferredControls.empiricalBuckets,
+          tiltFastGain: deferredResultsControls.tiltFastGain,
+          tiltFastScale: deferredResultsControls.tiltFastScale,
+          tiltSlowGain: deferredResultsControls.tiltSlowGain,
+          tiltSlowThreshold: deferredResultsControls.tiltSlowThreshold,
+          bankroll: deferredResultsControls.bankroll,
+          finishModelId: deferredResultsControls.finishModelId,
+          empiricalBuckets: deferredResultsControls.empiricalBuckets,
         },
         deferredSchedule,
       ),
     [
-      deferredControls.tiltFastGain,
-      deferredControls.tiltFastScale,
-      deferredControls.tiltSlowGain,
-      deferredControls.tiltSlowThreshold,
-      deferredControls.bankroll,
-      deferredControls.finishModelId,
-      deferredControls.empiricalBuckets,
+      deferredResultsControls.tiltFastGain,
+      deferredResultsControls.tiltFastScale,
+      deferredResultsControls.tiltSlowGain,
+      deferredResultsControls.tiltSlowThreshold,
+      deferredResultsControls.bankroll,
+      deferredResultsControls.finishModelId,
+      deferredResultsControls.empiricalBuckets,
       deferredSchedule,
     ],
   );
@@ -497,15 +529,22 @@ export default function Home() {
     if (!canStartRun({ activeMode, mttModel, status })) return;
     clearPendingInterrupt();
     const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
-    if (!liveFeasibility.ok) return;
+    if (!liveFeasibility.ok) {
+      focusRunBlocker(document, runBlockedScrollTarget(liveFeasibility.issues));
+      return;
+    }
     const input = buildInput(effectiveSchedule, controls);
-    run(input, {
-      v: PERSISTED_STATE_VERSION,
-      schedule,
-      controls: withSupportedAlpha(
-        advanced ? controls : sanitizeControlsForBasicMode(controls),
-      ),
-    });
+    run(
+      input,
+      {
+        v: PERSISTED_STATE_VERSION,
+        schedule,
+        controls: withSupportedAlpha(
+          advanced ? controls : sanitizeControlsForBasicMode(controls),
+        ),
+      },
+      { precomputeSiblings: advanced },
+    );
   }, [
     runRequest,
     clearPendingInterrupt,
@@ -578,15 +617,29 @@ export default function Home() {
 
   const running = status === "running";
 
+  // Click handlers read the live state through a ref so the scenario menu and
+  // the preset cards keep one identity across edits.
+  const liveStateRef = useRef({ schedule, controls, activeScenarioId });
+  useEffect(() => {
+    liveStateRef.current = { schedule, controls, activeScenarioId };
+  }, [schedule, controls, activeScenarioId]);
+  const confirmReplacingState = useCallback(
+    () =>
+      !replacingNeedsConfirm(liveStateRef.current, UNTOUCHED_STATES) ||
+      window.confirm(t("demo.loadConfirm")),
+    [t],
+  );
+
   const loadScenario = useCallback((id: string) => {
     const s = SCENARIOS.find((x) => x.id === id);
     if (!s) return;
+    if (!confirmReplacingState()) return;
     queueInterruptBackground();
     setMttModel("mechanical");
     setSchedule(s.schedule);
-    setControls((c) => ({ ...initialControls, ...s.controls, seed: c.seed }));
+    setControls((c) => controlsForLoadedState(initialControls, s.controls, c.seed));
     setActiveScenarioId(id);
-  }, [queueInterruptBackground]);
+  }, [confirmReplacingState, queueInterruptBackground]);
 
   // Stable callbacks for ScheduleEditor / ControlsPanel / sub-controls. Without
   // these the inline arrow handlers below force a fresh reference on every
@@ -631,7 +684,7 @@ export default function Home() {
   const estimatedMs = useMemo(
     () =>
       estimateMs(
-        controls.samples,
+        effectiveResultsControls.samples,
         controls.scheduleRepeats,
         deferredSchedule,
         // A compare run dispatches the twin schedule too — same flag the run
@@ -640,7 +693,7 @@ export default function Home() {
       ),
     [
       estimateMs,
-      controls.samples,
+      effectiveResultsControls.samples,
       controls.scheduleRepeats,
       deferredSchedule,
       effectiveResultsControls.compareEnabled,
@@ -650,14 +703,14 @@ export default function Home() {
     () =>
       memoryHintGb(
         projectedBuildBytes({
-          samples: controls.samples,
+          samples: effectiveResultsControls.samples,
           tournamentsPerSample: tournamentsPerSession,
           rowCount: schedule.length,
           passCount: effectiveResultsControls.compareEnabled ? 2 : 1,
         }),
       ),
     [
-      controls.samples,
+      effectiveResultsControls.samples,
       tournamentsPerSession,
       schedule.length,
       effectiveResultsControls.compareEnabled,
@@ -685,19 +738,7 @@ export default function Home() {
   );
   const handleScheduleReset = useCallback(() => {
     queueInterruptBackground();
-    setSchedule([
-      {
-        id: crypto.randomUUID(),
-        label: "",
-        players: 500,
-        buyIn: 10,
-        rake: 0.1,
-        roi: 0.2,
-        payoutStructure: "mtt-standard",
-        gameType: "freezeout",
-        count: 1,
-      },
-    ]);
+    setSchedule([{ id: crypto.randomUUID(), ...RESET_ROW }]);
     setActiveScenarioId(null);
   }, [queueInterruptBackground]);
   // Demo scenarios are the onboarding path — the fastest way for a new user to
@@ -850,15 +891,24 @@ export default function Home() {
   useEffect(() => {
     if (presetSave === null || handledPresetSaveRef.current === presetSave.id) return;
     handledPresetSaveRef.current = presetSave.id;
-    addUserPreset(presetSave.name, { v: PERSISTED_STATE_VERSION, schedule, controls });
-    setUserPresets(loadUserPresets());
-  }, [presetSave, schedule, controls, setUserPresets]);
+    const added = addUserPreset(presetSave.name, {
+      v: PERSISTED_STATE_VERSION,
+      schedule,
+      controls,
+    });
+    const stored = loadUserPresets();
+    setUserPresets(stored);
+    if (!stored.some((p) => p.id === added.id)) {
+      window.alert(t("userPreset.saveFailed"));
+    }
+  }, [presetSave, schedule, controls, setUserPresets, t]);
 
   const onLoadUserPreset = (p: UserPreset) => {
+    if (!confirmReplacingState()) return;
     queueInterruptBackground();
     setMttModel("mechanical");
     setSchedule(p.state.schedule);
-    setControls({ ...initialControls, ...p.state.controls });
+    setControls((c) => controlsForLoadedState(initialControls, p.state.controls, c.seed));
     setActiveScenarioId(p.id);
   };
 
@@ -922,7 +972,10 @@ export default function Home() {
         window.alert(t("presets.importError"));
         return;
       }
-      saveUserPresets(merged);
+      if (!saveUserPresets(merged)) {
+        window.alert(t("presets.importStorageFull"));
+        return;
+      }
       setUserPresets(loadUserPresets());
       window.alert(
         t("presets.importDone")
@@ -1078,14 +1131,10 @@ export default function Home() {
                   );
                 })}
                 {userPresets.map((p) => {
-                  const total = p.state.schedule.reduce(
-                    (n, r) => n + r.count,
-                    0,
+                  const { total, range } = presetCardSummary(
+                    p.state.schedule,
+                    p.state.controls.scheduleRepeats ?? initialControls.scheduleRepeats,
                   );
-                  const buyIns = p.state.schedule.map((r) => r.buyIn);
-                  const lo = Math.min(...buyIns);
-                  const hi = Math.max(...buyIns);
-                  const range = lo === hi ? `$${lo}` : `$${lo}–${hi}`;
                   const active = activeScenarioId === p.id;
                   return (
                     <div
@@ -1156,6 +1205,21 @@ export default function Home() {
           </details>
         )}
       </header>
+
+      {shareLinkInvalid && (
+        <PageNotice
+          message={t("notice.shareLinkInvalid")}
+          dismissLabel={t("notice.dismiss")}
+          onDismiss={() => setShareLinkInvalid(false)}
+        />
+      )}
+      {storageNotice === "failed" && (
+        <PageNotice
+          message={t("notice.storageFailed")}
+          dismissLabel={t("notice.dismiss")}
+          onDismiss={() => setStorageNotice("dismissed")}
+        />
+      )}
 
       {advanced && (
         <div className="flex gap-1 border-b border-[color:var(--color-border)] pb-0">
@@ -1328,11 +1392,7 @@ export default function Home() {
                 feasibility.ok ? null : t("shape.blockedTitle")
               }
               runBlockedScrollTarget={
-                feasibility.ok
-                  ? null
-                  : feasibility.issues.length === 1
-                    ? `schedule-row-${feasibility.issues[0].rowId}`
-                    : "feasibility-banner"
+                feasibility.ok ? null : runBlockedScrollTarget(feasibility.issues)
               }
             />
 
@@ -1352,10 +1412,7 @@ export default function Home() {
                 </div>
                 <ul className="flex flex-col gap-1.5 text-xs leading-relaxed text-fg-muted">
                   {sanityFindings.filter(finding => finding.id !== "zero-bankroll").map((f, i) => {
-                    const raw = t(`sanity.${f.id}`);
-                    const msg = f.rowLabel
-                      ? raw.replace("{row}", f.rowLabel)
-                      : raw;
+                    const msg = sanityMessage(t(`sanity.${f.id}`), f.rowLabel);
                     return (
                       <li
                         key={`${f.id}-${f.rowIdx ?? "g"}-${i}`}
@@ -1515,6 +1572,34 @@ export default function Home() {
           </div>
         </details>
       </footer>
+    </div>
+  );
+}
+
+function PageNotice({
+  message,
+  dismissLabel,
+  onDismiss,
+}: {
+  message: string;
+  dismissLabel: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      className="flex items-start justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-snug text-[color:var(--c-warn-fg)]"
+    >
+      <span>{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label={dismissLabel}
+        title={dismissLabel}
+        className="shrink-0 px-1 text-sm leading-none text-[color:var(--c-warn-fg)] hover:opacity-70"
+      >
+        ×
+      </button>
     </div>
   );
 }

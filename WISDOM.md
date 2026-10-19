@@ -339,6 +339,43 @@ residual coefficient before being band-eligible.
   lock, but only while the raw ITM is still exactly that value; an ITM typed
   before or after stays. A stamp that outlives a wholesale schedule replacement
   with the same row id and the same ITM is the one case it can misfire.
+- A stored explicit Mystery / Battle Royale row with no `mysteryBountyVariance`
+  loads with 2.0 / 1.8, what `applyGameType` writes for the type, while the
+  engine alone reads a missing value as 0 (and `inputSanity` warns about 0). That
+  is a deliberate restore default, like `bountyFraction` 0.5 for PKO, pinned by
+  `persistence.test.ts`; rows made in the app always carry the field. Changing it
+  changes what an old save or link simulates, so it is a decision, not a cleanup.
+- A state with no rows is damage, not a state: `isPersistedState` refuses it (the
+  editor never removes the last row), and the page starts from its default. A
+  `#s=` share hash that does not decode is cleared from the address bar and
+  announced (`readShareHash`); a hash for any other purpose (`#changelog`) is not
+  a share link. The page does not listen for `hashchange`: importing a link into
+  an open tab would overwrite the autosave, which is the open share-link-vs-
+  autosave decision.
+- `saveLocal` / `saveUserPresets` return false on a refused write. Autosave
+  failures raise a dismissible notice (`nextStorageNotice`), a refused preset
+  save or import raises an alert; none of them used to say anything.
+- A saved `compareMode: "random"` is read as `"primedope"`: the results draw only
+  a PrimeDope pane, so the old twin pass cost 2x CPU for a pane nobody saw.
+
+## Basic Mode Runs The Sanitized State
+
+`sanitizeControlsForBasicMode` is what the run uses without the advanced switch,
+so everything that judges the run reads it too: `previewModel`, validation, the
+sanity warnings, the ETA and the memory hint use `effectiveResultsControls`, not
+the raw controls. Before, a stored `custom` model (uniform, empirical) blocked
+Run and drove "Fit closest" while the engine ran the naive model. `custom` is
+advanced-only like the built-in profiles, and the simulation count is capped at
+`BASIC_MODE_MAX_SAMPLES` (the default every scenario uses) because only the
+advanced panel can lower it. The stored state is not rewritten, so switching
+back to advanced restores it.
+
+## Text From The User In A Template
+
+A dict template filled with user text (row label, a worker's error message) goes
+through `fmt` (`results/formatters.ts`), never `String.replace("{x}", text)`: a
+string replacement reads `$$`, `$&`, `` $` `` and `$'` in the text, so a row named
+"$$$ Mid" printed as "$$ Mid". Number-only placeholders are safe either way.
 
 ## Cash-Mode Release Wisdom
 

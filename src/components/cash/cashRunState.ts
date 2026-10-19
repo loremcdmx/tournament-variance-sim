@@ -1,4 +1,5 @@
 import type { DictKey } from "@/lib/i18n/dict";
+import { fmt } from "@/lib/results/formatters";
 
 /** `detail` is null for a failure the browser reported without any message (a worker that never loaded). */
 export interface CashRunError {
@@ -46,10 +47,9 @@ export function cashRunErrorText(
   error: CashRunError,
   t: (key: DictKey) => string,
 ): string {
-  return t("cash.error.run").replace(
-    "{detail}",
-    error.detail ?? t("cash.error.workerStart"),
-  );
+  return fmt(t("cash.error.run"), {
+    detail: error.detail ?? t("cash.error.workerStart"),
+  });
 }
 
 export function workerFailureDetail(e: { message?: unknown }): string | null {

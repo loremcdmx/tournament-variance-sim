@@ -30,16 +30,39 @@ export function isItmTargetActive(cfg: ItmTargetConfig): boolean {
   return resolveItmTarget(cfg) != null;
 }
 
+// Building a payout table is O(players), and every schedule edit asks for the
+// rate of every row. The table is a pure function of (structure, field) unless a
+// custom list is attached, so only the paid-place count is kept, keyed by that.
+const PAID_PLACES_CACHE_MAX = 2048;
+const paidPlacesCache = new Map<string, number>();
+
+function paidPlaces(
+  structure: TournamentRow["payoutStructure"],
+  players: number,
+  customPayouts: TournamentRow["customPayouts"],
+): number {
+  const count = (table: number[]) => table.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
+  if (customPayouts != null) {
+    return count(getPayoutTable(structure, players, customPayouts));
+  }
+  const key = `${structure}|${players}`;
+  const hit = paidPlacesCache.get(key);
+  if (hit !== undefined) return hit;
+  const paid = count(getPayoutTable(structure, players));
+  if (paidPlacesCache.size >= PAID_PLACES_CACHE_MAX) paidPlacesCache.clear();
+  paidPlacesCache.set(key, paid);
+  return paid;
+}
+
 export function equilibriumItmRateForRow(row: TournamentRow): number {
   const normalized = normalizeGameTypeConsistency(row);
   const lateRegMult = Math.max(1, normalized.lateRegMultiplier ?? 1);
   const players = Math.max(2, Math.floor(normalized.players * lateRegMult));
-  const payouts = getPayoutTable(
+  const paidCount = paidPlaces(
     normalized.payoutStructure,
     players,
     normalized.customPayouts,
   );
-  const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
   return paidCount >= players ? 1 : Math.min(0.99, Math.max(1 / players, paidCount / players));
 }
 
