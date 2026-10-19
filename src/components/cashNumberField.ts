@@ -39,3 +39,25 @@ export function commitNumFieldDraft(
   if (!Number.isFinite(parsed)) return fallback;
   return clampNumFieldValue(parsed, min, max);
 }
+
+function decimalPlaces(value: number): number {
+  const [mantissa, exponent = "0"] = String(value).toLowerCase().split("e");
+  const fraction = (mantissa.split(".")[1] ?? "").length;
+  return Math.max(0, fraction - Number(exponent));
+}
+
+/** One arrow-key step from the current value; the native step grid is anchored at `min`. */
+export function stepNumFieldValue(
+  current: number,
+  direction: 1 | -1,
+  step: number,
+  min?: number,
+  max?: number,
+): number {
+  const digits = Math.min(
+    12,
+    Math.max(decimalPlaces(current), decimalPlaces(step)),
+  );
+  const next = Number((current + direction * step).toFixed(digits));
+  return clampNumFieldValue(next, min, max);
+}

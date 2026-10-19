@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  cashFieldMaxima,
   MAX_ABS_WR_BB100,
   MAX_BB_SIZE,
   MAX_HANDS,
+  MAX_HAND_SHARE,
   MAX_HANDS_PER_HOUR,
   MAX_RAKE_CONTRIB_BB100,
   MAX_SD_BB100,
@@ -150,5 +152,67 @@ describe("cashInput persistence guardrails", () => {
     const rerunNormalized = normalizeCashInput(hydratedUiState);
 
     expect(rerunNormalized.hoursBlock).toBeUndefined();
+  });
+});
+
+describe("cashInput stake shares and seeds", () => {
+  const row = (handShare: number) => ({
+    wrBb100: 5,
+    sdBb100: 100,
+    bbSize: 1,
+    handShare,
+    rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+  });
+
+  it("caps a stake's hand share so two huge shares cannot overflow the weight sum", () => {
+    const normalized = normalizeCashInput({ stakes: [row(1e308), row(1e308)] });
+
+    expect(normalized.stakes?.map((r) => r.handShare)).toEqual([
+      MAX_HAND_SHARE,
+      MAX_HAND_SHARE,
+    ]);
+  });
+
+  it("leaves every share an editor can produce untouched", () => {
+    const normalized = normalizeCashInput({ stakes: [row(0.7), row(3), row(0)] });
+
+    expect(normalized.stakes?.map((r) => r.handShare)).toEqual([0.7, 3, 0]);
+  });
+
+  it("folds a seed beyond 32 bits onto the seed the engine uses and keeps in-range seeds", () => {
+    const seed = (baseSeed: number) => normalizeCashInput({ baseSeed }).baseSeed;
+
+    expect(seed(1e15)).toBe(seed(1e15 + 2 ** 32));
+    expect(seed(2 ** 32 + 7)).toBe(7);
+    expect(seed(-(2 ** 31) - 1)).toBe(2 ** 31 - 1);
+    expect(seed(42)).toBe(42);
+    expect(seed(-5)).toBe(-5);
+    expect(seed(3_000_000_000)).toBe(3_000_000_000);
+    expect(seed(2 ** 32 - 1)).toBe(2 ** 32 - 1);
+  });
+});
+
+describe("cashFieldMaxima", () => {
+  it("caps Hands at 100 000 for the default 2 000 simulations", () => {
+    expect(cashFieldMaxima(100_000, 2_000)).toEqual({
+      maxHands: 100_000,
+      maxSimulations: 2_000,
+    });
+  });
+
+  it("raises the Hands ceiling when Simulations go down and stays inside the field bounds", () => {
+    expect(cashFieldMaxima(100_000, 200).maxHands).toBe(1_000_000);
+    expect(cashFieldMaxima(100_000, 100).maxHands).toBe(MAX_HANDS);
+    expect(cashFieldMaxima(1_000, 20_000)).toEqual({
+      maxHands: 10_000,
+      maxSimulations: 20_000,
+    });
+    expect(cashFieldMaxima(MAX_HANDS, 100).maxSimulations).toBe(100);
+  });
+
+  it("agrees with the work budget that normalizeCashInput enforces", () => {
+    const { maxHands } = cashFieldMaxima(100_000, 2_000);
+    const normalized = normalizeCashInput({ hands: maxHands * 10, nSimulations: 2_000 });
+    expect(normalized.hands * normalized.nSimulations).toBeLessThanOrEqual(200_000_000);
   });
 });

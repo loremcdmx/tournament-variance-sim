@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/Section";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { MIX_BLOCK_HANDS } from "@/lib/sim/cashEngine";
+import { cashRakeModelled } from "@/lib/sim/cashInput";
 import type { CashResult } from "@/lib/sim/cashTypes";
 import type { RunMode } from "@/lib/trajectorySelection";
 import {
@@ -16,17 +17,11 @@ import {
   MixTag,
   SummaryStrip,
   CashChartEmpty,
-  formatCashMoney,
-  formatCashPct,
-  formatRiskThreshold,
-  formatRiskThresholdBb,
-  formatSignedBb100,
-  formatUnsignedBb100,
-  formatUsdBbSize,
-  formatUsdRate,
   isEmptyHistogram,
   scaleMoneyHistogram,
+  signTone,
 } from "./CashResultsShared";
+import { useCashFormat } from "./cashFormat";
 import {
   CashOddsChart,
   DiagnosticsDisclosure,
@@ -40,6 +35,7 @@ export function CashResultsView({ result }: { result: CashResult }) {
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
+  const fmt = useCashFormat();
   const s = result.stats;
   const bb = result.echoInput.bbSize;
   const riskThresholdBb = result.oddsOverDistance.thresholdBb;
@@ -55,8 +51,8 @@ export function CashResultsView({ result }: { result: CashResult }) {
     Math.min(visibleRuns, maxVisibleRuns),
   );
 
-  const fmtPct = (v: number) => formatCashPct(v);
-  const fmtMoney = (vBb: number) => formatCashMoney(vBb, moneyUnit, bb);
+  const fmtPct = fmt.pct;
+  const fmtMoney = (vBb: number) => fmt.money(vBb, moneyUnit, bb);
   const fmtHands = (v: number) =>
     Number.isFinite(v)
       ? `${Math.round(v).toLocaleString(numberLocale)} ${t("cash.axis.hands")}`
@@ -78,7 +74,8 @@ export function CashResultsView({ result }: { result: CashResult }) {
   const oddsEndProfit = result.oddsOverDistance.profitShare[oddsEndIdx] ?? 0;
   const oddsEndBelowThresholdNow =
     result.oddsOverDistance.belowThresholdNowShare[oddsEndIdx] ?? 0;
-  const riskThresholdLabel = formatRiskThresholdBb(riskThresholdBb);
+  const riskThresholdLabel = fmt.riskThresholdBb(riskThresholdBb);
+  const rakeModelled = cashRakeModelled(result.echoInput);
 
   const heroStats: HeroStat[] = [
     {
@@ -88,13 +85,13 @@ export function CashResultsView({ result }: { result: CashResult }) {
       sub:
         s.hourlyEvUsd !== undefined
           ? t("cash.hero.expected.subHourly")
-              .replace("{hourly}", formatUsdRate(s.hourlyEvUsd))
+              .replace("{hourly}", fmt.usdRate(s.hourlyEvUsd))
               .replace(
                 "{hands}",
                 result.echoInput.hoursBlock?.handsPerHour.toLocaleString(numberLocale) ?? "—",
               )
           : t("cash.hero.expected.subDistance"),
-      tone: "pos",
+      tone: signTone(s.expectedEvBb),
     },
     {
       accent: "spade",
@@ -223,20 +220,23 @@ export function CashResultsView({ result }: { result: CashResult }) {
     },
   ];
 
-  const economics: StatRow[] = [
-    {
-      label: t("cash.stats.meanRakePaidBb").replace("{unit}", moneyUnitLabel),
-      value: fmtMoney(s.meanRakePaidBb),
-    },
-    {
-      label: t("cash.stats.meanRbEarnedBb").replace("{unit}", moneyUnitLabel),
-      value: fmtMoney(s.meanRbEarnedBb),
-    },
-  ];
+  const economics: StatRow[] = [];
+  if (rakeModelled) {
+    economics.push(
+      {
+        label: t("cash.stats.meanRakePaidBb").replace("{unit}", moneyUnitLabel),
+        value: fmtMoney(s.meanRakePaidBb),
+      },
+      {
+        label: t("cash.stats.meanRbEarnedBb").replace("{unit}", moneyUnitLabel),
+        value: fmtMoney(s.meanRbEarnedBb),
+      },
+    );
+  }
   if (s.hourlyEvUsd !== undefined) {
     economics.push({
       label: t("cash.stats.hourlyEvUsd"),
-      value: formatUsdRate(s.hourlyEvUsd),
+      value: fmt.usdRate(s.hourlyEvUsd),
     });
   }
 
@@ -250,7 +250,7 @@ export function CashResultsView({ result }: { result: CashResult }) {
           title={t("cash.chart.trajectory.title")}
           note={t("cash.chart.trajectory.note").replace(
             "{threshold}",
-            formatRiskThreshold(riskThresholdBb, moneyUnit, bb),
+            fmt.riskThreshold(riskThresholdBb, moneyUnit, bb),
           )}
         />
         <TrajectoryToolbar
@@ -279,6 +279,7 @@ export function CashResultsView({ result }: { result: CashResult }) {
           breakdown={mixBreakdown}
           moneyUnit={moneyUnit}
           bbSize={bb}
+          rakeModelled={rakeModelled}
         />
       )}
 
@@ -369,7 +370,14 @@ export function CashResultsView({ result }: { result: CashResult }) {
             title={t("cash.section.economics.title")}
             note={t("cash.section.economics.note")}
           />
-          <DetailList rows={economics} accent="diamond" />
+          {economics.length > 0 && (
+            <DetailList rows={economics} accent="diamond" />
+          )}
+          {!rakeModelled && (
+            <p className="mt-3 text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+              {t("cash.stats.rakeNotModelled")}
+            </p>
+          )}
         </Card>
       </div>
 
@@ -384,6 +392,7 @@ function CashAssumptionsCard({ result }: { result: CashResult }) {
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
+  const fmt = useCashFormat();
   const lines = [
     t("cash.assumptions.model"),
     t("cash.assumptions.independence"),
@@ -393,7 +402,7 @@ function CashAssumptionsCard({ result }: { result: CashResult }) {
     lines.push(
       t("cash.assumptions.mix")
         .replace("{block}", MIX_BLOCK_HANDS.toLocaleString(numberLocale))
-        .replace("{bb}", formatUsdBbSize(result.echoInput.bbSize)),
+        .replace("{bb}", fmt.usdBbSize(result.echoInput.bbSize)),
     );
   }
   return (
@@ -421,10 +430,12 @@ function MixBreakdownCard({
   breakdown,
   moneyUnit,
   bbSize,
+  rakeModelled,
 }: {
   breakdown: NonNullable<CashResult["mixBreakdown"]>;
   moneyUnit: CashMoneyUnit;
   bbSize: number;
+  rakeModelled: boolean;
 }) {
   const t = useT();
   return (
@@ -442,6 +453,7 @@ function MixBreakdownCard({
             index={index}
             moneyUnit={moneyUnit}
             bbSize={bbSize}
+            rakeModelled={rakeModelled}
           />
         ))}
       </div>
@@ -454,15 +466,18 @@ function MixBreakdownRowCard({
   index,
   moneyUnit,
   bbSize,
+  rakeModelled,
 }: {
   row: NonNullable<CashResult["mixBreakdown"]>["rows"][number];
   index: number;
   moneyUnit: CashMoneyUnit;
   bbSize: number;
+  rakeModelled: boolean;
 }) {
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
+  const fmt = useCashFormat();
   const rowLabel =
     row.label?.trim() ||
     t("cash.mix.rowFallback").replace("{index}", String(index + 1));
@@ -482,19 +497,19 @@ function MixBreakdownRowCard({
               {rowLabel}
             </span>
             <MixTag accent="diamond">
-              {formatCashPct(row.handShare)}
+              {fmt.pct(row.handShare)}
             </MixTag>
-            <MixTag accent="spade">{formatUsdBbSize(row.bbSize)}</MixTag>
+            <MixTag accent="spade">{fmt.usdBbSize(row.bbSize)}</MixTag>
           </div>
           <div className="flex flex-wrap gap-2">
             <MixTag accent="diamond">
               {row.hands.toLocaleString(numberLocale)} {t("cash.axis.hands")}
             </MixTag>
             <MixTag accent="club">
-              {t("cash.wrBb100.label")}: {formatSignedBb100(row.wrBb100)}
+              {t("cash.wrBb100.label")}: {fmt.signedBb100(row.wrBb100)}
             </MixTag>
             <MixTag accent="heart">
-              {t("cash.sdBb100.label")}: {formatUnsignedBb100(row.sdBb100)}
+              {t("cash.sdBb100.label")}: {fmt.unsignedBb100(row.sdBb100)}
             </MixTag>
           </div>
         </div>
@@ -503,7 +518,7 @@ function MixBreakdownRowCard({
             {t("cash.mix.expectedEv")}
           </span>
           <span className={`font-mono text-[18px] font-semibold tabular-nums ${evTone}`}>
-            {formatCashMoney(row.expectedEvBb, moneyUnit, bbSize)}
+            {fmt.money(row.expectedEvBb, moneyUnit, bbSize)}
           </span>
         </div>
       </div>
@@ -513,34 +528,38 @@ function MixBreakdownRowCard({
           accent="diamond"
           label={t("cash.mix.metric.hands")}
           share={row.handShare}
-          detail={`${formatCashPct(row.handShare)} · ${row.hands.toLocaleString(numberLocale)} ${t("cash.axis.hands")}`}
+          detail={`${fmt.pct(row.handShare)} · ${row.hands.toLocaleString(numberLocale)} ${t("cash.axis.hands")}`}
         />
         <MixMetricBar
           accent="heart"
           label={t("cash.mix.metric.swing")}
           share={row.varianceShare}
-          detail={formatCashPct(row.varianceShare)}
+          detail={fmt.pct(row.varianceShare)}
         />
-        <MixMetricBar
-          accent="spade"
-          label={t("cash.mix.metric.rake")}
-          share={row.rakeShare}
-          detail={`${formatCashPct(row.rakeShare)} · ${formatCashMoney(
-            row.rakePaidBb,
-            moneyUnit,
-            bbSize,
-          )}`}
-        />
-        <MixMetricBar
-          accent="club"
-          label={t("cash.mix.metric.rb")}
-          share={row.rbShare}
-          detail={`${formatCashPct(row.rbShare)} · ${formatCashMoney(
-            row.rbEarnedBb,
-            moneyUnit,
-            bbSize,
-          )}`}
-        />
+        {rakeModelled && (
+          <>
+            <MixMetricBar
+              accent="spade"
+              label={t("cash.mix.metric.rake")}
+              share={row.rakeShare}
+              detail={`${fmt.pct(row.rakeShare)} · ${fmt.money(
+                row.rakePaidBb,
+                moneyUnit,
+                bbSize,
+              )}`}
+            />
+            <MixMetricBar
+              accent="club"
+              label={t("cash.mix.metric.rb")}
+              share={row.rbShare}
+              detail={`${fmt.pct(row.rbShare)} · ${fmt.money(
+                row.rbEarnedBb,
+                moneyUnit,
+                bbSize,
+              )}`}
+            />
+          </>
+        )}
       </div>
     </div>
   );

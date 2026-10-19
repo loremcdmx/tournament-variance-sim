@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
+import { useT } from "@/lib/i18n/LocaleProvider";
 
 export type CashMoneyUnit = "bb" | "usd";
 type ValueTone = "pos" | "neg";
@@ -15,7 +16,7 @@ export type SummaryStat = {
   label: string;
   value: string;
   tone?: ValueTone;
-  /** Optional hover explanation; renders a native title + a small ⓘ marker. */
+  /** Optional caveat; a focusable ⓘ button reveals it on click, tap or keyboard. */
   tip?: string;
 };
 
@@ -270,6 +271,9 @@ function SummaryPill({
   tone,
   tip,
 }: SummaryStat) {
+  const t = useT();
+  const tipId = useId();
+  const [tipOpen, setTipOpen] = useState(false);
   const meta = CASH_ACCENT_META[accent];
   const toneClass =
     tone === "neg"
@@ -279,27 +283,42 @@ function SummaryPill({
         : "text-[color:var(--color-fg)]";
   return (
     <div
-      className="flex items-center justify-between gap-3 rounded-sm border px-3 py-2.5"
+      className="flex flex-col gap-2 rounded-sm border px-3 py-2.5"
       style={{
         borderColor: meta.badgeBorder,
         background: meta.badgeBg,
       }}
-      title={tip}
     >
-      <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
-        {label}
-        {tip && (
-          <span
-            className="cursor-help text-[color:var(--color-fg-dim)]"
-            aria-label={tip}
-          >
-            ⓘ
-          </span>
-        )}
-      </span>
-      <span className={`font-mono text-[13px] font-semibold tabular-nums ${toneClass}`}>
-        {value}
-      </span>
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-fg-muted)]">
+          {label}
+          {tip && (
+            <button
+              type="button"
+              aria-expanded={tipOpen}
+              aria-controls={tipId}
+              aria-label={`${label}: ${t("cash.summary.tipToggle")}`}
+              title={tip}
+              onClick={() => setTipOpen((open) => !open)}
+              className="cursor-help rounded-full px-1 text-[color:var(--color-fg-dim)] transition-colors hover:text-[color:var(--color-fg)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)]"
+            >
+              ⓘ
+            </button>
+          )}
+        </span>
+        <span className={`font-mono text-[13px] font-semibold tabular-nums ${toneClass}`}>
+          {value}
+        </span>
+      </div>
+      {tip && (
+        <p
+          id={tipId}
+          hidden={!tipOpen}
+          className="text-[11px] normal-case leading-relaxed tracking-normal text-[color:var(--color-fg-muted)]"
+        >
+          {tip}
+        </p>
+      )}
     </div>
   );
 }
@@ -438,89 +457,6 @@ export function convertCashMoney(
   return unit === "usd" ? valueBb * bbSize : valueBb;
 }
 
-export function formatCashMoney(
-  valueBb: number,
-  unit: CashMoneyUnit,
-  bbSize: number,
-): string {
-  const value = convertCashMoney(valueBb, unit, bbSize);
-  const abs = Math.abs(value);
-  const digits = unit === "usd" ? (abs >= 100 ? 0 : abs >= 10 ? 1 : 2) : 1;
-  const formatted = abs.toLocaleString(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: 0,
-  });
-  if (unit === "usd") return `${value < 0 ? "-" : ""}$${formatted}`;
-  return `${value < 0 ? "-" : ""}${formatted} BB`;
-}
-
-export function formatUsdRate(value: number): string {
-  const abs = Math.abs(value);
-  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
-  const formatted = abs.toLocaleString(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: 0,
-  });
-  return `${value < 0 ? "-" : ""}$${formatted}/h`;
-}
-
-export function formatCashPct(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
-}
-
-export function formatSignedBb100(value: number): string {
-  const abs = Math.abs(value);
-  const digits = abs >= 100 || Number.isInteger(abs) ? 0 : 1;
-  const formatted = abs.toLocaleString(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: 0,
-  });
-  return `${value < 0 ? "-" : "+"}${formatted}`;
-}
-
-export function formatUnsignedBb100(value: number): string {
-  const abs = Math.abs(value);
-  const digits = abs >= 100 || Number.isInteger(abs) ? 0 : 1;
-  return abs.toLocaleString(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: 0,
-  });
-}
-
-export function formatUsdBbSize(value: number): string {
-  const digits = value >= 10 ? 0 : value >= 1 ? 2 : 3;
-  const formatted = value.toLocaleString(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: digits >= 2 ? 2 : 0,
-  });
-  return `$${formatted} BB`;
-}
-
-export function formatRiskThresholdBb(value: number): string {
-  const abs = Math.abs(value);
-  const digits = abs >= 100 || Number.isInteger(abs) ? 0 : 1;
-  const formatted = abs.toLocaleString(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: 0,
-  });
-  return `−${formatted} BB`;
-}
-
-export function formatRiskThreshold(
-  valueBb: number,
-  unit: CashMoneyUnit,
-  bbSize: number,
-): string {
-  if (unit === "bb") return formatRiskThresholdBb(valueBb);
-  const abs = Math.abs(valueBb * bbSize);
-  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
-  const formatted = abs.toLocaleString(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: 0,
-  });
-  return `−$${formatted}`;
-}
-
 export function scaleMoneyHistogram(
   hist: { binEdges: number[]; counts: number[] },
   unit: CashMoneyUnit,
@@ -531,4 +467,10 @@ export function scaleMoneyHistogram(
     binEdges: hist.binEdges.map((edge) => edge * bbSize),
     counts: hist.counts,
   };
+}
+
+export function signTone(value: number): ValueTone | undefined {
+  if (value > 1e-9) return "pos";
+  if (value < -1e-9) return "neg";
+  return undefined;
 }

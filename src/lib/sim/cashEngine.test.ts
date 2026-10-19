@@ -876,3 +876,32 @@ describe("cashInput normalization", () => {
     });
   });
 });
+
+describe("cashEngine — normalised input edges", () => {
+  const row = (handShare: number) => ({
+    wrBb100: 5,
+    sdBb100: 100,
+    bbSize: 1,
+    handShare,
+    rake: { enabled: false, contributedRakeBb100: 0, advertisedRbPct: 0, pvi: 1 },
+  });
+
+  it("splits hands evenly between two absurdly large shares instead of throwing", () => {
+    const r = simulateCash(
+      baseInput({ hands: 1000, nSimulations: 20, stakes: [row(1e308), row(1e308)] }),
+    );
+
+    expect(r.mixBreakdown?.rows.map((x) => x.hands)).toEqual([500, 500]);
+  });
+
+  it("plays seeds 2^32 apart as the same run and echoes the same seed", () => {
+    const run = (baseSeed: number) =>
+      simulateCash(baseInput({ hands: 1000, nSimulations: 20, baseSeed }));
+    const a = run(1e15);
+    const b = run(1e15 + 2 ** 32);
+
+    expect(b.echoInput.baseSeed).toBe(a.echoInput.baseSeed);
+    expect(Array.from(b.finalBb)).toEqual(Array.from(a.finalBb));
+    expect(run(1e15 + 1).echoInput.baseSeed).not.toBe(a.echoInput.baseSeed);
+  });
+});

@@ -1,5 +1,6 @@
 import { RangeInput } from "@/components/ui/RangeInput";
 import {
+  Fragment,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -31,8 +32,8 @@ import {
   MiniChartTitle,
   UnitToggle,
   convertCashMoney,
-  formatRiskThreshold,
 } from "./CashResultsShared";
+import { bankrollReadout, useCashFormat } from "./cashFormat";
 
 type ChartAxes = Exclude<
   NonNullable<Parameters<typeof UplotChart>[0]["options"]>["axes"],
@@ -140,14 +141,6 @@ function alignCashPathToEnvX(
   return out;
 }
 
-function formatBb(value: number): string {
-  return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-}
-
-function formatUsd(value: number): string {
-  return "$" + value.toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
-
 export function TrajectoryToolbar({
   visibleRuns,
   maxVisibleRuns,
@@ -170,6 +163,7 @@ export function TrajectoryToolbar({
   bbSize: number;
 }) {
   const t = useT();
+  const fmt = useCashFormat();
   return (
     <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
       <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/42 px-3 py-2">
@@ -206,7 +200,7 @@ export function TrajectoryToolbar({
           ]}
         />
         <span className="rounded-sm border border-[color:var(--color-heart)]/35 bg-[color:var(--color-heart)]/10 px-2 py-1 font-mono text-[11px] tabular-nums text-[color:var(--color-heart)]">
-          {formatRiskThreshold(riskThresholdBb, moneyUnit, bbSize)}
+          {fmt.riskThreshold(riskThresholdBb, moneyUnit, bbSize)}
         </span>
       </div>
     </div>
@@ -231,6 +225,7 @@ export function TrajectoryChart({
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
+  const fmt = useCashFormat();
   const [linePresetId] = useLocalStorageState(
     "tvs.lineStylePreset.v1",
     loadLineStylePreset,
@@ -365,7 +360,7 @@ export function TrajectoryChart({
         points: noPoints,
         label: "risk",
       },
-      { label: formatRiskThreshold(riskThresholdBb, moneyUnit, bbSize), color: "rgba(255,145,118,0.9)", kind: "risk" },
+      { label: fmt.riskThreshold(riskThresholdBb, moneyUnit, bbSize), color: "rgba(255,145,118,0.9)", kind: "risk" },
     );
 
     const ranked = rankedRunIndices(result.samplePaths.paths, runMode);
@@ -391,6 +386,10 @@ export function TrajectoryChart({
 
     for (let rank = 0; rank < pathCount; rank++) {
       const runIdx = ranked[rank];
+      const runLabel = t("cash.chart.trajectory.runLabel").replace(
+        "{n}",
+        String(result.samplePaths.sampleIndices[runIdx] + 1),
+      );
       const boost = polarity[runIdx] >= 0.98 ? 1.2 : 1;
       const alpha = Math.min(0.95, baseAlpha * boost);
       const width = pathStyle.width * boost;
@@ -401,10 +400,10 @@ export function TrajectoryChart({
           stroke,
           width,
           points: noPoints,
-          label: `Run ${result.samplePaths.sampleIndices[runIdx] + 1}`,
+          label: runLabel,
         },
         {
-          label: `Run ${result.samplePaths.sampleIndices[runIdx] + 1}`,
+          label: runLabel,
           color: stroke,
           kind: "path",
           rank,
@@ -436,7 +435,9 @@ export function TrajectoryChart({
                 ...axis,
                 values: (_u: uPlot, splits: number[]) =>
                   splits.map((value) =>
-                    moneyUnit === "usd" ? formatUsd(value) : formatBb(value),
+                    moneyUnit === "usd"
+                      ? fmt.amountUsd(value)
+                      : fmt.bbAmount(value),
                   ),
               }
             : axis,
@@ -446,6 +447,7 @@ export function TrajectoryChart({
   }, [
     bbSize,
     deferredVisibleRuns,
+    fmt,
     linePreset,
     moneyUnit,
     result,
@@ -511,10 +513,8 @@ export function TrajectoryChart({
 
   const idx = cursor?.idx;
   let nearest: CashTrajectoryLineMeta | null = null;
-  let nearestDisplayVal = 0;
   let nearestRawBbVal = 0;
   let nearestPath: CashTrajectoryLineMeta | null = null;
-  let nearestPathDisplayVal = 0;
   let nearestPathRawBbVal = 0;
   if (cursor && idx != null) {
     let bestDist = Infinity;
@@ -535,7 +535,6 @@ export function TrajectoryChart({
         if (d < bestDist) {
           bestDist = d;
           nearest = line;
-          nearestDisplayVal = Number(displayVal);
           nearestRawBbVal = Number(rawBbVal);
         }
       }
@@ -548,14 +547,12 @@ export function TrajectoryChart({
         if (pxDist < bestPathPxDist) {
           bestPathPxDist = pxDist;
           nearestPath = line;
-          nearestPathDisplayVal = hasVisibleValue ? Number(displayVal) : cursor.valY;
           nearestPathRawBbVal = hasVisibleValue ? Number(rawBbVal) : 0;
         }
       }
     }
     if (nearestPath && bestPathPxDist <= CASH_PATH_HIT_PX) {
       nearest = nearestPath;
-      nearestDisplayVal = nearestPathDisplayVal;
       nearestRawBbVal = nearestPathRawBbVal;
     }
   }
@@ -769,52 +766,23 @@ export function TrajectoryChart({
               <span className="text-right font-semibold text-[color:var(--color-fg)]">
                 {hands.toLocaleString(numberLocale)}
               </span>
-              <span className="text-[color:var(--color-fg-dim)]">
-                {t("cash.chart.trajectory.bankrollBb")}
-              </span>
-              <span
-                className="text-right font-semibold"
-                style={{
-                  color:
-                    nearestRawBbVal >= 0
-                      ? "var(--color-success)"
-                      : "var(--color-danger)",
-                }}
-              >
-                {formatBb(nearestRawBbVal)}
-              </span>
-              <span className="text-[color:var(--color-fg-dim)]">
-                {t("cash.chart.trajectory.bankrollUsd")}
-              </span>
-              <span
-                className="text-right font-semibold"
-                style={{
-                  color:
-                    nearestRawBbVal >= 0
-                      ? "var(--color-success)"
-                      : "var(--color-danger)",
-                }}
-              >
-                {formatUsd(nearestRawBbVal * bbSize)}
-              </span>
-              <span className="text-[color:var(--color-fg-dim)]">
-                {moneyUnit === "usd"
-                  ? t("cash.chart.trajectory.bankrollUsd")
-                  : t("cash.chart.trajectory.bankrollBb")}
-              </span>
-              <span
-                className="text-right font-semibold"
-                style={{
-                  color:
-                    nearestDisplayVal >= 0
-                      ? "var(--color-success)"
-                      : "var(--color-danger)",
-                }}
-              >
-                {moneyUnit === "usd"
-                  ? formatUsd(nearestDisplayVal)
-                  : formatBb(nearestDisplayVal)}
-              </span>
+              {bankrollReadout(nearestRawBbVal, bbSize, fmt, t).map((row) => (
+                <Fragment key={row.key}>
+                  <span className="text-[color:var(--color-fg-dim)]">
+                    {row.label}
+                  </span>
+                  <span
+                    className="text-right font-semibold"
+                    style={{
+                      color: row.negative
+                        ? "var(--color-danger)"
+                        : "var(--color-success)",
+                    }}
+                  >
+                    {row.value}
+                  </span>
+                </Fragment>
+              ))}
               <span className="text-[color:var(--color-fg-dim)]">
                 {t("cash.wrBb100.label")}
               </span>
@@ -827,7 +795,7 @@ export function TrajectoryChart({
                       : "var(--color-danger)",
                 }}
               >
-                {winrateSoFar != null ? `${winrateSoFar.toFixed(2)}` : "—"}
+                {winrateSoFar != null ? fmt.winrate(winrateSoFar) : "—"}
               </span>
             </div>
             {focusedPathStats && (
@@ -846,10 +814,10 @@ export function TrajectoryChart({
                   </div>
                   <div className="mt-0.5 flex items-baseline gap-1.5 tabular-nums">
                     <span className="text-[13px] font-bold text-[color:var(--color-danger)]">
-                      {formatBb(focusedPathStats.maxDd)} BB
+                      {fmt.bb(focusedPathStats.maxDd)}
                     </span>
                     <span className="rounded-sm bg-[color:var(--color-danger)]/12 px-1 py-0.5 text-[9px] font-semibold text-[color:var(--color-danger)]">
-                      {formatUsd(focusedPathStats.maxDd * bbSize)}
+                      {fmt.amountUsd(focusedPathStats.maxDd * bbSize)}
                     </span>
                   </div>
                 </div>
@@ -866,7 +834,7 @@ export function TrajectoryChart({
                           : "var(--color-danger)",
                     }}
                   >
-                    {formatBb(focusedPathStats.finalBb)} BB
+                    {fmt.bb(focusedPathStats.finalBb)}
                   </span>
                   <span className="text-[color:var(--color-fg-dim)]">
                     {t("chart.traj.longestBE")}

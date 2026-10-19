@@ -1,14 +1,23 @@
 "use client";
 
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Section, Card } from "@/components/ui/Section";
-import { useT } from "@/lib/i18n/LocaleProvider";
+import { useLocale } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import {
   commitNumFieldDraft,
   formatNumFieldValue,
   parseNumFieldDraft,
+  stepNumFieldValue,
 } from "@/components/cashNumberField";
 import {
   buildCashResult,
@@ -21,11 +30,11 @@ import {
   DEFAULT_CASH_INPUT,
   MAX_ABS_WR_BB100,
   MAX_BB_SIZE,
-  MAX_HANDS,
   MAX_HANDS_PER_HOUR,
   MAX_RAKE_CONTRIB_BB100,
   MAX_SD_BB100,
   MAX_TOTAL_SIM_HANDS,
+  cashFieldMaxima,
   normalizeCashInput,
   normalizeCashInputForUi,
   serializeCashInput,
@@ -45,6 +54,13 @@ import {
   CASH_ACCENT_META,
   type SuitAccent,
 } from "@/components/cash/CashResultsShared";
+import { seedMixRows } from "@/components/cash/cashMixSeed";
+import {
+  IDLE_CASH_RUN,
+  cashRunErrorText,
+  cashRunReducer,
+  workerFailureDetail,
+} from "@/components/cash/cashRunState";
 
 const STORAGE_KEY = "tvs:cash-input";
 
@@ -67,7 +83,7 @@ function saveInput(next: CashInput): void {
 }
 
 export const CashApp = memo(function CashApp() {
-  const t = useT();
+  const { locale, t } = useLocale();
   const [input, setInput] = useLocalStorageState<CashInput>(
     STORAGE_KEY,
     loadInput,
@@ -75,9 +91,10 @@ export const CashApp = memo(function CashApp() {
     DEFAULT_CASH_INPUT,
   );
   const [result, setResult] = useState<CashResult | null>(null);
-  const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [{ running, progress, error }, dispatchRun] = useReducer(
+    cashRunReducer,
+    IDLE_CASH_RUN,
+  );
   const jobIdRef = useRef(0);
   const poolRef = useRef<Worker[] | null>(null);
   const destroyPool = () => {
@@ -102,8 +119,7 @@ export const CashApp = memo(function CashApp() {
     const snapshot = normalizeCashInput(input);
     setInput(snapshot);
     const jobId = ++jobIdRef.current;
-    setRunning(true);
-    setProgress(0);
+    dispatchRun({ type: "start" });
 
     if (!poolRef.current) {
       const hc =
@@ -155,13 +171,12 @@ export const CashApp = memo(function CashApp() {
 
     // A dead worker or a throwing shard leaves the pool in an unknown state,
     // so it is torn down and rebuilt lazily on the next run.
-    const failJob = (detail: string) => {
+    const failJob = (message: unknown) => {
       if (errored) return;
       errored = true;
       cleanup();
       destroyPool();
-      setRunning(false);
-      setError(t("cash.error.run").replace("{detail}", detail));
+      dispatchRun({ type: "fail", detail: workerFailureDetail({ message }) });
     };
 
     const onWorkerMessage = (
@@ -175,14 +190,12 @@ export const CashApp = memo(function CashApp() {
       }
       shards[msg.shardId] = msg.shard;
       completed++;
-      setProgress(completed / totalShards);
+      dispatchRun({ type: "progress", value: completed / totalShards });
       if (completed === totalShards && !errored) {
         cleanup();
         try {
           setResult(buildCashResult(snapshot, shards, envGrid));
-          setProgress(1);
-          setError(null);
-          setRunning(false);
+          dispatchRun({ type: "done" });
         } catch (err) {
           failJob(err instanceof Error ? err.message : String(err));
         }
@@ -190,7 +203,7 @@ export const CashApp = memo(function CashApp() {
     };
     const onWorkerError = (e: Event) => {
       if (jobId !== jobIdRef.current) return;
-      failJob(e instanceof ErrorEvent && e.message ? e.message : e.type);
+      failJob((e as Event & { message?: unknown }).message);
     };
 
     for (const w of pool) {
@@ -228,8 +241,7 @@ export const CashApp = memo(function CashApp() {
     // the pool to stop burning CPU on a job the user already canceled.
     jobIdRef.current++;
     destroyPool();
-    setRunning(false);
-    setProgress(0);
+    dispatchRun({ type: "cancel" });
   };
 
   const patch = (p: Partial<CashInput>) => setInput({ ...input, ...p });
@@ -243,17 +255,10 @@ export const CashApp = memo(function CashApp() {
 
   const mixEnabled = !!input.stakes && input.stakes.length > 0;
   const stakes = input.stakes ?? [];
-  const maxHandsForSimulations = Math.max(
-    1_000,
-    Math.min(
-      MAX_HANDS,
-      Math.floor(MAX_TOTAL_SIM_HANDS / Math.max(1, input.nSimulations)),
-    ),
-  );
-  const maxSimulationsForHands = Math.max(
-    100,
-    Math.min(20_000, Math.floor(MAX_TOTAL_SIM_HANDS / Math.max(1, input.hands))),
-  );
+  const { maxHands: maxHandsForSimulations, maxSimulations: maxSimulationsForHands } =
+    cashFieldMaxima(input.hands, input.nSimulations);
+  const countFormat = numberLocaleTag(locale);
+  const budgetText = (n: number) => n.toLocaleString(countFormat);
   const stakeShareSum = stakes.reduce((acc, row) => acc + row.handShare, 0);
   const stakeShareLabel = stakeShareSum.toFixed(2);
   const mixSharesNeedRenorm =
@@ -293,23 +298,7 @@ export const CashApp = memo(function CashApp() {
   const enableMix = (on: boolean) => {
     if (on && !mixEnabled) {
       // Seed with the current single-stake as row 1 and a sensible second row.
-      const row1: CashStakeRow = {
-        label: "NL100",
-        wrBb100: input.wrBb100,
-        sdBb100: input.sdBb100,
-        bbSize: input.bbSize,
-        handShare: 0.7,
-        rake: { ...input.rake },
-      };
-      const row2: CashStakeRow = {
-        label: "NL200",
-        wrBb100: input.wrBb100,
-        sdBb100: input.sdBb100,
-        bbSize: input.bbSize * 2,
-        handShare: 0.3,
-        rake: { ...input.rake },
-      };
-      setInput({ ...input, stakes: [row1, row2] });
+      setInput({ ...input, stakes: seedMixRows(input, t) });
     } else if (!on && mixEnabled) {
       setInput({ ...input, stakes: undefined });
     }
@@ -347,6 +336,10 @@ export const CashApp = memo(function CashApp() {
                 step={10_000}
                 min={1000}
                 max={maxHandsForSimulations}
+                hint={t("cash.hands.budgetHint")
+                  .replace("{max}", budgetText(maxHandsForSimulations))
+                  .replace("{sims}", budgetText(input.nSimulations))
+                  .replace("{total}", budgetText(MAX_TOTAL_SIM_HANDS))}
                 onChange={(v) => patch({ hands: Math.floor(v) })}
               />
               <NumField
@@ -355,6 +348,10 @@ export const CashApp = memo(function CashApp() {
                 step={500}
                 min={100}
                 max={maxSimulationsForHands}
+                hint={t("cash.nSimulations.budgetHint")
+                  .replace("{max}", budgetText(maxSimulationsForHands))
+                  .replace("{hands}", budgetText(input.hands))
+                  .replace("{total}", budgetText(MAX_TOTAL_SIM_HANDS))}
                 onChange={(v) => patch({ nSimulations: Math.floor(v) })}
               />
               <NumField
@@ -386,6 +383,7 @@ export const CashApp = memo(function CashApp() {
                   </div>
                   <ToggleSwitch
                     checked={!!input.hoursBlock}
+                    label={t("cash.group.hourly")}
                     tone="club"
                     onChange={(checked) =>
                       setInput({
@@ -446,6 +444,7 @@ export const CashApp = memo(function CashApp() {
             toggle={
               <ToggleSwitch
                 checked={mixEnabled}
+                label={t("cash.group.stakes")}
                 onChange={enableMix}
                 tone="diamond"
               />
@@ -504,6 +503,7 @@ export const CashApp = memo(function CashApp() {
               toggle={
                 <ToggleSwitch
                   checked={input.rake.enabled}
+                  label={t("cash.group.rake")}
                   onChange={(checked) => patchRake({ enabled: checked })}
                   tone="heart"
                 />
@@ -589,7 +589,7 @@ export const CashApp = memo(function CashApp() {
             role="alert"
             className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-[color:var(--c-err-fg)]"
           >
-            {error}
+            {cashRunErrorText(error, t)}
           </div>
         )}
         {!result && (
@@ -616,7 +616,7 @@ interface NumFieldProps {
   onChange: (v: number) => void;
 }
 
-function NumField({
+export function NumField({
   label,
   value,
   step = 1,
@@ -671,6 +671,22 @@ function NumField({
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.currentTarget.blur();
+          } else if (
+            (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+            !disabled
+          ) {
+            // The native step grid starts at `min`, so 1 + 0.25 would land on 1.01.
+            e.preventDefault();
+            const typed = parseFloat(e.currentTarget.value);
+            const next = stepNumFieldValue(
+              Number.isFinite(typed) ? typed : value,
+              e.key === "ArrowUp" ? 1 : -1,
+              step,
+              min,
+              max,
+            );
+            setDraft(formatNumFieldValue(next));
+            onChange(next);
           } else if (e.key === "Escape") {
             e.preventDefault();
             cancelledRef.current = true;
@@ -738,10 +754,12 @@ function InputGroup({
 
 function ToggleSwitch({
   checked,
+  label,
   onChange,
   tone = "diamond",
 }: {
   checked: boolean;
+  label: string;
   onChange: (checked: boolean) => void;
   tone?: SuitAccent;
 }) {
@@ -751,6 +769,7 @@ function ToggleSwitch({
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label}
       onClick={() => onChange(!checked)}
       className="relative inline-flex h-6 w-10 flex-none items-center rounded-full border shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors"
       style={{
@@ -787,7 +806,7 @@ function StakeRowEditor({
   onPatch: (p: Partial<CashStakeRow>) => void;
   onPatchRake: (p: Partial<CashStakeRow["rake"]>) => void;
   onRemove: () => void;
-  t: ReturnType<typeof useT>;
+  t: ReturnType<typeof useLocale>["t"];
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/40 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
@@ -864,6 +883,11 @@ function StakeRowEditor({
       <div className="flex items-center gap-3">
         <ToggleSwitch
           checked={row.rake.enabled}
+          label={
+            row.label
+              ? `${row.label}: ${t("cash.rake.enabled.label")}`
+              : t("cash.rake.enabled.label")
+          }
           onChange={(checked) => onPatchRake({ enabled: checked })}
         />
         <span className="text-[11px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">

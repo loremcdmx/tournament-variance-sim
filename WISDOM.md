@@ -357,6 +357,24 @@ residual coefficient before being band-eligible.
   serialization, or engine snapshot normalization before blaming charts. This
   product already had one bug where first paint looked honest but `runSim()`
   rebuilt a default optional block underneath the user.
+- Every cash result number goes through `makeCashFormat` / `useCashFormat`
+  (`cash/cashFormat.ts`): grouping and decimal mark follow the UI language, the
+  `BB` and `/h` suffixes and the "Run n" label come from `dict.ts`, and a negative
+  that rounds to nothing prints `0`, never `-0` / `$-0`. A bare
+  `toLocaleString(undefined, ...)` in the cash tab is the old browser-locale bug.
+- `rake.enabled` off means rake and rakeback are not modelled (the engine zeroes
+  both per row), so the Economics card and the mix bars drop the "Rake paid" and
+  "RB earned" figures and say so (`cashRakeModelled`); a printed 0 read as "no
+  rake". Winrate is used as entered.
+- The cash tab's number fields step with ArrowUp/ArrowDown from the current value
+  (`stepNumFieldValue`): the native step grid starts at `min`, so BB 1 became 1.01
+  and SD 100 became 101. The spin buttons are hidden globally; a mouse wheel over a
+  focused field still takes the native, min-anchored step.
+- `normalizeCashInput` caps a stake's `handShare` at `MAX_HAND_SHARE` (two shares
+  of 1e308 summed to Infinity and `compileStakeSchedule` threw) and folds a seed
+  outside the 32-bit window (`-2^31 <= seed < 2^32` stays as typed) onto the seed
+  the hot loop actually uses, so seeds 2^32 apart no longer echo as different runs.
+  Seeds inside the window still collide with their 2^32 twin (-5 and 4294967291).
 
 ## Result Toolbar Re-Run Wisdom
 

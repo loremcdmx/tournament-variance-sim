@@ -2446,6 +2446,7 @@ export const DICT = {
   "cash.stakes.row.pvi": { en: "PVI", ru: "PVI" },
   "cash.stakes.add": { en: "+ Add row", ru: "+ Добавить строку" },
   "cash.stakes.remove": { en: "Remove", ru: "Удалить" },
+  "cash.stakes.seedLabel": { en: "NL{n}", ru: "NL{n}" },
   "cash.stakes.share.ok": {
     en: "Current row-share sum: {sum}.",
     ru: "Текущая сумма долей: {sum}.",
@@ -2462,6 +2463,14 @@ export const DICT = {
   "cash.sdBb100.label": { en: "Std dev (bb/100)", ru: "SD (bb/100)" },
   "cash.hands.label": { en: "Hands", ru: "Раздач" },
   "cash.nSimulations.label": { en: "Simulations", ru: "Симуляций" },
+  "cash.hands.budgetHint": {
+    en: "Up to {max} hands at {sims} simulations (hands × simulations ≤ {total}). Lower Simulations to raise the cap.",
+    ru: "До {max} раздач при {sims} симуляциях (раздачи × симуляции ≤ {total}). Чтобы поднять потолок, уменьши число симуляций.",
+  },
+  "cash.nSimulations.budgetHint": {
+    en: "Up to {max} simulations at {hands} hands (hands × simulations ≤ {total}). Lower Hands to raise the cap.",
+    ru: "До {max} симуляций при {hands} раздачах (раздачи × симуляции ≤ {total}). Чтобы поднять потолок, уменьши число раздач.",
+  },
   "cash.bbSize.label": { en: "BB size ($)", ru: "Размер BB ($)" },
   "cash.baseSeed.label": { en: "Seed", ru: "Сид" },
   "cash.rake.enabled.label": { en: "Rakeback", ru: "Рейкбек" },
@@ -2527,6 +2536,10 @@ export const DICT = {
     ru: "Восстановление p90 (среди восстановившихся): {recovery} · не отмазались: {share}",
   },
   "cash.stats.hourlyEvUsd": { en: "EV / hour", ru: "EV / час" },
+  "cash.stats.rakeNotModelled": {
+    en: "Rake and rakeback are not modelled while Rakeback is off: the winrate is used as entered, so there are no rake or rakeback totals to show.",
+    ru: "Пока Рейкбек выключен, рейк и рейкбек не моделируются: винрейт берётся как введён, поэтому итогов по рейку и рейкбеку нет.",
+  },
   "cash.stats.meanRakePaidBb": {
     en: "Rake paid ({unit})",
     ru: "Заплачено рейка ({unit})",
@@ -2544,6 +2557,7 @@ export const DICT = {
   "cash.axis.winrate": { en: "bb/100", ru: "bb/100" },
   "cash.unit.bb": { en: "BB", ru: "BB" },
   "cash.unit.usd": { en: "$", ru: "$" },
+  "cash.unit.perHour": { en: "/h", ru: "/час" },
   "cash.toolbar.runs": { en: "Runs", ru: "Раны" },
   "cash.toolbar.units": { en: "Units", ru: "Единицы" },
   "cash.chart.trajectory.title": {
@@ -2566,6 +2580,7 @@ export const DICT = {
     en: "Final bankroll",
     ru: "Финальный банкролл",
   },
+  "cash.chart.trajectory.runLabel": { en: "Run {n}", ru: "Ран {n}" },
   "cash.chart.trajectory.legend.bands": {
     en: "70 / 90 / 95% intervals",
     ru: "интервалы 70 / 90 / 95%",
@@ -2691,6 +2706,10 @@ export const DICT = {
     ru: "Медиана только по траекториям, которые вернулись к прежнему пику за эту дистанцию. Плашка «Не отмазались» — доля тех, кто не вернулся; если она выше 50%, настоящая медиана длиннее дистанции.",
   },
   "cash.summary.unrecovered": { en: "Unrecovered", ru: "Не отмазались" },
+  "cash.summary.tipToggle": {
+    en: "what this means",
+    ru: "что это значит",
+  },
   "cash.summary.oddsUp": {
     en: "Above 0 BB",
     ru: "Выше 0 BB",
@@ -2746,6 +2765,10 @@ export const DICT = {
   "cash.error.run": {
     en: "Cash simulation failed: {detail}. Fix the inputs or run again — the worker pool has been reset.",
     ru: "Симуляция кэша не удалась: {detail}. Проверь параметры или запусти снова — пул воркеров сброшен.",
+  },
+  "cash.error.workerStart": {
+    en: "the worker did not start or stopped unexpectedly",
+    ru: "воркер не запустился или неожиданно остановился",
   },
   "chart.brLeaderboardObserved.title": {
     en: "BR leaderboard promo",

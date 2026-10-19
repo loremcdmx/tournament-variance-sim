@@ -23,6 +23,7 @@ export const MAX_SD_BB100 = 10_000;
 export const MAX_BB_SIZE = 1_000_000;
 export const MAX_RAKE_CONTRIB_BB100 = 1_000;
 export const MAX_HANDS_PER_HOUR = 10_000;
+export const MAX_HAND_SHARE = 1_000_000;
 const MIN_BB_SIZE = 0.01;
 const MIN_SD_BB100 = 0;
 const MIN_RAKE_CONTRIB_BB100 = 0;
@@ -37,6 +38,29 @@ export const MAX_HANDS = Math.floor(MAX_TOTAL_SIM_HANDS / UI_MIN_SAMPLES);
 const UI_MIN_SD_BB100 = 1;
 const UI_MIN_HANDS_PER_HOUR = 50;
 const UI_MIN_RISK_THRESHOLD_BB = 10;
+
+/** Hands and simulations share one work budget, so each field's ceiling follows the other. */
+export function cashFieldMaxima(
+  hands: number,
+  nSimulations: number,
+): { maxHands: number; maxSimulations: number } {
+  return {
+    maxHands: Math.max(
+      UI_MIN_HANDS,
+      Math.min(
+        MAX_HANDS,
+        Math.floor(MAX_TOTAL_SIM_HANDS / Math.max(1, nSimulations)),
+      ),
+    ),
+    maxSimulations: Math.max(
+      UI_MIN_SAMPLES,
+      Math.min(
+        MAX_SAMPLES,
+        Math.floor(MAX_TOTAL_SIM_HANDS / Math.max(1, hands)),
+      ),
+    ),
+  };
+}
 
 export const DEFAULT_CASH_INPUT: CashInput = {
   type: "cash",
@@ -83,6 +107,15 @@ function clamp(value: number, min: number, max: number): number {
 
 function clampMin(value: number, min: number): number {
   return Math.max(min, value);
+}
+
+const MIN_SEED = -(2 ** 31);
+const SEED_SPAN = 2 ** 32;
+
+// The hot loop keeps only the low 32 bits of the seed, so a seed outside the
+// 32-bit window is the run of the seed it wraps to; echo that one.
+function wrapSeed(seed: number): number {
+  return seed >= MIN_SEED && seed < SEED_SPAN ? seed : seed >>> 0;
 }
 
 function toInt(value: number, fallback: number, min: number): number {
@@ -138,7 +171,11 @@ function normalizeStakeRow(
       MIN_BB_SIZE,
       MAX_BB_SIZE,
     ),
-    handShare: clampMin(finiteOr(raw.handShare, fallback.handShare), 0),
+    handShare: clamp(
+      finiteOr(raw.handShare, fallback.handShare),
+      0,
+      MAX_HAND_SHARE,
+    ),
     rake: normalizeRake(raw.rake, fallback.rake),
   };
 }
@@ -185,7 +222,9 @@ export function normalizeCashInput(
     nSimulations,
     maxSimulationsForHands,
   );
-  const baseSeed = Math.floor(finiteOr(src.baseSeed, fallback.baseSeed));
+  const baseSeed = wrapSeed(
+    Math.floor(finiteOr(src.baseSeed, fallback.baseSeed)),
+  );
 
   const hasHoursBlock = Object.prototype.hasOwnProperty.call(src, "hoursBlock");
   let hoursBlock: CashInput["hoursBlock"];
@@ -263,6 +302,13 @@ export function normalizeCashInput(
     baseSeed,
     ...(stakes ? { stakes } : {}),
   };
+}
+
+/** Whether the compiled schedule models any rake or rakeback at all (the engine zeroes both per row without the toggle). */
+export function cashRakeModelled(input: CashInput): boolean {
+  return input.stakes && input.stakes.length > 0
+    ? input.stakes.some((row) => row.rake.enabled)
+    : input.rake.enabled;
 }
 
 export function normalizeCashInputForUi(
