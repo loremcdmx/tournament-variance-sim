@@ -7,6 +7,7 @@ import { getPayoutTable } from "./payouts";
 import { fieldVariantSizes } from "./fieldVariants";
 import type { FinishModelConfig, TournamentRow } from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
+import { applyItmTarget } from "./itmTarget";
 
 const baseModel: FinishModelConfig = { id: "power-law" };
 
@@ -419,5 +420,115 @@ describe("validateSchedule plays every field of a Field-size range", () => {
     const r = ranged({ fieldVariability: undefined });
     expect(validateSchedule([r], baseModel)).toEqual(atField(r, 100));
     expect(validateSchedule([ranged({ fieldVariability: { kind: "fixed" } })], baseModel).ok).toBe(true);
+  });
+});
+
+describe("validateSchedule: a model that cannot move its finish shape", () => {
+  const itmCfg = { enabled: false, pct: 18.7 };
+  // applyItmTarget fills every row's ITM, which is what Run validates.
+  const effective = (r: TournamentRow) => applyItmTarget([r], itmCfg);
+  const uniform: FinishModelConfig = { id: "uniform" };
+  const empirical: FinishModelConfig = {
+    id: "empirical",
+    empiricalBuckets: [8, 4, 2, 1, 1, 1, 1, 1, 1, 1],
+  };
+
+  it.each([uniform, empirical])("does not block Run at an off-equilibrium ROI on $id", (model) => {
+    for (const roi of [-0.2, 0, 0.1, 0.6]) {
+      const r = row({ players: 300, buyIn: 20, roi });
+      expect(validateSchedule(effective(r), model)).toEqual({ ok: true, issues: [] });
+    }
+    // The same row is blocked on a model that does move its shape, so the
+    // pass above is the model's doing and not an easy row.
+    const hard = row({ players: 100, itmRate: 0.02, roi: 1 });
+    expect(validateSchedule([hard], baseModel).ok).toBe(false);
+    expect(validateSchedule([hard], model).ok).toBe(true);
+  });
+
+  it.each([uniform, empirical])("does not block a bounty row on $id", (model) => {
+    const r = row({
+      players: 300,
+      payoutStructure: "mtt-gg-bounty",
+      gameType: "pko",
+      bountyFraction: 0.5,
+      roi: 0.3,
+    });
+    expect(validateSchedule(effective(r), model).ok).toBe(true);
+  });
+
+  it("still refuses locks that contradict each other", () => {
+    const r = row({ players: 300, itmRate: 0.2, finishBuckets: { first: 0.1, top3: 0.05 } });
+    const res = validateSchedule([r], uniform);
+    expect(res.ok).toBe(false);
+    expect(res.issues[0].reason).toBe("inconsistent-finish-locks");
+  });
+
+  it("agrees with the engine: the row compiles and pays what its shape pays", () => {
+    const r = effective(row({ players: 300, buyIn: 20, roi: 0.1 }))[0];
+    const compiled = compileSchedule({
+      schedule: [r],
+      scheduleRepeats: 1,
+      samples: 10,
+      bankroll: 0,
+      seed: 1,
+      finishModel: uniform,
+    });
+    const target = compiled.flat[0].singleCost * 1.1;
+    expect(Math.abs(compiled.flat[0].analyticMeanSingle - target)).toBeGreaterThan(1);
+  });
+});
+
+describe("validateSchedule: how close counts as on target", () => {
+  const engineMean = (r: TournamentRow) => {
+    const entry = compileSchedule({
+      schedule: [r],
+      scheduleRepeats: 1,
+      samples: 10,
+      bankroll: 0,
+      seed: 1,
+      finishModel: baseModel,
+    }).flat[0];
+    return entry.analyticMeanSingle / (entry.singleCost * (1 + r.roi)) - 1;
+  };
+
+  it("accepts a row the engine hits to within a thousandth of the target", () => {
+    // Best reachable EV is 1.3e-4 of the target away; the $0.001 slack refused it.
+    const r = row({
+      players: 51,
+      buyIn: 19.412,
+      rake: 0.08,
+      roi: 0,
+      payoutStructure: "mtt-primedope",
+      itmRate: 0.25,
+    });
+    expect(Math.abs(engineMean(r))).toBeLessThan(1e-3);
+    expect(Math.abs(engineMean(r))).toBeGreaterThan(1e-4);
+    expect(validateSchedule([r], baseModel).ok).toBe(true);
+  });
+
+  it("refuses a micro-stake row the engine misses by a few percent", () => {
+    // $0.01 ticket, 5% ITM at +30%: the best reachable EV is 6% short of the
+    // target, a gap of 0.0009 that the old $0.001 slack waved through.
+    const r = row({
+      players: 100,
+      buyIn: 0.01,
+      rake: 0.1,
+      roi: 0.3,
+      itmRate: 0.05,
+    });
+    expect(engineMean(r)).toBeLessThan(-0.04);
+    const res = validateSchedule([r], baseModel);
+    expect(res.ok).toBe(false);
+    expect(Math.abs(res.issues[0].gap)).toBeLessThan(1e-3);
+  });
+
+  it("holds a row without a pinned ITM to the same share", () => {
+    // Linear skill tops out 2% under +80% on a $0.01 ticket: a gap of 0.0004
+    // that an absolute dollar slack would have called on target.
+    const r = row({ players: 100, buyIn: 0.01, rake: 0.1, roi: 0.8 });
+    const res = validateSchedule([r], { id: "linear-skill" });
+    expect(res.ok).toBe(false);
+    expect(Math.abs(res.issues[0].gap)).toBeLessThan(1e-3);
+    expect(validateSchedule([{ ...r, buyIn: 10 }], { id: "linear-skill" }).ok).toBe(false);
   });
 });

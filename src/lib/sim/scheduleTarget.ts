@@ -4,6 +4,13 @@ export function countScheduleTournaments(schedule: TournamentRow[]): number {
   return schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0);
 }
 
+/**
+ * Rescales the rows to `targetTournaments` per pass, keeping the row mix: each
+ * row gets its share of the target by largest remainder, so a target equal to
+ * the current total returns the counts untouched. Every row still plays at
+ * least once; a row whose share rounds below 1 is held at 1 and the rest split
+ * what is left, which can pull the shares of the others down slightly.
+ */
 export function redistributeScheduleCounts(
   schedule: TournamentRow[],
   targetTournaments: number,
@@ -20,27 +27,42 @@ export function redistributeScheduleCounts(
   // floating-point products can otherwise allocate one tournament too many.
   const weights = schedule.map((r) => BigInt(Math.max(1,
     Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number.isFinite(r.count) ? r.count : 1)))));
-  const weightTotal = weights.reduce((a, b) => a + b, BigInt(0));
-  const remaining = BigInt(target - schedule.length);
+  const one = BigInt(1);
+
+  // A row whose exact share is under 1 is pinned at 1. That takes more than
+  // its share, which can push another row's share under 1, so repeat until no
+  // row moves; each pass only grows the pinned set.
+  const pinned = schedule.map(() => false);
+  let free = BigInt(target);
+  let freeWeight = weights.reduce((a, b) => a + b, BigInt(0));
+  for (let moved = true; moved; ) {
+    moved = false;
+    weights.forEach((weight, idx) => {
+      if (pinned[idx] || free * weight >= freeWeight) return;
+      pinned[idx] = true;
+      free -= one;
+      freeWeight -= weight;
+      moved = true;
+    });
+  }
 
   const rows = weights.map((weight, idx) => {
-    const numerator = remaining * weight;
-    const extra = Number(numerator / weightTotal);
+    if (pinned[idx]) return { idx, count: 1, frac: BigInt(0) };
+    const numerator = free * weight;
     return {
       idx,
-      count: 1 + extra,
-      frac: numerator % weightTotal,
+      count: Number(numerator / freeWeight),
+      frac: numerator % freeWeight,
     };
   });
 
-  let allocated = rows.reduce((a, r) => a + r.count, 0);
+  const allocated = rows.reduce((a, r) => a + r.count, 0);
   rows
     .slice()
     .sort((a, b) => a.frac === b.frac ? a.idx - b.idx : a.frac > b.frac ? -1 : 1)
     .slice(0, target - allocated)
     .forEach((r) => {
       rows[r.idx].count += 1;
-      allocated += 1;
     });
 
   return schedule.map((row, idx) => ({

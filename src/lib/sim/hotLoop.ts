@@ -159,15 +159,7 @@ function simulateShardInternal(
   const leaderboardConfig = normalizeBattleRoyaleLeaderboardConfig(
     input.battleRoyaleLeaderboard,
   );
-  const leaderboardLegacyAllBr =
-    leaderboardConfig !== null &&
-    (!input.battleRoyaleLeaderboard?.includedRowIds ||
-      input.battleRoyaleLeaderboard.includedRowIds.length === 0);
-  const hasBattleRoyaleRows = compiled.flat.some(
-    (entry) =>
-      entry.isBattleRoyale &&
-      (leaderboardLegacyAllBr || entry.battleRoyaleLeaderboardShare > 0),
-  );
+  const hasBattleRoyaleRows = compiled.flat.some((entry) => entry.isBattleRoyale);
   const leaderboardActive = leaderboardConfig !== null && hasBattleRoyaleRows;
   const leaderboardPoints = leaderboardActive ? new Float64Array(shardSize) : null;
   const leaderboardPayouts = leaderboardActive ? new Float64Array(shardSize) : null;
@@ -425,8 +417,6 @@ function simulateShardInternal(
       const brAliasProb = t.brTierAliasProb;
       const brAliasIdx = t.brTierAliasIdx;
       const isBattleRoyale = t.isBattleRoyale;
-      const leaderboardRowActive =
-        leaderboardLegacyAllBr || t.battleRoyaleLeaderboardShare > 0;
       let delta = 0;
       let cashedThisSlot = false;
       let leaderboardPlace = -1;
@@ -511,7 +501,6 @@ function simulateShardInternal(
         leaderboardRng !== null &&
         gaussLeaderboard !== null &&
         isBattleRoyale &&
-        leaderboardRowActive &&
         leaderboardPlace >= 0
       ) {
         const place1 = leaderboardPlace + 1;

@@ -12,6 +12,9 @@ import {
   applyBountyBias,
   manualAlphaFor,
   supportsManualAlpha,
+  cashTargetFloor,
+  targetEvTolerance,
+  withinTargetEv,
 } from "./finishModel";
 import { getPayoutTable } from "./payouts";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
@@ -394,6 +397,43 @@ describe("calibrateShelledItm", () => {
     expect(r.currentWinnings).toBeLessThan(target);
   });
 
+  it("accepts a miss of a thousandth of the target, whatever the stake", () => {
+    // 0.0028 on 20.96 is 1.3e-4 of it; the old $0.001 slack refused it.
+    expect(withinTargetEv(20.96776, 20.96496)).toBe(true);
+    expect(withinTargetEv(20.96496 * 1.002, 20.96496)).toBe(false);
+    // The same share of a $0.0055 target is a hundredth of a cent, not a tenth of a cent.
+    expect(withinTargetEv(0.0055 + 0.0003, 0.0055)).toBe(false);
+    expect(targetEvTolerance(0.0055)).toBeCloseTo(5.5e-6, 12);
+  });
+
+  it("calls a saturated free band feasible when it stops a hair short of the target", () => {
+    // All free mass on 1st (α at its ceiling) pays 1.3e-4 of the target short.
+    const ceiling = calibrateShelledItm(
+      N, paid, curve, pool, 1e9, itm, undefined, { id: "power-law" },
+    ).currentWinnings;
+    const nearlyThere = calibrateShelledItm(
+      N, paid, curve, pool, ceiling * (1 + 1.3e-4), itm, undefined, { id: "power-law" },
+    );
+    expect(nearlyThere.feasible).toBe(true);
+    const farOff = calibrateShelledItm(
+      N, paid, curve, pool, ceiling * 1.01, itm, undefined, { id: "power-law" },
+    );
+    expect(farOff.feasible).toBe(false);
+  });
+
+  it("does not hold a model with no α to a target it cannot move", () => {
+    const target = 16.5;
+    for (const model of [
+      { id: "uniform" } as FinishModelConfig,
+      { id: "empirical", empiricalBuckets: [8, 4, 2, 1, 1, 1, 1, 1, 1, 1] } as FinishModelConfig,
+    ]) {
+      const r = calibrateShelledItm(N, paid, curve, pool, target, itm, undefined, model);
+      expect(Math.abs(r.currentWinnings - target)).toBeGreaterThan(1);
+      expect(r.feasible).toBe(true);
+      expect(r.supportsTargetRoi).toBe(false);
+    }
+  });
+
   it("PMF sums to 1 under all shell configurations", () => {
     const cases = [
       undefined,
@@ -513,5 +553,19 @@ describe("sampleFromCDF", () => {
       const freq = counts[i] / trials;
       expect(Math.abs(freq - pmf[i])).toBeLessThan(0.003);
     }
+  });
+});
+
+describe("cashTargetFloor", () => {
+  it("is the old $0.01 for any ticket of $10 or more", () => {
+    expect(cashTargetFloor(10)).toBe(0.01);
+    expect(cashTargetFloor(11)).toBe(0.01);
+    expect(cashTargetFloor(1100)).toBe(0.01);
+  });
+
+  it("follows a smaller ticket down and never reaches zero", () => {
+    expect(cashTargetFloor(1)).toBeCloseTo(0.001, 12);
+    expect(cashTargetFloor(0.011)).toBeCloseTo(1.1e-5, 14);
+    expect(cashTargetFloor(0)).toBeGreaterThan(0);
   });
 });

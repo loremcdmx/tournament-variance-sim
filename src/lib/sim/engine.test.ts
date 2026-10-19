@@ -463,6 +463,53 @@ describe("engine", () => {
     expect(r.battleRoyaleLeaderboard!.stats.meanFirsts).toBeGreaterThanOrEqual(0);
   });
 
+  it("keeps scoring every BR row when an older payload carries an includedRowIds list", () => {
+    const leaderboard = {
+      participants: 120,
+      windowTournaments: 3,
+      scoring: {
+        entryPoints: 1,
+        knockoutPoints: 4,
+        firstPoints: 10,
+        secondPoints: 5,
+        thirdPoints: 2,
+      },
+      payouts: [{ rankFrom: 1, rankTo: 10, prizeEach: 10 }],
+      opponentModel: { kind: "normal" as const, meanScore: 15, stdDevScore: 6 },
+    };
+    const run = (battleRoyaleLeaderboard: typeof leaderboard) =>
+      runSimulation(
+        baseInput({
+          samples: 400,
+          schedule: [
+            {
+              id: "br",
+              label: "battle royale",
+              players: 18,
+              buyIn: BR_10.buyIn,
+              rake: BR_10.rake,
+              roi: 0.03,
+              payoutStructure: "battle-royale",
+              gameType: "mystery-royale",
+              bountyFraction: 0.5,
+              mysteryBountyVariance: 1.8,
+              count: 1,
+            },
+          ],
+          scheduleRepeats: 12,
+          battleRoyaleLeaderboard,
+        }),
+      ).battleRoyaleLeaderboard;
+
+    const plain = run(leaderboard);
+    const withStaleList = run({ ...leaderboard, includedRowIds: ["br"] } as typeof leaderboard);
+    expect(plain).toBeDefined();
+    expect(withStaleList).toBeDefined();
+    expect(withStaleList!.stats).toEqual(plain!.stats);
+    expect(Array.from(withStaleList!.payouts)).toEqual(Array.from(plain!.payouts));
+    expect(withStaleList!.stats.meanWindows).toBe(4);
+  });
+
   it("still scores explicit BR rows even when the row omits bounty-share knobs", () => {
     const input = baseInput({
       samples: 300,

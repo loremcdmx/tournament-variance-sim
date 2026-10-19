@@ -143,6 +143,7 @@ interface ShardSlot {
 }
 
 const RATE_KEY = "tvs.lastRateMsPerWork.v2";
+const PENDING_HIGH_RATE_KEY = "tvs.pendingHighRateMsPerWork.v1";
 
 /**
  * Per-row format weights for the work-units calculation. Measured on
@@ -234,6 +235,26 @@ function saveRate(r: number) {
   if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(RATE_KEY, String(r));
+  } catch {}
+}
+
+function loadPendingHighRate(): number | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PENDING_HIGH_RATE_KEY);
+    if (!raw) return null;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingHighRate(r: number | null) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    if (r == null) localStorage.removeItem(PENDING_HIGH_RATE_KEY);
+    else localStorage.setItem(PENDING_HIGH_RATE_KEY, String(r));
   } catch {}
 }
 
@@ -938,9 +959,10 @@ export function useSimulation() {
         setStatus("done");
         // Record a smoothed rate (ms per work unit) so the next run can
         // show an ETA. EMA blend at 0.6 of new observation; outlier
-        // observations (≥2.5× change vs cached) are dropped entirely so a
-        // single throttled tab can't poison the cache for the next clean
-        // run. See `src/lib/ui/rateUpdate.ts` for the math.
+        // observations (≥2.5× change vs cached) are dropped, so a single
+        // throttled tab can't poison the cache for the next clean run, unless
+        // the run before was just as slow (then the shape changed and the
+        // cache is stale). See `src/lib/ui/rateUpdate.ts` for the math.
         // Sum over every dispatched pass: a compare run executes the twin
         // schedule too, and dividing two passes' wall time by one pass's work
         // taught a ~2× inflated rate that whipsawed the ETA whenever the
@@ -957,11 +979,13 @@ export function useSimulation() {
           elapsedMs: elapsed,
           work,
           prevRate: loadRate(),
+          pendingHigh: loadPendingHighRate(),
         });
         if (update.nextRate != null) {
           saveRate(update.nextRate);
           setLastRateMs(update.nextRate);
         }
+        if (update.pendingHigh !== undefined) savePendingHighRate(update.pendingHigh);
       } catch (err) {
         if (jobIdRef.current !== jobId) return;
         const detail = err instanceof Error ? err.message : String(err);

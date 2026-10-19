@@ -1,16 +1,17 @@
 /// <reference lib="webworker" />
 /**
  * Thin dispatcher for the engine. A worker receives `BuildRequest`
- * (compile the schedule once) or `ShardRequest` (simulate a contiguous
- * `[sStart, sEnd)` slice), runs the pure engine, and posts progress +
- * results back. Stateless between messages — the compiled schedule is
- * serialized in every `ShardRequest` so workers never share mutable state.
+ * (merge the shards and build the result) or `ShardRequest` (simulate a
+ * contiguous `[sStart, sEnd)` slice), runs the pure engine, and posts progress +
+ * results back. The input travels in every request and workers never share
+ * mutable state; the only thing a worker keeps between messages is the last
+ * compiled schedule (`compileCache.ts`), so the shards of one job compile once.
  *
  * Do not put React, DOM, or timing calls here. Keep it mechanical.
  */
+import { createCompileCache } from "./compileCache";
 import {
   buildResult,
-  compileSchedule,
   makeCheckpointGrid,
   mergeShards,
   simulateShard,
@@ -20,10 +21,12 @@ import type { BuildStage, RawShard } from "./engine";
 
 declare const self: DedicatedWorkerGlobalScope;
 
+const compileCache = createCompileCache();
+
 /**
  * Shard request — main thread asks this worker to run [sStart, sEnd)
- * for a given SimulationInput + calibration mode. Workers are stateless
- * between requests; the pool is owned by the main thread.
+ * for a given SimulationInput + calibration mode. The pool is owned by the
+ * main thread.
  */
 export interface ShardRequest {
   type: "shard";
@@ -190,7 +193,7 @@ self.onmessage = (e: MessageEvent<ShardRequest | BuildRequest>) => {
   if (req.type !== "shard") return;
   const { jobId, shardId, input, calibrationMode, sStart, sEnd } = req;
   try {
-    const compiled = compileSchedule({ ...input, calibrationMode }, calibrationMode);
+    const compiled = compileCache.get({ ...input, calibrationMode }, calibrationMode);
     const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
 
     const shard = simulateShard(
@@ -238,7 +241,7 @@ self.onmessage = (e: MessageEvent<ShardRequest | BuildRequest>) => {
 function handleBuild(req: BuildRequest) {
   const { jobId, buildId, input, calibrationMode, shards } = req;
   try {
-    const compiled = compileSchedule({ ...input, calibrationMode }, calibrationMode);
+    const compiled = compileCache.get({ ...input, calibrationMode }, calibrationMode);
     const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
     const K1 = grid.K + 1;
     const merged = mergeShards(shards, input.samples, K1, input.schedule.length);
@@ -275,6 +278,10 @@ function handleBuild(req: BuildRequest) {
       message: err instanceof Error ? err.message : String(err),
     };
     self.postMessage(msg);
+  } finally {
+    // The build is the last request of a job: do not keep its tables pinned
+    // while the worker idles.
+    compileCache.clear();
   }
 }
 

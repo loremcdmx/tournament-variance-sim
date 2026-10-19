@@ -290,6 +290,33 @@ residual coefficient before being band-eligible.
   in an alert instead of rewriting the ROI back and forth. Anything but a ranged
   ROI-gap row keeps the old fallback.
 
+## Calibration Targets, Tolerances And The Worker Cache
+
+- `calibrateShelledItm` is the one place that says whether a pinned-ITM row hit
+  its cash target (`feasible`); validation, the Shape panel and the one-click
+  fix all read it. A model with no α to move (uniform, empirical) reports
+  `feasible` from its locks only and `supportsTargetRoi: false`, because the free
+  band lands wherever the shape puts it. Before, any ROI but the flat-equilibrium
+  one blocked Run on those two models, since `applyItmTarget` always fills an ITM.
+- "On target" is a share of the target (`withinTargetEv`, a thousandth), never an
+  absolute dollar slack: `$0.001` was 9% of a `$0.01` ticket and 0.005% of a
+  `$20` one, and the strict `1e-6` check at an α bound blocked a row the engine
+  hit to 1.3e-4. The cash-target floor follows the ticket too
+  (`cashTargetFloor`: `$0.01` from a `$10` ticket up, lower below), so a `$0.01`
+  buy-in at -50% pays -50% instead of -9%. The floor and tolerance are mirrored in
+  `compileEntry`, `validation` and `previewRowStats`; change all three together.
+- A row with no `gameType` compiles, previews and validates as the type
+  `inferGameType` gives (the engine used to read the raw field and play a legacy
+  Mystery row with PKO bounty weights: σ 13% and 27% lower in two repros).
+- A worker keeps the last compiled schedule (`compileCache.ts`), keyed by the
+  whole input plus the calibration mode, and the build clears it. Never narrow the
+  key to "the fields compile reads": a field added later would be served stale.
+  `compileCache.test.ts` runs the hot loop and the build over a shared compile; a
+  new write into a compiled schedule must keep that test green.
+- `count` is `max(1, floor(count))` everywhere the engine reads it; the editor,
+  the CSV import and persistence hold the field to a whole number of 1 or more,
+  so a count below 1 only comes from programmatic input.
+
 ## Persistence And Stored Rows
 
 - An over-cap payload (more than `MAX_SCHEDULE_ROWS` rows, only possible from an

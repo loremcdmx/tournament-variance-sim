@@ -61,29 +61,17 @@ export function buildLeaderboardResult(
     thirdAcc += leaderboardThirds[i];
   }
   const meanPoints = pointsMeanAcc / S;
-  let rawMeanPayout = 0;
+  let meanPayout = 0;
   for (let i = 0; i < S; i++) {
-    rawMeanPayout += leaderboardExpectedPayouts[i];
+    meanPayout += leaderboardExpectedPayouts[i];
   }
-  rawMeanPayout /= S;
-  const splitMode =
-    !!input.battleRoyaleLeaderboard?.includedRowIds &&
-    input.battleRoyaleLeaderboard.includedRowIds.length > 0;
-  const targetMeanPayout = splitMode
-    ? Math.max(0, compiled.expectedLeaderboardPromo)
-    : rawMeanPayout;
-  const payoutScale =
-    rawMeanPayout > 0 ? targetMeanPayout / rawMeanPayout : 1;
-  if (payoutScale !== 1) {
-    for (let i = 0; i < S; i++) leaderboardPayouts[i] *= payoutScale;
-  }
+  meanPayout /= S;
   let pointsVarAcc = 0;
   let payoutVarAcc = 0;
   for (let i = 0; i < S; i++) {
     const dp = leaderboardPoints[i] - meanPoints;
     pointsVarAcc += dp * dp;
   }
-  const meanPayout = targetMeanPayout;
   for (let i = 0; i < S; i++) {
     const dy = leaderboardPayouts[i] - meanPayout;
     payoutVarAcc += dy * dy;
@@ -128,9 +116,9 @@ export function buildLeaderboardResult(
     },
     sourceMix: {
       directRakebackMean: compiled.expectedBattleRoyaleSplitDirectRakeback,
-      leaderboardMeanTarget: targetMeanPayout,
+      leaderboardMeanTarget: meanPayout,
       totalPromoMean:
-        compiled.expectedBattleRoyaleSplitDirectRakeback + targetMeanPayout,
+        compiled.expectedBattleRoyaleSplitDirectRakeback + meanPayout,
       rows: compiled.battleRoyaleLeaderboardMix,
     },
   };

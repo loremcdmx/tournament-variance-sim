@@ -27,6 +27,31 @@ const FIXED_SHAPE_MODELS: ReadonlySet<FinishModelId> = new Set<FinishModelId>([
 ]);
 
 /**
+ * How far a solved cash EV may sit from its target and still count as hitting
+ * it, as a share of the target. The share is the same at every stake: an
+ * absolute dollar slack was 9% of a $0.01 ticket and 0.005% of a $20 one.
+ */
+const TARGET_EV_REL_TOL = 1e-3;
+
+export function targetEvTolerance(target: number): number {
+  return TARGET_EV_REL_TOL * Math.max(Math.abs(target), 1e-9);
+}
+
+export function withinTargetEv(actual: number, target: number): boolean {
+  return Math.abs(actual - target) <= targetEvTolerance(target);
+}
+
+/**
+ * Smallest cash EV the solvers are asked to hit. It only keeps the target off
+ * zero when a bounty takes nearly the whole winnings, so it follows the ticket:
+ * a fixed $0.01 sat above the real target of a $0.01 buy-in and the row paid
+ * -9% whatever ROI was typed.
+ */
+export function cashTargetFloor(entryCost: number): number {
+  return Math.min(0.01, Math.max(1e-6, 1e-3 * entryCost));
+}
+
+/**
  * True when the model calibrates its α (or shell mass) so that
  * Σ pmf·prize = singleCost·(1+ROI). False for the fixed shapes that ignore
  * the ROI target by design: every realdata-* model, uniform and empirical.
@@ -393,6 +418,10 @@ export function calibrateShelledItm(
   const clampedTopHeavyBias = clampItmTopHeavyBias(itmTopHeavyBias);
 
   const emptyShells = { first: 0, top3: 0, ft: 0 };
+  // Uniform and empirical have no α to move, so the free band lands wherever
+  // the shape puts it. Their gap to the row's ROI says nothing about whether
+  // the locks are satisfiable, and the engine plays the shape either way.
+  const ignoresTarget = !finishModelSupportsTargetRoi(model.id);
 
   // Real-data freeze shapes embed the sample's empirical ITM (18.7%) and
   // cash-band width (15.5%). Per-row itmRate / shell locks don't apply —
@@ -436,7 +465,14 @@ export function calibrateShelledItm(
 
   if (paid === 0 || prizePool <= 0 || clampedItm <= 0) {
     pmf.fill(1 / Math.max(1, N));
-    return { alpha: 0, pmf, currentWinnings: 0, feasible: true, supportsTargetRoi: true, shells: emptyShells };
+    return {
+      alpha: 0,
+      pmf,
+      currentWinnings: 0,
+      feasible: true,
+      supportsTargetRoi: !ignoresTarget,
+      shells: emptyShells,
+    };
   }
   if (paid === 1) {
     pmf[0] = clampedItm;
@@ -450,8 +486,8 @@ export function calibrateShelledItm(
       alpha: 0,
       pmf,
       currentWinnings: w,
-      feasible: Math.abs(w - targetWinnings) < 1e-6,
-      supportsTargetRoi: true,
+      feasible: ignoresTarget || withinTargetEv(w, targetWinnings),
+      supportsTargetRoi: !ignoresTarget,
       shells: { first: pmf[0], top3: pmf[0], ft: pmf[0] },
     };
   }
@@ -566,12 +602,12 @@ export function calibrateShelledItm(
     const ewLo = freeEw(range.lo);
     const ewHi = freeEw(range.hi);
 
+    // At an α bound the free band cannot move any further; the check on the
+    // assembled pmf below decides whether what it reached is close enough.
     if (targetFreeEw <= ewLo) {
       alpha = range.lo;
-      feasible = Math.abs(ewLo - targetFreeEw) < 1e-6;
     } else if (targetFreeEw >= ewHi) {
       alpha = range.hi;
-      feasible = Math.abs(ewHi - targetFreeEw) < 1e-6;
     } else {
       let lo = range.lo;
       let hi = range.hi;
@@ -614,7 +650,7 @@ export function calibrateShelledItm(
     return w;
   };
   let currentWinnings = winningsOf();
-  if (Math.abs(currentWinnings - targetWinnings) > 1e-3) feasible = false;
+  if (!ignoresTarget && !withinTargetEv(currentWinnings, targetWinnings)) feasible = false;
 
   const sumRange = (from: number, toExcl: number): number => {
     let s = 0;
@@ -656,11 +692,11 @@ export function calibrateShelledItm(
     const share = unplacedFreeMass / freeIndices.length;
     for (const idx of freeIndices) pmf[idx] += share;
     currentWinnings = winningsOf();
-    feasible = Math.abs(currentWinnings - targetWinnings) <= 1e-3;
+    feasible = ignoresTarget || withinTargetEv(currentWinnings, targetWinnings);
     shells = shellsOf();
   }
 
-  return { alpha, pmf, currentWinnings, feasible, supportsTargetRoi: true, shells };
+  return { alpha, pmf, currentWinnings, feasible, supportsTargetRoi: !ignoresTarget, shells };
 }
 
 /**

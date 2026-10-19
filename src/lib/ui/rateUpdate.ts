@@ -15,6 +15,14 @@
  * Therefore a fast observation from a non-trivial run is allowed to reset the
  * cache downward immediately.
  *
+ * A slow observation is dropped only while it stands alone. The cache is a
+ * rate per unit of work, and the work model is blind to the schedule's shape
+ * (field size, build cost), so a user who moves to a heavier schedule than the
+ * cached one sees every run land past the cap. The dropped observation is kept
+ * as `pendingHigh`; a second slow run that agrees with it within the cap is
+ * the new normal and is taken (blended with the first), while any run in range
+ * of the cache clears it.
+ *
  * Pure; React-agnostic.
  */
 
@@ -39,6 +47,9 @@ export interface RateUpdateInput {
   outlierFactor?: number;
   /** EMA weight on the new observation when blending into the cache. */
   emaWeight?: number;
+  /** The slow observation the previous run left behind (`pendingHigh` of its
+   *  outcome), or `null` when it left none. */
+  pendingHigh?: number | null;
 }
 
 export interface RateUpdateOutcome {
@@ -46,6 +57,10 @@ export interface RateUpdateOutcome {
   nextRate: number | null;
   /** Why the observation was dropped when `nextRate === null`. */
   reason?: "outlier-high" | "too-short" | "invalid";
+  /** What to store as the pending slow observation: a rate to remember it,
+   *  `null` to forget it. Absent when the run taught nothing and the stored
+   *  value stays as it is. */
+  pendingHigh?: number | null;
 }
 
 export function computeNextRate(input: RateUpdateInput): RateUpdateOutcome {
@@ -55,6 +70,7 @@ export function computeNextRate(input: RateUpdateInput): RateUpdateOutcome {
     prevRate,
     outlierFactor = RATE_OUTLIER_FACTOR,
     emaWeight = RATE_EMA_WEIGHT,
+    pendingHigh = null,
   } = input;
 
   if (
@@ -74,17 +90,29 @@ export function computeNextRate(input: RateUpdateInput): RateUpdateOutcome {
   }
 
   if (prevRate == null || prevRate <= 0) {
-    return { nextRate: observed };
+    return { nextRate: observed, pendingHigh: null };
   }
 
   const ratio = observed / prevRate;
   if (ratio > outlierFactor) {
-    return { nextRate: null, reason: "outlier-high" };
+    const agreesWithPending =
+      pendingHigh != null &&
+      Number.isFinite(pendingHigh) &&
+      pendingHigh > 0 &&
+      observed / pendingHigh <= outlierFactor &&
+      observed / pendingHigh >= 1 / outlierFactor;
+    if (agreesWithPending) {
+      return {
+        nextRate: emaWeight * observed + (1 - emaWeight) * pendingHigh,
+        pendingHigh: null,
+      };
+    }
+    return { nextRate: null, reason: "outlier-high", pendingHigh: observed };
   }
   if (ratio < 1 / outlierFactor) {
-    return { nextRate: observed };
+    return { nextRate: observed, pendingHigh: null };
   }
 
   const blended = emaWeight * observed + (1 - emaWeight) * prevRate;
-  return { nextRate: blended };
+  return { nextRate: blended, pendingHigh: null };
 }

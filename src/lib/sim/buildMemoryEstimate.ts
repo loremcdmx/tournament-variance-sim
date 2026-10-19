@@ -1,9 +1,10 @@
 /**
  * Peak-memory projection for the build phase, where every shard buffer
  * coexists with the full merged copy (`mergeShards`). `pathMatrix`
- * (samples × (K+1) × 8 B, K ≤ 240) dominates; the per-row and per-sample
- * scalars are small change. Measured ≈ 2145 B/sample per copy at 1M samples,
- * i.e. ≈ 4.4 GB per pass and twice that for a twin run.
+ * (samples × (K+1) × 8 B, K ≤ 240) dominates on a short schedule; each row
+ * adds two Float64 buffers per sample (`rowProfits` and `rowBountyProfits`),
+ * which is what a many-row schedule is made of. Measured ≈ 2145 B/sample per
+ * copy at 1M samples, i.e. ≈ 4.4 GB per pass and twice that for a twin run.
  *
  * Pure — the UI only needs "should I warn, and with what number".
  */
@@ -12,6 +13,7 @@ export const MEMORY_HINT_THRESHOLD_BYTES = 1.5e9;
 
 const CHECKPOINT_CAP = 240;
 const PER_SAMPLE_SCALARS_BYTES = 64;
+const PER_ROW_PER_SAMPLE_BYTES = 2 * 8;
 
 export function projectedBuildBytes(p: {
   samples: number;
@@ -20,7 +22,8 @@ export function projectedBuildBytes(p: {
   passCount: number;
 }): number {
   const K1 = Math.min(CHECKPOINT_CAP, Math.max(1, p.tournamentsPerSample)) + 1;
-  const perSample = K1 * 8 + 8 * Math.max(0, p.rowCount) + PER_SAMPLE_SCALARS_BYTES;
+  const perSample =
+    K1 * 8 + PER_ROW_PER_SAMPLE_BYTES * Math.max(0, p.rowCount) + PER_SAMPLE_SCALARS_BYTES;
   return Math.max(0, p.samples) * perSample * 2 * Math.max(1, p.passCount);
 }
 

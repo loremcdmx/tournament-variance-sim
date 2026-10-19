@@ -206,3 +206,75 @@ describe("computeNextRate — convergence under repeated observations", () => {
     expect(rate).toBeCloseTo(0.030, 3);
   });
 });
+
+describe("computeNextRate — a slowdown that lasts", () => {
+  /** What `useSimulation` does between runs: persist the rate and the pending observation. */
+  function replay(start: number, observed: number[]) {
+    let rate: number | null = start;
+    let pendingHigh: number | null = null;
+    const history: Array<number | null> = [];
+    for (const rateObserved of observed) {
+      const out = computeNextRate({
+        elapsedMs: rateObserved * 50_000,
+        work: 50_000,
+        prevRate: rate,
+        pendingHigh,
+      });
+      if (out.nextRate != null) rate = out.nextRate;
+      if (out.pendingHigh !== undefined) pendingHigh = out.pendingHigh;
+      history.push(out.nextRate);
+    }
+    return { rate: rate!, pendingHigh, history };
+  }
+
+  it("keeps dropping the first run of a new, heavier shape and remembers it", () => {
+    const out = computeNextRate({ elapsedMs: 8000, work: 50_000, prevRate: 0.02 });
+    expect(out.nextRate).toBeNull();
+    expect(out.reason).toBe("outlier-high");
+    expect(out.pendingHigh).toBeCloseTo(0.16, 9);
+  });
+
+  it("learns a rate 8x above the cache from the second run that agrees", () => {
+    const { rate, pendingHigh, history } = replay(0.02, [0.16, 0.16]);
+    expect(history[0]).toBeNull();
+    expect(history[1]).not.toBeNull();
+    expect(rate).toBeCloseTo(0.16, 9);
+    expect(pendingHigh).toBeNull();
+  });
+
+  it("settles on the new rate and then blends in range again", () => {
+    const { rate } = replay(0.02, [0.16, 0.16, 0.16, 0.16, 0.16]);
+    expect(rate).toBeCloseTo(0.16, 9);
+  });
+
+  it("still skips a single throttled run between normal ones", () => {
+    const { rate, pendingHigh } = replay(0.02, [0.02, 0.2, 0.02, 0.02]);
+    expect(rate).toBeCloseTo(0.02, 9);
+    expect(pendingHigh).toBeNull();
+  });
+
+  it("does not pair two slow runs that disagree about how slow", () => {
+    // 0.06 is 3x the cache, 0.5 is 25x; their ratio is 8.3 > 2.5.
+    const { rate, pendingHigh, history } = replay(0.02, [0.06, 0.5]);
+    expect(history).toEqual([null, null]);
+    expect(rate).toBe(0.02);
+    expect(pendingHigh).toBeCloseTo(0.5, 9);
+  });
+
+  it("drops the pending observation when a fast run resets the cache", () => {
+    const out = computeNextRate({
+      elapsedMs: 1000,
+      work: 50_000,
+      prevRate: 0.2,
+      pendingHigh: 0.6,
+    });
+    expect(out.nextRate).toBeCloseTo(0.02, 9);
+    expect(out.pendingHigh).toBeNull();
+  });
+
+  it("leaves the pending observation alone for a run that taught nothing", () => {
+    const tooShort = computeNextRate({ elapsedMs: 100, work: 50_000, prevRate: 0.02, pendingHigh: 0.16 });
+    expect(tooShort.nextRate).toBeNull();
+    expect(tooShort.pendingHigh).toBeUndefined();
+  });
+});

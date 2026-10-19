@@ -214,7 +214,7 @@ describe("persistence validation", () => {
     const schedule = redistributeScheduleCounts([row, { ...row, id: "r2", count: 3 }], 400_000);
     const payload = { v: PERSISTED_STATE_VERSION, schedule, controls: { scheduleRepeats: 1 } };
     for (const loaded of [decodeState(encoded(payload)), loadLocalFromPayload(payload)]) {
-      expect(loaded?.schedule.map((entry) => entry.count)).toEqual([100001, 299999]);
+      expect(loaded?.schedule.map((entry) => entry.count)).toEqual([100000, 300000]);
       expect(loaded?.schedule.reduce((sum, entry) => sum + entry.count, 0)).toBe(400_000);
     }
   });

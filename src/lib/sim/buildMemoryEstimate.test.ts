@@ -17,6 +17,17 @@ describe("projectedBuildBytes", () => {
     expect(bytes).toBeLessThan(4.6e9);
   });
 
+  it("charges both per-row buffers, so a many-row schedule is not under-reported", () => {
+    // rowProfits and rowBountyProfits are each samples × rows doubles, in every
+    // shard and again in the merged copy: 2 × 8 B × rows per sample per copy.
+    const base = { samples: 400_000, tournamentsPerSample: 1000, passCount: 1 };
+    const few = projectedBuildBytes({ ...base, rowCount: 1 });
+    const many = projectedBuildBytes({ ...base, rowCount: 301 });
+    expect(many - few).toBe(400_000 * 300 * 16 * 2);
+    expect(many).toBeGreaterThan(5e9);
+    expect(memoryHintGb(many)).not.toBeNull();
+  });
+
   it("doubles for a twin run", () => {
     const base = { samples: 200_000, tournamentsPerSample: 500, rowCount: 2 };
     expect(projectedBuildBytes({ ...base, passCount: 2 })).toBe(

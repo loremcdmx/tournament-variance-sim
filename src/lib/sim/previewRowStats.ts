@@ -3,6 +3,7 @@ import {
   buildFinishPMF,
   calibrateAlpha,
   calibrateShelledItm,
+  cashTargetFloor,
   isAlphaAdjustable,
 } from "@/lib/sim/finishModel";
 import {
@@ -350,10 +351,11 @@ function computeRowStatsAtField(
     // Same BR rule as the engine: bias walks the real feasible cash/KO EV
     // interval around the configured KO-pool baseline.
     const neutralBountyMean = entryCostSingle * bountyFraction;
-    const neutralTargetRegular = Math.max(0.01, entryCostSingle - neutralBountyMean);
+    const cashFloor = cashTargetFloor(entryCostSingle);
+    const neutralTargetRegular = Math.max(cashFloor, entryCostSingle - neutralBountyMean);
     battleRoyaleNeutral = solveCashTarget(neutralTargetRegular);
     const centerBountyMean = clampBountyMean(defaultBountyMean, totalWinningsEV);
-    const centerCashTarget = Math.max(0.01, totalWinningsEV - centerBountyMean);
+    const centerCashTarget = Math.max(cashFloor, totalWinningsEV - centerBountyMean);
     const resolvedCash = resolveBattleRoyaleCashTarget({
       N,
       payouts,
@@ -380,7 +382,7 @@ function computeRowStatsAtField(
   }
 
   const targetRegular = Math.max(
-    0.01,
+    cashTargetFloor(entryCostSingle),
     entryCostSingle * (1 + row.roi) - bountyMean,
   );
   const effectiveROI = targetRegular / entryCostSingle - 1;
@@ -463,7 +465,8 @@ function computeRowStatsAtField(
   // BR) drop an envelope, so the harmonic is restricted to that window.
   // Tier metrics use this as the denominator of "avg bounty per head".
   const bountyBustsAtPos = new Float64Array(N);
-  const oceanKo = row.gameType === "ocean-ko" && bountyMean > 0
+  const gameType = inferGameType(row);
+  const oceanKo = gameType === "ocean-ko" && bountyMean > 0
     ? buildOceanKoModel(N, bountyPerSeat, row.buyIn * (1 + row.rake), pmf, bountyMean)
     : null;
   if (oceanKo) {
@@ -476,13 +479,13 @@ function computeRowStatsAtField(
   } else if (bountyMean > 0 && N >= 2) {
     const raw = new Float64Array(N);
     const isMystery =
-      row.gameType === "mystery" ||
-      row.gameType === "mystery-royale" ||
+      gameType === "mystery" ||
+      gameType === "mystery-royale" ||
       brSampler !== null;
 
     if (isMystery) {
       const ft =
-        row.gameType === "mystery-royale" || brSampler !== null
+        gameType === "mystery-royale" || brSampler !== null
           ? Math.min(9, N)
           : paidCount;
       const mLo = Math.max(1, N - ft + 1);

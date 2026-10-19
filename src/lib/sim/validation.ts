@@ -8,7 +8,10 @@
 import {
   applyBountyBias,
   calibrateShelledItm,
+  cashTargetFloor,
   isAlphaAdjustable,
+  targetEvTolerance,
+  withinTargetEv,
 } from "./finishModel";
 import { buildScheduleAnalyticBreakdown } from "./compile";
 import {
@@ -47,7 +50,9 @@ export interface ScheduleFeasibility {
  * requested cash target; everything else is trivially OK (the α solver
  * clamps silently and PD-binary-itm is always feasible by construction).
  * A row with a Field-size range is checked at every field size the engine
- * plays, and reports the size that misses its target the most.
+ * plays, and reports the size that misses its target the most. A model with no
+ * α to move (uniform, empirical, realdata-*) is held to its shell locks only:
+ * its shape, not the typed ROI, decides what the row pays.
  *
  * NOTE: this mirrors engine-side math, not sim-side. If engine.ts changes
  * its targetRegular formula (bounty lift, rake convention, overlay), update
@@ -70,8 +75,7 @@ export function validateSchedule(
       const targetEv = row.buyIn * (1 + row.rake) * (1 + row.roi);
       if (meanSingle == null || !Number.isFinite(meanSingle)) return;
       const gap = meanSingle - targetEv;
-      const relGap = Math.abs(gap) / Math.max(1e-9, targetEv);
-      if (Math.abs(gap) <= 1e-3 || relGap <= 1e-3) return;
+      if (withinTargetEv(meanSingle, targetEv)) return;
       issues.push({
         rowId: row.id,
         rowIdx: idx,
@@ -193,7 +197,8 @@ function fixedItmIssueAtField(
     // Mirror engine.ts: BR fixed-ITM exposes the full feasible cash/KO EV
     // interval around a true 50/50 gross-EV midpoint.
     const neutralBountyMean = entryCost * bountyFraction;
-    const neutralTargetRegular = Math.max(0.01, entryCost - neutralBountyMean);
+    const cashFloor = cashTargetFloor(entryCost);
+    const neutralTargetRegular = Math.max(cashFloor, entryCost - neutralBountyMean);
     const neutral = calibrateShelledItm(
       N,
       paidCount,
@@ -205,7 +210,7 @@ function fixedItmIssueAtField(
       model,
       row.itmTopHeavyBias ?? 0,
     );
-    const centerCashTarget = Math.max(0.01, totalWinningsEV * 0.5);
+    const centerCashTarget = Math.max(cashFloor, totalWinningsEV * 0.5);
     const resolvedCash = resolveBattleRoyaleCashTarget({
       N,
       payouts,
@@ -230,7 +235,7 @@ function fixedItmIssueAtField(
       : centerCashTarget;
     bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
   }
-  const targetRegular = Math.max(0.01, totalWinningsEV - bountyMean);
+  const targetRegular = Math.max(cashTargetFloor(entryCost), totalWinningsEV - bountyMean);
 
   const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleCenter
     ? buildBattleRoyaleCashTargetPmf({
@@ -258,7 +263,8 @@ function fixedItmIssueAtField(
     row.itmTopHeavyBias ?? 0,
   );
   const residualCanCloseTotal =
-    bountyFraction > 0 && r.currentWinnings <= totalWinningsEV + 1e-3;
+    bountyFraction > 0 &&
+    r.currentWinnings <= totalWinningsEV + targetEvTolerance(totalWinningsEV);
   const feasible = r.feasible || residualCanCloseTotal;
   if (!feasible) {
     const targetEv = bountyFraction > 0 ? totalWinningsEV : targetRegular;

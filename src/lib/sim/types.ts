@@ -161,10 +161,12 @@ export interface TournamentRow {
   guarantee?: number;
 
   /**
-   * How many times this row is played per schedule pass. Fractional values
-   * are allowed and rounded stochastically at compile time. Within a pass,
-   * rows are interleaved as evenly as possible by their frequencies rather
-   * than executed in row-sized batches.
+   * How many times this row is played per schedule pass: a whole number of at
+   * least 1. The engine plays `max(1, floor(count))`, so a fraction is floored
+   * and a count below 1 still plays once; the schedule editor and a saved
+   * state hold the field to that range. Within a pass, rows are interleaved as
+   * evenly as possible by their frequencies rather than executed in row-sized
+   * batches.
    */
   count: number;
 
@@ -338,12 +340,6 @@ export interface BattleRoyaleLeaderboardConfig {
    * settled. Defaults to true; false means only full windows pay.
    */
   awardPartialWindow?: boolean;
-  /**
-   * Schedule row ids that actually feed this leaderboard. Lets advanced-mode
-   * BR rows opt in individually while every other row stays on plain direct
-   * rakeback.
-   */
-  includedRowIds?: string[];
 }
 
 export interface BattleRoyaleLeaderboardObservedPointsByStake {

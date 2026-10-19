@@ -16,6 +16,7 @@ import {
   buildFinishPMF,
   calibrateAlpha,
   calibrateShelledItm,
+  cashTargetFloor,
   isAlphaAdjustable,
   itmProbability,
 } from "./finishModel";
@@ -267,11 +268,12 @@ function compileSingleEntry(
     // configured KO-pool baseline. With the common 45% Battle Royale bounty
     // pool, the neutral slider center must read as 45% KO EV, not 50%.
     const neutralBountyMean = entryCostSingle * bountyFraction;
-    const neutralTargetRegular = Math.max(0.01, entryCostSingle - neutralBountyMean);
+    const cashFloor = cashTargetFloor(entryCostSingle);
+    const neutralTargetRegular = Math.max(cashFloor, entryCostSingle - neutralBountyMean);
     const neutral = solveFinish(neutralTargetRegular);
     const neutralCashEV = cashEVFor(neutral.pmf, neutral.prizeByPlace);
     const centerBountyMean = clampBountyMean(defaultBountyMean, totalWinningsEV);
-    const centerCashTarget = Math.max(0.01, totalWinningsEV - centerBountyMean);
+    const centerCashTarget = Math.max(cashFloor, totalWinningsEV - centerBountyMean);
     const resolvedCash = resolveBattleRoyaleCashTarget({
       N,
       payouts,
@@ -307,7 +309,10 @@ function compileSingleEntry(
   // For overall ROI = row.roi on money spent (= singleCost):
   //   E[prize] + E[bounty] − singleCost = singleCost × ROI
   //   → E[prize] = singleCost × (1 + ROI) − bountyMean
-  const targetRegular = Math.max(0.01, entryCostSingle * (1 + row.roi) - bountyMean);
+  const targetRegular = Math.max(
+    cashTargetFloor(entryCostSingle),
+    entryCostSingle * (1 + row.roi) - bountyMean,
+  );
   let pmf: Float64Array;
   let alpha = 0;
   let binaryItmPrizeOverride: Float64Array | null = null;
@@ -404,6 +409,11 @@ function compileSingleEntry(
   const brSampler =
     row.payoutStructure === "battle-royale" ? makeBrTierSampler(row.buyIn) : null;
 
+  // A row saved before the gameType column existed has none; the editor,
+  // feasibility and convergence policy all read it as the type inferGameType
+  // gives, so the bounty shape and the per-KO noise must too.
+  const gameType = inferGameType(row);
+
   // ---- bounty distribution across finish places -------------------------
   // Elimination-order model: the player finishing at 1-indexed place p was
   // alive for the first N−p busts and killed 1/(N−m) of each bust m in
@@ -437,7 +447,7 @@ function compileSingleEntry(
   // without redoing the per-gametype math.
   let bountyRaw: Float64Array | null = null;
   let oceanKo: OceanKoModel | null = null;
-  if (row.gameType === "ocean-ko" && bountyMean > 0) {
+  if (gameType === "ocean-ko" && bountyMean > 0) {
     oceanKo = buildOceanKoModel(
       N,
       row.buyIn * bountyFraction,
@@ -450,8 +460,7 @@ function compileSingleEntry(
     const raw = new Float64Array(N);
     bountyKmean = new Float64Array(N);
 
-    const isMystery =
-      row.gameType === "mystery" || row.gameType === "mystery-royale";
+    const isMystery = gameType === "mystery" || gameType === "mystery-royale";
 
     if (isMystery) {
       // Envelope-dropping window: for `mystery-royale` it's the final
@@ -460,8 +469,7 @@ function compileSingleEntry(
       // an envelope. For N=18, BR top-9 ⇒ 8 envelope-dropping busts
       // (places 9..2 get eliminated; winner keeps their own envelope
       // unopened), so mean envelope = bountyPool / 8.
-      const ft =
-        row.gameType === "mystery-royale" ? Math.min(9, N) : paidCount;
+      const ft = gameType === "mystery-royale" ? Math.min(9, N) : paidCount;
       // Window busts are m = N−ft+1 .. N−1 (victim finishes at place
       // N−m+1, which lies in [2..ft]). Expected envelope-drops by
       // finisher at 1-indexed place p is
@@ -578,7 +586,7 @@ function compileSingleEntry(
   // (exp < 1) flatten it. The player's finish pmf and prize curve are
   // untouched, so ROI stays exactly on target while the right tail of
   // the bounty haul distribution fattens.
-  const pkoHeat = row.gameType === "ocean-ko" ? 0 : Math.max(0, row.pkoHeat ?? 0);
+  const pkoHeat = gameType === "ocean-ko" ? 0 : Math.max(0, row.pkoHeat ?? 0);
   let heatBountyByPlace: Float64Array[] | null = null;
   if (pkoHeat > 0 && bountyMean > 0 && bountyRaw !== null) {
     heatBountyByPlace = new Array(HEAT_BIN_COUNT);
@@ -645,10 +653,9 @@ function compileSingleEntry(
   // Both are independent log-normal sources, so variances add in log-space.
   // Default pkoHeadVar to 0.4 only for rows that structurally infer as PKO;
   // Mystery / BR rows should not inherit the PKO head-size channel.
-  const inferredGameType = inferGameType(row);
   const effectivePkoHeadVar =
-    row.pkoHeadVar ?? (inferredGameType === "pko" ? 0.4 : 0);
-  const perKoLogVar = row.gameType === "ocean-ko" ? 0 :
+    row.pkoHeadVar ?? (gameType === "pko" ? 0.4 : 0);
+  const perKoLogVar = gameType === "ocean-ko" ? 0 :
     Math.max(0, row.mysteryBountyVariance ?? 0) +
     Math.max(0, effectivePkoHeadVar);
 
@@ -687,8 +694,7 @@ function compileSingleEntry(
     brTierAliasProb: bountyByPlace !== null ? brSampler?.aliasProb ?? null : null,
     brTierAliasIdx: bountyByPlace !== null ? brSampler?.aliasIdx ?? null : null,
     isBattleRoyale:
-      row.payoutStructure === "battle-royale" ||
-      row.gameType === "mystery-royale",
+      row.payoutStructure === "battle-royale" || gameType === "mystery-royale",
     battleRoyaleLeaderboardShare: 0,
   };
 }

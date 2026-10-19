@@ -731,8 +731,8 @@ export const DICT = {
     ru: "Ряд {row}: задан PKO heat, но bountyFraction = 0 — heat меняет форму распределения bounty, без bounty-канала эффект нулевой.",
   },
   "sanity.row-zero-count": {
-    en: "Row {row}: count = 0 — this row is never played, so its inputs don't affect the simulation.",
-    ru: "Ряд {row}: count = 0 — этот ряд никогда не разыгрывается, его настройки на симуляцию не влияют.",
+    en: "Row {row}: count = 0 — the engine plays every row at least once per pass, so this row still runs once.",
+    ru: "Ряд {row}: count = 0 — движок разыгрывает каждый ряд минимум один раз за проход, поэтому этот ряд всё равно сыграет один раз.",
   },
   "row.fixedItm": { en: "ITM %", ru: "ITM %" },
   "row.fixedItmHint": {
