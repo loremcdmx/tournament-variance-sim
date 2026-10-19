@@ -1,21 +1,18 @@
 /**
  * Mix σ_ROI = sqrt(p·σ²_pko + (1−p)·σ²_freeze) is NOT a clean power law.
- * Freeze is single-β, while the runtime PKO surface is a 2D log-polynomial.
+ * Freeze is single-β, while the PKO surface is a 2D log-polynomial; both come
+ * from `convergenceFit.ts`, so this report follows the shipped fallback fits.
  * Fit an effective C·field^β over [50, 50k] for common mix ratios × ROIs
  * to report.
  *
  *   npx tsx scripts/mix_effective_fit.ts
  */
 
-const FREEZE = { C0: 0.6564, C1: 0, beta: 0.3694 };
-const PKO = {
-  a0: 1.21374,
-  a1: -0.21789,
-  a2: 0.03473,
-  b1: 0.67318,
-  b2: -0.03445,
-  c: -0.05298,
-};
+import {
+  SIGMA_ROI_FREEZE,
+  SIGMA_ROI_PKO,
+  evalSigma,
+} from "../src/lib/sim/convergenceFit";
 
 const FIELDS = [
   50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500,
@@ -23,16 +20,8 @@ const FIELDS = [
 ];
 
 function sigmaMix(afs: number, roi: number, p: number): number {
-  const sigmaF = Math.max(0, FREEZE.C0 + FREEZE.C1 * roi) * Math.pow(afs, FREEZE.beta);
-  const L = Math.log(Math.max(1, afs));
-  const sigmaP = Math.exp(
-    PKO.a0 +
-      PKO.a1 * L +
-      PKO.a2 * L * L +
-      PKO.b1 * roi +
-      PKO.b2 * roi * roi +
-      PKO.c * roi * L,
-  );
+  const sigmaF = evalSigma(SIGMA_ROI_FREEZE, afs, roi);
+  const sigmaP = evalSigma(SIGMA_ROI_PKO, afs, roi);
   return Math.sqrt(p * sigmaP * sigmaP + (1 - p) * sigmaF * sigmaF);
 }
 

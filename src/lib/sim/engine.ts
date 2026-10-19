@@ -175,9 +175,10 @@ export function mergeShards(
     }
     ruinedCount += sh.ruinedCount;
   }
-  // Hi-res aggregation: concatenate per-shard hiResPaths in sStart order so
-  // the slider exposes the union of each shard's budget (not just shard 0).
-  // Global best/worst are still picked by scanning per-shard extrema.
+  // Hi-res aggregation: each shard stores the paths of its slice of the
+  // global first-1000 sample prefix, so concatenating in sStart order yields
+  // the same list for any shard split. Global best/worst are still picked by
+  // scanning per-shard extrema.
   const leading = sorted[0];
   const hiResCheckpointIdx = leading.hiResCheckpointIdx;
   const hiResPaths: Float64Array[] = [];

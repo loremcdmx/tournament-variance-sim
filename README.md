@@ -230,7 +230,7 @@ SimulationResult → ResultsView
 
 **Seed dispatch.** `seed = 42` не значит, что сэмпл 0 получит 42. Он получит `mixSeed(42, 0)`. Если пишешь тест, который сверяет конкретное число — помни про это.
 
-**`samplePaths.paths.length`** — не равен samples. Хранится только первые ~1000 (см. `wantHiResPaths` в `hotLoop.ts`), остальные агрегируются в envelopes + best/worst. Слайдер "runs" в ResultsView показывает максимум `paths.length`, не `samples`.
+**`samplePaths.paths.length`** — не равен samples. Хранятся только первые 1000 глобальных индексов сэмплов, независимо от разбиения на шарды (см. `HI_RES_GLOBAL_CAP` в `hotLoop.ts`; потолки `Math.min(1000, …)` в `ResultsView.tsx` меняются вместе с ним), остальные агрегируются в envelopes + best/worst. Слайдер "runs" в ResultsView показывает максимум `paths.length`, не `samples`.
 
 **PKO heat.** Когда `row.pkoHeat > 0`, в `compileEntry.ts` заводится `HEAT_BIN_COUNT` альтернативных `bountyByPlace` таблиц. Hot loop (`hotLoop.ts`) выбирает одну по гауссовскому драву. Средний bounty сохраняется per-bin — только σ плывёт. Подробнее — комментарий в `engineConstants.ts`.
 

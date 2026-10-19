@@ -328,25 +328,18 @@ export function useSimulation() {
     poolRef.current = spawnPool();
   }, []);
 
+  // Aborts only the sibling-seed precompute loop. A PD-only re-run is the
+  // user's own action on the cached run's input snapshot, so a later field edit
+  // cannot change what it computes; cancelling it left the toggle undone with
+  // no message. runPdOnly aborts this loop itself, so the two never overlap.
   const interruptBackground = useCallback(() => {
-    let shouldReset = false;
-    if (bgAbortRef.current) {
-      bgAbortRef.current.abort();
-      bgAbortRef.current = null;
-      shouldReset = true;
-    }
-    if (pdStatus === "running") {
-      pdJobIdRef.current++;
-      shouldReset = true;
-    }
-    if (!shouldReset) return;
+    const bg = bgAbortRef.current;
+    if (!bg) return;
+    bg.abort();
+    bgAbortRef.current = null;
     resetPool();
     setBackgroundStatus("idle");
-    setPdStatus("idle");
-    setPdProgress(0);
-    pendingPdInputRef.current = null;
-    setPdPendingFlags(null);
-  }, [pdStatus, resetPool]);
+  }, [resetPool]);
 
   const cancel = useCallback(() => {
     jobIdRef.current++;

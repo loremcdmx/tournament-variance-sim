@@ -233,7 +233,7 @@ Only a subset of per-sample data is retained — keeping all of it for 100k samp
 - **`finalProfits`** — `Float64Array(samples)`. Every sample's final P&L. Used by histogram, stats, envelopes.
 - **`satelliteSeatsWon`** — optional sample-by-row integer paid-finish counters. Satellite ticket statistics use these counts directly, without deriving tickets from profit affected by rakeback or ROI noise.
 - **`rowProfits`** — `Float64Array(samples × rows)`, row-major. Used by decomposition and by mixed-schedule cards (e.g., satellite equity).
-- **`samplePaths`** — the first 1000 global sample indices have a hi-res trajectory path stored, independent of shard boundaries. The slider in `ResultsView` caps at `samplePaths.paths.length`, not `samples`. If you want more, bump `wantHiResPaths` in `hotLoop.ts` — but be aware of memory.
+- **`samplePaths`** — the first 1000 global sample indices have a hi-res trajectory path stored, independent of shard boundaries. The slider in `ResultsView` caps at `samplePaths.paths.length`, not `samples`. If you want more, bump `HI_RES_GLOBAL_CAP` (a local constant in `simulateShard`, `hotLoop.ts`; each shard stores the part of that global prefix that falls in its own range) and the `Math.min(1000, …)` caps in `ResultsView.tsx` — but be aware of memory.
 - **`envelopes`** — mean / p05 / p95 / min / max over all samples, on the low-res checkpoint grid (`K = min(240, N)`, `makeCheckpointGrid` in `grids.ts`). This is what the shaded percentile band on the trajectory chart uses.
 
 ## Completed run snapshots
@@ -269,9 +269,9 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 ## Performance knobs
 
 - **Pool size** — `poolSize()` in `useSimulation.ts`. Defaults to `min(16, hardwareConcurrency − 2)`; `hc / 2` idled half the cores on no-SMT hardware (Apple Silicon), and past 16 oversharding buys nothing. The cash pool in `CashApp.tsx` still uses `min(12, hc / 2)`. Change if you see the OS get starved.
-- **Shard count** — equal to pool size in the current implementation. There's no overlap benefit to oversharding — each worker is CPU-bound.
+- **Shard count** — per pass `min(W × oversub, ⌊S / minPerShard⌋, S)` in `runJob` (`useSimulation.ts`), where `W` is the pool size, `S` the sample count, `oversub` is 4 (6 from 200 000 samples) and `minPerShard` is 64 (32 from 100 000 samples). Shards are over-subscribed so a slow tail shard does not park the progress bar; each worker is still CPU-bound, so this buys granularity, not speed. The split never changes the result (see the seed contract).
 - **Checkpoint grid K** — `makeCheckpointGrid(N)` in `grids.ts`. Currently `K = min(240, N)`. Bigger K = smoother trajectory charts but more main-thread sort work.
-- **`wantHiResPaths`** — how many sample paths to retain at full resolution. Currently 1000. Trades memory for slider range.
+- **`HI_RES_GLOBAL_CAP`** — how many sample paths to retain at full resolution: the first 1000 global sample indices (`simulateShard` in `hotLoop.ts`). Trades memory for slider range; the `Math.min(1000, …)` caps in `ResultsView.tsx` must move with it.
 - **`HEAT_BIN_COUNT`** — PKO heat bin count. 13 is more than enough; 5 would be fine.
 
 ## Testing

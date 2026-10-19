@@ -1198,6 +1198,10 @@ export const DICT = {
     en: "Your hand-tuned model.",
     ru: "Твоя ручная настройка модели.",
   },
+  "chart.trajectory.ours.cap.pdPreset": {
+    en: "Our skill model on the same seed as the PrimeDope pane — only the model differs.",
+    ru: "Наша модель скилла на том же сиде, что и панель PrimeDope — отличается только модель.",
+  },
   "chart.trajectory.theirs.cap": {
     en: "Min-cash as likely as 1st place — swings understated.",
     ru: "Мин-кэш равновероятен с 1-м местом — колебания занижены.",

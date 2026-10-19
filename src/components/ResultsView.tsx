@@ -26,6 +26,7 @@ import { type RunMode } from "@/lib/trajectorySelection";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { pdComparePaneKeys } from "@/lib/ui/pdComparePanes";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
 import type { PersistedState } from "@/lib/persistence";
@@ -2262,6 +2263,41 @@ const TrajectoryCard = memo(function TrajectoryCard({
         </span>
       </label>
     );
+    const paneKeys = pdComparePaneKeys({
+      pdPresetFlip,
+      pdPkoFallback,
+      hasPrimeDopePane,
+      oursCapKey,
+    });
+    const pdPaneActions =
+      hasPrimeDopePane && !pdPkoFallback && schedule && scheduleRepeats ? (
+        <div className="flex items-center gap-2">
+          <PdCompareToggles
+            usePdPayouts={pdPendingFlags?.usePrimedopePayouts ?? usePdPayouts}
+            onUsePdPayoutsChange={onUsePdPayoutsChange}
+            usePdFinishModel={pdPendingFlags?.usePrimedopeFinishModel ?? usePdFinishModel}
+            onUsePdFinishModelChange={onUsePdFinishModelChange}
+            usePdRakeMath={pdPendingFlags?.usePrimedopeRakeMath ?? usePdRakeMath}
+            onUsePdRakeMathChange={onUsePdRakeMathChange}
+            pdOverrideStatus={pdOverrideStatus}
+            pdOverrideProgress={pdOverrideProgress}
+          />
+          {advanced && (
+            <CopyPdDiagButton
+              settings={settings}
+              schedule={schedule}
+              scheduleRepeats={scheduleRepeats}
+              bankroll={bankroll}
+              result={result}
+              pdChart={pdChart}
+              pdOverrideStatus={pdOverrideStatus ?? "idle"}
+              usePdPayouts={usePdPayouts}
+              usePdFinishModel={usePdFinishModel}
+              usePdRakeMath={usePdRakeMath}
+            />
+          )}
+        </div>
+      ) : null;
     return (
       <Card className="p-5">
         <ChartHeader
@@ -2278,12 +2314,10 @@ const TrajectoryCard = memo(function TrajectoryCard({
             hueDot="#34d399"
             itmRate={result.stats.itmRate}
             itmCashOnly={hasBounty}
-            caption={
-              hasPrimeDopePane
-                ? t(oursCapKey)
-                : t("twin.runA.cap")
+            caption={t(paneKeys.primaryCapKey)}
+            action={
+              paneKeys.togglesPane === "primary" ? pdPaneActions : overlayLegend
             }
-            action={overlayLegend}
           >
             <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
           </ChartPane>
@@ -2305,48 +2339,8 @@ const TrajectoryCard = memo(function TrajectoryCard({
             hueDot="#60a5fa"
             itmRate={pdChart?.stats.itmRate}
             itmCashOnly={hasBounty && !pdPkoFallback}
-            caption={
-              pdPresetFlip
-                ? t("twin.runB.cap")
-                : pdPkoFallback
-                ? t("chart.trajectory.noKoCap")
-                : hasPrimeDopePane
-                ? t("chart.trajectory.theirs.cap")
-                : t("twin.runB.cap")
-            }
-            action={
-              hasPrimeDopePane &&
-              !pdPkoFallback &&
-              schedule &&
-              scheduleRepeats ? (
-                <div className="flex items-center gap-2">
-                  <PdCompareToggles
-                    usePdPayouts={pdPendingFlags?.usePrimedopePayouts ?? usePdPayouts}
-                    onUsePdPayoutsChange={onUsePdPayoutsChange}
-                    usePdFinishModel={pdPendingFlags?.usePrimedopeFinishModel ?? usePdFinishModel}
-                    onUsePdFinishModelChange={onUsePdFinishModelChange}
-                    usePdRakeMath={pdPendingFlags?.usePrimedopeRakeMath ?? usePdRakeMath}
-                    onUsePdRakeMathChange={onUsePdRakeMathChange}
-                    pdOverrideStatus={pdOverrideStatus}
-                    pdOverrideProgress={pdOverrideProgress}
-                  />
-                  {advanced && (
-                    <CopyPdDiagButton
-                      settings={settings}
-                      schedule={schedule}
-                      scheduleRepeats={scheduleRepeats}
-                      bankroll={bankroll}
-                      result={result}
-                      pdChart={pdChart}
-                      pdOverrideStatus={pdOverrideStatus ?? "idle"}
-                      usePdPayouts={usePdPayouts}
-                      usePdFinishModel={usePdFinishModel}
-                      usePdRakeMath={usePdRakeMath}
-                    />
-                  )}
-                </div>
-              ) : null
-            }
+            caption={t(paneKeys.comparisonCapKey)}
+            action={paneKeys.togglesPane === "comparison" ? pdPaneActions : null}
           >
             <TrajectoryPlot assets={secondary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
             {hasPrimeDopePane && !pdPkoFallback && schedule && scheduleRepeats != null && scheduleRepeats > 0 && (
