@@ -13,7 +13,7 @@
  *      bountyMean → per-KO $ variance scales linearly with bountyMean.
  *   C) Bug in streak aggregation.
  *
- * Falsifier: rerun each cell with `pkoHeadVar=0, mysteryBountyVariance=0`.
+ * Falsifier: rerun each cell with `mysteryBountyVariance=0`.
  * If the ROI→streak trend vanishes, it was channel B (bounty variance).
  * If it remains, it's channel A (drift-vs-σ competition, not a bug).
  *
@@ -45,7 +45,6 @@ function buildRow(roi: number, bountyVarianceOff: boolean): TournamentRow {
     payoutStructure: "battle-royale",
     gameType: "mystery-royale",
     bountyFraction: 0.42,
-    pkoHeadVar: bountyVarianceOff ? 0 : 0.4,
     mysteryBountyVariance: bountyVarianceOff ? 0 : 1.8,
     itmRate: 0.18,
     count: COUNT,

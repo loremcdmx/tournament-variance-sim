@@ -117,7 +117,6 @@ function buildRow(j: Job): TournamentRow {
     gameType: "mystery",
     bountyFraction: COMMON.BOUNTY_FRACTION,
     mysteryBountyVariance: COMMON.MYSTERY_LOG_VAR,
-    pkoHeadVar: COMMON.PKO_HEAD_VAR,
   };
 }
 

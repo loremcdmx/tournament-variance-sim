@@ -72,6 +72,13 @@ export const SIGMA_ROI_PKO: SigmaCoef = {
 // p95=12.84%, max=45.15%. The chart uses a runtime single-row Mystery center
 // for user-facing bands; this 2D surface remains diagnostic/generic.
 //
+// Trained at a per-KO log-variance of 2.4: that recipe set pkoHeadVar 0.4 on
+// top of mysteryBountyVariance 2.0, and the engine still added the two. It now
+// ignores pkoHeadVar on Mystery rows and compiles 2.0, so on its own training
+// model (mystery-realdata-linear, bounty share 0.5) this surface sits 4-12%
+// above the engine for fields 100-5000, ROI 0-30%. Refit from a fresh
+// `resweep_sigma.ts FORMAT=mystery` before showing it.
+//
 // Re-measured alongside PKO: the previous grid was produced by an older engine
 // AND with `payoutStructure: "mtt-gg-bounty"`, while the canonical sweep now
 // builds Mystery rows with "mtt-gg-mystery" — so those coefficients described a

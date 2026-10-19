@@ -131,7 +131,6 @@ function buildInput(j: Job): SimulationInput {
       gameType: "mystery",
       bountyFraction: COMMON.BOUNTY_FRACTION,
       mysteryBountyVariance: COMMON.MYSTERY_LOG_VAR,
-      pkoHeadVar: COMMON.PKO_HEAD_VAR,
       count: COMMON.N_TOURNEYS,
     };
   } else {
@@ -474,7 +473,6 @@ async function mainOrchestrate() {
             rake: COMMON.RAKE,
             bountyFraction: COMMON.BOUNTY_FRACTION,
             mysteryBountyVariance: COMMON.MYSTERY_LOG_VAR,
-            pkoHeadVar: COMMON.PKO_HEAD_VAR,
             payout: "mtt-gg-mystery",
             finishModel: "mystery-realdata-linear",
             mergedWithDense: true,

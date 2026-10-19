@@ -287,6 +287,14 @@ Two producers — pick the right one for what you're doing:
   compile/hot-loop path has changed; refitting a stale grid just re-learns
   the old engine. Validate the promoted coefficients on *off-grid* points
   (the LOO xval in `refit_2d_logpoly.ts` only covers the fitted grid).
+
+  **The stored Mystery grid and `SIGMA_ROI_MYSTERY` were measured at a per-KO
+  log-variance of 2.4** (`mysteryBountyVariance` 2.0 plus a `pkoHeadVar` 0.4 the
+  recipe used to set). The engine now compiles Mystery at 2.0, so a fresh
+  `FORMAT=mystery` sweep comes out lower than the stored grid (-6 to -10 % at
+  fields 100-5000, ROI 0 to +30 %, bounty share 0.5). The surface feeds no
+  planning card (see WISDOM.md), so it was left as it is; refit it from a
+  fresh sweep before using it for anything.
 - **`scripts/fit_beta_pko_core.json`** — *not* an independent UI
   canonical. It's a 7-ROI PKO baseline subset (same ROIs as the
   200k-AFS probe) retained purely so `fit_drift_report.ts` can
@@ -364,8 +372,10 @@ fit to the UI.
 | Tourneys  | 500 per sample (enough for stable σ, short enough to run) |
 | Samples   | 60k (freeze) or 120k (PKO/mystery)                        |
 
-Everything else (buy-in $50, rake 10 %, bountyFraction 0.5, pkoHeadVar
-0.4) is held fixed. The fit is **about field-and-ROI**, not
+Everything else (buy-in $50, rake 10 %, bountyFraction 0.5, and for PKO
+pkoHeadVar 0.4) is held fixed. A Mystery row carries no `pkoHeadVar`: the
+engine ignores it on Mystery and Mystery-Royale rows, so a recipe that sets it
+would only declare a channel the run does not have. The fit is **about field-and-ROI**, not
 about format/rake sensitivity — those get separate sweeps if you need
 them.
 

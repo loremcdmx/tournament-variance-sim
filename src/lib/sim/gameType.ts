@@ -226,11 +226,14 @@ function normalizeFormatFields(row: TournamentRow): TournamentRow {
     }
     return changed ? { ...row, ...patch } : row;
   }
-  if (row.gameType === "mystery" || row.gameType === "mystery-royale") {
+  const inferred = inferGameType(row);
+  if (inferred === "mystery" || inferred === "mystery-royale") {
     // PKO head-size noise and heat are PKO-only. The row keeps them when a PKO
     // row is flipped here, and compileEntry adds an explicit pkoHeadVar to the
     // Mystery log-variance, so the same-looking row simulated a wider σ until
-    // a reload (persistence strips the field) made it vanish.
+    // a reload (persistence strips the field) made it vanish. Keyed on the
+    // inferred type: a row with no gameType that reads as Mystery from its
+    // payout or bounty fields is reloaded as Mystery too.
     if (row.pkoHeadVar === undefined && row.pkoHeat === undefined) {
       return normalizeBrMrConsistency(row);
     }

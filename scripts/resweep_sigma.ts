@@ -48,7 +48,6 @@ const RECIPES = {
     buyIn: 50,
     rake: 0.1,
     bountyFraction: 0.5,
-    pkoHeadVar: 0.4,
     mysteryBountyVariance: 2.0,
     payout: "mtt-gg-mystery",
     gameType: "mystery",
@@ -57,7 +56,7 @@ const RECIPES = {
 } as const;
 const META = RECIPES[FORMAT] as Record<string, unknown> & {
   N: number; samples: number; buyIn: number; rake: number;
-  bountyFraction: number; pkoHeadVar: number; payout: string;
+  bountyFraction: number; pkoHeadVar?: number; payout: string;
   gameType: string; finishModel: string; mysteryBountyVariance?: number;
 };
 
@@ -73,7 +72,7 @@ function sigmaRoiPerTourney(field: number, roi: number): number {
     payoutStructure: META.payout,
     gameType: META.gameType,
     bountyFraction: META.bountyFraction,
-    pkoHeadVar: META.pkoHeadVar,
+    ...(META.pkoHeadVar !== undefined ? { pkoHeadVar: META.pkoHeadVar } : {}),
     ...(META.mysteryBountyVariance !== undefined
       ? { mysteryBountyVariance: META.mysteryBountyVariance }
       : {}),

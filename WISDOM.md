@@ -77,6 +77,28 @@ This area produced the most false confidence. Remember:
 - The closed-form surfaces (`SIGMA_ROI_*`) are only the fallback of
   `computeConvergenceRows` when no runtime override is passed; their `resid` is
   their own error against their own grid, not a card's band.
+- `SIGMA_ROI_MYSTERY` and `scripts/fit_beta_mystery.json` were trained on rows
+  that carried `pkoHeadVar` 0.4, i.e. a per-KO log-variance of 2.4 (the stored
+  grid cells at field 1000 / ROI +20 % and 5000 / +30 % match a 2.4 run within
+  0.3 %). The engine now ignores `pkoHeadVar` on every row that is or infers
+  Mystery / Mystery-Royale (`normalizeFormatFields` keys on `inferGameType`, not
+  only on an explicit `gameType`) and compiles 2.0, and no recipe in `scripts/`
+  sets it on a Mystery row any more. On the current engine (20k samples,
+  `mystery-realdata-linear`, bounty share 0.5) the surface reads 1.04x, 1.11x
+  and 1.12x the engine at field 100 / ROI 0, 1000 / +20 % and 5000 / +30 %,
+  inside its own 13 % but well over the 2 % of the runtime band. It has no
+  bounty-share input, so it is 1.17x at field 300 / ROI +10 % / share 0.3 and
+  0.99x at 1000 / -10 % / share 0.7.
+  It reaches no number a user sees: the chips, the prove-edge card and schedule
+  mode read `formatRuntimeSigma`, `computeConvergenceRows` falls back to the
+  surface only for a format with no override, and `buildRuntimeSigmaOverrides`
+  always supplies one for a format that carries weight (a test in
+  `formatRuntimeSigma.test.ts` pins it). The only other reader is
+  `scripts/probe_afs_ceiling.ts` (through `SIGMA_COEF_BY_FORMAT`), plus tests;
+  `scripts/xval_mystery.ts` keeps its own copy of the old coefficients. It was
+  deliberately not refitted: do that from a fresh
+  `resweep_sigma.ts FORMAT=mystery` sweep before wiring it to any card, and do
+  not use the old grid to judge the current engine.
 - A card's σ is only as honest as the ITM it assumes. The run path pins every
   row's ITM (`applyItmTarget`: the payout table's paid share unless the row or
   the global target says otherwise); a free-α row gives 3-5% lower σ (Mystery

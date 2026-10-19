@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
+import { evalSigma, SIGMA_ROI_MYSTERY } from "./convergenceFit";
 import {
   buildExactBreakdown,
   ciToZ,
@@ -252,6 +253,45 @@ describe("buildRuntimeSigmaOverrides", () => {
     const a = formatRuntimeSigma("mystery", { afs: 777, roi: 0.123, rake: 0.09 });
     const b = formatRuntimeSigma("mystery", { afs: 777, roi: 0.123, rake: 0.09 });
     expect(b).toBe(a);
+  });
+});
+
+describe("the closed-form Mystery surface does not reach the planning chips", () => {
+  // SIGMA_ROI_MYSTERY was trained at a per-KO log-variance of 2.4, the engine
+  // compiles Mystery at 2.0. The surface only stays harmless while every chip
+  // that carries Mystery weight is built from the runtime override.
+  const point = { afs: 1000, roi: 0.2, rake: 0.1 };
+  const sigmaOf = (format: RuntimeSigmaFormat) => formatRuntimeSigma(format, point)!;
+  const rowsFor = (format: "mystery" | "mix", mix: MixTuple) =>
+    computeConvergenceRows({
+      afs: point.afs,
+      z: z95,
+      roi: point.roi,
+      mix,
+      format,
+      rakePct: point.rake * 100,
+      sigmaOverrides: buildRuntimeSigmaOverrides({ format, mix, point }),
+    });
+
+  it("the surface and the engine's Mystery σ differ at this point, so the test can see a leak", () => {
+    const surface = evalSigma(SIGMA_ROI_MYSTERY, point.afs, point.roi);
+    expect(Math.abs(surface / sigmaOf("mystery") - 1)).toBeGreaterThan(0.005);
+  });
+
+  it("the Mystery tab and a Mix with Mystery weight take k from the runtime σ", () => {
+    const fMix: MixTuple = [0.2, 0.3, 0.5];
+    const mystery = rowsFor("mystery", [0, 0, 1]);
+    const blend = rowsFor("mix", fMix);
+    const f = sigmaOf("freeze");
+    const p = sigmaOf("pko");
+    const m = sigmaOf("mystery");
+    const blendSigma = Math.sqrt(fMix[0] * f * f + fMix[1] * p * p + fMix[2] * m * m);
+    const kAt = (sigma: number, target: number) =>
+      Math.ceil(Math.pow((z95 * sigma) / target, 2));
+    for (let i = 0; i < mystery.length; i++) {
+      expect(mystery[i].tourneys).toBe(kAt(m, mystery[i].targetPct));
+      expect(blend[i].tourneys).toBe(kAt(blendSigma, blend[i].targetPct));
+    }
   });
 });
 

@@ -42,7 +42,6 @@ function buildInput(afs: number, roi: number): SimulationInput {
     gameType: "mystery",
     bountyFraction: 0.5,
     mysteryBountyVariance: 2.0,
-    pkoHeadVar: 0.4,
     count: N_TOURNEYS,
   };
   return {
