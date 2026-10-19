@@ -143,14 +143,14 @@ try {
     await settleBatch(page);
     const before = await workerEvents(page);
     await page.getByRole("spinbutton", { name: text("controls.bankroll"), exact: true }).fill("100");
-    const distance = page.locator("label").filter({ hasText: text("controls.scheduleRepeats") }).locator('input[type="number"]').first();
+    const distance = page.getByLabel(text("controls.scheduleRepeats"), { exact: true }).first();
     await distance.fill("20");
     await distance.blur();
     await page.getByText(text("results.inputsChanged"), { exact: true }).waitFor();
     assert.equal((await workerEvents(page)).length, before.length);
     const displayed = await page.locator("#results-top").innerText();
     assert.ok(displayed.includes(text("stat.bankrollOff")));
-    assert.match(displayed, /по 10 турнир/);
+    assert.match(displayed, /турниров в каждой: 10(?!\d)/);
     await page.getByRole("button", { name: text("runExport.copyLink"), exact: true }).click();
     const link = await page.evaluate(() => window.__copiedText);
     const shared = JSON.parse(decompressFromEncodedURIComponent(link.split("#s=")[1]));
@@ -169,9 +169,9 @@ try {
     await page.goto(link, { waitUntil: "domcontentloaded" });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(name => [...document.querySelectorAll("label")].some(el =>
-      el.textContent.includes(name) && el.querySelector('input[type="number"]')?.value === "10"), text("controls.scheduleRepeats"));
+      el.textContent.includes(name) && (el.querySelector('input[type="number"]') ?? document.getElementById(el.htmlFor))?.value === "10"), text("controls.scheduleRepeats"));
     await page.getByRole("button", { name: text("controls.run"), exact: true }).click();
-    await settleBatch(page);
+    await settleBatch(page, 0.2); // a link carries no admin flag, so the recipient runs in basic mode: one run, no background siblings
     const imported = (await workerEvents(page)).filter(e => e.type === "requested");
     assert.ok(imported.length > 0);
     assert.equal(imported[0].seed, shared.controls.seed, "a freshly opened share link retains its seed");
@@ -193,6 +193,7 @@ try {
     const jobs = [...new Set(events.filter(e => e.type === "requested").map(e => e.jobId))];
     assert.equal(jobs.length, 1);
     assert.equal(events.some(e => e.type === "completed"), false);
+    await page.waitForTimeout(700); // Stop ignores clicks in the first 500 ms so a double-click on Run cannot cancel the run
     await stop.click();
     await page.getByRole("button", { name: text("controls.run"), exact: true }).waitFor();
     return { foregroundJobs: jobs.length, cancelledAfterShortcutCheck: true };
