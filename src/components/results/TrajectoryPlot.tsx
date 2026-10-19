@@ -14,6 +14,7 @@ import type { SimulationResult } from "@/lib/sim/types";
 import { rankedRunIndices, type RunMode } from "@/lib/trajectorySelection";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { withPlural } from "@/lib/i18n/plural";
 import {
   DEFAULT_EXTREME_STYLES,
   DEFAULT_LINE_STYLE_PRESET,
@@ -172,6 +173,7 @@ export function TrajectoryPlot({
     const overlay = assets.overlayLabel
       ? assets.mainLines.find((line) => line.label.startsWith(assets.overlayLabel ?? ""))
       : null;
+    const shownRuns = Math.min(visibleRuns, assets.visibility.pathSeriesIdx.length);
 
     return [
       ev && {
@@ -182,9 +184,10 @@ export function TrajectoryPlot({
       },
       visibleRuns > 0 && {
         key: "runs",
-        label: fmt(t("chart.traj.legend.runs"), {
-          n: Math.min(visibleRuns, assets.visibility.pathSeriesIdx.length).toLocaleString(numberLocale),
-        }),
+        label: fmt(
+          withPlural(t("chart.traj.legend.runs"), locale, shownRuns, "run"),
+          { n: shownRuns.toLocaleString(numberLocale) },
+        ),
         color: assets.visibility.pathBasePreset.stroke,
       },
       visibilityGate.showBands && representativeBand && {
@@ -204,7 +207,7 @@ export function TrajectoryPlot({
         dash: true,
       },
     ].filter(Boolean) as Array<{ key: string; label: string; color: string; dash?: boolean }>;
-  }, [assets, numberLocale, representativeBand, t, visibleRuns, visibilityGate]);
+  }, [assets, locale, numberLocale, representativeBand, t, visibleRuns, visibilityGate]);
 
   // Imperative visibility layer: instead of rebuilding the uPlot instance
   // on every slider tick, flip `show` on the pre-built path/band/best/worst
@@ -835,9 +838,15 @@ export function TrajectoryPlot({
                 </div>
                 {focusedPathStats.ddTourneys > 0 && (
                   <div className="mt-0.5 text-[9px] text-[color:var(--color-fg-dim)]">
-                    {fmt(t("chart.traj.ddDuration"), {
-                      n: focusedPathStats.ddTourneys.toLocaleString(numberLocale),
-                    })}
+                    {fmt(
+                      withPlural(
+                        t("chart.traj.ddDuration"),
+                        locale,
+                        focusedPathStats.ddTourneys,
+                        "tournament",
+                      ),
+                      { n: focusedPathStats.ddTourneys.toLocaleString(numberLocale) },
+                    )}
                   </div>
                 )}
               </div>

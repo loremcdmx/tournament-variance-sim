@@ -434,6 +434,7 @@ export function UnitToggle<T extends string>({
           <button
             key={option.value}
             type="button"
+            aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold transition-colors ${
               active

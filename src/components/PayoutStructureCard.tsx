@@ -8,6 +8,7 @@ import { derivePreviewRowEconomics } from "@/lib/sim/previewRowEconomics";
 import type { TournamentRow } from "@/lib/sim/types";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey, Locale } from "@/lib/i18n/dict";
+import { ordinalPlace } from "@/lib/i18n/plural";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 
@@ -77,13 +78,6 @@ function formatPct(v: number): string {
   if (v >= 0.01) return `${(v * 100).toFixed(1)}%`;
   if (v >= 0.0001) return `${(v * 100).toFixed(2)}%`;
   return `${(v * 100).toFixed(3)}%`;
-}
-
-function placeLabel(n: number): string {
-  if (n === 1) return "1st";
-  if (n === 2) return "2nd";
-  if (n === 3) return "3rd";
-  return `${n}th`;
 }
 
 function localeTag(locale: Locale): "ru-RU" | "en-US" {
@@ -231,7 +225,7 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
         {table.slice(0, topLen).map((v, i) => (
           <PayoutBar
             key={i}
-            place={placeLabel(i + 1)}
+            place={ordinalPlace(locale, i + 1)}
             value={v}
             max={max}
             color={paletteColor(palette, i + 1, paid)}

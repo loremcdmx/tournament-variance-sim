@@ -1,6 +1,8 @@
 import React, { type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RunActionButton } from "./ControlsPanel";
+import { renderToStaticMarkup } from "react-dom/server";
+import { DICT } from "@/lib/i18n/dict";
+import { RunActionButton, RunProgress } from "./ControlsPanel";
 
 beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => vi.unstubAllGlobals());
@@ -59,5 +61,48 @@ describe("Run / Stop / blocked button", () => {
     runStartedAtRef.current = performance.now() - 2000;
     render({ running: true }).props.onClick();
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("run progress for assistive technology", () => {
+  const html = (over: Partial<Parameters<typeof RunProgress>[0]>) =>
+    renderToStaticMarkup(
+      <RunProgress
+        barState="running"
+        runToken={1}
+        progress={0.857}
+        stage="simulating"
+        running
+        hasDone={false}
+        t={(key) => DICT[key].en}
+        {...over}
+      />,
+    );
+
+  it("exposes the bar as a named progressbar with its percent", () => {
+    const markup = html({});
+    expect(markup).toMatch(/role="progressbar"/);
+    expect(markup).toContain(`aria-label="${DICT["controls.progress"].en}"`);
+    expect(markup).toContain('aria-valuemin="0"');
+    expect(markup).toContain('aria-valuemax="100"');
+    expect(markup).toContain('aria-valuenow="85"');
+  });
+
+  it("says 100 while the finished bar is held, and mounts no bar at rest", () => {
+    expect(html({ barState: "completing", running: false, hasDone: true })).toContain('aria-valuenow="100"');
+    expect(html({ barState: "hidden", running: false })).not.toContain("progressbar");
+  });
+
+  it("keeps a status region in the page at rest, empty, so a later change is announced", () => {
+    const idle = html({ barState: "hidden", running: false, stage: null });
+    expect(idle).toMatch(/<div role="status" class="sr-only"><\/div>/);
+  });
+
+  it("puts the stage, then Done, in the status region, and never the ticking ETA", () => {
+    expect(html({})).toContain(`class="sr-only">${DICT["controls.stage.simulating"].en}</div>`);
+    expect(html({ stage: null })).toContain(`class="sr-only">${DICT["controls.starting"].en}</div>`);
+    expect(html({ barState: "hidden", running: false, hasDone: true })).toContain(
+      `class="sr-only">${DICT["controls.done.label"].en}</div>`,
+    );
   });
 });

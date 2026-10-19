@@ -66,6 +66,46 @@ describe("checkInputSanity", () => {
     expect(findings.some((f) => f.id === "tilt-slow-no-threshold")).toBe(true);
   });
 
+  it("flags slow tilt whose minimum duration floors to zero tournaments", () => {
+    for (const tiltSlowMinDuration of [0, 0.9, -5]) {
+      const findings = checkInputSanity(
+        { ...calmControls, tiltSlowGain: -0.05, tiltSlowThreshold: 5000, tiltSlowMinDuration },
+        [makeRow()],
+      );
+      expect(findings.map((f) => f.id), String(tiltSlowMinDuration)).toEqual([
+        "tilt-slow-no-min-duration",
+      ]);
+    }
+  });
+
+  it("takes an unset minimum duration as the engine's default of 500 tournaments", () => {
+    const findings = checkInputSanity(
+      { ...calmControls, tiltSlowGain: -0.05, tiltSlowThreshold: 5000 },
+      [makeRow()],
+    );
+    expect(findings).toEqual([]);
+    expect(
+      checkInputSanity(
+        { ...calmControls, tiltSlowGain: -0.05, tiltSlowThreshold: 5000, tiltSlowMinDuration: 1 },
+        [makeRow()],
+      ),
+    ).toEqual([]);
+  });
+
+  it("says one thing per dead slow-tilt setting, and nothing when the gain is zero", () => {
+    const both = checkInputSanity(
+      { ...calmControls, tiltSlowGain: 0.1, tiltSlowThreshold: 0, tiltSlowMinDuration: 0 },
+      [makeRow()],
+    );
+    expect(both.map((f) => f.id)).toEqual(["tilt-slow-no-threshold", "tilt-slow-no-min-duration"]);
+    expect(
+      checkInputSanity(
+        { ...calmControls, tiltSlowGain: 0, tiltSlowThreshold: 0, tiltSlowMinDuration: 0 },
+        [makeRow()],
+      ),
+    ).toEqual([]);
+  });
+
   it("flags PKO row with zero bountyFraction", () => {
     const findings = checkInputSanity(calmControls, [
       makeRow({ id: "pko-row", label: "PKO", gameType: "pko", bountyFraction: 0 }),

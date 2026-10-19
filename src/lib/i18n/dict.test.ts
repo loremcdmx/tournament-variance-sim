@@ -42,6 +42,65 @@ describe("i18n dict", () => {
     expect(DICT["emp.none"].ru).not.toMatch(/power-?law/i);
   });
 
+  it("leaves no printf placeholder in any string", () => {
+    const hits: string[] = [];
+    for (const [key, entry] of Object.entries(DICT)) {
+      for (const loc of LOCALES) {
+        if (/%(?:\d+\$)?[sdif]\b/.test((entry as Record<string, string>)[loc])) hits.push(`${key}.${loc}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it("ends the infeasible-shape hint without a dangling percent sign", () => {
+    expect(DICT["shape.infeasible"].en).not.toMatch(/%/);
+    expect(DICT["shape.infeasible"].ru).not.toMatch(/%/);
+  });
+
+  it("names no count N that no code fills in: the best and worst real run tooltips", () => {
+    for (const key of ["chart.traj.likelihood.bestReal", "chart.traj.likelihood.worstReal"] as const) {
+      expect(DICT[key].en, `${key}.en`).not.toMatch(/\bN\b/);
+      expect(DICT[key].ru, `${key}.ru`).not.toMatch(/\bN\b/);
+      expect(DICT[key].en, `${key}.en`).toMatch(/all the simulated runs/);
+    }
+  });
+
+  it("quotes the BR leaderboard tournaments field by the label it has in each language", () => {
+    const label = DICT["controls.brLeaderboard.tournaments"];
+    const hint = DICT["controls.brLeaderboard.observedUsernameHint"];
+    expect(hint.en).toContain(`“${label.en}”`);
+    expect(hint.ru).toContain(`«${label.ru}»`);
+  });
+
+  it("says the Uniform and Empirical models do not apply the row ROI, and are not PrimeDope's model", () => {
+    const help = DICT["help.finishModel"];
+    const uniformLine = (text: string) => text.split("\n").find((l) => /Uniform/.test(l)) ?? "";
+    expect(uniformLine(help.en)).toMatch(/ROI is not applied/i);
+    expect(uniformLine(help.ru)).toMatch(/ROI не применяется/);
+    expect(uniformLine(help.en)).not.toMatch(/PrimeDope/i);
+    expect(uniformLine(help.ru)).not.toMatch(/PrimeDope/i);
+    expect(uniformLine(help.en)).not.toMatch(/same lift/i);
+    expect(DICT["emp.none"].en).toMatch(/ROI target is not applied/i);
+    expect(DICT["emp.none"].ru).toMatch(/цель по ROI не применяется/i);
+  });
+
+  it("does not claim a positive leaderboard shift leaves drawdown unchanged", () => {
+    const title = DICT["chart.lbCashflow.title"];
+    expect(title.en).not.toMatch(/doesn't change drawdown|monotone/i);
+    expect(title.ru).not.toMatch(/не меняет просад|монотонн/i);
+    expect(title.en).toMatch(/shallower/i);
+    expect(title.ru).toMatch(/мельче/i);
+  });
+
+  it("says slow tilt is switched off, not triggered by any drawdown, when its threshold or duration is dead", () => {
+    for (const key of ["sanity.tilt-slow-no-threshold", "sanity.tilt-slow-no-min-duration"] as const) {
+      expect(DICT[key].en, key).not.toMatch(/any non-zero drawdown/i);
+      expect(DICT[key].en, key).toMatch(/switched off/i);
+      expect(DICT[key].ru, key).not.toMatch(/любой ненулевой просадке/i);
+      expect(DICT[key].ru, key).toMatch(/выключен/i);
+    }
+  });
+
   it("says only the EV preview averages a field-size range; the payout ladder shows the midpoint", () => {
     // PayoutStructureCard reads derivePreviewRowEconomics at the range midpoint;
     // only the single-tournament EV preview mixes the sizes (previewFieldMixture).

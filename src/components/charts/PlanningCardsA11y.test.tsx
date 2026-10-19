@@ -58,3 +58,71 @@ describe("slider rows fit a 320 px screen", () => {
     expect(markup).not.toContain("w-32 shrink-0 whitespace-nowrap");
   });
 });
+
+const buttons = (markup: string) => markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+const attr = (tag: string, name: string) =>
+  new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
+const FORMAT_LABELS = ["freeze", "pko", "ocean-ko", "mystery", "mystery-royale", "mix", "exact"] as const;
+
+describe("format tabs say which one is selected", () => {
+  const formatButtons = (markup: string) =>
+    buttons(markup).filter((tag) =>
+      FORMAT_LABELS.some((f) => tag.includes(`>${DICT[`chart.convergence.format.${f}`].ru}</button>`)),
+    );
+
+  it("on the convergence card", () => {
+    const tabs = formatButtons(render(<ConvergenceChart schedule={schedule} itmTarget={OFF} />));
+    expect(tabs).toHaveLength(FORMAT_LABELS.length);
+    expect(tabs.map((tag) => attr(tag, "aria-pressed"))).toEqual(
+      FORMAT_LABELS.map((f) => (f === "exact" ? "false" : f === "freeze" ? "true" : "false")),
+    );
+  });
+
+  it("on the prove-edge card", () => {
+    const tabs = buttons(render(<ProveEdgeCard itmTarget={OFF} />)).filter((tag) =>
+      tag.includes("uppercase tracking-wider"),
+    );
+    expect(tabs.length).toBeGreaterThanOrEqual(2);
+    expect(tabs.filter((tag) => attr(tag, "aria-pressed") === "true")).toHaveLength(1);
+    expect(tabs.every((tag) => attr(tag, "aria-pressed") !== undefined)).toBe(true);
+  });
+});
+
+// A reset button says where it lands. The schedule's own figure is not where it
+// lands when the control's range cuts it off, and the text is the UI language.
+describe("convergence reset buttons", () => {
+  const resets = (markup: string) =>
+    buttons(markup).filter((tag) => />↺<\/button>$/.test(tag));
+  const ranged = (over: Partial<TournamentRow>): TournamentRow[] => [{ ...schedule[0], ...over }];
+
+  it("name the target in Russian, as the button's title and its accessible name", () => {
+    const found = resets(render(<ConvergenceChart schedule={schedule} itmTarget={OFF} />));
+    expect(found.length).toBe(5);
+    for (const tag of found) {
+      expect(attr(tag, "title")).toBeDefined();
+      expect(attr(tag, "aria-label")).toBe(attr(tag, "title"));
+      expect(attr(tag, "title")).toMatch(/^Сбросить к /);
+      expect(attr(tag, "title")).not.toMatch(/reset to/i);
+    }
+    const titles = found.map((tag) => attr(tag, "title"));
+    expect(titles).toContain("Сбросить к 95%");
+    expect(titles).toContain("Сбросить к Фриз");
+  });
+
+  it("quote the value the reset applies when the schedule lies outside the range", () => {
+    const small = resets(render(
+      <ConvergenceChart schedule={ranged({ players: 18, roi: 1.5 })} itmTarget={OFF} />,
+    )).map((tag) => attr(tag, "title"));
+    expect(small).toContain("Сбросить к 50 (в расписании 18 — вне диапазона этой карточки)");
+    expect(small).toContain("Сбросить к 100.0% (в расписании 150.0% — вне диапазона этой карточки)");
+  });
+
+  it("stay plain when the schedule is inside the range", () => {
+    const inside = resets(render(
+      <ConvergenceChart schedule={ranged({ players: 1000, roi: 0.15 })} itmTarget={OFF} />,
+    )).map((tag) => attr(tag, "title"));
+    expect(inside).toContain(`Сбросить к ${fmtAfs(1000, "ru-RU")}`);
+    expect(inside).toContain("Сбросить к 15.0%");
+    expect(inside.join("|")).not.toContain("вне диапазона");
+  });
+});

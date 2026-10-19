@@ -5,6 +5,7 @@ import { FORMAT_TAB_ACCENTS } from "@/components/charts/formatTabAccents";
 import { OVERLAY_SERIES } from "@/components/charts/overlaySeries";
 import {
   DARK_PARITY,
+  DIM_TEXT_SITES,
   MIN_TEXT_CONTRAST,
   STATUS_SITES,
   contrastRatio,
@@ -131,6 +132,38 @@ describe("status tokens in globals.css", () => {
       .filter((s) => s.minRatio !== undefined)
       .map((s) => s.id);
     expect(exempt).toEqual(["PD delta, matching"]);
+  });
+});
+
+describe("dim caption colour", () => {
+  const ratios = (tokens: Record<string, string>, theme: "dark" | "light" = "dark") =>
+    DIM_TEXT_SITES.map((site) => evaluateSite(site, theme, tokens, palette));
+
+  it.each(["dark", "light"] as const)(
+    "reaches 4.5:1 on the page, a card, bg-elev and both bg-elev-2 fills in the %s theme",
+    (theme) => {
+      const failures = ratios(themes[theme], theme)
+        .filter((r) => r.ratio < MIN_TEXT_CONTRAST)
+        .map((r) => `${r.ratio.toFixed(2)} ${r.id}`);
+      expect(failures).toEqual([]);
+    },
+  );
+
+  it("would have caught the old #6b7c8a, which was 4.41:1 on the page and 3.67:1 on the editor inputs", () => {
+    const old = ratios({ ...themes.dark, "--c-fg-dim": "#6b7c8a" });
+    const byId = (id: string) => old.find((r) => r.id === id)!.ratio;
+    expect(byId("dim text on the page")).toBeCloseTo(4.41, 1);
+    expect(byId("dim text on bg-elev-2/70")).toBeCloseTo(3.67, 1);
+    expect(old.filter((r) => r.ratio < MIN_TEXT_CONTRAST)).toHaveLength(DIM_TEXT_SITES.length);
+  });
+
+  it("stays a step below the muted colour, so the three text levels still read as three", () => {
+    const luminance = (hex: string) => {
+      const { r, g, b } = parseColor(hex);
+      const lin = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    };
+    expect(luminance(themes.dark["--c-fg-muted"]) / luminance(themes.dark["--c-fg-dim"])).toBeGreaterThan(1.8);
   });
 });
 

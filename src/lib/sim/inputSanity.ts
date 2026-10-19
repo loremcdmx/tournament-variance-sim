@@ -16,6 +16,7 @@ import type { TournamentRow } from "./types";
 export type SanityFindingId =
   | "tilt-fast-no-scale"
   | "tilt-slow-no-threshold"
+  | "tilt-slow-no-min-duration"
   | "zero-bankroll"
   | "empirical-too-few-buckets"
   | "row-bounty-format-no-bounty"
@@ -35,11 +36,15 @@ export interface SanityInputs {
   tiltFastScale: number;
   tiltSlowGain: number;
   tiltSlowThreshold: number;
+  /** Tournaments of streak before the slow-tilt state flips; unset means the engine's 500. */
+  tiltSlowMinDuration?: number;
   bankroll: number;
   /** Active finishModelId — only `"empirical"` participates in the buckets check. */
   finishModelId: string;
   empiricalBuckets?: readonly number[];
 }
+
+const DEFAULT_TILT_SLOW_MIN_DURATION = 500;
 
 /** Buckets shorter than this make resampling so coarse it's misleading. */
 export const MIN_EMPIRICAL_BUCKETS = 50;
@@ -54,8 +59,17 @@ export function checkInputSanity(
     findings.push({ id: "tilt-fast-no-scale" });
   }
 
+  // hotLoop switches slow tilt off unless gain != 0, threshold > 0 and the
+  // floored minimum duration > 0; each dead setting gets its own finding.
   if (controls.tiltSlowGain !== 0 && controls.tiltSlowThreshold <= 0) {
     findings.push({ id: "tilt-slow-no-threshold" });
+  }
+
+  if (
+    controls.tiltSlowGain !== 0 &&
+    !(Math.floor(controls.tiltSlowMinDuration ?? DEFAULT_TILT_SLOW_MIN_DURATION) > 0)
+  ) {
+    findings.push({ id: "tilt-slow-no-min-duration" });
   }
 
   if (controls.bankroll <= 0 && schedule.length > 0) {

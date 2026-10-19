@@ -5,6 +5,8 @@ import {
   barFillPercent,
   nextBarState,
   progressPercent,
+  progressValueNow,
+  runLiveStatusKey,
 } from "./progressBarState";
 
 describe("nextBarState", () => {
@@ -238,5 +240,43 @@ describe("COMPLETING_HOLD_MS", () => {
     // the bar.
     expect(COMPLETING_HOLD_MS).toBeGreaterThan(0);
     expect(COMPLETING_HOLD_MS).toBeLessThan(2000);
+  });
+});
+
+describe("progressValueNow", () => {
+  it("is what a screen reader hears for the bar, the same integer the fill and the Stop label show", () => {
+    expect(progressValueNow("running", 0.857)).toBe(85);
+    expect(progressValueNow("running", 0.985)).toBe(98);
+    expect(progressValueNow("running", 0)).toBe(0);
+  });
+
+  it("reads 100 for the completing hold, whatever the last snapshot said, and 0 when hidden", () => {
+    expect(progressValueNow("completing", 0.4)).toBe(100);
+    expect(progressValueNow("hidden", 0.9)).toBe(0);
+  });
+
+  it("agrees with the width of the fill in every state", () => {
+    for (const state of ["hidden", "running", "completing"] as const) {
+      for (const p of [0, 0.3, 0.857, 0.985, 1]) {
+        expect(barFillPercent(state, p)).toBe(`${progressValueNow(state, p)}%`);
+      }
+    }
+  });
+});
+
+describe("runLiveStatusKey", () => {
+  it("announces the stage while a run is going, and the start before the first stage", () => {
+    expect(runLiveStatusKey({ running: true, stage: null, hasDone: false })).toBe("controls.starting");
+    expect(runLiveStatusKey({ running: true, stage: "simulating", hasDone: true })).toBe(
+      "controls.stage.simulating",
+    );
+    expect(runLiveStatusKey({ running: true, stage: "envelopes", hasDone: false })).toBe(
+      "controls.stage.envelopes",
+    );
+  });
+
+  it("announces completion once a run has finished, and nothing at rest", () => {
+    expect(runLiveStatusKey({ running: false, stage: "streaks", hasDone: true })).toBe("controls.done.label");
+    expect(runLiveStatusKey({ running: false, stage: null, hasDone: false })).toBeNull();
   });
 });

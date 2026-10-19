@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { SCENARIOS } from "@/lib/scenarios";
 import type { DictKey } from "@/lib/i18n/dict";
+import { closeMenu } from "@/lib/ui/menuFocus";
 
 // Scenario → palette tint mapping. Reuses the existing suit palette from
 // globals.css so we don't invent new colour tokens. Categories are loose
@@ -43,15 +44,24 @@ export function ScheduleToolbarExtras({
 }: Props) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuId = useId();
+  // Closing from the keyboard (Escape, picking an option) unmounts the focused
+  // option, which would drop focus to <body>; it goes back to the trigger. A click
+  // outside leaves focus wherever the click put it.
+  const close = useCallback(
+    (restoreFocus: boolean) => closeMenu(setOpen, triggerRef.current, restoreFocus),
+    [],
+  );
 
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
       if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (!wrapRef.current.contains(e.target as Node)) close(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") close(true);
     };
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("keydown", onKey);
@@ -59,7 +69,7 @@ export function ScheduleToolbarExtras({
       document.removeEventListener("mousedown", onDocClick);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, close]);
 
   const active = activeScenarioId
     ? SCENARIOS.find((s) => s.id === activeScenarioId) ?? null
@@ -74,11 +84,12 @@ export function ScheduleToolbarExtras({
 
       <div ref={wrapRef} className="relative min-w-0">
         <button
+          ref={triggerRef}
           type="button"
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          aria-haspopup="listbox"
           aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
           className="inline-flex h-8 max-w-full items-center gap-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 text-left text-xs text-[color:var(--color-fg)] transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] focus:outline-none disabled:opacity-40 sm:w-[220px]"
         >
           <span
@@ -115,7 +126,9 @@ export function ScheduleToolbarExtras({
 
         {open && (
           <div
-            role="listbox"
+            id={menuId}
+            role="group"
+            aria-label={t("demo.label")}
             className="absolute right-0 top-full z-20 mt-1 w-[min(320px,calc(100vw-2rem))] overflow-hidden rounded-lg border shadow-[0_18px_42px_-20px_rgba(0,0,0,0.7)]"
             style={{
               borderColor: "var(--c-border)",
@@ -132,13 +145,12 @@ export function ScheduleToolbarExtras({
                   <li key={s.id}>
                     <button
                       type="button"
-                      role="option"
-                      aria-selected={isActive}
+                      aria-current={isActive ? "true" : undefined}
                       onClick={() => {
                         loadScenario(s.id);
-                        setOpen(false);
+                        close(true);
                       }}
-                      className="group flex w-full items-center gap-2.5 border-l-[3px] border-transparent px-3 py-2 text-left text-xs transition-colors hover:bg-[color:var(--color-fg)]/[0.04] focus:bg-[color:var(--color-fg)]/[0.05] focus:outline-none"
+                      className="group flex w-full items-center gap-2.5 border-l-[3px] border-transparent px-3 py-2 text-left text-xs transition-colors hover:bg-[color:var(--color-fg)]/[0.04] focus:bg-[color:var(--color-fg)]/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
                       style={
                         isActive
                           ? {

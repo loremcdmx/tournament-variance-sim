@@ -40,7 +40,14 @@ import {
   fillRuntimeSigmaBrTicket,
 } from "@/lib/sim/formatRuntimeSigma";
 import { fillRuntimeSigmaZone } from "@/lib/sim/runtimeSigmaBands";
-import { commitCiPct, commitMixPct, commitRakePct, commitRoiFraction } from "./convergenceInputs";
+import { fmt } from "@/lib/results/formatters";
+import {
+  commitCiPct,
+  commitMixPct,
+  commitRakePct,
+  commitRoiFraction,
+  convergenceResetTargets,
+} from "./convergenceInputs";
 import { FORMAT_TAB_ACCENTS } from "./formatTabAccents";
 
 interface Props {
@@ -546,6 +553,33 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     { id: "mix", labelKey: "chart.convergence.format.mix" },
     { id: "exact", labelKey: "chart.convergence.format.exact" },
   ];
+  const resetTargets = convergenceResetTargets({
+    avgField: baseline.avgField,
+    roi: baselineRoi,
+    roiMin,
+    roiMax,
+  });
+  const resetTitle = (value: string, raw?: string) =>
+    raw === undefined
+      ? fmt(t("chart.convergence.reset"), { value })
+      : fmt(t("chart.convergence.reset.clamped"), { value, raw });
+  const formatResetTitle = resetTitle(
+    baselineFormat === "mix"
+      ? `${t("chart.convergence.format.mix")} (${baselineMix
+          .map((share) => Math.round(share * 100))
+          .join("/")} ${t("chart.convergence.format.freeze")}/${t("chart.convergence.format.pko")}/${t("chart.convergence.format.mystery")})`
+      : t(`chart.convergence.format.${baselineFormat}`),
+  );
+  const afsResetTitle = resetTitle(
+    fmtAfs(resetTargets.afs.value, numberLocale),
+    resetTargets.afs.clamped ? fmtAfs(baseline.avgField, numberLocale) : undefined,
+  );
+  const roiResetTitle = resetTitle(
+    `${(resetTargets.roi.value * 100).toFixed(1)}%`,
+    resetTargets.roi.clamped ? `${(baselineRoi * 100).toFixed(1)}%` : undefined,
+  );
+  const rakeResetTitle = resetTitle(`${formatDefaultRake.toFixed(1)}%`);
+  const ciResetTitle = resetTitle("95%");
   return (
     <div className="overflow-hidden">
       <div
@@ -564,6 +598,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                 key={f.id}
                 type="button"
                 disabled={disabled}
+                aria-pressed={active}
                 title={
                   f.id !== "exact" && hasSchedule
                     ? t("chart.convergence.synthetic.hint")
@@ -615,7 +650,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             setOceanTicketDraft(null);
           }}
           className="self-end rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/55 px-2 py-1 text-[10px] uppercase tracking-[0.14em] hover:bg-[color:var(--color-bg-elev)] sm:self-auto"
-          title={`reset to ${baselineFormat}${baselineFormat === "mix" ? ` (${Math.round(baselineMix[0] * 100)}/${Math.round(baselineMix[1] * 100)}/${Math.round(baselineMix[2] * 100)} freeze/PKO/mystery)` : ""}`}
+          title={formatResetTitle}
+          aria-label={formatResetTitle}
         >
           ↺
         </button>
@@ -730,7 +766,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           onClick={() => setAfsPosOverride(null)}
           disabled={afsLocked}
           className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
-          title={afsLocked ? "—" : `reset to ${fmtAfs(baseline.avgField, numberLocale)}`}
+          title={afsLocked ? "—" : afsResetTitle}
+          aria-label={afsLocked ? t("chart.convergence.afs.lockedBR") : afsResetTitle}
         >
           ↺
         </button>
@@ -772,7 +809,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             type="button"
             onClick={() => setRoiOverride(null)}
             className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
-            title={`reset to ${(baselineRoi * 100).toFixed(1)}%`}
+            title={roiResetTitle}
+            aria-label={roiResetTitle}
           >
             ↺
           </button>
@@ -833,7 +871,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
             setRakeDraft(null);
           }}
           className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
-          title={`reset to ${formatDefaultRake.toFixed(1)}%`}
+          title={rakeResetTitle}
+          aria-label={rakeResetTitle}
         >
           ↺
         </button>
@@ -877,7 +916,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           type="button"
           onClick={() => setCiPct(95)}
           className="rounded border border-[color:var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider hover:bg-[color:var(--color-bg-elev)]"
-          title="reset to 95%"
+          title={ciResetTitle}
+          aria-label={ciResetTitle}
         >
           ↺
         </button>

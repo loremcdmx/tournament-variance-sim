@@ -49,7 +49,9 @@ import {
   removeRow,
 } from "@/lib/ui/scheduleOps";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
+import { DICT, type DictKey } from "@/lib/i18n/dict";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { fmt } from "@/lib/results/formatters";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import type { RowFeasibilityIssue } from "@/lib/sim/validation";
 import { Card } from "./ui/Section";
@@ -156,60 +158,29 @@ export function displayItmPct(row: TournamentRow, globalItmPct: number | null): 
   return round2(effective.itmRate! * 100);
 }
 
-// Short labels for the dropdown row (≤ ~22 chars), full descriptions in title.
+// The dropdown shows `payout.<id>.short`; the full description is its title.
 // `real` entries are calibrated to specific real-world 2026 payout samples
 // captured in `data/payout-samples/`. They live in a pinned optgroup above
 // the generic presets so users who want authentic structures find them first.
 const STRUCTURES: {
-  id: PayoutStructureId;
-  short: string;
-  full: string;
+  id: Exclude<PayoutStructureId, "custom">;
   real?: boolean;
 }[] = [
-  {
-    id: "mtt-pokerstars",
-    short: "PokerStars SCOOP (2026)",
-    full: "PokerStars SCOOP 119-L Main · calibrated to 2026-03-25 sample",
-    real: true,
-  },
-  {
-    id: "mtt-sunday-million",
-    short: "Sunday Million (2026)",
-    full: "PokerStars Sunday Million · real 2026 curve",
-    real: true,
-  },
-  {
-    id: "mtt-gg",
-    short: "Mini CoinMasters (2026)",
-    full: "CoinPoker Mini CoinMasters · calibrated to 2026-04-14 sample",
-    real: true,
-  },
-  {
-    id: "mtt-gg-freeze",
-    short: "GG Freezeout (2026)",
-    full: "GGPoker freezeouts · fitted to real 2026 prizes, checked on 2025",
-    real: true,
-  },
-  {
-    id: "mtt-gg-bounty",
-    short: "Mini CoinHunter PKO (2026)",
-    full: "CoinPoker Mini CoinHunter PKO · calibrated to 2026-04-14 sample",
-    real: true,
-  },
-  {
-    id: "mtt-gg-mystery",
-    short: "GG Mystery Bounty",
-    full: "GG Mystery Bounty · ITM-phase envelopes · 13% paid, 1st ≈ 9–12.5%",
-  },
-  { id: "mtt-primedope", short: "PrimeDope payouts", full: "PrimeDope native payout curves (15% paid)" },
-  { id: "mtt-standard", short: "MTT Standard 15%", full: "MTT · Standard (15% paid)" },
-  { id: "mtt-flat", short: "MTT Flat 20%", full: "MTT · Flat (20% paid)" },
-  { id: "mtt-top-heavy", short: "MTT Top-heavy 12%", full: "MTT · Top-heavy (12% paid)" },
-  { id: "battle-royale", short: "GG Battle Royal", full: "GG Battle Royal · 18-max, top-3 paid" },
-  { id: "satellite-ticket", short: "Satellite (tickets)", full: "Satellite · ticket cliff (10% seats)" },
-  { id: "sng-50-30-20", short: "SNG 50/30/20", full: "SNG · 50/30/20" },
-  { id: "sng-65-35", short: "SNG 65/35", full: "SNG · 65/35" },
-  { id: "winner-takes-all", short: "Winner takes all", full: "Winner takes all" },
+  { id: "mtt-pokerstars", real: true },
+  { id: "mtt-sunday-million", real: true },
+  { id: "mtt-gg", real: true },
+  { id: "mtt-gg-freeze", real: true },
+  { id: "mtt-gg-bounty", real: true },
+  { id: "mtt-gg-mystery" },
+  { id: "mtt-primedope" },
+  { id: "mtt-standard" },
+  { id: "mtt-flat" },
+  { id: "mtt-top-heavy" },
+  { id: "battle-royale" },
+  { id: "satellite-ticket" },
+  { id: "sng-50-30-20" },
+  { id: "sng-65-35" },
+  { id: "winner-takes-all" },
 ];
 
 interface Props {
@@ -429,7 +400,38 @@ function splitImportLine(line: string): { cells: string[]; decimalCommaPair: str
   return { cells, decimalCommaPair };
 }
 
-export function parseImportCSV(raw: string): {
+type ImportMessageKey =
+  | "row.importErr.minCells"
+  | "row.importErr.tooManyColumns"
+  | "row.importErr.decimalComma"
+  | "row.importErr.players"
+  | "row.importErr.buyIn"
+  | "row.importErr.roiNumber"
+  | "row.importErr.roiRange"
+  | "row.importErr.count"
+  | "row.importErr.payout"
+  | "row.importLabel";
+
+/** Turns an import message key and its values into text in the language the caller shows. */
+export type ImportMessage = (
+  key: ImportMessageKey,
+  values: Record<string, string | number>,
+) => string;
+
+export const importMessageFor =
+  (t: (key: DictKey) => string): ImportMessage =>
+  (key, values) =>
+    fmt(
+      t(key),
+      Object.fromEntries(Object.entries(values).map(([k, v]) => [k, String(v)])),
+    );
+
+const englishImportMessage = importMessageFor((key) => DICT[key].en);
+
+export function parseImportCSV(
+  raw: string,
+  message: ImportMessage = englishImportMessage,
+): {
   rows: TournamentRow[];
   errors: string[];
 } {
@@ -441,28 +443,29 @@ export function parseImportCSV(raw: string): {
     if (!stripped || stripped.startsWith("#")) return;
     const { cells, decimalCommaPair } = splitImportLine(stripped);
     if (cells.length < 3) {
-      errors.push(`line ${i + 1}: need at least label, players, buyIn`);
+      errors.push(message("row.importErr.minCells", { line: i + 1 }));
       return;
     }
     if (cells.length > IMPORT_MAX_CELLS) {
-      errors.push(
-        `line ${i + 1}: too many columns (max ${IMPORT_MAX_CELLS}: label, players, buyIn, roi, count, payout); ` +
-          `a decimal comma needs ";" between the columns`,
-      );
+      errors.push(message("row.importErr.tooManyColumns", { line: i + 1, max: IMPORT_MAX_CELLS }));
       return;
     }
     if (decimalCommaPair) {
       const [roiCell, countCell] = decimalCommaPair.split(",");
       errors.push(
-        `line ${i + 1}: "${decimalCommaPair}" reads as two cells (roi ${roiCell}, count ${countCell}), not a decimal comma; ` +
-          `write ${roiCell}.${countCell} or separate the columns with ";"`,
+        message("row.importErr.decimalComma", {
+          line: i + 1,
+          pair: decimalCommaPair,
+          roi: roiCell,
+          count: countCell,
+        }),
       );
       return;
     }
     const [label, playersStr, buyInStr, roiStr, countStr, payoutStr] = cells;
     const players = parsePlainInt(playersStr);
     if (players === null || players < 2 || players > IMPORT_PLAYERS_MAX) {
-      errors.push(`line ${i + 1}: players must be 2..${IMPORT_PLAYERS_MAX}`);
+      errors.push(message("row.importErr.players", { line: i + 1, max: IMPORT_PLAYERS_MAX }));
       return;
     }
     // A Battle Royale ticket is one number that already includes the fee, as in
@@ -471,18 +474,20 @@ export function parseImportCSV(raw: string): {
       (payoutStr ?? "").trim().toLowerCase() === "battle-royale" ? "mystery-royale" : undefined;
     const parsed = parseBuyIn(buyInStr ?? "", 0.1, ticketType);
     if (!parsed) {
-      errors.push(`line ${i + 1}: bad buy-in "${buyInStr}"`);
+      errors.push(message("row.importErr.buyIn", { line: i + 1, value: buyInStr }));
       return;
     }
     let roiPct = 0;
     if (roiStr) {
       const parsedRoi = parsePlainNumber(roiStr.replace(DECIMAL_COMMA_ROI_RE, "$1.$2"));
       if (parsedRoi === null) {
-        errors.push(`line ${i + 1}: roi must be a plain number`);
+        errors.push(message("row.importErr.roiNumber", { line: i + 1 }));
         return;
       }
       if (parsedRoi < ROI_PCT_MIN || parsedRoi > ROI_PCT_MAX) {
-        errors.push(`line ${i + 1}: roi must be ${ROI_PCT_MIN}..${ROI_PCT_MAX} (percent)`);
+        errors.push(
+          message("row.importErr.roiRange", { line: i + 1, min: ROI_PCT_MIN, max: ROI_PCT_MAX }),
+        );
         return;
       }
       roiPct = parsedRoi;
@@ -495,21 +500,21 @@ export function parseImportCSV(raw: string): {
         parsedCount < 1 ||
         parsedCount > IMPORT_COUNT_MAX
       ) {
-        errors.push(`line ${i + 1}: count must be 1..${IMPORT_COUNT_MAX}`);
+        errors.push(message("row.importErr.count", { line: i + 1, max: IMPORT_COUNT_MAX }));
         return;
       }
       count = Math.max(1, Math.floor(parsedCount));
     }
     const payoutCell = (payoutStr ?? "").trim().toLowerCase();
     if (payoutCell !== "" && !PAYOUT_ID_SET.has(payoutCell)) {
-      errors.push(`line ${i + 1}: unknown payout "${payoutStr}"`);
+      errors.push(message("row.importErr.payout", { line: i + 1, value: payoutStr }));
       return;
     }
     const payout = (payoutCell || "mtt-standard") as PayoutStructureId;
     const isBattleRoyaleImport = payout === "battle-royale";
     const importedRow: TournamentRow = {
       id: crypto.randomUUID(),
-      label: label || `Imported ${rows.length + 1}`,
+      label: label || message("row.importLabel", { n: rows.length + 1 }),
       players: isBattleRoyaleImport ? BATTLE_ROYALE_PLAYERS : players,
       buyIn: parsed.buyIn,
       rake: parsed.rake,
@@ -541,8 +546,9 @@ export function planScheduleImport(
   currentRowCount: number,
   mode: "append" | "replace",
   tooManyRowsMessage: string,
+  message?: ImportMessage,
 ): { rows: TournamentRow[] | null; errors: string[] } {
-  const { rows, errors } = parseImportCSV(text);
+  const { rows, errors } = parseImportCSV(text, message);
   if (errors.length > 0 || rows.length === 0) return { rows: null, errors };
   const total = mode === "replace" ? rows.length : currentRowCount + rows.length;
   if (total > MAX_SCHEDULE_ROWS) {
@@ -556,9 +562,10 @@ export function prepareScheduleImport(
   schedule: TournamentRow[],
   mode: "append" | "replace",
   tooManyRowsMessage: string,
+  message?: ImportMessage,
 ): { schedule: TournamentRow[] | null; errors: string[] } {
   const { rows, errors } = planScheduleImport(
-    text, schedule.length, mode, tooManyRowsMessage,
+    text, schedule.length, mode, tooManyRowsMessage, message,
   );
   return { schedule: rows && applyImportedRows(schedule, rows, mode), errors };
 }
@@ -580,7 +587,14 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
-  const [importErrors, setImportErrors] = useState<string[]>([]);
+  // The errors are text in the language they were made in; a language switch
+  // drops them instead of leaving them in the old one.
+  const [importFailure, setImportFailure] = useState<{ t: typeof t; errors: string[] }>({
+    t,
+    errors: [],
+  });
+  const importErrors = importFailure.t === t ? importFailure.errors : [];
+  const setImportErrors = (errors: string[]) => setImportFailure({ t, errors });
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
   // Keep a ref to the latest onChange so the row-level callbacks we hand out
@@ -609,6 +623,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
     const { rows, errors } = planScheduleImport(
       text, schedule.length, mode,
       t("row.importTooMany").replace("{max}", String(MAX_SCHEDULE_ROWS)),
+      importMessageFor(t),
     );
     setImportErrors(errors);
     if (!rows) return;
@@ -906,6 +921,8 @@ const ScheduleRow = memo(function ScheduleRow({
     return { grouped, available, unavailable, availableReal, availableGeneric };
   }, [r.players, uiGt]);
 
+  const structureShort = (id: (typeof STRUCTURES)[number]["id"]) => t(`payout.${id}.short`);
+  const structureFull = (id: (typeof STRUCTURES)[number]["id"]) => t(`payout.${id}.full`);
   const current = dropdownData.grouped.find(
     (g) => g.s.id === r.payoutStructure,
   );
@@ -1111,7 +1128,7 @@ const ScheduleRow = memo(function ScheduleRow({
             id={`schedule-${r.id}-payouts`}
             aria-label={t("row.payouts")}
             value={r.payoutStructure}
-            title={current?.s.full ?? ""}
+            title={current ? structureFull(current.s.id) : ""}
             onChange={(e) => {
               const next = e.target.value as PayoutStructureId;
               update(r.id, {
@@ -1130,8 +1147,8 @@ const ScheduleRow = memo(function ScheduleRow({
             {dropdownData.availableReal.length > 0 && (
               <optgroup label={`— ${t("row.payoutGroup.real2026")} —`}>
                 {dropdownData.availableReal.map(({ s }) => (
-                  <option key={s.id} value={s.id} title={s.full}>
-                    {s.short}
+                  <option key={s.id} value={s.id} title={structureFull(s.id)}>
+                    {structureShort(s.id)}
                   </option>
                 ))}
               </optgroup>
@@ -1139,15 +1156,15 @@ const ScheduleRow = memo(function ScheduleRow({
             {dropdownData.availableGeneric.length > 0 && (
               <optgroup label={`— ${t("row.payoutGroup.generic")} —`}>
                 {dropdownData.availableGeneric.map(({ s }) => (
-                  <option key={s.id} value={s.id} title={s.full}>
-                    {s.short}
+                  <option key={s.id} value={s.id} title={structureFull(s.id)}>
+                    {structureShort(s.id)}
                   </option>
                 ))}
               </optgroup>
             )}
             {legacyCustom && (
-              <optgroup label="— Legacy —">
-                <option value="custom">Legacy custom (read-only)</option>
+              <optgroup label={`— ${t("row.payoutGroup.legacy")} —`}>
+                <option value="custom">{t("row.payoutLegacyCustom")}</option>
               </optgroup>
             )}
             {dropdownData.unavailable.length > 0 && (
@@ -1159,9 +1176,9 @@ const ScheduleRow = memo(function ScheduleRow({
                       key={g.s.id}
                       value={g.s.id}
                       disabled
-                      title={`${g.s.full} — ${reasonText}`}
+                      title={`${structureFull(g.s.id)} — ${reasonText}`}
                     >
-                      {`✕ ${g.s.short} — ${reasonText}`}
+                      {`✕ ${structureShort(g.s.id)} — ${reasonText}`}
                     </option>
                   );
                 })}
@@ -1483,7 +1500,7 @@ export function AdvancedRowPanel({
               }
               className="h-3.5 w-3.5 accent-[color:var(--color-accent)]"
             />
-            on
+            {t("row.sitThroughOn")}
           </label>
           {row.sitThroughPayJumps && (
             <FieldSmall label={t("row.sitThroughAgg")}>
@@ -1939,7 +1956,7 @@ function BrPresetSelect({
       className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
       title={t("row.brTier")}
     >
-      {current == null && <option value="">— BR tier —</option>}
+      {current == null && <option value="">{`— ${t("row.brTierPlaceholder")} —`}</option>}
       {BR_PRESETS.map((p) => (
         <option key={p.total} value={p.total}>
           {brTotalLabel(p)}
@@ -2058,7 +2075,7 @@ export function BuyInInput({
         title={
           gameType === "ocean-ko"
             ? t("row.buyIn.oceanTitle")
-            : "50+5 = $50 buy-in + $5 rake (or just a number)"
+            : t("row.buyIn.title")
         }
         className={
           INPUT_BASE +

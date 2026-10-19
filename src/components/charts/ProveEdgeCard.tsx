@@ -389,6 +389,7 @@ export function ProveEdgeCard({
           <button
             key={f.id}
             type="button"
+            aria-pressed={format === f.id}
             onClick={() => setFormatOverride(f.id)}
             className={`rounded border px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
               format === f.id

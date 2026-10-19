@@ -9,6 +9,7 @@ import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
 import { fmt, formatMinimumBankroll, money as usdMoney, pct } from "@/lib/results/formatters";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { withPlural } from "@/lib/i18n/plural";
 import { relativeDifferencePct, summarizePdStats } from "@/lib/results/primedopeDiagnostics";
 import {
   formatSigmaError,
@@ -195,7 +196,10 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
                 v={`${Math.round(col.data.neverBelow * col.res.samples)} / ${col.res.samples.toLocaleString()}`}
               />
               <Line
-                k={t("pd.report.probLoss").replace("{n}", col.data.N.toLocaleString())}
+                k={withPlural(t("pd.report.probLoss"), locale, col.data.N, "tournament").replace(
+                  "{n}",
+                  col.data.N.toLocaleString(numberLocaleTag(locale)),
+                )}
                 v={fmtPct(col.data.probLoss)}
               />
             </Section>
@@ -491,11 +495,19 @@ export function PrimedopeDiff({
   bankroll?: number;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { money } = useMoneyFmt();
   const ours = primary.stats;
   const theirs = other.stats;
   const primaryLabel = t(primary.calibrationMode === "primedope-binary-itm" ? "pd.model.primedope" : "pd.model.alpha");
   const secondaryLabel = theirsLabel ?? t(other.calibrationMode === "primedope-binary-itm" ? "pd.model.primedope" : "pd.model.alpha");
+  const tournaments = (value: number) => {
+    const rounded = Math.round(value);
+    return withPlural(t("pd.delta.tournaments"), locale, rounded, "tournament").replace(
+      "{value}",
+      String(rounded),
+    );
+  };
   const pctPp = (a: number, b: number) =>
     t("pd.delta.pp").replace("{value}", ((a - b) * 100).toFixed(2));
   const ratioPct = (a: number, b: number) => {
@@ -544,9 +556,9 @@ export function PrimedopeDiff({
     },
     {
       label: t("pd.row.longestBE"),
-      ours: t("pd.delta.tournaments").replace("{value}", String(Math.round(ours.longestBreakevenMean))),
-      theirs: t("pd.delta.tournaments").replace("{value}", String(Math.round(theirs.longestBreakevenMean))),
-      delta: t("pd.delta.tournaments").replace("{value}", String(Math.round(ours.longestBreakevenMean - theirs.longestBreakevenMean))),
+      ours: tournaments(ours.longestBreakevenMean),
+      theirs: tournaments(theirs.longestBreakevenMean),
+      delta: tournaments(ours.longestBreakevenMean - theirs.longestBreakevenMean),
     },
     {
       label: t("pd.row.var95"),

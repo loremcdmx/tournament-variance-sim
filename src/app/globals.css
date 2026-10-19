@@ -37,7 +37,8 @@
   --c-border-strong: #345f7a;
   --c-fg: #f3ece0;
   --c-fg-muted: #b6c4d1;
-  --c-fg-dim: #6b7c8a;
+  /* 4.5:1 on the page, cards and bg-elev (themeContrast test); #6b7c8a was 3.45-4.41. */
+  --c-fg-dim: #7d8c98;
 
   /* Suit palette — saturated enough to read as data colors, not grey decor. */
   --c-spade: #94a3b8;

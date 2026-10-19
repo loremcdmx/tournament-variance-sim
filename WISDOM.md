@@ -828,6 +828,58 @@ these without re-checking:
 - A cleared number box is not a number on any card: `commitDraftValue` and its
   wrappers in `convergenceInputs.ts` cover CI, ROI, rake and the mix shares.
 
+## Counts, Placeholders And Accessible Names
+
+Copy that reads as precise but is not, and controls a screen reader cannot
+describe. Do not undo these without re-checking:
+
+- A count printed next to a noun takes the noun from a `{_word}` placeholder
+  (`withPlural`, `WORDS` in `i18n/plural.ts`), never a fixed form: "1 ранов",
+  "21 турниров" and "1 runs" shipped from `{n} ранов` / `{n} runs`. The Russian
+  forms are nominative, so a template either puts the number where the nominative
+  fits ("{n} {_run}", "длилась {n} {_tournament}") or words the sentence so no case
+  is needed ("горизонт: {n} {_tournament}", "Сохранённых траекторий, не более: {n}").
+  `plural.test.ts` lists the templates that must carry the placeholder. Counts that
+  are ranges ("500–800" in the prove-edge anchor) or fixed Ocean distances were left
+  alone.
+- A dict string never carries a placeholder no code fills in ("every N runs",
+  `%s`); `dict.test.ts` scans for printf leftovers and pins the two that shipped.
+- Uniform and Empirical (and every realdata model) do not apply the row ROI. On the
+  run path the row's ITM is pinned (`applyItmTarget`), so Uniform puts the same mass
+  on every paid place and lands at -rake/(1+rake) at the table's own ITM, and far
+  from it at any other ITM (+51 % at 25 % ITM on a 10 % rake row). The help text and
+  `emp.none` say so; "PrimeDope-style" belongs to the compare path
+  (`calibrateShelledItm` with a binary-ITM shell), not to this model.
+- The CSV import builds its messages from dict keys (`ImportMessage`,
+  `importMessageFor(t)`). `parseImportCSV(raw)` with no formatter still returns the
+  English text the tests read; the editor passes the live `t` and drops the shown
+  errors on a language switch, so they never sit in the other language. User text
+  (`$$abc`) goes through `fmt`.
+- A segmented toggle (language, $/ABI, cash BB/$, format tabs) carries
+  `aria-pressed`; colour alone does not say which choice is on. The scenario picker
+  is a disclosure of buttons (`aria-expanded`, `aria-current` on the loaded one), not a
+  listbox: its options sat in `ul > li`, which a listbox does not own. Closing it from
+  the keyboard puts focus back on the trigger (`closeMenu`).
+- A live region is always in the page and only its text comes and goes
+  (`RecomputingStatus`, the `role="status"` in `RunProgress`): one that is mounted
+  with its text is not reliably announced, and one that is only faded to opacity 0 is
+  read aloud while nothing happens. The ETA ticks every 250 ms and stays out of the
+  live region; it announces the stage and "Done".
+- Run started from a field (Cmd/Ctrl+Enter) blurs it to commit the draft, and the
+  disabled fieldset would leave focus on `<body>` for good. `blurFocusedField` returns
+  the field and `restoreFocusedField` gives it back when the run ends, unless the user
+  has put focus elsewhere. `scrollIntoView` goes through `preferredScrollBehavior`.
+- The reset buttons on the convergence card quote where they land: the AFS grid is
+  50..50,000 and the ROI bounds belong to the format on screen, so a schedule outside
+  them resets to the nearest end and the title says so
+  (`convergenceResetTargets`). The band policy still sees only the clamped values.
+- Dark `--c-fg-dim` is #7d8c98: 5.5:1 on the page, 5.2:1 on a card, 4.95:1 on
+  bg-elev and 4.6:1 on bg-elev-2/70, where the old #6b7c8a gave 4.41 / 4.16 / 3.97 /
+  3.67. `themeContrast.test.ts` measures it in both themes (`DIM_TEXT_SITES`); the
+  light `--c-fg-dim` (#6e687d) was never below 4.6:1 on those surfaces, so an audit
+  note that it fails there was wrong. A solid bg-elev-2 fill (hover state of an
+  editor input) is 4.3:1 in the dark theme and is not in the measured set.
+
 ## Good Defaults For New Agents
 
 - Start read-only.

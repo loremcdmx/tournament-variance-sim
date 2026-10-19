@@ -33,6 +33,10 @@ describe("cash run-mode picker semantics", () => {
     expect(markup).not.toContain('role="radio');
     expect(markup).not.toContain("aria-checked");
     expect(markup).toContain('role="group"');
-    expect(markup.match(/aria-pressed="true"/g)?.length).toBe(1);
+    const group = /<div[^>]*role="group"[\s\S]*?<\/div>/.exec(markup)?.[0] ?? "";
+    expect(group.match(/aria-pressed="true"/g)?.length).toBe(1);
+    expect(group.match(/aria-pressed="false"/g)?.length).toBe(2);
+    // The money-unit toggle beside it says which unit is on as well: "usd" is pressed.
+    expect(markup.match(/aria-pressed="true"/g)?.length).toBe(2);
   });
 });

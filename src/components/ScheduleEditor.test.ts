@@ -6,6 +6,7 @@ import {
   buyInToCommit,
   parseBuyIn,
   displayItmPct,
+  importMessageFor,
   parseImportCSV,
   planScheduleImport,
   prepareScheduleImport,
@@ -753,5 +754,62 @@ describe("schedule row controls have an accessible name at every width", () => {
     const html = renderToStaticMarkup(React.createElement(LocaleProvider, null,
       React.createElement(AdvancedRowPanel, { row: base, onChange: vi.fn() })));
     expect(named(html, DICT["row.fieldSize"].ru)).toHaveLength(1);
+  });
+});
+
+describe("the editor shows its own text in the UI language", () => {
+  const ru = importMessageFor((key) => DICT[key].ru);
+  const render = (schedule: TournamentRow[]) => {
+    vi.stubGlobal("React", React);
+    return renderToStaticMarkup(React.createElement(LocaleProvider, null,
+      React.createElement(AdvancedModeProvider, null,
+        React.createElement(ScheduleEditor, { schedule, onChange: vi.fn() }))));
+  };
+  const row = (over: Partial<TournamentRow> = {}): TournamentRow => ({
+    id: "r", label: "r", players: 500, buyIn: 50, rake: 0.1, roi: 0.1,
+    payoutStructure: "mtt-standard", gameType: "freezeout", count: 1, ...over,
+  });
+
+  it("writes import errors in Russian when asked, with the user's text intact", () => {
+    const parsed = parseImportCSV(
+      ["Row, 500, $$abc, 10", "Row, 20000000, 50+5", "Row, 500, 50+5, 10, 1, wta"].join("\n"),
+      ru,
+    );
+    expect(parsed.errors).toEqual([
+      "строка 1: неверный бай-ин «$$abc»",
+      "строка 2: игроков должно быть от 2 до 1000000",
+      "строка 3: неизвестная сетка выплат «wta»",
+    ]);
+    expect(parseImportCSV("Row, 500, 50+5, 12,5", ru).errors[0]).toMatch(/^строка 1: .*12,5.*десятичная запятая/);
+  });
+
+  it("names an imported row with no label in the UI language", () => {
+    expect(parseImportCSV(", 500, 50+5", ru).rows[0].label).toBe("Импорт 1");
+    expect(parseImportCSV(", 500, 50+5").rows[0].label).toBe("Imported 1");
+  });
+
+  it("lists payout structures, the legacy group and the BR tier in Russian, not English", () => {
+    const html = render([
+      row({ id: "legacy", payoutStructure: "custom", customPayouts: [0.6, 0.4] }),
+      row({ id: "br", gameType: "mystery-royale", payoutStructure: "battle-royale", players: 18, buyIn: 7, rake: 0.1 }),
+    ]);
+    for (const id of ["winner-takes-all", "satellite-ticket", "mtt-primedope"] as const) {
+      expect(html).toContain(DICT[`payout.${id}.short`].ru);
+      expect(html).toContain(DICT[`payout.${id}.full`].ru);
+      expect(html).not.toContain(DICT[`payout.${id}.short`].en);
+    }
+    expect(html).toContain(DICT["row.payoutLegacyCustom"].ru);
+    expect(html).not.toContain("Legacy custom");
+    expect(html).toContain(DICT["row.brTierPlaceholder"].ru);
+    expect(html).not.toContain("BR tier");
+    expect(html).toContain(DICT["row.buyIn.title"].ru);
+    expect(html).not.toContain("or just a number");
+  });
+
+  it("labels the sit-through-pay-jumps switch in Russian", () => {
+    vi.stubGlobal("React", React);
+    const html = renderToStaticMarkup(React.createElement(LocaleProvider, null,
+      React.createElement(AdvancedRowPanel, { row: row({ sitThroughPayJumps: true }), onChange: vi.fn() })));
+    expect(html).toContain(`/>${DICT["row.sitThroughOn"].ru}</label>`);
   });
 });

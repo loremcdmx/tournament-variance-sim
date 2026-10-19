@@ -15,6 +15,9 @@
  * from being mis-sold as a completed one via a false 100 % flash.
  */
 
+import type { DictKey } from "@/lib/i18n/dict";
+import type { ProgressStage } from "@/lib/sim/useSimulation";
+
 export type BarState = "hidden" | "running" | "completing";
 
 /** Hold duration (ms) for the `completing` phase. */
@@ -65,7 +68,27 @@ export function progressPercent(progress: number): number {
  * through `progressPercent` so the two can never disagree.
  */
 export function barFillPercent(state: BarState, progress: number): string {
-  if (state === "hidden") return "0%";
-  if (state === "completing") return "100%";
-  return `${progressPercent(progress)}%`;
+  return `${progressValueNow(state, progress)}%`;
+}
+
+/** The bar's value as a number: what `aria-valuenow` says, so the fill width and
+ *  the announced percent cannot drift apart. */
+export function progressValueNow(state: BarState, progress: number): number {
+  if (state === "hidden") return 0;
+  if (state === "completing") return 100;
+  return progressPercent(progress);
+}
+
+/**
+ * What the polite status region says about the run: the stage while it runs
+ * (a handful of changes per run, unlike the ETA, which ticks every 250 ms and
+ * stays out of the live region), then that it is done. Null at rest.
+ */
+export function runLiveStatusKey(args: {
+  running: boolean;
+  stage?: ProgressStage | null;
+  hasDone: boolean;
+}): DictKey | null {
+  if (args.running) return args.stage ? `controls.stage.${args.stage}` : "controls.starting";
+  return args.hasDone ? "controls.done.label" : null;
 }

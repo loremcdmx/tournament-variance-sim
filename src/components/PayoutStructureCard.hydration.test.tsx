@@ -66,3 +66,16 @@ describe("payout bar palette and hydration", () => {
     expect(store[PALETTE_STORAGE_KEY]).toBe("heat");
   });
 });
+
+describe("payout place labels", () => {
+  it("number the places in the UI language, not with English ordinals", () => {
+    const markup = renderToStaticMarkup(
+      <LocaleProvider>
+        <PayoutStructureCard schedule={[row]} />
+      </LocaleProvider>,
+    );
+    expect(markup).toContain(">1-е<");
+    expect(markup).toContain(">9-е<");
+    expect(markup).not.toMatch(/>(?:1st|2nd|3rd|[4-9]th)</);
+  });
+});

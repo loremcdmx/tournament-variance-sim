@@ -5,7 +5,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 
 export function CornerToggles() {
-  const { locale, setLocale } = useLocale();
+  const { locale, setLocale, t } = useLocale();
   const { theme, toggle } = useTheme();
   const { advanced, adminAvailable, toggle: toggleAdvanced } = useAdvancedMode();
 
@@ -15,6 +15,7 @@ export function CornerToggles() {
         <button
           type="button"
           onClick={() => setLocale("en")}
+          aria-pressed={locale === "en"}
           className={`rounded-full px-2.5 py-1 font-semibold transition-colors ${
             locale === "en"
               ? "bg-[color:var(--color-bg-elev-2)] text-[color:var(--color-fg)]"
@@ -27,6 +28,7 @@ export function CornerToggles() {
         <button
           type="button"
           onClick={() => setLocale("ru")}
+          aria-pressed={locale === "ru"}
           className={`rounded-full px-2.5 py-1 font-semibold transition-colors ${
             locale === "ru"
               ? "bg-[color:var(--color-bg-elev-2)] text-[color:var(--color-fg)]"
@@ -46,9 +48,9 @@ export function CornerToggles() {
               ? "bg-[color:var(--color-bg-elev-2)] text-[color:var(--color-fg)]"
               : "text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg-muted)]"
           }`}
-          aria-label={advanced ? "Disable advanced mode" : "Enable advanced mode"}
+          aria-label={t(advanced ? "corner.advanced.disable" : "corner.advanced.enable")}
           aria-pressed={advanced}
-          title={advanced ? "Advanced mode: on" : "Advanced mode: off"}
+          title={t(advanced ? "corner.advanced.stateOn" : "corner.advanced.stateOff")}
         >
           ADV
         </button>
@@ -57,8 +59,8 @@ export function CornerToggles() {
         type="button"
         onClick={toggle}
         className="flex h-6 w-6 items-center justify-center rounded-full text-[color:var(--color-fg-muted)] transition-colors hover:bg-[color:var(--color-bg-elev-2)] hover:text-[color:var(--color-fg)]"
-        aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-        title={theme === "dark" ? "Light theme" : "Dark theme"}
+        aria-label={t(theme === "dark" ? "corner.theme.toLight" : "corner.theme.toDark")}
+        title={t(theme === "dark" ? "corner.theme.light" : "corner.theme.dark")}
       >
         {theme === "dark" ? (
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">

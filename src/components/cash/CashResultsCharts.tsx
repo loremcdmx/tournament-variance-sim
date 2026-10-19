@@ -12,6 +12,7 @@ import type uPlot from "uplot";
 import { UplotChart, type CursorInfo } from "@/components/charts/UplotChart";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { withPlural } from "@/lib/i18n/plural";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import {
   DEFAULT_LINE_STYLE_PRESET,
@@ -469,7 +470,7 @@ export function TrajectoryChart({
         },
         deferredVisibleRuns > 0 && {
           key: "runs",
-          label: t("chart.traj.legend.runs").replace(
+          label: withPlural(t("chart.traj.legend.runs"), locale, deferredVisibleRuns, "run").replace(
             "{n}",
             deferredVisibleRuns.toLocaleString(numberLocale),
           ),
@@ -486,7 +487,7 @@ export function TrajectoryChart({
         color: string;
         dash?: boolean;
       }>,
-    [deferredVisibleRuns, linePreset, numberLocale, t],
+    [deferredVisibleRuns, linePreset, locale, numberLocale, t],
   );
 
   const handlePlotReady = useCallback((plot: uPlot | null) => {

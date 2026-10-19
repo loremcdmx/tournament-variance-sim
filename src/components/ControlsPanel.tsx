@@ -26,6 +26,7 @@ import {
 } from "@/lib/ui/numberDraft";
 import { isStopClickTooEarly } from "@/lib/ui/runButtonGuard";
 import { focusRunBlocker } from "@/lib/ui/runBlockedTarget";
+import { preferredScrollBehavior } from "@/lib/ui/scrollBehavior";
 import type { BattleRoyaleLeaderboardControls } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
   COMPLETING_HOLD_MS,
@@ -33,6 +34,8 @@ import {
   barFillPercent,
   nextBarState,
   progressPercent,
+  progressValueNow,
+  runLiveStatusKey,
 } from "@/lib/ui/progressBarState";
 import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
@@ -271,7 +274,6 @@ export const ControlsPanel = memo(function ControlsPanel({
     const id = window.setTimeout(() => setBarState("hidden"), COMPLETING_HOLD_MS);
     return () => window.clearTimeout(id);
   }, [running, progress, barState]);
-  const barVisible = barState !== "hidden";
   // Remount the filled portion on each new-run edge so a previously-completed
   // bar (frozen at 100 %) doesn't animate 100 → 0 via CSS width transition
   // when the next run starts. Incrementing a key on the false→true edge is
@@ -640,29 +642,15 @@ export const ControlsPanel = memo(function ControlsPanel({
             </button>
           </div>
         </div>
-        {barVisible && (
-          <>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]">
-              <div
-                key={runToken}
-                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300"
-                style={{
-                  width: barFillPercent(barState, progress),
-                  // Glide between progress updates so build-progress message
-                  // bursts (~10 messages with 100-300 ms gaps during heavy
-                  // envelope sorts) don't visually stall the bar between
-                  // bursts. CSS-only — zero JS / re-render cost.
-                  transition: "width 220ms ease-out",
-                }}
-              />
-            </div>
-            {barState === "running" && stage && (
-              <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
-                {t(`controls.stage.${stage}`)}
-              </div>
-            )}
-          </>
-        )}
+        <RunProgress
+          barState={barState}
+          runToken={runToken}
+          progress={progress}
+          stage={stage}
+          running={running}
+          hasDone={doneSummary != null}
+          t={t}
+        />
         {!running && doneSummary && (
           <DoneSummaryBlock summary={doneSummary} />
         )}
@@ -670,6 +658,67 @@ export const ControlsPanel = memo(function ControlsPanel({
     </Card>
   );
 });
+
+interface RunProgressProps {
+  barState: BarState;
+  runToken: number;
+  progress: number;
+  stage?: ProgressStage | null;
+  running: boolean;
+  hasDone: boolean;
+  t: (key: DictKey) => string;
+}
+
+// The bar is a progressbar a screen reader can read; what it announces on its own
+// is the coarse status (stage changes, done), not the 250 ms ETA tick.
+export function RunProgress({
+  barState,
+  runToken,
+  progress,
+  stage,
+  running,
+  hasDone,
+  t,
+}: RunProgressProps) {
+  const statusKey = runLiveStatusKey({ running, stage, hasDone });
+  return (
+    <>
+      <div role="status" className="sr-only">
+        {statusKey ? t(statusKey) : ""}
+      </div>
+      {barState !== "hidden" && (
+        <>
+          <div
+            role="progressbar"
+            aria-label={t("controls.progress")}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressValueNow(barState, progress)}
+            className="h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--color-bg)]"
+          >
+            <div
+              key={runToken}
+              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300"
+              style={{
+                width: barFillPercent(barState, progress),
+                // Glide between progress updates so build-progress message
+                // bursts (~10 messages with 100-300 ms gaps during heavy
+                // envelope sorts) don't visually stall the bar between
+                // bursts. CSS-only — zero JS / re-render cost.
+                transition: "width 220ms ease-out",
+              }}
+            />
+          </div>
+          {barState === "running" && stage && (
+            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+              {t(`controls.stage.${stage}`)}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
 
 interface RunActionButtonProps {
   running: boolean;
@@ -943,7 +992,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
   const scrollToResults = () => {
     const el = document.getElementById(summary.resultsAnchorId);
     if (el)
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.scrollIntoView({ behavior: preferredScrollBehavior(window), block: "start" });
   };
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">

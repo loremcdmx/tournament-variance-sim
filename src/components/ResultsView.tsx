@@ -1,6 +1,7 @@
 "use client";
 
 import { RangeInput } from "@/components/ui/RangeInput";
+import { RecomputingStatus } from "@/components/results/RecomputingStatus";
 import {
   memo,
   useContext,
@@ -25,6 +26,7 @@ import { noiseChannelsActive } from "@/lib/sim/convergencePolicy";
 import { type RunMode } from "@/lib/trajectorySelection";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { withPlural } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { pdComparePaneKeys, pdOverlayLabelKeys } from "@/lib/ui/pdComparePanes";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
@@ -902,10 +904,15 @@ function ResultsViewImpl({
                 )
               : !bankrollOff
                 ? t("stat.probProfit.shiftedSurvival")
-                : t("stat.probProfit.sub").replace(
-                  "{n}",
-                  intFmt(shiftedStats.tournamentsFor95ROI, numberLocale),
-                )
+                : withPlural(
+                    t("stat.probProfit.sub"),
+                    locale,
+                    shiftedStats.tournamentsFor95ROI,
+                    "tournament",
+                  ).replace(
+                    "{n}",
+                    intFmt(shiftedStats.tournamentsFor95ROI, numberLocale),
+                  )
           }
           tip={t("stat.probProfit.tip")}
           pdValue={shiftedPdStats ? pct(shiftedPdStats.probProfit) : undefined}
@@ -940,10 +947,12 @@ function ResultsViewImpl({
           sub={
             bankrollOff
               ? t("stat.bankrollOff")
-              : `${t("stat.riskOfRuin.sub")} · ${t("stat.riskOfRuin.horizon").replace(
-                  "{n}",
-                  result.tournamentsPerSample.toLocaleString(numberLocale),
-                )}`
+              : `${t("stat.riskOfRuin.sub")} · ${withPlural(
+                  t("stat.riskOfRuin.horizon"),
+                  locale,
+                  result.tournamentsPerSample,
+                  "tournament",
+                ).replace("{n}", result.tournamentsPerSample.toLocaleString(numberLocale))}`
           }
           tip={
             ruinScaleOff
@@ -968,20 +977,7 @@ function ResultsViewImpl({
 
       {(rakebackCurve || canHideJackpots || rbRecomputing || lbCurve) && (
         <div className="flex items-center justify-between gap-4 -mb-1">
-          <div
-            className={`flex items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)] transition-opacity duration-150 ${
-              rbRecomputing ? "opacity-100" : "opacity-0"
-            }`}
-            aria-live="polite"
-          >
-            <span
-              className="inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-400"
-              aria-hidden
-            />
-            <span className="uppercase tracking-wider text-[color:var(--c-indigo-label)]">
-              {t("chart.recomputing")}
-            </span>
-          </div>
+          <RecomputingStatus active={rbRecomputing} label={t("chart.recomputing")} />
           <div className="flex items-center gap-4">
           {canHideJackpots && (
             <label
@@ -1942,7 +1938,12 @@ function BattleRoyaleLeaderboardPromoSection({
                   {row.label}
                 </div>
                 <div className="text-[color:var(--color-fg-dim)]">
-                  {t("chart.brLeaderboardObserved.rowLine")
+                  {withPlural(
+                    t("chart.brLeaderboardObserved.rowLine"),
+                    locale,
+                    row.tournaments,
+                    "tournament",
+                  )
                     .replace("{count}", row.tournaments.toLocaleString(numberLocale))
                     .replace("{buyIn}", money(row.buyIn))
                     .replace("{payout}", money(row.payout))}
@@ -1967,7 +1968,12 @@ function BattleRoyaleLeaderboardPromoSection({
                         ${row.stake}
                       </div>
                       <div className="text-[color:var(--color-fg-dim)]">
-                        {t("chart.brLeaderboardObserved.observedMixLine")
+                        {withPlural(
+                          t("chart.brLeaderboardObserved.observedMixLine"),
+                          locale,
+                          Math.round(row.tournaments),
+                          "tournament",
+                        )
                           .replace("{points}", row.points.toLocaleString(numberLocale))
                           .replace("{share}", pct(row.share))
                           .replace("{tournaments}", row.tournaments.toFixed(0))
@@ -3048,7 +3054,7 @@ function InlineUnitToggle() {
   );
 }
 
-function UnitToggle({
+export function UnitToggle({
   value,
   onChange,
   t,
@@ -3060,6 +3066,7 @@ function UnitToggle({
   const btn = (mode: "money" | "abi", label: string) => (
     <button
       type="button"
+      aria-pressed={value === mode}
       onClick={() => onChange(mode)}
       className={`px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition ${
         value === mode

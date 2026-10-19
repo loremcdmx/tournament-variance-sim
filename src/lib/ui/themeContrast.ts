@@ -261,6 +261,17 @@ export const STATUS_SITES: StatusSite[] = [
   { id: "overlay legend, fuchsia series", where: "DistributionChart", fg: { token: "--c-overlay-fuchsia-fg" }, base: "card" },
 ];
 
+/** The dim caption colour (units, column heads, helper lines) on the surfaces
+ *  those captions sit on: the page, a `Card`, a solid `bg-elev` field and the two
+ *  `bg-elev-2` fills the editor rows use. Measured in both themes. */
+export const DIM_TEXT_SITES: StatusSite[] = [
+  { id: "dim text on the page", where: "everywhere", fg: { token: "--c-fg-dim" }, base: "page" },
+  { id: "dim text on a card", where: "Card", fg: { token: "--c-fg-dim" }, base: "card" },
+  { id: "dim text on bg-elev", where: "inputs, popups", fg: { token: "--c-fg-dim" }, base: "page", layers: [{ token: "--c-bg-elev" }] },
+  { id: "dim text on bg-elev-2/55", where: "schedule header strip", fg: { token: "--c-fg-dim" }, base: "card", layers: [{ token: "--c-bg-elev-2", alpha: 0.55 }] },
+  { id: "dim text on bg-elev-2/70", where: "ScheduleEditor inputs", fg: { token: "--c-fg-dim" }, base: "card", layers: [{ token: "--c-bg-elev-2", alpha: 0.7 }] },
+];
+
 function splitTopLevel(list: string): string[] {
   const parts: string[] = [];
   let depth = 0;

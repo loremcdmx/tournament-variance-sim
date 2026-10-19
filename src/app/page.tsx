@@ -53,7 +53,7 @@ import {
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
-import { blurFocusedField } from "@/lib/ui/blurFocusedField";
+import { blurFocusedField, restoreFocusedField } from "@/lib/ui/blurFocusedField";
 import { canStartRun } from "@/lib/ui/runGate";
 import { controlsForLoadedState } from "@/lib/ui/loadedControls";
 import { focusRunBlocker, runBlockedScrollTarget } from "@/lib/ui/runBlockedTarget";
@@ -487,6 +487,7 @@ export default function Home() {
           tiltFastScale: deferredResultsControls.tiltFastScale,
           tiltSlowGain: deferredResultsControls.tiltSlowGain,
           tiltSlowThreshold: deferredResultsControls.tiltSlowThreshold,
+          tiltSlowMinDuration: deferredResultsControls.tiltSlowMinDuration,
           bankroll: deferredResultsControls.bankroll,
           finishModelId: deferredResultsControls.finishModelId,
           empiricalBuckets: deferredResultsControls.empiricalBuckets,
@@ -498,6 +499,7 @@ export default function Home() {
       deferredResultsControls.tiltFastScale,
       deferredResultsControls.tiltSlowGain,
       deferredResultsControls.tiltSlowThreshold,
+      deferredResultsControls.tiltSlowMinDuration,
       deferredResultsControls.bankroll,
       deferredResultsControls.finishModelId,
       deferredResultsControls.empiricalBuckets,
@@ -517,19 +519,35 @@ export default function Home() {
   // the state those commits produced.
   const [runRequest, setRunRequest] = useState(0);
   const handledRunRequestRef = useRef(0);
+  const fieldBeforeRunRef = useRef<HTMLElement | null>(null);
+  const returnFocusToField = useCallback(() => {
+    const field = fieldBeforeRunRef.current;
+    fieldBeforeRunRef.current = null;
+    restoreFocusedField(document, field);
+  }, []);
   const onRun = useCallback(() => {
     if (!canStartRun({ activeMode, mttModel, status })) return;
-    blurFocusedField(document);
+    fieldBeforeRunRef.current = blurFocusedField(document);
     startTransition(() => setRunRequest((n) => n + 1));
   }, [activeMode, mttModel, status]);
+
+  // The editors are disabled while a run goes; focus goes back to the field Run
+  // was started from once they are live again.
+  useEffect(() => {
+    if (status !== "running") returnFocusToField();
+  }, [status, returnFocusToField]);
 
   useEffect(() => {
     if (runRequest === 0 || handledRunRequestRef.current === runRequest) return;
     handledRunRequestRef.current = runRequest;
-    if (!canStartRun({ activeMode, mttModel, status })) return;
+    if (!canStartRun({ activeMode, mttModel, status })) {
+      returnFocusToField();
+      return;
+    }
     clearPendingInterrupt();
     const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
     if (!liveFeasibility.ok) {
+      returnFocusToField();
       focusRunBlocker(document, runBlockedScrollTarget(liveFeasibility.issues));
       return;
     }
@@ -548,6 +566,7 @@ export default function Home() {
   }, [
     runRequest,
     clearPendingInterrupt,
+    returnFocusToField,
     effectiveSchedule,
     previewModel,
     controls,
@@ -989,6 +1008,12 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 py-3 sm:px-6 sm:py-4 xl:max-w-[1800px] 2xl:max-w-[2200px] 3xl:max-w-[2500px] 4xl:max-w-[2900px] min-[2560px]:!max-w-[3400px]">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-[color:var(--color-accent)] focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-[color:var(--c-on-accent)]"
+      >
+        {t("a11y.skipToContent")}
+      </a>
       <header className="flex flex-col gap-3">
         {/* Brand strip */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[color:var(--color-border)] pb-2">
@@ -1206,6 +1231,7 @@ export default function Home() {
         )}
       </header>
 
+      <main id="main" tabIndex={-1} className="flex flex-col gap-4 outline-none">
       {shareLinkInvalid && (
         <PageNotice
           message={t("notice.shareLinkInvalid")}
@@ -1526,6 +1552,7 @@ export default function Home() {
       )}
       </>
       )}
+      </main>
 
       <footer className="mt-4 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-6 text-xs text-[color:var(--color-fg-dim)]">
         <div>

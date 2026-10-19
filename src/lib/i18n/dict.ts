@@ -339,13 +339,13 @@ export const DICT = {
   "pd.report.ror5Gaussian": {"en":"5% risk · Gaussian estimate","ru":"Риск 5% · гауссова оценка"},
   "pd.report.ror1Gaussian": {"en":"1% risk · Gaussian estimate","ru":"Риск 1% · гауссова оценка"},
   "pd.report.neverBelow": {"en":"Runs that never fell below zero profit","ru":"Раны, где профит не опускался ниже нуля"},
-  "pd.report.probLoss": {"en":"Chance of loss after {n} tournaments","ru":"Вероятность убытка после {n} турниров"},
+  "pd.report.probLoss": {"en":"Chance of loss after {n} {_tournament}","ru":"Вероятность убытка на дистанции: {n} {_tournament}"},
   "pd.delta.pp": {"en":"{value} percentage points","ru":"{value} процентных пунктов"},
-  "pd.delta.tournaments": {"en":"{value} tournaments","ru":"{value} турниров"},
+  "pd.delta.tournaments": {"en":"{value} {_tournament}","ru":"{value} {_tournament}"},
   "pd.calibrationClamped": {"en":"PrimeDope could not reach the configured payout for {row}: requested {target}, modeled {actual} per tournament. These results use the modeled payout.","ru":"PrimeDope не достиг заданной выплаты для {row}: запрошено {target}, смоделировано {actual} за турнир. Результаты рассчитаны по смоделированной выплате."},
   "chart.traj.profit": {"en":"Profit","ru":"Профит"},
   "chart.itmBadge.tip": {"en":"In-the-money rate: {value}%","ru":"Частота попадания в призы: {value}%"},
-  "runs.capturedMax": {"en":"Maximum {n} stored paths","ru":"Сохранено не более {n} траекторий"},
+  "runs.capturedMax": {"en":"Stored paths, at most: {n}","ru":"Сохранённых траекторий, не более: {n}"},
   "stat.probProfit.shiftedSurvival": {"en":"The never-busted estimate is unavailable for this adjusted view.","ru":"Оценка «без банкротства» недоступна для этого скорректированного вида."},
   "controls.brLeaderboard.lookupError.incomplete": {"en":"Some usernames returned no data. Previous totals are unchanged. Check every nickname and try again.","ru":"Для части ников нет данных. Прежние итоги сохранены. Проверь все ники и повтори запрос."},
   "controls.brLeaderboard.lookupError.rate-limited": {"en":"Too many lookup requests. Previous totals are unchanged; try again in {seconds} seconds.","ru":"Слишком много запросов. Прежние итоги сохранены; повтори через {seconds} сек."},
@@ -419,12 +419,48 @@ export const DICT = {
   "section.controls.title": { en: "Simulation launch", ru: "Запуск симуляции" },
   "section.results.title": { en: "Results", ru: "Результаты" },
   "section.results.subtitle": {
-    en: "{samples} simulated runs, {tourneys} tournaments in each run",
-    ru: "{samples} симуляций по {tourneys} турниров в каждой симуляции",
+    en: "Simulated runs: {samples}, tournaments in each run: {tourneys}",
+    ru: "Симуляций: {samples}, турниров в каждой: {tourneys}",
   },
 
   // Demo scenarios
   "demo.label": { en: "Example schedules", ru: "Примеры расписаний" },
+  "a11y.skipToContent": {
+    en: "Skip to content",
+    ru: "К содержимому",
+  },
+  "corner.advanced.disable": {
+    en: "Disable advanced mode",
+    ru: "Выключить расширенный режим",
+  },
+  "corner.advanced.enable": {
+    en: "Enable advanced mode",
+    ru: "Включить расширенный режим",
+  },
+  "corner.advanced.stateOn": {
+    en: "Advanced mode: on",
+    ru: "Расширенный режим: вкл",
+  },
+  "corner.advanced.stateOff": {
+    en: "Advanced mode: off",
+    ru: "Расширенный режим: выкл",
+  },
+  "corner.theme.toLight": {
+    en: "Switch to light theme",
+    ru: "Включить светлую тему",
+  },
+  "corner.theme.toDark": {
+    en: "Switch to dark theme",
+    ru: "Включить тёмную тему",
+  },
+  "corner.theme.light": {
+    en: "Light theme",
+    ru: "Светлая тема",
+  },
+  "corner.theme.dark": {
+    en: "Dark theme",
+    ru: "Тёмная тема",
+  },
   "demo.choosePlaceholder": {
     en: "Pick a scenario",
     ru: "Выбрать пример",
@@ -557,6 +593,46 @@ export const DICT = {
   "row.importAppend": { en: "Append", ru: "Добавить" },
   "row.importReplace": { en: "Replace all", ru: "Заменить всё" },
   "row.importCancel": { en: "cancel", ru: "отмена" },
+  "row.importErr.minCells": {
+    en: "line {line}: need at least label, players, buyIn",
+    ru: "строка {line}: нужны минимум название, игроки и бай-ин",
+  },
+  "row.importErr.tooManyColumns": {
+    en: "line {line}: too many columns (max {max}: label, players, buyIn, roi, count, payout); a decimal comma needs \";\" between the columns",
+    ru: "строка {line}: слишком много столбцов (максимум {max}: название, игроки, бай-ин, roi, число, выплаты); с десятичной запятой столбцы разделяют знаком «;»",
+  },
+  "row.importErr.decimalComma": {
+    en: "line {line}: \"{pair}\" reads as two cells (roi {roi}, count {count}), not a decimal comma; write {roi}.{count} or separate the columns with \";\"",
+    ru: "строка {line}: «{pair}» читается как две ячейки (roi {roi}, число {count}), а не как десятичная запятая; напиши {roi}.{count} или раздели столбцы знаком «;»",
+  },
+  "row.importErr.players": {
+    en: "line {line}: players must be 2..{max}",
+    ru: "строка {line}: игроков должно быть от 2 до {max}",
+  },
+  "row.importErr.buyIn": {
+    en: "line {line}: bad buy-in \"{value}\"",
+    ru: "строка {line}: неверный бай-ин «{value}»",
+  },
+  "row.importErr.roiNumber": {
+    en: "line {line}: roi must be a plain number",
+    ru: "строка {line}: roi должен быть обычным числом",
+  },
+  "row.importErr.roiRange": {
+    en: "line {line}: roi must be {min}..{max} (percent)",
+    ru: "строка {line}: roi должен быть от {min} до {max} (в процентах)",
+  },
+  "row.importErr.count": {
+    en: "line {line}: count must be 1..{max}",
+    ru: "строка {line}: число турниров должно быть от 1 до {max}",
+  },
+  "row.importErr.payout": {
+    en: "line {line}: unknown payout \"{value}\"",
+    ru: "строка {line}: неизвестная сетка выплат «{value}»",
+  },
+  "row.importLabel": {
+    en: "Imported {n}",
+    ru: "Импорт {n}",
+  },
   "row.roi": { en: "ROI %", ru: "ROI %" },
   "row.payouts": { en: "Payouts", ru: "Выплаты" },
   "row.payoutCompat.tooFew": {
@@ -584,6 +660,146 @@ export const DICT = {
   "row.payoutGroup.generic": {
     en: "Generic presets",
     ru: "Обобщённые пресеты",
+  },
+  "row.payoutGroup.legacy": {
+    en: "Legacy",
+    ru: "Устаревшее",
+  },
+  "row.payoutLegacyCustom": {
+    en: "Legacy custom (read-only)",
+    ru: "Устаревшая своя сетка (только чтение)",
+  },
+  "payout.mtt-pokerstars.short": {
+    en: "PokerStars SCOOP (2026)",
+    ru: "PokerStars SCOOP (2026)",
+  },
+  "payout.mtt-pokerstars.full": {
+    en: "PokerStars SCOOP 119-L Main · calibrated to 2026-03-25 sample",
+    ru: "PokerStars SCOOP 119-L Main · откалибровано по выборке от 2026-03-25",
+  },
+  "payout.mtt-sunday-million.short": {
+    en: "Sunday Million (2026)",
+    ru: "Sunday Million (2026)",
+  },
+  "payout.mtt-sunday-million.full": {
+    en: "PokerStars Sunday Million · real 2026 curve",
+    ru: "PokerStars Sunday Million · реальная кривая 2026",
+  },
+  "payout.mtt-gg.short": {
+    en: "Mini CoinMasters (2026)",
+    ru: "Mini CoinMasters (2026)",
+  },
+  "payout.mtt-gg.full": {
+    en: "CoinPoker Mini CoinMasters · calibrated to 2026-04-14 sample",
+    ru: "CoinPoker Mini CoinMasters · откалибровано по выборке от 2026-04-14",
+  },
+  "payout.mtt-gg-freeze.short": {
+    en: "GG Freezeout (2026)",
+    ru: "GG Freezeout (2026)",
+  },
+  "payout.mtt-gg-freeze.full": {
+    en: "GGPoker freezeouts · fitted to real 2026 prizes, checked on 2025",
+    ru: "Фризауты GGPoker · подогнано под реальные призы 2026, проверено на 2025",
+  },
+  "payout.mtt-gg-bounty.short": {
+    en: "Mini CoinHunter PKO (2026)",
+    ru: "Mini CoinHunter PKO (2026)",
+  },
+  "payout.mtt-gg-bounty.full": {
+    en: "CoinPoker Mini CoinHunter PKO · calibrated to 2026-04-14 sample",
+    ru: "CoinPoker Mini CoinHunter PKO · откалибровано по выборке от 2026-04-14",
+  },
+  "payout.mtt-gg-mystery.short": {
+    en: "GG Mystery Bounty",
+    ru: "GG Mystery Bounty",
+  },
+  "payout.mtt-gg-mystery.full": {
+    en: "GG Mystery Bounty · ITM-phase envelopes · 13% paid, 1st ≈ 9–12.5%",
+    ru: "GG Mystery Bounty · конверты ITM-фазы · платят 13%, 1-е ≈ 9–12,5%",
+  },
+  "payout.mtt-primedope.short": {
+    en: "PrimeDope payouts",
+    ru: "Выплаты PrimeDope",
+  },
+  "payout.mtt-primedope.full": {
+    en: "PrimeDope native payout curves (15% paid)",
+    ru: "Родные кривые выплат PrimeDope (платят 15%)",
+  },
+  "payout.mtt-standard.short": {
+    en: "MTT Standard 15%",
+    ru: "MTT Standard 15%",
+  },
+  "payout.mtt-standard.full": {
+    en: "MTT · Standard (15% paid)",
+    ru: "MTT · Standard (платят 15%)",
+  },
+  "payout.mtt-flat.short": {
+    en: "MTT Flat 20%",
+    ru: "MTT Flat 20%",
+  },
+  "payout.mtt-flat.full": {
+    en: "MTT · Flat (20% paid)",
+    ru: "MTT · Flat (платят 20%)",
+  },
+  "payout.mtt-top-heavy.short": {
+    en: "MTT Top-heavy 12%",
+    ru: "MTT Top-heavy 12%",
+  },
+  "payout.mtt-top-heavy.full": {
+    en: "MTT · Top-heavy (12% paid)",
+    ru: "MTT · Top-heavy (платят 12%)",
+  },
+  "payout.battle-royale.short": {
+    en: "GG Battle Royal",
+    ru: "GG Battle Royal",
+  },
+  "payout.battle-royale.full": {
+    en: "GG Battle Royal · 18-max, top-3 paid",
+    ru: "GG Battle Royal · 18-max, платят топ-3",
+  },
+  "payout.satellite-ticket.short": {
+    en: "Satellite (tickets)",
+    ru: "Сателлит (билеты)",
+  },
+  "payout.satellite-ticket.full": {
+    en: "Satellite · ticket cliff (10% seats)",
+    ru: "Сателлит · билетный обрыв (10% мест)",
+  },
+  "payout.sng-50-30-20.short": {
+    en: "SNG 50/30/20",
+    ru: "SNG 50/30/20",
+  },
+  "payout.sng-50-30-20.full": {
+    en: "SNG · 50/30/20",
+    ru: "SNG · 50/30/20",
+  },
+  "payout.sng-65-35.short": {
+    en: "SNG 65/35",
+    ru: "SNG 65/35",
+  },
+  "payout.sng-65-35.full": {
+    en: "SNG · 65/35",
+    ru: "SNG · 65/35",
+  },
+  "payout.winner-takes-all.short": {
+    en: "Winner takes all",
+    ru: "Победитель берёт всё",
+  },
+  "payout.winner-takes-all.full": {
+    en: "Winner takes all",
+    ru: "Победитель берёт всё",
+  },
+  "row.brTierPlaceholder": {
+    en: "BR tier",
+    ru: "Уровень BR",
+  },
+  "row.sitThroughOn": {
+    en: "on",
+    ru: "вкл",
+  },
+  "row.buyIn.title": {
+    en: "50+5 = $50 buy-in + $5 rake (or just a number)",
+    ru: "50+5 = $50 бай-ин + $5 рейк (или просто число)",
   },
   "row.count": {
     en: "Tournaments",
@@ -655,8 +871,8 @@ export const DICT = {
   "shape.current": { en: "Current EW:", ru: "Сейчас EW:" },
   "shape.autoFit": { en: "Auto-fit", ru: "Подогнать" },
   "shape.infeasible": {
-    en: "Locked constraints can't hit the ROI target. Either unlock a shell or relax the locked %s.",
-    ru: "Зафиксированные корзины не позволяют попасть в целевой ROI. Разблокируй одну из них или ослабь фиксированные %.",
+    en: "Locked constraints can't hit the ROI target. Either unlock a shell or relax the locked values.",
+    ru: "Зафиксированные корзины не позволяют попасть в целевой ROI. Разблокируй одну из них или ослабь зафиксированные значения.",
   },
   "shape.infeasibleHint": {
     en: "Gap between target and current expected winnings",
@@ -722,11 +938,15 @@ export const DICT = {
   },
   "sanity.tilt-fast-no-scale": {
     en: "Fast tilt has gain set but scale = 0 — tanh saturates instantly, so any non-zero drawdown jumps straight to the full ROI shift instead of ramping up.",
-    ru: "У быстрого тильта задан gain, но scale = 0 — tanh saturates моментально, поэтому любая просадка сразу даёт полный сдвиг ROI без плавного нарастания.",
+    ru: "У быстрого тильта задан gain, но scale = 0 — tanh насыщается моментально, поэтому любая просадка сразу даёт полный сдвиг ROI без плавного нарастания.",
   },
   "sanity.tilt-slow-no-threshold": {
-    en: "Slow tilt has gain set but threshold ≤ 0 — the down/up state triggers on any non-zero drawdown instead of waiting for the configured depth.",
-    ru: "У медленного тильта задан gain, но threshold ≤ 0 — состояние «вниз/вверх» срабатывает при любой ненулевой просадке, а не на заданной глубине.",
+    en: "Slow tilt has gain set but threshold ≤ 0 — the channel needs a positive threshold, so slow tilt is switched off and the run is the same as without it.",
+    ru: "У медленного тильта задан gain, но threshold ≤ 0 — каналу нужен положительный порог, поэтому медленный тильт выключен и прогон такой же, как без него.",
+  },
+  "sanity.tilt-slow-no-min-duration": {
+    en: "Slow tilt has gain set but its minimum duration rounds down to 0 tournaments — the channel needs at least 1, so slow tilt is switched off and the run is the same as without it.",
+    ru: "У медленного тильта задан gain, но минимальная длительность округляется до 0 турниров — нужен минимум 1, поэтому медленный тильт выключен и прогон такой же, как без него.",
   },
   "sanity.zero-bankroll": {
     en: "Bankroll is not set. Profit, ROI and variance still calculate normally, but bankroll risk metrics are skipped. Enter bankroll above if you want risk-of-ruin and required-bankroll estimates.",
@@ -924,6 +1144,10 @@ export const DICT = {
   "controls.stage.envelopes": { en: "sorting envelopes", ru: "сортируем огибающие" },
   "controls.stage.streaks": { en: "ranking streaks", ru: "ранжируем стрики" },
   "controls.stage.convergence": { en: "finishing up", ru: "последние штрихи" },
+  "controls.progress": {
+    en: "Simulation progress",
+    ru: "Прогресс симуляции",
+  },
   "controls.done.label": { en: "Done", ru: "Готово" },
   "controls.done.seeBelow": { en: "See full results", ru: "Смотреть ниже" },
   "controls.done.profit": { en: "Avg profit", ru: "Средний профит" },
@@ -967,8 +1191,8 @@ export const DICT = {
     ru: "Аналитическое EV (ожидаемая выплата − полная стоимость входов). Фактическое MC-среднее: {mean} · ROI {roi} · медиана {median}.",
   },
   "stat.probProfit.sub": {
-    en: "{n} tourneys to reach ±5% ROI",
-    ru: "{n} турниров до точного ROI ±5%",
+    en: "{n} {_tournament} to reach ±5% ROI",
+    ru: "{n} {_tournament} до точного ROI ±5%",
   },
   "stat.probProfit.neverBusted": {
     en: "{p} without ever busting",
@@ -991,8 +1215,8 @@ export const DICT = {
     ru: "В плюсе",
   },
   "stat.riskOfRuin.horizon": {
-    en: "within {n} tournaments (one sample)",
-    ru: "на горизонте {n} турниров (один сэмпл)",
+    en: "within {n} {_tournament} (one sample)",
+    ru: "горизонт: {n} {_tournament} (один сэмпл)",
   },
   "stat.riskOfRuin.sub": {
     en: "chance your bankroll streaks to zero",
@@ -1392,8 +1616,8 @@ export const DICT = {
   "chart.traj.longestBE": { en: "longest below-peak run", ru: "ниже пика (макс.)" },
   "chart.traj.tourneys": { en: "t", ru: "т" },
   "chart.traj.ddDuration": {
-    en: "lasted {n} tournaments",
-    ru: "длилась {n} турниров",
+    en: "lasted {n} {_tournament}",
+    ru: "длилась {n} {_tournament}",
   },
   // Kind labels — shown in the tooltip header to explain what kind of line the user is hovering.
   "chart.traj.kind.mean": {
@@ -1492,12 +1716,12 @@ export const DICT = {
     ru: "минимум среди всех ранов в этой точке",
   },
   "chart.traj.likelihood.bestReal": {
-    en: "roughly the luckiest one in every N runs",
-    ru: "примерно самый удачный из каждых N ранов",
+    en: "the luckiest of all the simulated runs",
+    ru: "самый удачный из всех симулированных ранов",
   },
   "chart.traj.likelihood.worstReal": {
-    en: "roughly the unluckiest one in every N runs",
-    ru: "примерно самый неудачный из каждых N ранов",
+    en: "the unluckiest of all the simulated runs",
+    ru: "самый неудачный из всех симулированных ранов",
   },
   "chart.traj.zoomHint": {
     en: "drag across X to zoom · double-click resets",
@@ -1508,8 +1732,8 @@ export const DICT = {
     ru: "EV",
   },
   "chart.traj.legend.runs": {
-    en: "{n} runs",
-    ru: "{n} ранов",
+    en: "{n} {_run}",
+    ru: "{n} {_run}",
   },
   "chart.traj.legend.bands": {
     en: "70 / 95 / 99.7% intervals",
@@ -1581,6 +1805,14 @@ export const DICT = {
     ru: "GG Battle Royal",
   },
   "chart.convergence.format.mix": { en: "Mix", ru: "Микс" },
+  "chart.convergence.reset": {
+    en: "Reset to {value}",
+    ru: "Сбросить к {value}",
+  },
+  "chart.convergence.reset.clamped": {
+    en: "Reset to {value} (your schedule has {raw}, outside this card's range)",
+    ru: "Сбросить к {value} (в расписании {raw} — вне диапазона этой карточки)",
+  },
   "chart.convergence.format.exact": {
     en: "Schedule",
     ru: "Расписание",
@@ -2199,7 +2431,7 @@ export const DICT = {
     ru: "Ники на GGPoker",
   },
   "controls.brLeaderboard.observedUsernameHint": {
-    en: "Comma-separated. Add prior nicks here too — ResultHub doesn't track GGPoker rename history, so the lookup pulls each one and sums the totals. “Tournaments in profile” stays manual — the API doesn't expose it.",
+    en: "Comma-separated. Add prior nicks here too — ResultHub doesn't track GGPoker rename history, so the lookup pulls each one and sums the totals. “Observed tournaments” stays manual — the API doesn't expose it.",
     ru: "Через запятую. Добавь сюда и прежние ники — ResultHub не знает истории смены ника на GGPoker, поиск пройдёт по каждому и сложит итоги. «Турниров в профиле» остаётся ручным — API его не отдаёт.",
   },
   "controls.brLeaderboard.observedUsernamePlaceholder": {
@@ -2408,8 +2640,8 @@ export const DICT = {
     ru: "Сколько альтернативных вариантов прогнать. Больше — точнее хвосты и худшие раны, но дольше. 5k — быстро, 50k — с запасом.",
   },
   "help.finishModel": {
-    en: "How your skill distributes across finish places — does it mostly show up as deep runs, or as lots of small cashes?\n\nOptions:\n• Power-law — skill pays off deep; the closer to 1st, the bigger the lift. (default: α is solved to hit your ROI and ITM comes from the schedule row — a power-law shape, not a fit to real tournament data)\n• Linear skill — steady lift toward the top, less dramatic\n• Stretched-exp — middle ground between those two\n• Plackett–Luce — classic ranking model, mathematically sound\n• Uniform — every paid place gets the same lift (PrimeDope-style — understates swings)\n• Empirical — built from a CSV of your own real finish history",
-    ru: "Как скилл распределяется по местам: глубокие финиши или много мин-кешей?\n\nОпции:\n• Power-law — скилл работает в глубоких финишах; чем ближе к 1-му, тем сильнее лифт (дефолт: α подбирается под твой ROI, ITM берётся из строки расписания; форма степенная, не подгонка под реальные турниры)\n• Linear skill — плавный лифт к топу, менее драматичный\n• Stretched-exp — промежуточный вариант\n• Plackett–Luce — классическая модель ранжирования, математически чистая\n• Uniform — все призовые получают одинаковый буст (как у PrimeDope — занижает свинги)\n• Empirical — по CSV реальных финишей",
+    en: "How your skill distributes across finish places — does it mostly show up as deep runs, or as lots of small cashes?\n\nOptions:\n• Power-law — skill pays off deep; the closer to 1st, the bigger the lift. (default: α is solved to hit your ROI and ITM comes from the schedule row — a power-law shape, not a fit to real tournament data)\n• Linear skill — steady lift toward the top, less dramatic\n• Stretched-exp — middle ground between those two\n• Plackett–Luce — classic ranking model, mathematically sound\n• Uniform — a no-skill reference: every paid place is equally likely, so your ROI is not applied; the result follows from ITM and payouts (about −rake at the payout table's own ITM)\n• Empirical — built from a CSV of your own real finish history; your ROI is not applied there either",
+    ru: "Как скилл распределяется по местам: глубокие финиши или много мин-кешей?\n\nОпции:\n• Power-law — скилл работает в глубоких финишах; чем ближе к 1-му, тем сильнее лифт (дефолт: α подбирается под твой ROI, ITM берётся из строки расписания; форма степенная, не подгонка под реальные турниры)\n• Linear skill — плавный лифт к топу, менее драматичный\n• Stretched-exp — промежуточный вариант\n• Plackett–Luce — классическая модель ранжирования, математически чистая\n• Uniform — эталон без скилла: все призовые места равновероятны, поэтому ROI не применяется; итог следует из ITM и выплат (около −рейка при ITM самой сетки выплат)\n• Empirical — по CSV реальных финишей; ROI там тоже не применяется",
   },
   "help.alphaOverride": {"en":"Adjust the three real-data tilt models from −0.5 to 0.5; blank or 0 keeps the neutral reference shape. Other models use the fixed-ITM calibration or their fixed shape, so manual alpha is unavailable. Switching models clears the override.","ru":"Настройка трёх real-data tilt моделей от −0,5 до 0,5; пустое поле или 0 сохраняет нейтральную форму референса. В других моделях действует калибровка под заданный ITM или фиксированная форма, поэтому ручной alpha недоступен. При смене модели значение сбрасывается."},
   "help.roiStdErr": {
@@ -2453,8 +2685,8 @@ export const DICT = {
   "emp.loaded": { en: "Loaded", ru: "Загружено" },
   "emp.entries": { en: "entries", ru: "записей" },
   "emp.none": {
-    en: "No data — the model uses a uniform finish distribution and the ROI target is not applied.",
-    ru: "Нет данных — модель берёт равномерное распределение финишей, цель по ROI не применяется.",
+    en: "No data — Empirical falls back to the uniform finish distribution: every paid place is equally likely and your ROI target is not applied; the result follows from ITM and payouts (about −rake at the payout table's own ITM).",
+    ru: "Нет данных — Empirical берёт равномерное распределение финишей: все призовые места равновероятны, цель по ROI не применяется; итог следует из ITM и выплат (около −рейка при ITM самой сетки выплат).",
   },
 
   // Cash-game mode (advanced only)
@@ -2899,16 +3131,16 @@ export const DICT = {
     ru: "Проекция промо, распределённая по текущим BR-строкам пропорционально числу турниров.",
   },
   "chart.brLeaderboardObserved.rowLine": {
-    en: "{count} tournaments · buy-ins {buyIn} · promo {payout}",
-    ru: "{count} турниров · бай-ины {buyIn} · промо {payout}",
+    en: "{count} {_tournament} · buy-ins {buyIn} · promo {payout}",
+    ru: "{count} {_tournament} · бай-ины {buyIn} · промо {payout}",
   },
   "chart.brLeaderboardObserved.observedMix": {
     en: "Observed stake mix",
     ru: "Наблюдаемый микс лимитов",
   },
   "chart.brLeaderboardObserved.observedMixLine": {
-    en: "{points} pts · {share} share · ~{tournaments} tournaments · buy-ins {buyIn}",
-    ru: "{points} очков · {share} доля · ~{tournaments} турниров · бай-ины {buyIn}",
+    en: "{points} pts · {share} share · ~{tournaments} {_tournament} · buy-ins {buyIn}",
+    ru: "{points} очков · {share} доля · ~{tournaments} {_tournament} · бай-ины {buyIn}",
   },
   "chart.brLeaderboardManual.groupAnchor": {
     en: "Manual planning anchor",
@@ -3015,8 +3247,8 @@ export const DICT = {
     ru: "с LB-промо в графиках",
   },
   "chart.lbCashflow.title": {
-    en: "Fold the BR leaderboard EV into the trajectory + scalar mean / probProfit / VaR. Drawdown / streaks / risk-of-ruin stay game-only — a positive monotone shift doesn't change drawdown, and recomputing RoR needs the full N-sample raw which isn't kept post-engine.",
-    ru: "Включить EV лидерборда BR в траекторию + скаляры (среднее / шанс плюса / VaR). Просадки / стрики / RoR остаются game-only: монотонная положительная добавка не меняет просадки, а пересчёт RoR требует полного N-сэмплового исходника, который после движка не хранится.",
+    en: "Fold the BR leaderboard EV into the trajectory + scalar mean / probProfit / VaR. Drawdown / streaks / risk-of-ruin stay game-only, as the engine computed them: the promo would make drawdowns shallower and risk of ruin lower, so those figures lean cautious, but recomputing them needs the raw path of every sample, which is not kept after the engine.",
+    ru: "Включить EV лидерборда BR в траекторию + скаляры (среднее / шанс плюса / VaR). Просадки / стрики / RoR остаются game-only, как их посчитал движок: промо сделало бы просадки мельче, а риск разорения ниже, так что эти цифры осторожнее, но пересчёт требует траектории каждого сэмпла, которые после движка не хранятся.",
   },
   "cash.empty": {
     en: "Press Run to simulate the cash session.",

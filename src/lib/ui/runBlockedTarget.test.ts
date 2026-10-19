@@ -31,6 +31,17 @@ describe("focusRunBlocker", () => {
     expect(el.classList.remove).toHaveBeenCalledWith("ring-2", "ring-rose-500/70");
   });
 
+  it("jumps instead of gliding for a user who prefers reduced motion", () => {
+    vi.useFakeTimers();
+    const el = element();
+    const doc = {
+      getElementById: vi.fn(() => el),
+      defaultView: { matchMedia: vi.fn(() => ({ matches: true })) },
+    };
+    focusRunBlocker(doc as unknown as Document, "feasibility-banner");
+    expect(el.scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "center" });
+  });
+
   it("reports a target that is not on the page", () => {
     expect(focusRunBlocker({ getElementById: () => null }, "gone")).toBe(false);
   });
