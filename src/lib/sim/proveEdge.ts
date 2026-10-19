@@ -26,7 +26,9 @@
  *     calibrated residual band
  *   - Schedule mode → schedule-aware `buildExactBreakdown(schedule).sigmaEff`,
  *     where σ already weights per-row dollar variance, field variability,
- *     payout shape, rake, and bounty structure
+ *     payout shape, rake, and bounty structure. It is evaluated once, at the
+ *     schedule's own ROIs, and held for every candidate row (the card says so):
+ *     a higher hypothetical ROI has a heavier σ than the table uses
  *
  * Honest about extrapolation: when a candidate ROI (or any schedule row)
  * sits outside the grid its format's band was calibrated on, the band gate
@@ -37,6 +39,7 @@
 import {
   buildExactBreakdown,
   buildOceanKoSigmaBand,
+  scheduleEffectiveRoi,
   type ExactBreakdown,
 } from "./convergenceMath";
 import {
@@ -93,7 +96,8 @@ export function defaultProveEdgeFormat(
 export interface ProveEdgeRow {
   /** Candidate true ROI as a fraction (0.10 = +10 %). */
   roi: number;
-  /** σ_ROI at this candidate ROI; an upper bound for Ocean KO. */
+  /** σ_ROI at this candidate ROI; an upper bound for Ocean KO. In schedule mode
+   *  every row carries the schedule's own σ, not one re-evaluated per ROI. */
   sigma: number;
   /** σ × (1 - residual). Equal to `sigma` when out-of-box. */
   sigmaLo: number;
@@ -279,6 +283,19 @@ function singleFormatSigma(
   };
 }
 
+/**
+ * A candidate row prints a bare point (no range) while the table's band policy
+ * is numeric: the anchor sits inside the validated zone, this row's ROI does
+ * not. When the anchor itself is outside, the banner already says the ranges
+ * are hidden.
+ */
+export function rowIsPointOnly(
+  result: Pick<ProveEdgeResult, "bandPolicy">,
+  row: Pick<ProveEdgeRow, "insideFitBox">,
+): boolean {
+  return result.bandPolicy === "numeric" && !row.insideFitBox;
+}
+
 function nFromSigma(z: number, sigma: number, roi: number): number {
   const absRoi = Math.abs(roi);
   if (absRoi <= 1e-9) return Number.POSITIVE_INFINITY;
@@ -307,23 +324,6 @@ function pickAnchorIndex(
     }
   });
   return best;
-}
-
-/** Cost-weighted mean ROI of a schedule. Used as the schedule-mode anchor. */
-function scheduleEffectiveRoi(
-  schedule: readonly TournamentRow[],
-): number {
-  let totalCost = 0;
-  let totalCostRoi = 0;
-  for (const row of schedule) {
-    const count = Math.max(0, row.count ?? 0);
-    if (count <= 0) continue;
-    const buyIn = Math.max(0, row.buyIn) * (1 + Math.max(0, row.rake));
-    const cost = buyIn * count;
-    totalCost += cost;
-    totalCostRoi += cost * row.roi;
-  }
-  return totalCost > 0 ? totalCostRoi / totalCost : 0;
 }
 
 export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {

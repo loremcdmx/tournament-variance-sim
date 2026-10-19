@@ -535,3 +535,31 @@ describe("convergence math", () => {
     ]);
   });
 });
+
+describe("ciToZ", () => {
+  it.each([
+    [0.5, 0.6744897502],
+    [0.8, 1.2815515655],
+    [0.9, 1.6448536270],
+    [0.95, 1.9599639845],
+    [0.99, 2.5758293035],
+    [0.999, 3.2905267315],
+  ])("turns a %s two-sided interval into the textbook z", (ci, z) => {
+    expect(ciToZ(ci)).toBeCloseTo(z, 6);
+  });
+
+  it("is 0 at 0 and finite at the slider ceiling", () => {
+    expect(ciToZ(0)).toBe(0);
+    expect(Number.isFinite(ciToZ(1))).toBe(true);
+    expect(ciToZ(1)).toBeCloseTo(4.8916, 3);
+  });
+
+  it("rises with the interval", () => {
+    let prev = ciToZ(0);
+    for (let ci = 0.01; ci < 1; ci += 0.01) {
+      const z = ciToZ(ci);
+      expect(z).toBeGreaterThan(prev);
+      prev = z;
+    }
+  });
+});

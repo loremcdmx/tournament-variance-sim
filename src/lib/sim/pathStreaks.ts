@@ -8,6 +8,8 @@
 // 4000 checkpoints. For typical N=500 schedules each checkpoint is exactly
 // one tournament; for N>4000 the cashless streak resolution degrades.
 
+import { histogramFromCounts } from "./simNumerics";
+
 export interface PathStreakStats {
   maxDrawdown: number;
   maxRunUp: number;
@@ -233,58 +235,6 @@ function histogramOf(
     counts[idx]++;
   }
   return { binEdges: edges, counts };
-}
-
-// Mirror of engine.ts histogramFromCounts: builds a decay-shape histogram
-// from integer-length chord counts. Anchors the visible range to median×10
-// (capped by p999 and maxLen) so the knee of the near-geometric streak
-// distribution is visible instead of a single long-tail outlier crushing
-// the bulk into bin 0.
-function histogramFromCounts(
-  countsByLen: Int32Array,
-  bins: number,
-  scale: number,
-): { binEdges: number[]; counts: number[] } {
-  let maxLen = 0;
-  let total = 0;
-  for (let i = 1; i < countsByLen.length; i++) {
-    const c = countsByLen[i];
-    if (c > 0) {
-      total += c;
-      if (i > maxLen) maxLen = i;
-    }
-  }
-  if (maxLen === 0 || total === 0) {
-    return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
-  }
-  const pctLen = (p: number): number => {
-    const target = total * p;
-    let cum = 0;
-    for (let i = 1; i <= maxLen; i++) {
-      cum += countsByLen[i];
-      if (cum >= target) return i;
-    }
-    return maxLen;
-  };
-  const medianLen = pctLen(0.5);
-  const p999Len = pctLen(0.999);
-  let hi = Math.min(maxLen, p999Len, Math.max(medianLen * 10, 20));
-  if (hi < 1) hi = 1;
-  const w = hi <= bins ? 1 : Math.ceil(hi / bins);
-  const nBins = Math.max(1, Math.ceil(hi / w));
-  hi = nBins * w;
-  const binEdges: number[] = new Array(nBins + 1);
-  for (let i = 0; i <= nBins; i++) binEdges[i] = i * w * scale;
-  const counts: number[] = new Array(nBins).fill(0);
-  for (let len = 1; len <= maxLen; len++) {
-    const c = countsByLen[len];
-    if (c === 0) continue;
-    let b = len >= hi ? nBins - 1 : Math.floor(len / w);
-    if (b < 0) b = 0;
-    else if (b >= nBins) b = nBins - 1;
-    counts[b] += c;
-  }
-  return { binEdges, counts };
 }
 
 function percentile(sorted: number[], p: number): number {

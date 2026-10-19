@@ -30,7 +30,7 @@ import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { isRepeatSubmission, settleCommitted, submitBias } from "./finishPreview/biasDraft";
 import { isTop3LockAvailable, patchFinishLocks } from "./finishPreview/shapeLocks";
-import { tierPlacesLabel } from "./finishPreview/tierPlaces";
+import { tierLabel, tierPlacesLabel } from "./finishPreview/tierPlaces";
 import {
   EvBreakdownFooter,
   EvBreakdownRow,
@@ -491,7 +491,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
               rows.push(
                 <EvBreakdownRow
                   key={tier.key}
-                  label={t(tier.labelKey)}
+                  label={tierLabel(tier, t)}
                   color={tier.color}
                   evShare={evShare}
                   fieldShare={fieldShare}

@@ -462,6 +462,23 @@ describe("cashEngine — output shape", () => {
     expect(down.longestBreakevenHistogram.binEdges.at(-1)).toBe(5);
     expect(down.longestBreakevenHistogram.counts.at(-1)).toBe(1);
   });
+
+  it("keeps edges = counts + 1 on every histogram when no path ever dips below its peak", () => {
+    const up = simulateCash(
+      baseInput({ wrBb100: 5000, sdBb100: 1, hands: 1000, nSimulations: 20 }),
+    );
+    expect(Array.from(up.samplePaths.longestBelowPeakHands).every((v) => v === 0)).toBe(true);
+    for (const h of [
+      up.histogram,
+      up.drawdownHistogram,
+      up.longestBreakevenHistogram,
+      up.recoveryHistogram,
+    ]) {
+      expect(h.binEdges.length).toBe(h.counts.length + 1);
+      for (const e of h.binEdges) expect(Number.isFinite(e)).toBe(true);
+    }
+    expect(up.longestBreakevenHistogram.counts.every((c) => c === 0)).toBe(true);
+  });
 });
 
 describe("cashEngine — mix of stakes", () => {

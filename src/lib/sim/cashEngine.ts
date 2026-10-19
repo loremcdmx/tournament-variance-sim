@@ -891,6 +891,12 @@ export function simulateCash(input: CashInput): CashResult {
 // the cash-mode shape is simple enough not to earn a shared abstraction.
 // ---------------------------------------------------------------------------
 
+function emptyHistogram(bins: number): { binEdges: number[]; counts: number[] } {
+  const binEdges: number[] = new Array(bins + 1);
+  for (let i = 0; i <= bins; i++) binEdges[i] = i;
+  return { binEdges, counts: new Array(bins).fill(0) };
+}
+
 function histogramOf(
   arr: Float64Array,
   bins: number,
@@ -898,7 +904,7 @@ function histogramOf(
   longTailClip: boolean,
 ): { binEdges: number[]; counts: number[] } {
   const n = arr.length;
-  if (n === 0) return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
+  if (n === 0) return emptyHistogram(bins);
   let lo = Infinity;
   let hi = -Infinity;
   for (let i = 0; i < n; i++) {
@@ -935,10 +941,10 @@ function histogramOfInt(
   longTailClip: boolean,
 ): { binEdges: number[]; counts: number[] } {
   const n = arr.length;
-  if (n === 0) return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
+  if (n === 0) return emptyHistogram(bins);
   let hi = 0;
   for (let i = 0; i < n; i++) if (arr[i] > hi) hi = arr[i];
-  if (hi === 0) return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
+  if (hi === 0) return emptyHistogram(bins);
   if (longTailClip && n > 1) {
     const sorted = new Int32Array(arr);
     sorted.sort();

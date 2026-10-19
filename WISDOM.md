@@ -520,6 +520,40 @@ Consequences to remember:
   bare manual $/tournament have no day length, so those figures are `null` and
   hidden.
 
+## Preview, Planning And Empty-State Readouts
+
+Small numbers that read as exact. Do not undo these without re-measuring:
+
+- The empirical finish model integrates each pasted bucket over its own cell for
+  every N. The old N >= M branch point-sampled a linear interpolation, which gave
+  the end buckets half a cell (first-place share 0.397 against 0.526 on a spike
+  histogram) and jumped at N = M. Test: `finishModel.test.ts`, "empirical finish
+  model resampling".
+- The Shape panel's `shellFeasible` on a bounty row uses `validateSchedule`'s rule
+  (a cash side that overshoots its own target is fine while it stays under the
+  total target; the engine shrinks the KO budget). The two used to disagree and
+  the panel said the ROI was unreachable on a row Run accepted.
+- The zero-skill ("equilibrium") column rescales the row's bounty place shape to
+  the bounty pool's per-seat share, so every row sums to -rake (+ overlay / N).
+  Reading the skill-calibrated bounty weights there put it 12 % of the cost off.
+- A tier's printed range ("4th-9th", "10th-27th") is the dictionary label only when
+  the row pays that many places; `tierLabel` prints the real places otherwise.
+- `ciToZ` is exact (Newton on erf, seeded by Winitzki): 1.959964 at 95 %, not 1.959.
+- Prove-edge schedule mode holds σ at the schedule's own ROI for every candidate row
+  (single-format tabs recompute σ per ROI); the card says so. On a one-row freeze
+  schedule (field 1000, +10 %) the +30 % row uses σ 8.26 where the runtime σ at +30 %
+  is 9.69, so that row is about 27 % short of the volume.
+  Re-evaluating σ per candidate is a modelling choice (what does a mixed schedule's
+  "+30 %" mean per row?) and a cost, not a one-line fix.
+- A candidate row outside the validated zone while the anchor is inside prints a bare
+  point under a table that otherwise shows ranges; the row carries a mark and a
+  footnote (`rowIsPointOnly`). The synthetic tabs' starting ROI is cost-weighted
+  (`scheduleEffectiveRoi`), as the prove-edge anchor is.
+- Histograms keep `binEdges.length === counts.length + 1` even when empty (no
+  streak, no recovery). A zero-length streak is not counted, in tournament and cash
+  mode alike; the cash streaks card shows a sentence instead of an empty hands axis,
+  and the median / p90 recovery readouts say they are over the recovered runs only.
+
 ## Space → Ocean Explorer Readouts
 
 The 8 October 2026 audit found the page showing less uncertainty than the

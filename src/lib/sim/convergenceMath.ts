@@ -169,19 +169,56 @@ export function fmtAfs(
   return Math.round(n).toLocaleString(locales);
 }
 
-// Winitzki's approximation of the inverse error function (max error ~4e-4),
-// good enough to turn a user-picked two-tailed CI into a z-score.
+const TWO_OVER_SQRT_PI = 2 / Math.sqrt(Math.PI);
+
+// Positive-term series for erf. The alternating Taylor series loses digits
+// above x ~ 3, which the slider ceiling (z ~ 4.9) reaches.
+function erf(x: number): number {
+  const x2 = x * x;
+  let term = x;
+  let sum = x;
+  for (let n = 1; n < 400; n++) {
+    term *= (2 * x2) / (2 * n + 1);
+    sum += term;
+    if (term <= sum * 1e-17) break;
+  }
+  return TWO_OVER_SQRT_PI * Math.exp(-x2) * sum;
+}
+
+// Winitzki's closed form (error ~4e-4, which showed z = 1.959 at 95 %) seeds a
+// Newton refinement on erf, so the z that sizes every table is the textbook one.
 function inverseErf(x: number): number {
   const a = 0.147;
   const ln1 = Math.log(1 - x * x);
   const t = 2 / (Math.PI * a) + ln1 / 2;
-  const sign = x >= 0 ? 1 : -1;
-  return sign * Math.sqrt(Math.sqrt(t * t - ln1 / a) - t);
+  let y = Math.sqrt(Math.sqrt(t * t - ln1 / a) - t);
+  for (let i = 0; i < 4; i++) {
+    y -= (erf(y) - x) / (TWO_OVER_SQRT_PI * Math.exp(-y * y));
+  }
+  return y;
 }
 
 export function ciToZ(ciFrac: number): number {
   const clamped = Math.max(0, Math.min(0.999999, ciFrac));
   return Math.SQRT2 * inverseErf(clamped);
+}
+
+/** Cost-weighted mean ROI of a schedule: its profit over what it costs, which
+ *  is the aggregate ROI the planning tables are about. */
+export function scheduleEffectiveRoi(
+  schedule: readonly TournamentRow[],
+): number {
+  let totalCost = 0;
+  let totalCostRoi = 0;
+  for (const row of schedule) {
+    const count = Math.max(0, row.count ?? 0);
+    if (count <= 0) continue;
+    const buyIn = Math.max(0, row.buyIn) * (1 + Math.max(0, row.rake));
+    const cost = buyIn * count;
+    totalCost += cost;
+    totalCostRoi += cost * row.roi;
+  }
+  return totalCost > 0 ? totalCostRoi / totalCost : 0;
 }
 
 export function buildExactBreakdown(

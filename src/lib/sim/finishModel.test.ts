@@ -569,3 +569,44 @@ describe("cashTargetFloor", () => {
     expect(cashTargetFloor(0)).toBeGreaterThan(0);
   });
 });
+
+describe("empirical finish model resampling", () => {
+  const spike = [10, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+  const total = spike.reduce((a, b) => a + b, 0);
+
+  const massOfBucket = (N: number, bucket: number): number => {
+    const pmf = buildFinishPMF(N, { id: "empirical", empiricalBuckets: spike }, 0);
+    const width = N / spike.length;
+    let m = 0;
+    for (let i = Math.round(bucket * width); i < Math.round((bucket + 1) * width); i++) m += pmf[i];
+    return m;
+  };
+
+  it.each([10, 20, 100, 1000, 10_000])(
+    "keeps each pasted bucket's share of the field at N=%i",
+    (N) => {
+      expect(massOfBucket(N, 0)).toBeCloseTo(10 / total, 10);
+      expect(massOfBucket(N, 1)).toBeCloseTo(1 / total, 10);
+      expect(massOfBucket(N, 9)).toBeCloseTo(1 / total, 10);
+    },
+  );
+
+  it("does not jump between a field smaller and larger than the histogram", () => {
+    const first = (N: number) => massOfBucket(N, 0);
+    expect(Math.abs(first(20) - first(5 * 20))).toBeLessThan(1e-10);
+    expect(Math.abs(first(10) - first(11 * 10))).toBeLessThan(1e-10);
+  });
+
+  it("sums to one and stays uniform for a flat histogram at any N", () => {
+    for (const N of [3, 10, 37, 500]) {
+      const flat = buildFinishPMF(N, { id: "empirical", empiricalBuckets: [2, 2, 2, 2, 2] }, 0);
+      expect(flat.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 12);
+      for (let i = 0; i < N; i++) expect(flat[i]).toBeCloseTo(1 / N, 12);
+    }
+  });
+
+  it("returns the pasted histogram itself when the field is as long as the histogram", () => {
+    const pmf = buildFinishPMF(10, { id: "empirical", empiricalBuckets: spike }, 0);
+    for (let i = 0; i < 10; i++) expect(pmf[i]).toBeCloseTo(spike[i] / total, 12);
+  });
+});

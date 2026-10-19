@@ -29,6 +29,7 @@ import {
   proveEdgeRuntimeSigmaPoints,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
+  rowIsPointOnly,
   type ProveEdgeFormat,
   type ProveEdgeInput,
   type ProveEdgeResult,
@@ -47,6 +48,7 @@ import type {
   FinishModelConfig,
   TournamentRow,
 } from "@/lib/sim/types";
+import { RAKE_PCT_MAX, RAKE_PCT_MIN } from "./convergenceInputs";
 
 interface Props {
   /** User's schedule — required for the Schedule tab to do anything useful. */
@@ -181,6 +183,113 @@ function fmtRange(
   }
   // Order: lo (less tourneys) ≤ point ≤ hi
   return `${fmtTourneys(lo, locale)} – ${fmtTourneys(hi, locale)}`;
+}
+
+/**
+ * The candidate-ROI table. A row outside the validated zone prints a bare point
+ * even when the anchor is inside it (the banner only speaks for the anchor), so
+ * each such row carries a mark that the footnote under the table explains.
+ */
+export function ProveEdgeTable({
+  result,
+  pending,
+  numberLocale,
+}: {
+  result: ProveEdgeResult;
+  pending: boolean;
+  numberLocale: Intl.LocalesArgument;
+}) {
+  const t = useT();
+  const pointOnly = result.rows.map((r) => rowIsPointOnly(result, r));
+  return (
+    <>
+      <div
+        className={`overflow-x-auto transition-opacity ${pending ? "opacity-50" : ""}`}
+        aria-busy={pending}
+      >
+        <table className="w-full border-collapse text-[12px] tabular-nums">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
+              <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-left">
+                {t("proveEdge.col.roi")}
+              </th>
+              <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right">
+                {t("proveEdge.col.tourneys")}
+              </th>
+              <th
+                className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right"
+                title={t("chart.convergence.col.fields.title")}
+              >
+                {t("proveEdge.col.fields")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.rows.map((r, i) => {
+              const huge = r.tourneys > 1_000_000;
+              const losing = r.roi < 0;
+              const prevRoi = i > 0 ? result.rows[i - 1].roi : null;
+              const justCrossedZero =
+                prevRoi !== null && prevRoi > 0 && r.roi < 0;
+              const cellTone = r.isCurrent
+                ? "text-[color:var(--color-accent)]"
+                : huge
+                  ? "text-[color:var(--color-danger)]"
+                  : losing
+                    ? "text-[color:var(--color-fg-dim)]"
+                    : "";
+              return (
+                <tr
+                  key={`${r.roi}-${i}`}
+                  className={`${
+                    r.isCurrent
+                      ? "bg-[color:var(--color-accent)]/10"
+                      : ""
+                  } ${
+                    justCrossedZero
+                      ? "border-t border-dashed border-[color:var(--color-border-strong)]/60"
+                      : ""
+                  }`}
+                >
+                  <td
+                    className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 ${cellTone || "text-[color:var(--color-fg-muted)]"}`}
+                  >
+                    {r.isCurrent && (
+                      <span className="mr-1 text-[color:var(--color-accent)]">▸</span>
+                    )}
+                    {fmtRoi(r.roi)}
+                  </td>
+                  <td
+                    className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 text-right font-mono ${cellTone}`}
+                  >
+                    {fmtRange(r.tourneys, r.tourneysLo, r.tourneysHi, numberLocale)}
+                    {pointOnly[i] && (
+                      <span
+                        className="ml-0.5 cursor-help text-[color:var(--color-fg-dim)]"
+                        title={t("proveEdge.row.pointOnly")}
+                      >
+                        *
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 text-right font-mono ${cellTone}`}
+                  >
+                    {fmtFields(r.fields)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {pointOnly.some(Boolean) && (
+        <p className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+          * {t("proveEdge.row.pointOnly")}
+        </p>
+      )}
+    </>
+  );
 }
 
 export function ProveEdgeCard({
@@ -333,26 +442,22 @@ export function ProveEdgeCard({
               {t("proveEdge.label.rake")}
             </span>
             <RangeInput
-              min={0}
-              max={20}
+              min={RAKE_PCT_MIN}
+              max={RAKE_PCT_MAX}
               step={0.5}
               value={rakePct}
               onChange={(e) => setRakePct(Number(e.target.value))}
               className="flex-1"
               aria-label={t("proveEdge.label.rake")}
             />
-            <input
-              type="number"
-              min={0}
-              max={50}
+            <DraftNumberInput
+              min={RAKE_PCT_MIN}
+              max={RAKE_PCT_MAX}
               step={0.5}
               value={rakePct}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n)) setRakePct(Math.max(0, Math.min(50, n)));
-              }}
+              onCommit={setRakePct}
               className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-orange-400 focus:outline-none"
-              aria-label={t("proveEdge.label.rake")}
+              ariaLabel={t("proveEdge.label.rake")}
             />
           </div>
 
@@ -545,79 +650,13 @@ export function ProveEdgeCard({
           {t("proveEdge.pending")}
         </div>
       )}
-      {!scheduleEmpty && (
-        <div
-          className={`overflow-x-auto transition-opacity ${pending ? "opacity-50" : ""}`}
-          aria-busy={pending}
-        >
-          <table className="w-full border-collapse text-[12px] tabular-nums">
-            <thead>
-              <tr className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)]">
-                <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-left">
-                  {t("proveEdge.col.roi")}
-                </th>
-                <th className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right">
-                  {t("proveEdge.col.tourneys")}
-                </th>
-                <th
-                  className="border-b border-[color:var(--color-border)] px-2 py-1.5 text-right"
-                  title={t("chart.convergence.col.fields.title")}
-                >
-                  {t("proveEdge.col.fields")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.rows.map((r, i) => {
-                const huge = r.tourneys > 1_000_000;
-                const losing = r.roi < 0;
-                const prevRoi = i > 0 ? result.rows[i - 1].roi : null;
-                const justCrossedZero =
-                  prevRoi !== null && prevRoi > 0 && r.roi < 0;
-                const cellTone = r.isCurrent
-                  ? "text-[color:var(--color-accent)]"
-                  : huge
-                    ? "text-[color:var(--color-danger)]"
-                    : losing
-                      ? "text-[color:var(--color-fg-dim)]"
-                      : "";
-                return (
-                  <tr
-                    key={`${r.roi}-${i}`}
-                    className={`${
-                      r.isCurrent
-                        ? "bg-[color:var(--color-accent)]/10"
-                        : ""
-                    } ${
-                      justCrossedZero
-                        ? "border-t border-dashed border-[color:var(--color-border-strong)]/60"
-                        : ""
-                    }`}
-                  >
-                    <td
-                      className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 ${cellTone || "text-[color:var(--color-fg-muted)]"}`}
-                    >
-                      {r.isCurrent && (
-                        <span className="mr-1 text-[color:var(--color-accent)]">▸</span>
-                      )}
-                      {fmtRoi(r.roi)}
-                    </td>
-                    <td
-                      className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 text-right font-mono ${cellTone}`}
-                    >
-                      {fmtRange(r.tourneys, r.tourneysLo, r.tourneysHi, numberLocale)}
-                    </td>
-                    <td
-                      className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 text-right font-mono ${cellTone}`}
-                    >
-                      {fmtFields(r.fields)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {!scheduleEmpty && isExact && (
+        <div className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("proveEdge.schedule.sigmaHeld")}
         </div>
+      )}
+      {!scheduleEmpty && (
+        <ProveEdgeTable result={result} pending={pending} numberLocale={numberLocale} />
       )}
 
       <details className="border-t border-[color:var(--color-border)] pt-2 text-xs text-[color:var(--color-fg-muted)]">

@@ -15,6 +15,7 @@ import {
   MixMetricBar,
   MixTag,
   SummaryStrip,
+  CashChartEmpty,
   formatCashMoney,
   formatCashPct,
   formatRiskThreshold,
@@ -23,6 +24,7 @@ import {
   formatUnsignedBb100,
   formatUsdBbSize,
   formatUsdRate,
+  isEmptyHistogram,
   scaleMoneyHistogram,
 } from "./CashResultsShared";
 import {
@@ -193,6 +195,7 @@ export function CashResultsView({ result }: { result: CashResult }) {
       accent: "heart",
       label: t("cash.summary.recoveryMedian"),
       value: fmtHands(s.recoveryMedian),
+      tip: t("cash.summary.recoveryMedian.tip"),
     },
     {
       accent: "heart",
@@ -316,12 +319,16 @@ export function CashResultsView({ result }: { result: CashResult }) {
               title={t("cash.chart.breakeven.title")}
               note={t("cash.chart.breakeven.note")}
             />
-            <HistogramChart
-              hist={result.longestBreakevenHistogram}
-              xLabel={t("cash.axis.hands")}
-              yLabel={t("cash.axis.count")}
-              tone="spade"
-            />
+            {isEmptyHistogram(result.longestBreakevenHistogram) ? (
+              <CashChartEmpty message={t("cash.chart.breakeven.empty")} />
+            ) : (
+              <HistogramChart
+                hist={result.longestBreakevenHistogram}
+                xLabel={t("cash.axis.hands")}
+                yLabel={t("cash.axis.count")}
+                tone="spade"
+              />
+            )}
           </div>
           <div className="flex flex-col gap-3">
             <MiniChartTitle
@@ -329,12 +336,16 @@ export function CashResultsView({ result }: { result: CashResult }) {
               title={t("cash.chart.recovery.title")}
               note={t("cash.chart.recovery.note")}
             />
-            <HistogramChart
-              hist={result.recoveryHistogram}
-              xLabel={t("cash.axis.hands")}
-              yLabel={t("cash.axis.count")}
-              tone="heart"
-            />
+            {isEmptyHistogram(result.recoveryHistogram) ? (
+              <CashChartEmpty message={t("cash.chart.recovery.empty")} />
+            ) : (
+              <HistogramChart
+                hist={result.recoveryHistogram}
+                xLabel={t("cash.axis.hands")}
+                yLabel={t("cash.axis.count")}
+                tone="heart"
+              />
+            )}
           </div>
         </div>
       </Card>

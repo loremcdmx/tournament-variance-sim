@@ -5,6 +5,7 @@ import {
   calibrateShelledItm,
   cashTargetFloor,
   isAlphaAdjustable,
+  targetEvTolerance,
 } from "@/lib/sim/finishModel";
 import {
   clampBountyMean,
@@ -551,6 +552,22 @@ function computeRowStatsAtField(
     }
   }
 
+  // Zero-skill bounty column: the calibrated place shape rescaled so a uniform
+  // finisher collects the bounty pool's per-seat share. That is what makes the
+  // equilibrium column sum to -rake; the skilled weights alone do not.
+  const bountyEqByPlace = new Float64Array(N);
+  if (bountyPerSeat > 0 && N > 0) {
+    let atUniform = 0;
+    for (let i = 0; i < N; i++) atUniform += bountyByPlace[i];
+    atUniform /= N;
+    if (atUniform > 1e-12) {
+      const k = bountyPerSeat / atUniform;
+      for (let i = 0; i < N; i++) bountyEqByPlace[i] = bountyByPlace[i] * k;
+    } else {
+      bountyEqByPlace.fill(bountyPerSeat);
+    }
+  }
+
   const totalByPlace = new Float64Array(N);
   let totalEv = 0;
   let totalEv2 = 0;
@@ -736,19 +753,19 @@ function computeRowStatsAtField(
     let cashTier = 0;
     let bountyTier = 0;
     let fTier = 0;
-    let totalTierSum = 0;
+    let eqTierSum = 0;
     let bustsWeighted = 0;
     for (let i = prevHi; i < hi; i++) {
       evTier += evByPlace[i];
       cashTier += pmf[i] * prizeByPlace[i];
       bountyTier += pmf[i] * bountyByPlace[i];
       fTier += pmf[i];
-      totalTierSum += totalByPlace[i];
+      eqTierSum += prizeByPlace[i] + bountyEqByPlace[i];
       bustsWeighted += pmf[i] * bountyBustsAtPos[i];
     }
     const width = hi - prevHi;
     const eqShareTier = N > 0 ? width / N : 0;
-    const evEqTier = N > 0 ? totalTierSum / N : 0;
+    const evEqTier = N > 0 ? eqTierSum / N : 0;
     const cashGivenFinish = fTier > 1e-12 ? cashTier / fTier : 0;
     const bountyGivenFinish = fTier > 1e-12 ? bountyTier / fTier : 0;
     const bustsGivenFinish = fTier > 1e-12 ? bustsWeighted / fTier : 0;
@@ -794,6 +811,13 @@ function computeRowStatsAtField(
   for (let i = 0; i < ftEndShell; i++) shellFtSum += pmf[i];
   const shellBubble = paidCount < N ? (pmf[paidCount] ?? 0) : 0;
   const shellFirstCash = paidCount > 0 ? (pmf[paidCount - 1] ?? 0) : 0;
+  // The engine closes a bounty row's ROI gap by shrinking the KO budget, so a
+  // cash side that overshoots its own target still hits the total as long as it
+  // stays under it (the rule validateSchedule applies).
+  const residualCanCloseTotal =
+    bountyFraction > 0 &&
+    currentWinningsFromSolver !== null &&
+    currentWinningsFromSolver <= totalWinningsEV + targetEvTolerance(totalWinningsEV);
 
   return {
     alpha,
@@ -820,7 +844,7 @@ function computeRowStatsAtField(
     ftField,
     ftEvShare,
     shellMode: row.itmRate != null && row.itmRate > 0,
-    shellFeasible: feasible,
+    shellFeasible: feasible || residualCanCloseTotal,
     shellTargetEv: targetRegular,
     shellCurrentEv:
       currentWinningsFromSolver != null

@@ -30,6 +30,7 @@ import {
   normalizeMix,
   posToAfs,
   roiControlBoundsForFormat,
+  scheduleEffectiveRoi,
   type ConvergenceFormat,
   type MixTuple,
   type SigmaBand,
@@ -140,7 +141,6 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   const baseline = useMemo(() => {
     let countTotal = 0;
     let fieldWeighted = 0;
-    let roiWeighted = 0;
     let pkoCount = 0;
     let oceanKoCount = 0;
     let mysteryCount = 0;
@@ -151,7 +151,6 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         const p = Math.max(1, row.players);
         countTotal += c;
         fieldWeighted += c * p;
-        roiWeighted += c * row.roi;
         const rowFormat = inferRowFormat(row);
         if (rowFormat === "mystery-royale") mysteryRoyaleCount += c;
         else if (rowFormat === "mystery") mysteryCount += c;
@@ -160,7 +159,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       }
     }
     const avgField = countTotal > 0 ? fieldWeighted / countTotal : 1000;
-    const roi = countTotal > 0 ? roiWeighted / countTotal : 0.1;
+    // Profit over cost, as the prove-edge anchor reads it: a few high-stakes
+    // rows must not be outvoted by many micro-stakes ones.
+    const roi =
+      countTotal > 0 && schedule ? scheduleEffectiveRoi(schedule) : 0.1;
     const pkoShare = countTotal > 0 ? pkoCount / countTotal : 0;
     const oceanKoShare = countTotal > 0 ? oceanKoCount / countTotal : 0;
     const mysteryShare = countTotal > 0 ? mysteryCount / countTotal : 0;

@@ -101,7 +101,9 @@ export function histogramFromCounts(
     }
   }
   if (maxLen === 0 || total === 0) {
-    return { binEdges: [0, 1], counts: new Array(bins).fill(0) };
+    const binEdges: number[] = new Array(bins + 1);
+    for (let i = 0; i <= bins; i++) binEdges[i] = i * scale;
+    return { binEdges, counts: new Array(bins).fill(0) };
   }
   // Long-tail guard. Streak-count distributions are near-geometric: most
   // mass sits on short streaks, but the tail goes to thousands. A naive

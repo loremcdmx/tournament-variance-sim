@@ -88,6 +88,23 @@ export const CASH_ACCENT_META: Record<
   },
 };
 
+export function isEmptyHistogram(hist: {
+  binEdges: number[];
+  counts: number[];
+}): boolean {
+  return hist.counts.every((c) => c === 0);
+}
+
+export function CashChartEmpty({ message }: { message: string }) {
+  return (
+    <CashChartFrame>
+      <p className="px-2 py-10 text-center text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+        {message}
+      </p>
+    </CashChartFrame>
+  );
+}
+
 export function CashChartFrame({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-sm border border-[color:var(--color-border)]/70 bg-[color:var(--color-bg)]/42 px-2 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] sm:px-3">

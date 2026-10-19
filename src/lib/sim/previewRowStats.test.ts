@@ -4,6 +4,7 @@ import { compileSchedule } from "./engine";
 import { computeRowStats } from "./previewRowStats";
 import { compiledEntryMoments } from "./scheduleMoments";
 import type { TournamentRow } from "./types";
+import { validateSchedule } from "./validation";
 
 describe("computeRowStats", () => {
   it("uses configured Battle Royale bountyFraction as the neutral KO EV share", () => {
@@ -260,5 +261,72 @@ describe("computeRowStats on a Field-size range describes the fields the engine 
     const compiledStd = Math.sqrt(m.secondDollar - m.meanDollar ** 2);
     expect(computeRowStats(row, model).payoutStd).toBeCloseTo(compiledStd, 8);
     expect(computeRowStats(row, model, { skipCompiledSigma: true }).payoutStd).toBeCloseTo(compiledStd, 6);
+  });
+});
+
+describe("computeRowStats shell feasibility agrees with validateSchedule on bounty rows", () => {
+  const model = { id: "power-law" as const };
+  const pko = (over: Partial<TournamentRow>): TournamentRow => ({
+    id: "r", label: "r", players: 1000, buyIn: 50, rake: 0.1, roi: 1,
+    gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5,
+    itmRate: 0.2, count: 1, ...over,
+  });
+
+  it("is feasible when the engine closes the ROI gap by shrinking the KO budget", () => {
+    const row = pko({ finishBuckets: { first: 0.03 } });
+    expect(validateSchedule([row], model).ok).toBe(true);
+    const stats = computeRowStats(row, model);
+    expect(stats.shellMode).toBe(true);
+    expect(stats.shellFeasible).toBe(true);
+  });
+
+  it("stays infeasible when the locked cash EV alone is above the total target", () => {
+    const row = pko({ roi: 0.2, finishBuckets: { first: 0.05 } });
+    expect(validateSchedule([row], model).ok).toBe(false);
+    expect(computeRowStats(row, model).shellFeasible).toBe(false);
+  });
+
+  it("keeps a freezeout row's own feasibility rule", () => {
+    const row: TournamentRow = {
+      id: "f", label: "f", players: 100, buyIn: 50, rake: 0.1, roi: 1,
+      payoutStructure: "mtt-standard", itmRate: 0.02, count: 1,
+    };
+    expect(validateSchedule([row], model).ok).toBe(false);
+    expect(computeRowStats(row, model).shellFeasible).toBe(false);
+  });
+});
+
+describe("computeRowStats zero-skill column sums to the rake", () => {
+  const model = { id: "power-law" as const };
+  const ticket = battleRoyaleRowFromTotalTicket(10);
+  const rows: Array<[string, TournamentRow]> = [
+    ["PKO", { id: "p", label: "p", players: 1000, buyIn: 50, rake: 0.1, roi: 0.5, gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, count: 1 }],
+    ["PKO with a fixed ITM", { id: "p", label: "p", players: 1000, buyIn: 50, rake: 0.1, roi: 0.5, gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, itmRate: 0.2, count: 1 }],
+    ["losing PKO", { id: "p", label: "p", players: 200, buyIn: 20, rake: 0.1, roi: -0.2, gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, count: 1 }],
+    ["Mystery", { id: "m", label: "m", players: 1000, buyIn: 50, rake: 0.1, roi: 0.2, gameType: "mystery", payoutStructure: "mtt-gg-mystery", bountyFraction: 0.5, mysteryBountyVariance: 2, count: 1 }],
+    ["Battle Royale", { id: "b", label: "b", players: 18, buyIn: ticket.buyIn, rake: ticket.rake, roi: 0.3, gameType: "mystery-royale", payoutStructure: "battle-royale", bountyFraction: 0.45, mysteryBountyVariance: 1.8, itmRate: 0.2, count: 1 }],
+    ["Ocean KO", { id: "o", label: "o", players: 500, buyIn: 92, rake: 8 / 92, roi: 0.1, gameType: "ocean-ko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, count: 1 }],
+    ["freezeout", { id: "f", label: "f", players: 1000, buyIn: 50, rake: 0.1, roi: 0.5, payoutStructure: "mtt-standard", count: 1 }],
+  ];
+
+  it.each(rows)("%s: a uniform finisher loses exactly the rake", (_name, row) => {
+    const stats = computeRowStats(row, model);
+    const eq = stats.tiers.reduce((a, t) => a + t.eqNetDollars, 0);
+    expect(eq).toBeCloseTo(-row.rake * row.buyIn, 6);
+  });
+
+  it("adds a guarantee overlay per seat on top of the rake", () => {
+    const row: TournamentRow = {
+      id: "g", label: "g", players: 100, buyIn: 10, rake: 0.1, roi: 0.1, gameType: "pko",
+      payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, guarantee: 2000, count: 1,
+    };
+    const eq = computeRowStats(row, model).tiers.reduce((a, t) => a + t.eqNetDollars, 0);
+    expect(eq).toBeCloseTo((2000 - 100 * 10) / 100 - 0.1 * 10, 6);
+  });
+
+  it("leaves the skill-calibrated column untouched", () => {
+    const stats = computeRowStats(rows[0][1], model);
+    const net = stats.tiers.reduce((a, t) => a + t.netDollars, 0);
+    expect(net).toBeCloseTo(stats.evPerEntry - stats.cost, 6);
   });
 });

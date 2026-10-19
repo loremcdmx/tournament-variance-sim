@@ -1636,6 +1636,14 @@ export const DICT = {
     en: "Skill-uncertainty / shock / tilt channels are on. The σ here comes from a clean baseline that excludes them, so the real volume to prove an edge is higher than shown — treat these numbers as an optimistic floor.",
     ru: "Включены каналы неопределённости скилла / шоков / тильта. σ здесь взята из чистого базлайна без них, поэтому реальный объём для доказательства эджа больше показанного — считай эти числа оптимистичным минимумом.",
   },
+  "proveEdge.schedule.sigmaHeld": {
+    en: "Schedule mode holds σ at the schedule's own ROI for every row, so a higher hypothetical ROI needs more volume than shown (its σ is heavier) and a lower one needs less. The single-format tabs recompute σ for each ROI.",
+    ru: "В режиме расписания σ берётся при собственном ROI расписания для всех строк, поэтому для более высокого гипотетического ROI нужен больший объём, чем в таблице (его σ тяжелее), а для более низкого — меньший. Вкладки отдельных форматов пересчитывают σ под каждый ROI.",
+  },
+  "proveEdge.row.pointOnly": {
+    en: "No range for this row: its ROI is outside the validated model zone, so only the point estimate is shown.",
+    ru: "Для этой строки нет диапазона: её ROI вне проверенной зоны модели, поэтому показана только точка.",
+  },
   "proveEdge.schedule.empty": {
     en: "Schedule mode needs at least one row above. Add a row or choose a single tournament type.",
     ru: "Режиму Расписание нужна хотя бы одна строка выше. Добавь строку или выбери отдельный тип турнира.",
@@ -2058,6 +2066,8 @@ export const DICT = {
   "preview.tierFt": { en: "4th-9th", ru: "4-9 места" },
   "preview.tierFtNonCash": { en: "5th-9th", ru: "5-9 места" },
   "preview.tierTop27": { en: "10th-27th", ru: "10-27 места" },
+  "preview.tierPlaceOne": { en: "Place {n}", ru: "{n}-е место" },
+  "preview.tierPlaceRange": { en: "Places {lo}-{hi}", ru: "{lo}-{hi} места" },
   "preview.tierRestItm": { en: "Rest of cashes", ru: "Остальные кеши" },
   "preview.tierOotm": { en: "Not ITM", ru: "Не ITM" },
   "preview.itmLocked": {
@@ -2509,8 +2519,8 @@ export const DICT = {
     ru: "Медианная полоса в ноль",
   },
   "cash.hero.breakeven.subRecovery": {
-    en: "Recovery p90: {recovery} · unrecovered: {share}",
-    ru: "Восстановление p90: {recovery} · не отмазались: {share}",
+    en: "Recovery p90 (recovered runs): {recovery} · unrecovered: {share}",
+    ru: "Восстановление p90 (среди восстановившихся): {recovery} · не отмазались: {share}",
   },
   "cash.stats.hourlyEvUsd": { en: "EV / hour", ru: "EV / час" },
   "cash.stats.meanRakePaidBb": {
@@ -2593,6 +2603,14 @@ export const DICT = {
     en: "How long it takes to climb back from the deepest drawdown to breakeven. Only recovered paths are shown; unrecovered share stays in the risk panel.",
     ru: "Сколько раздач нужно, чтобы вернуться из самой глубокой просадки к breakeven. Здесь только восстановившиеся траектории; доля невосстановившихся остаётся в блоке рисков.",
   },
+  "cash.chart.recovery.empty": {
+    en: "No run climbed back from its deepest drawdown within this distance, so there are no recovery times to chart.",
+    ru: "За эту дистанцию ни одна траектория не вернулась из самой глубокой просадки, так что строить времена восстановления не из чего.",
+  },
+  "cash.chart.breakeven.empty": {
+    en: "No run ever spent a hand below its previous peak, so there is no breakeven stretch to chart.",
+    ru: "Ни одна траектория ни разу не опускалась ниже своего прежнего пика, так что полос в ноль нет.",
+  },
   "cash.chart.convergence.title": {
     en: "Monte Carlo convergence",
     ru: "Сходимость Monte Carlo",
@@ -2661,8 +2679,12 @@ export const DICT = {
   "cash.summary.median": { en: "Median", ru: "Медиана" },
   "cash.summary.p95": { en: "P95", ru: "P95" },
   "cash.summary.recoveryMedian": {
-    en: "Median recovery",
-    ru: "Медиана восстановления",
+    en: "Median recovery (recovered runs)",
+    ru: "Медиана восстановления (среди восстановившихся)",
+  },
+  "cash.summary.recoveryMedian.tip": {
+    en: "Median over the runs that got back to their previous peak within this distance. The Unrecovered pill is the share that did not; when it is above 50%, the true median is longer than the distance.",
+    ru: "Медиана только по траекториям, которые вернулись к прежнему пику за эту дистанцию. Плашка «Не отмазались» — доля тех, кто не вернулся; если она выше 50%, настоящая медиана длиннее дистанции.",
   },
   "cash.summary.unrecovered": { en: "Unrecovered", ru: "Не отмазались" },
   "cash.summary.oddsUp": {
