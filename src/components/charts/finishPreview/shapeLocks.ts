@@ -32,3 +32,32 @@ export function patchFinishLocks(
     ? { finishBuckets: cleaned, itmRate: row.itmRate }
     : { finishBuckets: cleaned };
 }
+
+/**
+ * `patchFinishLocks` makes an auto-ITM row explicit so its locks survive
+ * `applyItmTarget`. Left that way, the row stops following the global ITM
+ * target, its players and its payout for good. The caller keeps the stamped
+ * value per row (in memory only, nothing persisted) and passes it back here: a
+ * panel edit that removes the last lock also removes the stamp, but only while
+ * the raw ITM is still exactly what was stamped. Any other ITM, whether typed
+ * after the lock or there before it, is the user's and stays.
+ */
+export function reconcileLockItmStamp(
+  raw: Pick<TournamentRow, "itmRate" | "finishBuckets">,
+  updates: Partial<TournamentRow>,
+  stamp: number | undefined,
+): { updates: Partial<TournamentRow>; stamp: number | undefined } {
+  if (updates.finishBuckets != null) {
+    if (raw.itmRate == null) return { updates, stamp: updates.itmRate ?? undefined };
+    return { updates, stamp: stamp === raw.itmRate ? stamp : undefined };
+  }
+  if ("finishBuckets" in updates && !("itmRate" in updates)) {
+    const hadLocks = raw.finishBuckets != null && Object.keys(raw.finishBuckets).length > 0;
+    if (hadLocks && stamp != null && raw.itmRate === stamp) {
+      return { updates: { ...updates, itmRate: undefined }, stamp: undefined };
+    }
+    return { updates, stamp: undefined };
+  }
+  if ("itmRate" in updates) return { updates, stamp: undefined };
+  return { updates, stamp };
+}

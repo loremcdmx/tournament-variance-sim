@@ -656,6 +656,10 @@ export const DICT = {
   },
   "shape.blockedGap": { en: "gap", ru: "разрыв" },
   "shape.fixClosest": { en: "Fit closest inputs", ru: "Подогнать вводные" },
+  "shape.fixClosestStuck": {
+    en: "No single ROI fits every field size in this row's range, and relaxing its locks does not help, so nothing was changed. Narrow the range, change the payout, or set the ITM by hand.",
+    ru: "Ни один ROI не подходит сразу ко всем размерам поля в диапазоне этой строки, и снятие фиксаций не помогает, поэтому ничего не изменено. Сузь диапазон, смени выплаты или задай ITM вручную.",
+  },
   "shape.fixAuto": { en: "Clear locks", ru: "Снять фиксации" },
   "shape.fixPreset": { en: "Grinder preset", ru: "Пресет «гриндер»" },
   "shape.fixAllClosest": {
@@ -1744,6 +1748,10 @@ export const DICT = {
   "seedBatch.label": { en: "Seed variant", ru: "Вариант сида" },
   "seedBatch.prev": { en: "Previous cached run", ru: "Предыдущий кэшированный ран" },
   "seedBatch.next": { en: "Next cached run", ru: "Следующий кэшированный ран" },
+  "seedBatch.pdBusy": {
+    en: "The PrimeDope re-run for this run is still computing; switch runs when it finishes.",
+    ru: "Пересчёт PrimeDope для этого рана ещё идёт; переключай ран, когда он закончится.",
+  },
   "seedBatch.computing": {
     en: "precomputing more in background…",
     ru: "досчитываются ещё в фоне…",
@@ -1993,6 +2001,7 @@ export const DICT = {
     ru: "Ожидаемые $ с входа от тех per-KO конвертов, которые платят ≥{x}× средней головы. Battle Royal читает опубликованную GG 10-тировую таблицу; обычный Mystery — через хвост лог-нормали. PKO и фризы фактически 0.",
   },
   "preview.hover.places": { en: "places", ru: "места" },
+  "preview.hover.placesVary": { en: "depend on field size", ru: "зависят от размера поля" },
   "preview.hover.hitRate": { en: "Hit rate", ru: "Как часто" },
   "preview.hover.oddsIn": { en: "in", ru: "из" },
   "preview.hover.givenHit": { en: "When you land here", ru: "Когда попадаешь сюда" },

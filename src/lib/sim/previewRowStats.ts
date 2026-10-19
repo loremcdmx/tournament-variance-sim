@@ -93,6 +93,10 @@ export interface TierRow {
   posLo: number;
   /** 1-indexed end of position range (inclusive). */
   posHi: number;
+  /** Set on a mixed Field-size-range row for a tier the representative field
+   *  does not have. Its shares are the mixture's, but the places belong to
+   *  other fields and are not a range to show. */
+  placesVary?: true;
 }
 
 

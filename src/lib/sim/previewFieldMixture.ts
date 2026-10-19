@@ -34,8 +34,12 @@ function mixTiers(parts: readonly RowStats[], repIdx: number): TierRow[] {
   return order.map((key) => {
     const present = byKey.map((m) => m.get(key));
     // Place ranges and their labels belong to a concrete field; they come from
-    // the bucket nearest the range midpoint, the shares are the mixture.
-    const layout = present[repIdx] ?? present.find((t) => t !== undefined)!;
+    // the bucket nearest the range midpoint, the shares are the mixture. A tier
+    // that bucket lacks keeps its mixed shares but no range of its own: taking
+    // one from another field put e.g. the rest-of-cashes places of a 258-entry
+    // field next to a bubble at 19.
+    const repTier = present[repIdx];
+    const layout = repTier ?? present.find((t) => t !== undefined)!;
     const share = (pick: (t: TierRow) => number) =>
       mean(present.map((t) => (t ? pick(t) : 0)));
     const field = share((t) => t.field);
@@ -64,6 +68,7 @@ function mixTiers(parts: readonly RowStats[], repIdx: number): TierRow[] {
       displaySeats: layout.displaySeats,
       posLo: layout.posLo,
       posHi: layout.posHi,
+      ...(repTier ? null : { placesVary: true as const }),
     };
   });
 }

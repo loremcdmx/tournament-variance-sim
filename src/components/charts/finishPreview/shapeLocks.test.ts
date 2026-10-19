@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyItmTarget } from "@/lib/sim/itmTarget";
 import { validateSchedule } from "@/lib/sim/validation";
 import type { TournamentRow } from "@/lib/sim/types";
-import { isTop3LockAvailable, patchFinishLocks } from "./shapeLocks";
+import { isTop3LockAvailable, patchFinishLocks, reconcileLockItmStamp } from "./shapeLocks";
 
 const itmOff = { enabled: false, pct: 18.7 };
 const raw: TournamentRow = {
@@ -128,5 +128,121 @@ describe("isTop3LockAvailable", () => {
     expect(isTop3LockAvailable({ top3: 0.05 })).toBe(false);
     expect(isTop3LockAvailable({ first: 0.01 })).toBe(true);
     expect(isTop3LockAvailable({ ft: 0.1 })).toBe(true);
+  });
+});
+
+describe("a lock's ITM stamp is undone with the last lock", () => {
+  // What page.tsx does with a Shape panel edit: the panel's patch is reconciled
+  // against the raw row and the stamp it remembers, then merged into the raw row.
+  const makeSession = (start: TournamentRow, cfg = itmOff) => {
+    let rawRow = start;
+    let stamp: number | undefined;
+    const effective = () => applyItmTarget([rawRow], cfg)[0];
+    const apply = (updates: Partial<TournamentRow>) => {
+      const decision = reconcileLockItmStamp(rawRow, updates, stamp);
+      stamp = decision.stamp;
+      rawRow = { ...rawRow, ...decision.updates };
+    };
+    const lock = (patch: Parameters<typeof patchFinishLocks>[1]) =>
+      apply(patchFinishLocks(effective(), patch));
+    return {
+      lock,
+      apply,
+      raw: () => rawRow,
+      effective,
+      setCfg: (next: typeof itmOff) => {
+        cfg = next;
+      },
+      setRaw: (patch: Partial<TournamentRow>) => {
+        rawRow = { ...rawRow, ...patch };
+      },
+    };
+  };
+  const itm = (r: TournamentRow, cfg: typeof itmOff) => applyItmTarget([r], cfg)[0].itmRate;
+
+  it("lock then unlock puts an auto row back on auto, so it follows the global target again", () => {
+    const session = makeSession(raw);
+    session.lock({ first: 0.02 });
+    expect(session.raw().itmRate).toBeCloseTo(0.15, 12);
+    expect(session.effective().finishBuckets).toEqual({ first: 0.02 });
+
+    session.lock({ first: undefined });
+    expect(session.raw().itmRate).toBeUndefined();
+    expect(session.raw().finishBuckets).toBeUndefined();
+
+    const target12 = { enabled: true, pct: 12 };
+    expect(itm(session.raw(), target12)).toBeCloseTo(0.12, 12);
+    expect(itm(session.raw(), target12)).toBe(itm(raw, target12));
+    expect(itm(session.raw(), itmOff)).toBe(itm(raw, itmOff));
+    expect(itm({ ...session.raw(), players: 100 }, itmOff)).toBe(itm({ ...raw, players: 100 }, itmOff));
+  });
+
+  it("keeps the stamp while any lock is left and undoes it with the last one", () => {
+    const session = makeSession(raw);
+    session.lock({ first: 0.02 });
+    session.lock({ ft: 0.1 });
+    session.lock({ first: undefined });
+    expect(session.raw().finishBuckets).toEqual({ ft: 0.1 });
+    expect(session.raw().itmRate).toBeCloseTo(0.15, 12);
+    session.lock({ ft: undefined });
+    expect(session.raw().itmRate).toBeUndefined();
+  });
+
+  it("the Auto-fit button, which clears every lock at once, undoes it too", () => {
+    const session = makeSession(raw);
+    session.lock({ first: 0.02 });
+    session.apply({ finishBuckets: undefined });
+    expect(session.raw().itmRate).toBeUndefined();
+  });
+
+  it("leaves an ITM the row already had alone", () => {
+    const session = makeSession({ ...raw, itmRate: 0.16 });
+    session.lock({ first: 0.02 });
+    session.lock({ first: undefined });
+    expect(session.raw().itmRate).toBe(0.16);
+  });
+
+  it("leaves an ITM the user changed after the lock alone, even back and forth", () => {
+    const session = makeSession(raw);
+    session.lock({ first: 0.02 });
+    session.apply({ itmRate: 0.2 });
+    session.lock({ first: undefined });
+    expect(session.raw().itmRate).toBe(0.2);
+
+    const edited = makeSession(raw);
+    edited.lock({ first: 0.02 });
+    edited.setRaw({ itmRate: 0.2 });
+    edited.lock({ ft: 0.1 });
+    edited.setRaw({ itmRate: 0.15 });
+    edited.lock({ first: undefined });
+    edited.lock({ ft: undefined });
+    expect(edited.raw().itmRate).toBe(0.15);
+  });
+
+  it("a stamp from one lock session does not touch a later explicit ITM", () => {
+    const session = makeSession(raw);
+    session.lock({ first: 0.02 });
+    session.lock({ first: undefined });
+    session.apply({ itmRate: 0.16 });
+    session.lock({ first: 0.02 });
+    session.lock({ first: undefined });
+    expect(session.raw().itmRate).toBe(0.16);
+  });
+
+  it("a preset resets the memory so its ITM is never taken for a stamp", () => {
+    const session = makeSession(raw);
+    session.lock({ first: 0.02 });
+    session.apply({ itmRate: 0.16, finishBuckets: undefined });
+    expect(session.raw().itmRate).toBe(0.16);
+    session.lock({ first: 0.02 });
+    session.lock({ first: undefined });
+    expect(session.raw().itmRate).toBe(0.16);
+  });
+
+  it("does not stamp or undo anything for edits that carry no ITM or lock", () => {
+    expect(reconcileLockItmStamp({ itmRate: undefined }, { bountyEvBias: 0.1 }, undefined))
+      .toEqual({ updates: { bountyEvBias: 0.1 }, stamp: undefined });
+    expect(reconcileLockItmStamp({ itmRate: 0.15, finishBuckets: { first: 0.02 } }, { bountyEvBias: 0.1 }, 0.15))
+      .toEqual({ updates: { bountyEvBias: 0.1 }, stamp: 0.15 });
   });
 });

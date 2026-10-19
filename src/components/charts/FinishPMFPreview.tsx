@@ -29,6 +29,7 @@ import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { isTop3LockAvailable, patchFinishLocks } from "./finishPreview/shapeLocks";
+import { tierPlacesLabel } from "./finishPreview/tierPlaces";
 import {
   EvBreakdownFooter,
   EvBreakdownRow,
@@ -504,10 +505,10 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                           tier,
                           hasBounty,
                           bountyColor: bountyAccent,
-                          posRangeLabel:
-                            tier.posLo === tier.posHi
-                              ? `${tier.posLo}`
-                              : `${tier.posLo}–${tier.posHi}`,
+                          posRangeLabel: tierPlacesLabel(
+                            tier,
+                            t("preview.hover.placesVary"),
+                          ),
                         }
                       : undefined
                   }

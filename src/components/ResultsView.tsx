@@ -767,7 +767,8 @@ function ResultsViewImpl({
           <button
             type="button"
             onClick={() => onSelectRun(Math.max(0, activeRunIdx - 1))}
-            disabled={activeRunIdx <= 0}
+            disabled={activeRunIdx <= 0 || pdOverrideStatus === "running"}
+            title={pdOverrideStatus === "running" ? t("seedBatch.pdBusy") : undefined}
             className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-0.5 font-mono text-[11px] text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label={t("seedBatch.prev")}
           >
@@ -781,7 +782,8 @@ function ResultsViewImpl({
             onClick={() =>
               onSelectRun(Math.min(availableRuns - 1, activeRunIdx + 1))
             }
-            disabled={activeRunIdx >= availableRuns - 1}
+            disabled={activeRunIdx >= availableRuns - 1 || pdOverrideStatus === "running"}
+            title={pdOverrideStatus === "running" ? t("seedBatch.pdBusy") : undefined}
             className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-2 py-0.5 font-mono text-[11px] text-[color:var(--color-fg)] hover:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label={t("seedBatch.next")}
           >

@@ -9,6 +9,7 @@ import {
   supportsJackpotFilter,
 } from "./trajectoryTransforms";
 import { runSimulation } from "@/lib/sim/engine";
+import { applyGameType } from "@/lib/sim/gameType";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
 function makeRow(overrides: Partial<TournamentRow>): TournamentRow {
@@ -290,6 +291,100 @@ describe("stripJackpots keeps the engine's extremes", () => {
     const last = r.envelopes.x.length - 1;
     expect(stripped.envelopes.min[last]).toBe(Math.min(...r.finalProfits));
     expect(stripped.envelopes.max[last]).toBeLessThan(r.envelopes.max[last]);
+  });
+});
+
+describe("stripJackpots keeps the envelope ordered", () => {
+  const ORDER = ["min", "p0015", "p025", "p05", "p15", "p85", "p95", "p975", "p9985", "max"] as const;
+
+  // The engine itself leaves ~1e-14 of rounding between its own min and p0015.
+  function firstInversion(env: SimulationResult["envelopes"]) {
+    for (let t = 0; t < env.x.length; t++) {
+      for (let k = 0; k + 1 < ORDER.length; k++) {
+        const lo = env[ORDER[k]][t];
+        const hi = env[ORDER[k + 1]][t];
+        if (lo > hi + 1e-9) return `${ORDER[k]} ${lo} > ${ORDER[k + 1]} ${hi} at checkpoint ${t}`;
+      }
+    }
+    return null;
+  }
+
+  // Engine lower tail (all samples) sits ABOVE what the kept stored paths give
+  // for the upper side at checkpoint 1: the merged bands must not cross.
+  it("lifts a rebuilt upper band that falls under the engine's lower tail, and leaves the lower tail alone", () => {
+    const X = [0, 1, 2];
+    const band = (...v: number[]) => Float64Array.from(v);
+    const finals = Float64Array.from({ length: 100 }, (_, i) => i - 50);
+    const mask = new Uint8Array(100);
+    mask[3] = 1;
+    const stored = Array.from({ length: 10 }, (_, i) => band(0, i - 5, finals[i]));
+    const result = {
+      finalProfits: finals,
+      jackpotMask: mask,
+      neverBustedMask: new Uint8Array(0),
+      histogram: { binEdges: [-50, 49], counts: [100] },
+      samplePaths: { x: X, paths: stored, best: stored[9], worst: stored[0], sampleIndices: stored.map((_, i) => i) },
+      envelopes: {
+        x: X,
+        mean: band(0, 0, 0),
+        min: band(0, -20, -50),
+        p0015: band(0, -10, -50),
+        p025: band(0, -8, -50),
+        p05: band(0, -6, -49),
+        p15: band(0, 40, -48),
+        p85: band(0, 50, 30),
+        p95: band(0, 60, 40),
+        p975: band(0, 70, 45),
+        p9985: band(0, 80, 48),
+        max: band(0, 90, 49),
+      },
+    } as unknown as SimulationResult;
+
+    const stripped = stripJackpots(result);
+
+    expect(firstInversion(stripped.envelopes)).toBeNull();
+    for (const key of ["min", "p0015", "p025", "p05", "p15"] as const) {
+      expect(stripped.envelopes[key], key).toBe(result.envelopes[key]);
+    }
+    // Checkpoint 1: the ten stored paths read -5..4 there, so the rebuilt
+    // percentiles are under the engine's p15 of 40 and are raised to it.
+    for (const key of ["p85", "p95", "p975", "p9985", "max"] as const) {
+      expect(stripped.envelopes[key][1], key).toBeGreaterThanOrEqual(40);
+    }
+    // Where nothing crosses, the rebuilt upper side is untouched.
+    expect(stripped.envelopes.max[2]).toBe(-41);
+  });
+
+  it("holds on the reviewed Mystery runs (3000 x $50, 4000 samples, seeds 3 and 4)", () => {
+    const base: TournamentRow = makeRow({
+      id: "m",
+      players: 1000,
+      buyIn: 50,
+      rake: 0.1,
+      roi: 0.05,
+      gameType: "freezeout",
+      count: 3000,
+    });
+    const mystery: TournamentRow = { ...base, ...applyGameType(base, "mystery"), buyIn: 50, rake: 0.1, roi: 0.05 };
+    for (const seed of [3, 4]) {
+      const r = runSimulation({
+        schedule: [mystery],
+        scheduleRepeats: 1,
+        samples: 4000,
+        bankroll: 0,
+        seed,
+        finishModel: { id: "power-law" },
+      });
+      expect(jackpotHiddenShare(r), `seed ${seed}`).toBeGreaterThan(0);
+      expect(hideJackpotsByDefault(jackpotHiddenShare(r))).toBe(true);
+      const stripped = stripJackpots(r);
+      expect(firstInversion(stripped.envelopes), `seed ${seed}`).toBeNull();
+      for (const key of ["min", "p0015", "p025", "p05", "p15"] as const) {
+        expect(Array.from(stripped.envelopes[key]), `seed ${seed} ${key}`).toEqual(
+          Array.from(r.envelopes[key]),
+        );
+      }
+    }
   });
 });
 

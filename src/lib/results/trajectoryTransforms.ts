@@ -282,6 +282,29 @@ export function rebuildEnvelopesFromPaths(
   };
 }
 
+// The kept lower tail is the engine's (every sample) while the upper side is
+// rebuilt from the stored paths only, so at an early checkpoint a rebuilt band
+// can land under the engine band beside it. Raise the rebuilt side to the band
+// below it; the engine's exact lower tail does not move. The arrays are the
+// ones `rebuildEnvelopesFromPaths` just allocated.
+function liftUpperBandsToLowerTail(envelopes: SimulationResult["envelopes"]) {
+  const chain = [
+    envelopes.p15,
+    envelopes.p85,
+    envelopes.p95,
+    envelopes.p975,
+    envelopes.p9985,
+    envelopes.max,
+  ];
+  for (let i = 1; i < chain.length; i++) {
+    const below = chain[i - 1];
+    const band = chain[i];
+    for (let t = 0; t < band.length; t++) {
+      if (band[t] < below[t]) band[t] = below[t];
+    }
+  }
+}
+
 // Strip samples flagged in `jackpotMask` from the scale-sensitive fields that
 // drive path and histogram views. The upper side of the envelopes and the best
 // path are rebuilt from the remaining stored paths so the chart does not keep
@@ -366,6 +389,7 @@ export function stripJackpots(result: SimulationResult): SimulationResult {
               }
             : null),
         };
+  if (keptPaths.length > 0) liftUpperBandsToLowerTail(envelopes);
   return {
     ...result,
     finalProfits: filteredFinal,

@@ -49,6 +49,10 @@ export function supportsManualAlpha(id: FinishModelId): boolean {
   );
 }
 
+/** The range the α field accepts; anything stored or linked is held to it too. */
+export const MANUAL_ALPHA_MIN = -0.5;
+export const MANUAL_ALPHA_MAX = 0.5;
+
 /** The α override to send with `id`: the typed value, or none when `id` ignores it. */
 export function manualAlphaFor(
   id: FinishModelId,

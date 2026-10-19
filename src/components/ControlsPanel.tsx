@@ -2,7 +2,12 @@
 
 import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
-import { finishModelSupportsTargetRoi, supportsManualAlpha } from "@/lib/sim/finishModel";
+import {
+  finishModelSupportsTargetRoi,
+  MANUAL_ALPHA_MAX,
+  MANUAL_ALPHA_MIN,
+  supportsManualAlpha,
+} from "@/lib/sim/finishModel";
 import {
   STANDARD_PRESETS,
   applyModelPatch,
@@ -183,8 +188,8 @@ export function AlphaOverrideInput({ id, modelId, value, placeholder, onChange }
       type="number"
       disabled={!enabled}
       step={0.05}
-      min={-0.5}
-      max={0.5}
+      min={MANUAL_ALPHA_MIN}
+      max={MANUAL_ALPHA_MAX}
       value={enabled ? value ?? "" : ""}
       placeholder={placeholder}
       onChange={(e) => {
@@ -195,7 +200,9 @@ export function AlphaOverrideInput({ id, modelId, value, placeholder, onChange }
           return;
         }
         const parsed = Number(raw);
-        if (Number.isFinite(parsed) && parsed >= -0.5 && parsed <= 0.5) onChange(parsed);
+        if (Number.isFinite(parsed) && parsed >= MANUAL_ALPHA_MIN && parsed <= MANUAL_ALPHA_MAX) {
+          onChange(parsed);
+        }
       }}
       className="number-control w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-2 text-sm tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)] placeholder:text-[color:var(--color-fg-dim)] disabled:opacity-50"
     />

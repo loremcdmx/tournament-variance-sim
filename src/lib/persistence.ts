@@ -9,7 +9,11 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import type { GameType, PayoutStructureId, TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
-import { supportsManualAlpha } from "@/lib/sim/finishModel";
+import {
+  MANUAL_ALPHA_MAX,
+  MANUAL_ALPHA_MIN,
+  supportsManualAlpha,
+} from "@/lib/sim/finishModel";
 import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
@@ -62,10 +66,12 @@ function isPersistedState(
 ): v is PersistedState | LegacyPersistedState {
   if (!isRecord(v)) return false;
   if (v.v !== 1 && v.v !== PERSISTED_STATE_VERSION) return false;
+  // Rows past the editor cap are dropped on read, so one malformed row out
+  // there must not reject the payload (the autosave would then overwrite it).
   if (
     !Array.isArray(v.schedule) ||
     v.schedule.length > MAX_PERSISTED_SCHEDULE_ROWS ||
-    !v.schedule.every(isTournamentRowLike)
+    !v.schedule.slice(0, MAX_SCHEDULE_ROWS).every(isTournamentRowLike)
   ) {
     return false;
   }
@@ -78,7 +84,7 @@ function isPersistedState(
 // bad imports or stale JSON before engine behavior depends on the fix.
 function warnOnBrMrDrift(schedule: readonly TournamentRow[] | undefined, source: string) {
   if (!schedule) return;
-  for (const r of schedule) {
+  for (const r of schedule.slice(0, MAX_SCHEDULE_ROWS)) {
     const isBR = r.payoutStructure === "battle-royale";
     const isMR = r.gameType === "mystery-royale";
     if (isBR !== isMR) {
@@ -103,6 +109,32 @@ export interface PersistedState {
 }
 
 const LS_KEY = "tvs:state";
+export const OVERCAP_STATE_BACKUP_KEY = "tvs:state-overcap-backup";
+const PRESET_OVERCAP_BACKUP_PREFIX = "tvs:user-preset-overcap-backup:";
+
+export function presetOvercapBackupKey(presetId: string): string {
+  return `${PRESET_OVERCAP_BACKUP_PREFIX}${presetId}`;
+}
+
+// Reading an over-cap payload truncates it, and the next autosave or preset
+// save writes the truncated state back over the original. Keep the original
+// string beside it first. Best effort: a full quota must not break the load.
+function keepOvercapBackup(key: string, original: string) {
+  try {
+    if (localStorage.getItem(key) === original) return;
+    localStorage.setItem(key, original);
+  } catch {
+    // ignore quota / SSR
+  }
+}
+
+function dropOvercapBackup(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore SSR
+  }
+}
 const VALID_FINISH_MODEL_IDS = new Set<ControlsState["finishModelId"]>([
   "power-law",
   "linear-skill",
@@ -452,6 +484,12 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
       // or link must not revive an override nobody can see or clear.
       next.alphaOverride = null;
       changed = true;
+    } else if (raw !== null) {
+      const clamped = Math.min(MANUAL_ALPHA_MAX, Math.max(MANUAL_ALPHA_MIN, raw as number));
+      if (clamped !== raw) {
+        next.alphaOverride = clamped;
+        changed = true;
+      }
     }
   }
   if ("empiricalBuckets" in next) {
@@ -725,6 +763,9 @@ export function loadLocal(): PersistedState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (isPersistedState(parsed)) {
+      if (parsed.schedule.length > MAX_SCHEDULE_ROWS) {
+        keepOvercapBackup(OVERCAP_STATE_BACKUP_KEY, raw);
+      }
       warnOnBrMrDrift(parsed.schedule, "loadLocal");
       return normalizePersistedState(parsed);
     }
@@ -768,6 +809,9 @@ export function loadUserPresets(): UserPreset[] {
     if (!Array.isArray(parsed)) return [];
     const safe = parsed.filter(isValidUserPreset);
     return safe.map((preset) => {
+      if (preset.state.schedule.length > MAX_SCHEDULE_ROWS) {
+        keepOvercapBackup(presetOvercapBackupKey(preset.id), JSON.stringify(preset));
+      }
       warnOnBrMrDrift(preset.state.schedule, `preset "${preset.name}"`);
       const state = normalizePersistedState(preset.state);
       return state === preset.state ? preset : { ...preset, state };
@@ -800,6 +844,7 @@ export function addUserPreset(name: string, state: PersistedState): UserPreset {
 
 export function removeUserPreset(id: string) {
   saveUserPresets(loadUserPresets().filter((p) => p.id !== id));
+  dropOvercapBackup(presetOvercapBackupKey(id));
 }
 
 export function buildShareUrl(state: PersistedState): string {

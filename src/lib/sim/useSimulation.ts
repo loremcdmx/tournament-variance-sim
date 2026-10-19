@@ -22,6 +22,7 @@ import {
 } from "./progressConstants";
 import { composeProgress } from "./progressAggregation";
 import { computeNextRate } from "@/lib/ui/rateUpdate";
+import { canSwitchRun } from "@/lib/ui/runGate";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import type { PersistedState } from "@/lib/persistence";
 import {
@@ -1100,14 +1101,12 @@ export function useSimulation() {
       const runs = batchRef.current.runs;
       if (idx < 0 || idx >= runs.length) return;
       const nextSeed = runs[idx].seed;
-      if (nextSeed !== activeSeedRef.current) {
-        // A PD-only re-run in flight belongs to the run being left; its
-        // result would be keyed to that seed anyway, so drop it instead of
-        // letting it finish on cores the user no longer cares about.
-        if (pdStatus === "running") {
-          pdJobIdRef.current++;
-          resetPool();
-        }
+      const sameRun = nextSeed === activeSeedRef.current;
+      // A PD-only re-run in flight writes into the run it started on and the
+      // pool is shared, so leaving that run would drop the job (the toggle is
+      // already on the live controls). The selector is disabled meanwhile.
+      if (!canSwitchRun({ pdStatus, sameRun })) return;
+      if (!sameRun) {
         setPdStatus("idle");
         setPdProgress(0);
         pendingPdInputRef.current = null;
@@ -1120,7 +1119,7 @@ export function useSimulation() {
         setDisplayedRun(runs[idx]);
       });
     },
-    [pdStatus, resetPool],
+    [pdStatus],
   );
 
   return {

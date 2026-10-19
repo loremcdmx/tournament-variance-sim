@@ -23,9 +23,13 @@ import { Section, Card } from "@/components/ui/Section";
 import { CornerToggles } from "@/components/ui/CornerToggles";
 import { InfoTooltip } from "@/components/ui/Tooltip";
 import { FinishPMFPreview } from "@/components/charts/FinishPMFPreview";
+import { reconcileLockItmStamp } from "@/components/charts/finishPreview/shapeLocks";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
-import { chooseClosestFeasibilityFix } from "@/lib/sim/feasibilityFix";
+import {
+  chooseClosestFeasibilityFix,
+  rowsFitCannotUnblock,
+} from "@/lib/sim/feasibilityFix";
 import { checkInputSanity } from "@/lib/sim/inputSanity";
 import { noiseChannelsActive } from "@/lib/sim/convergencePolicy";
 import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
@@ -48,6 +52,7 @@ import {
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
+import { canStartRun } from "@/lib/ui/runGate";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
@@ -479,7 +484,7 @@ export default function Home() {
   const [runRequest, setRunRequest] = useState(0);
   const handledRunRequestRef = useRef(0);
   const onRun = useCallback(() => {
-    if (activeMode !== "mtt" || mttModel !== "mechanical" || status === "running" || pdStatus === "running") return;
+    if (!canStartRun({ activeMode, mttModel, status })) return;
     const active = document.activeElement;
     if (
       active instanceof HTMLInputElement ||
@@ -489,12 +494,12 @@ export default function Home() {
       active.blur();
     }
     startTransition(() => setRunRequest((n) => n + 1));
-  }, [activeMode, mttModel, status, pdStatus]);
+  }, [activeMode, mttModel, status]);
 
   useEffect(() => {
     if (runRequest === 0 || handledRunRequestRef.current === runRequest) return;
     handledRunRequestRef.current = runRequest;
-    if (activeMode !== "mtt" || mttModel !== "mechanical" || status === "running" || pdStatus === "running") return;
+    if (!canStartRun({ activeMode, mttModel, status })) return;
     clearPendingInterrupt();
     const liveFeasibility = validateSchedule(effectiveSchedule, previewModel);
     if (!liveFeasibility.ok) return;
@@ -517,7 +522,6 @@ export default function Home() {
     activeMode,
     mttModel,
     status,
-    pdStatus,
     schedule,
     advanced,
   ]);
@@ -761,19 +765,41 @@ export default function Home() {
   }, [previewRow, schedule]);
 
   const previewRowId_ = previewRow?.id;
+  const lockItmStampsRef = useRef(new Map<string, number>());
   const onPreviewRowChange = useCallback(
     (updates: Partial<TournamentRow>) => {
       if (!previewRowId_) return;
+      let applied = updates;
+      if (previewSourceRow) {
+        const decision = reconcileLockItmStamp(
+          previewSourceRow,
+          updates,
+          lockItmStampsRef.current.get(previewRowId_),
+        );
+        applied = decision.updates;
+        if (decision.stamp == null) lockItmStampsRef.current.delete(previewRowId_);
+        else lockItmStampsRef.current.set(previewRowId_, decision.stamp);
+      }
       queueInterruptBackground();
       setSchedule((prev) =>
-        prev.map((r) => (r.id === previewRowId_ ? { ...r, ...updates } : r)),
+        prev.map((r) => (r.id === previewRowId_ ? { ...r, ...applied } : r)),
       );
       setActiveScenarioId(null);
     },
-    [previewRowId_, queueInterruptBackground],
+    [previewRowId_, previewSourceRow, queueInterruptBackground],
   );
+  // The Fit handlers go to every schedule row; reading the schedule through a
+  // ref keeps their identity (and the rows' memo barrier) stable across edits.
+  const scheduleRef = useRef(schedule);
+  useEffect(() => {
+    scheduleRef.current = schedule;
+  }, [schedule]);
   const fitRowClosest = useCallback(
     (rowId: string) => {
+      if (rowsFitCannotUnblock(scheduleRef.current, previewModel, itmTargetCfg).includes(rowId)) {
+        window.alert(t("shape.fixClosestStuck"));
+        return;
+      }
       queueInterruptBackground();
       setSchedule((prev) => {
         const liveSchedule = applyItmTarget(prev, itmTargetCfg);
@@ -790,10 +816,15 @@ export default function Home() {
       });
       setActiveScenarioId(null);
     },
-    [itmTargetCfg, previewModel, queueInterruptBackground],
+    [itmTargetCfg, previewModel, queueInterruptBackground, t],
   );
 
   const fitAllClosest = useCallback(() => {
+    const live = scheduleRef.current;
+    const stuck = rowsFitCannotUnblock(live, previewModel, itmTargetCfg);
+    if (stuck.length > 0) window.alert(t("shape.fixClosestStuck"));
+    const blocked = validateSchedule(applyItmTarget(live, itmTargetCfg), previewModel).issues;
+    if (stuck.length >= blocked.length) return;
     queueInterruptBackground();
     setSchedule((prev) =>
       (() => {
@@ -811,7 +842,7 @@ export default function Home() {
       })(),
     );
     setActiveScenarioId(null);
-  }, [itmTargetCfg, previewModel, queueInterruptBackground]);
+  }, [itmTargetCfg, previewModel, queueInterruptBackground, t]);
 
   const onSaveUserPreset = () => {
     const name = window.prompt(t("userPreset.promptName"));

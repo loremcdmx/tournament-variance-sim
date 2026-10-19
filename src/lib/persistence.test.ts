@@ -21,7 +21,10 @@ import {
   loadUserPresets,
   MAX_PERSISTED_SCHEDULE_ROWS,
   MAX_SCHEDULE_ROWS,
+  OVERCAP_STATE_BACKUP_KEY,
   PERSISTED_STATE_VERSION,
+  presetOvercapBackupKey,
+  removeUserPreset,
   saveLocal,
   saveUserPresets,
   type PersistedState,
@@ -39,6 +42,23 @@ const row: TournamentRow = {
 };
 
 const controls = {} as ControlsState;
+
+function memoryStorage(initial: Record<string, string>, failKeys: string[] = []) {
+  const store = new Map(Object.entries(initial));
+  const writes: string[] = [];
+  vi.stubGlobal("localStorage", {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      if (failKeys.includes(k)) throw new Error("QuotaExceededError");
+      writes.push(k);
+      store.set(k, v);
+    },
+    removeItem: (k: string) => {
+      store.delete(k);
+    },
+  });
+  return { store, writes };
+}
 
 function encoded(payload: unknown): string {
   return encodeState(payload as PersistedState);
@@ -125,29 +145,25 @@ describe("persistence validation", () => {
   });
 
   it("keeps an over-cap saved preset visible and in storage when another preset is saved", () => {
-    let stored = JSON.stringify([
-      {
-        id: "history",
-        name: "History",
-        createdAt: 1,
-        state: {
-          v: 1,
-          schedule: Array.from({ length: 400 }, (_, i) => ({ ...row, id: `h${i}` })),
-          controls,
+    const { store } = memoryStorage({
+      "tvs:user-presets": JSON.stringify([
+        {
+          id: "history",
+          name: "History",
+          createdAt: 1,
+          state: {
+            v: 1,
+            schedule: Array.from({ length: 400 }, (_, i) => ({ ...row, id: `h${i}` })),
+            controls,
+          },
         },
-      },
-      { id: "small", name: "Small", createdAt: 2, state: { v: 2, schedule: [row], controls } },
-    ]);
-    vi.stubGlobal("localStorage", {
-      getItem: () => stored,
-      setItem: (_key: string, value: string) => {
-        stored = value;
-      },
+        { id: "small", name: "Small", createdAt: 2, state: { v: 2, schedule: [row], controls } },
+      ]),
     });
     try {
       expect(loadUserPresets().map((p) => p.id)).toEqual(["history", "small"]);
       addUserPreset("new", { v: 2, schedule: [row], controls });
-      const after = JSON.parse(stored) as UserPreset[];
+      const after = JSON.parse(store.get("tvs:user-presets")!) as UserPreset[];
       expect(after.map((p) => p.name)).toEqual(["History", "Small", "new"]);
       expect(after[0]?.state.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
     } finally {
@@ -156,22 +172,18 @@ describe("persistence validation", () => {
   });
 
   it("survives load then autosave without wiping an over-cap saved schedule", () => {
-    let stored = JSON.stringify({
-      v: 2,
-      schedule: Array.from({ length: 450 }, (_, i) => ({ ...row, id: `r${i}` })),
-      controls,
-    });
-    vi.stubGlobal("localStorage", {
-      getItem: () => stored,
-      setItem: (_key: string, value: string) => {
-        stored = value;
-      },
+    const { store } = memoryStorage({
+      "tvs:state": JSON.stringify({
+        v: 2,
+        schedule: Array.from({ length: 450 }, (_, i) => ({ ...row, id: `r${i}` })),
+        controls,
+      }),
     });
     try {
       const loaded = loadLocal();
       expect(loaded).not.toBeNull();
       saveLocal(loaded!);
-      expect(JSON.parse(stored).schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+      expect(JSON.parse(store.get("tvs:state")!).schedule).toHaveLength(MAX_SCHEDULE_ROWS);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -1140,5 +1152,174 @@ describe("buildShareUrl", () => {
     expect(link.pathname).toBe("/app/");
     expect(link.hash.startsWith("#s=")).toBe(true);
     expect(decodeState(link.hash.slice(3))?.schedule[0]?.buyIn).toBe(50);
+  });
+});
+
+describe("over-cap saves keep their original in a backup key", () => {
+  const overCapRows = (n: number, prefix = "r") =>
+    Array.from({ length: n }, (_, i) => ({ ...row, id: `${prefix}${i}` }));
+
+  it("stores the untouched autosave once before the autosave writes the truncated state back", () => {
+    const original = JSON.stringify({ v: 2, schedule: overCapRows(450), controls });
+    const { store, writes } = memoryStorage({ "tvs:state": original });
+    try {
+      const loaded = loadLocal();
+      expect(loaded?.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+      expect(store.get(OVERCAP_STATE_BACKUP_KEY)).toBe(original);
+
+      saveLocal(loaded!);
+      expect(JSON.parse(store.get("tvs:state")!).schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+      expect(store.get(OVERCAP_STATE_BACKUP_KEY)).toBe(original);
+      expect(JSON.parse(store.get(OVERCAP_STATE_BACKUP_KEY)!).schedule).toHaveLength(450);
+
+      loadLocal();
+      loadLocal();
+      expect(writes.filter((k) => k === OVERCAP_STATE_BACKUP_KEY)).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("writes no backup for a schedule at or under the cap", () => {
+    const { store } = memoryStorage({
+      "tvs:state": JSON.stringify({ v: 2, schedule: overCapRows(MAX_SCHEDULE_ROWS), controls }),
+    });
+    try {
+      expect(loadLocal()?.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+      expect(store.has(OVERCAP_STATE_BACKUP_KEY)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stays silent and still loads when the backup cannot be written", () => {
+    memoryStorage(
+      { "tvs:state": JSON.stringify({ v: 2, schedule: overCapRows(450), controls }) },
+      [OVERCAP_STATE_BACKUP_KEY],
+    );
+    try {
+      expect(loadLocal()?.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("loads the first rows when a malformed row sits past the cap, and keeps the original", () => {
+    const rows: unknown[] = overCapRows(400);
+    rows[350] = null;
+    const original = JSON.stringify({ v: 2, schedule: rows, controls });
+    const { store } = memoryStorage({ "tvs:state": original });
+    try {
+      const loaded = loadLocal();
+      expect(loaded?.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+      expect(store.get(OVERCAP_STATE_BACKUP_KEY)).toBe(original);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const malformedInside: unknown[] = overCapRows(400);
+    malformedInside[10] = null;
+    expect(loadLocalFromPayload({ v: 2, schedule: malformedInside, controls })).toBeNull();
+  });
+
+  it("keeps the full original of an over-cap preset when another preset is saved or removed", () => {
+    const big = {
+      id: "history",
+      name: "History",
+      createdAt: 1,
+      state: { v: 1, schedule: overCapRows(400, "h"), controls },
+    };
+    const small = { id: "small", name: "Small", createdAt: 2, state: { v: 2, schedule: [row], controls } };
+    const { store } = memoryStorage({ "tvs:user-presets": JSON.stringify([big, small]) });
+    try {
+      expect(loadUserPresets()[0]?.state.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+      expect(store.has(presetOvercapBackupKey("small"))).toBe(false);
+      expect(JSON.parse(store.get(presetOvercapBackupKey("history"))!)).toEqual(big);
+
+      addUserPreset("new", { v: 2, schedule: [row], controls });
+      const after = JSON.parse(store.get("tvs:user-presets")!) as UserPreset[];
+      expect(after[0]?.state.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+      const backup = JSON.parse(store.get(presetOvercapBackupKey("history"))!) as UserPreset;
+      expect(backup.state.schedule).toHaveLength(400);
+
+      removeUserPreset("small");
+      expect(store.has(presetOvercapBackupKey("history"))).toBe(true);
+
+      removeUserPreset("history");
+      expect(store.has(presetOvercapBackupKey("history"))).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stays silent when a preset backup cannot be written", () => {
+    const big = {
+      id: "history",
+      name: "History",
+      createdAt: 1,
+      state: { v: 2, schedule: overCapRows(400, "h"), controls },
+    };
+    memoryStorage({ "tvs:user-presets": JSON.stringify([big]) }, [presetOvercapBackupKey("history")]);
+    try {
+      expect(loadUserPresets()[0]?.state.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("a persisted alpha override stays inside the field's range", () => {
+  const TILT_MODELS = ["freeze-realdata-tilt", "pko-realdata-tilt", "mystery-realdata-tilt"] as const;
+  const alphaAfterDecode = (finishModelId: string, alphaOverride: unknown) =>
+    decodeState(
+      encoded({ v: PERSISTED_STATE_VERSION, schedule: [row], controls: { finishModelId, alphaOverride } }),
+    )?.controls.alphaOverride;
+
+  it("clamps a hand-edited link to the -0.5..0.5 the number field enforces", () => {
+    for (const id of TILT_MODELS) {
+      expect(alphaAfterDecode(id, 10), id).toBe(0.5);
+      expect(alphaAfterDecode(id, 100), id).toBe(0.5);
+      expect(alphaAfterDecode(id, -10), id).toBe(-0.5);
+      expect(alphaAfterDecode(id, 0.5), id).toBe(0.5);
+      expect(alphaAfterDecode(id, -0.5), id).toBe(-0.5);
+      expect(alphaAfterDecode(id, 0.2), id).toBe(0.2);
+      expect(alphaAfterDecode(id, 0), id).toBe(0);
+      expect(alphaAfterDecode(id, null), id).toBeNull();
+    }
+  });
+
+  it("clamps the same way on the autosave path", () => {
+    const loaded = loadLocalFromPayload({
+      v: PERSISTED_STATE_VERSION,
+      schedule: [row],
+      controls: { finishModelId: "pko-realdata-tilt", alphaOverride: 10 },
+    });
+    expect(loaded?.controls.alphaOverride).toBe(0.5);
+  });
+
+  it("does not let an out-of-range link compile to a wildly different mean", () => {
+    const meanFor = (alphaOverride: number) => {
+      const state = decodeState(
+        encoded({
+          v: PERSISTED_STATE_VERSION,
+          schedule: [{ ...row, players: 1000, payoutStructure: "mtt-gg", itmRate: 0.15 }],
+          controls: { finishModelId: "freeze-realdata-tilt", alphaOverride },
+        }),
+      )!;
+      const alpha = state.controls.alphaOverride ?? undefined;
+      const compiled = compileSchedule(
+        {
+          schedule: state.schedule,
+          scheduleRepeats: 1,
+          samples: 1,
+          bankroll: 0,
+          seed: 1,
+          finishModel: { id: "freeze-realdata-tilt", alpha },
+        },
+        "alpha",
+      );
+      return compiled.flat[0].analyticMeanSingle;
+    };
+    expect(meanFor(10)).toBe(meanFor(0.5));
+    expect(meanFor(-10)).toBe(meanFor(-0.5));
   });
 });

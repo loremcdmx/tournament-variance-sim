@@ -266,6 +266,39 @@ residual coefficient before being band-eligible.
   left on the row made the session simulate 140-700 entrants where a share link
   played the real 18-max.
 
+- A Field-size range row's mixed preview takes every place range from the one
+  bucket nearest the mean (`mixTiers`). A tier that bucket lacks keeps its mixed
+  shares and EV but carries `placesVary`, and the tooltip says the places depend
+  on the field size; before, `restItm[28]` of a 258-entry field was printed next
+  to a bubble at 19.
+- "Fit closest inputs" on a ranged row searches for the one ROI every size can
+  reach (a size that falls short caps the target, one that overshoots floors it)
+  and returns `kind: "none"` with the row untouched when the bounds cross. In a
+  600-row grid of ranged SNG and small-MTT rows 510 were blocked and a ROI fixes
+  only 90 of them (a pinned ITM against the small sizes), so the handlers say so
+  in an alert instead of rewriting the ROI back and forth. Anything but a ranged
+  ROI-gap row keeps the old fallback.
+
+## Persistence And Stored Rows
+
+- An over-cap payload (more than `MAX_SCHEDULE_ROWS` rows, only possible from an
+  older or hand-edited save) is truncated on read, and the autosave or the next
+  preset save writes the truncated state back. `loadLocal` and `loadUserPresets`
+  first keep the untouched original under `tvs:state-overcap-backup` and
+  `tvs:user-preset-overcap-backup:<id>` (dropped with the preset). Nothing reads
+  them back yet and the user is not told; a share link keeps no backup, its
+  hash is cleared on import. Only the first 300 rows are validated, so a bad row
+  past the cap no longer rejects the whole payload.
+- `alphaOverride` is clamped on read to `MANUAL_ALPHA_MIN`..`MAX` (-0.5..0.5,
+  also what the number field accepts). A link with 10 compiled to a mean of
+  5172 against 63.7 at neutral alpha.
+- A lock written from the Shape panel stamps the effective ITM onto an auto row
+  so `applyItmTarget` keeps the buckets. The page remembers the stamped value per
+  row (memory only) and `reconcileLockItmStamp` removes the stamp with the last
+  lock, but only while the raw ITM is still exactly that value; an ITM typed
+  before or after stays. A stamp that outlives a wholesale schedule replacement
+  with the same row id and the same ITM is the one case it can misfire.
+
 ## Cash-Mode Release Wisdom
 
 - `npm run smoke:cash` is now the canonical pre-release smoke for the advanced
@@ -285,6 +318,12 @@ residual coefficient before being band-eligible.
   rebuilt a default optional block underneath the user.
 
 ## Result Toolbar Re-Run Wisdom
+
+- A PrimeDope-only re-run survives edits, so it must not block Run: `run()` drops
+  it itself and recomputes both panes from the live controls (`canStartRun`).
+  Switching to another cached run while it computes would drop it with the toggle
+  already on the controls and the pane on the old data, so the selector is
+  disabled until it finishes (`canSwitchRun`, `seedBatch.pdBusy`).
 
 - Isolated result-toolbar re-runs must compose patches with the pending input
   before dispatching. A real bug let sequential PrimeDope checkboxes update the
@@ -386,6 +425,12 @@ Consequences to remember:
   `JACKPOT_AUTO_HIDE_MAX_SHARE` of the runs, past which the removed runs shift
   every quantile and the paths-based rebuild is used. The upper side (max, upper
   percentiles, mean, best run) is always rebuilt from kept paths.
+- `stripJackpots` mixes two sample sets: the engine's lower tail (every sample)
+  and an upper side rebuilt from the kept stored paths. At an early checkpoint
+  the rebuilt p85 could land under the engine's p15 (by $3-4 on a $50 Mystery
+  row, 3000 tournaments), so the rebuilt bands are raised to the band below
+  them; the engine's lower tail never moves. The engine's own `min` and `p0015`
+  differ by about 1e-14, so an ordering check needs a tolerance.
 - `recoveryMedian` / `recoveryP90` are NaN when no sample recovered (as in the
   cash engine), never 0: a 0 reads as an instant recovery. Every reader must
   tolerate NaN; the stat cards print a dash.
