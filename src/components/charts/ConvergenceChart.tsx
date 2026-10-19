@@ -25,6 +25,7 @@ import {
   defaultOceanKoTicket,
   fmtAfs,
   formatPointRange,
+  formatTargetPct,
   isRoiControlActive,
   normalizeMix,
   posToAfs,
@@ -33,7 +34,10 @@ import {
   type MixTuple,
   type SigmaBand,
 } from "@/lib/sim/convergenceMath";
-import { buildRuntimeSigmaOverrides } from "@/lib/sim/formatRuntimeSigma";
+import {
+  buildRuntimeSigmaOverrides,
+  fillRuntimeSigmaBrTicket,
+} from "@/lib/sim/formatRuntimeSigma";
 import { fillRuntimeSigmaZone } from "@/lib/sim/runtimeSigmaBands";
 
 interface Props {
@@ -564,9 +568,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       fieldsHiLabel,
       showFieldsRange,
     );
-    const targetLabel = `±${(row.targetPct * 100).toFixed(
-      row.targetPct < 0.01 ? 1 : 0,
-    )}%`;
+    const targetLabel = formatTargetPct(row.targetPct);
     return {
       ...row,
       targetLabel,
@@ -672,6 +674,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       {effectiveMode !== "exact" && hasSchedule && (
         <div className="mb-2 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
           {t("chart.convergence.synthetic.hint")}
+        </div>
+      )}
+      {format === "mystery-royale" && (
+        <div className="mb-2 text-[10px] leading-snug text-[color:var(--color-fg-dim)]">
+          {fillRuntimeSigmaBrTicket(t("chart.convergence.brTicket"))}
         </div>
       )}
       {format === "ocean-ko" && (
@@ -1183,6 +1190,11 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         <div className="mt-1">{t("convergence.skewNote")}</div>
         {showBand && (
           <div className="mt-1">{t("chart.convergence.bandNote")}</div>
+        )}
+        {showBand && format === "mystery-royale" && (
+          <div className="mt-1">
+            {fillRuntimeSigmaBrTicket(t("chart.convergence.brTicket.band"))}
+          </div>
         )}
       </div>
     </div>

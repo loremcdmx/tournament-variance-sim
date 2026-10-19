@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeProveEdge,
+  defaultProveEdgeFormat,
   proveEdgeRuntimeSigmaPoints,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
@@ -10,6 +11,7 @@ import {
   hasFormatRuntimeSigma,
   runtimeSigmaCacheSize,
 } from "./formatRuntimeSigma";
+import { applyGameType } from "./gameType";
 import type { TournamentRow } from "./types";
 import { buildOceanKoSigmaBand } from "./convergenceMath";
 
@@ -417,5 +419,32 @@ describe("computeProveEdge — schedule mode", () => {
       candidates: [0.10],
     });
     expect(b.anchor.roi).toBeCloseTo(a.anchor.roi, 6);
+  });
+});
+
+describe("defaultProveEdgeFormat — the tab follows the schedule until the user picks one", () => {
+  const freeze: TournamentRow = {
+    id: "f",
+    players: 200,
+    buyIn: 10,
+    rake: 0.1,
+    roi: 0.1,
+    payoutStructure: "mtt-standard",
+    gameType: "freezeout",
+    count: 10,
+  };
+  const pko: TournamentRow = { ...freeze, id: "p", ...applyGameType(freeze, "pko"), count: 30 };
+
+  it("opens on the format played most, and re-derives when the schedule changes", () => {
+    expect(defaultProveEdgeFormat([freeze], "avg")).toBe("freeze");
+    expect(defaultProveEdgeFormat([pko], "avg")).toBe("pko");
+    expect(defaultProveEdgeFormat([freeze, pko], "avg")).toBe("pko");
+    expect(defaultProveEdgeFormat([{ ...freeze, count: 50 }, pko], "avg")).toBe("freeze");
+  });
+
+  it("opens on the Schedule tab after a run, but only when there is a schedule", () => {
+    expect(defaultProveEdgeFormat([freeze], "exact")).toBe("exact");
+    expect(defaultProveEdgeFormat([], "exact")).toBe("pko");
+    expect(defaultProveEdgeFormat(null, "avg")).toBe("pko");
   });
 });

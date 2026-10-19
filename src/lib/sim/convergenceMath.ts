@@ -419,6 +419,10 @@ export function computeConvergenceRows(input: {
   });
 }
 
+export function formatTargetPct(targetPct: number): string {
+  return `±${Number((targetPct * 100).toFixed(1))}%`;
+}
+
 export function formatPointRange(
   pointLabel: string,
   loLabel: string,

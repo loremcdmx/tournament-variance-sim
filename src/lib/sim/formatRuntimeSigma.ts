@@ -37,8 +37,18 @@ export { runtimeSigmaBandResid, type RuntimeSigmaFormat };
 
 /** Battle Royale is a fixed 18-max sit-and-go; the lobby never changes. */
 export const RUNTIME_SIGMA_BR_FIELD = BATTLE_ROYALE_PLAYERS;
-/** Total BR ticket (the cheapest-tier preset in the editor) behind the BR σ. */
+/**
+ * Total BR ticket behind the BR σ and its band: the editor's default Battle
+ * Royale row (`applyGameType`). The prize envelope is fixed in dollars per
+ * published tier, so other tickets have their own σ; the cards say which
+ * ticket they stand for instead of passing it off as every BR row.
+ */
 export const RUNTIME_SIGMA_BR_TICKET = 10;
+
+/** Fills `{ticket}` in the copy that names the reference BR ticket. */
+export function fillRuntimeSigmaBrTicket(template: string): string {
+  return template.replace("{ticket}", () => `$${RUNTIME_SIGMA_BR_TICKET}`);
+}
 
 /** Stake-neutral buy-in for formats whose σ in buy-ins does not depend on it. */
 const NEUTRAL_BUY_IN = 10;

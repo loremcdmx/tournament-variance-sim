@@ -9,15 +9,20 @@ import {
   normalizeGameTypeConsistency,
 } from "./sim/gameType";
 import { compileSchedule } from "./sim/engine";
+import { parseAdminParam } from "./ui/AdvancedModeProvider";
 import { redistributeScheduleCounts } from "./sim/scheduleTarget";
 import {
+  addUserPreset,
+  buildShareUrl,
   decodeState,
   encodeState,
   isValidUserPreset,
   loadLocal,
   loadUserPresets,
+  MAX_PERSISTED_SCHEDULE_ROWS,
   MAX_SCHEDULE_ROWS,
   PERSISTED_STATE_VERSION,
+  saveLocal,
   saveUserPresets,
   type PersistedState,
   type UserPreset,
@@ -87,17 +92,89 @@ describe("persistence validation", () => {
     expect(ok?.schedule[0]).toMatchObject({ label: "Sunday", tags: ["a", "b"] });
   });
 
-  it("rejects schedules longer than the editor cap instead of hydrating a multi-second validate loop", () => {
-    const atCap = Array.from({ length: MAX_SCHEDULE_ROWS }, (_, i) => ({ ...row, id: `r${i}` }));
+  it("truncates a schedule over the editor cap instead of discarding the whole state", () => {
+    const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ ...row, id: `r${i}` }));
+    const atCap = rows(MAX_SCHEDULE_ROWS);
     expect(decodeState(encoded({ v: 2, schedule: atCap, controls }))?.schedule).toHaveLength(
       MAX_SCHEDULE_ROWS,
     );
+    for (const v of [1, 2]) {
+      const payload = { v, schedule: rows(400), controls: { samples: 5000 } };
+      for (const loaded of [decodeState(encoded(payload)), loadLocalFromPayload(payload)]) {
+        expect(loaded, `v${v}`).not.toBeNull();
+        expect(loaded?.v).toBe(PERSISTED_STATE_VERSION);
+        expect(loaded?.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+        expect(loaded?.schedule[0]?.id).toBe("r0");
+        expect(loaded?.schedule[MAX_SCHEDULE_ROWS - 1]?.id).toBe(`r${MAX_SCHEDULE_ROWS - 1}`);
+        expect(loaded?.controls.samples).toBe(5000);
+      }
+    }
+  });
+
+  it("still refuses a payload with an absurd row count so a hostile link cannot stall validation", () => {
+    const huge = Array.from({ length: MAX_PERSISTED_SCHEDULE_ROWS + 1 }, (_, i) => ({
+      ...row,
+      id: `r${i}`,
+    }));
+    expect(decodeState(encoded({ v: 2, schedule: huge, controls }))).toBeNull();
+    expect(loadLocalFromPayload({ v: 2, schedule: huge, controls })).toBeNull();
     expect(
-      decodeState(encoded({ v: 2, schedule: [...atCap, { ...row, id: "extra" }], controls })),
-    ).toBeNull();
-    expect(
-      loadLocalFromPayload({ v: 2, schedule: [...atCap, { ...row, id: "extra" }], controls }),
-    ).toBeNull();
+      decodeState(encoded({ v: 2, schedule: huge.slice(0, MAX_PERSISTED_SCHEDULE_ROWS), controls }))
+        ?.schedule,
+    ).toHaveLength(MAX_SCHEDULE_ROWS);
+  });
+
+  it("keeps an over-cap saved preset visible and in storage when another preset is saved", () => {
+    let stored = JSON.stringify([
+      {
+        id: "history",
+        name: "History",
+        createdAt: 1,
+        state: {
+          v: 1,
+          schedule: Array.from({ length: 400 }, (_, i) => ({ ...row, id: `h${i}` })),
+          controls,
+        },
+      },
+      { id: "small", name: "Small", createdAt: 2, state: { v: 2, schedule: [row], controls } },
+    ]);
+    vi.stubGlobal("localStorage", {
+      getItem: () => stored,
+      setItem: (_key: string, value: string) => {
+        stored = value;
+      },
+    });
+    try {
+      expect(loadUserPresets().map((p) => p.id)).toEqual(["history", "small"]);
+      addUserPreset("new", { v: 2, schedule: [row], controls });
+      const after = JSON.parse(stored) as UserPreset[];
+      expect(after.map((p) => p.name)).toEqual(["History", "Small", "new"]);
+      expect(after[0]?.state.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("survives load then autosave without wiping an over-cap saved schedule", () => {
+    let stored = JSON.stringify({
+      v: 2,
+      schedule: Array.from({ length: 450 }, (_, i) => ({ ...row, id: `r${i}` })),
+      controls,
+    });
+    vi.stubGlobal("localStorage", {
+      getItem: () => stored,
+      setItem: (_key: string, value: string) => {
+        stored = value;
+      },
+    });
+    try {
+      const loaded = loadLocal();
+      expect(loaded).not.toBeNull();
+      saveLocal(loaded!);
+      expect(JSON.parse(stored).schedule).toHaveLength(MAX_SCHEDULE_ROWS);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("writes the current schema version and upgrades legacy payloads on read", () => {
@@ -1030,5 +1107,38 @@ describe("a row switched to Battle Royale plays the same before and after a relo
     expect(inSession.fieldVariability).toBeUndefined();
     expect(compile(inSession).flat).toEqual(compile(reloaded).flat);
     expect(compile(inSession).flat[0].fieldSize).toBe(18);
+  });
+});
+
+describe("buildShareUrl", () => {
+  const state: PersistedState = { v: PERSISTED_STATE_VERSION, schedule: [row], controls };
+
+  function shareFrom(href: string): URL {
+    vi.stubGlobal("window", { location: new URL(href) });
+    try {
+      return new URL(buildShareUrl(state));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }
+
+  it("does not carry the sender's ?admin=1 to the recipient", () => {
+    for (const href of [
+      "https://host.test/?admin=1",
+      "https://host.test/?foo=1&admin=1",
+      "https://host.test/?admin=1#s=old",
+    ]) {
+      const link = shareFrom(href);
+      expect(link.search, href).toBe("");
+      expect(parseAdminParam(link.search), href).toBe(false);
+      expect(link.origin).toBe("https://host.test");
+    }
+  });
+
+  it("keeps the path and puts the encoded state in the hash that decodeState reads back", () => {
+    const link = shareFrom("https://host.test/app/?admin=1#s=old");
+    expect(link.pathname).toBe("/app/");
+    expect(link.hash.startsWith("#s=")).toBe(true);
+    expect(decodeState(link.hash.slice(3))?.schedule[0]?.buyIn).toBe(50);
   });
 });

@@ -41,8 +41,8 @@ function formatCsvNumber(value: number | null): string {
 /**
  * Pins the seed of the run being looked at, which is not always
  * `controls.seed`: browsing the cached seed batch swaps the displayed run
- * without touching the controls. Opening the link restores the inputs, not
- * the draw — hydration and every run deliberately re-seed.
+ * without touching the controls. Hydration keeps the seed a share link
+ * carries (it only draws a fresh one when there is none).
  */
 export function buildRunShareState(
   schedule: readonly TournamentRow[],

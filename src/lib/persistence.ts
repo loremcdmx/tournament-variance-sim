@@ -64,7 +64,7 @@ function isPersistedState(
   if (v.v !== 1 && v.v !== PERSISTED_STATE_VERSION) return false;
   if (
     !Array.isArray(v.schedule) ||
-    v.schedule.length > MAX_SCHEDULE_ROWS ||
+    v.schedule.length > MAX_PERSISTED_SCHEDULE_ROWS ||
     !v.schedule.every(isTournamentRowLike)
   ) {
     return false;
@@ -91,6 +91,10 @@ function warnOnBrMrDrift(schedule: readonly TournamentRow[] | undefined, source:
 
 export const PERSISTED_STATE_VERSION = 2;
 export const MAX_SCHEDULE_ROWS = 300;
+// Over-cap saves predate the editor cap, so they are truncated on read rather
+// than refused (a refusal let the autosave overwrite the whole schedule). This
+// bound only keeps a hostile payload from stalling row validation.
+export const MAX_PERSISTED_SCHEDULE_ROWS = 5000;
 
 export interface PersistedState {
   v: typeof PERSISTED_STATE_VERSION;
@@ -478,9 +482,13 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
 function normalizePersistedState(
   state: PersistedState | LegacyPersistedState,
 ): PersistedState {
-  let changed = state.v !== PERSISTED_STATE_VERSION;
+  const truncated = state.schedule.length > MAX_SCHEDULE_ROWS;
+  let changed = truncated || state.v !== PERSISTED_STATE_VERSION;
   const migrateLegacyBattleRoyaleDefault = state.v === 1;
-  const schedule = state.schedule.map((row) => {
+  const keptRows = truncated
+    ? state.schedule.slice(0, MAX_SCHEDULE_ROWS)
+    : state.schedule;
+  const schedule = keptRows.map((row) => {
     const nextLabel = typeof row.label === "string" ? row.label : undefined;
     const nextTags = isStringArray(row.tags) ? row.tags : undefined;
     const nextGameType = normalizePersistedGameType(row.gameType);
@@ -797,7 +805,10 @@ export function removeUserPreset(id: string) {
 export function buildShareUrl(state: PersistedState): string {
   if (typeof window === "undefined") return "";
   const enc = encodeState(state);
+  // The sender's query string is not state: `?admin=1` would switch the
+  // recipient into advanced mode.
   const url = new URL(window.location.href);
+  url.search = "";
   url.hash = `s=${enc}`;
   return url.toString();
 }

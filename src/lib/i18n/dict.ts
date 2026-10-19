@@ -1682,6 +1682,14 @@ export const DICT = {
     en: "The range is how far the analytic σ sits from the engine's Monte Carlo. It does not cover the gap between the model and real play.",
     ru: "Диапазон — расхождение расчётной σ с Монте-Карло движка. Разницу между моделью и реальной игрой он не покрывает.",
   },
+  "chart.convergence.brTicket": {
+    en: "σ for a {ticket} ticket (18-max Battle Royale). Other tickets can differ; Schedule mode uses your own rows.",
+    ru: "σ для билета {ticket} (Battle Royale, 18-max). У других билетов она может отличаться; режим «Расписание» считает по вашим строкам.",
+  },
+  "chart.convergence.brTicket.band": {
+    en: "Battle Royale: the range was measured on a {ticket} ticket only.",
+    ru: "Battle Royale: диапазон сверен только на билете {ticket}.",
+  },
   "chart.convergence.assumptions.summary": {
     en: "How to read a row",
     ru: "Как читать строку",
@@ -1742,8 +1750,8 @@ export const DICT = {
   },
   "runExport.copyLink": { en: "Copy run link", ru: "Ссылка на прогон" },
   "runExport.copyLink.hint": {
-    en: "Copy a link that opens this run's schedule and settings. Opening the link draws a fresh seed, so the numbers will differ.",
-    ru: "Скопировать ссылку с расписанием и настройками этого прогона. При открытии ссылки берётся свежий сид, поэтому числа будут другими.",
+    en: "Copy a link that opens this run's schedule, settings and seed, so running it again gives the same numbers. A recipient in basic mode does not get the advanced-only noise, tilt and compare settings.",
+    ru: "Скопировать ссылку с расписанием, настройками и сидом этого прогона: повторный запуск даст те же числа. У получателя в базовом режиме не применяются расширенные настройки шума, тильта и сравнения.",
   },
   "runExport.copyCsv": { en: "Copy stats CSV", ru: "Статистика в CSV" },
   "runExport.copyCsv.hint": {
@@ -2373,7 +2381,10 @@ export const DICT = {
   "emp.clear": { en: "Clear", ru: "Очистить" },
   "emp.loaded": { en: "Loaded", ru: "Загружено" },
   "emp.entries": { en: "entries", ru: "записей" },
-  "emp.none": { en: "No data — model falls back to power-law.", ru: "Нет данных — откат на power-law." },
+  "emp.none": {
+    en: "No data — the model uses a uniform finish distribution and the ROI target is not applied.",
+    ru: "Нет данных — модель берёт равномерное распределение финишей, цель по ROI не применяется.",
+  },
 
   // Cash-game mode (advanced only)
   "mode.tab.mtt": { en: "MTT", ru: "Турниры" },

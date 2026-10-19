@@ -41,6 +41,7 @@ import {
 } from "./convergenceMath";
 import {
   getConvergenceBandPolicy,
+  inferRowFormat,
   isInsideFitBox,
   type ConvergenceRowFormat,
   type FitBoxSample,
@@ -55,6 +56,39 @@ import type { ItmTargetConfig } from "./itmTarget";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
 export type ProveEdgeFormat = ConvergenceRowFormat | "exact";
+
+/** Opening tab: whichever format the user actually plays most of. Showing PKO
+ *  numbers to a freezeout-only schedule is a silent lie. */
+function dominantScheduleFormat(
+  schedule: readonly TournamentRow[] | null | undefined,
+): ProveEdgeFormat {
+  if (!schedule || schedule.length === 0) return "pko";
+  const counts = new Map<ProveEdgeFormat, number>();
+  for (const row of schedule) {
+    const f = inferRowFormat(row);
+    counts.set(f, (counts.get(f) ?? 0) + Math.max(0, row.count));
+  }
+  let best: ProveEdgeFormat | null = null;
+  let bestCount = -1;
+  for (const [f, c] of counts) {
+    if (c > bestCount) {
+      best = f;
+      bestCount = c;
+    }
+  }
+  return best ?? "pko";
+}
+
+/** The tab the card shows until the user picks one; derived every render so it
+ *  follows a schedule that loads or changes after the card mounted. */
+export function defaultProveEdgeFormat(
+  schedule: readonly TournamentRow[] | null | undefined,
+  defaultMode: "avg" | "exact",
+): ProveEdgeFormat {
+  return defaultMode === "exact" && schedule && schedule.length > 0
+    ? "exact"
+    : dominantScheduleFormat(schedule);
+}
 
 export interface ProveEdgeRow {
   /** Candidate true ROI as a fraction (0.10 = +10 %). */

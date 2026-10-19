@@ -25,6 +25,7 @@ import {
 } from "@/lib/sim/convergenceMath";
 import {
   computeProveEdge,
+  defaultProveEdgeFormat,
   proveEdgeRuntimeSigmaPoints,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
@@ -33,6 +34,7 @@ import {
   type ProveEdgeResult,
 } from "@/lib/sim/proveEdge";
 import {
+  fillRuntimeSigmaBrTicket,
   formatRuntimeSigma,
   hasFormatRuntimeSigma,
 } from "@/lib/sim/formatRuntimeSigma";
@@ -142,28 +144,6 @@ function useProveEdgeResult(input: ProveEdgeInput): {
   return { result: fresh ?? (shown as ProveEdgeResult), pending: !ready };
 }
 
-/** Opening tab: whichever format the user actually plays most of. Showing PKO
- *  numbers to a freezeout-only schedule is a silent lie. */
-function dominantScheduleFormat(
-  schedule: readonly TournamentRow[] | null | undefined,
-): ProveEdgeFormat {
-  if (!schedule || schedule.length === 0) return "pko";
-  const counts = new Map<ProveEdgeFormat, number>();
-  for (const row of schedule) {
-    const f = inferRowFormat(row);
-    counts.set(f, (counts.get(f) ?? 0) + Math.max(0, row.count));
-  }
-  let best: ProveEdgeFormat | null = null;
-  let bestCount = -1;
-  for (const [f, c] of counts) {
-    if (c > bestCount) {
-      best = f;
-      bestCount = c;
-    }
-  }
-  return best ?? "pko";
-}
-
 function fmtTourneys(n: number, locale: Intl.LocalesArgument): string {
   if (!Number.isFinite(n)) return "∞";
   if (n >= 10_000_000) return `${(n / 1_000_000).toFixed(0)} M`;
@@ -214,11 +194,10 @@ export function ProveEdgeCard({
   const { locale } = useLocale();
   const numberLocale = locale === "ru" ? "ru-RU" : "en-US";
 
-  const [format, setFormat] = useState<ProveEdgeFormat>(() =>
-    defaultMode === "exact" && schedule && schedule.length > 0
-      ? "exact"
-      : dominantScheduleFormat(schedule),
-  );
+  // Only the user's own tab choice is state; the default follows the schedule
+  // (it loads after the first render and can change from the editor).
+  const [formatOverride, setFormatOverride] = useState<ProveEdgeFormat | null>(null);
+  const format = formatOverride ?? defaultProveEdgeFormat(schedule, defaultMode);
   const [afsPos, setAfsPos] = useState<number>(afsToPos(200));
   // Like the convergence chips: each format opens at its own default rake
   // until the user moves the control, then their value sticks across tabs.
@@ -301,7 +280,7 @@ export function ProveEdgeCard({
           <button
             key={f.id}
             type="button"
-            onClick={() => setFormat(f.id)}
+            onClick={() => setFormatOverride(f.id)}
             className={`rounded border px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider transition-colors ${
               format === f.id
                 ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
@@ -490,6 +469,12 @@ export function ProveEdgeCard({
         </div>
       )}
 
+      {isMbr && (
+        <div className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+          {fillRuntimeSigmaBrTicket(t("chart.convergence.brTicket"))}
+        </div>
+      )}
+
       {/* Toggle: show losing edges */}
       <label className="inline-flex items-center gap-2 self-start text-[11px] text-[color:var(--color-fg-dim)]">
         <input
@@ -659,6 +644,9 @@ export function ProveEdgeCard({
                 ? t("proveEdge.footnote.banded")
                 : t("proveEdge.footnote.point")}
           </p>
+          {isMbr && result.bandPolicy === "numeric" && (
+            <p>{fillRuntimeSigmaBrTicket(t("chart.convergence.brTicket.band"))}</p>
+          )}
           {!scheduleEmpty && <p>{t("convergence.skewNote")}</p>}
         </div>
       </details>

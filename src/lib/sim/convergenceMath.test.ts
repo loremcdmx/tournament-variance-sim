@@ -10,9 +10,11 @@ import {
   computeConvergenceRows,
   defaultOceanKoTicket,
   formatPointRange,
+  formatTargetPct,
   isRoiControlActive,
   posToAfs,
   roiControlBoundsForFormat,
+  TARGETS,
   type MixTuple,
 } from "./convergenceMath";
 import { runtimeSigmaBandResid } from "./runtimeSigmaBands";
@@ -525,5 +527,11 @@ describe("convergence math", () => {
     expect(formatPointRange("12.4k", "11.4k", "13.4k", false)).toBe(
       "12.4k",
     );
+  });
+
+  it("labels every target row with its own precision, 2.5% included", () => {
+    expect(TARGETS.map(formatTargetPct)).toEqual([
+      "±50%", "±30%", "±20%", "±10%", "±5%", "±2.5%", "±1%", "±0.5%", "±0.1%",
+    ]);
   });
 });

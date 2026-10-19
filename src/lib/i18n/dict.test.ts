@@ -35,6 +35,21 @@ describe("i18n dict", () => {
     },
   );
 
+  it("describes the empty Empirical model as the uniform fallback the engine uses", () => {
+    expect(DICT["emp.none"].en).toMatch(/uniform/i);
+    expect(DICT["emp.none"].en).not.toMatch(/power-?law/i);
+    expect(DICT["emp.none"].ru).toMatch(/равномерн/i);
+    expect(DICT["emp.none"].ru).not.toMatch(/power-?law/i);
+  });
+
+  it("says the run link keeps the run's seed instead of drawing a fresh one", () => {
+    const hint = DICT["runExport.copyLink.hint"];
+    expect(hint.en).not.toMatch(/fresh seed/i);
+    expect(hint.en).toMatch(/\bseed\b/i);
+    expect(hint.ru).not.toMatch(/свеж/i);
+    expect(hint.ru).toMatch(/сид/i);
+  });
+
   it("every entry covers every locale with a non-empty string", () => {
     for (const [key, entry] of Object.entries(DICT)) {
       for (const loc of LOCALES) {
