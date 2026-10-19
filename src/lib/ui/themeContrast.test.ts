@@ -2,15 +2,19 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FORMAT_TAB_ACCENTS } from "@/components/charts/formatTabAccents";
+import { OVERLAY_SERIES } from "@/components/charts/overlaySeries";
 import {
   DARK_PARITY,
   MIN_TEXT_CONTRAST,
   STATUS_SITES,
   contrastRatio,
   evaluateAllSites,
+  evaluateSite,
+  mixWithWhiteOklab,
   parseColor,
   parsePalette,
   parseThemeTokens,
+  runButtonSites,
   tabSites,
 } from "./themeContrast";
 
@@ -43,6 +47,16 @@ describe("contrast math", () => {
     expect(c.r).toBeCloseTo(1, 6);
   });
 
+  it("mixes with white in oklab the way color-mix does", () => {
+    const rgb = (c: { r: number; g: number; b: number }) =>
+      [c.r, c.g, c.b].map((x) => Math.round(x * 255));
+    const accent = parseColor("#491b8a");
+    expect(rgb(mixWithWhiteOklab(accent, 0))).toEqual(rgb(accent));
+    expect(rgb(mixWithWhiteOklab(accent, 100))).toEqual([255, 255, 255]);
+    // oklab(0.5 0 0) is #636363: halfway in lightness, not in sRGB (#808080).
+    expect(rgb(mixWithWhiteOklab({ r: 0, g: 0, b: 0 }, 50))).toEqual([99, 99, 99]);
+  });
+
   it("converts the Tailwind palette the way the browser does", () => {
     const emerald500 = palette["emerald-500"];
     expect(Math.round(emerald500.r * 255)).toBe(0);
@@ -53,7 +67,7 @@ describe("contrast math", () => {
 
 describe("status tokens in globals.css", () => {
   const used = new Set<string>();
-  for (const site of [...STATUS_SITES, ...tabSites()]) {
+  for (const site of [...STATUS_SITES, ...tabSites(), ...runButtonSites(css)]) {
     used.add(site.fg.token);
     for (const layer of site.layers ?? []) if (layer.token) used.add(layer.token);
   }
@@ -99,24 +113,65 @@ describe("status tokens in globals.css", () => {
   });
 
   it("reaches 4.5:1 on every surface it is drawn on, in both themes", () => {
-    const failures = evaluateAllSites(themes, palette)
+    const failures = evaluateAllSites(themes, palette, css)
       .filter((r) => r.ratio < r.min)
       .map((r) => `${r.theme} ${r.ratio.toFixed(2)} ${r.id} (${r.token}, ${r.where})`);
     expect(failures).toEqual([]);
   });
 
   it("holds every light-theme pair to 4.5:1 with no exemption", () => {
-    const failures = evaluateAllSites(themes, palette)
+    const failures = evaluateAllSites(themes, palette, css)
       .filter((r) => r.theme === "light" && r.ratio < MIN_TEXT_CONTRAST)
       .map((r) => `${r.ratio.toFixed(2)} ${r.id} (${r.token})`);
     expect(failures).toEqual([]);
   });
 
   it("exempts only the PD matching-delta pill, whose dark value predates the token", () => {
-    const exempt = [...STATUS_SITES, ...tabSites()]
+    const exempt = [...STATUS_SITES, ...tabSites(), ...runButtonSites(css)]
       .filter((s) => s.minRatio !== undefined)
       .map((s) => s.id);
     expect(exempt).toEqual(["PD delta, matching"]);
+  });
+});
+
+describe("Run button", () => {
+  const sites = runButtonSites(css);
+
+  it("covers the label and the ETA pill on both ends of the gradient, at rest and on hover", () => {
+    expect(sites.map((s) => s.id)).toEqual([
+      "run button label, rest, gradient top",
+      "run button ETA pill, rest, gradient top",
+      "run button label, rest, gradient bottom",
+      "run button ETA pill, rest, gradient bottom",
+      "run button label, hover, gradient top",
+      "run button ETA pill, hover, gradient top",
+      "run button label, hover, gradient bottom",
+      "run button ETA pill, hover, gradient bottom",
+    ]);
+  });
+
+  it("reads the label at 4.5:1 on the gradient in the light theme", () => {
+    const failures = sites
+      .map((s) => evaluateSite(s, "light", themes.light, palette))
+      .filter((r) => r.ratio < MIN_TEXT_CONTRAST)
+      .map((r) => `${r.ratio.toFixed(2)} ${r.id}`);
+    expect(failures).toEqual([]);
+  });
+
+  it("would have caught the dark label on the light gradient (2.53:1 at the top, 1.19:1 at the bottom)", () => {
+    const old = { ...themes.light, "--c-run-fg": "#15120a" };
+    const ratio = (id: string) => {
+      const site = sites.find((s) => s.id === id);
+      expect(site).toBeDefined();
+      return evaluateSite(site!, "light", old, palette).ratio;
+    };
+    expect(ratio("run button label, rest, gradient top")).toBeCloseTo(2.53, 1);
+    expect(ratio("run button label, rest, gradient bottom")).toBeCloseTo(1.19, 1);
+  });
+
+  it("keeps the dark label colours the button had", () => {
+    expect(themes.dark["--c-run-fg"].toLowerCase()).toBe("#15120a");
+    expect(themes.dark["--c-run-fg-hover"].toLowerCase()).toBe("#100d08");
   });
 });
 
@@ -147,6 +202,32 @@ describe("components use the tokens", () => {
       hits.push(`src/components/results/StatCards.tsx: ${m[0]}`);
     }
     expect(hits).toEqual([]);
+  });
+
+  it("has no fixed black text on the accent fill, which is purple in the light theme", () => {
+    const hits: string[] = [];
+    for (const file of tsx) {
+      const src = readFileSync(file, "utf8");
+      const rel = file.replace(ROOT + "/", "");
+      for (const m of src.matchAll(/hover:text-black|text-black\/\d+/g)) {
+        hits.push(`${rel}: ${m[0]}`);
+      }
+      for (const m of src.matchAll(/(["'`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+        if (/\btext-black\b/.test(m[2]) && /accent/.test(m[2])) hits.push(`${rel}: ${m[2].slice(0, 80)}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it("paints the overlay legend text from a token, not from the series hex", () => {
+    const src = readFileSync(join(ROOT, "src/components/charts/DistributionChart.tsx"), "utf8");
+    expect(src).not.toMatch(/style=\{\{ ?color: overlayColor/);
+    const measured = new Set(STATUS_SITES.map((s) => `var(${s.fg.token})`));
+    for (const [name, series] of Object.entries(OVERLAY_SERIES)) {
+      expect(measured.has(series.textColor), `${name} legend text is measured`).toBe(true);
+    }
+    const resultsView = readFileSync(join(ROOT, "src/components/ResultsView.tsx"), "utf8");
+    expect(resultsView).not.toMatch(/overlay[\s\S]{0,200}color: "#/);
   });
 
   it("has no dark-tuned rose panel fill that light text sits on", () => {

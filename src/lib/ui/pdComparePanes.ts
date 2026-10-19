@@ -13,8 +13,9 @@ interface PdComparePaneInput {
 interface PdComparePaneKeys {
   primaryCapKey: DictKey;
   comparisonCapKey: DictKey;
-  // The PD toggles re-run the pass behind the PD pane, so they belong in its header.
-  togglesPane: "primary" | "comparison";
+  // The pane that holds the PrimeDope result. The PD toggles re-run its pass and
+  // "Open PrimeDope" reproduces it, so both belong with that pane.
+  pdPane: "primary" | "comparison";
 }
 
 export function pdComparePaneKeys({
@@ -28,8 +29,12 @@ export function pdComparePaneKeys({
       primaryCapKey: pdPkoFallback
         ? "chart.trajectory.noKoCap"
         : "chart.trajectory.theirs.cap",
-      comparisonCapKey: "chart.trajectory.ours.cap.pdPreset",
-      togglesPane: "primary",
+      // The PD pass has no bounties on a PKO schedule, ours keeps them: the model
+      // is not the only difference between the panes.
+      comparisonCapKey: pdPkoFallback
+        ? "chart.trajectory.ours.cap.pdPresetNoKo"
+        : "chart.trajectory.ours.cap.pdPreset",
+      pdPane: "primary",
     };
   }
   return {
@@ -39,6 +44,6 @@ export function pdComparePaneKeys({
       : hasPrimeDopePane
         ? "chart.trajectory.theirs.cap"
         : "twin.runB.cap",
-    togglesPane: "comparison",
+    pdPane: "comparison",
   };
 }

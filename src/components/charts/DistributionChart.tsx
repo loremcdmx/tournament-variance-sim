@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { AlignedData, Options } from "uplot";
 import { UplotChart, type CursorInfo } from "./UplotChart";
 import { barsPath } from "./barsPath";
+import { OVERLAY_SERIES } from "./overlaySeries";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 
@@ -29,6 +30,8 @@ interface Props {
     binEdges: number[];
     counts: number[];
     color?: string;
+    /** Legend and tooltip text. A CSS colour, normally a theme token. */
+    textColor?: string;
     label?: string;
   } | null;
   /**
@@ -119,7 +122,8 @@ function DistributionChartImpl({
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
   const divisor = scaleBy && scaleBy > 0 ? scaleBy : 1;
-  const overlayColor = overlay?.color ?? "#60a5fa";
+  const overlayColor = overlay?.color ?? OVERLAY_SERIES.blue.color;
+  const overlayTextColor = overlay?.textColor ?? OVERLAY_SERIES.blue.textColor;
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerW, setContainerW] = useState(0);
@@ -370,7 +374,7 @@ function DistributionChartImpl({
           </span>
           <span className="flex items-center gap-1">
             <span className="inline-block h-[1px] w-4 border-t-[1.5px] border-dashed" style={{ borderColor: overlayColor }} />
-            <span style={{ color: overlayColor }}>{overlay.label ?? "PrimeDope"}</span>
+            <span style={{ color: overlayTextColor }}>{overlay.label ?? "PrimeDope"}</span>
           </span>
         </div>
       )}
@@ -421,11 +425,11 @@ function DistributionChartImpl({
               <>
                 <span
                   className="text-[color:var(--color-fg-dim)]"
-                  style={{ color: overlayColor }}
+                  style={{ color: overlayTextColor }}
                 >
                   {overlay?.label ?? "overlay"}
                 </span>
-                <span className="text-right" style={{ color: overlayColor }}>
+                <span className="text-right" style={{ color: overlayTextColor }}>
                   {(tip.overlayShare * 100).toFixed(
                     tip.overlayShare < 0.01 ? 2 : 1,
                   )}

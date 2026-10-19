@@ -510,6 +510,14 @@ export const DICT = {
     en: "Read-only: this row plays a field-size range, and AFS is its midpoint. Edit Min / Max in the row's Advanced panel.",
     ru: "Только чтение: строка играет диапазон размеров поля, а AFS — его середина. Мин / Макс меняются в расширенных параметрах строки.",
   },
+  "row.playersFromRangeBasic": {
+    en: "Read-only: this row plays a field-size range, and AFS is its midpoint. The range can only be edited in advanced mode.",
+    ru: "Только чтение: строка играет диапазон размеров поля, а AFS — его середина. Диапазон меняется только в продвинутом режиме.",
+  },
+  "row.playersRangeReadout": {
+    en: "Range {min}–{max}, {n} sizes",
+    ru: "Диапазон {min}–{max}, размеров: {n}",
+  },
   "row.buyIn": { en: "Buy-in", ru: "Бай-ин" },
   "row.buyIn.oceanTitle": {
     en: "Ocean KO: a single number is the full ticket, 100 = $92 prizes + $8 fee. \"92+8\" spells out the same row.",
@@ -1205,6 +1213,10 @@ export const DICT = {
   "chart.trajectory.ours.cap.pdPreset": {
     en: "Our skill model on the same seed as the PrimeDope pane — only the model differs.",
     ru: "Наша модель скилла на том же сиде, что и панель PrimeDope — отличается только модель.",
+  },
+  "chart.trajectory.ours.cap.pdPresetNoKo": {
+    en: "Our skill model on the same seed as the PrimeDope pane, with the bounties that pane has stripped — the model and the bounties both differ.",
+    ru: "Наша модель скилла на том же сиде, что и панель PrimeDope, но с ноками, которых в той панели нет — отличаются и модель, и ноки.",
   },
   "chart.trajectory.theirs.cap": {
     en: "Min-cash as likely as 1st place — swings understated.",

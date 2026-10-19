@@ -512,7 +512,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
                 type="button"
                 disabled={uiDisabled || lookupImportText.trim().length === 0}
                 onClick={addLookupSnapshot}
-                className="rounded-md border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-black transition-opacity disabled:opacity-40"
+                className="rounded-md border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-[color:var(--c-on-accent)] transition-opacity disabled:opacity-40"
               >
                 {t("controls.brLeaderboard.lookupAddSnapshot")}
               </button>
@@ -575,7 +575,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
                   lookupStatus.kind === "pending"
                 }
                 onClick={runResulthubLookup}
-                className="rounded-md border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-black transition-opacity disabled:opacity-40 sm:min-w-[180px]"
+                className="rounded-md border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-[color:var(--c-on-accent)] transition-opacity disabled:opacity-40 sm:min-w-[180px]"
               >
                 {lookupStatus.kind === "pending"
                   ? t("controls.brLeaderboard.lookupPending")

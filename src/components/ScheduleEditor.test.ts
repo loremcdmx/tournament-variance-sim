@@ -194,6 +194,18 @@ describe("buyInToCommit", () => {
     expect(buyInToCommit("100", cur(92, 8 / 92), "ocean-ko", "blur")).toBeNull();
   });
 
+  it("treats the canonical text as no change while typing too, spaces and $ aside", () => {
+    for (const typed of ["0.25+0.03 ", " 0.25+0.03", "0.25 + 0.03", "$0.25+$0.03", "0.25+0.03"]) {
+      expect(buyInToCommit(typed, cur(0.25, 0.1), "freezeout", "typing")).toBeNull();
+      expect(buyInToCommit(typed, cur(0.25, 0.1), "freezeout", "blur")).toBeNull();
+    }
+  });
+
+  it("compares against the ticket it is handed, so '10' after '1' commits even when the props still say 10", () => {
+    expect(buyInToCommit("10", cur(1, 0.1), "freezeout", "typing")).toEqual({ buyIn: 10, rake: 0.1 });
+    expect(buyInToCommit("10", cur(10, 0.1), "freezeout", "typing")).toBeNull();
+  });
+
   it("does not commit an unparsable box", () => {
     expect(buyInToCommit("50+", cur(50, 0.1), "freezeout", "blur")).toBeNull();
     expect(buyInToCommit("", cur(50, 0.1), "freezeout", "blur")).toBeNull();
@@ -447,6 +459,35 @@ describe("CSV import: payout cell and format defaults", () => {
     expect(row.rake).toBeCloseTo(0.8 / 9.2, 12);
   });
 
+  it("reads a plain Battle Royale buy-in as the total ticket, the way typing it in the editor does", () => {
+    const row = one("br, 18, 10, 3, 1, battle-royale");
+    const typed = parseBuyIn("10", 0.1, "mystery-royale");
+    expect(typed).toEqual(battleRoyaleRowFromTotalTicket(10));
+    expect(row.buyIn).toBeCloseTo(9.2, 12);
+    expect(row.rake).toBeCloseTo(0.08 / 0.92, 12);
+    expect(row.buyIn * (1 + row.rake)).toBeCloseTo(10, 12);
+    expect({ buyIn: row.buyIn, rake: row.rake }).toEqual(typed);
+  });
+
+  it("keeps an explicit net+fee cell on a Battle Royale row as spelled", () => {
+    const row = one("br, 18, 10+1, 3, 1, battle-royale");
+    expect(row.buyIn).toBe(10);
+    expect(row.rake).toBeCloseTo(0.1, 12);
+  });
+
+  it("still reads a plain buy-in on every other payout as the net buy-in at the default rake", () => {
+    for (const payout of ["mtt-standard", "mtt-gg-bounty", "mtt-gg-mystery", "sng-50-30-20"]) {
+      const row = one(`Row, 500, 10, 3, 1, ${payout}`);
+      expect(row.buyIn).toBe(10);
+      expect(row.rake).toBe(0.1);
+    }
+  });
+
+  it("reads a case-padded battle-royale payout cell the same way", () => {
+    const row = one("br, 18, 10, 3, 1,  Battle-Royale ");
+    expect(row.buyIn).toBeCloseTo(9.2, 12);
+  });
+
   it("leaves freezeout payouts without bounty fields", () => {
     const row = one(line("mtt-primedope"));
     expect(row.gameType).toBeUndefined();
@@ -489,13 +530,16 @@ describe("AFS input under a Field-size range", () => {
     id: "ranged", label: "ranged", players: 5000, buyIn: 20, rake: 0.1, roi: 0.1,
     payoutStructure: "mtt-standard", gameType: "freezeout", count: 1,
   };
-  const playersInput = (row: TournamentRow) => {
+  const rowHtml = (row: TournamentRow) => {
     vi.stubGlobal("React", React);
-    const html = renderToStaticMarkup(React.createElement(LocaleProvider, null,
+    return renderToStaticMarkup(React.createElement(LocaleProvider, null,
       React.createElement(AdvancedModeProvider, null,
         React.createElement(ScheduleEditor, { schedule: [row], onChange: vi.fn() }),
       ),
     ));
+  };
+  const playersInput = (row: TournamentRow) => {
+    const html = rowHtml(row);
     const tag = html.match(new RegExp(`<input[^>]*id="schedule-${row.id}-players"[^>]*>`));
     expect(tag).not.toBeNull();
     return tag![0];
@@ -513,6 +557,28 @@ describe("AFS input under a Field-size range", () => {
     });
     expect(tag).toContain('value="500"');
     expect(tag).toContain('disabled=""');
-    expect(tag).toContain(DICT["row.playersFromRange"].ru);
+    expect(tag).toContain(DICT["row.playersFromRangeBasic"].ru);
+  });
+
+  it("does not send a basic-mode user to an Advanced panel that is not there", () => {
+    const tag = playersInput({
+      ...base, fieldVariability: { kind: "uniform", min: 300, max: 700, buckets: 5 },
+    });
+    expect(tag).not.toContain(DICT["row.playersFromRange"].ru);
+    expect(DICT["row.playersFromRangeBasic"].en).not.toMatch(/Advanced panel|Min \/ Max/);
+    expect(DICT["row.playersFromRangeBasic"].ru).not.toMatch(/расширенных параметрах строки|Мин \/ Макс/);
+  });
+
+  it("prints the range the row plays next to the read-only AFS, in basic mode", () => {
+    const html = rowHtml({
+      ...base, fieldVariability: { kind: "uniform", min: 700, max: 300, buckets: 4 },
+    });
+    expect(html).toContain(
+      DICT["row.playersRangeReadout"].ru.replace("{min}", "300").replace("{max}", "700").replace("{n}", "4"),
+    );
+  });
+
+  it("prints no range readout for a fixed field", () => {
+    expect(rowHtml(base)).not.toContain(DICT["row.playersRangeReadout"].ru.split("{min}")[0]);
   });
 });

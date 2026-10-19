@@ -44,9 +44,7 @@ export function parseThemeTokens(css: string): Record<ThemeName, ThemeTokens> {
   return { dark: declarations(dark[1]), light: declarations(light[1]) };
 }
 
-function oklchToRgb(L: number, C: number, hDeg: number): Rgb {
-  const a = C * Math.cos((hDeg * Math.PI) / 180);
-  const b = C * Math.sin((hDeg * Math.PI) / 180);
+function oklabToRgb(L: number, a: number, b: number): Rgb {
   const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
   const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
   const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
@@ -60,6 +58,41 @@ function oklchToRgb(L: number, C: number, hDeg: number): Rgb {
     x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055;
   const [r, g, bl] = lin.map((x) => gamma(clamp(x)));
   return { r, g, b: bl };
+}
+
+function oklchToRgb(L: number, C: number, hDeg: number): Rgb {
+  return oklabToRgb(
+    L,
+    C * Math.cos((hDeg * Math.PI) / 180),
+    C * Math.sin((hDeg * Math.PI) / 180),
+  );
+}
+
+function rgbToOklab(c: Rgb): { L: number; a: number; b: number } {
+  const lin = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
+  const r = lin(c.r);
+  const g = lin(c.g);
+  const bl = lin(c.b);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * bl);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * bl);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * bl);
+  return {
+    L: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  };
+}
+
+/** `color-mix(in oklab, <c>, white <whitePct>%)` for an opaque colour. */
+export function mixWithWhiteOklab(c: Rgb, whitePct: number): Rgb {
+  const k = whitePct / 100;
+  const from = rgbToOklab(c);
+  const white = rgbToOklab({ r: 1, g: 1, b: 1 });
+  return oklabToRgb(
+    from.L * (1 - k) + white.L * k,
+    from.a * (1 - k) + white.a * k,
+    from.b * (1 - k) + white.b * k,
+  );
 }
 
 const NUM = String.raw`(-?[\d.]+)`;
@@ -127,6 +160,9 @@ export interface SurfaceLayer {
   token?: string;
   css?: string;
   alpha?: number;
+  /** With `token`: the token mixed with white in oklab, the way the Run
+   *  button's gradient stops are written. */
+  whitePct?: number;
 }
 
 export interface StatusSite {
@@ -213,7 +249,80 @@ export const STATUS_SITES: StatusSite[] = [
   { id: "rakeback label", where: "ResultsView", fg: { token: "--c-lime-label" }, base: "card" },
   { id: "recomputing label", where: "ResultsView", fg: { token: "--c-indigo-label" }, base: "card" },
   { id: "leaderboard cashflow label", where: "ResultsView", fg: { token: "--c-cyan-label" }, base: "card" },
+  // Solid accent fills: dark text on the gold accent, light text on the purple one.
+  { id: "BR leaderboard action button", where: "BattleRoyaleLeaderboardControl", fg: { token: "--c-on-accent" }, base: "card", layers: [{ token: "--c-accent" }] },
+  { id: "chart reset-zoom hover", where: "TrajectoryPlot, CashResultsCharts", fg: { token: "--c-on-accent" }, base: "card", layers: [{ token: "--c-accent" }] },
+  // PrimeDope overlay series: legend and tooltip text. The series colour itself
+  // stays a hex on the swatch and the canvas line.
+  { id: "overlay legend, blue series", where: "DistributionChart", fg: { token: "--c-pd-theirs-fg" }, base: "card" },
+  { id: "overlay legend, pink series", where: "DistributionChart", fg: { token: "--c-overlay-pink-fg" }, base: "card" },
+  { id: "overlay legend, sky series", where: "DistributionChart", fg: { token: "--c-overlay-sky-fg" }, base: "card" },
+  { id: "overlay legend, fuchsia series", where: "DistributionChart", fg: { token: "--c-overlay-fuchsia-fg" }, base: "card" },
 ];
+
+function splitTopLevel(list: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i] === "(") depth++;
+    else if (list[i] === ")") depth--;
+    else if (list[i] === "," && depth === 0) {
+      parts.push(list.slice(from, i).trim());
+      from = i + 1;
+    }
+  }
+  parts.push(list.slice(from).trim());
+  return parts;
+}
+
+function gradientStop(stop: string): SurfaceLayer {
+  const plain = /^var\((--[a-z0-9-]+)\)$/.exec(stop);
+  if (plain) return { token: plain[1] };
+  const mixed = /^color-mix\(\s*in oklab\s*,\s*var\((--[a-z0-9-]+)\)\s*,\s*white\s+([\d.]+)%\s*\)$/.exec(stop);
+  if (mixed) return { token: mixed[1], whitePct: +mixed[2] };
+  throw new Error(`unsupported gradient stop: ${stop}`);
+}
+
+/** The Run button's label and ETA pill on both ends of its gradient, read from
+ *  the `.primary-run-button` rules themselves so a change to the gradient or to
+ *  the label colour is measured, not assumed. */
+export function runButtonSites(css: string): StatusSite[] {
+  const out: StatusSite[] = [];
+  const rules = [
+    { name: "rest", selector: ".primary-run-button" },
+    { name: "hover", selector: ".primary-run-button:not(:disabled):hover" },
+  ];
+  for (const rule of rules) {
+    const escaped = rule.selector.replace(/[.:()]/g, "\\$&");
+    const body = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1];
+    if (body === undefined) throw new Error(`globals.css: ${rule.selector} not found`);
+    const gradient = /linear-gradient\(\s*to bottom\s*,([\s\S]*?)\)\s*;/.exec(body)?.[1];
+    if (gradient === undefined) throw new Error(`${rule.selector}: no vertical gradient`);
+    const stops = splitTopLevel(gradient).map(gradientStop);
+    const label = /(?:^|[\s;])color:\s*var\((--[a-z0-9-]+)\)/.exec(body)?.[1];
+    if (label === undefined) {
+      throw new Error(`${rule.selector}: the label colour must be a theme token, not a literal`);
+    }
+    (["top", "bottom"] as const).forEach((end, i) => {
+      out.push({
+        id: `run button label, ${rule.name}, gradient ${end}`,
+        where: "ControlsPanel Run button",
+        fg: { token: label },
+        base: "card",
+        layers: [stops[i]],
+      });
+      out.push({
+        id: `run button ETA pill, ${rule.name}, gradient ${end}`,
+        where: "ControlsPanel Run button",
+        fg: { token: "--c-on-accent", alpha: 0.75 },
+        base: "card",
+        layers: [stops[i], { css: "rgba(0, 0, 0, 0.15)" }],
+      });
+    });
+  }
+  return out;
+}
 
 export function tabSites(): StatusSite[] {
   return (Object.keys(FORMAT_TAB_ACCENTS) as (keyof typeof FORMAT_TAB_ACCENTS)[]).map(
@@ -262,6 +371,12 @@ export const DARK_PARITY: Record<string, { shade?: string; css?: string; alpha?:
   "--c-pd-fg": { css: "#f0abfc" },
   "--c-pd-delta-fg": { css: "rgba(232,121,249,0.75)" },
   "--c-pd-theirs-fg": { css: "#60a5fa" },
+  "--c-on-accent": { css: "#000000" },
+  "--c-run-fg": { css: "#15120a" },
+  "--c-run-fg-hover": { css: "#100d08" },
+  "--c-overlay-pink-fg": { css: "#f472b6" },
+  "--c-overlay-sky-fg": { css: "#38bdf8" },
+  "--c-overlay-fuchsia-fg": { css: "#e879f9" },
 };
 
 export interface SiteResult {
@@ -299,6 +414,9 @@ export function evaluateSite(
       colour = { ...p, a: 1 };
     } else if (layer.token !== undefined) {
       colour = tokenColor(tokens, layer.token);
+      if (layer.whitePct !== undefined) {
+        colour = { ...mixWithWhiteOklab(colour, layer.whitePct), a: colour.a };
+      }
     } else if (layer.css !== undefined) {
       colour = parseColor(layer.css);
     } else {
@@ -325,10 +443,11 @@ export function evaluateSite(
 export function evaluateAllSites(
   themes: Record<ThemeName, ThemeTokens>,
   palette: Palette,
+  css: string,
 ): SiteResult[] {
   const out: SiteResult[] = [];
   for (const theme of ["light", "dark"] as const) {
-    for (const site of [...STATUS_SITES, ...tabSites()]) {
+    for (const site of [...STATUS_SITES, ...tabSites(), ...runButtonSites(css)]) {
       out.push(evaluateSite(site, theme, themes[theme], palette));
       if (site.base === "card") {
         const onPage: StatusSite = { ...site, base: "page", id: `${site.id} (on page colour)` };

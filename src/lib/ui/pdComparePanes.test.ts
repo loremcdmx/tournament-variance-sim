@@ -12,7 +12,7 @@ const base = {
 describe("pdComparePaneKeys", () => {
   it("puts the PD toggles on the comparison pane when PrimeDope is the right pane", () => {
     const keys = pdComparePaneKeys(base);
-    expect(keys.togglesPane).toBe("comparison");
+    expect(keys.pdPane).toBe("comparison");
     expect(keys.primaryCapKey).toBe("chart.trajectory.ours.cap");
     expect(keys.comparisonCapKey).toBe("chart.trajectory.theirs.cap");
   });
@@ -23,7 +23,7 @@ describe("pdComparePaneKeys", () => {
   });
 
   it("puts the PD toggles on the primary pane under the Like PrimeDope preset", () => {
-    expect(pdComparePaneKeys({ ...base, pdPresetFlip: true }).togglesPane).toBe("primary");
+    expect(pdComparePaneKeys({ ...base, pdPresetFlip: true }).pdPane).toBe("primary");
   });
 
   it("gives the flipped right pane its own caption, not the two-random-runs one", () => {
@@ -35,15 +35,28 @@ describe("pdComparePaneKeys", () => {
 
   it("describes the stripped-bounty PD pane on the left when the flip meets a PKO schedule", () => {
     const keys = pdComparePaneKeys({ ...base, pdPresetFlip: true, pdPkoFallback: true });
-    expect(keys.togglesPane).toBe("primary");
+    expect(keys.pdPane).toBe("primary");
     expect(keys.primaryCapKey).toBe("chart.trajectory.noKoCap");
+  });
+
+  it("does not say only the model differs when the PD pane has its bounties stripped", () => {
+    const keys = pdComparePaneKeys({ ...base, pdPresetFlip: true, pdPkoFallback: true });
+    expect(keys.comparisonCapKey).toBe("chart.trajectory.ours.cap.pdPresetNoKo");
+    expect(keys.comparisonCapKey).not.toBe("chart.trajectory.ours.cap.pdPreset");
+    expect(DICT["chart.trajectory.ours.cap.pdPresetNoKo"].en).toMatch(/bount/i);
+    expect(DICT["chart.trajectory.ours.cap.pdPresetNoKo"].ru).toMatch(/нок/);
+    expect(DICT["chart.trajectory.ours.cap.pdPresetNoKo"].en).not.toMatch(/only the model differs/i);
+  });
+
+  it("keeps the same-seed wording for the flip without bounties", () => {
+    const keys = pdComparePaneKeys({ ...base, pdPresetFlip: true });
     expect(keys.comparisonCapKey).toBe("chart.trajectory.ours.cap.pdPreset");
   });
 
   it("keeps the no-KO caption on the right pane for a PKO schedule without a flip", () => {
     const keys = pdComparePaneKeys({ ...base, pdPkoFallback: true });
     expect(keys.comparisonCapKey).toBe("chart.trajectory.noKoCap");
-    expect(keys.togglesPane).toBe("comparison");
+    expect(keys.pdPane).toBe("comparison");
   });
 
   it("falls back to the two-random-runs captions when there is no PrimeDope pane", () => {

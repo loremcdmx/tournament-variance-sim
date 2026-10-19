@@ -52,6 +52,7 @@ import {
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
+import { blurFocusedField } from "@/lib/ui/blurFocusedField";
 import { canStartRun } from "@/lib/ui/runGate";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -485,14 +486,7 @@ export default function Home() {
   const handledRunRequestRef = useRef(0);
   const onRun = useCallback(() => {
     if (!canStartRun({ activeMode, mttModel, status })) return;
-    const active = document.activeElement;
-    if (
-      active instanceof HTMLInputElement ||
-      active instanceof HTMLTextAreaElement ||
-      active instanceof HTMLSelectElement
-    ) {
-      active.blur();
-    }
+    blurFocusedField(document);
     startTransition(() => setRunRequest((n) => n + 1));
   }, [activeMode, mttModel, status]);
 
@@ -844,14 +838,28 @@ export default function Home() {
     setActiveScenarioId(null);
   }, [itmTargetCfg, previewModel, queueInterruptBackground, t]);
 
+  // Same lost-update class as Run: the click closure holds the schedule from
+  // before an edit still waiting in a blur-commit transition, and the modal
+  // prompt keeps React from rendering it. The prompt stays in the click; the
+  // snapshot is taken by an effect from the state the request rendered against.
+  const [presetSave, setPresetSave] = useState<{ id: number; name: string } | null>(null);
+  const handledPresetSaveRef = useRef(0);
   const onSaveUserPreset = () => {
+    blurFocusedField(document);
     const name = window.prompt(t("userPreset.promptName"));
     if (name == null) return;
     const trimmed = name.trim();
     if (!trimmed) return;
-    addUserPreset(trimmed, { v: PERSISTED_STATE_VERSION, schedule, controls });
-    setUserPresets(loadUserPresets());
+    startTransition(() =>
+      setPresetSave((prev) => ({ id: (prev?.id ?? 0) + 1, name: trimmed })),
+    );
   };
+  useEffect(() => {
+    if (presetSave === null || handledPresetSaveRef.current === presetSave.id) return;
+    handledPresetSaveRef.current = presetSave.id;
+    addUserPreset(presetSave.name, { v: PERSISTED_STATE_VERSION, schedule, controls });
+    setUserPresets(loadUserPresets());
+  }, [presetSave, schedule, controls, setUserPresets]);
 
   const onLoadUserPreset = (p: UserPreset) => {
     queueInterruptBackground();

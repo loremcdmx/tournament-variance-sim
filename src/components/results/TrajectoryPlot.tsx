@@ -719,7 +719,7 @@ export function TrajectoryPlot({
           <button
             type="button"
             onClick={resetZoom}
-            className="shrink-0 rounded border border-[color:var(--color-accent)]/50 bg-[color:var(--color-bg)]/85 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] shadow-sm transition hover:bg-[color:var(--color-accent)] hover:text-black"
+            className="shrink-0 rounded border border-[color:var(--color-accent)]/50 bg-[color:var(--color-bg)]/85 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] shadow-sm transition hover:bg-[color:var(--color-accent)] hover:text-[color:var(--c-on-accent)]"
             title={t("chart.traj.resetZoom")}
           >
             {t("chart.traj.resetZoom")}

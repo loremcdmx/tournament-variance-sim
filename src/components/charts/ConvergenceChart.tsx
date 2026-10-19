@@ -39,6 +39,7 @@ import {
   fillRuntimeSigmaBrTicket,
 } from "@/lib/sim/formatRuntimeSigma";
 import { fillRuntimeSigmaZone } from "@/lib/sim/runtimeSigmaBands";
+import { commitCiPct, commitRakePct, commitRoiFraction } from "./convergenceInputs";
 import { FORMAT_TAB_ACCENTS } from "./formatTabAccents";
 
 interface Props {
@@ -193,10 +194,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   const ciInput = ciDraft ?? String(ciPct);
   const commitCiInput = (raw: string) => {
     setCiDraft(null);
-    const n = Number(raw);
-    if (Number.isFinite(n)) {
-      setCiPct(Math.max(75, Math.min(99.9, n)));
-    }
+    const n = commitCiPct(raw);
+    if (n !== null) setCiPct(n);
   };
   const ciTitle = t("chart.convergence.ci.title")
     .replace("{ci}", String(ciPct))
@@ -309,11 +308,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   const roiInput = roiDraft ?? (effectiveRoi * 100).toFixed(1);
   const commitRoiInput = (raw: string) => {
     setRoiDraft(null);
-    const n = Number(raw);
-    if (Number.isFinite(n)) {
-      const clamped = Math.max(roiMin, Math.min(roiMax, n / 100));
-      setRoiOverride(clamped);
-    }
+    const fraction = commitRoiFraction(raw, roiMin, roiMax);
+    if (fraction !== null) setRoiOverride(fraction);
   };
 
   // Rake — fraction of buy-in taken by the room. Each tab compiles its
@@ -329,10 +325,8 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   const rakeInput = rakeDraft ?? rakePct.toFixed(1);
   const commitRakeInput = (raw: string) => {
     setRakeDraft(null);
-    const n = Number(raw);
-    if (Number.isFinite(n)) {
-      setRakeOverridePct(Math.max(0, Math.min(20, n)));
-    }
+    const n = commitRakePct(raw);
+    if (n !== null) setRakeOverridePct(n);
   };
 
   const gameRoi = effectiveRoi;

@@ -28,6 +28,7 @@ import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { isRepeatSubmission, settleCommitted, submitBias } from "./finishPreview/biasDraft";
 import { isTop3LockAvailable, patchFinishLocks } from "./finishPreview/shapeLocks";
 import { tierPlacesLabel } from "./finishPreview/tierPlaces";
 import {
@@ -842,7 +843,7 @@ function snapBountyBias(v: number): number {
   return clampBountyBias(Number(snapped.toFixed(4)));
 }
 
-function BountyShareSlider({
+export function BountyShareSlider({
   committedBias,
   committedShare,
   defaultShare,
@@ -869,7 +870,7 @@ function BountyShareSlider({
 }) {
   const [draftBias, setDraftBias] = useState<number | null>(null);
   const [manualText, setManualText] = useState<string | null>(null);
-  const submittedBiasRef = useRef<number | null>(null);
+  const inflightBiasRef = useRef<number[]>([]);
   const sliderFrameRef = useRef<number | null>(null);
   const pendingSliderBiasRef = useRef<number | null>(null);
   const axisMin = -MAX_BOUNTY_BIAS;
@@ -913,6 +914,15 @@ function BountyShareSlider({
     };
   }, []);
 
+  useEffect(() => {
+    const settled = settleCommitted(inflightBiasRef.current, committedBias);
+    inflightBiasRef.current = settled.inflight;
+    if (!settled.external) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- an outside change to the stored bias replaces the local draft; one reset per change, no cascade.
+    setDraftBias(null);
+    setManualText(null);
+  }, [committedBias]);
+
   const scheduleSliderDraft = (rawBias: number) => {
     const nextBias = locked ? 0 : snapBountyBias(rawBias);
     pendingSliderBiasRef.current = nextBias;
@@ -927,16 +937,12 @@ function BountyShareSlider({
 
   const commitBias = (rawBias: number) => {
     const nextBias = locked ? 0 : snapBountyBias(rawBias);
-    const submittedBias = submittedBiasRef.current;
-    if (
-      Math.abs(nextBias - committedBias) < 1e-9 ||
-      (submittedBias !== null && Math.abs(nextBias - submittedBias) < 1e-9)
-    ) {
+    if (isRepeatSubmission(inflightBiasRef.current, nextBias, committedBias)) {
       setDraftBias(nextBias);
       setManualText(null);
       return;
     }
-    submittedBiasRef.current = nextBias;
+    inflightBiasRef.current = submitBias(inflightBiasRef.current, nextBias);
     setDraftBias(nextBias);
     setManualText(null);
     onCommit(nextBias);
@@ -1042,10 +1048,12 @@ function BountyShareSlider({
           <button
             type="button"
             onClick={() => {
-              submittedBiasRef.current = 0;
               setDraftBias(0);
               setManualText(null);
-              if (Math.abs(committedBias) > 1e-9) onCommit(0);
+              if (Math.abs(committedBias) > 1e-9) {
+                inflightBiasRef.current = submitBias(inflightBiasRef.current, 0);
+                onCommit(0);
+              }
             }}
             disabled={Math.abs(committedBias) < 1e-9}
             className={PREVIEW_SLIDER_RESET_CHROME}
@@ -1141,7 +1149,7 @@ function snapItmTopHeavyBias(v: number): number {
   return clampItmTopHeavyBias(Number(snapped.toFixed(4)));
 }
 
-function TopHeavyPlacementSlider({
+export function TopHeavyPlacementSlider({
   committedBias,
   onCommit,
   title,
@@ -1160,7 +1168,7 @@ function TopHeavyPlacementSlider({
 }) {
   const [draftBias, setDraftBias] = useState<number | null>(null);
   const [manualText, setManualText] = useState<string | null>(null);
-  const submittedBiasRef = useRef<number | null>(null);
+  const inflightBiasRef = useRef<number[]>([]);
   const sliderFrameRef = useRef<number | null>(null);
   const pendingSliderBiasRef = useRef<number | null>(null);
   const axisMin = MIN_ITM_TOP_HEAVY_BIAS;
@@ -1185,6 +1193,15 @@ function TopHeavyPlacementSlider({
     };
   }, []);
 
+  useEffect(() => {
+    const settled = settleCommitted(inflightBiasRef.current, committedBias);
+    inflightBiasRef.current = settled.inflight;
+    if (!settled.external) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- an outside change to the stored bias replaces the local draft; one reset per change, no cascade.
+    setDraftBias(null);
+    setManualText(null);
+  }, [committedBias]);
+
   const scheduleSliderDraft = (rawBias: number) => {
     const nextBias = snapItmTopHeavyBias(rawBias);
     pendingSliderBiasRef.current = nextBias;
@@ -1199,16 +1216,12 @@ function TopHeavyPlacementSlider({
 
   const commitBias = (rawBias: number) => {
     const nextBias = snapItmTopHeavyBias(rawBias);
-    const submittedBias = submittedBiasRef.current;
-    if (
-      Math.abs(nextBias - committedBias) < 1e-9 ||
-      (submittedBias !== null && Math.abs(nextBias - submittedBias) < 1e-9)
-    ) {
+    if (isRepeatSubmission(inflightBiasRef.current, nextBias, committedBias)) {
       setDraftBias(nextBias);
       setManualText(null);
       return;
     }
-    submittedBiasRef.current = nextBias;
+    inflightBiasRef.current = submitBias(inflightBiasRef.current, nextBias);
     setDraftBias(nextBias);
     setManualText(null);
     onCommit(nextBias);
@@ -1303,10 +1316,12 @@ function TopHeavyPlacementSlider({
           <button
             type="button"
             onClick={() => {
-              submittedBiasRef.current = 0;
               setDraftBias(0);
               setManualText(null);
-              if (Math.abs(committedBias) > 1e-9) onCommit(0);
+              if (Math.abs(committedBias) > 1e-9) {
+                inflightBiasRef.current = submitBias(inflightBiasRef.current, 0);
+                onCommit(0);
+              }
             }}
             disabled={Math.abs(committedBias) < 1e-9}
             className={PREVIEW_SLIDER_RESET_CHROME}

@@ -28,7 +28,7 @@ import {
   GAME_TYPE_ORDER,
 } from "@/lib/sim/gameType";
 import { applyItmTarget } from "@/lib/sim/itmTarget";
-import { fieldRangeMidpoint, isFieldRangeActive } from "@/lib/sim/fieldVariants";
+import { fieldRangeMidpoint, fieldVariantSizes, isFieldRangeActive } from "@/lib/sim/fieldVariants";
 import {
   preRakebackRoiFromReportedRoi,
   rakebackRoiContribution,
@@ -120,12 +120,15 @@ const sameAmount = (a: number, b: number) =>
 
 /**
  * The ticket to hand to the row for the text in the buy-in box, or null when
- * there is nothing to commit. The box shows fees rounded to the cent, so
+ * there is nothing to commit. `current` is the ticket the row was last given,
+ * not the rendered props: those are stale while the previous keystroke's
+ * transition has not landed. The box shows fees rounded to the cent, so
  * re-parsing its own text is not a no-op ("0.25+0.03" is a 12 % rake, the row
- * holds 10 %): a focus and blur, or text that already means the stored ticket,
- * must leave the row alone. A comma is the one ambiguous character (decimal or
- * thousands), so text containing one is committed when the box is left, not
- * keystroke by keystroke.
+ * holds 10 %): text that is the canonical text of `current` (spaces and $
+ * aside), in either phase, or that already means `current`, leaves the row
+ * alone. A comma is the one ambiguous character (decimal or thousands), so
+ * text containing one is committed when the box is left, not keystroke by
+ * keystroke.
  */
 export function buyInToCommit(
   text: string,
@@ -134,7 +137,7 @@ export function buyInToCommit(
   phase: "typing" | "blur",
 ): { buyIn: number; rake: number } | null {
   if (phase === "typing" && text.includes(",")) return null;
-  if (phase === "blur" && text === formatBuyIn(current.buyIn, current.rake)) return null;
+  if (text.replace(/[$\s]/g, "") === formatBuyIn(current.buyIn, current.rake)) return null;
   const parsed = parseBuyIn(text, current.rake, gameType);
   if (!parsed) return null;
   if (sameAmount(parsed.buyIn, current.buyIn) && sameAmount(parsed.rake, current.rake)) {
@@ -408,7 +411,11 @@ export function parseImportCSV(raw: string): {
       errors.push(`line ${i + 1}: players must be 2..${IMPORT_PLAYERS_MAX}`);
       return;
     }
-    const parsed = parseBuyIn(buyInStr ?? "", 0.1);
+    // A Battle Royale ticket is one number that already includes the fee, as in
+    // the editor's own box; every other payout reads a plain number as the net.
+    const ticketType: GameType | undefined =
+      (payoutStr ?? "").trim().toLowerCase() === "battle-royale" ? "mystery-royale" : undefined;
+    const parsed = parseBuyIn(buyInStr ?? "", 0.1, ticketType);
     if (!parsed) {
       errors.push(`line ${i + 1}: bad buy-in "${buyInStr}"`);
       return;
@@ -969,8 +976,20 @@ const ScheduleRow = memo(function ScheduleRow({
             max={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 1_000_000}
             step={1}
             disabled={isBattleRoyale || fieldFromRange}
-            title={fieldFromRange ? t("row.playersFromRange") : undefined}
+            title={
+              fieldFromRange
+                ? t(advanced ? "row.playersFromRange" : "row.playersFromRangeBasic")
+                : undefined
+            }
           />
+          {fieldFromRange && !advanced && r.fieldVariability?.kind === "uniform" && (
+            <span className="text-center text-[10px] tabular-nums text-[color:var(--color-fg-dim)]">
+              {t("row.playersRangeReadout")
+                .replace("{min}", String(Math.floor(Math.min(r.fieldVariability.min, r.fieldVariability.max))))
+                .replace("{max}", String(Math.floor(Math.max(r.fieldVariability.min, r.fieldVariability.max))))
+                .replace("{n}", String(fieldVariantSizes(r).length))}
+            </span>
+          )}
         </div>
 
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -1876,7 +1895,7 @@ function GameTypeSelect({
   );
 }
 
-function BuyInInput({
+export function BuyInInput({
   id,
   gameType,
   buyIn,
@@ -1894,6 +1913,16 @@ function BuyInInput({
   const [local, setLocal] = useState(canonical);
   const [focused, setFocused] = useState(false);
   if (!focused && local !== canonical) setLocal(canonical);
+  // What the row was last given. The props lag a keystroke behind while its
+  // transition is pending, and the box owns the ticket only while it has focus.
+  const committedRef = useRef({ buyIn, rake });
+  useEffect(() => {
+    if (!focused) committedRef.current = { buyIn, rake };
+  }, [focused, buyIn, rake]);
+  const commit = (p: { buyIn: number; rake: number }) => {
+    committedRef.current = p;
+    startTransition(() => onChange(p.buyIn, p.rake));
+  };
   const parsed = parseBuyIn(local, rake, gameType);
   const invalid = local.trim() !== "" && parsed === null;
   const snapSuggestion =
@@ -1911,21 +1940,21 @@ function BuyInInput({
         inputMode="decimal"
         aria-invalid={invalid || undefined}
         value={local}
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          committedRef.current = { buyIn, rake };
+          setFocused(true);
+        }}
         onBlur={() => {
           setFocused(false);
-          const p = buyInToCommit(local, { buyIn, rake }, gameType, "blur");
-          if (p) {
-            startTransition(() => onChange(p.buyIn, p.rake));
-            setLocal(formatBuyIn(p.buyIn, p.rake));
-          } else {
-            setLocal(canonical);
-          }
+          const p = buyInToCommit(local, committedRef.current, gameType, "blur");
+          if (p) commit(p);
+          const held = p ?? committedRef.current;
+          setLocal(formatBuyIn(held.buyIn, held.rake));
         }}
         onChange={(e) => {
           setLocal(e.target.value);
-          const p = buyInToCommit(e.target.value, { buyIn, rake }, gameType, "typing");
-          if (p) startTransition(() => onChange(p.buyIn, p.rake));
+          const p = buyInToCommit(e.target.value, committedRef.current, gameType, "typing");
+          if (p) commit(p);
         }}
         placeholder={gameType === "ocean-ko" ? "100" : "50+5"}
         title={
@@ -1946,9 +1975,7 @@ function BuyInInput({
           onClick={() => {
             setFocused(false);
             setLocal(snapLabel);
-            startTransition(() =>
-              onChange(snapSuggestion.buyIn, snapSuggestion.rake),
-            );
+            commit(snapSuggestion);
           }}
           className="max-w-full rounded-full border border-[color:var(--color-border)]/80 bg-[color:var(--color-bg)]/55 px-2 py-0.5 text-[9px] font-semibold tracking-[0.04em] text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)]/65 hover:text-[color:var(--color-fg)] focus:outline-none focus:ring-1 focus:ring-[color:var(--color-accent)]/55"
           title={t("row.buyIn.normalizeBrHint").replace("{value}", snapLabel)}

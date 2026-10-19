@@ -261,6 +261,10 @@ residual coefficient before being band-eligible.
   `normalizeGameTypeConsistency` writes the range midpoint into the effective
   row, so the preview, payout card, equilibrium ITM default and validation agree
   with the engine, and the AFS input is read-only while a range is active.
+- In basic mode the Advanced expander is disabled, so a ranged row that arrives
+  by a preset or an old link has a read-only AFS with no editor. The tooltip says
+  the range is advanced-only and the row prints the range it plays; there is no
+  public route to edit or clear it (a product decision, not made here).
 - A Battle Royale row carries no range (`normalizeBrMrConsistency` clears it).
   The editor hides the control and persistence drops it on reload, so a range
   left on the row made the session simulate 140-700 entrants where a share link
@@ -349,6 +353,31 @@ and had three legs, all reproduced from the worker requests, not from the UI:
   from a disabled field **without a blur event**, so the draft stayed on screen
   and stayed uncommitted; every later Run repeated the stale value until the
   user touched the field again.
+
+The same class, other doors, all closed the same way:
+
+- Save preset blurs the focused field, asks for the name in the click (the modal
+  prompt keeps React from rendering, so a pending edit lands only afterwards) and
+  takes the snapshot in an effect keyed on a transition-lane request, like Run.
+  `blurFocusedField` is shared by both.
+- Run, Stop and the blocked state are one unkeyed `<button>` (`RunActionButton`),
+  so keyboard focus survives Enter on Run; the second click of a double-click is
+  caught by the 500 ms Stop-click grace, not by remounting. Distinct `key`s
+  looked harmless and dropped focus to `body` on every transition.
+- `BuyInInput` decides each keystroke against the ticket it last committed (a
+  ref), not against its props: the props lag while the previous keystroke's
+  transition is pending, so typing "1" then "10" over a stored 10 dropped the 10.
+  While focused, only its own commits move that ref; the canonical text of the
+  committed ticket (spaces and `$` aside) is never re-read, in either phase.
+- The bounty-share and top-heavy sliders remember which biases they sent
+  (`biasDraft.ts`). A stored bias that matches one of them is that commit
+  landing; any other value is an outside change (scenario reload, BR "Apply
+  reported ROI") and replaces the draft. A row-id key alone only resets on a row
+  switch.
+- A cleared number box or a lone "-" (a number input reports "") is not a
+  number: `commitDraftValue` / `parseNumericDraft` return null and the box
+  reverts. `Number("")` is 0 and used to commit the clamp minimum on the
+  convergence card and a 0% reference line.
 
 Stable seeds made this visible (identical result), they did not cause it —
 before the seed became stable the same bug produced a *different* result for
@@ -535,6 +564,17 @@ dark-mode-only nicety. Do not undo these without re-measuring:
   bare page colour. It also fails on any `text-<palette>-N` class, `text-[#hex]`
   or a `bg/from/to-rose-9xx` panel fill in a `.tsx`. A new status colour needs a
   token in both blocks and a row in `STATUS_SITES`.
+- Text on the solid accent fill (gold in dark, purple in light) comes from
+  `--c-on-accent`; the Run button label from `--c-run-fg` / `--c-run-fg-hover`.
+  The main Run button read 2.5:1 (top of its gradient) and 1.2:1 (bottom) in the
+  light theme because it kept a dark label on the purple gradient.
+  `runButtonSites(css)` parses the `.primary-run-button` rules (both gradient
+  stops, the label token) and measures the label and the ETA pill at rest and on
+  hover; a literal label colour there throws. The ETA pill keeps `bg-black/15`
+  in both themes (a darkening wash), only its text moved to the token.
+- The PrimeDope overlay legend and tooltip text on the histogram cards use
+  `OVERLAY_SERIES[...].textColor` (`--c-pd-theirs-fg`, `--c-overlay-*-fg`); the
+  series hex stays on the swatch and the canvas line.
 - Not touched, on purpose: slider `accent-*` and `focus:border-*` colours,
   canvas series colours, the Stop button (white on a rose gradient, 3.8-4.5:1 in
   both themes). One dark value is still under 4.5:1: the PD matching-delta pill

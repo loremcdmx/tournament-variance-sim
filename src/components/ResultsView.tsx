@@ -106,6 +106,8 @@ import {
 } from "./results/UnitContext";
 import type { ControlsState } from "./ControlsPanel";
 import { DistributionChart } from "./charts/DistributionChart";
+import { OVERLAY_SERIES } from "./charts/overlaySeries";
+import { RefLineRoiInput } from "./results/RefLineRoiInput";
 import { VolumePlanningPanel } from "./VolumePlanningPanel";
 import {
   BigStat,
@@ -1406,7 +1408,7 @@ function ResultsViewImpl({
                                 displayPdChartStreaks.longestBreakevenHistogram.binEdges,
                               counts:
                                 displayPdChartStreaks.longestBreakevenHistogram.counts,
-                              color: "#f472b6",
+                              ...OVERLAY_SERIES.pink,
                               label: overlayLabel,
                             }
                           : undefined
@@ -1436,7 +1438,7 @@ function ResultsViewImpl({
                                 pdChart.longestCashlessHistogram.binEdges,
                               counts:
                                 pdChart.longestCashlessHistogram.counts,
-                              color: "#38bdf8",
+                              ...OVERLAY_SERIES.sky,
                               label: overlayLabel,
                             }
                           : undefined
@@ -1473,7 +1475,7 @@ function ResultsViewImpl({
                           ? {
                               binEdges: displayPdChartStreaks.recoveryHistogram.binEdges,
                               counts: displayPdChartStreaks.recoveryHistogram.counts,
-                              color: "#e879f9",
+                              ...OVERLAY_SERIES.fuchsia,
                               label: overlayLabel,
                             }
                           : undefined
@@ -2271,6 +2273,15 @@ const TrajectoryCard = memo(function TrajectoryCard({
       hasPrimeDopePane,
       oursCapKey,
     });
+    const pdReproduce =
+      hasPrimeDopePane && !pdPkoFallback && schedule && scheduleRepeats != null && scheduleRepeats > 0 ? (
+        <div className="mt-1 flex justify-start">
+          <PrimedopeReproduceButton
+            schedule={schedule}
+            scheduleRepeats={scheduleRepeats}
+          />
+        </div>
+      ) : null;
     const pdPaneActions =
       hasPrimeDopePane && !pdPkoFallback && schedule && scheduleRepeats ? (
         <div className="flex items-center gap-2">
@@ -2318,10 +2329,11 @@ const TrajectoryCard = memo(function TrajectoryCard({
             itmCashOnly={hasBounty}
             caption={t(paneKeys.primaryCapKey)}
             action={
-              paneKeys.togglesPane === "primary" ? pdPaneActions : overlayLegend
+              paneKeys.pdPane === "primary" ? pdPaneActions : overlayLegend
             }
           >
             <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
+            {paneKeys.pdPane === "primary" && pdReproduce}
           </ChartPane>
           {/* When the grid collapses to one column (below `lg`), inject the
               overlay-checkbox here so it sits between the two panes — the
@@ -2342,17 +2354,10 @@ const TrajectoryCard = memo(function TrajectoryCard({
             itmRate={pdChart?.stats.itmRate}
             itmCashOnly={hasBounty && !pdPkoFallback}
             caption={t(paneKeys.comparisonCapKey)}
-            action={paneKeys.togglesPane === "comparison" ? pdPaneActions : null}
+            action={paneKeys.pdPane === "comparison" ? pdPaneActions : null}
           >
             <TrajectoryPlot assets={secondary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
-            {hasPrimeDopePane && !pdPkoFallback && schedule && scheduleRepeats != null && scheduleRepeats > 0 && (
-              <div className="mt-1 flex justify-start">
-                <PrimedopeReproduceButton
-                  schedule={schedule}
-                  scheduleRepeats={scheduleRepeats}
-                />
-              </div>
-            )}
+            {paneKeys.pdPane === "comparison" && pdReproduce}
           </ChartPane>
         </div>
         {/* On wide screens (lg+) the overlay-checkbox sits below the side-by-
@@ -2942,7 +2947,6 @@ function RefLineCustomizer({
         <div className="flex flex-col gap-1.5">
           {value.map((ref, i) => {
             const hex = /^#([0-9a-f]{3}){1,2}$/i.test(ref.color) ? ref.color : "#94a3b8";
-            const pctValue = Math.round(ref.roi * 100);
             return (
               <div key={i} className="flex items-center gap-2 text-[11px]">
                 <input
@@ -2958,21 +2962,10 @@ function RefLineCustomizer({
                   aria-label={t("refLines.color")}
                 />
                 <span className="text-[color:var(--color-fg-dim)]">ROI</span>
-                <input
-                  type="number"
-                  value={pctValue}
-                  step={5}
-                  min={-99}
-                  max={10_000}
-                  onChange={(e) => {
-                    const raw = Number(e.target.value);
-                    if (!Number.isFinite(raw)) return;
-                    if (raw < -99 || raw > 10_000) return;
-                    const nextRoi = raw / 100;
-                    setAt(i, { roi: nextRoi, label: roiLabel(nextRoi) });
-                  }}
-                  className="number-control w-14 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)] px-1 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)]"
-                  aria-label={t("refLines.roi")}
+                <RefLineRoiInput
+                  roi={ref.roi}
+                  onChange={(patch) => setAt(i, patch)}
+                  ariaLabel={t("refLines.roi")}
                 />
                 <span className="text-[color:var(--color-fg-dim)]">%</span>
                 <button

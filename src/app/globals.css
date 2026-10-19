@@ -96,6 +96,17 @@
   --c-pd-delta-fg: rgba(232, 121, 249, 0.75);
   --c-pd-theirs-fg: #60a5fa;
 
+  /* Text on a solid accent fill (gold here, purple in the light theme) and the
+     Run button label, which sits on a gradient of that accent. The overlay
+     tokens are the legend text of the other PrimeDope overlay series; the series
+     hex itself stays on the swatch and the canvas line. */
+  --c-on-accent: #000000;
+  --c-run-fg: #15120a;
+  --c-run-fg-hover: #100d08;
+  --c-overlay-pink-fg: #f472b6;
+  --c-overlay-sky-fg: #38bdf8;
+  --c-overlay-fuchsia-fg: #e879f9;
+
   /* PrimeDope's color — cool steel blue, contrasts against orange. */
   --c-rival: #4a8bd9;
   --c-rival-strong: #2c6dbd;
@@ -164,6 +175,13 @@
   --c-pd-fg: oklch(45.2% 0.211 324.591);  /* fuchsia-800 */
   --c-pd-delta-fg: oklch(45.2% 0.211 324.591);  /* fuchsia-800 */
   --c-pd-theirs-fg: oklch(48.8% 0.243 264.376);  /* blue-700 */
+
+  --c-on-accent: #ffffff;
+  --c-run-fg: #ffffff;
+  --c-run-fg-hover: #ffffff;
+  --c-overlay-pink-fg: oklch(52.5% 0.223 3.958);  /* pink-700 */
+  --c-overlay-sky-fg: oklch(44.3% 0.11 240.79);  /* sky-800 */
+  --c-overlay-fuchsia-fg: oklch(45.2% 0.211 324.591);  /* fuchsia-800 */
 
   --c-rival: #2c6dbd;
   --c-rival-strong: #1d4f8c;
@@ -540,7 +558,7 @@ input[type="range"]:disabled::-moz-range-thumb {
     color-mix(in oklab, var(--c-accent), white 16%),
     var(--c-accent-strong)
   );
-  color: #15120a;
+  color: var(--c-run-fg);
   border: 1px solid color-mix(in oklab, var(--c-accent-strong), black 18%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.36),
@@ -554,7 +572,7 @@ input[type="range"]:disabled::-moz-range-thumb {
     color-mix(in oklab, var(--c-accent-strong), white 5%)
   );
   border-color: color-mix(in oklab, var(--c-accent-strong), black 8%);
-  color: #100d08;
+  color: var(--c-run-fg-hover);
 }
 
 .primary-run-button:focus-visible {

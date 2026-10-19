@@ -14,6 +14,7 @@ import {
 } from "@/lib/sim/modelPresets";
 import type { ProgressStage } from "@/lib/sim/useSimulation";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
+import type { DictKey, Locale } from "@/lib/i18n/dict";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { formatDuration, formatRoughDuration } from "@/lib/ui/durationFormat";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
@@ -586,79 +587,18 @@ export const ControlsPanel = memo(function ControlsPanel({
       </fieldset>
       <div className="mt-5 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-4">
         <div className="flex flex-col items-center gap-3">
-          {running ? (
-            <button
-              key="stop"
-              type="button"
-              onClick={() => {
-                if (isStopClickTooEarly(runStartedAtRef.current, performance.now())) return;
-                onCancel();
-              }}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-rose-500 to-rose-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(244,63,94,0.45)] transition-all hover:from-rose-400 hover:to-rose-500 active:translate-y-px"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="1" />
-              </svg>
-              {t("controls.stop")} {progressPercent(progress)}%
-            </button>
-          ) : runBlockedReason ? (
-            // Schedule infeasibility (or any other blocker) → button is
-            // visibly disabled with the reason inline. Click scrolls back
-            // to the sticky banner so the user can act on it. Removing the
-            // silent "click does nothing" fallback that was tripping people
-            // up before this prop existed.
-            <button
-              key="blocked"
-              type="button"
-              onClick={() => {
-                const targetId = runBlockedScrollTarget ?? "feasibility-banner";
-                const el = document.getElementById(targetId);
-                if (!el) return;
-                el.scrollIntoView({ behavior: "smooth", block: "center" });
-                // Brief rose-ring pulse on the target so the user sees where
-                // attention should land — especially for an inline row where
-                // the inline mini-banner is the actual fix surface.
-                el.classList.add("ring-2", "ring-rose-500/70");
-                window.setTimeout(
-                  () => el.classList.remove("ring-2", "ring-rose-500/70"),
-                  1800,
-                );
-              }}
-              className="inline-flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-rose-500/70 bg-[color:var(--c-bad-panel-bg)]/55 px-5 text-sm font-semibold text-[color:var(--c-bad-panel-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-rose-400 hover:bg-[color:var(--c-bad-panel-bg-2)]/65"
-              title={runBlockedReason}
-            >
-              <span className="inline-flex items-center gap-2 text-base font-bold">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2L2 22h20L12 2zm0 6l7 12H5l7-12zm-1 4v3h2v-3h-2zm0 5v2h2v-2h-2z" />
-                </svg>
-                {runBlockedReason}
-              </span>
-              <span className="text-[10px] font-medium uppercase tracking-wider text-[color:var(--c-bad-panel-fg-3)]/80">
-                {t("run.jumpToReason")}
-              </span>
-            </button>
-          ) : (
-            <button
-              key="run"
-              type="button"
-              onClick={onRun}
-              className="primary-run-button inline-flex h-12 w-full items-center justify-center gap-3 rounded-lg px-5 text-base font-semibold transition-all active:translate-y-px"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M6 4l14 8-14 8V4z" fill="currentColor" />
-              </svg>
-              <span>{t("controls.run")}</span>
-              {/* ETA tucked inside the button as a darker pill — keeps "how
-                  long this will take" attached to the action that triggers it.
-                  Removes the second status line below the button. */}
-              {estimatedMs != null && estimatedMs > 0 && (
-                <span className="inline-flex items-center gap-0.5 rounded-full border border-black/25 bg-black/15 px-2 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums text-black/75">
-                  <span className="relative -top-px leading-none">≈</span>
-                  <span>{formatRoughDuration(estimatedMs, locale)}</span>
-                </span>
-              )}
-            </button>
-          )}
+          <RunActionButton
+            running={running}
+            runBlockedReason={runBlockedReason}
+            runBlockedScrollTarget={runBlockedScrollTarget}
+            runStartedAtRef={runStartedAtRef}
+            progress={progress}
+            estimatedMs={estimatedMs}
+            t={t}
+            locale={locale}
+            onRun={onRun}
+            onCancel={onCancel}
+          />
           {/* Below the button: only running-state hint + totals counter.
               The static seed line moved out of this block — seed is already
               in the result card and the export-state copy button, so
@@ -728,6 +668,106 @@ export const ControlsPanel = memo(function ControlsPanel({
     </Card>
   );
 });
+
+interface RunActionButtonProps {
+  running: boolean;
+  runBlockedReason?: string | null;
+  runBlockedScrollTarget?: string | null;
+  runStartedAtRef: { current: number | null };
+  progress: number;
+  estimatedMs?: number | null;
+  t: (key: DictKey) => string;
+  locale: Locale;
+  onRun: () => void;
+  onCancel: () => void;
+}
+
+// Run, blocked and Stop are the same <button> at the same position with no key,
+// so React updates the node in place and keyboard focus survives Enter / Space
+// on Run. A double-click is kept safe by the Stop-click grace, not by remounting.
+export function RunActionButton({
+  running,
+  runBlockedReason,
+  runBlockedScrollTarget,
+  runStartedAtRef,
+  progress,
+  estimatedMs,
+  t,
+  locale,
+  onRun,
+  onCancel,
+}: RunActionButtonProps) {
+  return running ? (
+    <button
+      type="button"
+      onClick={() => {
+        if (isStopClickTooEarly(runStartedAtRef.current, performance.now())) return;
+        onCancel();
+      }}
+      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-rose-500 to-rose-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(244,63,94,0.45)] transition-all hover:from-rose-400 hover:to-rose-500 active:translate-y-px"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="6" width="12" height="12" rx="1" />
+      </svg>
+      {t("controls.stop")} {progressPercent(progress)}%
+    </button>
+  ) : runBlockedReason ? (
+    // Schedule infeasibility (or any other blocker) → button is
+    // visibly disabled with the reason inline. Click scrolls back
+    // to the sticky banner so the user can act on it. Removing the
+    // silent "click does nothing" fallback that was tripping people
+    // up before this prop existed.
+    <button
+      type="button"
+      onClick={() => {
+        const targetId = runBlockedScrollTarget ?? "feasibility-banner";
+        const el = document.getElementById(targetId);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Brief rose-ring pulse on the target so the user sees where
+        // attention should land — especially for an inline row where
+        // the inline mini-banner is the actual fix surface.
+        el.classList.add("ring-2", "ring-rose-500/70");
+        window.setTimeout(
+          () => el.classList.remove("ring-2", "ring-rose-500/70"),
+          1800,
+        );
+      }}
+      className="inline-flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-rose-500/70 bg-[color:var(--c-bad-panel-bg)]/55 px-5 text-sm font-semibold text-[color:var(--c-bad-panel-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-rose-400 hover:bg-[color:var(--c-bad-panel-bg-2)]/65"
+      title={runBlockedReason}
+    >
+      <span className="inline-flex items-center gap-2 text-base font-bold">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2L2 22h20L12 2zm0 6l7 12H5l7-12zm-1 4v3h2v-3h-2zm0 5v2h2v-2h-2z" />
+        </svg>
+        {runBlockedReason}
+      </span>
+      <span className="text-[10px] font-medium uppercase tracking-wider text-[color:var(--c-bad-panel-fg-3)]/80">
+        {t("run.jumpToReason")}
+      </span>
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={onRun}
+      className="primary-run-button inline-flex h-12 w-full items-center justify-center gap-3 rounded-lg px-5 text-base font-semibold transition-all active:translate-y-px"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <path d="M6 4l14 8-14 8V4z" fill="currentColor" />
+      </svg>
+      <span>{t("controls.run")}</span>
+      {/* ETA tucked inside the button as a darker pill — keeps "how
+          long this will take" attached to the action that triggers it.
+          Removes the second status line below the button. */}
+      {estimatedMs != null && estimatedMs > 0 && (
+        <span className="inline-flex items-center gap-0.5 rounded-full border border-black/25 bg-black/15 px-2 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums text-[color:var(--c-on-accent)]/75">
+          <span className="relative -top-px leading-none">≈</span>
+          <span>{formatRoughDuration(estimatedMs, locale)}</span>
+        </span>
+      )}
+    </button>
+  );
+}
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
