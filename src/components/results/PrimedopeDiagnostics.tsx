@@ -28,7 +28,7 @@ export function CalibrationNotices({ result, schedule }: {
   const warnings = [result, result.comparison].flatMap((run) => run?.calibrationWarnings ?? []);
   if (warnings.length === 0) return null;
   return (
-    <ul role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-amber-200">
+    <ul role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-[color:var(--c-warn-fg-soft)]">
       {warnings.map((warning, index) => (
         <li key={`${warning.rowId}-${index}`}>
           {t("pd.calibrationClamped")
@@ -118,7 +118,7 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
     <div className="flex justify-between gap-3">
       <span className="text-[color:var(--color-fg-dim)]">
         {k}
-        {note && <span className="ml-1 text-amber-400/80">· {note}</span>}
+        {note && <span className="ml-1 text-[color:var(--c-warn-label)]">· {note}</span>}
       </span>
       <span className="tabular-nums text-[color:var(--color-fg)]">{v}</span>
     </div>
@@ -645,7 +645,7 @@ export function PrimedopeDiff({
                 <td className="py-2 text-right font-semibold tabular-nums text-[color:var(--color-fg)]">
                   {r.ours}
                 </td>
-                <td className="py-2 text-right tabular-nums text-[#60a5fa]">
+                <td className="py-2 text-right tabular-nums text-[color:var(--c-pd-theirs-fg)]">
                   {r.theirs}
                 </td>
                 <td

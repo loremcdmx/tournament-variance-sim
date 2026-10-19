@@ -281,7 +281,7 @@ export function AdvancedStatsCard({
                 {stat.unit}
               </span>
               {stat.unstable && (
-                <span className="text-[10px] text-amber-400/80">
+                <span className="text-[10px] text-[color:var(--c-warn-label)]">
                   {t("advStats.heavyTail.badge")}
                 </span>
               )}
@@ -305,7 +305,7 @@ export function AdvancedStatsCard({
               }
             />
             {heavyTail && (
-              <span className="font-normal normal-case tracking-normal text-amber-400/80">
+              <span className="font-normal normal-case tracking-normal text-[color:var(--c-warn-label)]">
                 {t("advStats.heavyTail.badge")}
               </span>
             )}

@@ -627,7 +627,7 @@ export function MiniStat({
           <div
             className={`mt-1 inline-flex items-center justify-center self-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] tabular-nums ${
               sampleSupport.backing <= 3
-                ? "border-amber-400/40 bg-amber-400/10 text-amber-200/85"
+                ? "border-amber-400/40 bg-amber-400/10 text-[color:var(--c-warn-fg-soft)]/85"
                 : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/60 text-[color:var(--color-fg-dim)]"
             }`}
             title={
@@ -704,7 +704,7 @@ function PdCompareRow({
           <span
             className="rounded-sm px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.16em]"
             style={{
-              color: "#f0abfc",
+              color: "var(--c-pd-fg)",
               backgroundColor: "rgba(232,121,249,0.14)",
             }}
           >
@@ -717,7 +717,7 @@ function PdCompareRow({
         <span
           className="shrink-0 rounded-sm border px-1.5 py-0.5 font-mono font-semibold tabular-nums"
           style={{
-            color: "#f0abfc",
+            color: "var(--c-pd-fg)",
             borderColor: "rgba(232,121,249,0.32)",
             backgroundColor: "rgba(232,121,249,0.1)",
           }}
@@ -743,7 +743,7 @@ function PdCompareRow({
       ? "var(--color-danger)"
       : sev === "mild"
         ? "var(--color-accent-strong)"
-        : "rgba(232,121,249,0.75)";
+        : "var(--c-pd-delta-fg)";
   const deltaBorder =
     sev === "strong"
       ? "rgba(248,113,113,0.4)"
@@ -769,7 +769,7 @@ function PdCompareRow({
         <span
           className="rounded-sm px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.16em]"
           style={{
-            color: "#f0abfc",
+            color: "var(--c-pd-fg)",
             backgroundColor: "rgba(232,121,249,0.14)",
           }}
         >

@@ -39,6 +39,7 @@ import {
   fillRuntimeSigmaBrTicket,
 } from "@/lib/sim/formatRuntimeSigma";
 import { fillRuntimeSigmaZone } from "@/lib/sim/runtimeSigmaBands";
+import { FORMAT_TAB_ACCENTS } from "./formatTabAccents";
 
 interface Props {
   schedule?: TournamentRow[];
@@ -54,54 +55,6 @@ interface Props {
    *  card it must agree with); default keeps the synthetic planning mode. */
   defaultMode?: "avg" | "exact";
 }
-
-const FORMAT_TAB_ACCENTS: Record<
-  ConvergenceFormat,
-  { text: string; border: string; bg: string; rail: string }
-> = {
-  freeze: {
-    text: "#c4b5fd",
-    border: "rgba(167,139,250,0.42)",
-    bg: "rgba(139,92,246,0.18)",
-    rail: "rgba(196,181,253,0.85)",
-  },
-  pko: {
-    text: "#fb7185",
-    border: "rgba(251,113,133,0.42)",
-    bg: "rgba(251,113,133,0.16)",
-    rail: "rgba(253,164,175,0.88)",
-  },
-  "ocean-ko": {
-    text: "#2dd4bf",
-    border: "rgba(45,212,191,0.42)",
-    bg: "rgba(20,184,166,0.16)",
-    rail: "rgba(94,234,212,0.9)",
-  },
-  mystery: {
-    text: "#38bdf8",
-    border: "rgba(56,189,248,0.42)",
-    bg: "rgba(14,165,233,0.16)",
-    rail: "rgba(125,211,252,0.9)",
-  },
-  "mystery-royale": {
-    text: "#f59e0b",
-    border: "rgba(245,158,11,0.45)",
-    bg: "rgba(245,158,11,0.16)",
-    rail: "rgba(252,211,77,0.9)",
-  },
-  mix: {
-    text: "#34d399",
-    border: "rgba(52,211,153,0.42)",
-    bg: "rgba(16,185,129,0.16)",
-    rail: "rgba(110,231,183,0.9)",
-  },
-  exact: {
-    text: "#86efac",
-    border: "rgba(74,222,128,0.42)",
-    bg: "rgba(34,197,94,0.16)",
-    rail: "rgba(134,239,172,0.9)",
-  },
-};
 
 function RangeBandValue({
   pointLabel,
@@ -126,7 +79,7 @@ function RangeBandValue({
         className={
           accent
             ? "inline-flex items-center rounded border border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/15 px-1 py-0.5 font-mono text-[10.5px] font-bold leading-none text-[color:var(--color-accent)]"
-            : "inline-flex items-center rounded border border-sky-300/45 bg-sky-300/15 px-1 py-0.5 font-mono text-[10.5px] font-bold leading-none text-sky-200"
+            : "inline-flex items-center rounded border border-sky-300/45 bg-sky-300/15 px-1 py-0.5 font-mono text-[10.5px] font-bold leading-none text-[color:var(--c-info-fg)]"
         }
       >
         {pointLabel}
@@ -154,7 +107,7 @@ function RangeBandValue({
           className={
             accent
               ? "rounded border border-[color:var(--color-accent)]/45 bg-[color:var(--color-accent)]/15 px-1.5 py-0.5 text-[10.5px] font-bold leading-none text-[color:var(--color-accent)]"
-              : "rounded border border-sky-300/45 bg-sky-300/15 px-1.5 py-0.5 text-[10.5px] font-bold leading-none text-sky-200"
+              : "rounded border border-sky-300/45 bg-sky-300/15 px-1.5 py-0.5 text-[10.5px] font-bold leading-none text-[color:var(--c-info-fg)]"
           }
         >
           {pointLabel}
@@ -740,7 +693,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         }`}
         title={afsLocked ? t("chart.convergence.afs.lockedBR") : undefined}
       >
-        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-emerald-400/80">
+        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-ok-label)]">
           AFS
         </span>
         <RangeInput
@@ -788,7 +741,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       )}
       {effectiveMode !== "exact" && roiControlActive && (
         <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
-          <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-amber-400/80">
+          <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-warn-label)]">
             ROI
           </span>
           <RangeInput
@@ -830,7 +783,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       )}
       {effectiveMode !== "exact" && !roiControlActive && (
         <div className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
-          <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-amber-400/80">
+          <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-warn-label)]">
             ROI
           </span>
           <span className="text-[color:var(--color-fg-dim)]">
@@ -843,7 +796,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
         title={t(format === "ocean-ko" ? "chart.convergence.oceanKo.rakeTitle" : "chart.convergence.rake.title")}
       >
-        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-orange-400/80">
+        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-orange-label)]">
           {t("chart.convergence.rake")}
         </span>
         <RangeInput
@@ -893,7 +846,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         className="mb-3 flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]"
         title={ciTitle}
       >
-        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
+        <span className="w-8 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-info-label)]">
           CI
         </span>
         <RangeInput
@@ -933,7 +886,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
         </button>
       </div>
       {effectiveMode === "exact" && exactBreakdown && (
-        <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 px-2 py-1.5 text-[11px] leading-snug text-emerald-200">
+        <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 px-2 py-1.5 text-[11px] leading-snug text-[color:var(--c-ok-fg-soft)]">
           {t(
             hasOceanKo
               ? "chart.convergence.oceanKo.upperBound"
@@ -942,25 +895,25 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                 : "chart.convergence.exact.pointOnly",
           )}{" "}
           {hasOceanKo && <span>· {t("proveEdge.schedule.field")} </span>}
-          <span className="font-mono text-emerald-100">
+          <span className="font-mono text-[color:var(--c-ok-fg-strong)]">
             {fmtAfs(exactBreakdown.avgField, numberLocale)}
           </span>
         </div>
       )}
       {bandPolicy?.kind === "warning" && (
-        <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
+        <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-[color:var(--c-warn-fg-soft)]">
           {hasOceanKo
             ? t("chart.convergence.bandWarning.oceanKo")
             : fillRuntimeSigmaZone(t("chart.convergence.bandWarning.outsideFitBox"), numberLocale)}
         </div>
       )}
       {noiseActive && (
-        <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-amber-200">
+        <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-[color:var(--c-warn-fg-soft)]">
           {t("chart.convergence.noiseCaveat")}
         </div>
       )}
       {hasOceanKo && effectiveMode !== "exact" && (
-        <div className="mb-2 text-[11px] font-semibold text-teal-300">
+        <div className="mb-2 text-[11px] font-semibold text-[color:var(--c-ocean-fg)]">
           {t("chart.convergence.oceanKo.upperBound")}
         </div>
       )}
@@ -1077,7 +1030,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       </div>
       {effectiveMode === "exact" && exactBreakdown && (
         <div className="mt-3">
-          <div className="mb-1 text-[11px] uppercase tracking-wider text-emerald-400/80">
+          <div className="mb-1 text-[11px] uppercase tracking-wider text-[color:var(--c-ok-label)]">
             {t("chart.convergence.exact.breakdown")}
           </div>
           <div className="space-y-2 sm:hidden">
@@ -1115,10 +1068,10 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                     </div>
                   </div>
                   <div className="rounded-md border border-emerald-400/35 bg-emerald-400/10 px-2 py-1.5">
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-emerald-200/80">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--c-ok-label-soft)]">
                       {t("chart.convergence.exact.rowCol.varShare")}
                     </div>
-                    <div className="mt-1 font-mono text-emerald-200">
+                    <div className="mt-1 font-mono text-[color:var(--c-ok-fg-soft)]">
                       {(r.varShare * 100).toFixed(1)}%
                     </div>
                   </div>
@@ -1170,7 +1123,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
                     <td className="py-1 px-2 text-right">
                       {(r.costShare * 100).toFixed(1)}%
                     </td>
-                    <td className="py-1 pl-2 text-right text-emerald-300">
+                    <td className="py-1 pl-2 text-right text-[color:var(--c-ok-fg)]">
                       {(r.varShare * 100).toFixed(1)}%
                     </td>
                   </tr>
@@ -1207,17 +1160,17 @@ const MIX_ACCENT_CLASSES: Record<
   { label: string; range: string; focus: string }
 > = {
   sky: {
-    label: "text-sky-400/80",
+    label: "text-[color:var(--c-info-label)]",
     range: "accent-sky-400",
     focus: "focus:border-sky-400",
   },
   fuchsia: {
-    label: "text-fuchsia-400/80",
+    label: "text-[color:var(--c-fuchsia-label)]",
     range: "accent-fuchsia-400",
     focus: "focus:border-fuchsia-400",
   },
   purple: {
-    label: "text-purple-400/80",
+    label: "text-[color:var(--c-purple-label)]",
     range: "accent-purple-400",
     focus: "focus:border-purple-400",
   },

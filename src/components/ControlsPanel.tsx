@@ -384,7 +384,7 @@ export const ControlsPanel = memo(function ControlsPanel({
       </div>
 
       {memoryHintGb != null && (
-        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-300">
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-[color:var(--c-warn-fg)]">
           {t("controls.memoryHint").replace("{gb}", memoryHintGb)}
         </div>
       )}
@@ -481,7 +481,7 @@ export const ControlsPanel = memo(function ControlsPanel({
             <option value="powerlaw-realdata-influenced">{t("finishModel.powerlaw-realdata-influenced")}</option>
           </select>
           {!finishModelSupportsTargetRoi(value.finishModelId) && (
-            <div className="mt-1 text-[10px] uppercase tracking-wider text-amber-400/80">
+            <div className="mt-1 text-[10px] uppercase tracking-wider text-[color:var(--c-warn-label)]">
               {t("controls.finishModel.referenceShape")}
             </div>
           )}
@@ -617,7 +617,7 @@ export const ControlsPanel = memo(function ControlsPanel({
                   1800,
                 );
               }}
-              className="inline-flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-rose-500/70 bg-rose-950/55 px-5 text-sm font-semibold text-rose-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-rose-400 hover:bg-rose-900/65"
+              className="inline-flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-rose-500/70 bg-[color:var(--c-bad-panel-bg)]/55 px-5 text-sm font-semibold text-[color:var(--c-bad-panel-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-rose-400 hover:bg-[color:var(--c-bad-panel-bg-2)]/65"
               title={runBlockedReason}
             >
               <span className="inline-flex items-center gap-2 text-base font-bold">
@@ -626,7 +626,7 @@ export const ControlsPanel = memo(function ControlsPanel({
                 </svg>
                 {runBlockedReason}
               </span>
-              <span className="text-[10px] font-medium uppercase tracking-wider text-rose-200/80">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-[color:var(--c-bad-panel-fg-3)]/80">
                 {t("run.jumpToReason")}
               </span>
             </button>
@@ -903,7 +903,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-300">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--c-ok-fg)]">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
@@ -917,7 +917,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
         <button
           type="button"
           onClick={scrollToResults}
-          className="flex items-center gap-1 text-[10.5px] font-semibold text-emerald-300 transition-colors hover:text-emerald-200"
+          className="flex items-center gap-1 text-[10.5px] font-semibold text-[color:var(--c-ok-fg)] transition-colors hover:text-[color:var(--c-ok-fg-soft)]"
         >
           {t("controls.done.seeBelow")} ↓
         </button>
@@ -929,7 +929,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           </span>
           <span
             className={`font-semibold ${
-              meanPositive ? "text-emerald-300" : "text-rose-300"
+              meanPositive ? "text-[color:var(--c-ok-fg)]" : "text-[color:var(--c-bad-fg)]"
             }`}
           >
             {fmtMoneyCompact(summary.mean)}
@@ -941,7 +941,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           </span>
           <span
             className={`font-semibold ${
-              summary.roi >= 0 ? "text-emerald-300" : "text-rose-300"
+              summary.roi >= 0 ? "text-[color:var(--c-ok-fg)]" : "text-[color:var(--c-bad-fg)]"
             }`}
           >
             {(summary.roi * 100).toFixed(1)}%
@@ -970,7 +970,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
             <span
               className={`font-semibold ${
                 summary.riskOfRuin > 0.05
-                  ? "text-rose-300"
+                  ? "text-[color:var(--c-bad-fg)]"
                   : "text-[color:var(--color-fg)]"
               }`}
             >
@@ -982,7 +982,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             {t("controls.done.worstDD")}
           </span>
-          <span className="font-semibold text-rose-300">
+          <span className="font-semibold text-[color:var(--c-bad-fg)]">
             {fmtMoneyCompact(summary.worstDrawdown)}
           </span>
         </div>
@@ -990,7 +990,7 @@ function DoneSummaryBlock({ summary }: { summary: DoneSummary }) {
           <span className="text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)]">
             {t("controls.done.dryStreak")}
           </span>
-          <span className="font-semibold text-amber-300">
+          <span className="font-semibold text-[color:var(--c-warn-fg)]">
             {summary.longestCashlessWorst}
           </span>
         </div>

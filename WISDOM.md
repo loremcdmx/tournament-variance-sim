@@ -449,6 +449,30 @@ statistically misleading. Do not undo these without re-measuring:
 - `mystery-realdata-*` is a splice of the PKO cash zone and the freezeout tail, not
   measured Mystery data; keep the labels saying so.
 
+## Light-Theme Status Colours
+
+A Tailwind palette class has one value for both themes, so `text-amber-200` on a
+pale card measured 1.0-2.3:1 in the light theme (the done summary, out-of-box
+and noise warnings, tail-fragility pill, convergence tabs and boxes, blocked-run
+banners). The theme toggle is public, so this was a user-facing defect, not a
+dark-mode-only nicety. Do not undo these without re-measuring:
+
+- Status text takes its colour from `--c-*` tokens that exist in both blocks of
+  `globals.css` (`ok`, `warn`, `bad`, `err`, `info`, the `*-label` accents, the
+  `tab-*` format tabs, `pd-*`). The dark value is the exact palette shade the
+  component used before (a test pins it); the light value is a 700-950 shade.
+  Use them as `text-[color:var(--c-warn-fg-soft)]`, with an opacity modifier
+  only where the light shade keeps 4.5:1 under it.
+- `src/lib/ui/themeContrast.ts` lists every (token, surface) pair the components
+  use and `themeContrast.test.ts` holds each at 4.5:1 in both themes, also on the
+  bare page colour. It also fails on any `text-<palette>-N` class, `text-[#hex]`
+  or a `bg/from/to-rose-9xx` panel fill in a `.tsx`. A new status colour needs a
+  token in both blocks and a row in `STATUS_SITES`.
+- Not touched, on purpose: slider `accent-*` and `focus:border-*` colours,
+  canvas series colours, the Stop button (white on a rose gradient, 3.8-4.5:1 in
+  both themes). One dark value is still under 4.5:1: the PD matching-delta pill
+  (4.2:1, text at 75% alpha); it is the only entry with a lowered `minRatio`.
+
 ## Good Defaults For New Agents
 
 - Start read-only.

@@ -300,7 +300,7 @@ export function ProveEdgeCard({
             className={`flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)] ${isMbr ? "opacity-60" : ""}`}
             title={isMbr ? t("proveEdge.afs.lockedBR") : undefined}
           >
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-emerald-400/80">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-ok-label)]">
               {t("proveEdge.label.fieldSize")}
             </span>
             <RangeInput
@@ -329,7 +329,7 @@ export function ProveEdgeCard({
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-orange-400/80">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-orange-label)]">
               {t("proveEdge.label.rake")}
             </span>
             <RangeInput
@@ -357,7 +357,7 @@ export function ProveEdgeCard({
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-info-label)]">
               {t("proveEdge.label.confidence")}
             </span>
             <RangeInput
@@ -431,7 +431,7 @@ export function ProveEdgeCard({
       {isExact && (
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-sky-400/80">
+            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-info-label)]">
               {t("proveEdge.label.confidence")}
             </span>
             <RangeInput
@@ -495,7 +495,7 @@ export function ProveEdgeCard({
 
       {/* Out-of-fit-box warning */}
       {!scheduleEmpty && outOfBox && (
-        <div className="rounded border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-amber-200/95">
+        <div className="rounded border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-[color:var(--c-warn-fg-soft)]/95">
           {hasOceanKo
             ? t("chart.convergence.bandWarning.oceanKo")
             : isExact
@@ -506,7 +506,7 @@ export function ProveEdgeCard({
 
       {/* Noise/tilt channels active — σ fit excludes them */}
       {!scheduleEmpty && noiseActive && (
-        <div className="rounded border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-amber-200/95">
+        <div className="rounded border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-[color:var(--c-warn-fg-soft)]/95">
           {t("proveEdge.noiseCaveat")}
         </div>
       )}
@@ -536,7 +536,7 @@ export function ProveEdgeCard({
 
       {/* Candidate-ROI table */}
       {!scheduleEmpty && hasOceanKo && (
-        <div className="text-[11px] font-semibold text-teal-300">
+        <div className="text-[11px] font-semibold text-[color:var(--c-ocean-fg)]">
           {t("chart.convergence.oceanKo.upperBound")}
         </div>
       )}

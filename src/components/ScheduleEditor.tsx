@@ -1035,7 +1035,7 @@ const ScheduleRow = memo(function ScheduleRow({
             className={
               "h-8 w-full min-w-0 rounded-md border px-2 text-[11px] outline-none transition-colors focus:border-[color:var(--color-accent)] " +
               (currentDisabled
-                ? "border-rose-500/70 bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/30"
+                ? "border-rose-500/70 bg-rose-500/10 text-[color:var(--c-bad-fg)] ring-1 ring-rose-500/30"
                 : "border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:bg-[color:var(--color-bg)]")
             }
           >
@@ -1198,13 +1198,13 @@ const ScheduleRow = memo(function ScheduleRow({
           / BR), where ITM is structural and a fixed 16% number doesn't
           belong. */}
       {issue && (onFixClosest || onFixAuto || onFixPreset || issue.reason === "inconsistent-finish-locks") && (
-        <div className="border-t-2 border-rose-500/60 bg-rose-950/40 px-5 py-2.5">
+        <div className="border-t-2 border-rose-500/60 bg-[color:var(--c-bad-panel-bg)]/40 px-5 py-2.5">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-rose-50">
-              <span aria-hidden className="text-rose-300">!</span>
+            <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-[color:var(--c-bad-panel-fg)]">
+              <span aria-hidden className="text-[color:var(--c-bad-fg)]">!</span>
               {t("shape.rowBlocked")}
             </span>
-            <span className="font-mono text-[11px] text-rose-200/80">
+            <span className="font-mono text-[11px] text-[color:var(--c-bad-panel-fg-3)]/80">
               {issue.reason === "inconsistent-finish-locks" ? t("shape.inconsistentFinishLocks") : <>
               EW ${issue.currentEv.toFixed(2)} / ${issue.targetEv.toFixed(2)} (
               {t("shape.blockedGap")} {issue.gap >= 0 ? "+" : ""}
@@ -1216,7 +1216,7 @@ const ScheduleRow = memo(function ScheduleRow({
                 <button
                   type="button"
                   onClick={() => update(r.id, { finishBuckets: undefined })}
-                  className="rounded border border-rose-300/70 bg-rose-500/25 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/40"
+                  className="rounded border border-rose-300/70 bg-rose-500/25 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-[color:var(--c-bad-panel-fg)] transition-colors hover:border-rose-200 hover:bg-rose-500/40"
                 >
                   {t("shape.clearFinishLocks")}
                 </button>
@@ -1224,7 +1224,7 @@ const ScheduleRow = memo(function ScheduleRow({
                 <button
                   type="button"
                   onClick={() => onFixClosest(r.id)}
-                  className="rounded border border-rose-300/70 bg-rose-500/25 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/40"
+                  className="rounded border border-rose-300/70 bg-rose-500/25 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-[color:var(--c-bad-panel-fg)] transition-colors hover:border-rose-200 hover:bg-rose-500/40"
                 >
                   {t("shape.fixClosest")}
                 </button>
@@ -1232,7 +1232,7 @@ const ScheduleRow = memo(function ScheduleRow({
                 <button
                   type="button"
                   onClick={() => onFixAuto(r.id)}
-                  className="rounded border border-rose-400/50 bg-rose-500/15 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-300 hover:bg-rose-500/30"
+                  className="rounded border border-rose-400/50 bg-rose-500/15 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-[color:var(--c-bad-panel-fg)] transition-colors hover:border-rose-300 hover:bg-rose-500/30"
                 >
                   {t("shape.fixAuto")}
                 </button>
@@ -1241,7 +1241,7 @@ const ScheduleRow = memo(function ScheduleRow({
                 <button
                   type="button"
                   onClick={() => onFixPreset(r.id)}
-                  className="rounded border border-rose-400/50 bg-rose-500/15 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-300 hover:bg-rose-500/30"
+                  className="rounded border border-rose-400/50 bg-rose-500/15 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wider text-[color:var(--c-bad-panel-fg)] transition-colors hover:border-rose-300 hover:bg-rose-500/30"
                 >
                   {t("shape.fixPreset")}
                 </button>

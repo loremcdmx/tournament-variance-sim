@@ -805,7 +805,7 @@ function ResultsViewImpl({
               onChange={(e) => setRbStats(e.target.checked)}
               className="h-3.5 w-3.5 accent-lime-400"
             />
-            <span className="uppercase tracking-wider text-lime-400/80">
+            <span className="uppercase tracking-wider text-[color:var(--c-lime-label)]">
               {t("chart.stats.withRakeback")}
             </span>
           </label>
@@ -957,7 +957,7 @@ function ResultsViewImpl({
               className="inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-400"
               aria-hidden
             />
-            <span className="uppercase tracking-wider text-indigo-300/80">
+            <span className="uppercase tracking-wider text-[color:var(--c-indigo-label)]">
               {t("chart.recomputing")}
             </span>
           </div>
@@ -973,7 +973,7 @@ function ResultsViewImpl({
                 onChange={(e) => setHideJackpots(e.target.checked)}
                 className="h-3.5 w-3.5 accent-amber-400"
               />
-              <span className="uppercase tracking-wider text-amber-400/80">
+              <span className="uppercase tracking-wider text-[color:var(--c-warn-label)]">
                 {t("chart.hideJackpots")}
               </span>
               <span className="font-mono tabular-nums text-[color:var(--color-fg-dim)]">
@@ -992,7 +992,7 @@ function ResultsViewImpl({
                 onChange={(e) => setRbTraj(e.target.checked)}
                 className="h-3.5 w-3.5 accent-lime-400"
               />
-              <span className="uppercase tracking-wider text-lime-400/80">
+              <span className="uppercase tracking-wider text-[color:var(--c-lime-label)]">
                 {t("chart.trajectory.withRakeback")}
               </span>
             </label>
@@ -1008,7 +1008,7 @@ function ResultsViewImpl({
                 onChange={(e) => setLbIncluded(e.target.checked)}
                 className="h-3.5 w-3.5 accent-cyan-400"
               />
-              <span className="uppercase tracking-wider text-cyan-300/80">
+              <span className="uppercase tracking-wider text-[color:var(--c-cyan-label)]">
                 {t("chart.lbCashflow")}
               </span>
             </label>
@@ -1313,7 +1313,7 @@ function ResultsViewImpl({
               onChange={(e) => setRbDist(e.target.checked)}
               className="h-3.5 w-3.5 accent-lime-400"
             />
-            <span className="uppercase tracking-wider text-lime-400/80">
+            <span className="uppercase tracking-wider text-[color:var(--c-lime-label)]">
               {t("chart.dist.withRakeback")}
             </span>
           </label>

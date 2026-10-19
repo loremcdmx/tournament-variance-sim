@@ -53,6 +53,49 @@
   --c-success: #4ade80;
   --c-danger: #fb7185;
 
+  /* Status text. A Tailwind palette class has one value for both themes, so
+     light-theme status text must come from a token. Dark values are the exact
+     palette shades the components used before the tokens existed (a test pins
+     that); light values are the 700-950 shades. src/lib/ui/themeContrast.ts
+     measures every pair the components use and holds each at 4.5:1. */
+  --c-ok-fg: oklch(84.5% 0.143 164.978);
+  --c-ok-fg-soft: oklch(90.5% 0.093 164.15);
+  --c-ok-fg-strong: oklch(95% 0.052 163.051);
+  --c-ok-label: color-mix(in oklab, oklch(76.5% 0.177 163.223) 80%, transparent);
+  --c-ok-label-soft: color-mix(in oklab, oklch(90.5% 0.093 164.15) 80%, transparent);
+  --c-warn-fg: oklch(87.9% 0.169 91.605);
+  --c-warn-fg-soft: oklch(92.4% 0.12 95.746);
+  --c-warn-fg-strong: oklch(96.2% 0.059 95.617);
+  --c-warn-label: color-mix(in oklab, oklch(82.8% 0.189 84.429) 80%, transparent);
+  --c-bad-fg: oklch(81% 0.117 11.638);
+  --c-err-fg: oklch(80.8% 0.114 19.571);
+  --c-bad-panel-bg: oklch(27.1% 0.105 12.094);
+  --c-bad-panel-bg-2: oklch(41% 0.159 10.272);
+  --c-bad-panel-fg: oklch(96.9% 0.015 12.422);
+  --c-bad-panel-fg-2: oklch(94.1% 0.03 12.58);
+  --c-bad-panel-fg-3: oklch(89.2% 0.058 10.001);
+  --c-info-fg: oklch(90.1% 0.058 230.902);
+  --c-info-label: color-mix(in oklab, oklch(74.6% 0.16 232.661) 80%, transparent);
+  --c-ocean-fg: oklch(85.5% 0.138 181.071);
+  --c-orange-label: color-mix(in oklab, oklch(75% 0.183 55.934) 80%, transparent);
+  --c-fuchsia-label: color-mix(in oklab, oklch(74% 0.238 322.16) 80%, transparent);
+  --c-purple-label: color-mix(in oklab, oklch(71.4% 0.203 305.504) 80%, transparent);
+  --c-lime-label: color-mix(in oklab, oklch(84.1% 0.238 128.85) 80%, transparent);
+  --c-indigo-label: color-mix(in oklab, oklch(78.5% 0.115 274.713) 80%, transparent);
+  --c-cyan-label: color-mix(in oklab, oklch(86.5% 0.127 207.078) 80%, transparent);
+  --c-tab-freeze-fg: #c4b5fd;
+  --c-tab-pko-fg: #fb7185;
+  --c-tab-ocean-ko-fg: #2dd4bf;
+  --c-tab-mystery-fg: #38bdf8;
+  --c-tab-mystery-royale-fg: #f59e0b;
+  --c-tab-mix-fg: #34d399;
+  --c-tab-exact-fg: #86efac;
+
+  /* PrimeDope comparison text: the magenta match pills and the blue column. */
+  --c-pd-fg: #f0abfc;
+  --c-pd-delta-fg: rgba(232, 121, 249, 0.75);
+  --c-pd-theirs-fg: #60a5fa;
+
   /* PrimeDope's color — cool steel blue, contrasts against orange. */
   --c-rival: #4a8bd9;
   --c-rival-strong: #2c6dbd;
@@ -84,6 +127,44 @@
   --c-accent-2-soft: #fff4b8;
   --c-success: #3f5f41;
   --c-danger: #b54321;
+  /* Status text: see the dark block. */
+  --c-ok-fg: oklch(50.8% 0.118 165.612);  /* emerald-700 */
+  --c-ok-fg-soft: oklch(43.2% 0.095 166.913);  /* emerald-800 */
+  --c-ok-fg-strong: oklch(37.8% 0.077 168.94);  /* emerald-900 */
+  --c-ok-label: oklch(50.8% 0.118 165.612);  /* emerald-700 */
+  --c-ok-label-soft: oklch(43.2% 0.095 166.913);  /* emerald-800 */
+  --c-warn-fg: oklch(47.3% 0.137 46.201);  /* amber-800 */
+  --c-warn-fg-soft: oklch(47.3% 0.137 46.201);  /* amber-800 */
+  --c-warn-fg-strong: oklch(41.4% 0.112 45.904);  /* amber-900 */
+  --c-warn-label: oklch(47.3% 0.137 46.201);  /* amber-800 */
+  --c-bad-fg: oklch(51.4% 0.222 16.935);  /* rose-700 */
+  --c-err-fg: oklch(50.5% 0.213 27.518);  /* red-700 */
+  --c-bad-panel-bg: oklch(94.1% 0.03 12.58);  /* rose-100 */
+  --c-bad-panel-bg-2: oklch(89.2% 0.058 10.001);  /* rose-200 */
+  --c-bad-panel-fg: oklch(27.1% 0.105 12.094);  /* rose-950 */
+  --c-bad-panel-fg-2: oklch(41% 0.159 10.272);  /* rose-900 */
+  --c-bad-panel-fg-3: oklch(45.5% 0.188 13.697);  /* rose-800 */
+  --c-info-fg: oklch(44.3% 0.11 240.79);  /* sky-800 */
+  --c-info-label: oklch(50% 0.134 242.749);  /* sky-700 */
+  --c-ocean-fg: oklch(51.1% 0.096 186.391);  /* teal-700 */
+  --c-orange-label: oklch(55.3% 0.195 38.402);  /* orange-700 */
+  --c-fuchsia-label: oklch(51.8% 0.253 323.949);  /* fuchsia-700 */
+  --c-purple-label: oklch(49.6% 0.265 301.924);  /* purple-700 */
+  --c-lime-label: oklch(45.3% 0.124 130.933);  /* lime-800 */
+  --c-indigo-label: oklch(45.7% 0.24 277.023);  /* indigo-700 */
+  --c-cyan-label: oklch(52% 0.105 223.128);  /* cyan-700 */
+  --c-tab-freeze-fg: oklch(49.1% 0.27 292.581);  /* violet-700 */
+  --c-tab-pko-fg: oklch(51.4% 0.222 16.935);  /* rose-700 */
+  --c-tab-ocean-ko-fg: oklch(43.7% 0.078 188.216);  /* teal-800 */
+  --c-tab-mystery-fg: oklch(44.3% 0.11 240.79);  /* sky-800 */
+  --c-tab-mystery-royale-fg: oklch(47.3% 0.137 46.201);  /* amber-800 */
+  --c-tab-mix-fg: oklch(43.2% 0.095 166.913);  /* emerald-800 */
+  --c-tab-exact-fg: oklch(44.8% 0.119 151.328);  /* green-800 */
+
+  --c-pd-fg: oklch(45.2% 0.211 324.591);  /* fuchsia-800 */
+  --c-pd-delta-fg: oklch(45.2% 0.211 324.591);  /* fuchsia-800 */
+  --c-pd-theirs-fg: oklch(48.8% 0.243 264.376);  /* blue-700 */
+
   --c-rival: #2c6dbd;
   --c-rival-strong: #1d4f8c;
 

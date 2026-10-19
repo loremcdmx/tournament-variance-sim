@@ -1190,20 +1190,20 @@ export default function Home() {
       {feasibility.issues.length > 1 && (
         <div
           id="feasibility-banner"
-          className="sticky top-2 z-30 flex flex-wrap items-center gap-3 rounded-xl border-2 border-rose-500/70 bg-gradient-to-br from-rose-950/85 to-rose-900/70 px-4 py-3 shadow-[0_8px_24px_-6px_rgba(244,63,94,0.4)] backdrop-blur"
+          className="sticky top-2 z-30 flex flex-wrap items-center gap-3 rounded-xl border-2 border-rose-500/70 bg-gradient-to-br from-[color:var(--c-bad-panel-bg)]/85 to-[color:var(--c-bad-panel-bg-2)]/70 px-4 py-3 shadow-[0_8px_24px_-6px_rgba(244,63,94,0.4)] backdrop-blur"
           role="alert"
           aria-live="assertive"
         >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-500/30 text-base font-bold text-rose-100">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-500/30 text-base font-bold text-[color:var(--c-bad-panel-fg-2)]">
             !
           </div>
           <div className="min-w-0 flex-1">
-            <div className="font-display text-sm font-bold uppercase tracking-wider text-rose-50">
+            <div className="font-display text-sm font-bold uppercase tracking-wider text-[color:var(--c-bad-panel-fg)]">
               {t("shape.blockedTitle")}
             </div>
-            <div className="text-[12px] leading-snug text-rose-100/85">
+            <div className="text-[12px] leading-snug text-[color:var(--c-bad-panel-fg-2)]/85">
               {t("shape.blockedHint")} ·{" "}
-              <span className="font-mono text-rose-200/90">
+              <span className="font-mono text-[color:var(--c-bad-panel-fg-3)]/90">
                 {feasibility.issues.length} {t("shape.blockedRow").toLowerCase()}
               </span>
             </div>
@@ -1211,7 +1211,7 @@ export default function Home() {
           <button
             type="button"
             onClick={fitAllClosest}
-            className="rounded-md border border-rose-300/70 bg-rose-500/30 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-rose-50 transition-colors hover:border-rose-200 hover:bg-rose-500/45"
+            className="rounded-md border border-rose-300/70 bg-rose-500/30 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[color:var(--c-bad-panel-fg)] transition-colors hover:border-rose-200 hover:bg-rose-500/45"
           >
             {t("shape.fixAllClosest")}
           </button>
@@ -1310,7 +1310,7 @@ export default function Home() {
             {hydrated && sanityFindings.some(finding => finding.id !== "zero-bankroll") && (
               <Card className="border-amber-400/40 bg-amber-400/5 p-3">
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/30 text-[11px] font-bold text-amber-100">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/30 text-[11px] font-bold text-[color:var(--c-warn-fg-strong)]">
                     !
                   </span>
                   <span className="text-sm font-semibold text-fg">
@@ -1377,7 +1377,7 @@ export default function Home() {
       </section>
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-[color:var(--c-err-fg)]">
           {error}
         </div>
       )}
