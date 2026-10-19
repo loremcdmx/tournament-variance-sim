@@ -45,17 +45,35 @@ const result = {
 
 const assets = buildTrajectoryAssets(result, "felt", { min: -400, max: 400 });
 
+// Models the one uPlot behaviour that matters for the y range: inside a batch
+// every setSeries({show}) re-ranges its scale to the built range (the pending
+// scale becomes {null,null}), so only a setScale issued AFTER the series
+// toggles survives the batch commit.
 function fakePlot() {
-  return {
+  const built = { min: -400, max: 400 };
+  let pending: { min: number | null; max: number | null } | null = null;
+  const plot = {
+    scales: { y: { ...built } },
     series: new Array(assets.data.length).fill({}),
     data: assets.data,
     over: { contains: () => true, appendChild() {}, clientWidth: 100, clientHeight: 100 },
-    batch: (fn: () => void) => fn(),
-    setSeries: vi.fn(),
-    setScale: vi.fn(),
+    batch: (fn: () => void) => {
+      fn();
+      if (pending) {
+        plot.scales.y = { min: pending.min ?? built.min, max: pending.max ?? built.max };
+        pending = null;
+      }
+    },
+    setSeries: vi.fn(() => {
+      pending = { min: null, max: null };
+    }),
+    setScale: vi.fn((key: string, opts: { min: number; max: number }) => {
+      if (key === "y") pending = { min: opts.min, max: opts.max };
+    }),
     setData: vi.fn(),
     redraw: vi.fn(),
   };
+  return plot;
 }
 
 type Element = { type: unknown; props: Record<string, unknown> };
@@ -112,9 +130,11 @@ describe("TrajectoryPlot keeps a live plot in step with its props", () => {
     ready(render());
     render();
     expect(plot.setScale).toHaveBeenLastCalledWith("y", { min: -10, max: 10 });
+    expect(plot.scales.y).toEqual({ min: -10, max: 10 });
 
     render({ yRange: { min: -50, max: 80 }, visibleRuns: 40 });
     expect(plot.setScale).toHaveBeenLastCalledWith("y", { min: -50, max: 80 });
+    expect(plot.scales.y).toEqual({ min: -50, max: 80 });
   });
 
   it("recomputes the tick labels when the unit formatter changes", () => {

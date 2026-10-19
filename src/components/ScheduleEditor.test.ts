@@ -409,6 +409,14 @@ describe("CSV import: delimiters and decimal commas", () => {
     expect(row.count).toBe(4);
   });
 
+  it("keeps the empty label cell of a spreadsheet row that starts with a tab", () => {
+    const row = one("\t500\t10\t5\t1");
+    expect(row).toMatchObject({ players: 500, buyIn: 10, count: 1 });
+    expect(row.roi).toBeCloseTo(0.05, 12);
+    const padded = one("   \t500\t10\t5\t1\t\t");
+    expect(padded).toMatchObject({ players: 500, buyIn: 10, count: 1 });
+  });
+
   it("keeps a label that holds a single semicolon on the comma reading", () => {
     expect(one("Sat; Sun, 500, 50+5, 10, 2").label).toBe("Sat; Sun");
   });

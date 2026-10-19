@@ -439,8 +439,10 @@ export function parseImportCSV(
   const errors: string[] = [];
   const lines = raw.split(/\r?\n/);
   lines.forEach((line, i) => {
-    const stripped = line.trim();
-    if (!stripped || stripped.startsWith("#")) return;
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    // A leading tab is an empty label cell of a spreadsheet row, not padding.
+    const stripped = line.includes("\t") ? line.replace(/\s+$/, "") : trimmed;
     const { cells, decimalCommaPair } = splitImportLine(stripped);
     if (cells.length < 3) {
       errors.push(message("row.importErr.minCells", { line: i + 1 }));

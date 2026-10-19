@@ -263,7 +263,6 @@ export function TrajectoryPlot({
     };
 
     plot.batch(() => {
-      plot.setScale("y", { min: yMin, max: yMax });
       // uPlot wraps `series[i].stroke` in fnOrSelf at init, so after init
       // it's a function, not the raw string. Assigning a string here makes
       // the next redraw throw "s.stroke is not a function". Wrap in a thunk
@@ -301,6 +300,9 @@ export function TrajectoryPlot({
       for (const sIdx of vis.overlayWorstSeriesIdxs) {
         safeSetSeries(sIdx, includeWorst);
       }
+      // Last on purpose: every setSeries({show}) re-ranges its scale and would
+      // overwrite a y range requested earlier in the same batch.
+      plot.setScale("y", { min: yMin, max: yMax });
     });
     plot.redraw(false);
   }, [assets, visibilityGate, plotReadyNonce, yMin, yMax]);
