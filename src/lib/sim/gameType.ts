@@ -9,6 +9,7 @@ import {
   battleRoyaleBountyShareOfNetPool,
   battleRoyaleRowFromTotalTicket,
 } from "./battleRoyaleTicket";
+import { withRangeMidpointPlayers } from "./fieldVariants";
 
 export const GAME_TYPE_ORDER: GameType[] = [
   "freezeout",
@@ -138,7 +139,7 @@ export function inferGameType(row: TournamentRow): GameType {
  * old localStorage) does `payoutStructure="battle-royale"` upgrade the row
  * to MBR. Returns the row unchanged if already in sync or nothing to fix.
  */
-export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
+function alignBrMrFlags(row: TournamentRow): TournamentRow {
   const isBR = row.payoutStructure === "battle-royale";
   const isMR = row.gameType === "mystery-royale";
   // gameType === "mystery-royale" is authoritative — correct drifted payout.
@@ -165,7 +166,33 @@ export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
   return row;
 }
 
+/**
+ * `alignBrMrFlags` plus the one thing a Battle Royale row cannot carry: a
+ * Field-size range. The format is a fixed 18-max, the editor shows its field
+ * as fixed and persistence drops the range on reload, so a range left on the
+ * row would only make this session simulate 140-700 entrants.
+ */
+export function normalizeBrMrConsistency(row: TournamentRow): TournamentRow {
+  const aligned = alignBrMrFlags(row);
+  const isBattleRoyale =
+    aligned.payoutStructure === "battle-royale" ||
+    aligned.gameType === "mystery-royale";
+  return isBattleRoyale && aligned.fieldVariability?.kind === "uniform"
+    ? { ...aligned, fieldVariability: undefined }
+    : aligned;
+}
+
+/**
+ * Align the row's format fields with each other, then its nominal field with
+ * its Field-size range (the engine plays the range and ignores `players`, so
+ * everything else reads the midpoint). Returns the row itself when there is
+ * nothing to fix.
+ */
 export function normalizeGameTypeConsistency(row: TournamentRow): TournamentRow {
+  return withRangeMidpointPlayers(normalizeFormatFields(row));
+}
+
+function normalizeFormatFields(row: TournamentRow): TournamentRow {
   if (row.gameType === "ocean-ko") {
     return normalizeBrMrConsistency({
       ...row,
@@ -337,6 +364,7 @@ export function applyGameType(
       // this bump is smaller than in MTTs where paid% itself flexes.
       patch.itmRate = 0.18;
       patch.players = BATTLE_ROYALE_PLAYERS;
+      if (row.fieldVariability?.kind === "uniform") patch.fieldVariability = undefined;
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "battle-royale";

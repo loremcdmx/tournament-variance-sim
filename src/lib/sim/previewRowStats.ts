@@ -16,6 +16,8 @@ import {
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
 import { inferGameType } from "@/lib/sim/gameType";
 import { compileRowVariants } from "@/lib/sim/compileEntry";
+import { fieldVariantSizes, isFieldRangeActive } from "@/lib/sim/fieldVariants";
+import { mixRowStats } from "@/lib/sim/previewFieldMixture";
 import { compiledEntryMoments } from "@/lib/sim/scheduleMoments";
 import { buildOceanKoModel } from "./oceanKo";
 import { applySitThroughPayJumps } from "./sitThroughPayJumps";
@@ -224,7 +226,9 @@ function compiledPayoutStd(
 /**
  * Full per-entry EV decomposition for one row: prize + bounty, place by place,
  * then bucketed into tiers. Mirrors the bounty math used in the engine so the
- * preview matches what the simulator will actually sample.
+ * preview matches what the simulator will actually sample. A row with a
+ * Field-size range is the equal-weight mixture of the fields the engine plays
+ * (`fieldVariantSizes`), not the stats of its nominal field.
  *
  * `skipCompiledSigma` is for callers that only read EV shares (the KO-slider
  * probes): it spares the extra compile that `payoutStd` costs on bounty rows.
@@ -233,6 +237,33 @@ export function computeRowStats(
   row: TournamentRow,
   model: FinishModelConfig,
   options: { skipCompiledSigma?: boolean } = {},
+): RowStats {
+  if (!isFieldRangeActive(row)) return computeRowStatsAtField(row, model, options);
+  const sizes = fieldVariantSizes(row);
+  const mixed = mixRowStats(
+    sizes.map((players) =>
+      computeRowStatsAtField(
+        { ...row, players, fieldVariability: undefined },
+        model,
+        { skipCompiledSigma: true },
+      ),
+    ),
+    sizes,
+  );
+  const compiled = options.skipCompiledSigma ? null : compiledPayoutStd(row, model);
+  if (compiled === null) return mixed;
+  return {
+    ...mixed,
+    payoutStd: compiled.std,
+    payoutStdLower: compiled.stdLower ?? mixed.payoutStdLower,
+    cv: mixed.evPerEntry > 1e-9 ? compiled.std / mixed.evPerEntry : 0,
+  };
+}
+
+function computeRowStatsAtField(
+  row: TournamentRow,
+  model: FinishModelConfig,
+  options: { skipCompiledSigma?: boolean },
 ): RowStats {
   const economics = derivePreviewRowEconomics(row);
   const N = economics.fieldSize;
@@ -559,11 +590,8 @@ export function computeRowStats(
     }
   }
   const jackpotBountyEv = bountyEv * jackpotShareFrac;
-  const fieldVaries =
-    row.fieldVariability != null && row.fieldVariability.kind !== "fixed";
   const compiledSigma =
-    !options.skipCompiledSigma &&
-    ((bountyMean > 0 && oceanKo === null) || fieldVaries)
+    !options.skipCompiledSigma && bountyMean > 0 && oceanKo === null
       ? compiledPayoutStd(row, model)
       : null;
   const payoutStd = compiledSigma?.std ?? Math.sqrt(payoutVarPerBullet);

@@ -4,6 +4,7 @@ import { compileSchedule } from "./engine";
 import { calibrateShelledItm } from "./finishModel";
 import { chooseClosestFeasibilityFix } from "./feasibilityFix";
 import { getPayoutTable } from "./payouts";
+import { fieldVariantSizes } from "./fieldVariants";
 import type { FinishModelConfig, TournamentRow } from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
@@ -313,5 +314,110 @@ describe("validateSchedule: a Top-3 lock with no First or FT lock beside it", ()
     const fix = chooseClosestFeasibilityFix(r, issue, baseModel, itmCfg);
     expect(fix.kind).toBe("clear-locks");
     expect(validateSchedule([fix.row], baseModel).ok).toBe(true);
+  });
+});
+
+describe("validateSchedule plays every field of a Field-size range", () => {
+  // $20+10% flat payout, ITM pinned at 10%, +30% ROI. Buckets at 37, 51 and 65
+  // entrants cannot reach the target; 79 and 93 can. Checked only at the
+  // nominal 100 the row used to validate, and the run quietly delivered less
+  // ROI than it claimed.
+  const ranged = (over: Partial<TournamentRow> = {}) =>
+    row({
+      players: 100,
+      buyIn: 20,
+      roi: 0.3,
+      payoutStructure: "mtt-flat",
+      itmRate: 0.1,
+      fieldVariability: { kind: "uniform", min: 30, max: 100, buckets: 5 },
+      ...over,
+    });
+  const atField = (r: TournamentRow, players: number) =>
+    validateSchedule([{ ...r, players, fieldVariability: undefined }], baseModel);
+
+  it("blocks the row when a small-field bucket cannot reach the ROI target", () => {
+    const r = ranged();
+    expect(atField(r, 100).ok).toBe(true);
+    const res = validateSchedule([r], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0].rowId).toBe("r1");
+    expect(res.issues[0].currentEv).toBeLessThan(res.issues[0].targetEv);
+  });
+
+  it("reports the bucket with the largest relative gap, the same numbers a fixed row at that field gets", () => {
+    const r = ranged();
+    const perBucket = [37, 51, 65, 79, 93].map((n) => atField(r, n));
+    expect(perBucket.map((v) => v.ok)).toEqual([false, false, false, true, true]);
+    const worst = perBucket[0].issues[0];
+    const reported = validateSchedule([r], baseModel).issues[0];
+    expect(reported.targetEv).toBeCloseTo(worst.targetEv, 9);
+    expect(reported.currentEv).toBeCloseTo(worst.currentEv, 9);
+    expect(reported.gap).toBeCloseTo(worst.gap, 9);
+    for (const v of perBucket.slice(1, 3)) {
+      expect(Math.abs(v.issues[0].gap) / v.issues[0].targetEv).toBeLessThan(
+        Math.abs(reported.gap) / reported.targetEv,
+      );
+    }
+  });
+
+  it("accepts the range exactly when every bucket is feasible on its own", () => {
+    const cases = [
+      ranged(),
+      ranged({ fieldVariability: { kind: "uniform", min: 70, max: 100, buckets: 3 } }),
+      ranged({ roi: 0.05 }),
+      row({ itmRate: 0.16, fieldVariability: { kind: "uniform", min: 600, max: 1400, buckets: 4 } }),
+      row({ itmRate: 0.02, roi: 1, fieldVariability: { kind: "uniform", min: 60, max: 140, buckets: 5 } }),
+    ];
+    for (const r of cases) {
+      const sizes = fieldVariantSizes(r);
+      expect(validateSchedule([r], baseModel).ok).toBe(sizes.every((n) => atField(r, n).ok));
+    }
+  });
+
+  it("applies the late-registration multiplier to every bucket, as the engine does", () => {
+    const r = ranged({ lateRegMultiplier: 2 });
+    const compiled = compileSchedule(
+      { schedule: [r], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: baseModel },
+      "alpha",
+    ).flat[0];
+    expect(compiled.variants!.map((v) => v.fieldSize)).toEqual(
+      fieldVariantSizes(r).map((n) => n * 2),
+    );
+    expect(validateSchedule([r], baseModel).ok).toBe(
+      fieldVariantSizes(r).every((n) => atField({ ...r, lateRegMultiplier: 2 }, n).ok),
+    );
+  });
+
+  it("still blocks a lock that is only inconsistent at the larger buckets' paid count", () => {
+    // Top-3 alone is the whole ITM band at 25 players (3 paid) and pins nothing
+    // at 35 (more than 3 paid).
+    const r = row({
+      players: 25,
+      itmRate: 0.15,
+      finishBuckets: { top3: 0.15 },
+      fieldVariability: { kind: "uniform", min: 20, max: 40, buckets: 2 },
+    });
+    expect(fieldVariantSizes(r)).toEqual([25, 35]);
+    expect(atField(r, 25).ok).toBe(true);
+    const res = validateSchedule([r], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues[0].reason).toBe("inconsistent-finish-locks");
+  });
+
+  it("lets the one-click fix pick an edit that makes every bucket feasible", () => {
+    const r = ranged();
+    const issue = validateSchedule([r], baseModel).issues[0];
+    const fix = chooseClosestFeasibilityFix(r, issue, baseModel, { enabled: false, pct: 18.7 });
+    expect(validateSchedule([fix.row], baseModel).ok).toBe(true);
+    for (const n of fieldVariantSizes(fix.row)) {
+      expect(atField(fix.row, n).ok).toBe(true);
+    }
+  });
+
+  it("leaves rows without a range exactly as they were", () => {
+    const r = ranged({ fieldVariability: undefined });
+    expect(validateSchedule([r], baseModel)).toEqual(atField(r, 100));
+    expect(validateSchedule([ranged({ fieldVariability: { kind: "fixed" } })], baseModel).ok).toBe(true);
   });
 });

@@ -143,3 +143,122 @@ describe("computeRowStats σ is the compiled entry's σ", () => {
     );
   });
 });
+
+describe("computeRowStats on a Field-size range describes the fields the engine plays", () => {
+  const model = { id: "power-law" as const };
+  const base: TournamentRow = {
+    id: "r", label: "r", players: 1000, buyIn: 20, rake: 0.1, roi: 0.1,
+    payoutStructure: "mtt-standard", gameType: "freezeout", count: 1,
+  };
+  const range = (min: number, max: number, buckets = 5) =>
+    ({ kind: "uniform", min, max, buckets }) as const;
+
+  function compiledVariants(row: TournamentRow) {
+    const slot = compileSchedule({
+      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 1, seed: 1, finishModel: model,
+    }, "alpha").flat[0];
+    return { slot, variants: slot.variants ?? [slot] };
+  }
+  // Probability of finishing in 0-indexed place `place`, read back off the
+  // alias table the hot loop samples from.
+  function placeProbability(entry: { aliasProb: ArrayLike<number>; aliasIdx: ArrayLike<number> }, place: number) {
+    const n = entry.aliasProb.length;
+    let p = 0;
+    for (let i = 0; i < n; i++) {
+      if (i === place) p += entry.aliasProb[i] / n;
+      if (entry.aliasIdx[i] === place) p += (1 - entry.aliasProb[i]) / n;
+    }
+    return p;
+  }
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+  it.each([
+    ["a centred range", base, range(600, 1400)],
+    ["an off-centre range", base, range(2000, 3000)],
+    ["a wide range", base, range(200, 4000)],
+    ["a pinned ITM", { ...base, itmRate: 0.15 }, range(2000, 3000)],
+    ["a small-field range", { ...base, itmRate: 0.16 }, range(60, 400, 4)],
+  ])("P(1st), ITM and EV are the mean over the variants for %s", (_name, source, fv) => {
+    const row: TournamentRow = { ...source, fieldVariability: fv };
+    const stats = computeRowStats(row, model);
+    const { slot, variants } = compiledVariants(row);
+
+    expect(stats.shellP1).toBeCloseTo(mean(variants.map((v) => placeProbability(v, 0))), 9);
+    expect(stats.itm).toBeCloseTo(slot.itm, 9);
+    expect(stats.evPerEntry).toBeCloseTo(mean(variants.map((v) => v.analyticMeanSingle)), 7);
+    expect(stats.tiers[0].key).toBe("winner");
+    expect(stats.tiers[0].field).toBeCloseTo(stats.shellP1, 12);
+    expect(stats.tiers.reduce((a, t) => a + t.field, 0)).toBeCloseTo(1, 9);
+    expect(stats.tiers.reduce((a, t) => a + t.ev, 0)).toBeCloseTo(stats.evPerEntry, 9);
+    expect(stats.tiers.reduce((a, t) => a + t.netDollars, 0)).toBeCloseTo(
+      stats.evPerEntry - stats.cost, 9,
+    );
+  });
+
+  it("is not the preview of a single field the sim never plays", () => {
+    const row: TournamentRow = { ...base, fieldVariability: range(2000, 3000) };
+    const nominal = computeRowStats({ ...row, fieldVariability: undefined }, model);
+    const stats = computeRowStats(row, model);
+    expect(nominal.shellP1 / stats.shellP1).toBeGreaterThan(1.5);
+  });
+
+  it("does not move when the unused nominal field is edited", () => {
+    const row: TournamentRow = { ...base, fieldVariability: range(300, 700) };
+    const reference = computeRowStats(row, model);
+    for (const players of [100, 500, 5000]) {
+      expect(computeRowStats({ ...row, players }, model)).toEqual(reference);
+    }
+  });
+
+  it.each([4, 5, 6])("reads paid places over the midpoint as the paid share at %i buckets", (buckets) => {
+    const row: TournamentRow = { ...base, players: 500, fieldVariability: range(300, 700, buckets) };
+    const stats = computeRowStats(row, model);
+    expect(stats.paidCount / 500).toBeCloseTo(0.15, 2);
+  });
+
+  it("moves with the range ends", () => {
+    const a = computeRowStats({ ...base, fieldVariability: range(300, 700) }, model);
+    const b = computeRowStats({ ...base, fieldVariability: range(300, 1500) }, model);
+    expect(b.shellP1).toBeLessThan(a.shellP1);
+  });
+
+  it("splits cash and bounty EV across the variants of a bounty row", () => {
+    const pko: TournamentRow = {
+      ...base, gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5,
+      fieldVariability: range(300, 2400, 4),
+    };
+    const stats = computeRowStats(pko, model);
+    const { variants } = compiledVariants(pko);
+    expect(stats.evPerEntry).toBeCloseTo(mean(variants.map((v) => v.analyticMeanSingle)), 7);
+    expect(stats.cashEvPerEntry + stats.bountyEvPerEntry).toBeCloseTo(stats.evPerEntry, 9);
+    expect(stats.bountyShare).toBeCloseTo(stats.bountyEvPerEntry / stats.evPerEntry, 12);
+    expect(stats.tiers.reduce((a, t) => a + t.bountyEv, 0)).toBeCloseTo(stats.bountyEvPerEntry, 9);
+    expect(stats.tiers.reduce((a, t) => a + t.cashEv, 0)).toBeCloseTo(stats.cashEvPerEntry, 9);
+  });
+
+  it("is the single-field preview when the range collapses to one bucket", () => {
+    const collapsed = computeRowStats({ ...base, fieldVariability: range(2000, 3000, 1) }, model);
+    const fixed = computeRowStats({ ...base, players: 2500 }, model);
+    expect(collapsed.shellP1).toBe(fixed.shellP1);
+    expect(collapsed.itm).toBe(fixed.itm);
+    expect(collapsed.paidCount).toBe(fixed.paidCount);
+    expect(collapsed.tiers).toEqual(fixed.tiers);
+  });
+
+  it("keeps tier shares that are defined per field share summed over the variants' own paid places", () => {
+    const stats = computeRowStats({ ...base, fieldVariability: range(60, 400, 4) }, model);
+    const keys = stats.tiers.map((t) => t.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys[0]).toBe("winner");
+    expect(keys[keys.length - 1]).toBe("ootm");
+  });
+
+  it("carries the engine's mixture σ even when the compiled σ is skipped", () => {
+    const row: TournamentRow = { ...base, fieldVariability: range(100, 3000, 4) };
+    const { slot } = compiledVariants(row);
+    const m = compiledEntryMoments(slot);
+    const compiledStd = Math.sqrt(m.secondDollar - m.meanDollar ** 2);
+    expect(computeRowStats(row, model).payoutStd).toBeCloseTo(compiledStd, 8);
+    expect(computeRowStats(row, model, { skipCompiledSigma: true }).payoutStd).toBeCloseTo(compiledStd, 6);
+  });
+});

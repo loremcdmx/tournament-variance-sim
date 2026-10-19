@@ -93,7 +93,11 @@ export interface TournamentRow {
    */
   gameType?: GameType;
 
-  /** Nominal field size; used as midpoint when variability = uniform. */
+  /**
+   * Nominal field size. Under a uniform range the engine plays the range and
+   * ignores this value; the effective row (`normalizeGameTypeConsistency`)
+   * carries the range midpoint here.
+   */
   players: number;
   fieldVariability?: FieldVariability;
   /**

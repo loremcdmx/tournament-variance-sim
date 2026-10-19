@@ -290,3 +290,36 @@ describe("advanced row panel: Mystery σ²", () => {
     expect(panel(row({ gameType }))).not.toContain(DICT["row.mystery"].ru);
   });
 });
+
+describe("AFS input under a Field-size range", () => {
+  const base: TournamentRow = {
+    id: "ranged", label: "ranged", players: 5000, buyIn: 20, rake: 0.1, roi: 0.1,
+    payoutStructure: "mtt-standard", gameType: "freezeout", count: 1,
+  };
+  const playersInput = (row: TournamentRow) => {
+    vi.stubGlobal("React", React);
+    const html = renderToStaticMarkup(React.createElement(LocaleProvider, null,
+      React.createElement(AdvancedModeProvider, null,
+        React.createElement(ScheduleEditor, { schedule: [row], onChange: vi.fn() }),
+      ),
+    ));
+    const tag = html.match(new RegExp(`<input[^>]*id="schedule-${row.id}-players"[^>]*>`));
+    expect(tag).not.toBeNull();
+    return tag![0];
+  };
+
+  it("is editable for a fixed field", () => {
+    const tag = playersInput(base);
+    expect(tag).not.toContain('disabled=""');
+    expect(tag).toContain('value="5000"');
+  });
+
+  it("shows the range midpoint, read-only, because the sim plays the range", () => {
+    const tag = playersInput({
+      ...base, fieldVariability: { kind: "uniform", min: 300, max: 700, buckets: 5 },
+    });
+    expect(tag).toContain('value="500"');
+    expect(tag).toContain('disabled=""');
+    expect(tag).toContain(DICT["row.playersFromRange"].ru);
+  });
+});

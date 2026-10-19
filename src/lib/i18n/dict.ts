@@ -506,6 +506,10 @@ export const DICT = {
   // Schedule editor
   "row.label": { en: "Label", ru: "Турнир" },
   "row.players": { en: "AFS", ru: "AFS" },
+  "row.playersFromRange": {
+    en: "Read-only: this row plays a field-size range, and AFS is its midpoint. Edit Min / Max in the row's Advanced panel.",
+    ru: "Только чтение: строка играет диапазон размеров поля, а AFS — его середина. Мин / Макс меняются в расширенных параметрах строки.",
+  },
   "row.buyIn": { en: "Buy-in", ru: "Бай-ин" },
   "row.buyIn.oceanTitle": {
     en: "Ocean KO: a single number is the full ticket, 100 = $92 prizes + $8 fee. \"92+8\" spells out the same row.",
@@ -731,8 +735,8 @@ export const DICT = {
   "row.max": { en: "Max", ru: "Макс" },
   "row.buckets": { en: "Variants", ru: "Вариантов" },
   "row.fieldHint": {
-    en: "Sometimes the field is 400, sometimes 700. Pick a range and the sim will play a few different sizes so the swings reflect reality.",
-    ru: "Иногда поле 400, иногда 700. Задай диапазон — симулятор прогонит несколько размеров, и свинги будут ближе к реальности.",
+    en: "Sometimes the field is 400, sometimes 700. Pick a range and the sim will play a few different sizes so the swings reflect reality. The preview and payout card show the mean over those sizes, and AFS shows the range midpoint.",
+    ru: "Иногда поле 400, иногда 700. Задай диапазон — симулятор прогонит несколько размеров, и свинги будут ближе к реальности. Превью и карточка выплат показывают среднее по этим размерам, а AFS — середину диапазона.",
   },
   "row.bountyHint": {
     en: "KO bounty as % of the buy-in. That chunk of every entry goes into the bounty pool instead of the regular prize pool, paid out as knockouts.",
@@ -2344,8 +2348,8 @@ export const DICT = {
     ru: "Произвольное название строки. Чисто косметика — на расчёт не влияет.",
   },
   "help.row.players": {
-    en: "AFS — average field size: how many entrants register. Sets the places (1..N) the finish-model samples from and scales the prize pool.",
-    ru: "AFS — среднее поле (average field size): сколько игроков заявлено. Задаёт места (1..N) для финиш-модели и масштабирует призовой.",
+    en: "AFS — average field size: how many entrants register. Sets the places (1..N) the finish-model samples from and scales the prize pool. With a field-size range (Advanced) it shows the range midpoint and is read-only.",
+    ru: "AFS — среднее поле (average field size): сколько игроков заявлено. Задаёт места (1..N) для финиш-модели и масштабирует призовой. При диапазоне размеров поля (в расширенных параметрах) показывает его середину и недоступно для правки.",
   },
   "help.row.buyIn": {
     en: "Buy-in in poker format. \"50+5\" = $50 buy-in + $5 rake (before \"+\" goes to pool, after is the room's fee). Just \"50\" keeps the current rake. For Ocean KO and GG Battle Royale a single number is the full ticket as the lobby lists it: \"100\" = $92 prizes + $8 fee. Real entry cost = buyIn + rake. Note on convention: the rake % we show is fee ÷ net buy-in, not fee ÷ total ticket. Entering \"9.20+0.80\" displays as 8.7% rake ($0.80 ÷ $9.20) even though your room calls the same fee 8% of the $10 ticket — same dollars, different denominator.",

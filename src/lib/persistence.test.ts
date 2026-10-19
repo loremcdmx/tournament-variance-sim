@@ -3,7 +3,12 @@ import type { ControlsState } from "@/components/ControlsPanel";
 import type { TournamentRow } from "./sim/types";
 import { STANDARD_PRESETS, applyModelPatch } from "./sim/modelPresets";
 import { applyItmTarget } from "./sim/itmTarget";
-import { DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION } from "./sim/gameType";
+import {
+  applyGameType,
+  DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+  normalizeGameTypeConsistency,
+} from "./sim/gameType";
+import { compileSchedule } from "./sim/engine";
 import { redistributeScheduleCounts } from "./sim/scheduleTarget";
 import {
   decodeState,
@@ -1006,3 +1011,24 @@ function loadLocalFromPayload(payload: unknown) {
   vi.unstubAllGlobals();
   return loaded;
 }
+
+describe("a row switched to Battle Royale plays the same before and after a reload", () => {
+  it("compiles identically in the session and from a share link", () => {
+    const ranged: TournamentRow = {
+      ...row,
+      players: 500,
+      gameType: "freezeout",
+      fieldVariability: { kind: "uniform", min: 300, max: 700, buckets: 5 },
+    };
+    const inSession = normalizeGameTypeConsistency({ ...ranged, ...applyGameType(ranged, "mystery-royale") });
+    const reloaded = decodeState(encoded({ v: 2, schedule: [inSession], controls }))!.schedule[0];
+    const compile = (r: TournamentRow) =>
+      compileSchedule(
+        { schedule: applyItmTarget([r], { enabled: false, pct: 0 }), scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: { id: "power-law" } },
+        "alpha",
+      );
+    expect(inSession.fieldVariability).toBeUndefined();
+    expect(compile(inSession).flat).toEqual(compile(reloaded).flat);
+    expect(compile(inSession).flat[0].fieldSize).toBe(18);
+  });
+});

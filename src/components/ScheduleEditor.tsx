@@ -26,6 +26,7 @@ import {
   GAME_TYPE_ORDER,
 } from "@/lib/sim/gameType";
 import { applyItmTarget } from "@/lib/sim/itmTarget";
+import { fieldRangeMidpoint, isFieldRangeActive } from "@/lib/sim/fieldVariants";
 import {
   preRakebackRoiFromReportedRoi,
   rakebackRoiContribution,
@@ -747,6 +748,7 @@ const ScheduleRow = memo(function ScheduleRow({
   const r = useMemo(() => normalizeGameTypeConsistency(rawRow), [rawRow]);
   const gt = inferGameType(r);
   const isBattleRoyale = gt === "mystery-royale";
+  const fieldFromRange = isFieldRangeActive(r);
   const uiGt = gt;
   const showBounty =
     uiGt === "pko" || uiGt === "ocean-ko" || uiGt === "mystery" || uiGt === "mystery-royale";
@@ -901,7 +903,8 @@ const ScheduleRow = memo(function ScheduleRow({
             min={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 2}
             max={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 1_000_000}
             step={1}
-            disabled={isBattleRoyale}
+            disabled={isBattleRoyale || fieldFromRange}
+            title={fieldFromRange ? t("row.playersFromRange") : undefined}
           />
         </div>
 
@@ -1241,16 +1244,22 @@ export function AdvancedRowPanel({
             onChange={(e) => {
               if (isBattleRoyale) return;
               const kind = e.target.value as FieldVariability["kind"];
-              if (kind === "fixed") onChange({ fieldVariability: { kind } });
-              else
+              if (kind === "fixed") {
+                // Keep the field the range was playing around, not a stale AFS.
                 onChange({
-                  fieldVariability: {
-                    kind: "uniform",
-                    min: Math.max(2, Math.floor(row.players * 0.6)),
-                    max: Math.max(2, Math.floor(row.players * 1.4)),
-                    buckets: 5,
-                  },
+                  fieldVariability: { kind },
+                  players: fieldRangeMidpoint(row) ?? row.players,
                 });
+                return;
+              }
+              onChange({
+                fieldVariability: {
+                  kind: "uniform",
+                  min: Math.max(2, Math.floor(row.players * 0.6)),
+                  max: Math.max(2, Math.floor(row.players * 1.4)),
+                  buckets: 5,
+                },
+              });
             }}
             className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-2 text-xs text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
           >
@@ -1896,6 +1905,7 @@ function NumInput({
   commitMode = "change",
   className = "",
   disabled = false,
+  title,
 }: {
   id?: string;
   value: number;
@@ -1906,6 +1916,7 @@ function NumInput({
   commitMode?: "change" | "blur";
   className?: string;
   disabled?: boolean;
+  title?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1926,6 +1937,7 @@ function NumInput({
   return (
     <input
       id={id}
+      title={title}
       type="number"
       value={display}
       min={min}

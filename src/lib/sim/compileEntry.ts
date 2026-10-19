@@ -7,6 +7,7 @@
  * entries these functions return into a flat schedule.
  */
 import { getPayoutTable } from "./payouts";
+import { fieldVariantSizes } from "./fieldVariants";
 import { applySitThroughPayJumps } from "./sitThroughPayJumps";
 import {
   applyBountyBias,
@@ -706,37 +707,10 @@ export function compileRowVariants(
   forcePrimedopePayouts: boolean,
   pdFlags: PdCompareFlags = { usePdFinishModel: false, usePdRakeMath: false },
 ): { entry: CompiledEntry; share: number }[] {
-  const fv = row.fieldVariability;
-  if (!fv || fv.kind === "fixed") {
-    return [
-      {
-        entry: compileSingleEntry(row, idx, row.players, model, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
-        share: 1,
-      },
-    ];
-  }
-  const buckets = Math.max(1, Math.floor(fv.buckets ?? 5));
-  const lo = Math.max(2, Math.floor(Math.min(fv.min, fv.max)));
-  const hi = Math.max(lo, Math.floor(Math.max(fv.min, fv.max)));
-  if (buckets === 1 || lo === hi) {
-    const mid = Math.round((lo + hi) / 2);
-    return [
-      {
-        entry: compileSingleEntry(row, idx, mid, model, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
-        share: 1,
-      },
-    ];
-  }
-  const variants: { entry: CompiledEntry; share: number }[] = [];
-  const share = 1 / buckets;
-  for (let b = 0; b < buckets; b++) {
-    // Midpoints of evenly-spaced sub-intervals over [lo, hi].
-    const t = (b + 0.5) / buckets;
-    const players = Math.round(lo + t * (hi - lo));
-    variants.push({
-      entry: compileSingleEntry(row, idx, players, model, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
-      share,
-    });
-  }
-  return variants;
+  const sizes = fieldVariantSizes(row);
+  const share = 1 / sizes.length;
+  return sizes.map((players) => ({
+    entry: compileSingleEntry(row, idx, players, model, calibrationMode, primedopeStyleEV, forcePrimedopePayouts, pdFlags),
+    share,
+  }));
 }

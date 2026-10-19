@@ -85,6 +85,8 @@ The current split is:
     slider styling tokens.
   - **`src/lib/sim/previewRowStats.ts`** — pure row-level preview math:
     finish PMF calibration, EV decomposition, shell stats, and tier building.
+    A row with a Field-size range is previewed as the equal-weight mixture of
+    the engine's field sizes (`previewFieldMixture.ts`), not at `players`.
 - **`src/components/CashApp.tsx`** — cash-mode input/orchestration surface. It
   now owns cash-input persistence, worker-pool lifecycle, and the editor side
   of the cash page, while the result surface lives in:
@@ -101,6 +103,11 @@ The current split is:
 
 2. **Build step.** The hook sends a `BuildRequest` to worker 0. That worker runs `compileSchedule(input)` which:
    - For each row, picks the effective field size (or enumerates variants if `fieldVariability` is set).
+     The sizes come from `fieldVariants.ts` (`fieldVariantSizes`), the one place
+     that decides them: validation checks every size, the preview averages over
+     them, and under a range `players` is read as the range midpoint
+     (`normalizeGameTypeConsistency`), never as a field of its own. A Battle
+     Royale row carries no range.
    - Calls `buildFinishPMF(N, model, α)` with a starting α, then `calibrateAlpha()` which binary-searches α so that the *realized* ROI (Σ pmf × payout − cost) matches `row.roi`. This is the honest calibration.
    - For the PrimeDope compare run, uses `calibrateShelledItm` + `pdCurves` to pin ITM rate and solve for α/shape.
    - For bounty rows, applies the requested KO EV share as a finish-shape

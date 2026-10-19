@@ -410,3 +410,84 @@ describe("PKO head-size noise does not follow a row into Mystery", () => {
     expect(normalizeGameTypeConsistency(pko).pkoHeadVar).toBe(0.4);
   });
 });
+
+describe("a Field-size range does not follow a row into Battle Royale", () => {
+  // Battle Royale is an 18-max sit-and-go: the editor shows its field as fixed
+  // and disables the control, and persistence drops the range on reload. A
+  // range left on the row kept the engine playing 140-700 entrants.
+  const range = { kind: "uniform", min: 300, max: 700, buckets: 5 } as const;
+  const ranged = row({ players: 500, gameType: "freezeout", fieldVariability: range });
+  const update = (r: TournamentRow, patch: Partial<TournamentRow>) =>
+    normalizeGameTypeConsistency({ ...r, ...patch });
+  const switchTo = (r: TournamentRow, next: GameType) => update(r, applyGameType(r, next));
+  const inputFor = (r: TournamentRow): SimulationInput => ({
+    schedule: [r], scheduleRepeats: 5, samples: 500, bankroll: 100, seed: 7,
+    finishModel: { id: "power-law" },
+  });
+
+  it("the Battle Royale switch drops the range from the row", () => {
+    const patch = applyGameType(ranged, "mystery-royale");
+    expect("fieldVariability" in patch).toBe(true);
+    expect(patch.fieldVariability).toBeUndefined();
+    expect(switchTo(ranged, "mystery-royale").fieldVariability).toBeUndefined();
+  });
+
+  it("leaves the range on every other format switch", () => {
+    for (const next of ["freezeout", "pko", "mystery", "ocean-ko"] as const) {
+      expect("fieldVariability" in applyGameType(ranged, next)).toBe(false);
+      expect(switchTo(ranged, next).fieldVariability).toEqual(range);
+    }
+  });
+
+  it("the switched row plays an 18-max field with no variants", () => {
+    const br = switchTo(ranged, "mystery-royale");
+    const entry = compileSchedule(inputFor(br), "alpha").flat[0];
+    expect(entry.variants).toBeUndefined();
+    expect(entry.fieldSize).toBe(18);
+  });
+
+  it("the switched row simulates exactly like the same row without a range", () => {
+    const br = switchTo(ranged, "mystery-royale");
+    const clean = { ...br, fieldVariability: undefined };
+    const a = runSimulation(inputFor(br));
+    const b = runSimulation(inputFor(clean));
+    expect(a.stats.mean).toBe(b.stats.mean);
+    expect(a.stats.stdDev).toBe(b.stats.stdDev);
+  });
+
+  it("normalisation clears a leftover range from every spelling of Battle Royale", () => {
+    const legacyPayout = row({ gameType: undefined, payoutStructure: "battle-royale", players: 18, fieldVariability: range });
+    const explicit = row({ gameType: "mystery-royale", payoutStructure: "battle-royale", players: 18, fieldVariability: range });
+    const driftedPayout = row({ gameType: "mystery-royale", payoutStructure: "mtt-standard", players: 18, fieldVariability: range });
+    for (const stale of [legacyPayout, explicit, driftedPayout]) {
+      expect(normalizeGameTypeConsistency(stale).fieldVariability).toBeUndefined();
+      expect(normalizeBrMrConsistency(stale).fieldVariability).toBeUndefined();
+    }
+  });
+
+  it("does not clear the range of a row that is not Battle Royale", () => {
+    const explicitMystery = row({
+      gameType: "mystery", payoutStructure: "battle-royale", bountyFraction: 0.5,
+      mysteryBountyVariance: 2, fieldVariability: range,
+    });
+    // Explicit gameType wins: the drifted payout is corrected, the row stays a plain Mystery.
+    const fixed = normalizeGameTypeConsistency(explicitMystery);
+    expect(fixed.payoutStructure).toBe("mtt-gg-mystery");
+    expect(fixed.fieldVariability).toEqual(range);
+    const plain = row({ gameType: "freezeout", fieldVariability: range });
+    expect(normalizeGameTypeConsistency(plain)).toBe(plain);
+  });
+
+  it("keeps a fixed marker on a Battle Royale row and returns it untouched", () => {
+    const r = row({
+      gameType: "mystery-royale", payoutStructure: "battle-royale", players: 18,
+      fieldVariability: { kind: "fixed" },
+    });
+    expect(normalizeGameTypeConsistency(r)).toBe(r);
+  });
+
+  it("the range does not come back when the row leaves Battle Royale", () => {
+    const br = switchTo(ranged, "mystery-royale");
+    expect(switchTo(br, "freezeout").fieldVariability).toBeUndefined();
+  });
+});

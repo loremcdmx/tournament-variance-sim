@@ -227,6 +227,23 @@ coherent dead-handle case. A new ROI calibration target may need
 feasibility coverage. A new convergence channel needs its own fit-box and
 residual coefficient before being band-eligible.
 
+## Field-Size Range Is One Source
+
+- `fieldVariants.ts` (`fieldVariantSizes`) is the only place that turns
+  `fieldVariability` into field sizes. The engine compiles one entry per size,
+  `validateSchedule` checks every size (a small bucket can miss the ROI target
+  while the nominal field is fine, and the run used to claim the typed ROI
+  anyway), and `computeRowStats` averages over them (`previewFieldMixture.ts`).
+  New code must not read `row.players` as "the field" of a range row.
+- Under a uniform range the engine ignores `players`.
+  `normalizeGameTypeConsistency` writes the range midpoint into the effective
+  row, so the preview, payout card, equilibrium ITM default and validation agree
+  with the engine, and the AFS input is read-only while a range is active.
+- A Battle Royale row carries no range (`normalizeBrMrConsistency` clears it).
+  The editor hides the control and persistence drops it on reload, so a range
+  left on the row made the session simulate 140-700 entrants where a share link
+  played the real 18-max.
+
 ## Cash-Mode Release Wisdom
 
 - `npm run smoke:cash` is now the canonical pre-release smoke for the advanced
