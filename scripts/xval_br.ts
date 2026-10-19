@@ -66,11 +66,15 @@ function measure(roi: number): { sigma: number; sigmaSE: number } {
 
 async function main() {
   const t0 = Date.now();
+  const helper = SIGMA_ROI_MYSTERY_ROYALE;
+  if (helper.kind !== "single-beta") {
+    throw new Error("xval_br expects the BR helper to be a single-beta line");
+  }
   console.log(
     `xval_br: ${HELD_OUT.length} held-out ROIs @ AFS=${AFS}, N=${N_TOURNEYS}, samples=${SAMPLES}, seed=${SEED}`,
   );
   console.log(
-    `  helper: σ = ${SIGMA_ROI_MYSTERY_ROYALE.C0.toFixed(5)} + ${SIGMA_ROI_MYSTERY_ROYALE.C1.toFixed(5)} × roi`,
+    `  helper: σ = ${helper.C0.toFixed(5)} + ${helper.C1.toFixed(5)} × roi`,
   );
   console.log(
     `  advertised residual band: ±${(SIGMA_ROI_MYSTERY_ROYALE.resid * 100).toFixed(1)}%`,

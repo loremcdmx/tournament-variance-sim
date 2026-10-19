@@ -265,9 +265,11 @@ Two producers — pick the right one for what you're doing:
   its own artifact, not whether the runtime-centered BR band is honest against
   simulation.
 - **Freeze / PKO / Mystery canonical fits** — production artifacts
-  `scripts/fit_beta_freeze_realdata.json`, `scripts/fit_beta_pko.json`,
-  `scripts/fit_beta_mystery.json`. These back the `SIGMA_ROI_*`
-  constants in `src/lib/sim/convergenceFit.ts`.
+  `scripts/fit_beta_freeze_realdata.json` (written by
+  `fit_beta_freeze_realdata.ts`, 18 fields × 7 ROIs), `scripts/fit_beta_pko.json`
+  and `scripts/fit_beta_mystery.json` (written by `resweep_sigma.ts`, 18 fields
+  × 11 ROIs). These back the `SIGMA_ROI_*` constants in
+  `src/lib/sim/convergenceFit.ts`.
 - **`scripts/resweep_sigma.ts`** — regenerates a canonical PKO/Mystery grid
   with the **current** engine, using the same row recipe as
   `fit_sigma_parallel.ts`:
@@ -364,13 +366,13 @@ fit to the UI.
 
 ## The sweep space
 
-| Dimension | Values                                                    |
-| --------- | --------------------------------------------------------- |
-| Field     | 22 log-spaced sizes 50…200 000                            |
-| ROI       | 7 main: {−20, −10, 0, +10, +20, +40, +80}%                |
-|           | 4 dense (PKO/mystery): {+5, +15, +25, +30}%               |
-| Tourneys  | 500 per sample (enough for stable σ, short enough to run) |
-| Samples   | 60k (freeze) or 120k (PKO/mystery)                        |
+| Dimension | Canonical grid (`resweep_sigma.ts`, `fit_beta_freeze_realdata.ts`) | 200k diagnostic sweep (`fit_sigma_parallel.ts`) |
+| --------- | ------------------------------------------------------------------- | ----------------------------------------------- |
+| Field     | 18 log-spaced sizes 50…50 000                                       | 22 sizes 50…200 000                             |
+| ROI       | PKO / Mystery: 11 = {−20, −10, 0, +5, +10, +15, +20, +25, +30, +40, +80}% | 7 main {−20, −10, 0, +10, +20, +40, +80}% + 4 dense {+5, +15, +25, +30}% |
+|           | freeze: 7 = {−20, −10, 0, +10, +20, +40, +80}%                      | the same for freeze                              |
+| Tourneys  | 500 per sample (enough for stable σ, short enough to run)           | 500                                             |
+| Samples   | 120k                                                                | 120k                                            |
 
 Everything else (buy-in $50, rake 10 %, bountyFraction 0.5, and for PKO
 pkoHeadVar 0.4) is held fixed. A Mystery row carries no `pkoHeadVar`: the
@@ -430,7 +432,7 @@ Pitfalls:
 - **`cRoiLinear.r2`** should be ≥ 0.99. This is the fit that powers the
   UI's ROI slider; if it drops, the linear `C(roi) = C0 + C1·roi`
   assumption is the problem — try `C0 + C1·roi + C2·roi²` and upgrade
-  the formula in `ConvergenceChart.tsx`.
+  the evaluator, `evalSigma` in `convergenceFit.ts` (the `SigmaCoef` types live there).
 - **`perRoiFits[i].r2`** in the ~0.94 range is normal, not a red flag.
   The engine's σ(field) isn't a pure power law — there's curvature at
   tiny fields (≤75) and at the mega-field tail. R² ≈ 0.94 is what a
@@ -485,9 +487,8 @@ data. Two paths — pick based on what your data looks like:
 ### Path A — your data is per-tournament finish results
 
 Columns like `player_id, tourney_id, finish_place, field_size, buyin, profit`.
-This is the input the calibration pipeline was designed for. See
-`memory/tournament_variance_sim_data_plan.md` for the full design; the
-short version:
+This is the input the calibration pipeline was designed for. The full
+design is not kept in this repo; the short version:
 
 1. Bucket rows by ROI (compute empirical ROI per player), field size,
    format.
@@ -500,9 +501,9 @@ short version:
    `pko-realdata-linear`. The new runtime coefficients are your
    data-calibrated fit; use single-β only if residuals justify it.
 
-This is multi-day work. The scaffold script doesn't exist yet —
-`scripts/calibrate.ts` is a TODO in the memory doc. Ping the author
-before building it so we stay aligned on format.
+This is multi-day work. The scaffold script doesn't exist yet
+(`scripts/calibrate.ts` was only ever planned). Ping the author before
+building it so we stay aligned on format.
 
 ### Path B — your data is aggregate σ measurements
 
@@ -525,7 +526,7 @@ sample of real players. Fit the surface directly:
 ## Long-running data collection: `continuous_fit.ts`
 
 When you want to sample a much wider scenario space than the fixed
-18×7 grid — different rakes, buy-ins, payout structures, finish models,
+18 × 11 grid (18 × 7 for freeze) — different rakes, buy-ins, payout structures, finish models,
 schedule shapes — use the resumable JSONL harness:
 
 ```bash
@@ -576,8 +577,9 @@ required fields for a sweep:
 }
 ```
 
-If you're adding a new sweep, copy `fit_beta_pko.ts` — all
-boilerplate is right there.
+If you're adding a new sweep, copy `resweep_sigma.ts` — it is the canonical
+recipe and all the boilerplate is right there. (`fit_beta_pko.ts` is the old
+7-ROI recipe and refuses to overwrite `fit_beta_pko.json`; see its header.)
 
 ## Real payout samples — `data/payout-samples/`
 

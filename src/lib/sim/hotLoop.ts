@@ -539,11 +539,11 @@ function simulateShardInternal(
         if (cashlessRun > longestCashlessRun) longestCashlessRun = cashlessRun;
       }
 
-      if (profit > runningMax) {
-        runningMax = profit;
-        if (ddTroughIdx >= 0 && sampleRecoveryLen < 0) {
-          sampleRecoveryLen = i - ddTroughIdx;
-        }
+      if (profit > runningMax) runningMax = profit;
+      // Back at the old peak counts as recovered, as in the cash engine; on a
+      // lattice of whole buy-ins a run lands on its peak exactly.
+      if (profit === runningMax && ddTroughIdx >= 0 && sampleRecoveryLen < 0) {
+        sampleRecoveryLen = i - ddTroughIdx;
       }
       if (profit < runningMin) runningMin = profit;
       const dd = runningMax - profit;

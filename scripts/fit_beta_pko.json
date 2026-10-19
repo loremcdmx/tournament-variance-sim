@@ -8,7 +8,7 @@
     "pkoHeadVar": 0.4,
     "payout": "mtt-gg-bounty",
     "finishModel": "pko-realdata-linear",
-    "regeneratedBy": "scripts/resweep_pko.ts"
+    "regeneratedBy": "scripts/resweep_sigma.ts"
   },
   "fields": [
     50,

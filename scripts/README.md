@@ -5,6 +5,11 @@ calibration tools, reproducible benches, PrimeDope parity probes, and one-off
 research utilities. Do not assume every file here is part of the normal
 product workflow.
 
+`tsconfig.json` excludes this folder, so `tsconfig.scripts.json` type-checks it
+(`npx tsc -p tsconfig.scripts.json`, also a CI step). It catches a renamed engine
+field or export; it cannot tell whether a script's output is still meaningful.
+`eslint` ignores `scripts/**`.
+
 ## Buckets
 
 ### Canonical fitting and promotion
@@ -14,7 +19,9 @@ Use these when changing coefficients that feed the shipped UI:
 - `fit_runtime_sigma_bands.ts`
 - `fit_br_fixed18.ts`
 - `xval_br.ts`
-- `fit_sigma_parallel.ts`
+- `resweep_sigma.ts` (regenerates the PKO / Mystery grids)
+- `refit_2d_logpoly.ts` (fits the 2D log-poly surfaces from those grids)
+- `fit_beta_freeze_realdata.ts` (the freeze grid)
 - `fit_drift_report.ts`
 - `fit_runtime_sigma_bands.json`
 - `fit_beta_freeze_realdata.json`
@@ -31,6 +38,12 @@ billions of tournaments); take a lock slot first.
 The `fit_br_fixed18.ts` / `xval_br.ts` pair and the `fit_beta_*` artifacts now
 back only the closed-form fallback surfaces in `convergenceFit.ts` (used by
 `computeConvergenceRows` when no runtime override is passed).
+
+`fit_beta_pko.ts` is not on this list: it is the old 7-ROI recipe and would
+replace the canonical 18 x 11 `fit_beta_pko.json`, so it refuses to run against
+an existing file (see its header). `fit_sigma_parallel.ts` is a diagnostic: it
+sweeps out to 200k players and writes `*_200k_probe.json`, never the canonical
+grids (see below).
 
 Read [`docs/FITTING.md`](../docs/FITTING.md) first. Promotion without a drift
 report is not considered complete.
@@ -95,12 +108,17 @@ canonical release tooling:
 - `parse_pd_curves.mjs`
 - `ingest_finishes.ts`
 - `compare_real_samples.ts`
-- `cash_crosscheck.ts`
+- `cash_crosscheck.ts` (paths per scenario are capped at the engine's own work budget, `MAX_TOTAL_SIM_HANDS`; it reports a z-score against the analytic mean)
+
+The PrimeDope scripts run the twin comparison as two `runSimulation` calls with
+an explicit `calibrationMode` (`"alpha"` and `"primedope-binary-itm"`), as
+`useSimulation.buildPasses` does; the engine itself returns one pass per call.
 
 ### Research and one-off probes
 
 These are exploratory. Treat their outputs as evidence, not as promoted truth:
 
+- `fit_sigma_parallel.ts` (200k-player diagnostic sweep)
 - `continuous_fit.ts`
 - `analyze_continuous_fit.ts`
 - `mix_effective_fit.ts`

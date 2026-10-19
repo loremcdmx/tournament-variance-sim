@@ -3,6 +3,15 @@
 Only user-facing changes are listed here. Small refactors, bench refreshes,
 internal scripts, and other low-signal maintenance are intentionally omitted.
 
+## Unreleased
+
+- A tournament run that returns exactly to its previous peak without passing
+  it now counts as recovered, as in the cash simulator. It used to be listed
+  under "Never recovered" and left out of the recovery median and 90th
+  percentile. Only exact ties are affected (for example heads-up or
+  winner-takes-all at zero rake, where a run lands on its old peak to the
+  cent); those three readouts move there and nothing else does.
+
 ## v0.7.8 — 2026-09-09
 
 - Refreshed sliders within the existing design: filled tracks, larger handles,
@@ -11,6 +20,20 @@ internal scripts, and other low-signal maintenance are intentionally omitted.
   field labels are associated with their inputs.
 - Fixed EV slider changes sometimes remaining an uncommitted preview after a
   quick key press or pointer release. Numeric draft and commit behavior is unchanged.
+
+## v0.7.7 — 2026-09-09 (note added later)
+
+This version has no entry of its own here; the README and
+`docs/BUGHUNT_FIXES_2026-09-09.md` list its fixes. One change in it moves every
+number and needs saying:
+
+- The seed is now mixed into each simulated career differently (commit
+  `3eb91fb`, 2026-09-02, first released in v0.7.7). Before, two seeds that
+  differed only in their low bits were the same simulation with the careers
+  shuffled (seeds 1, 2, 3 and 7 gave identical mean and standard deviation).
+  Every simulation output changed with it: a share link or stored run from
+  before v0.7.7 reproduces the same distributions but not the same best and
+  worst paths, downswing catalog entries or other per-career numbers.
 
 ## v0.7.4 - 2026-04-20
 

@@ -44,7 +44,7 @@ export const SIGMA_ROI_FREEZE: SigmaCoef = {
 };
 
 // PKO 2D log-poly refit 2026-07-13 from a FRESHLY MEASURED canonical grid
-// (scripts/resweep_pko.ts → scripts/fit_beta_pko.json, 11 ROIs x 18 fields x
+// (scripts/resweep_sigma.ts → scripts/fit_beta_pko.json, 11 ROIs x 18 fields x
 // 120k samples x N=500). LOO xval: mean |delta/sigma|=3.88%, p95=10.07%,
 // max=19.04%.
 //

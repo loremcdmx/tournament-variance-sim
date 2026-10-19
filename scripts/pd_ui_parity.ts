@@ -1,9 +1,10 @@
 /**
  * PD parity along the UI path — not the cherry-picked "force PD curve"
  * path used by `pd_parity.ts`. Feeds the engine the exact shape the UI
- * feeds it (`payoutStructure: "mtt-standard"`, `compareWithPrimedope:
- * true`, PD flags at UI defaults) and reads `result.comparison.stats`
- * — that's what the PD pane renders. It also runs the explicit
+ * feeds it (`payoutStructure: "mtt-standard"`, PD flags at UI defaults, the
+ * PD pass as a second engine call with `calibrationMode:
+ * "primedope-binary-itm"`, as `useSimulation.buildPasses` dispatches it) and
+ * reads that pass's stats — that's what the PD pane renders. It also runs the explicit
  * `primedopeStyleEV` diagnostic opt-in, which is the only mode expected to
  * match the live site EV/SD byte-for-byte.
  *
@@ -89,7 +90,7 @@ function buildInput(
   flags: PdUiFlags,
 ): SimulationInput {
   // mimic the UI: user picks payoutStructure "mtt-standard" on a single
-  // row, ticks "compare with PrimeDope". No customPayouts override.
+  // row and compares with PrimeDope. No customPayouts override.
   const row: TournamentRow = {
     id: "r",
     label: sc.name,
@@ -107,20 +108,17 @@ function buildInput(
     bankroll: sc.bankroll,
     seed: 42,
     finishModel: { id: "power-law" },
-    compareWithPrimedope: true,
     ...flags,
   };
 }
 
 function runUiPath(sc: Scenario, flags: PdUiFlags) {
-  const result = runSimulation(buildInput(sc, flags));
-  if (!result.comparison) throw new Error("no comparison in result");
+  const input = buildInput(sc, flags);
+  const primary = runSimulation({ ...input, calibrationMode: "alpha" });
+  const pdPane = runSimulation({ ...input, calibrationMode: "primedope-binary-itm" });
   return {
-    primary: { mean: result.stats.mean, sd: result.stats.stdDev },
-    pdPane: {
-      mean: result.comparison.stats.mean,
-      sd: result.comparison.stats.stdDev,
-    },
+    primary: { mean: primary.stats.mean, sd: primary.stats.stdDev },
+    pdPane: { mean: pdPane.stats.mean, sd: pdPane.stats.stdDev },
   };
 }
 
@@ -145,7 +143,7 @@ function main() {
     "PD parity along the UI path — checks the ACTUAL PD pane that users see",
   );
   console.log(
-    "  compareWithPrimedope: true, payoutStructure: mtt-standard (no forced PD curve)",
+    "  PD pane = calibrationMode primedope-binary-itm, payoutStructure: mtt-standard (no forced PD curve)",
   );
   console.log("=".repeat(100));
 

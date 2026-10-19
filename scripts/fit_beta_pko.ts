@@ -9,7 +9,12 @@
  * 1.72M-finish histogram). Runs 120 k samples per grid point so tail-driven
  * σ estimates on small fields settle within grid-search noise.
  *
- *   npx tsx scripts/fit_beta_pko.ts
+ * This is the old 7-ROI recipe. `scripts/fit_beta_pko.json` is now the 18 x 11
+ * canonical grid that `scripts/resweep_sigma.ts` writes (and `refit_2d_logpoly.ts`
+ * reads), so this script refuses to replace it unless asked:
+ *
+ *   FIT_BETA_PKO_OUT=scripts/pko_7roi.json npx tsx scripts/fit_beta_pko.ts
+ *   FIT_BETA_PKO_OVERWRITE=1 npx tsx scripts/fit_beta_pko.ts   # replaces the canonical grid
  */
 
 import { runSimulation } from "../src/lib/sim/engine";
@@ -20,6 +25,7 @@ const FIELDS = [
   10_000, 15_000, 25_000, 50_000,
 ];
 const ROIS = [-0.20, -0.10, 0, 0.10, 0.20, 0.40, 0.80];
+const OUT_PATH = process.env.FIT_BETA_PKO_OUT ?? "scripts/fit_beta_pko.json";
 const N_TOURNEYS = 500;
 const SAMPLES = 120_000;
 const BUY_IN = 50;
@@ -87,6 +93,13 @@ function fitLogLog(points: Point[]): { beta: number; intercept: number; r2: numb
 }
 
 async function main() {
+  const fs = await import("node:fs");
+  if (fs.existsSync(OUT_PATH) && process.env.FIT_BETA_PKO_OVERWRITE !== "1") {
+    throw new Error(
+      `${OUT_PATH} exists (the canonical 18 x 11 grid from resweep_sigma.ts); this 7-ROI recipe would replace it. ` +
+        `Set FIT_BETA_PKO_OUT to another path, or FIT_BETA_PKO_OVERWRITE=1 to replace it on purpose.`,
+    );
+  }
   console.log(
     `fit_beta_pko: N=${N_TOURNEYS} samples=${SAMPLES} buyIn=${BUY_IN} rake=${RAKE} bountyFraction=${BOUNTY_FRACTION} pkoHeadVar=${PKO_HEAD_VAR}`,
   );
@@ -219,13 +232,9 @@ async function main() {
     globalR2: r2Global,
     cRoiLinear: { C0: linC.intercept, C1: linC.slope, r2: linC.r2 },
   };
-  const fs = await import("node:fs");
-  fs.writeFileSync(
-    "scripts/fit_beta_pko.json",
-    JSON.stringify(out, null, 2),
-  );
+  fs.writeFileSync(OUT_PATH, JSON.stringify(out, null, 2));
   console.log("");
-  console.log(`wrote scripts/fit_beta_pko.json`);
+  console.log(`wrote ${OUT_PATH}`);
   console.log(`total wall time: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 

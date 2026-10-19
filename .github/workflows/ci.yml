@@ -36,6 +36,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Typecheck scripts
+        # tsconfig.json excludes scripts/, so a rename in src/ used to break the
+        # tools there (PrimeDope checks, benches, fit scripts) without a signal.
+        run: npx tsc -p tsconfig.scripts.json
+
       - name: Lint
         run: npm run lint
 

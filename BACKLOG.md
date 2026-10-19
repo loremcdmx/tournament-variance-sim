@@ -3,7 +3,7 @@
 > **Single source of truth.** Все активные и закрытые задачи живут здесь.
 > Memory-файлы содержат только указатель на этот документ — не дублировать статус.
 >
-> Актуален на **2026-04-24** (v0.7.4, ветка `main`).
+> Актуален на **2026-04-24** (v0.7.4, ветка `main`). Блоки #132, #109a, #109b, cash cross-check и «Правила работы» сверены с деревом **2026-10-19** (v0.7.8) и помечены «сверено»; остальное перед стартом проверять по коду.
 > Закрытые задачи см. в `git log`. История прогресса — в `CHANGELOG.md`.
 > Feature scope: PKO / empirical model **IN SCOPE**. Re-entry (multi-bullet) was **removed** — every tournament is a single entry.
 
@@ -26,7 +26,7 @@
 Всё, что сейчас можно брать. Порядок = приоритет (сначала математика, потом полиш).
 
 ### #109b · AFS ceiling raise до 200k — **P2 follow-up**
-Сам 2D log-poly refit закрыт (см. #109a ниже в «Shipped 2026-04-20»). Остаётся только поднять `AFS_LOG_MAX` с `log(50_000)` до `log(200_000)` в `ConvergenceChart.tsx`.
+Сам 2D log-poly refit закрыт (см. #109a ниже в «Shipped 2026-04-20»). Остаётся только поднять потолок слайдера с 50 000 до 200 000 (сверено 2026-10-19: `AFS_LOG_MAX` в `convergenceMath.ts` — это `log(AFS_MAX)`, а `AFS_MAX = CONVERGENCE_FIELD_MAX = 50_000` задан в `convergencePolicy.ts`; в `ConvergenceChart.tsx` константы нет). Над 50 000 карточки показывают только точку, пока `fit_runtime_sigma_bands.ts` не перемерен на поля выше: box полосы — это протяжённость его сетки.
 
 **Условие:** проверить, что 2D-формула `log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L` не расходится на extrapolation 50k→200k. `a2·L²` term может ускориться за training range'ом. Безопасный путь — мини-свип 4–6 новых полей (75k, 100k, 150k, 200k) × 5 ROIs на каждом формате (PKO, Mystery, Freeze), замерить σ, сравнить с предиктом. Если max |Δ/σ| < текущего LOO p95 — raise проходит без доработки коэффициентов. Если нет — перефитить на объединённом 50k+200k гриде.
 
@@ -43,13 +43,14 @@
 
 ### #132 · Compare-dropdown + recalc-кнопка — **P2** (design frozen 2026-04-19, revised после code audit)
 
-**Актуальное состояние кода (важно для планирования):**
-- `compareMode: "random" | "primedope"` — **уже dropdown** в [ControlsPanel.tsx:290-301](src/components/ControlsPanel.tsx:290), два value. Не boolean, как ошибочно говорила прежняя версия задачи.
-- `compareWithPrimedope: boolean` — **UI toggle отсутствует**. Захардкожено `true` во всех presets ([page.tsx:84](src/app/page.tsx:84), `src/lib/scenarios.ts`, `src/lib/sim/modelPresets.ts`). De facto мёртвое поле — просто всегда-on переключатель twin-pass'а.
-- Реальные 3 режима, которые dispatch рендерит в [useSimulation.ts:580-653](src/lib/sim/useSimulation.ts:580):
-  1. `compareMode="random"` → second pass = тот же α, другой seed (seed-sensitivity). В существующем design'е #132 **пропущен** — нужно явно решить.
+**Актуальное состояние кода (сверено 2026-10-19; описание, с которым задача была заведена, устарело):**
+- `compareWithPrimedope` **удалён** (`279daab`): в `src/` его нет, шаг «удалить поле» в Phase 1 уже выполнен. Engine прогоняет один проход на вызов; близнец-проход планирует `useSimulation.buildPasses` по `input.compareMode`.
+- `compareMode?: "random" | "primedope"` лежит в `SimulationInput`, а в UI это **чекбокс** `compareEnabled` в `ControlsPanel.tsx` (при включении он пишет `compareMode: "primedope"`), не dropdown. Режим `"random"` UI не отправляет, а сохранённый `"random"` `persistence.ts` читает как `"primedope"`.
+- Режимы, которые `buildPasses` реально собирает (`useSimulation.ts`):
+  1. `compareMode="random"` (только через API) → second pass = тот же α, другой seed (seed-sensitivity; seed берётся через `Math.random()`). В существующем design'е #132 **пропущен** — нужно явно решить.
   2. `compareMode="primedope"` без PKO → second pass = PD binary-ITM (= «PrimeDope shell»).
-  3. `compareMode="primedope"` с PKO → second pass = α на schedule с stripped bounties (`pdPkoFallback`). Сейчас implicit, не выбор пользователя.
+  3. `compareMode="primedope"` с PKO → second pass = PD binary-ITM на schedule с stripped bounties (`pdPkoFallback`). Сейчас implicit, не выбор пользователя.
+  4. Пресет `primedope` (`pdPresetFlip`) меняет панели местами: левая — binary-ITM, правая — α.
 
 **Целевая таксономия `compareSource` (UI-facing labels):**
 
@@ -70,7 +71,7 @@
 - **KO-shift mechanics:** per-row `bountyEvBias` остаётся (глобальное поле загрубит mixed schedule).
 - **Recalc-кнопка:** рядом с dropdown в правой панели, не под KO-slider. Dirty-state появляется при изменении inputs, влияющих на current compare-pass. Опции `random-seed` / `pd-shell` / `no-knockouts` — инстантные, кнопка для них не активна.
 - **Variant A для `same-schedule-neutral-ko`:** primary держит user's current KO-tilt, compare — обнулённый bias.
-- **`compareWithPrimedope` boolean:** удалить как мёртвое поле в рамках Phase 1 (твердо `true` при наличии twin-pass'а, gate переезжает в `compareSource != null`).
+- **`compareWithPrimedope` boolean:** (уже удалён, `279daab`) удалить как мёртвое поле в рамках Phase 1 (твердо `true` при наличии twin-pass'а, gate переезжает в `compareSource != null`).
 
 **i18n:** все compare-related легенды / tooltip'ы / captions чарта — source-aware copy. Ключи `controls.compareMode`, `controls.compareMode.random`, `controls.compareMode.primedope`, `twin.runA.cap`, `twin.runB.cap`, `chart.overlay.freezeouts` — либо переименовываем под `compareSource`, либо заводим новый namespace и постепенно срезаем старые. Решение — в Phase 5.
 
@@ -146,7 +147,7 @@
    Потенциал: AssemblyScript/Rust хот-луп с SIMD (`f64x2` add/mul). Оценка — 2–3× speedup на bounty-heavy формате.
 
 4. **Пересмотр структуры shard-ов и transferables.**
-   Сейчас: `oversub=4` включается только при `samples × scheduleRepeats ≥ 50_000` (`useSimulation.ts:240`). Transferables list main↔worker рассинхронизован (см. #122).
+   Сейчас (сверено 2026-10-19): число шардов на проход = `min(W × oversub, ⌊S / minPerShard⌋, S)`, `oversub` 4 (6 от 200 000 сэмплов), `minPerShard` 64 (32 от 100 000), см. `runJob` в `useSimulation.ts`. Transferables list main↔worker рассинхронизован (см. #122).
    Потенциал: единый contract на transferables + более гранулярные shard'ы → smoother progress + меньше idle workers.
 
 **Предусловие:** математика движка стабилизирована (все P0 закрыты), `SIGMA_ROI_*` отфитованы через #109.
@@ -247,7 +248,7 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 1. Прогнать 5 сценариев из `cash_crosscheck.ts` в каждом из 4 сервисов. Записать `meanFinalBb`, `sdFinalBb`, `probLoss` (где есть).
 2. Завести `data/cash-comparisons/{primedope,gamblingcalc,limplab,pokerlog}.json` с ручными записями.
 3. Отчёт `docs/CASH_COMPARE.md` — таблица расхождений, объяснение каждого > 2 SE gap.
-4. Analytic cross-check (независимый от сервисов): `E[final] = wr × hands / 100`, `σ[final] = sd × √(hands / 100)`. Наш симулятор должен попадать в ±1% на 20k paths — это внутренняя sanity-check.
+4. Analytic cross-check (независимый от сервисов): `E[final] = wr × hands / 100`, `σ[final] = sd × √(hands / 100)`. Наш симулятор должен попадать в ±3 стандартные ошибки среднего (`|z| ≤ 3`; `scripts/cash_crosscheck.ts` печатает z) — это внутренняя sanity-check. Прежнее «±1% на 20k paths» недостижимо: движок режет число путей под бюджет `MAX_TOTAL_SIM_HANDS` (при 100k рук это 2000 путей, SE среднего ≈ 1.4 % от EV baseline), а 1M рук × 20k путей в 100 раз выше бюджета, который UI вообще допускает.
 
 **Не блокирует:** остальные фичи. Это валидация существующей модели, а не разработка новой.
 
@@ -298,7 +299,7 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
 - ✅ **Next.js infra** — `3d33ccb use webpack for local next dev and build` (retreat from turbopack for local dev) + `6c516d3 fix(fonts): disable next font preloads` (убрали font preload warnings).
 - ✅ **Variance presets + basic-mode sanitization** — `192d235 add advanced variance presets and basic-mode sanitization`.
 - ✅ **Cash mode: mtt-style trajectory interactions** — `f61604c bring mtt-style trajectory interactions to cash mode` (унифицирует hit-test + hover поверх cash-trajectory как в MTT).
-- ✅ **Branch housekeeping (2026-04-24)** — восстановлен memory-rule «dev ≥ main»:
+- ✅ **Branch housekeeping (2026-04-24)** — восстановлен memory-rule «dev ≥ main» (исторически: позже ветки снова разошлись, см. «Правила работы»):
   - `origin/dev` приведено к `origin/main` через `push origin main:dev --force-with-lease`. Проверено `git merge-base --is-ancestor origin/dev origin/main` → true (dev был 19 commits behind, 0 unique — все dev-коммиты уже reachable from main). Старый dev tip `0d04eaa feat(schedule): card layout, room badges, colored preset picker` recoverable 90 дней через GitHub reflog.
   - `origin/design-beta` (`4cb5480`) удалена — 218 commits behind, 0 ahead, 7 дней stale.
   - **Остаются отдельным решением owner'а:**
@@ -313,7 +314,7 @@ Magic-link auth, `user_presets` + RLS. Ждёт:
   - **PKO:** mean |Δ/σ| 12.7 % → **4.0 %**, p95 25.6 % → **11.7 %**, max 31.1 % → 15.1 %. R² 0.91 → 0.998.
   - **Mystery:** mean |Δ/σ| 10.7 % → **4.25 %**, p95 24.0 % → **17.0 %**, max 39.0 % → 30.6 %. R² 0.79 → 0.98.
 
-  **convergencePolicy:** PKO убран из warning-списка, для PKO / freeze / MBR теперь рендерится numeric ±band **внутри validated training box** (freeze & PKO / Mystery field 50–50 000, PKO / Mystery ROI −0.20..+0.80, MBR field строго 18 и ROI ±0.10). За training box'ом — warning `outside-fit-box` (точка показывается как ориентир, полоса скрыта). Mystery остался в warning всегда — p95 17 % всё ещё великоват для честной полосы даже внутри box'а; приоритет reason'ов `contains-mystery > outside-fit-box` закреплён тестом. Новый pure helper `isInsideFitBox` в `convergencePolicy.ts`, `inferRowFormat` переехал туда же с корректным порядком precedence (gameType → payoutStructure → variance; `m >= 1.4 → MBR` эвристика удалена, поскольку `applyGameType("mystery")` теперь выставляет variance=2.0 и эвристика мисклассифицировала plain Mystery как MBR).
+  **convergencePolicy:** PKO убран из warning-списка, для PKO / freeze / MBR теперь рендерится numeric ±band **внутри validated training box** (freeze & PKO / Mystery field 50–50 000, PKO / Mystery ROI −0.20..+0.80, MBR field строго 18 и ROI ±0.10). За training box'ом — warning `outside-fit-box` (точка показывается как ориентир, полоса скрыта). Mystery остался в warning всегда — p95 17 % всё ещё великоват для честной полосы даже внутри box'а; приоритет reason'ов `contains-mystery > outside-fit-box` закреплён тестом. **Устарело (сверено 2026-10-19):** в `convergencePolicy.ts` остался единственный reason `outside-fit-box`, а числовую полосу внутри box'а даёт `runtimeSigmaBands.ts`; см. WISDOM.md. Новый pure helper `isInsideFitBox` в `convergencePolicy.ts`, `inferRowFormat` переехал туда же с корректным порядком precedence (gameType → payoutStructure → variance; `m >= 1.4 → MBR` эвристика удалена, поскольку `applyGameType("mystery")` теперь выставляет variance=2.0 и эвристика мисклассифицировала plain Mystery как MBR).
 
   **200k sweep findings (предтеча):** `scripts/fit_sigma_parallel.ts` (probe mode) c `logPolyPooled` на 200k fields показал, что проблема — в ФОРМЕ, а не в range'е. `logPolyPooled` как pooled-через-центрирование фит не evaluable at arbitrary (field, roi); настоящий runtime-usable 2D poly добавляет ROI-квадратичный и cross-interaction term, закрывая gap при тех же 18 training fields. Full 200k sweep не требовался для текущего промоушна (зарезервирован на #109b AFS ceiling raise).
 
@@ -383,7 +384,7 @@ Next.js + worker-pool + dev-only scripts дают систематические
 ## 📋 Правила работы
 
 - **Не пушить в `main`** без явного подтверждения.
-- **`dev` держать ≥ `main`** (см. `feedback_dev_ahead_of_main.md`). Перед работой: `git log dev..main`.
+- **`dev` — факультативная ветка и не обязана быть ≥ `main`** (сверено 2026-10-19: локальной `dev` в клоне нет, `origin/dev` и `origin/main` расходились). Перед работой: `git fetch`, затем `git log origin/main..origin/dev` и `git log origin/dev..origin/main`; не форс-пушить, чтобы «починить» инвариант (см. `CONTRIBUTING.md` → Branching).
 - **Parallel sweeps:** cap 12 workers (7950X, оставляет headroom).
 - **Cleanup ≠ feature commit.** Разделять коммиты.
 - **Определённость — жёсткий контракт.** `SimulationInput + seed → byte-identical SimulationResult`.
@@ -398,7 +399,7 @@ Next.js + worker-pool + dev-only scripts дают систематические
 | `docs/FITTING.md` | Как запускать σ-sweep, интерпретировать `{C0, C1, β}` |
 | `CONTRIBUTING.md` | Dev setup, branching, commit style, testing rules |
 | `AGENTS.md` | Post-compression re-entry point + sharp edges |
-| `CHANGELOG.md` | Релиз-история (последний: v0.7.4) |
+| `CHANGELOG.md` | Релиз-история (последний: v0.7.8) |
 
 ---
 

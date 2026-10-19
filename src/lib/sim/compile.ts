@@ -40,7 +40,9 @@ export { buildSchedulePassOrder };
 // Per-format calibration paths:
 //   - α-adjustable (free finish PMF) → calibrateAlpha
 //   - fixed-ITM rows → calibrateShelledItm
-//   - PrimeDope compare → calibrateShelledItm with PD shell + curves
+//   - PrimeDope compare (`primedope-binary-itm`) → buildBinaryItmAssets, no
+//     α search; it falls back to the two paths above when the PD finish-model
+//     flag is off. `pdCurves.ts` only supplies PD's payout tables.
 //   - Battle Royale fixed-ITM → battleRoyaleWinnerFirst
 //
 // `buildScheduleAnalyticBreakdown` (further down) reuses this same

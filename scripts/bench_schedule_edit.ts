@@ -41,7 +41,7 @@ const lightRow: TournamentRow = {
   buyIn: 10,
   rake: 0.1,
   roi: 0.1,
-  payoutStructure: "mtt-gg-standard",
+  payoutStructure: "mtt-standard",
   count: 1,
 };
 

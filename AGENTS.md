@@ -11,13 +11,13 @@ Before any code or audit work, open `WISDOM.md`.
 
 ## What this is
 
-Next.js 16 + React 19 + TypeScript Monte Carlo simulator for poker MTT variance. Compares against PrimeDope-style calibration. Engine is pure TS in `src/lib/sim/`, runs in a Web Worker pool; UI is `src/app/page.tsx` + `src/components/`.
+Next.js 16 + React 19 + TypeScript Monte Carlo simulator for poker MTT variance. Compares against PrimeDope-style calibration. Engine is pure TS in `src/lib/sim/` (two React hook files live there too, see below), runs in a Web Worker pool; UI is `src/app/page.tsx` + `src/components/`.
 
 ## Canonical docs (read these instead of guessing)
 
 - **`WISDOM.md`** — living project memory: recurring audit traps, model-policy lessons, branch/process surprises, and "do not repeat this stale finding without re-checking code" notes. **Read this first.**
 - **`docs/ARCHITECTURE.md`** — data flow, worker pool, determinism contract, hot-loop shape, storage, perf knobs, "where to start if you want to…" table. Authoritative architecture map.
-- **`docs/FITTING.md`** — how to run parameter sweeps (`scripts/fit_sigma_parallel.ts` et al.), interpret σ_ROI fit coefficients `{C0, C1, β}`, and calibrate against custom data. Read before touching `scripts/fit_*.ts` or `ConvergenceChart` coefficients.
+- **`docs/FITTING.md`** — how to run parameter sweeps (`scripts/fit_sigma_parallel.ts` et al.), interpret σ_ROI fit coefficients `{C0, C1, β}`, and calibrate against custom data. Read before touching `scripts/fit_*.ts` or the `SIGMA_ROI_*` coefficients in `convergenceFit.ts`.
 - **`CONTRIBUTING.md`** — dev setup, branching, commit style, testing rules, code style, sharp edges.
 - **`README.md`** — user-facing overview + short architecture section (RU primary, EN mirror).
 
@@ -25,11 +25,11 @@ If code and docs disagree, the code wins — fix the doc.
 
 ## Things that trip up fresh sessions
 
-- **Determinism is a hard contract.** `SimulationInput + seed → byte-identical SimulationResult` regardless of pool size. No `Math.random()`, `Date.now()`, `performance.now()` inside `src/lib/sim/` (except `useSimulation.ts`, which is outside the engine). Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` — each stochastic channel uses its own XOR-offset of the seed. `sampleIdx` is the GLOBAL index in `[0, samples)`, not shard-local. New stochastic channel → fresh XOR-offset seed + determinism test.
+- **Determinism is a hard contract.** `SimulationInput + seed → byte-identical SimulationResult` regardless of pool size. No `Math.random()`, `Date.now()`, `new Date()`, `performance.now()` in the engine modules, i.e. everything in `src/lib/sim/` except three browser-side files: `useSimulation.ts` (timing around the pool; the seed of the engine-only "random" compare pass), `useResulthubLookup.ts` and `resulthubLookup.ts` (ResultHub lookup timestamps and date window). Only those two `use*.ts` files import React. `engineSourcePurity.test.ts` pins both lists. Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` — each stochastic channel uses its own XOR-offset of the seed. `sampleIdx` is the GLOBAL index in `[0, samples)`, not shard-local. New stochastic channel → fresh XOR-offset seed + determinism test.
 - **`samplePaths.paths.length` ≠ `samples`.** The first 1000 global sample indices store hi-res trajectories, independent of shard boundaries. The knob is `HI_RES_GLOBAL_CAP` in `simulateShard` (`hotLoop.ts`; `wantHiResPaths` there is only the per-shard slice derived from it), and the `Math.min(1000, …)` caps in `ResultsView.tsx` must move with it. Slider in `ResultsView` caps at `paths.length`.
-- **PrimeDope compare mode** uses a second calibration path (`calibrateShelledItm` + `pdCurves.ts`). Changes to the main calibration don't auto-propagate — check compare coverage when touching `finishModel.ts`.
+- **PrimeDope compare mode** (`calibrationMode: "primedope-binary-itm"`) uses a second calibration path: `buildBinaryItmAssets` (`finishModel.ts`) builds the binary-ITM pmf with no α search, and `compileEntry.ts` falls back to `calibrateShelledItm` / `calibrateAlpha` only when the PD finish-model flag is off. `pdCurves.ts` is just PD's payout tables. Changes to the main calibration don't auto-propagate — check compare coverage when touching `finishModel.ts`.
 - **PKO heat** in the hot loop snaps a Gaussian per-tournament to one of `HEAT_BIN_COUNT` preconcentrated `bountyByPlace` tables. Mean bounty is preserved per bin; only σ shifts.
-- **Dev branch invariant:** `dev` is always ≥ `main`, never behind. Run `git log dev..main` before starting work; ship via `git merge --ff-only dev`.
+- **Branches:** `main` is prod and work lands on it through PRs. `dev` is an optional integration branch that has lagged and diverged from `main` before, and a clone may have no local `dev` at all. Run `git fetch` and `git log origin/main..origin/dev` / `git log origin/dev..origin/main` to see where it stands; do not assume `dev >= main` and do not force-push to restore it.
 - **i18n is enforced by types.** Every user-visible string needs a key in `src/lib/i18n/dict.ts` with both `en` and `ru`. TS build fails on missing locale.
 - **No allocations in the hot loop.** `simulateShard` reuses preallocated typed arrays. `new Float64Array(n)` inside the inner loop is a bug.
 
@@ -38,13 +38,13 @@ If code and docs disagree, the code wins — fix the doc.
 ```bash
 npm install
 npm run dev         # http://localhost:3000 (user often runs on :3456 — check for stale servers first)
-npm test            # vitest, ~40s idle (118 files / 1637 tests; CPU-bound Monte Carlo, slower under load)
+npm test            # vitest, ~40s idle (166 files / 2128 tests; CPU-bound Monte Carlo, slower under load)
 npx tsc --noEmit    # type check
 npm run lint
 npm run build       # catches real Next.js errors
 ```
 
-Before calling a PR done: **all four** (test + typecheck + lint + build). For UI work: also exercise the feature in a browser — type checks don't verify feature correctness.
+Before calling a PR done: **all four** (test + typecheck + lint + build); if you touched `src/lib/sim/` types or exports, also `npx tsc -p tsconfig.scripts.json` (type-checks `scripts/`, which `tsconfig.json` excludes; CI runs it). For UI work: also exercise the feature in a browser — type checks don't verify feature correctness.
 
 Start/kill dev servers yourself; don't hand off to the user. Kill stale ones before spawning new. Use forward slashes in paths (git-bash on Windows), `/dev/null` not `NUL`.
 
@@ -63,7 +63,7 @@ See the table at the bottom of `docs/ARCHITECTURE.md`. Short version:
 
 | Goal                        | File                                              |
 | --------------------------- | ------------------------------------------------- |
-| Payout structure            | `src/lib/sim/payouts.ts` + `types.ts` + `dict.ts` |
+| Payout structure            | `types.ts` + `payouts.ts` + `dict.ts` (`payout.<id>.short/.full`) + `ScheduleEditor.tsx` tables + `persistence.ts` record |
 | Finish model                | `src/lib/sim/finishModel.ts`                      |
 | New chart                   | `src/components/charts/` + `ResultsView.tsx`      |
 | Noise / tilt channel        | `types.ts` + hot loop in `hotLoop.ts`             |

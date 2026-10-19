@@ -20,11 +20,12 @@ npm run test:watch  # watch mode
 npx tsc --noEmit    # type check (no emit)
 npm run lint        # eslint
 npm run build       # prod build (catches real Next.js errors)
+npx tsc -p tsconfig.scripts.json   # type check scripts/ (tsconfig.json excludes it)
 ```
 
-Before a PR: run **all four** — test, typecheck, lint, build. Any one failing blocks the merge.
+Before a PR: run **all four** — test, typecheck, lint, build. Any one failing blocks the merge. If you changed a type or export in `src/lib/sim/`, also run the scripts type check: the tools in `scripts/` import the engine directly, and nothing else compiles them.
 
-CI runs the same four commands from `.github/workflows/ci.yml` on every
+CI runs those four commands, plus the scripts type check, from `.github/workflows/ci.yml` on every
 push to any branch, on pull requests, and on manual dispatch. If the team
 starts relying on an extra local check, add it to CI as well so the canonical
 green state stays the same locally and remotely.
@@ -46,13 +47,13 @@ green, which also puts CI ahead of the Vercel deploy.
 
 ## Branching
 
-- `main` — prod. Vercel auto-deploys from here.
-- `dev` — integration branch for batched work. `dev` must always be ahead of or equal to `main`; never behind. Before starting work, run `git log dev..main` and verify it's empty.
-- Feature branches off `dev` are fine but not required for small fixes.
+- `main` — prod. Vercel auto-deploys from here. Work lands on it through pull requests.
+- `dev` — optional integration branch for batched work. It is not kept in lockstep with `main`: it has lagged and diverged before, and a clone may have no local `dev` at all. Check it as it stands, not as a rule: `git fetch`, then `git log origin/main..origin/dev` and `git log origin/dev..origin/main`.
+- Feature branches off `main` are the default; off `dev` only when `dev` is a descendant of `main`.
 - Dirty exploratory work belongs on `wip/*`, not on `dev`. Keep one clean
   integration worktree that can always run all four gates end-to-end.
 
-To ship: merge `dev` into `main` as a fast-forward (`git merge --ff-only dev`) and push. If `--ff-only` fails, something landed on `main` out-of-band — investigate before force-anything.
+To ship, open a PR into `main`. If you do use `dev` and want to fast-forward `main` to it, first confirm `git merge-base --is-ancestor origin/main origin/dev`; if that fails, `main` has commits `dev` lacks, so merge or rebase them in — never force-push either branch to make the two agree.
 
 ## Commit style
 
@@ -70,14 +71,14 @@ Bundle related changes. A preset rework and a lint fix go in **separate** commit
 
 ## Testing
 
-Tests live next to the file they cover: `engine.test.ts` for `engine.ts`, etc. We use Vitest, and the whole suite runs in ~40s on an idle machine (118 files / 1637 tests) — keep it in that ballpark.
+Tests live next to the file they cover: `engine.test.ts` for `engine.ts`, etc. We use Vitest, and the whole suite runs in ~40s on an idle machine (166 files / 2128 tests) — keep it in that ballpark.
 
 ### What to test
 
 - **New stochastic mechanism** → add a determinism test (same input + seed → identical `finalProfits`) and a direction test (does the mechanism move σ / mean / whatever in the expected direction).
-- **New payout structure** → the existing `payouts.test.ts` loop will catch any missing normalization. Add a shape test if the structure has a particular invariant (e.g., flat = all places equal, winner-takes-all = single element).
+- **New payout structure** → the existing `payouts.test.ts` loop will catch any missing normalization. Add a shape test if the structure has a particular invariant (e.g., flat = all places equal, winner-takes-all = single element). The id must also be in the `STRUCTURES`, `PAYOUT_COMPAT` and `PAYOUT_GAMETYPE_ALLOW` tables of `ScheduleEditor.tsx` and have `payout.<id>.short` / `.full` keys in `dict.ts`; `persistence.ts` holds it in a `Record<PayoutStructureId, true>`, so a missing entry there fails `tsc`.
 - **New finish model** → at minimum, assert `sum(pmf) == 1` and that α calibration converges (or that the model short-circuits it explicitly).
-- **UI component** → generally not tested. The engine is where correctness matters.
+- **UI component** → vitest runs in a node environment with no DOM, so put the logic in a pure function (`src/lib/ui/`, `src/lib/results/`) and test that, or render the component as a function with `src/lib/testing/hookHarness.ts`. `src/lib/ui/simulationInput.ts` (what Run sends to the engine) is an example; the click-to-worker wiring in `page.tsx` itself is only exercised in a browser.
 
 ### The determinism contract
 
@@ -85,7 +86,7 @@ Described in detail in `docs/ARCHITECTURE.md`. Summary:
 
 - Same `SimulationInput` + same `seed` → byte-identical `SimulationResult`, regardless of worker pool size or shard order.
 - `engine.test.ts` enforces this with a direct comparison. Do not regress it.
-- Consequence: never use `Math.random()`, `Date.now()`, or any time/env-dependent API inside `src/lib/sim/`. Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` (separate XOR-offset streams per stochastic channel).
+- Consequence: never use `Math.random()`, `Date.now()`, `new Date()` or any time/env-dependent API in the engine modules (everything in `src/lib/sim/` except the browser-side `useSimulation.ts`, `useResulthubLookup.ts` and `resulthubLookup.ts`; `engineSourcePurity.test.ts` enforces it). Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` (separate XOR-offset streams per stochastic channel).
 - `sampleIdx` is the **global** index in `[0, samples)`, not shard-local. This is what makes parallel runs reproducible.
 
 Adding a new stochastic channel? Pick a `mixSeed` slot that doesn't collide with existing ones, and add a 3-line test that runs the same input twice and asserts equality.
@@ -133,7 +134,7 @@ The engine is the performance-critical path. Rules:
 - **No allocations in the hot loop.** Every `simulateShard` iteration should reuse preallocated typed-array scratch buffers. New `Float64Array(n)` inside the inner loop is a bug.
 - **Typed arrays over regular arrays** when sizes are known. Avoid pushing to arrays in the hot path.
 - **Worker pool size** is `min(16, hardwareConcurrency − 2)` by default (`poolSize()` in `useSimulation.ts`). More isn't faster — each worker is CPU-bound.
-- Before optimizing, measure. `performance.now()` around `onRun` in `useSimulation.ts` gives you wall-clock.
+- Before optimizing, measure. `performance.now()` around `run` in `useSimulation.ts` gives you wall-clock.
 
 The UI path is less critical but: don't put non-trivial work in render. `useMemo` over the full `SimulationResult` is fine; recomputing histograms on every keystroke is not.
 
@@ -151,7 +152,7 @@ Keep docs accurate. Stale docs that contradict the code are worse than no docs.
 ## Known sharp edges
 
 - **Next.js 16 / React 19.** APIs may differ from what most tutorials show. If something doesn't work the way you remember, check `node_modules/next/dist/docs/` for the current version before googling. See `AGENTS.md`.
-- **PrimeDope compare mode** uses a second calibration path (`calibrateShelledItm` + `pdCurves`). Changes to the main calibration don't automatically propagate — check the compare run's test coverage when you touch `finishModel.ts`.
+- **PrimeDope compare mode** (`calibrationMode: "primedope-binary-itm"`) uses a second calibration path: `buildBinaryItmAssets` in `finishModel.ts` builds the binary-ITM pmf with no α search (`compileEntry.ts` falls back to `calibrateShelledItm` / `calibrateAlpha` only when the PD finish-model flag is off; `pdCurves.ts` is PD's payout tables). Changes to the main calibration don't automatically propagate — check the compare run's test coverage when you touch `finishModel.ts`.
 - **`samplePaths.paths.length` ≠ `samples`** — only the first 1000 global sample indices have stored trajectory paths. The slider cap in `ResultsView` reflects this. The prefix length is `HI_RES_GLOBAL_CAP` in `simulateShard` (`hotLoop.ts`); changing it means also changing the `Math.min(1000, …)` caps in `ResultsView.tsx`.
 - **Seed slot collisions.** If two stochastic channels both call `mulberry32(mixSeed(seed, s))` with the same seed, they'll be correlated in ways you probably didn't intend. Give each channel its own XOR-offset of the seed (e.g. `seed ^ 0xbeef`).
 

@@ -1,17 +1,20 @@
 "use client";
 
 /**
- * React bridge to the worker pool. The only React-touching file in
- * `src/lib/sim/`; everything else is pure TS testable under Vitest.
+ * React bridge to the worker pool. With `useResulthubLookup.ts` one of the two
+ * React-touching files in `src/lib/sim/`; the engine modules are pure TS
+ * testable under Vitest (`engineSourcePurity.test.ts` pins the list).
  *
- * Owns a pool of `Worker` instances across renders (refs, not state),
- * dispatches a `BuildRequest` to worker 0, then fans out `ShardRequest`s,
- * merges shards as they return, and exposes `{status, progress, result,
- * elapsedMs, error}` to the UI. Tracks `jobId` so late messages from a
- * cancelled run are ignored.
+ * Owns a pool of `Worker` instances across renders (refs, not state), plans
+ * the shards of every pass and posts them all to the pool at once (each worker
+ * compiles the schedule itself), then posts one `BuildRequest` per pass with
+ * that pass's shards and exposes `{status, progress, result, elapsedMs, error,
+ * ...}` to the UI (see the return statement). Tracks `jobId` so late messages
+ * from a cancelled run are ignored.
  *
  * Wall-clock timing lives here (not in the engine) so determinism inside
- * `engine.ts` is preserved.
+ * `engine.ts` is preserved. The one `Math.random()` is the seed of the
+ * engine-only "random" compare pass, which no UI control sends.
  */
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { RawShard } from "./engine";

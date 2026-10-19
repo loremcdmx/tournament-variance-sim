@@ -28,7 +28,6 @@
 import { compileSchedule, makeCheckpointGrid } from "../src/lib/sim/engine";
 import { validateSchedule } from "../src/lib/sim/validation";
 import type {
-  ControlsState as _ControlsState,
   SimulationInput,
   TournamentRow,
   FinishModelId,
@@ -44,7 +43,8 @@ interface ControlsLite {
   seed: number;
   finishModelId: FinishModelId;
   alphaOverride: number | null;
-  compareWithPrimedope: boolean;
+  /** Plan a second (comparison) pass, as `useSimulation.buildPasses` does under compare mode. */
+  twinPass: boolean;
   usePrimedopePayouts: boolean;
   usePrimedopeFinishModel: boolean;
   usePrimedopeRakeMath: boolean;
@@ -89,7 +89,7 @@ const controlsBase: ControlsLite = {
   seed: 42,
   finishModelId: "power-law",
   alphaOverride: null,
-  compareWithPrimedope: BIG,
+  twinPass: BIG,
   usePrimedopePayouts: true,
   usePrimedopeFinishModel: true,
   usePrimedopeRakeMath: true,
@@ -128,7 +128,6 @@ function buildInput(s: TournamentRow[], c: ControlsLite): SimulationInput {
       empiricalBuckets:
         c.finishModelId === "empirical" ? c.empiricalBuckets : undefined,
     },
-    compareWithPrimedope: c.compareWithPrimedope,
     usePrimedopePayouts: c.usePrimedopePayouts,
     usePrimedopeFinishModel: c.usePrimedopeFinishModel,
     usePrimedopeRakeMath: c.usePrimedopeRakeMath,
@@ -156,12 +155,11 @@ function computeBatchKey(input: SimulationInput): string {
 
 // Replicates useSimulation.buildPasses (primary branch only — twin pass
 // is structurally identical cost).
-function buildPasses(input: SimulationInput) {
-  const twin = !!input.compareWithPrimedope;
+function buildPasses(input: SimulationInput, twin: boolean) {
   const passes = [
     {
       key: "primary" as const,
-      input: { ...input, compareWithPrimedope: false },
+      input: { ...input },
       calibrationMode: "alpha" as const,
       weight: twin ? 0.5 : 1,
     },
@@ -169,7 +167,7 @@ function buildPasses(input: SimulationInput) {
   if (twin) {
     passes.push({
       key: "comparison" as unknown as "primary",
-      input: { ...input, compareWithPrimedope: false },
+      input: { ...input },
       calibrationMode: "alpha" as const,
       weight: 0.5,
     });
@@ -210,7 +208,7 @@ const previewModel = {
       : undefined,
 };
 const input = buildInput(schedule, controlsBase);
-const passes = buildPasses(input);
+const passes = buildPasses(input, controlsBase.twinPass);
 
 console.log(
   `profile=${BIG ? "heavy" : "light"}  rows=${schedule.length}  repeats=${controlsBase.scheduleRepeats}  runs=${RUNS}`,
@@ -247,7 +245,7 @@ const phases: Array<{
   },
   {
     name: "buildPasses",
-    fn: () => buildPasses(input),
+    fn: () => buildPasses(input, controlsBase.twinPass),
   },
   {
     name: "compileSchedule × passes",

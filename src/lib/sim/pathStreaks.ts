@@ -1,8 +1,9 @@
 // Re-derive drawdown / breakeven / cashless / recovery stats from stored
 // hi-res sample paths, with an optional cumulative rakeback curve shift.
-// Used by the UI to toggle "with RB" vs "without RB" views on widgets that
-// depend on path shape (not just sample mean), since those cannot be
-// reverse-engineered from scalar result aggregates.
+// Script-only: the app does not import it (the results view shifts the
+// engine's full-sample output with `shiftResultByRakeback` and leaves the
+// path-dependent stats at the engine's value); `scripts/bench_rakeback_pipeline.ts`
+// and `scripts/probe_streak_rb_toggle.ts` do.
 //
 // Resolution caveat: engine stores ~1000 hi-res paths on a grid of up to
 // 4000 checkpoints. For typical N=500 schedules each checkpoint is exactly

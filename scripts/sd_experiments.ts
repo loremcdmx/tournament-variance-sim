@@ -9,11 +9,12 @@
  * All findings get appended to notes/primedope_sd_theories.md by hand.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { runSimulation } from "../src/lib/sim/engine";
 import { compileSchedule, makeCheckpointGrid } from "../src/lib/sim/engine";
 import { buildBinaryItmAssets } from "../src/lib/sim/finishModel";
 import { getPayoutTable } from "../src/lib/sim/payouts";
+import { compiledEntryMoments } from "../src/lib/sim/scheduleMoments";
 import type { SimulationInput } from "../src/lib/sim/types";
 
 const REF: SimulationInput = {
@@ -34,8 +35,10 @@ const REF: SimulationInput = {
   bankroll: 1000,
   seed: 42,
   finishModel: { id: "power-law" },
-  compareWithPrimedope: true,
 };
+
+// One calibration per engine call (the app's twin pass is two calls).
+const REF_PD: SimulationInput = { ...REF, calibrationMode: "primedope-binary-itm" };
 
 const N_TOURNEYS = 1000;
 
@@ -89,10 +92,7 @@ function analyticalBinaryItmSd() {
 function inspectCompiledEntries() {
   bar();
   console.log("EXP A — what does compileSchedule produce for the reference?");
-  const compiled = compileSchedule(
-    { ...REF, calibrationMode: "primedope-binary-itm", compareWithPrimedope: false },
-    "primedope-binary-itm",
-  );
+  const compiled = compileSchedule(REF_PD, "primedope-binary-itm");
   console.log(`  tournamentsPerSample = ${compiled.tournamentsPerSample}`);
   console.log(`  flat.length          = ${compiled.flat.length}`);
   if (compiled.flat.length > 0) {
@@ -100,17 +100,8 @@ function inspectCompiledEntries() {
     console.log(
       `  flat[0]: paid=${e.paidCount} singleCost=$${e.singleCost.toFixed(2)} alpha=${e.alpha.toFixed(3)} itm=${e.itm.toFixed(4)}`,
     );
-    // Reconstruct prize moments from cdf+prizeByPlace
     const N = e.prizeByPlace.length;
-    const pmf = new Float64Array(N);
-    pmf[0] = e.cdf[0];
-    for (let i = 1; i < N; i++) pmf[i] = e.cdf[i] - e.cdf[i - 1];
-    let mu = 0,
-      mu2 = 0;
-    for (let i = 0; i < N; i++) {
-      mu += pmf[i] * e.prizeByPlace[i];
-      mu2 += pmf[i] * e.prizeByPlace[i] * e.prizeByPlace[i];
-    }
+    const { meanDollar: mu, secondDollar: mu2 } = compiledEntryMoments(e);
     console.log(
       `  N=${N}  μ=$${mu.toFixed(2)}  σ₁=$${Math.sqrt(mu2 - mu * mu).toFixed(1)}  σ_${N_TOURNEYS}=$${(Math.sqrt(mu2 - mu * mu) * Math.sqrt(N_TOURNEYS)).toFixed(0)}`,
     );
@@ -127,7 +118,7 @@ function empiricalVsAnalytical() {
   bar();
   console.log("EXP B′ — empirical sim σ side-by-side with analytical σ (PD-style)");
   const r = runSimulation(REF);
-  const c = r.comparison!;
+  const c = runSimulation(REF_PD);
   console.log(`  empirical sim:  μ=$${c.stats.mean.toFixed(0)}  σ=$${c.stats.stdDev.toFixed(0)}`);
   console.log(`  PrimeDope site: μ=$5000             σ=$5789 (sim) / $5607 (math)`);
   console.log(`  alpha primary:  μ=$${r.stats.mean.toFixed(0)}  σ=$${r.stats.stdDev.toFixed(0)}`);
@@ -139,8 +130,8 @@ function seedScatter() {
   console.log("EXP C — SD scatter across 8 seeds (noise floor for binary-ITM run)");
   const sds: number[] = [];
   for (let s = 42; s < 50; s++) {
-    const r = runSimulation({ ...REF, seed: s, samples: 2000 });
-    sds.push(r.comparison!.stats.stdDev);
+    const r = runSimulation({ ...REF_PD, seed: s, samples: 2000 });
+    sds.push(r.stats.stdDev);
   }
   const mean = sds.reduce((a, b) => a + b, 0) / sds.length;
   const var_ = sds.reduce((a, b) => a + (b - mean) ** 2, 0) / sds.length;
@@ -225,10 +216,14 @@ function sweepFieldSizes() {
     "EXP F — sweep: for several field sizes, compare our mtt-primedope σ against the best-matching h[i] from tmp_legacy.js",
   );
   // Parse tmp_legacy.js h[] tables once (same parser as dump_pd_tables.ts).
+  if (!existsSync("tmp_legacy.js")) {
+    console.log("  (tmp_legacy.js not found — skipping sweep)");
+    return;
+  }
   const src = readFileSync("tmp_legacy.js", "utf8");
   const start = src.indexOf("var g, h = [");
   if (start < 0) {
-    console.log("  (tmp_legacy.js not found — skipping sweep)");
+    console.log("  (no h[] table in tmp_legacy.js — skipping sweep)");
     return;
   }
   const openBracket = src.indexOf("[", start);

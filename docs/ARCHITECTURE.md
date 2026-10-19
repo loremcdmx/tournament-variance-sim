@@ -99,7 +99,7 @@ The current split is:
 
 ## Data flow per run
 
-1. **User clicks Run.** `useSimulation.onRun(input)` is called with `SimulationInput` (schedule, samples, seed, model, bankroll, noise params, etc.).
+1. **User clicks Run.** `useSimulation.run(input)` is called with `SimulationInput` (schedule, samples, seed, model, bankroll, noise params, etc.).
 
 2. **Compile step.** There is no separate build round-trip before the shards. A worker runs `compileSchedule(input, calibrationMode)` itself for every `ShardRequest` it receives (and again for the final `BuildRequest`); it is a pure function of the input, so every worker gets the same schedule without sharing state. It:
    - For each row, picks the effective field size (or enumerates variants if `fieldVariability` is set).
@@ -109,7 +109,7 @@ The current split is:
      (`normalizeGameTypeConsistency`), never as a field of its own. A Battle
      Royale row carries no range.
    - Calls `buildFinishPMF(N, model, α)` with a starting α, then `calibrateAlpha()` which binary-searches α so that the *realized* ROI (Σ pmf × payout − cost) matches `row.roi`. This is the honest calibration.
-   - For the PrimeDope compare run, uses `calibrateShelledItm` + `pdCurves` to pin ITM rate and solve for α/shape.
+   - For the PrimeDope compare run (`calibrationMode: "primedope-binary-itm"`), `buildBinaryItmAssets` builds the binary-ITM pmf directly (every paid place equally likely, real top-heavy payouts kept) and there is no α search. `compileEntry.ts` falls back to `calibrateShelledItm` (a row with a pinned `itmRate`) or `calibrateAlpha` only when the PD finish-model flag is off. `pdCurves.ts` is PD's payout-table family, read by the `mtt-primedope` payout structure; it does not calibrate anything.
    - For bounty rows, applies the requested KO EV share as a finish-shape
      target and then closes constrained rows (`itmRate`, shells, fixed-shape
      models) by setting the actual bounty budget to `targetTotal - cashEV`.
@@ -121,7 +121,7 @@ The current split is:
 
 3. **Shard dispatch.** `runJob` splits `[0, samples)` of every pass into contiguous shards (formula under "Performance knobs"), pre-assigns each shard to worker `i % W` round-robin and posts all of them at once; each worker works through its own queue serially. Workers share no mutable state — a `ShardRequest` carries the `SimulationInput` and the calibration mode, not the compiled schedule, and the worker compiles it (step 2) and runs `simulateShard(sStart, sEnd)`. A worker keeps the last compiled schedule in `compileCache.ts`, keyed by the whole input plus the mode, so the shards of one job and its build compile once per worker; the build clears it. Seeds are not shard-local: the hot loop uses `mixSeed(seed, sampleIdx)` where `sampleIdx` is the *global* index in `[0, samples)`. This is what makes the run deterministic independent of pool size.
 
-4. **Progress reporting.** Workers post `ShardProgressMsg` periodically (every ~1000 samples or so). The hook aggregates into a single `progress` number exposed to the UI.
+4. **Progress reporting.** Workers post `ShardProgressMsg` as a shard runs. The tick count adapts to the shard size (`progressTicks` in `hotLoop.ts`: 15 to 40 per shard, growing with the log of its sample count). The hook aggregates them into a single `progress` number exposed to the UI.
 
 5. **Shard merging.** When a worker returns `ShardResultMsg`, the hook stores the `RawShard`. Once every shard of every pass has arrived, the hook posts one `BuildRequest` per pass (worker `i % W`), carrying that pass's shards. That worker, not the main thread, runs `mergeShards([...])` (concatenates the shard-local buffers, picks the global best/worst path, sums histograms) and then `buildResult()` for the post-processing: percentile envelopes, downswings catalog, row decomposition, risk-of-ruin integration, convergence curves. It posts `build-progress` messages while it works and the `SimulationResult` when it is done.
 
@@ -214,8 +214,8 @@ If you add a new stochastic mechanism:
 ### Seed eras
 
 Determinism is `input + seed → bytes` *within one construction of `mixSeed`*.
-`mixSeed` (`rng.ts`) was changed in v0.7.x to finalize the seed before it meets
-the sample index: the old raw XOR made seeds that differ only in low bits the
+`mixSeed` (`rng.ts`) was changed in commit `3eb91fb` (2026-09-02, first shipped in
+v0.7.7) to finalize the seed before it meets the sample index: the old raw XOR made seeds that differ only in low bits the
 same simulation with samples permuted (seeds 1, 2, 3, 7 had byte-identical
 `stats.mean/stdDev`). Every simulation output changed with that commit — a new
 numerical era. Stored runs and share links from before it reproduce the same
@@ -242,21 +242,27 @@ Only a subset of per-sample data is retained — keeping all of it for 100k samp
 
 ## React integration
 
-`useSimulation.ts` is the **only** React-touching file in `src/lib/sim/`. Everything else is pure TS, testable under Vitest without a DOM.
+`useSimulation.ts` and `useResulthubLookup.ts` are the only React-touching files in `src/lib/sim/`. Every engine module is pure TS, testable under Vitest without a DOM, and `engineSourcePurity.test.ts` pins both facts: the engine modules never read the clock or `Math.random`, and nothing but those two hooks imports React. (`useSimulation.ts` times the run with `performance.now()` and seeds the engine-only "random" compare pass with `Math.random()`; `resulthubLookup.ts` and `useResulthubLookup.ts` use the current date for the ResultHub lookup.)
 
-The hook exposes:
+The core of what `useSimulation` returns:
 
 ```ts
 {
-  run(input: SimulationInput): void,
+  run(input, source?, opts?): void,
   cancel(): void,
   status: "idle" | "running" | "done" | "error",
   progress: number,              // 0..1
+  stage: ProgressStage | null,   // "simulating" or a build stage
   result: SimulationResult | null,
   elapsedMs: number,
   error: string | null,
+  // ...plus the cached sibling-seed runs (availableRuns, selectRun), the
+  // background precompute (backgroundStatus, interruptBackground), the
+  // PrimeDope-only re-run (runPdOnly, pdStatus, pdProgress) and estimateMs.
 }
 ```
+
+The full surface is the return statement at the bottom of `useSimulation.ts`.
 
 It owns a pool of `Worker` instances across renders (refs, not state) and transitively tracks `jobId` so late shard messages from a cancelled run are ignored.
 
@@ -272,7 +278,7 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 - **Shard count** — per pass `min(W × oversub, ⌊S / minPerShard⌋, S)` in `runJob` (`useSimulation.ts`), where `W` is the pool size, `S` the sample count, `oversub` is 4 (6 from 200 000 samples) and `minPerShard` is 64 (32 from 100 000 samples). Shards are over-subscribed so a slow tail shard does not park the progress bar; each worker is still CPU-bound, so this buys granularity, not speed. The split never changes the result (see the seed contract).
 - **Checkpoint grid K** — `makeCheckpointGrid(N)` in `grids.ts`. Currently `K = min(240, N)`. Bigger K = smoother trajectory charts but more main-thread sort work.
 - **`HI_RES_GLOBAL_CAP`** — how many sample paths to retain at full resolution: the first 1000 global sample indices (`simulateShard` in `hotLoop.ts`). Trades memory for slider range; the `Math.min(1000, …)` caps in `ResultsView.tsx` must move with it.
-- **`HEAT_BIN_COUNT`** — PKO heat bin count. 13 is more than enough; 5 would be fine.
+- **`HEAT_BIN_COUNT`** — PKO heat bin count, 33 (`engineConstants.ts`). It sets how finely the per-tournament heat Gaussian is quantized (`HEAT_BIN_SCALE`), so changing it changes PKO heat output: treat it as a model change, not a tuning knob.
 
 ## Testing
 
@@ -284,7 +290,7 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 - **Empirical histogram reproduction** — feeding a flat histogram gives uniform pmf; feeding a spike at position 1 makes the player always win.
 - **Payout normalization** — every `getPayoutTable()` result sums to 1 ± ε.
 
-Add new tests next to the file they cover. Keep them fast — the whole suite runs in ~40s on an idle machine (118 files / 1637 tests; CPU-bound Monte Carlo, several times slower under load — see `CONTRIBUTING.md` on reading a red run).
+Add new tests next to the file they cover. Keep them fast — the whole suite runs in ~40s on an idle machine (166 files / 2128 tests; CPU-bound Monte Carlo, several times slower under load — see `CONTRIBUTING.md` on reading a red run).
 
 ## What lives outside `src/lib/sim/`
 
@@ -301,7 +307,7 @@ Add new tests next to the file they cover. Keep them fast — the whole suite ru
   that would otherwise bloat `ResultsView.tsx`.
 - **`src/lib/scenarios.ts`** — declarative demo presets. Read by the scenario grid in `page.tsx`.
 - **`src/lib/persistence.ts`** — localStorage + share-URL. Stores only the serializable state, no worker state. `buildShareUrl` leaves the sender's ResultHub nicknames out of the link (`withoutShareIdentifiers`). A state with no rows is refused on read. `readShareHash` tells a link that carries nothing from a `#s=` link that does not decode, and the page clears the second kind and says so. `saveLocal` and `saveUserPresets` return whether the browser took the write; the page shows a notice for a refused autosave and an alert for a refused preset save or import.
-- **`src/lib/lineStyles.ts`** — tracker-inspired color/width presets for the trajectory chart (HM2, H2N, HM3, PT4, PokerCraft, PokerDope).
+- **`src/lib/lineStyles.ts`** — color/width presets for the trajectory chart (`classic`, `duotone`, `mono`, `vivid`, `highContrast`, `neon`); no tracker branding.
 
 ## Remaining structural debt
 
@@ -352,8 +358,8 @@ around.
 
 | Goal                              | Start here                                             |
 | --------------------------------- | ------------------------------------------------------ |
-| Add a payout structure            | `src/lib/sim/payouts.ts` + `types.ts` + `dict.ts`      |
-| Add a finish model                | `src/lib/sim/finishModel.ts` + `types.ts`              |
+| Add a payout structure            | `types.ts` + `payouts.ts` + `dict.ts` (`payout.<id>.short` / `.full`) + the `STRUCTURES`, `PAYOUT_COMPAT` and `PAYOUT_GAMETYPE_ALLOW` tables in `ScheduleEditor.tsx` + `PAYOUT_STRUCTURE_ID_RECORD` in `persistence.ts` |
+| Add a finish model                | `src/lib/sim/finishModel.ts` + `types.ts` + `FINISH_MODEL_ID_RECORD` in `persistence.ts` + the select in `ControlsPanel.tsx` |
 | Add a new chart                   | `src/components/charts/` + `ResultsView.tsx`           |
 | Add a noise / tilt channel        | `SimulationInput` in `types.ts` + hot loop in `hotLoop.ts` |
 | Add a demo scenario               | `src/lib/scenarios.ts` + `dict.ts`                     |

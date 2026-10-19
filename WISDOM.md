@@ -30,7 +30,7 @@ Use this file as a guardrail against those mistakes.
 ## The Project's Hard Contracts
 
 - Determinism is sacred: `SimulationInput + seed -> byte-identical SimulationResult`.
-- No random/time side channels inside `src/lib/sim/` hot loops.
+- No random/time side channels in the engine modules: everything in `src/lib/sim/` except `useSimulation.ts`, `useResulthubLookup.ts` and `resulthubLookup.ts`, and only those two `use*.ts` files import React (`engineSourcePurity.test.ts` pins both lists; "the whole folder" and "the only React file" were never true).
 - No allocations inside inner loops.
 - i18n is type-enforced; every user-visible string needs both `en` and `ru`.
 - Cleanup is its own commit. Do not hide feature work inside cleanup.
@@ -149,6 +149,8 @@ When asked "what is the state of the project?", do this in order:
    - untracked files that tracked files already import.
 5. Run the real gates:
    - `npx tsc --noEmit`
+   - `npx tsc -p tsconfig.scripts.json` (the main config excludes `scripts/`; eslint
+     ignores it too, so before this config a renamed field broke nine scripts unseen)
    - `npm test` or `./node_modules/.bin/vitest run`
    - `npm run build` (prefer `--webpack` when detached-worktree/Turbopack
      symlink issues muddy the signal)
@@ -173,8 +175,13 @@ logic bug.
 
 ## Branch / Process Wisdom
 
-The documented branch policy says `dev >= main`. In practice, this has drifted
-before. Treat branch topology as a fact to verify, not a law to assume.
+`main` is prod and takes work through PRs; `dev` is an optional integration
+branch, not a rule. It has lagged and diverged from `main`, and a clone may have no
+local `dev`. The docs no longer prescribe `dev >= main` or `git merge --ff-only dev`
+(the command aborts without a local `dev`); check with `git fetch` and
+`git log origin/main..origin/dev` / `git log origin/dev..origin/main`. Treat branch
+topology as a fact to verify, not a law to assume, and never force-push to restore
+an invariant.
 
 If `AGENTS.md`, `BACKLOG.md`, and `git branch -vv` disagree about the active
 branch or promotion path:
@@ -407,6 +414,21 @@ string replacement reads `$$`, `$&`, `` $` `` and `$'` in the text, so a row nam
   (`stepNumFieldValue`): the native step grid starts at `min`, so BB 1 became 1.01
   and SD 100 became 101. The spin buttons are hidden globally; a mouse wheel over a
   focused field still takes the native, min-anchored step.
+- `simulateCash` normalizes its input first, and `normalizeCashInput` clamps the path count
+  to the work budget (`MAX_TOTAL_SIM_HANDS`, 200 M hands): a script that asks for 20 000 paths
+  of 100 000 hands runs 2 000 and of 1 M hands runs 200. Print `result.samples`, not the
+  number asked for. `scripts/cash_crosscheck.ts` used to print "NaN%" (a renamed field,
+  `probBelowThresholdEver`) under a "20k paths" header; it now says how many paths ran and
+  prints the z-score of the simulated mean against the analytic one.
+- Open, not fixed (changing the sampler is a new numerical era): the cash sampler's mean sits
+  about one standard error above the analytic mean. Twelve base seeds give a mean z of +1.2
+  (se 0.3) at 2 000 paths x 100 000 hands and +1.4 (se 0.3) at 200 paths x 1 M hands (11 and
+  12 of the 12 seeds positive). The same numbers come out of a bare replay of the engine's
+  per-path draw (`mulberry32(mixSeed(seed, path))` into Box-Muller, no cash code), so it is
+  the sampler, not the accounting. A pooled run of 1e9 draws in 10 000-draw paths showed no
+  mean (z 0.6) but a variance of 1.00023 (5 se high). Do not read the "+8 %" high-volume
+  mean as an RNG-period overlap: at the budgeted 200 paths it is z 2.3, and the budget is
+  what keeps the paths from overlapping.
 - `normalizeCashInput` caps a stake's `handShare` at `MAX_HAND_SHARE` (two shares
   of 1e308 summed to Infinity and `compileStakeSchedule` threw) and folds a seed
   outside the 32-bit window (`-2^31 <= seed < 2^32` stays as typed) onto the seed
@@ -485,6 +507,12 @@ The same class, other doors, all closed the same way:
   array overwrote that edit. `ScheduleEditor.rowOps.test.tsx` renders the editor
   on a stale base and fires its real handlers.
 
+What Run sends is `buildSimulationInput(applyItmTarget(schedule, cfg), controls, advanced)`
+(`src/lib/ui/simulationInput.ts`; the page's `buildInput` is a one-line wrapper). Tests that
+need "the input a run would use" call it, as `scenarios.test.ts` and `simulationInput.test.ts`
+do; a hand-rebuilt copy skipped the ITM stamp and the basic-mode sanitizer and so
+tested a run nobody makes. The click-to-worker wiring itself is browser-only.
+
 Stable seeds made this visible (identical result), they did not cause it —
 before the seed became stable the same bug produced a *different* result for
 the *wrong* N, which is worse. The fix in `page.tsx`: Run blurs the focused
@@ -519,7 +547,8 @@ contract breaking, and the root cause is in `src/lib/sim/`.
 
 ## Seed Era And Reproducibility
 
-`mixSeed` (`src/lib/sim/rng.ts`) was changed in v0.7.x so the seed is
+`mixSeed` (`src/lib/sim/rng.ts`) was changed in commit `3eb91fb` (2026-09-02, first
+released in v0.7.7; `CHANGELOG.md` carries the note) so the seed is
 finalized before it meets the sample index. The old construction XOR-ed them
 raw, which made seeds differing only in low bits the same simulation with
 samples permuted: seeds 1, 2, 3, 7 had byte-identical `stats.mean/stdDev`.
@@ -569,6 +598,12 @@ Consequences to remember:
 - `recoveryMedian` / `recoveryP90` are NaN when no sample recovered (as in the
   cash engine), never 0: a 0 reads as an instant recovery. Every reader must
   tolerate NaN; the stat cards print a dash.
+- A run that comes back to its old peak without passing it is recovered (`profit === runningMax`
+  in the hot loop, `>=` in the cash engine). The strict `>` counted it as "Never recovered":
+  on the test's heads-up winner-takes-all schedule (zero rake, 8 entries, 600 runs) 73.5 %
+  of runs read as never recovered against 58.3 % by the definition. `engine.test.ts` ("recovery on a lattice")
+  recomputes the share from the stored paths. Runs with no drawdown at all store -2 and are
+  in neither group.
 - `scheduleRepeats` is a sample-length multiplier, not a number of days (the
   tournament-target field forces it to 1). The BR promo card's per-day figures
   use the leaderboard anchor's own `tournamentsPerDay`; observed totals and a
@@ -849,7 +884,7 @@ describe. Do not undo these without re-checking:
   on every paid place and lands at -rake/(1+rake) at the table's own ITM, and far
   from it at any other ITM (+51 % at 25 % ITM on a 10 % rake row). The help text and
   `emp.none` say so; "PrimeDope-style" belongs to the compare path
-  (`calibrateShelledItm` with a binary-ITM shell), not to this model.
+  (`buildBinaryItmAssets`, a binary-ITM pmf with no α search), not to this model.
 - The CSV import builds its messages from dict keys (`ImportMessage`,
   `importMessageFor(t)`). `parseImportCSV(raw)` with no formatter still returns the
   English text the tests read; the editor passes the live `t` and drops the shown

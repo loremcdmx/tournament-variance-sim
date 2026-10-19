@@ -63,7 +63,7 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 - **Web Worker** — MC-движок не блокирует UI, пул размером `min(16, navigator.hardwareConcurrency − 2)`
 - **uPlot** — графики (main-thread работа минимизирована через чекпойнт-сетки)
 - **Tailwind 4**
-- **Vitest** — 400+ тестов на движке и UI-математике: determinism, realized-ROI-in-SE, progress lifecycle, rakeback/path transforms, row decomposition sums, empirical histogram reproduction и т.д.
+- **Vitest** — 2000+ тестов на движке и UI-математике: determinism, realized-ROI-in-SE, progress lifecycle, rakeback/path transforms, row decomposition sums, empirical histogram reproduction и т.д.
 
 ## Запуск
 
@@ -97,7 +97,7 @@ src/
 │   │   ├── UplotChart.tsx          # тонкий uPlot обёртчик с ResizeObserver
 │   │   ├── DistributionChart.tsx   # гистограмма финального P&L
 │   │   ├── ConvergenceChart.tsx    # сходимость mean/stdDev
-│   │   ├── DecompositionChart.tsx  # row variance contributions
+│   │   ├── ProveEdgeCard.tsx       # «сколько турниров нужно, чтобы отличить edge от шума»
 │   │   ├── FinishPMFPreview.tsx    # per-row предпросмотр pmf + "откуда приходит профит"
 │   │   └── barsPath.ts             # кастомные uPlot paths для баров
 │   └── ui/
@@ -111,19 +111,18 @@ src/
 │   │   ├── engine.ts         # orchestrator + barrel; compile/hotLoop/buildResult split into siblings
 │   │   ├── finishModel.ts    # pmf-модели + α-калибровка (binary search)
 │   │   ├── payouts.ts        # таблицы выплат по месту для всех структур
-│   │   ├── pdCurves.ts       # PrimeDope-style кривые для binary-ITM compare
+│   │   ├── pdCurves.ts       # PrimeDope: его таблицы выплат (payout `mtt-primedope`)
 │   │   ├── gameType.ts       # freezeout / pko / mystery пресеты полей
 │   │   ├── modelPresets.ts   # "naive" / "primedope" / "realistic" прессеты
 │   │   ├── itmTarget.ts      # глобальный ITM% с per-row override
 │   │   ├── validation.ts     # проверка schedule перед прогоном
 │   │   ├── freezeShape.ts     # freeze-out shape fitting (real-data calibration)
-│   │   ├── freezeShapeFit.ts  # least-squares fit for freeze-out payout shapes
 │   │   ├── realPayouts.ts     # real-world payout table samples + comparison
 │   │   ├── rng.ts            # mulberry32 + mixSeed
 │   │   ├── worker.ts         # Web Worker: принимает ShardRequest → возвращает RawShard
 │   │   ├── useSimulation.ts  # React-хук: пул воркеров, shard dispatch, progress
 │   │   ├── progress*.ts      # pure progress math / constants shared with UI
-│   │   └── *.test.ts         # vitest — 24 файла, 400+ тестов, запускаются через `npm test`
+│   │   └── *.test.ts         # vitest, рядом с модулем; запускаются через `npm test`
 │   │
 │   ├── i18n/
 │   │   ├── dict.ts           # плоский словарь en/ru (все UI строки тут)
@@ -137,7 +136,7 @@ src/
 │   ├── theme/
 │   ├── scenarios.ts          # демо-пресеты (PrimeDope reference, RomeoPro)
 │   ├── persistence.ts        # load/save state, share-URL, user presets в localStorage
-│   └── lineStyles.ts         # пресеты цветов/толщины линий (HM2, H2N, HM3, PT4, PokerCraft, PokerDope)
+│   └── lineStyles.ts         # пресеты цветов/толщины линий траекторий (classic, duotone, mono, vivid, highContrast, neon)
 │
 scripts/                      # оффлайн-утилиты (если есть)
 notes/                        # заметки по модели, не код
@@ -154,7 +153,7 @@ docs/
 SimulationInput (UI)
        │
        ▼
-useSimulation.onRun()        ← spawnPool() если нужно
+useSimulation.run()          ← spawnPool() если нужно
        │
        │  1) ShardRequest × K → все шарды всех проходов сразу раздаются
        │     воркерам round-robin; каждый воркер сам компилирует schedule
@@ -172,7 +171,7 @@ SimulationResult → ResultsView
 Ключевые файлы:
 
 - **`engine.ts`** — тонкий оркестратор (`runSimulation` + `mergeShards`) + barrel, который реэкспортит модули ниже (импорт-путь `./engine` у потребителей неизменен). `compile.ts` — `compileSchedule()` собирает расписание из скомпилированных рядов; сам heavy-lifting (калибровка α по ряду, alias-таблицы, PKO heat-биннинг) живёт в `compileEntry.ts`, закрытые формы моментов — в `scheduleMoments.ts`, чередование рядов — в `schedulePassOrder.ts`. `hotLoop.ts` — `simulateShard()`, hot loop, чистая арифметика на типизированных массивах. `buildResult.ts` — post-processing (гистограммы, envelope, decomposition, risk-of-ruin); сами секции живут в `resultStats.ts`, `resultEnvelopes.ts`, `resultStreaks.ts`, `resultDecomposition.ts`, `resultCurves.ts`, `resultLeaderboard.ts`.
-- **`finishModel.ts`** — `buildFinishPMF(N, model, α)` возвращает Float64Array длины N, сумма = 1. `calibrateAlpha()` делает бинпоиск по α под заданный целевой ROI. `calibrateShelledItm()` — альтернативный калибратор, который пинит ITM rate и решает α/форму под ROI.
+- **`finishModel.ts`** — `buildFinishPMF(N, model, α)` возвращает Float64Array длины N, сумма = 1. `calibrateAlpha()` делает бинпоиск по α под заданный целевой ROI. `calibrateShelledItm()` — альтернативный калибратор, который пинит ITM rate и решает α/форму под ROI. `buildBinaryItmAssets()` — binary-ITM pmf для PrimeDope-compare (`calibrationMode: "primedope-binary-itm"`), без поиска α.
 - **`payouts.ts`** — возвращает массив фракций призового для 1..paidCount, сумма = 1. Без денежных значений — engine умножает на prize pool сам.
 - **`worker.ts`** — stateless, один воркер = один `self.onmessage`. Весь state живёт в main thread (пул, jobId, shard-счётчик).
 - **`useSimulation.ts`** — React-хук владеет пулом воркеров, диспетчит shard-ы, merge-ит результаты, выкидывает statuses в UI.
@@ -186,14 +185,17 @@ SimulationResult → ResultsView
 ### Добавить payout-структуру
 1. Добавить id в `PayoutStructureId` в `src/lib/sim/types.ts`.
 2. Добавить case в `getPayoutTable()` в `src/lib/sim/payouts.ts` — вернуть массив фракций, сумма = 1.
-3. Добавить label в `src/lib/i18n/dict.ts` (ключ `payout.<id>`).
-4. Прогнать `npm test src/lib/sim/payouts.test.ts` — тесты поймают ненормализованный массив.
+3. Добавить подписи в `src/lib/i18n/dict.ts` — ключи `payout.<id>.short` и `payout.<id>.full`.
+4. В `src/components/ScheduleEditor.tsx` добавить id в `STRUCTURES` (иначе его нет в выпадающем списке), задать окно размера поля в `PAYOUT_COMPAT` и вписать id в `PAYOUT_GAMETYPE_ALLOW` для форматов, где он допустим (иначе он уедет в «Недоступно»).
+5. В `src/lib/persistence.ts` добавить id в `PAYOUT_STRUCTURE_ID_RECORD` (без него `tsc` не соберётся; сохранённый или присланный по ссылке id вне этого списка при загрузке заменяется на формат по умолчанию).
+6. Прогнать `npm test src/lib/sim/payouts.test.ts` — тесты поймают ненормализованный массив.
 
 ### Добавить модель финиша
 1. Добавить id в `FinishModelId` в `types.ts`.
 2. Добавить case в `buildFinishPMF()` в `finishModel.ts` — вернуть Float64Array длины N, сумма = 1. α обычно контролирует остроту распределения.
 3. Если модель параметрическая — калибровка (`calibrateAlpha`) уже работает через бинпоиск. Если нет (как `empirical`), бинпоиск надо short-circuit-нуть.
 4. Добавить опцию в `ControlsPanel.tsx` (select) и label в dict.ts.
+5. Добавить id в `FINISH_MODEL_ID_RECORD` в `src/lib/persistence.ts` — `tsc` не даст забыть; иначе при загрузке сохранения или ссылки модель молча заменится дефолтной.
 
 ### Добавить демо-сценарий
 1. Открыть `src/lib/scenarios.ts`.
@@ -206,10 +208,10 @@ SimulationResult → ResultsView
 2. Пройтись по каждому ключу `DICT` и добавить новое поле. Тайпскрипт поймает всё пропущенное — код не соберётся пока не заполнишь.
 
 ### Добавить ROI-шум / tilt-канал
-Смотри закомменченные блоки в `SimulationInput` (`types.ts`, строки 282–351). Они описывают каждый канал — математику, размерности, дефолты. Добавление нового канала = новое поле в `SimulationInput` + применение в hot loop `simulateShard()` в `hotLoop.ts`.
+Смотри комментарии к полям `roi*` и `tilt*` в `SimulationInput` (`src/lib/sim/types.ts`). Они описывают каждый канал — математику, размерности, дефолты. Добавление нового канала = новое поле в `SimulationInput` + применение в hot loop `simulateShard()` в `hotLoop.ts`.
 
 ### Добавить график
-1. Новый файл в `src/components/charts/`. Использовать `UplotChart` как обёртку + `common.ts` для стилей.
+1. Новый файл в `src/components/charts/`. Использовать `UplotChart` как обёртку; цвета серий брать из `src/lib/lineStyles.ts` (траектории) или `src/components/charts/overlaySeries.ts` (наложение PrimeDope).
 2. Импортнуть в `ResultsView.tsx`, обернуть в `<CollapsibleSection>`.
 
 ## Детерминизм как контракт
@@ -286,7 +288,7 @@ All deterministic — seeded `mulberry32 + mixSeed`, same seed always reproduces
 
 ## Stack
 
-Next.js 16, React 19, TypeScript, Web Worker engine pool, uPlot, Tailwind 4, Vitest (400+ tests across engine invariants and UI math).
+Next.js 16, React 19, TypeScript, Web Worker engine pool, uPlot, Tailwind 4, Vitest (2000+ tests across engine invariants and UI math).
 
 ## Run
 

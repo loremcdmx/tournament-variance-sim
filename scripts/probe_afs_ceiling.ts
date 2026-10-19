@@ -23,7 +23,7 @@ import {
 import type { ConvergenceRowFormat } from "../src/lib/sim/convergencePolicy";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
-type ProbeFormat = Exclude<ConvergenceRowFormat, "mystery-royale">;
+type ProbeFormat = Exclude<ConvergenceRowFormat, "mystery-royale" | "ocean-ko">;
 
 interface Job {
   format: ProbeFormat;

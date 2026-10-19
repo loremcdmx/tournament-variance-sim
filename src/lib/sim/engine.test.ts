@@ -2000,3 +2000,66 @@ describe("guarantee overlay stays in the cash pool", () => {
     expect(sumPrizes(entry.prizeByPlace)).toBeCloseTo(2000, 6);
   });
 });
+
+describe("recovery on a lattice of whole buy-ins", () => {
+  // Heads-up winner-takes-all at zero rake and zero ROI moves a run by exactly
+  // +10 or -10 per entry, so a run that is back at its old peak is back at it
+  // to the last bit.
+  const lattice = runSimulation({
+    schedule: [
+      {
+        id: "hu",
+        label: "HU",
+        players: 2,
+        buyIn: 10,
+        rake: 0,
+        roi: 0,
+        payoutStructure: "winner-takes-all",
+        count: 8,
+      },
+    ],
+    scheduleRepeats: 1,
+    samples: 600,
+    bankroll: 0,
+    seed: 11,
+    finishModel: { id: "power-law" },
+  });
+
+  // A run recovers when, after the first time it reached its deepest
+  // drawdown, it gets back to the peak it had then (to it, not past it).
+  function neverRecoveredShare(paths: Float64Array[]): number {
+    let unrecovered = 0;
+    for (const path of paths) {
+      let peak = path[0];
+      let maxDd = 0;
+      let peakAtDeepest = peak;
+      let troughIdx = -1;
+      for (let i = 1; i < path.length; i++) {
+        if (path[i] > peak) peak = path[i];
+        if (peak - path[i] > maxDd) {
+          maxDd = peak - path[i];
+          peakAtDeepest = peak;
+          troughIdx = i;
+        }
+      }
+      if (maxDd === 0) continue;
+      let recovered = false;
+      for (let i = troughIdx + 1; i < path.length; i++) {
+        if (path[i] >= peakAtDeepest) recovered = true;
+      }
+      if (!recovered) unrecovered++;
+    }
+    return unrecovered / paths.length;
+  }
+
+  it("stores every run, so the check below sees all of them", () => {
+    expect(lattice.samplePaths.paths).toHaveLength(600);
+    expect(lattice.samplePaths.paths[0]).toHaveLength(9);
+  });
+
+  it("counts a run that comes back to its old peak without passing it as recovered", () => {
+    const expected = neverRecoveredShare(lattice.samplePaths.paths);
+    expect(expected).toBeGreaterThan(0);
+    expect(lattice.stats.recoveryUnrecoveredShare).toBeCloseTo(expected, 12);
+  });
+});

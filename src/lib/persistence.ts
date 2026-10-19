@@ -139,49 +139,55 @@ function dropOvercapBackup(key: string) {
     // ignore SSR
   }
 }
-const VALID_FINISH_MODEL_IDS = new Set<ControlsState["finishModelId"]>([
-  "power-law",
-  "linear-skill",
-  "stretched-exp",
-  "plackett-luce",
-  "uniform",
-  "empirical",
-  "freeze-realdata-step",
-  "freeze-realdata-linear",
-  "freeze-realdata-tilt",
-  "pko-realdata-step",
-  "pko-realdata-linear",
-  "pko-realdata-tilt",
-  "mystery-realdata-step",
-  "mystery-realdata-linear",
-  "mystery-realdata-tilt",
-  "powerlaw-realdata-influenced",
-]);
-const VALID_GAME_TYPES = new Set<GameType>([
-  "freezeout",
-  "pko",
-  "ocean-ko",
-  "mystery",
-  "mystery-royale",
-]);
-const VALID_PAYOUT_STRUCTURE_IDS = new Set<PayoutStructureId>([
-  "mtt-standard",
-  "mtt-primedope",
-  "mtt-flat",
-  "mtt-top-heavy",
-  "battle-royale",
-  "mtt-pokerstars",
-  "mtt-gg",
-  "mtt-gg-freeze",
-  "mtt-sunday-million",
-  "mtt-gg-bounty",
-  "mtt-gg-mystery",
-  "satellite-ticket",
-  "sng-50-30-20",
-  "sng-65-35",
-  "winner-takes-all",
-  "custom",
-]);
+// A record, not a list: a new `FinishModelId` that is missing here fails tsc instead of failing to reload.
+const FINISH_MODEL_ID_RECORD: Record<ControlsState["finishModelId"], true> = {
+  "power-law": true,
+  "linear-skill": true,
+  "stretched-exp": true,
+  "plackett-luce": true,
+  "uniform": true,
+  "empirical": true,
+  "freeze-realdata-step": true,
+  "freeze-realdata-linear": true,
+  "freeze-realdata-tilt": true,
+  "pko-realdata-step": true,
+  "pko-realdata-linear": true,
+  "pko-realdata-tilt": true,
+  "mystery-realdata-step": true,
+  "mystery-realdata-linear": true,
+  "mystery-realdata-tilt": true,
+  "powerlaw-realdata-influenced": true,
+};
+const VALID_FINISH_MODEL_IDS: ReadonlySet<string> = new Set(Object.keys(FINISH_MODEL_ID_RECORD));
+// Same for `GameType`.
+const GAME_TYPE_RECORD: Record<GameType, true> = {
+  "freezeout": true,
+  "pko": true,
+  "ocean-ko": true,
+  "mystery": true,
+  "mystery-royale": true,
+};
+const VALID_GAME_TYPES: ReadonlySet<string> = new Set(Object.keys(GAME_TYPE_RECORD));
+// Same for `PayoutStructureId`.
+const PAYOUT_STRUCTURE_ID_RECORD: Record<PayoutStructureId, true> = {
+  "mtt-standard": true,
+  "mtt-primedope": true,
+  "mtt-flat": true,
+  "mtt-top-heavy": true,
+  "battle-royale": true,
+  "mtt-pokerstars": true,
+  "mtt-gg": true,
+  "mtt-gg-freeze": true,
+  "mtt-sunday-million": true,
+  "mtt-gg-bounty": true,
+  "mtt-gg-mystery": true,
+  "satellite-ticket": true,
+  "sng-50-30-20": true,
+  "sng-65-35": true,
+  "winner-takes-all": true,
+  "custom": true,
+};
+const VALID_PAYOUT_STRUCTURE_IDS: ReadonlySet<string> = new Set(Object.keys(PAYOUT_STRUCTURE_ID_RECORD));
 // The twin-run "random" mode predates the PrimeDope comparison; the results
 // only ever draw a PrimeDope pane, so a saved "random" is read as that.
 const VALID_COMPARE_MODES = new Set<ControlsState["compareMode"]>(["primedope"]);
@@ -240,7 +246,7 @@ function isValidFinishModelId(
 ): value is ControlsState["finishModelId"] {
   return (
     typeof value === "string" &&
-    VALID_FINISH_MODEL_IDS.has(value as ControlsState["finishModelId"])
+    VALID_FINISH_MODEL_IDS.has(value)
   );
 }
 
@@ -254,7 +260,7 @@ function isValidCompareMode(
 }
 
 function isValidGameType(value: unknown): value is GameType {
-  return typeof value === "string" && VALID_GAME_TYPES.has(value as GameType);
+  return typeof value === "string" && VALID_GAME_TYPES.has(value);
 }
 
 function normalizePersistedGameType(value: unknown): GameType | undefined {
@@ -264,7 +270,7 @@ function normalizePersistedGameType(value: unknown): GameType | undefined {
 function isValidPayoutStructureId(value: unknown): value is PayoutStructureId {
   return (
     typeof value === "string" &&
-    VALID_PAYOUT_STRUCTURE_IDS.has(value as PayoutStructureId)
+    VALID_PAYOUT_STRUCTURE_IDS.has(value)
   );
 }
 
