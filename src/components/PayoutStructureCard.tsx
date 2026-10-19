@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 import { Card } from "./ui/Section";
 import { getPayoutTable } from "@/lib/sim/payouts";
@@ -9,6 +9,7 @@ import type { TournamentRow } from "@/lib/sim/types";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey, Locale } from "@/lib/i18n/dict";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
+import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 
 interface Props {
   schedule: TournamentRow[];
@@ -21,6 +22,24 @@ const VALUE_COL_CLASS = "w-28";
 type PaletteId = "accent" | "medal" | "heat" | "ocean" | "mono";
 const PALETTE_IDS: readonly PaletteId[] = ["accent", "medal", "heat", "ocean", "mono"] as const;
 const PALETTE_STORAGE_KEY = "tvs.payoutPalette";
+const DEFAULT_PALETTE: PaletteId = "medal";
+
+export function loadPayoutPalette(): PaletteId {
+  if (typeof localStorage === "undefined") return DEFAULT_PALETTE;
+  try {
+    const stored = localStorage.getItem(PALETTE_STORAGE_KEY);
+    if (stored && (PALETTE_IDS as readonly string[]).includes(stored)) {
+      return stored as PaletteId;
+    }
+  } catch {}
+  return DEFAULT_PALETTE;
+}
+
+export function savePayoutPalette(id: PaletteId): void {
+  try {
+    localStorage.setItem(PALETTE_STORAGE_KEY, id);
+  } catch {}
+}
 
 function paletteColor(id: PaletteId, place: number, paid: number, muted?: boolean): string {
   const alpha = muted ? 0.4 : 1;
@@ -80,22 +99,14 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
 }: Props) {
   const { locale, t } = useLocale();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [palette, setPalette] = useState<PaletteId>(() => {
-    if (typeof window === "undefined") return "medal";
-    try {
-      const stored = localStorage.getItem(PALETTE_STORAGE_KEY);
-      if (stored && (PALETTE_IDS as readonly string[]).includes(stored)) {
-        return stored as PaletteId;
-      }
-    } catch {}
-    return "medal";
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(PALETTE_STORAGE_KEY, palette);
-    } catch {}
-  }, [palette]);
+  // The page is server-rendered, so the first client render must show the
+  // default too; the stored choice is read after hydration.
+  const [palette, setPalette] = useLocalStorageState<PaletteId>(
+    PALETTE_STORAGE_KEY,
+    loadPayoutPalette,
+    savePayoutPalette,
+    DEFAULT_PALETTE,
+  );
 
   const row = useMemo(
     () => schedule.find((r) => r.id === selectedId) ?? schedule[0] ?? null,

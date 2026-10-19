@@ -8,7 +8,7 @@ import type {
 import type { ControlsState } from "@/components/ControlsPanel";
 import { Card } from "@/components/ui/Section";
 import { InfoTooltip } from "@/components/ui/Tooltip";
-import { money } from "@/lib/results/formatters";
+import { money as usdMoney } from "@/lib/results/formatters";
 import { buyInLabel } from "@/lib/ui/presetCardSummary";
 import {
   formatSigmaError,
@@ -190,6 +190,7 @@ export function AdvancedStatsCard({
 }) {
   const t = useT();
   const { locale } = useLocale();
+  const money = (v: number) => usdMoney(v, numberLocaleTag(locale));
   const s = result.stats;
   const notPlus = t("advStats.na.negEv");
   const kellyDefined = s.kellyFraction > 0 && Number.isFinite(s.kellyBankroll);

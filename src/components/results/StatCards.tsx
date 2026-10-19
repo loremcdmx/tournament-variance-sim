@@ -787,7 +787,7 @@ function PdCompareRow({
             borderColor: deltaBorder,
             backgroundColor: deltaBg,
           }}
-          aria-label={`delta vs PD ${pctStr}`}
+          aria-label={`delta vs ${label} ${pctStr}`}
         >
           {pctStr}
         </span>

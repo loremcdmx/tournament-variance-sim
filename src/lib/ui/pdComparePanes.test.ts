@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DICT } from "@/lib/i18n/dict";
-import { pdComparePaneKeys } from "./pdComparePanes";
+import { pdComparePaneKeys, pdOverlayLabelKeys } from "./pdComparePanes";
 
 const base = {
   pdPresetFlip: false,
@@ -99,5 +99,45 @@ describe("pdComparePaneKeys", () => {
     expect(DICT["chart.trajectory.ours.cap.pdPreset"].en).not.toMatch(/different seed/i);
     expect(DICT["chart.trajectory.ours.cap.pdPreset"].en).toMatch(/same seed/i);
     expect(DICT["chart.trajectory.ours.cap.pdPreset"].ru).toMatch(/том же сиде/);
+  });
+});
+
+describe("pdOverlayLabelKeys", () => {
+  it("names the second pass PrimeDope only when it really is the binary-ITM pass", () => {
+    const keys = pdOverlayLabelKeys({ pdPresetFlip: false, pdPkoFallback: false });
+    expect(keys).toEqual({
+      secondIsOurs: false,
+      overlayKey: null,
+      badgeKey: null,
+      primaryLegendKey: null,
+    });
+  });
+
+  it("names the stripped-bounty second pass for a PKO schedule", () => {
+    const keys = pdOverlayLabelKeys({ pdPresetFlip: false, pdPkoFallback: true });
+    expect(keys.overlayKey).toBe("chart.overlay.freezeouts");
+    expect(keys.badgeKey).toBe("stat.pd.badge.freezeouts");
+    expect(keys.secondIsOurs).toBe(false);
+    expect(keys.primaryLegendKey).toBeNull();
+  });
+
+  it("calls the second pass ours and the first PrimeDope under the Like PrimeDope preset", () => {
+    const keys = pdOverlayLabelKeys({ pdPresetFlip: true, pdPkoFallback: false });
+    expect(keys.secondIsOurs).toBe(true);
+    expect(keys.overlayKey).toBeNull();
+    expect(keys.badgeKey).toBe("stat.pd.badge.ours");
+    expect(keys.primaryLegendKey).toBe("pd.model.primedope");
+  });
+
+  it("does not call our bounty-carrying pass freezeouts when the flip meets a PKO schedule", () => {
+    const keys = pdOverlayLabelKeys({ pdPresetFlip: true, pdPkoFallback: true });
+    expect(keys.secondIsOurs).toBe(true);
+    expect(keys.badgeKey).toBe("stat.pd.badge.ours");
+    expect(keys.overlayKey).toBeNull();
+  });
+
+  it("has a badge text in both languages", () => {
+    expect(DICT["stat.pd.badge.ours"].en).toBeTruthy();
+    expect(DICT["stat.pd.badge.ours"].ru).toBeTruthy();
   });
 });

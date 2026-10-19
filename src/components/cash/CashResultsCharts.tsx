@@ -35,6 +35,8 @@ import {
 } from "./CashResultsShared";
 import { bankrollReadout, useCashFormat } from "./cashFormat";
 
+type UplotOptions = Parameters<typeof UplotChart>[0]["options"];
+
 type ChartAxes = Exclude<
   NonNullable<Parameters<typeof UplotChart>[0]["options"]>["axes"],
   undefined
@@ -913,31 +915,33 @@ export function HistogramChart({
     }
     return [xs, ys] as Parameters<typeof UplotChart>[0]["data"];
   }, [hist]);
+  // uPlot is rebuilt whenever `options` changes identity, so a parent render
+  // must not mint a new object.
+  const options = useMemo<UplotOptions>(
+    () => ({
+      series: [
+        {},
+        {
+          stroke: palette.chartStroke,
+          fill: palette.chartFill,
+          width: 2,
+          points: { show: false },
+        },
+      ],
+      cursor: { show: true, points: { show: false } },
+      legend: { show: false },
+      scales: {
+        x: { time: false },
+        y: { range: (_u, _min, max) => [0, max * 1.05] },
+      },
+      axes: cashAxes(xLabel, yLabel),
+    }),
+    [palette, xLabel, yLabel],
+  );
 
   return (
     <CashChartFrame>
-      <UplotChart
-        data={data}
-        options={{
-          series: [
-            {},
-            {
-              stroke: palette.chartStroke,
-              fill: palette.chartFill,
-              width: 2,
-              points: { show: false },
-            },
-          ],
-          cursor: { show: true, points: { show: false } },
-          legend: { show: false },
-          scales: {
-            x: { time: false },
-            y: { range: (_u, _min, max) => [0, max * 1.05] },
-          },
-          axes: cashAxes(xLabel, yLabel),
-        }}
-        height={220}
-      />
+      <UplotChart data={data} options={options} height={220} />
     </CashChartFrame>
   );
 }
@@ -953,35 +957,35 @@ export function CashOddsChart({ result }: { result: CashResult }) {
       ] as Parameters<typeof UplotChart>[0]["data"],
     [result],
   );
+  const options = useMemo<UplotOptions>(
+    () => ({
+      series: [
+        {},
+        {
+          stroke: CASH_ACCENT_META.club.chartStroke,
+          width: 2.35,
+          points: { show: false },
+        },
+        {
+          stroke: CASH_ACCENT_META.heart.chartStroke,
+          width: 2.35,
+          points: { show: false },
+        },
+      ],
+      cursor: { show: true, points: { show: false } },
+      legend: { show: false },
+      scales: {
+        x: { time: false },
+        y: { range: () => [0, 1] },
+      },
+      axes: cashPctAxes(t("cash.axis.hands"), t("cash.axis.share")),
+    }),
+    [t],
+  );
 
   return (
     <CashChartFrame>
-      <UplotChart
-        data={data}
-        options={{
-          series: [
-            {},
-            {
-              stroke: CASH_ACCENT_META.club.chartStroke,
-              width: 2.35,
-              points: { show: false },
-            },
-            {
-              stroke: CASH_ACCENT_META.heart.chartStroke,
-              width: 2.35,
-              points: { show: false },
-            },
-          ],
-          cursor: { show: true, points: { show: false } },
-          legend: { show: false },
-          scales: {
-            x: { time: false },
-            y: { range: () => [0, 1] },
-          },
-          axes: cashPctAxes(t("cash.axis.hands"), t("cash.axis.share")),
-        }}
-        height={240}
-      />
+      <UplotChart data={data} options={options} height={240} />
     </CashChartFrame>
   );
 }
@@ -998,37 +1002,37 @@ export function CashConvergenceChart({ result }: { result: CashResult }) {
       ] as Parameters<typeof UplotChart>[0]["data"],
     [result],
   );
+  const options = useMemo<UplotOptions>(
+    () => ({
+      series: [
+        {},
+        {
+          stroke: "rgba(118,176,255,0.7)",
+          width: 1.25,
+          points: { show: false },
+        },
+        {
+          stroke: "#9cc3ff",
+          width: 2.35,
+          points: { show: false },
+        },
+        {
+          stroke: "rgba(118,176,255,0.7)",
+          width: 1.25,
+          points: { show: false },
+        },
+      ],
+      cursor: { show: true, points: { show: false } },
+      legend: { show: false },
+      scales: { x: { time: false } },
+      axes: cashAxes(t("cash.axis.samples"), t("cash.axis.winrate")),
+    }),
+    [t],
+  );
 
   return (
     <CashChartFrame>
-      <UplotChart
-        data={data}
-        options={{
-          series: [
-            {},
-            {
-              stroke: "rgba(118,176,255,0.7)",
-              width: 1.25,
-              points: { show: false },
-            },
-            {
-              stroke: "#9cc3ff",
-              width: 2.35,
-              points: { show: false },
-            },
-            {
-              stroke: "rgba(118,176,255,0.7)",
-              width: 1.25,
-              points: { show: false },
-            },
-          ],
-          cursor: { show: true, points: { show: false } },
-          legend: { show: false },
-          scales: { x: { time: false } },
-          axes: cashAxes(t("cash.axis.samples"), t("cash.axis.winrate")),
-        }}
-        height={220}
-      />
+      <UplotChart data={data} options={options} height={220} />
     </CashChartFrame>
   );
 }

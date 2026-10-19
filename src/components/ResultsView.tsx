@@ -26,7 +26,7 @@ import { type RunMode } from "@/lib/trajectorySelection";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
-import { pdComparePaneKeys } from "@/lib/ui/pdComparePanes";
+import { pdComparePaneKeys, pdOverlayLabelKeys } from "@/lib/ui/pdComparePanes";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
 import type { PersistedState } from "@/lib/persistence";
@@ -84,12 +84,12 @@ import {
 } from "@/lib/results/trajectoryTransforms";
 import {
   GLOBAL_UNIT_KEY,
-  defaultMoneyFmt,
   fmt,
   formatMinimumBankroll,
   intFmt,
   loadUnitMode,
   makeAbiMoney,
+  makeUsdMoney,
   mergedHistogramDomain,
   pct,
   pctDelta,
@@ -229,7 +229,24 @@ function ResultsViewImpl({
   // schedule so we can relabel the pane and explain the substitution.
   const hasPko = (schedule ?? []).some(rowHasActiveBounty);
   const pdPkoFallback = isPrimeDopeCompare && hasPko;
-  const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
+  // Under the "Like PrimeDope" preset the first pass is the binary-ITM one and
+  // the comparison is our own model, so the PD labels move to the other side.
+  const pdPresetFlip = modelPresetId === "primedope" && isPrimeDopeCompare;
+  const pdLabelKeys = pdOverlayLabelKeys({ pdPresetFlip, pdPkoFallback });
+  // The "Freezeouts" diff texts describe a right column with the bounties
+  // stripped; under the flip that is the left column and the right one is ours.
+  const noKoSecond = pdPkoFallback && !pdPresetFlip;
+  const ourModelLabel = finishModelId
+    ? t(FINISH_MODEL_LABEL_KEY[finishModelId])
+    : t("twin.runB");
+  const overlayLabel = pdLabelKeys.secondIsOurs
+    ? ourModelLabel
+    : pdLabelKeys.overlayKey
+      ? t(pdLabelKeys.overlayKey)
+      : "PrimeDope";
+  const primaryLegendLabel = pdLabelKeys.primaryLegendKey
+    ? t(pdLabelKeys.primaryLegendKey)
+    : undefined;
 
   // Default ON in compare mode: the whole point of the side-by-side view is
   // to see how the two models differ, and the tail-level differences live in
@@ -508,7 +525,7 @@ function ResultsViewImpl({
       ? computeHeadlineStats(displayPdChartStats, pdObservedPromoShift)
           .expectedProfit
       : undefined;
-  const pdBadgeLabel = pdPkoFallback ? t("stat.pd.badge.freezeouts") : undefined;
+  const pdBadgeLabel = pdLabelKeys.badgeKey ? t(pdLabelKeys.badgeKey) : undefined;
   const roi = totalMean / displayResultStats.totalBuyIn;
   // A fixed-shape skill model or a pinned α never reads the ROI typed into the
   // rows, so say which ROI the expected profit really stands for.
@@ -580,13 +597,13 @@ function ResultsViewImpl({
     "abi",
   );
   const moneyFmt = useMemo<UnitCtxValue>(() => {
-    const fmt = unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt;
+    const fmt = unit === "abi" ? makeAbiMoney(abi) : makeUsdMoney(numberLocale);
     return { ...fmt, unit, setUnit };
     // setUnit identity rotates on every render of useLocalStorageState — see
     // UnitScope's comment for why depending on it would re-create the memo each
     // render and rerender the entire MoneyFmtContext subtree.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit, abi]);
+  }, [unit, abi, numberLocale]);
   // Shadow the module-level formatter inside ResultsView so existing
   // money(...) call sites pick up the unit-aware pair.
   const { money } = moneyFmt;
@@ -887,7 +904,7 @@ function ResultsViewImpl({
                 ? t("stat.probProfit.shiftedSurvival")
                 : t("stat.probProfit.sub").replace(
                   "{n}",
-                  intFmt(shiftedStats.tournamentsFor95ROI),
+                  intFmt(shiftedStats.tournamentsFor95ROI, numberLocale),
                 )
           }
           tip={t("stat.probProfit.tip")}
@@ -1043,12 +1060,8 @@ function ResultsViewImpl({
           trimBotPct={deferredTrimBotPct}
           refLines={refLines}
           toolbar={trajectoryToolbar}
-          pdPresetFlip={modelPresetId === "primedope" && isPrimeDopeCompare}
-          honestLabel={
-            finishModelId
-              ? t(FINISH_MODEL_LABEL_KEY[finishModelId])
-              : t("twin.runB")
-          }
+          pdPresetFlip={pdPresetFlip}
+          honestLabel={ourModelLabel}
           modelPresetId={modelPresetId}
           usePdPayouts={settings?.usePrimedopePayouts ?? true}
           onUsePdPayoutsChange={onUsePdPayoutsChange}
@@ -1101,15 +1114,15 @@ function ResultsViewImpl({
       {advanced && hasPrimeDopeCompare && result.comparison && (
         <CollapsibleSection
           id="pdDiff"
-          title={pdPkoFallback ? t("section.pdDiff.freezeouts") : t("section.pdDiff")}
+          title={noKoSecond ? t("section.pdDiff.freezeouts") : t("section.pdDiff")}
         >
           <PrimedopeDiff
             primary={result}
             other={result.comparison}
             bankroll={bankroll}
-            theirsLabel={pdPkoFallback ? t("chart.overlay.freezeouts") : undefined}
-            title={pdPkoFallback ? t("pd.title.freezeouts") : undefined}
-            subtitle={pdPkoFallback ? t("pd.subtitle.freezeouts") : undefined}
+            theirsLabel={noKoSecond ? t("chart.overlay.freezeouts") : undefined}
+            title={noKoSecond ? t("pd.title.freezeouts") : undefined}
+            subtitle={noKoSecond ? t("pd.subtitle.freezeouts") : undefined}
             hasBounty={hasPko}
           />
         </CollapsibleSection>
@@ -1334,6 +1347,7 @@ function ResultsViewImpl({
             color="#34d399"
             yAsPct
             xDomain={distProfitXDomain}
+            primaryLabel={primaryLegendLabel}
             overlay={
               overlayPd && displayPdChartDist
                 ? {
@@ -1355,6 +1369,7 @@ function ResultsViewImpl({
               color="#f87171"
               yAsPct
               xDomain={streakDrawdownXDomain}
+              primaryLabel={primaryLegendLabel}
               overlay={
                 overlayPd && displayPdChartStreaks
                   ? {
@@ -1401,6 +1416,7 @@ function ResultsViewImpl({
                       unitLabel="tourneys"
                       yAsPct
                       xDomain={streakBreakevenXDomain}
+                      primaryLabel={primaryLegendLabel}
                       overlay={
                         overlayPd && displayPdChartStreaks
                           ? {
@@ -1431,6 +1447,7 @@ function ResultsViewImpl({
                       color="#f87171"
                       unitLabel="tourneys"
                       yAsPct
+                      primaryLabel={primaryLegendLabel}
                       overlay={
                         overlayPd && pdChart
                           ? {
@@ -1470,6 +1487,7 @@ function ResultsViewImpl({
                       unitLabel="tourneys"
                       yAsPct
                       xDomain={streakRecoveryXDomain}
+                      primaryLabel={primaryLegendLabel}
                       overlay={
                         overlayPd && displayPdChartStreaks
                           ? {
@@ -1992,7 +2010,7 @@ function BattleRoyaleLeaderboardPromoSection({
  * toggle in the card header only affects this widget's formatters (the
  * trajectory hover tooltip and bankroll/subtitle text).
  */
-const TrajectoryCard = memo(function TrajectoryCard({
+export const TrajectoryCard = memo(function TrajectoryCard({
   settings,
   result,
   displayResult,
@@ -2065,7 +2083,12 @@ const TrajectoryCard = memo(function TrajectoryCard({
   const { compactMoney } = useMoneyFmt();
   const { advanced } = useAdvancedMode();
   const hasPrimeDopePane = compareMode === "primedope" && pdChart != null;
-  const overlayLabel = pdPkoFallback ? t("chart.overlay.freezeouts") : "PrimeDope";
+  const pdLabelKeys = pdOverlayLabelKeys({ pdPresetFlip, pdPkoFallback });
+  const overlayLabel = pdLabelKeys.secondIsOurs
+    ? honestLabel
+    : pdLabelKeys.overlayKey
+      ? t(pdLabelKeys.overlayKey)
+      : "PrimeDope";
   const overlayLegendKey: DictKey = pdPkoFallback
     ? "chart.legend.noKoOverlay"
     : hasPrimeDopePane
@@ -2084,6 +2107,10 @@ const TrajectoryCard = memo(function TrajectoryCard({
   );
   const setExtremeKey = (k: ExtremeKey, patch: Partial<ExtremeStyles[ExtremeKey]>) =>
     setExtremeStyles({ ...extremeStyles, [k]: { ...extremeStyles[k], ...patch } });
+  const maxPathCount = Math.min(1000, displayResult.samplePaths.paths.length);
+  const secondaryMaxPathCount = displayPdChart
+    ? Math.min(1000, displayPdChart.samplePaths.paths.length)
+    : 0;
   // Y-axis fits exactly the visible series (#96). Toggling an extreme line
   // expands the axis to fit it; toggling off snaps back to the main mass.
   // Without this uPlot would auto-scale over all series we feed it — including
@@ -2100,6 +2127,20 @@ const TrajectoryCard = memo(function TrajectoryCard({
         trimBotPct,
       ),
     [displayResult, displayPdChart, extremeStyles, visibleRuns, runMode, trimTopPct, trimBotPct],
+  );
+  // The plot is built on the range of every drawn run, untrimmed, which does
+  // not move with the slider or the trims; the range of what is shown reaches
+  // the live plot as `yRange`. Building on `effectiveYRange` rebuilt uPlot on
+  // every slider tick and dropped the zoom.
+  const builtYRange = useMemo(
+    () =>
+      computeYRange(
+        displayPdChart ? [displayResult, displayPdChart] : [displayResult],
+        extremeStyles,
+        Math.max(maxPathCount, secondaryMaxPathCount),
+        runMode,
+      ),
+    [displayResult, displayPdChart, extremeStyles, maxPathCount, secondaryMaxPathCount, runMode],
   );
   const oursCapKey: DictKey =
     modelPresetId === "naive"
@@ -2125,13 +2166,12 @@ const TrajectoryCard = memo(function TrajectoryCard({
   // uPlot reads this during paint, not React render — the ref indirection is
   // intentional so a unit-mode toggle doesn't rebuild the whole chart.
   const stableAxisFmt = useMemo(() => (v: number) => axisFmtRef.current(v), []);
-  const maxPathCount = Math.min(1000, displayResult.samplePaths.paths.length);
   const primary = useMemo(
     () =>
       buildTrajectoryAssets(
         displayResult,
         "felt",
-        effectiveYRange,
+        builtYRange,
         overlayPd ? displayPdChart : null,
         // eslint-disable-next-line react-hooks/refs
         stableAxisFmt,
@@ -2143,19 +2183,16 @@ const TrajectoryCard = memo(function TrajectoryCard({
         extremeStyles,
         overlayLabel,
       ),
-    [displayResult, effectiveYRange, overlayPd, displayPdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, extremeStyles, overlayLabel],
+    [displayResult, builtYRange, overlayPd, displayPdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, extremeStyles, overlayLabel],
   );
   const pdPanePreset = PRIMEDOPE_PANE_PRESET;
-  const secondaryMaxPathCount = displayPdChart
-    ? Math.min(1000, displayPdChart.samplePaths.paths.length)
-    : 0;
   const secondary = useMemo(
     () =>
       displayPdChart
         ? buildTrajectoryAssets(
             displayPdChart,
             "magenta",
-            effectiveYRange,
+            builtYRange,
             undefined,
             // eslint-disable-next-line react-hooks/refs
             stableAxisFmt,
@@ -2167,7 +2204,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
             extremeStyles,
           )
         : null,
-    [displayPdChart, effectiveYRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
+    [displayPdChart, builtYRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
   );
   const extremeRows: Array<{ key: ExtremeKey; labelKey: DictKey }> = [
     { key: "realBest", labelKey: "chart.traj.extreme.realBest" },
@@ -2332,7 +2369,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
               paneKeys.pdPane === "primary" ? pdPaneActions : overlayLegend
             }
           >
-            <TrajectoryPlot assets={primary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
+            <TrajectoryPlot assets={primary} height={540} yRange={effectiveYRange} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
             {paneKeys.pdPane === "primary" && pdReproduce}
           </ChartPane>
           {/* When the grid collapses to one column (below `lg`), inject the
@@ -2356,7 +2393,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
             caption={t(paneKeys.comparisonCapKey)}
             action={paneKeys.pdPane === "comparison" ? pdPaneActions : null}
           >
-            <TrajectoryPlot assets={secondary} height={540} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
+            <TrajectoryPlot assets={secondary} height={540} yRange={effectiveYRange} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
             {paneKeys.pdPane === "comparison" && pdReproduce}
           </ChartPane>
         </div>
@@ -2393,7 +2430,7 @@ const TrajectoryCard = memo(function TrajectoryCard({
           />
         </div>
       ) : null}
-      <TrajectoryPlot assets={primary} height={440} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
+      <TrajectoryPlot assets={primary} height={440} yRange={effectiveYRange} visibleRuns={visibleRuns} trimTopPct={trimTopPct} trimBotPct={trimBotPct} compactMoney={compactMoney} />
     </Card>
   );
 });
@@ -2410,6 +2447,7 @@ function MoneyDistributionCard({
   counts,
   color,
   overlay,
+  primaryLabel,
   yAsPct,
   xDomain,
 }: {
@@ -2423,6 +2461,7 @@ function MoneyDistributionCard({
     counts: number[];
     label: string;
   } | null;
+  primaryLabel?: string;
   yAsPct?: boolean;
   xDomain?: [number, number];
 }) {
@@ -2438,6 +2477,7 @@ function MoneyDistributionCard({
         scaleBy={unit === "abi" ? abi : undefined}
         unitLabel={unit === "abi" ? "ABI" : "$"}
         overlay={overlay}
+        primaryLabel={primaryLabel}
         yAsPct={yAsPct}
         xDomain={xDomain}
       />
@@ -3149,7 +3189,7 @@ function ChartHeader({
   );
 }
 
-function DebouncedColorInput({
+export function DebouncedColorInput({
   value,
   disabled,
   onChange,
@@ -3170,6 +3210,12 @@ function DebouncedColorInput({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+  // A reset, or a list that shifted rows under this instance, hands it a new
+  // colour; onBlur must compare against that, not against the last pick. A pick
+  // still waiting on its debounce is the newest thing the user did, so it stays.
+  useEffect(() => {
+    if (timerRef.current == null) latestRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     return () => {

@@ -30,6 +30,11 @@ import {
   type RefLineConfig,
 } from "@/lib/results/refLines";
 import { visualDistanceToSeries } from "@/lib/results/trajectoryHitTest";
+import {
+  formatTailPercent,
+  trajectoryLineTitle,
+  type TrajectoryLineMeta,
+} from "@/lib/results/trajectoryLabels";
 import { UplotChart, type CursorInfo } from "@/components/charts/UplotChart";
 import type { AlignedData, Options } from "uplot";
 
@@ -51,6 +56,7 @@ type AccentHue = "felt" | "magenta";
 export function TrajectoryPlot({
   assets,
   height,
+  yRange,
   visibleRuns,
   trimTopPct = 0,
   trimBotPct = 0,
@@ -58,6 +64,9 @@ export function TrajectoryPlot({
 }: {
   assets: ReturnType<typeof buildTrajectoryAssets>;
   height: number;
+  /** Y extent of the runs currently shown. It moves with the "runs shown"
+   *  slider, so it is pushed onto the live plot instead of rebuilding it. */
+  yRange: { min: number; max: number };
   visibleRuns: number;
   trimTopPct?: number;
   trimBotPct?: number;
@@ -73,6 +82,7 @@ export function TrajectoryPlot({
     plotRef.current = plot;
     if (plot) setPlotReadyNonce((n) => n + 1);
   }, []);
+  const { min: yMin, max: yMax } = yRange;
   const xs = assets.data[0] as ArrayLike<number>;
   const xMin = Number(xs[0] ?? 0);
   const xMax = Number(xs[xs.length - 1] ?? xMin);
@@ -96,6 +106,15 @@ export function TrajectoryPlot({
     if (!plot) return;
     plot.setScale("x", { min: xMin, max: xMax });
   }, [xMin, xMax]);
+  // uPlot keeps the tick labels it computed; the card reads the unit through a
+  // ref, so a unit flip changes nothing the plot can see until it is told to
+  // recompute. A passive effect runs after the card has swapped the ref.
+  const axisFmtRef = useRef(compactMoney);
+  useEffect(() => {
+    if (axisFmtRef.current === compactMoney) return;
+    axisFmtRef.current = compactMoney;
+    plotRef.current?.redraw(false, true);
+  }, [compactMoney]);
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       setXZoomed((prev) => (prev ? false : prev));
@@ -241,6 +260,7 @@ export function TrajectoryPlot({
     };
 
     plot.batch(() => {
+      plot.setScale("y", { min: yMin, max: yMax });
       // uPlot wraps `series[i].stroke` in fnOrSelf at init, so after init
       // it's a function, not the raw string. Assigning a string here makes
       // the next redraw throw "s.stroke is not a function". Wrap in a thunk
@@ -280,7 +300,7 @@ export function TrajectoryPlot({
       }
     });
     plot.redraw(false);
-  }, [assets, visibilityGate, plotReadyNonce]);
+  }, [assets, visibilityGate, plotReadyNonce, yMin, yMax]);
 
   const idx = cursor?.idx;
   const tournaments = idx != null ? Math.round(xs[idx] ?? 0) : 0;
@@ -626,13 +646,7 @@ export function TrajectoryPlot({
       case "ref": return t("chart.traj.kind.ref");
     }
   };
-  const tooltipLabel = (line: TrajectoryLineMeta): string => {
-    if (line.kind !== "band" || line.percentile == null) return line.label;
-    return fmt(t("chart.traj.band.title"), {
-      coverage: formatTrajectoryBandCoverage(line.percentile),
-      side: t(trajectoryBandSideKey(line.percentile)),
-    });
-  };
+  const tooltipLabel = (line: TrajectoryLineMeta): string => trajectoryLineTitle(line, t);
   const likelihood = (line: TrajectoryLineMeta): string | null => {
     if (line.kind === "ref") return null;
     // Path lines don't get a likelihood line — each is just one of many runs.
@@ -646,11 +660,10 @@ export function TrajectoryPlot({
     if (line.percentile != null) {
       const pct = line.percentile;
       if (pct === 0.5) return t("chart.traj.likelihood.median");
-      const tail = pct < 0.5 ? pct : 1 - pct;
       const key = pct < 0.5
         ? "chart.traj.likelihood.below"
         : "chart.traj.likelihood.above";
-      return fmt(t(key), { pct: (tail * 100).toFixed(1) });
+      return fmt(t(key), { pct: formatTailPercent(pct) });
     }
     return null;
   };
@@ -866,22 +879,6 @@ export function TrajectoryPlot({
   );
 }
 
-interface TrajectoryLineMeta {
-  label: string;
-  color: string;
-  seriesIdx: number;
-  /** Probability that a real run lands at-or-below this line, if applicable. */
-  percentile?: number;
-  /** Free-form "what kind of line" tag for the tooltip. */
-  kind: "mean" | "band" | "best" | "worst" | "path" | "ref";
-  /** For best/worst lines: "real" = single sample path, "agg" = pointwise envelope. */
-  variant?: "real" | "agg";
-  /** Display rank for path lines — the i-th most-preferred run to show.
-   *  Undefined for non-path lines. Used to skip hidden paths in the cursor
-   *  tooltip so it never highlights an invisible series. */
-  rank?: number;
-}
-
 /** Extract r,g,b from a CSS color string — supports rgb/rgba/#rrggbb. Returns
  *  [200,200,200] as a soft fallback so path rendering never crashes on an
  *  unexpected preset value. */
@@ -916,23 +913,6 @@ function pathStyleForCount(
   const alpha = Math.min(0.9, Math.max(0.04, 0.9 / Math.sqrt(n)));
   const width = Math.min(1.6, Math.max(0.55, 1.55 - 0.115 * Math.log2(n)));
   return { stroke: `rgba(${r},${g},${b},${alpha.toFixed(3)})`, width };
-}
-
-function formatTrajectoryBandCoverage(percentile: number): string {
-  const centralPct = (1 - 2 * Math.min(percentile, 1 - percentile)) * 100;
-  const rounded =
-    Math.abs(centralPct - Math.round(centralPct)) < 0.05
-      ? Math.round(centralPct).toString()
-      : centralPct.toFixed(1);
-  return `${rounded}%`;
-}
-
-function trajectoryBandSideKey(
-  percentile: number,
-): "chart.traj.band.side.lower" | "chart.traj.band.side.upper" {
-  return percentile < 0.5
-    ? "chart.traj.band.side.lower"
-    : "chart.traj.band.side.upper";
 }
 
 function trajectoryBandOverlayStyle(percentile: number | null | undefined): {
@@ -1146,6 +1126,7 @@ export function buildTrajectoryAssets(
       seriesIdx: idx,
       kind: "path",
       rank,
+      runNumber: runIdx + 1,
     });
   }
 
@@ -1257,6 +1238,7 @@ export function buildTrajectoryAssets(
     color: "#6b7280",
     seriesIdx: zeroLineIdx,
     kind: "ref",
+    titleKey: "chart.traj.line.zero",
   });
 
   // Overlay must align to primary's x axis. uPlot uses one x per chart, so
@@ -1346,7 +1328,7 @@ export function buildTrajectoryAssets(
       const width = variant === "real" ? 2.25 : 2;
       const dash = variant === "real" ? [12, 7] : [18, 9];
       const idx = pushSeries(resample(src), { show: false, stroke, width, dash, label });
-      mainLines.push({ label, color: stroke, seriesIdx: idx, kind, variant });
+      mainLines.push({ label, color: stroke, seriesIdx: idx, kind, variant, overlayLabel });
       return idx;
     };
     if (extremeStyles.realBest.enabled) {

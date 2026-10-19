@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SimulationResult } from "@/lib/sim/types";
 import { DEFAULT_EXTREME_STYLES, type ExtremeStyles } from "@/lib/lineStyles";
-import { computeYRange } from "./TrajectoryPlot";
+import { DICT, type DictKey } from "@/lib/i18n/dict";
+import { DEFAULT_LINE_STYLE_PRESET, LINE_STYLE_PRESETS } from "@/lib/lineStyles";
+import { DEFAULT_REF_LINES } from "@/lib/results/refLines";
+import { trajectoryLineTitle } from "@/lib/results/trajectoryLabels";
+import { buildTrajectoryAssets, computeYRange } from "./TrajectoryPlot";
 
 vi.mock("@/components/charts/UplotChart", () => ({ UplotChart: () => null }));
 
@@ -94,5 +98,45 @@ describe("trajectory Y range", () => {
     data.samplePaths.paths = [array(0, 250, 2)];
     const range = computeYRange([data], hiddenExtremes, 1, "random");
     expect(range.max).toBe(278);
+  });
+});
+
+describe("trajectory hover titles in the Russian UI", () => {
+  const ru = (key: DictKey) => DICT[key].ru;
+  const allOn: ExtremeStyles = {
+    realBest: { ...hiddenExtremes.realBest, enabled: true },
+    realWorst: { ...hiddenExtremes.realWorst, enabled: true },
+    aggBest: { ...hiddenExtremes.aggBest, enabled: true },
+    aggWorst: { ...hiddenExtremes.aggWorst, enabled: true },
+  };
+  const first = { ...result(), totalBuyIn: 30 } as unknown as SimulationResult;
+  const second = { ...result(), totalBuyIn: 30 } as unknown as SimulationResult;
+  const assets = buildTrajectoryAssets(
+    first,
+    "felt",
+    { min: -1, max: 1 },
+    second,
+    undefined,
+    LINE_STYLE_PRESETS[DEFAULT_LINE_STYLE_PRESET],
+    1000,
+    DEFAULT_REF_LINES,
+    {},
+    "random",
+    allOn,
+    "PrimeDope",
+  );
+
+  it("names every line from the dictionary, with no English line name left", () => {
+    expect(assets.mainLines.some((line) => line.kind === "path")).toBe(true);
+    expect(assets.mainLines.some((line) => line.overlayLabel)).toBe(true);
+    for (const line of assets.mainLines) {
+      const title = trajectoryLineTitle(line, ru);
+      expect(title).not.toMatch(/\b(Run \d+|Real|Aggregated|zero|best|worst)\b/);
+    }
+  });
+
+  it("numbers a run from its sample index", () => {
+    const run = assets.mainLines.find((line) => line.kind === "path")!;
+    expect(trajectoryLineTitle(run, ru)).toBe("Ран 1");
   });
 });

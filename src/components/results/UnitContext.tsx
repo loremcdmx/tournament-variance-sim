@@ -19,10 +19,13 @@ import {
   defaultMoneyFmt,
   loadUnitMode,
   makeAbiMoney,
+  makeUsdMoney,
   saveUnitMode,
   type MoneyFmt,
   type UnitMode,
 } from "@/lib/results/formatters";
+import { useLocale } from "@/lib/i18n/LocaleProvider";
+import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 
 export interface UnitCtxValue extends MoneyFmt {
@@ -59,6 +62,8 @@ export function UnitScope({
   children: ReactNode;
 }) {
   const abi = useContext(AbiContext);
+  const { locale } = useLocale();
+  const numberLocale = numberLocaleTag(locale);
   const storageKey = `tvs.unit.${id}.v1`;
   const [unit, setUnit] = useLocalStorageState<UnitMode>(
     storageKey,
@@ -67,12 +72,12 @@ export function UnitScope({
     "abi",
   );
   const value = useMemo<UnitCtxValue>(() => {
-    const fmt = unit === "abi" ? makeAbiMoney(abi) : defaultMoneyFmt;
+    const fmt = unit === "abi" ? makeAbiMoney(abi) : makeUsdMoney(numberLocale);
     return { ...fmt, unit, setUnit };
     // setUnit identity rotates on every render of useLocalStorageState — depend
     // on storageKey instead so the memo only refreshes when scope or unit change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit, abi, storageKey]);
+  }, [unit, abi, storageKey, numberLocale]);
   return (
     <MoneyFmtContext.Provider value={value}>
       {children}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import uPlot, { type Options, type AlignedData } from "uplot";
 import "uplot/dist/uPlot.min.css";
 
@@ -56,16 +56,18 @@ export function UplotChart({
   const onDoubleClickRef = useRef(onDoubleClick);
   const dataRef = useRef(data);
 
-  useEffect(() => {
+  // Layout effects, declared before the plot's: uPlot fires its setScale hook
+  // while the constructor runs, and that call must reach this render's callbacks.
+  useLayoutEffect(() => {
     onCursorRef.current = onCursor;
   }, [onCursor]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onPlotReadyRef.current = onPlotReady;
   }, [onPlotReady]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onScaleChangeRef.current = onScaleChange;
   }, [onScaleChange]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onDoubleClickRef.current = onDoubleClick;
   }, [onDoubleClick]);
 

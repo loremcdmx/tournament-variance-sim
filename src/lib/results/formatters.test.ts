@@ -7,6 +7,7 @@ import {
   intFmt,
   loadUnitMode,
   makeAbiMoney,
+  makeUsdMoney,
   mergedHistogramDomain,
   money,
   pct,
@@ -109,7 +110,7 @@ describe("pct", () => {
     expect(pct(0.184)).toBe("18.4%");
     expect(pct(0)).toBe("0.0%");
     expect(pct(1)).toBe("100.0%");
-    expect(pct(-0.05)).toBe("-5.0%");
+    expect(pct(-0.05)).toBe("−5.0%");
   });
 });
 
@@ -299,5 +300,62 @@ describe("pctDelta with an undefined recovery time", () => {
     expect(pctDelta(Number.NaN, 120)).toBeNull();
     expect(pctDelta(120, Number.NaN)).toBeNull();
     expect(pctDelta(Number.NaN, Number.NaN)).toBeNull();
+  });
+});
+
+describe("sign of a value that rounds to zero", () => {
+  it("prints no minus on a negative that rounds to nothing", () => {
+    expect(compactMoney(-0.3)).toBe("$0");
+    expect(money(-0.3)).toBe("$0");
+    expect(pct(-0.0001)).toBe("0.0%");
+    expect(intFmt(-0.3)).toBe("0");
+    expect(makeAbiMoney(50).money(-0.3)).toBe("0.0 ABI");
+    expect(makeAbiMoney(50).compactMoney(-0.3)).toBe("0 ABI");
+  });
+
+  it("keeps the minus once the value rounds to something", () => {
+    expect(compactMoney(-0.6)).toBe("−$1");
+    expect(money(-0.6)).toBe("−$1");
+    expect(pct(-0.0006)).toBe("−0.1%");
+    expect(makeAbiMoney(50).money(-3)).toBe("−0.1 ABI");
+  });
+
+  it("uses the same minus sign in pct as in money", () => {
+    expect(pct(-0.05)).toBe("−5.0%");
+    expect(money(-5)).toBe("−$5");
+  });
+});
+
+describe("magnitude suffix after rounding", () => {
+  it("moves to the next unit when the rounded figure reaches 1000", () => {
+    expect(compactMoney(999.6)).toBe("$1.0k");
+    expect(compactMoney(999_499)).toBe("$999k");
+    expect(compactMoney(999_500)).toBe("$1.0M");
+    expect(compactMoney(-999_960)).toBe("−$1.0M");
+    expect(money(999_940)).toBe("$999.9k");
+    expect(money(999_960)).toBe("$1.00M");
+    expect(makeAbiMoney(1).compactMoney(999.6)).toBe("1.0k ABI");
+    expect(makeAbiMoney(1).money(99.96)).toBe("100 ABI");
+  });
+});
+
+describe("locale of grouped integers", () => {
+  it("follows the locale it is given, not the browser's", () => {
+    expect(intFmt(1234.5, "en-US")).toBe("1,235");
+    expect(intFmt(1234.5, "de-DE")).toBe("1.235");
+    expect(money(1234, "en-US")).toBe("$1,234");
+    expect(money(1234, "de-DE")).toBe("$1.234");
+  });
+
+  it("defaults to en-US so a result card never depends on the browser", () => {
+    expect(intFmt(1234.5)).toBe(intFmt(1234.5, "en-US"));
+    expect(money(1234)).toBe(money(1234, "en-US"));
+  });
+
+  it("builds a money pair for the UI locale", () => {
+    const ru = makeUsdMoney("ru-RU");
+    expect(ru.money(5432)).toBe(`$${(5432).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`);
+    expect(ru.money(5432)).not.toBe(makeUsdMoney("en-US").money(5432));
+    expect(ru.compactMoney(1500)).toBe(compactMoney(1500));
   });
 });

@@ -7,6 +7,7 @@ import { barsPath } from "./barsPath";
 import { OVERLAY_SERIES } from "./overlaySeries";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { integerBinLabel } from "@/lib/results/satellite";
 
 interface Props {
   binEdges: number[];
@@ -41,6 +42,9 @@ interface Props {
    * instead of the axis auto-rescaling around them.
    */
   xDomain?: [number, number];
+  /** Legend text of the bars. Defaults to "our model"; the PrimeDope preset
+   *  draws its own pass as the bars. */
+  primaryLabel?: string;
 }
 
 function resampleOntoBins(
@@ -74,13 +78,13 @@ function resampleOntoBins(
   return out;
 }
 
-const compactNum = (v: number, prefix = ""): string => {
+const compactNum = (v: number, prefix = "", smallDigits = 1): string => {
   const sign = v < 0 ? "−" : "";
   const abs = Math.abs(v);
   if (abs >= 1_000_000) return `${sign}${prefix}${(abs / 1_000_000).toFixed(1)}M`;
   if (abs >= 1_000) return `${sign}${prefix}${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
   if (abs === 0) return `${prefix}0`;
-  return `${sign}${prefix}${abs.toFixed(abs < 10 ? 1 : 0)}`;
+  return `${sign}${prefix}${abs.toFixed(abs < 10 ? smallDigits : 0)}`;
 };
 
 const formatEdge = (v: number, unitLabel: Props["unitLabel"]): string => {
@@ -117,6 +121,7 @@ function DistributionChartImpl({
   yAsPct = false,
   overlay,
   xDomain,
+  primaryLabel,
 }: Props) {
   const t = useT();
   const { locale } = useLocale();
@@ -124,6 +129,13 @@ function DistributionChartImpl({
   const divisor = scaleBy && scaleBy > 0 ? scaleBy : 1;
   const overlayColor = overlay?.color ?? OVERLAY_SERIES.blue.color;
   const overlayTextColor = overlay?.textColor ?? OVERLAY_SERIES.blue.textColor;
+  // Callers build the overlay object inline, so its identity changes on every
+  // parent render. The memos below key on its parts, or each render would hand
+  // uPlot new options and tear the chart down.
+  const hasOverlay = overlay != null;
+  const overlayEdges = overlay?.binEdges;
+  const overlayCounts = overlay?.counts;
+  const overlayLabel = overlay?.label;
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerW, setContainerW] = useState(0);
@@ -147,11 +159,11 @@ function DistributionChartImpl({
   // chart. Symmetric left-extension is what lets the first visible overlay
   // bin settle smoothly to 0 instead of starting mid-air.
   const merged = useMemo(() => {
-    if (!overlay || binEdges.length < 2) return { edges: binEdges, counts };
+    if (!overlayEdges || binEdges.length < 2) return { edges: binEdges, counts };
     const primaryFirst = binEdges[0];
     const primaryLast = binEdges[binEdges.length - 1];
-    const overlayFirst = overlay.binEdges[0];
-    const overlayLast = overlay.binEdges[overlay.binEdges.length - 1];
+    const overlayFirst = overlayEdges[0];
+    const overlayLast = overlayEdges[overlayEdges.length - 1];
     const stepRight =
       binEdges[binEdges.length - 1] - binEdges[binEdges.length - 2];
     const stepLeft = binEdges[1] - binEdges[0];
@@ -193,7 +205,7 @@ function DistributionChartImpl({
       edges: [...leftEdges, ...binEdges, ...rightEdges],
       counts: [...leftCounts, ...counts, ...rightCounts],
     };
-  }, [binEdges, counts, overlay]);
+  }, [binEdges, counts, overlayEdges]);
 
   const data = useMemo<AlignedData>(() => {
     const sumOf = (arr: number[]): number => {
@@ -212,13 +224,13 @@ function DistributionChartImpl({
     for (let i = 0; i < merged.counts.length; i++)
       centers[i] = ((merged.edges[i] + merged.edges[i + 1]) / 2) / divisor;
     const primary = normalize(merged.counts, sumOf(counts));
-    if (overlay) {
+    if (overlayEdges && overlayCounts) {
       const resampled = resampleOntoBins(
-        overlay.binEdges,
-        overlay.counts,
+        overlayEdges,
+        overlayCounts,
         merged.edges,
       );
-      const overlayDenom = sumOf(overlay.counts);
+      const overlayDenom = sumOf(overlayCounts);
       const overlayY = normalize(resampled, overlayDenom);
       // Tail-smooth the overlay line only. The raw counts carry Poisson noise
       // (√100 ≈ 10% relative at 5k samples / 50 bins → 4-5 visible hedgehog
@@ -240,7 +252,7 @@ function DistributionChartImpl({
       return [centers, primary, withGaps as unknown as number[]];
     }
     return [centers, primary];
-  }, [merged, counts, divisor, overlay, yAsPct]);
+  }, [merged, counts, divisor, overlayEdges, overlayCounts, yAsPct]);
 
   const opts = useMemo<Omit<Options, "width" | "height">>(
     () => {
@@ -253,12 +265,12 @@ function DistributionChartImpl({
           paths: barsPath(),
         },
       ];
-      if (overlay) {
+      if (hasOverlay) {
         series.push({
           stroke: overlayColor,
           width: 2.25,
           dash: [10, 6],
-          label: overlay.label ?? "PrimeDope",
+          label: overlayLabel ?? "PrimeDope",
         });
       }
       const xScale: NonNullable<Options["scales"]>[string] = { time: false };
@@ -280,7 +292,9 @@ function DistributionChartImpl({
                   : unitLabel === "ABI"
                     ? `${compactNum(v)} BI`
                     : unitLabel === "seats"
-                      ? compactNum(v)
+                      ? Number.isInteger(v)
+                        ? compactNum(v, "", 0)
+                        : ""
                       : compactNum(v),
               ),
           },
@@ -300,7 +314,7 @@ function DistributionChartImpl({
         legend: { show: false },
       };
     },
-    [color, unitLabel, overlay, overlayColor, yAsPct, xDomain, divisor],
+    [color, unitLabel, hasOverlay, overlayLabel, overlayColor, yAsPct, xDomain, divisor],
   );
 
   // Precompute totals + cumulative counts for the hover tooltip. Runs once
@@ -317,17 +331,17 @@ function DistributionChartImpl({
     }
     let overlayResampled: number[] | null = null;
     let overlayTotal = 0;
-    if (overlay) {
+    if (overlayEdges && overlayCounts) {
       overlayResampled = resampleOntoBins(
-        overlay.binEdges,
-        overlay.counts,
+        overlayEdges,
+        overlayCounts,
         merged.edges,
       );
-      for (let i = 0; i < overlay.counts.length; i++)
-        overlayTotal += overlay.counts[i];
+      for (let i = 0; i < overlayCounts.length; i++)
+        overlayTotal += overlayCounts[i];
     }
     return { primaryTotal, primaryCum, overlayResampled, overlayTotal };
-  }, [merged, overlay]);
+  }, [merged, overlayEdges, overlayCounts]);
 
   const binIdx =
     cursor &&
@@ -341,7 +355,10 @@ function DistributionChartImpl({
     if (binIdx == null) return null;
     const lo = merged.edges[binIdx] / divisor;
     const hi = merged.edges[binIdx + 1] / divisor;
-    const rangeLabel = `${formatEdge(lo, unitLabel)} – ${formatEdge(hi, unitLabel)}`;
+    const rangeLabel =
+      unitLabel === "seats"
+        ? integerBinLabel(lo, hi)
+        : `${formatEdge(lo, unitLabel)} – ${formatEdge(hi, unitLabel)}`;
     const count = merged.counts[binIdx] ?? 0;
     const share =
       hoverStats.primaryTotal > 0 ? count / hoverStats.primaryTotal : 0;
@@ -370,7 +387,7 @@ function DistributionChartImpl({
         <div className="mt-1 flex items-center gap-3 text-[10px] text-[color:var(--color-fg-dim)]">
           <span className="flex items-center gap-1">
             <span className="inline-block h-1.5 w-3 rounded-sm" style={{ background: color }} />
-            <span>{t("hist.legend.ours")}</span>
+            <span>{primaryLabel ?? t("hist.legend.ours")}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="inline-block h-[1px] w-4 border-t-[1.5px] border-dashed" style={{ borderColor: overlayColor }} />

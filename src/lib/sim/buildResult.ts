@@ -19,7 +19,7 @@ import type {
 } from "./engineTypes";
 import { buildRowDecomposition } from "./resultDecomposition";
 import { buildConvergence, buildSensitivity } from "./resultCurves";
-import { buildEnvelopes } from "./resultEnvelopes";
+import { buildEnvelopes, clampEnvelopesToExtrema } from "./resultEnvelopes";
 import { buildLeaderboardResult } from "./resultLeaderboard";
 import { computeScalarStats } from "./resultStats";
 import { buildSwingCatalog, computeStreakStats } from "./resultStreaks";
@@ -125,6 +125,7 @@ export function buildResult(
     hiCheckpointIdx,
     onBuildProgress,
   );
+  clampEnvelopesToExtrema(envelopes, shard.hiResMin, shard.hiResMax);
 
   // Sample paths ------------------------------------------------------------
   // Hi-res capture was populated during simulateShard: each shard stores a

@@ -18,37 +18,64 @@ export function fmt(template: string, vars: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 }
 
+const MINUS = "−";
+
+const roundedTo = (n: number, digits: number): number => Number(n.toFixed(digits));
+
 /** Compact USD formatter — `$1.2M` / `$3k` / `$420`. */
 export const compactMoney = (v: number): string => {
-  const sign = v < 0 ? "−" : "";
   const abs = Math.abs(v);
-  if (abs >= 1_000_000)
-    return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
-  if (abs >= 1_000)
-    return `${sign}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
-  if (abs === 0) return "$0";
-  return `${sign}$${abs.toFixed(0)}`;
+  const inM = abs / 1_000_000;
+  const inK = abs / 1_000;
+  let body: string;
+  let zero = false;
+  // The unit is picked from the rounded figure, so 999.6 reads `$1.0k`, not `$1000`.
+  if (abs >= 1_000_000 || roundedTo(inK, abs >= 10_000 ? 0 : 1) >= 1000) {
+    body = `$${inM.toFixed(inM >= 10 ? 0 : 1)}M`;
+  } else if (abs >= 1_000 || roundedTo(abs, 0) >= 1000) {
+    body = `$${inK.toFixed(abs >= 10_000 ? 0 : 1)}k`;
+  } else {
+    body = `$${abs.toFixed(0)}`;
+    zero = roundedTo(abs, 0) === 0;
+  }
+  return v < 0 && !zero ? `${MINUS}${body}` : body;
 };
 
-/** Less-compact USD formatter for inline numbers — `$1,234` / `$12.5k` / `$3.50M`. */
-export const money = (v: number): string => {
-  const sign = v < 0 ? "−" : "";
+/**
+ * Less-compact USD formatter for inline numbers — `$1,234` / `$12.5k` / `$3.50M`.
+ * Below $10k the digits are grouped for `locale`, never for the browser's.
+ */
+export const money = (v: number, locale = "en-US"): string => {
   const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 10_000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
-  return `${sign}$${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  const inK = abs / 1000;
+  let body: string;
+  let zero = false;
+  if (abs >= 1_000_000 || (abs >= 10_000 && roundedTo(inK, 1) >= 1000)) {
+    body = `$${(abs / 1_000_000).toFixed(2)}M`;
+  } else if (abs >= 10_000) {
+    body = `$${inK.toFixed(1)}k`;
+  } else {
+    body = `$${abs.toLocaleString(locale, { maximumFractionDigits: 0 })}`;
+    zero = Math.round(abs) === 0;
+  }
+  return v < 0 && !zero ? `${MINUS}${body}` : body;
 };
 
 /** Percentage from a fraction — `0.184` → `18.4%`. */
-export const pct = (v: number): string => `${(v * 100).toFixed(1)}%`;
+export const pct = (v: number): string => {
+  const text = (Math.abs(v) * 100).toFixed(1);
+  return `${v < 0 && Number(text) !== 0 ? MINUS : ""}${text}%`;
+};
 
 /** A count of tournaments, or a dash when the statistic does not exist (NaN). */
 export const tourneyCountOrDash = (v: number, unit: string): string =>
   Number.isFinite(v) ? `${Math.round(v)} ${unit}` : "—";
 
-/** Integer with locale-default thousands grouping. */
-export const intFmt = (v: number): string =>
-  v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+/** Integer with thousands grouping for `locale` (the UI's, not the browser's). */
+export const intFmt = (v: number, locale = "en-US"): string =>
+  (Math.round(Math.abs(v)) === 0 ? 0 : v).toLocaleString(locale, {
+    maximumFractionDigits: 0,
+  });
 
 export interface MoneyFmt {
   money: (v: number) => string;
@@ -77,6 +104,11 @@ export function formatMinimumBankroll(
 /** USD-denominated formatter pair. Default for new result widgets. */
 export const defaultMoneyFmt: MoneyFmt = { money, compactMoney };
 
+/** USD pair whose grouped digits follow `locale`. */
+export function makeUsdMoney(locale: string): MoneyFmt {
+  return { money: (v: number) => money(v, locale), compactMoney };
+}
+
 /**
  * Build an ABI-denominated formatter pair anchored to a per-result
  * average buy-in. ABI mode normalizes dollar amounts so cross-stake
@@ -85,21 +117,20 @@ export const defaultMoneyFmt: MoneyFmt = { money, compactMoney };
  */
 export function makeAbiMoney(abi: number): MoneyFmt {
   const safe = abi > 0 ? abi : 1;
-  const fmt = (v: number, digits: number) => {
-    const sign = v < 0 ? "−" : "";
-    const n = Math.abs(v) / safe;
-    return `${sign}${n.toFixed(digits)} ABI`;
-  };
   return {
-    money: (v: number) => fmt(v, Math.abs(v) / safe >= 100 ? 0 : 1),
-    compactMoney: (v: number) => {
-      const sign = v < 0 ? "−" : "";
+    money: (v: number) => {
       const n = Math.abs(v) / safe;
-      if (n >= 1000)
-        return `${sign}${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k ABI`;
-      if (n >= 100) return `${sign}${n.toFixed(0)} ABI`;
-      if (n === 0) return "0 ABI";
-      return `${sign}${n.toFixed(1)} ABI`;
+      const text = n.toFixed(roundedTo(n, 1) >= 100 ? 0 : 1);
+      return `${v < 0 && Number(text) !== 0 ? MINUS : ""}${text} ABI`;
+    },
+    compactMoney: (v: number) => {
+      const n = Math.abs(v) / safe;
+      if (n >= 999.5) {
+        return `${v < 0 ? MINUS : ""}${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k ABI`;
+      }
+      const text = n.toFixed(roundedTo(n, 1) >= 100 ? 0 : 1);
+      if (Number(text) === 0) return "0 ABI";
+      return `${v < 0 ? MINUS : ""}${text} ABI`;
     },
   };
 }

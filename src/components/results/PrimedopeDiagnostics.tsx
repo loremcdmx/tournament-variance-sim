@@ -25,6 +25,7 @@ export function CalibrationNotices({ result, schedule }: {
   schedule?: TournamentRow[];
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const warnings = [result, result.comparison].flatMap((run) => run?.calibrationWarnings ?? []);
   if (warnings.length === 0) return null;
   return (
@@ -33,8 +34,8 @@ export function CalibrationNotices({ result, schedule }: {
         <li key={`${warning.rowId}-${index}`}>
           {fmt(t("pd.calibrationClamped"), {
             row: schedule?.find((row) => row.id === warning.rowId)?.label || warning.rowId,
-            target: usdMoney(warning.targetWinnings),
-            actual: usdMoney(warning.actualWinnings),
+            target: usdMoney(warning.targetWinnings, numberLocaleTag(locale)),
+            actual: usdMoney(warning.actualWinnings, numberLocaleTag(locale)),
           })}
         </li>
       ))}

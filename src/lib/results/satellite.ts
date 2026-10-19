@@ -29,6 +29,43 @@ export function hasSatelliteRow(
   return schedule.some((row) => row.payoutStructure === "satellite-ticket");
 }
 
+const MAX_SEAT_BINS = 40;
+
+/**
+ * Histogram of whole-number counts. Each bar is centred on a seat count and
+ * every count falls in exactly one bar: bins of a fractional width would leave
+ * gaps between the integers or give some bars two of them.
+ */
+export function integerHistogram(
+  values: ArrayLike<number>,
+  lo: number,
+  hi: number,
+): { binEdges: number[]; counts: number[] } {
+  const first = Math.floor(lo);
+  const last = Math.max(first, Math.ceil(hi));
+  const distinct = last - first + 1;
+  const width = Math.max(1, Math.ceil(distinct / MAX_SEAT_BINS));
+  const binCount = Math.ceil(distinct / width);
+  const origin = first - 0.5;
+  const binEdges = new Array<number>(binCount + 1);
+  for (let i = 0; i <= binCount; i++) {
+    binEdges[i] = Math.min(origin + i * width, last + 0.5);
+  }
+  const counts = new Array<number>(binCount).fill(0);
+  for (let i = 0; i < values.length; i++) {
+    const bin = Math.floor((values[i] - origin) / width);
+    counts[Math.min(binCount - 1, Math.max(0, bin))]++;
+  }
+  return { binEdges, counts };
+}
+
+/** Seat counts held by a bar of `integerHistogram`: `0`, `3 – 5`. */
+export function integerBinLabel(lo: number, hi: number): string {
+  const from = Math.ceil(lo);
+  const to = Math.floor(hi);
+  return from >= to ? String(from) : `${from} – ${to}`;
+}
+
 export function computeSatelliteStats(
   result: SimulationResult,
   schedule: TournamentRow[],
@@ -96,20 +133,7 @@ export function computeSatelliteStats(
     return sorted[idx];
   };
 
-  const lo = sorted[0];
-  const hi = sorted[sampleCount - 1];
-  const span = Math.max(1, hi - lo);
-  const binCount = Math.min(40, Math.max(8, Math.ceil(span)));
-  const binEdges = new Array<number>(binCount + 1);
-  for (let i = 0; i <= binCount; i++) binEdges[i] = lo + (span * i) / binCount;
-  const counts = new Array<number>(binCount).fill(0);
-  for (let i = 0; i < sampleCount; i++) {
-    let bin = Math.floor(((seatsWon[i] - lo) / span) * binCount);
-    if (bin < 0) bin = 0;
-    else if (bin >= binCount) bin = binCount - 1;
-    counts[bin]++;
-  }
-
+  const histogram = integerHistogram(seatsWon, sorted[0], sorted[sampleCount - 1]);
 
   let netPerSession = 0;
   for (const satRow of satRows) {
@@ -136,6 +160,6 @@ export function computeSatelliteStats(
     shotsPerSeat,
     netPerSession,
     rowCount: satRows.length,
-    histogram: { binEdges, counts },
+    histogram,
   };
 }

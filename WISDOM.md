@@ -575,6 +575,46 @@ Consequences to remember:
   bare manual $/tournament have no day length, so those figures are `null` and
   hidden.
 
+## Result Chart Plumbing
+
+Small things that looked like glitches in the browser. Do not undo these without re-checking:
+
+- `UplotChart` syncs its callback refs in layout effects declared before the plot's:
+  uPlot fires its `setScale` hook inside the constructor, so a passive-effect sync
+  sent that call to the previous render's handler (a "Reset zoom" button over an
+  unzoomed chart after the distance changed).
+- A uPlot is rebuilt when its `options` change identity, which drops zoom and hover.
+  `DistributionChart` keys its memos on the overlay's edges, counts and label (callers
+  pass a fresh overlay object every render); the cash histogram / odds / convergence
+  charts memoize their options. The trajectory plot is built on the untrimmed range of
+  every drawn run (`builtYRange`), and the range of the runs actually shown
+  (`effectiveYRange`, which follows the slider and the trims) is pushed onto the live
+  plot as `yRange` with `setScale("y")`; building on it rebuilt the chart on every
+  slider tick. A unit flip reaches the axis through a ref, so `TrajectoryPlot` asks
+  uPlot to recompute the tick labels (`redraw(false, true)`).
+- Envelope percentiles and the mean are sorted on the K <= 240 checkpoint grid and
+  interpolated onto the hi-res grid; min and max are exact there, so `buildResult`
+  clamps every curve into `[hiResMin, hiResMax]` (`clampEnvelopesToExtrema`). Before,
+  p0.15 dipped under the worst run at 9 of 301 plotted points (by up to $57, about one
+  buy-in) of a 500-sample, 300-tournament, $50 freezeout run, seed 7. Curves already
+  inside the range are bit-for-bit unchanged.
+- Hover titles come from the dictionary (`trajectoryLabels.ts`): a path line carries its
+  `runNumber`, the zero line a `titleKey`, an overlay extreme its `overlayLabel`; the
+  `label` field stays an identifier. The 0.15% tail prints as 0.15 from both sides.
+- Under the "Like PrimeDope" preset the first pass is binary-ITM and the comparison is
+  our own model: `pdOverlayLabelKeys` is the one place that says what the overlay, the
+  PD badges and the first-pass legend are called. The overlay series is still drawn on
+  the first pane while its checkbox shows disabled and unchecked (not changed).
+- A formatter takes the sign and the unit from the rounded value: no `−$0`, `−0.0 ABI`
+  or `$1000k`. `money` and `intFmt` take the UI number locale (`en-US` by default,
+  never the browser's); `UnitScope` and `ResultsView` build their pair with
+  `makeUsdMoney`.
+- The satellite seats histogram bins on whole numbers (`integerHistogram`): bars are
+  centred on a seat count and the hover prints the counts a bar holds.
+- No DOM in vitest: `src/lib/testing/hookHarness.ts` renders a component as a function
+  with call-order hook cells (layout effects before passive ones). Mock `react` with
+  `reactHookMocks`, call the component, read the returned element tree.
+
 ## Preview, Planning And Empty-State Readouts
 
 Small numbers that read as exact. Do not undo these without re-measuring:

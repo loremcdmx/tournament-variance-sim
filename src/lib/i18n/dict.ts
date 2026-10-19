@@ -1256,6 +1256,10 @@ export const DICT = {
     en: "FREEZE",
     ru: "ФРИЗЫ",
   },
+  "stat.pd.badge.ours": {
+    en: "OURS",
+    ru: "НАША",
+  },
   "chart.trajectory.noKoCap": {
     en: "Same schedule, bounties stripped — sanity check, not a comparison.",
     ru: "То же расписание без ноков — прикидка, не сравнение.",
@@ -1436,6 +1440,8 @@ export const DICT = {
     en: "reference line for the expected ROI",
     ru: "опорная линия ожидаемого ROI",
   },
+  "chart.traj.runLabel": { en: "Run {n}", ru: "Ран {n}" },
+  "chart.traj.line.zero": { en: "Zero profit", ru: "Нулевой профит" },
   "chart.traj.hoverHint.peak": {
     en: "peak",
     ru: "пик",

@@ -47,3 +47,39 @@ export function pdComparePaneKeys({
     pdPane: "comparison",
   };
 }
+
+export interface PdOverlayLabelKeys {
+  // The second pass is our own model: the PrimeDope preset's primary pass is the
+  // binary-ITM one, so what is laid over it is the alpha calibration.
+  secondIsOurs: boolean;
+  // null: the literal product name "PrimeDope", or our model's label when
+  // `secondIsOurs`.
+  overlayKey: DictKey | null;
+  // null: the default "PD" badge.
+  badgeKey: DictKey | null;
+  // null: the default "our model" legend of the first pass.
+  primaryLegendKey: DictKey | null;
+}
+
+export function pdOverlayLabelKeys({
+  pdPresetFlip,
+  pdPkoFallback,
+}: {
+  pdPresetFlip: boolean;
+  pdPkoFallback: boolean;
+}): PdOverlayLabelKeys {
+  if (pdPresetFlip) {
+    return {
+      secondIsOurs: true,
+      overlayKey: null,
+      badgeKey: "stat.pd.badge.ours",
+      primaryLegendKey: "pd.model.primedope",
+    };
+  }
+  return {
+    secondIsOurs: false,
+    overlayKey: pdPkoFallback ? "chart.overlay.freezeouts" : null,
+    badgeKey: pdPkoFallback ? "stat.pd.badge.freezeouts" : null,
+    primaryLegendKey: null,
+  };
+}

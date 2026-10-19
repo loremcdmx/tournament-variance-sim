@@ -76,3 +76,25 @@ export function buildEnvelopes(
     p9985: upsampleToGrid(p9985, checkpointIdx, hiCheckpointIdx),
   };
 }
+
+type EnvelopeCurves = ReturnType<typeof buildEnvelopes>;
+
+/**
+ * The percentiles and the mean are sorted on the checkpoint grid and read
+ * linearly onto the finer plot grid, while the minimum and maximum are exact at
+ * every plot point. Between two checkpoints an interpolated curve can leave the
+ * range the runs really covered (p0.15 under the worst run), so pull each curve
+ * back inside it. Curves already inside are not touched.
+ */
+export function clampEnvelopesToExtrema(
+  curves: EnvelopeCurves,
+  lo: Float64Array,
+  hi: Float64Array,
+): void {
+  for (const curve of Object.values(curves)) {
+    for (let j = 0; j < curve.length; j++) {
+      if (curve[j] < lo[j]) curve[j] = lo[j];
+      else if (curve[j] > hi[j]) curve[j] = hi[j];
+    }
+  }
+}
