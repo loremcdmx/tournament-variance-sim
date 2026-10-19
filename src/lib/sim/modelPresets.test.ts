@@ -5,6 +5,7 @@ import {
   STANDARD_PRESETS,
   applyModelPatch,
   sanitizeControlsForBasicMode,
+  withSupportedAlpha,
 } from "./modelPresets";
 
 const baseState: ControlsState = {
@@ -105,5 +106,22 @@ describe("sanitizeControlsForBasicMode", () => {
     expect(next.roiStdErr).toBe(0);
     expect(next.roiShockPerTourney).toBe(0);
     expect(next.tiltSlowGain).toBe(0);
+  });
+});
+
+describe("withSupportedAlpha", () => {
+  it("drops a hand-set alpha that the model ignores", () => {
+    const next = withSupportedAlpha({ ...baseState, finishModelId: "power-law", alphaOverride: 3 });
+    expect(next.alphaOverride).toBeNull();
+    expect(next.finishModelId).toBe("power-law");
+  });
+
+  it("keeps the alpha of a real-data tilt model", () => {
+    const state = { ...baseState, finishModelId: "pko-realdata-tilt" as const, alphaOverride: 0.2 };
+    expect(withSupportedAlpha(state)).toBe(state);
+  });
+
+  it("hands back the same object when there is nothing to drop", () => {
+    expect(withSupportedAlpha(baseState)).toBe(baseState);
   });
 });

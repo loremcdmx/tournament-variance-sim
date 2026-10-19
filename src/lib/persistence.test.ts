@@ -686,6 +686,46 @@ describe("persistence validation", () => {
     expect(loaded.alphaOverride).toBeUndefined();
   });
 
+  it("does not revive a hand-set alpha for a model that has no alpha field", () => {
+    const withAlpha = (controls: Record<string, unknown>) =>
+      decodeState(
+        encoded({ v: PERSISTED_STATE_VERSION, schedule: [row], controls }),
+      )?.controls as unknown as Record<string, unknown>;
+
+    for (const finishModelId of [
+      "power-law",
+      "linear-skill",
+      "stretched-exp",
+      "plackett-luce",
+      "powerlaw-realdata-influenced",
+      "uniform",
+      "freeze-realdata-linear",
+    ]) {
+      expect(withAlpha({ finishModelId, alphaOverride: 3 }).alphaOverride).toBeNull();
+    }
+    // An id that fails validation falls back to the default model, which has none.
+    expect(withAlpha({ finishModelId: "oops", alphaOverride: 3 }).alphaOverride).toBeNull();
+    expect(withAlpha({ alphaOverride: 3 }).alphaOverride).toBeNull();
+  });
+
+  it("keeps the alpha of the three real-data tilt models", () => {
+    for (const finishModelId of [
+      "freeze-realdata-tilt",
+      "pko-realdata-tilt",
+      "mystery-realdata-tilt",
+    ]) {
+      const state = decodeState(
+        encoded({
+          v: PERSISTED_STATE_VERSION,
+          schedule: [row],
+          controls: { finishModelId, alphaOverride: 0.2 },
+        }),
+      );
+      expect(state?.controls.alphaOverride).toBe(0.2);
+      expect(state?.controls.finishModelId).toBe(finishModelId);
+    }
+  });
+
   it("drops malformed persisted empirical buckets and non-boolean flags", () => {
     const state = loadLocalFromPayload({
       v: 1,

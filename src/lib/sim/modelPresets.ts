@@ -1,5 +1,6 @@
 import type { ControlsState } from "@/components/ControlsPanel";
 import type { DictKey } from "@/lib/i18n/dict";
+import { supportsManualAlpha } from "./finishModel";
 
 /**
  * Model presets — bundled snapshots of the *modelling* knobs only. They
@@ -169,4 +170,17 @@ export function sanitizeControlsForBasicMode(
     ...NAIVE_PRESET.patch,
     modelPresetId: "naive",
   };
+}
+
+/**
+ * A hand-set α only reaches the three real-data tilt models; on any other
+ * model it is ignored. Settings that outlive a model switch (autosave, an
+ * old share link) can still carry one, so the run input and the settings
+ * snapshot kept with its results drop it instead of claiming a pinned α.
+ */
+export function withSupportedAlpha(state: ControlsState): ControlsState {
+  if (state.alphaOverride == null || supportsManualAlpha(state.finishModelId)) {
+    return state;
+  }
+  return { ...state, alphaOverride: null };
 }

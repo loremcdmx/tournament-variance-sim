@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { FinishModelId } from "@/lib/sim/types";
-import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
+import { finishModelSupportsTargetRoi, supportsManualAlpha } from "@/lib/sim/finishModel";
 import {
   STANDARD_PRESETS,
   applyModelPatch,
@@ -152,12 +152,6 @@ function formatCount(n: number, locale = "en"): string {
   if (n >= 10_000) return `${Math.round(n / 1000)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return n.toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
-}
-
-export function supportsManualAlpha(modelId: FinishModelId): boolean {
-  return modelId === "freeze-realdata-tilt"
-    || modelId === "pko-realdata-tilt"
-    || modelId === "mystery-realdata-tilt";
 }
 
 export function changeFinishModel(

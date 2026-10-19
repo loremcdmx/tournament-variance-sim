@@ -10,10 +10,13 @@ import {
   itmProbability,
   isAlphaAdjustable,
   applyBountyBias,
+  manualAlphaFor,
+  supportsManualAlpha,
 } from "./finishModel";
 import { getPayoutTable } from "./payouts";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
-import type { FinishModelConfig } from "./types";
+import { compileSchedule, runSimulation } from "./engine";
+import type { FinishModelConfig, SimulationInput, TournamentRow } from "./types";
 
 const MODELS: FinishModelConfig[] = [
   { id: "power-law" },
@@ -106,6 +109,43 @@ describe("expectedWinnings × calibrateAlpha", () => {
       const alpha = calibrateAlpha(N, payouts, pool, 22, roi, { id: "uniform" });
       expect(alpha).toBe(0);
     }
+  });
+});
+
+describe("supportsManualAlpha / manualAlphaFor", () => {
+  const TILT = ["freeze-realdata-tilt", "pko-realdata-tilt", "mystery-realdata-tilt"] as const;
+  const OTHERS = [
+    "power-law", "linear-skill", "stretched-exp", "plackett-luce", "uniform", "empirical",
+    "powerlaw-realdata-influenced", "freeze-realdata-step", "freeze-realdata-linear",
+    "pko-realdata-step", "pko-realdata-linear", "mystery-realdata-step", "mystery-realdata-linear",
+  ] as const;
+
+  it("is true for exactly the three real-data tilt models", () => {
+    for (const id of TILT) expect(supportsManualAlpha(id)).toBe(true);
+    for (const id of OTHERS) expect(supportsManualAlpha(id)).toBe(false);
+  });
+
+  it("sends the typed alpha only where it is read", () => {
+    for (const id of TILT) {
+      expect(manualAlphaFor(id, 0.2)).toBe(0.2);
+      expect(manualAlphaFor(id, 0)).toBe(0);
+      expect(manualAlphaFor(id, null)).toBeUndefined();
+    }
+    for (const id of OTHERS) expect(manualAlphaFor(id, 3)).toBeUndefined();
+    expect(manualAlphaFor("pko-realdata-tilt", Number.NaN)).toBeUndefined();
+  });
+
+  it("agrees with the engine: a tilt model moves with alpha, the others do not", () => {
+    const mean = (id: FinishModelConfig["id"], alpha: number | undefined) => {
+      const payouts = getPayoutTable("mtt-standard", 500);
+      const paid = payouts.filter((p) => p > 0).length;
+      return calibrateShelledItm(
+        500, paid, payouts, 5000, 11 * 1.1, 0.15, undefined, { id, alpha },
+      ).currentWinnings;
+    };
+    expect(mean("pko-realdata-tilt", 0.3)).not.toBeCloseTo(mean("pko-realdata-tilt", undefined), 3);
+    expect(mean("power-law", 3)).toBe(mean("power-law", undefined));
+    expect(mean("stretched-exp", 3)).toBe(mean("stretched-exp", undefined));
   });
 });
 
@@ -370,6 +410,87 @@ describe("calibrateShelledItm", () => {
       for (let i = 0; i < N; i++) s += r.pmf[i];
       expect(s).toBeCloseTo(1, 6);
     }
+  });
+});
+
+describe("calibrateShelledItm: free band the model gives no weight to", () => {
+  const sum = (a: Float64Array) => a.reduce((x, y) => x + y, 0);
+  const paidMass = (a: Float64Array, paid: number) => sum(a.slice(0, paid));
+  const solve = (
+    structure: Parameters<typeof getPayoutTable>[0],
+    N: number,
+    itm: number,
+    locks: { first?: number; top3?: number; ft?: number },
+    model: FinishModelConfig,
+    roi: number,
+  ) => {
+    const payouts = getPayoutTable(structure, N);
+    const paid = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
+    const r = calibrateShelledItm(N, paid, payouts, N * 10, 11 * (1 + roi), itm, locks, model);
+    return { r, paid };
+  };
+
+  it("linear skill at its α ceiling keeps the whole ITM band (BR, 9 players, first locked)", () => {
+    const { r, paid } = solve("battle-royale", 9, 0.09010175858158619, { first: 0.019911431847140195 }, { id: "linear-skill" }, 0.1648);
+    expect(paid).toBe(2);
+    expect(sum(r.pmf)).toBeCloseTo(1, 12);
+    expect(paidMass(r.pmf, paid)).toBeCloseTo(0.09010175858158619, 12);
+    expect(r.pmf[0]).toBeCloseTo(0.019911431847140195, 12);
+    expect(r.pmf[1]).toBeCloseTo(0.09010175858158619 - 0.019911431847140195, 12);
+    expect(r.feasible).toBe(false);
+  });
+
+  it("linear skill at its α ceiling keeps the whole ITM band (SNG 65/35, ITM 100 %, first locked)", () => {
+    const { r, paid } = solve("sng-65-35", 3, 1, { first: 0.09937498716171832 }, { id: "linear-skill" }, 0.3359);
+    expect(paid).toBe(2);
+    expect(sum(r.pmf)).toBeCloseTo(1, 12);
+    expect(paidMass(r.pmf, paid)).toBeCloseTo(1, 12);
+    expect(r.pmf[0]).toBeCloseTo(0.09937498716171832, 12);
+    expect(r.pmf[1]).toBeCloseTo(1 - 0.09937498716171832, 12);
+  });
+
+  it("a stretched exponential that underflows on the free band keeps its mass too", () => {
+    const { r, paid } = solve("mtt-standard", 1000, 0.3, { first: 0.05, ft: 0.25 }, { id: "stretched-exp", beta: 1.3 }, -0.4);
+    expect(sum(r.pmf)).toBeCloseTo(1, 12);
+    expect(paidMass(r.pmf, paid)).toBeCloseTo(0.3, 12);
+    expect(r.shells.first).toBeCloseTo(0.05, 12);
+    expect(r.shells.ft).toBeCloseTo(0.25, 12);
+    expect(r.feasible).toBe(false);
+  });
+
+  it("an unreachable target is still reported as infeasible rather than as a solved shape", () => {
+    const { r } = solve("battle-royale", 9, 0.09010175858158619, { first: 0.019911431847140195 }, { id: "linear-skill" }, 0.1648);
+    expect(Math.abs(r.currentWinnings - 11 * 1.1648)).toBeGreaterThan(1e-3);
+    expect(r.feasible).toBe(false);
+  });
+
+  describe("simulated end to end", () => {
+    const rows: Array<[string, TournamentRow]> = [
+      ["BR 9 players, ITM 9 %, first locked", {
+        id: "r", label: "r", buyIn: 10, rake: 0.1, roi: 0.1648, count: 5, players: 9,
+        payoutStructure: "battle-royale", gameType: "mystery-royale", bountyFraction: 0.25,
+        itmRate: 0.09010175858158619, finishBuckets: { first: 0.019911431847140195 },
+      }],
+      ["SNG 65/35 mystery, ITM 100 %, first locked", {
+        id: "r", label: "r", buyIn: 10, rake: 0.1, roi: 0.3359, count: 5, players: 3,
+        payoutStructure: "sng-65-35", gameType: "mystery", bountyFraction: 0.5,
+        itmRate: 1, finishBuckets: { first: 0.09937498716171832 },
+      }],
+    ];
+    const inputFor = (row: TournamentRow, id: "linear-skill" | "power-law"): SimulationInput => ({
+      schedule: [row], scheduleRepeats: 1, samples: 4000, bankroll: 0, seed: 5, finishModel: { id },
+    });
+
+    it.each(rows)("%s: linear skill compiles and simulates like power-law", (_name, row) => {
+      const linear = compileSchedule(inputFor(row, "linear-skill"), "alpha").flat[0];
+      const power = compileSchedule(inputFor(row, "power-law"), "alpha").flat[0];
+      expect(linear.analyticMeanSingle).toBeCloseTo(power.analyticMeanSingle, 10);
+      expect(linear.analyticMeanSingle).toBeCloseTo(row.buyIn * (1 + row.rake) * (1 + row.roi), 8);
+      const a = runSimulation(inputFor(row, "linear-skill"));
+      const b = runSimulation(inputFor(row, "power-law"));
+      expect(a.stats.mean).toBe(b.stats.mean);
+      expect(a.stats.stdDev).toBe(b.stats.stdDev);
+    });
   });
 });
 

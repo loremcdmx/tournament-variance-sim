@@ -126,7 +126,7 @@ All in `src/lib/sim/types.ts`:
 
 - **`TournamentRow`** — one line in the schedule. Has buy-in, rake, field, ROI, payout structure, and optional bounty/mystery fields. `count` is the row's per-pass frequency; compile-time scheduling interleaves rows as evenly as possible inside each pass rather than batching one row at a time.
 - **`SimulationInput`** — `{schedule, scheduleRepeats, samples, bankroll, seed, finishModel, ...noise, ...tilt}`.
-- **`FinishModelConfig`** — `{id: "power-law"|"stretched-exp"|"empirical"|..., alpha?, beta?, empiricalBuckets?}`. Note: when `alpha` is set, calibration is skipped and the override is used as-is.
+- **`FinishModelConfig`** — `{id: "power-law"|"stretched-exp"|"empirical"|..., alpha?, beta?, empiricalBuckets?}`. Note: `alpha` is read only by the three real-data tilt models and by rows with no `itmRate` (`calibrateAlpha` returns it as-is). On a fixed-ITM row, which is every row the app runs because `applyItmTarget` stamps one, every other model solves its own α against the ROI and ignores it; the app sends `alpha` only where it is read (`manualAlphaFor`).
 - **`SimulationResult`** — `{samples, totalBuyIn, expectedProfit, finalProfits, rowProfits, histogram, samplePaths, envelopes, stats, decomposition, downswings, sensitivity, ...}`. This is what `ResultsView` consumes.
 - **`RowDecomposition`** — per-row `{mean, stdDev, varianceShare, kellyFraction, kellyBankroll}`.
 

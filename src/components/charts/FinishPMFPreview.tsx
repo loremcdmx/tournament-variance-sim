@@ -28,6 +28,7 @@ import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
+import { isTop3LockAvailable, patchFinishLocks } from "./finishPreview/shapeLocks";
 import {
   EvBreakdownFooter,
   EvBreakdownRow,
@@ -578,23 +579,16 @@ interface ShapeControlsProps {
   onRowChange: (updates: Partial<TournamentRow>) => void;
 }
 
-function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
+export function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
   const active = stats.shellMode;
 
   const patchBuckets = (patch: Partial<NonNullable<TournamentRow["finishBuckets"]>>) => {
-    const merged = { ...(row.finishBuckets ?? {}), ...patch };
-    // Drop undefined keys so empty buckets disappear cleanly.
-    const cleaned: NonNullable<TournamentRow["finishBuckets"]> = {};
-    if (merged.first != null) cleaned.first = merged.first;
-    if (merged.top3 != null) cleaned.top3 = merged.top3;
-    if (merged.ft != null) cleaned.ft = merged.ft;
-    onRowChange({
-      finishBuckets: Object.keys(cleaned).length > 0 ? cleaned : undefined,
-    });
+    onRowChange(patchFinishLocks(row, patch));
   };
+  const top3Available = isTop3LockAvailable(row.finishBuckets);
 
   const applyPreset = (preset: "auto" | "noskill" | "grinder" | "crusher") => {
     if (preset === "auto") {
@@ -692,6 +686,8 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
               ] as const
             ).map((bucket) => {
               const locked = bucket.value != null;
+              const needsAnchor = bucket.key === "top3" && !locked && !top3Available;
+              const anchorHint = needsAnchor ? t("shape.top3NeedsAnchor") : undefined;
               return (
                 <div
                   key={bucket.key}
@@ -710,6 +706,8 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
                     step={0.1}
                     placeholder={t("shape.autoPlaceholder")}
                     value={locked ? +((bucket.value as number) * 100).toFixed(3) : ""}
+                    disabled={needsAnchor}
+                    title={anchorHint}
                     onChange={(e) => {
                       const raw = e.target.value;
                       if (raw === "") {
@@ -722,10 +720,12 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
                         [bucket.key]: v / 100,
                       } as Record<string, number>);
                     }}
-                    className="w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)]"
+                    className="w-16 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-50"
                   />
                   <button
                     type="button"
+                    disabled={needsAnchor}
+                    title={anchorHint}
                     onClick={() => {
                       if (locked) {
                         patchBuckets({ [bucket.key]: undefined } as Record<string, undefined>);
@@ -733,7 +733,7 @@ function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
                         patchBuckets({ [bucket.key]: bucket.current } as Record<string, number>);
                       }
                     }}
-                    className="w-12 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)]"
+                    className="w-12 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
                   >
                     {locked ? t("shape.unlock") : t("shape.lock")}
                   </button>

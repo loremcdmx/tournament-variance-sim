@@ -199,6 +199,20 @@ export function normalizeGameTypeConsistency(row: TournamentRow): TournamentRow 
     }
     return changed ? { ...row, ...patch } : row;
   }
+  if (row.gameType === "mystery" || row.gameType === "mystery-royale") {
+    // PKO head-size noise and heat are PKO-only. The row keeps them when a PKO
+    // row is flipped here, and compileEntry adds an explicit pkoHeadVar to the
+    // Mystery log-variance, so the same-looking row simulated a wider σ until
+    // a reload (persistence strips the field) made it vanish.
+    if (row.pkoHeadVar === undefined && row.pkoHeat === undefined) {
+      return normalizeBrMrConsistency(row);
+    }
+    return normalizeBrMrConsistency({
+      ...row,
+      pkoHeadVar: undefined,
+      pkoHeat: undefined,
+    });
+  }
   return normalizeBrMrConsistency(row);
 }
 
@@ -298,6 +312,8 @@ export function applyGameType(
       // gave P(>100×) = 1e-8 — effectively zero jackpot tail. When real
       // non-BR Mystery tier data lands, switch to discrete-tier draw like BR.
       patch.mysteryBountyVariance = 2.0;
+      patch.pkoHeadVar = undefined;
+      patch.pkoHeat = undefined;
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-gg-mystery";
@@ -310,6 +326,8 @@ export function applyGameType(
       // misprice the 40/30/20 cash part.
       patch.bountyFraction = DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = 1.8;
+      patch.pkoHeadVar = undefined;
+      patch.pkoHeat = undefined;
       patch.rake = brDefault.rake;
       patch.buyIn = brDefault.buyIn;
       patch.roi = 0.03;

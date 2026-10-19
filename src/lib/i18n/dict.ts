@@ -302,8 +302,8 @@ export const DICT = {
   "empiricalOcean.methodCap": {"en":"The model transports moments of capped Space payouts. It does not identify an actual Ocean payoff distribution with the same cap. Full jackpot tails, paths, and quantiles remain unknown.","ru":"Переносятся моменты ограниченных Space-выплат. Результат не является распределением реального Ocean с таким же порогом. Полный хвост крупных призов, траектории и квантили здесь не определены."},
   "empiricalOcean.methodTheta": {"en":"θ sets the hero's relative weight when assigning knockouts. The model retains each wheel, head inheritance, and the winner's final spin; θ is not fitted to the history.","ru":"θ задаёт относительный вес героя при выборе получателя KO. Модель сохраняет отдельные колёса, наследование головы и финальный спин победителя; θ не подогнан к истории."},
   "shape.inconsistentFinishLocks": {
-    en: "Pinned finish probabilities conflict with each other or the row’s ITM.",
-    ru: "Закреплённые вероятности финишей противоречат друг другу или ITM строки.",
+    en: "Pinned finish probabilities conflict with each other or the row’s ITM, or P(top-3) is pinned without P(1st) or P(FT), which the model cannot hold.",
+    ru: "Закреплённые вероятности финишей противоречат друг другу или ITM строки, либо P(топ-3) закреплена без P(1-е) или P(финалка), и модель не может её удержать.",
   },
   "shape.clearFinishLocks": { en: "Clear finish locks", ru: "Снять фиксацию финишей" },
   "results.inputsChanged": {
@@ -614,6 +614,10 @@ export const DICT = {
   "shape.rowFirst": { en: "P(1st)", ru: "P(1-е)" },
   "shape.rowTop3": { en: "P(top-3)", ru: "P(топ-3)" },
   "shape.rowFt": { en: "P(FT)", ru: "P(финалка)" },
+  "shape.top3NeedsAnchor": {
+    en: "P(top-3) can only be pinned together with P(1st) or P(FT).",
+    ru: "P(топ-3) можно фиксировать только вместе с P(1-е) или P(финалка).",
+  },
   "shape.lock": { en: "lock", ru: "фикс" },
   "shape.unlock": { en: "auto", ru: "авто" },
   "shape.autoPlaceholder": { en: "auto", ru: "авто" },

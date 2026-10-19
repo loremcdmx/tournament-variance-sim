@@ -9,6 +9,7 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import type { GameType, PayoutStructureId, TournamentRow } from "./sim/types";
 import type { ControlsState } from "@/components/ControlsPanel";
+import { supportsManualAlpha } from "@/lib/sim/finishModel";
 import { STANDARD_PRESETS } from "@/lib/sim/modelPresets";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
@@ -440,6 +441,12 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
     const raw = next.alphaOverride;
     if (raw !== null && !isFiniteNumber(raw)) {
       delete next.alphaOverride;
+      changed = true;
+    } else if (raw !== null && !supportsManualAlpha(next.finishModelId as ControlsState["finishModelId"])) {
+      // The α field is disabled for every other model (an absent id falls back
+      // to the default model, which does not take one either), so an old save
+      // or link must not revive an override nobody can see or clear.
+      next.alphaOverride = null;
       changed = true;
     }
   }

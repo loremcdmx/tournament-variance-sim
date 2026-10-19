@@ -52,7 +52,8 @@ import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { SCENARIOS } from "@/lib/scenarios";
 import { ScheduleToolbarExtras } from "@/components/ScheduleToolbarExtras";
-import { sanitizeControlsForBasicMode } from "@/lib/sim/modelPresets";
+import { manualAlphaFor } from "@/lib/sim/finishModel";
+import { sanitizeControlsForBasicMode, withSupportedAlpha } from "@/lib/sim/modelPresets";
 
 function LoadingPanel() {
   const t = useT();
@@ -331,7 +332,10 @@ export default function Home() {
         seed: effectiveControls.seed >>> 0,
         finishModel: {
           id: effectiveControls.finishModelId,
-          alpha: effectiveControls.alphaOverride ?? undefined,
+          alpha: manualAlphaFor(
+            effectiveControls.finishModelId,
+            effectiveControls.alphaOverride,
+          ),
           empiricalBuckets:
             effectiveControls.finishModelId === "empirical"
               ? effectiveControls.empiricalBuckets
@@ -397,7 +401,7 @@ export default function Home() {
   const previewModel = useMemo(
     () => ({
       id: controls.finishModelId,
-      alpha: controls.alphaOverride ?? undefined,
+      alpha: manualAlphaFor(controls.finishModelId, controls.alphaOverride),
       empiricalBuckets:
         controls.finishModelId === "empirical"
           ? controls.empiricalBuckets
@@ -408,7 +412,10 @@ export default function Home() {
   const deferredPreviewModel = useMemo(
     () => ({
       id: deferredControls.finishModelId,
-      alpha: deferredControls.alphaOverride ?? undefined,
+      alpha: manualAlphaFor(
+        deferredControls.finishModelId,
+        deferredControls.alphaOverride,
+      ),
       empiricalBuckets:
         deferredControls.finishModelId === "empirical"
           ? deferredControls.empiricalBuckets
@@ -494,7 +501,9 @@ export default function Home() {
     run(input, {
       v: PERSISTED_STATE_VERSION,
       schedule,
-      controls: advanced ? controls : sanitizeControlsForBasicMode(controls),
+      controls: withSupportedAlpha(
+        advanced ? controls : sanitizeControlsForBasicMode(controls),
+      ),
     });
   }, [
     runRequest,

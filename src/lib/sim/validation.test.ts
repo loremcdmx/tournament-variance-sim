@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { validateSchedule } from "./validation";
 import { compileSchedule } from "./engine";
+import { calibrateShelledItm } from "./finishModel";
+import { chooseClosestFeasibilityFix } from "./feasibilityFix";
+import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
@@ -247,5 +250,68 @@ describe("validateSchedule", () => {
     expect(validateSchedule([controlRow], baseModel).ok).toBe(
       engineHitsTarget(controlRow),
     );
+  });
+});
+
+describe("validateSchedule: a Top-3 lock with no First or FT lock beside it", () => {
+  const itmCfg = { enabled: false, pct: 18.7 };
+  // Paid places: 1000 players 150, 50 players 7, 30 players 4.
+  const fields = [1000, 50, 30] as const;
+
+  it("the solver really ignores it, which is why validation must not wave it through", () => {
+    const N = 1000;
+    const payouts = getPayoutTable("mtt-standard", N);
+    const paid = payouts.filter((p) => p > 0).length;
+    const solve = (locks: { first?: number; top3?: number; ft?: number }) =>
+      calibrateShelledItm(N, paid, payouts, N * 50, 55 * 1.1, 0.16, locks, baseModel);
+    const free = solve({});
+    const lone = solve({ top3: 0.05 });
+    expect(lone.shells.top3).toBe(free.shells.top3);
+    expect(lone.feasible).toBe(true);
+    expect(solve({ first: 0.001, top3: 0.05 }).shells.top3).toBeCloseTo(0.05, 9);
+    expect(solve({ top3: 0.05, ft: 0.08 }).shells.top3).toBeCloseTo(0.05, 9);
+  });
+
+  it.each(fields)("is reported as inconsistent locks at %i players", (players) => {
+    const res = validateSchedule([row({ players, itmRate: 0.2, finishBuckets: { top3: 0.05 } })], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0].reason).toBe("inconsistent-finish-locks");
+  });
+
+  it("is no longer reported once First or FT is pinned beside it", () => {
+    const reasons = (players: number, finishBuckets: { first?: number; top3?: number; ft?: number }) =>
+      validateSchedule([row({ players, itmRate: 0.2, finishBuckets })], baseModel).issues.map((i) => i.reason);
+    for (const finishBuckets of [
+      { first: 0.002, top3: 0.05 },
+      { top3: 0.05, ft: 0.1 },
+      { first: 0.002, top3: 0.05, ft: 0.1 },
+    ]) {
+      expect(reasons(1000, finishBuckets)).not.toContain("inconsistent-finish-locks");
+    }
+    // 4 to 9 paid places: the FT shell is the whole ITM band, so only First anchors it.
+    for (const players of [50, 30]) {
+      expect(reasons(players, { first: 0.002, top3: 0.05 })).not.toContain("inconsistent-finish-locks");
+    }
+  });
+
+  it("leaves a lone First or a lone FT lock alone", () => {
+    for (const finishBuckets of [{ first: 0.002 }, { ft: 0.1 }]) {
+      const res = validateSchedule([row({ itmRate: 0.2, finishBuckets })], baseModel);
+      expect(res.issues.map((i) => i.reason)).not.toContain("inconsistent-finish-locks");
+    }
+  });
+
+  it("does not apply to formats that pay three places or fewer, where Top-3 is the whole ITM band", () => {
+    const sng = row({ players: 9, payoutStructure: "sng-50-30-20", itmRate: 1 / 3, finishBuckets: { top3: 1 / 3 } });
+    expect(validateSchedule([sng], baseModel).issues.map((i) => i.reason)).not.toContain("inconsistent-finish-locks");
+  });
+
+  it("the one-click fix clears the lock and the row validates", () => {
+    const r = row({ itmRate: 0.16, finishBuckets: { top3: 0.05 } });
+    const issue = validateSchedule([r], baseModel).issues[0];
+    const fix = chooseClosestFeasibilityFix(r, issue, baseModel, itmCfg);
+    expect(fix.kind).toBe("clear-locks");
+    expect(validateSchedule([fix.row], baseModel).ok).toBe(true);
   });
 });

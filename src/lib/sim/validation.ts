@@ -109,6 +109,13 @@ export function validateSchedule(
         previousEnd = end;
         previousMass = mass;
       }
+      // P(top-3) alone pins no layer, so the solver would drop it while the
+      // row still validated. It needs P(1st) or P(FT) beside it. With three or
+      // fewer paid places the Top-3 shell is the whole ITM band, which the
+      // boundary walk above already holds to the row's ITM.
+      if (locks.top3 != null && locks.first == null && locks.ft == null && paidCount > 3) {
+        inconsistent = true;
+      }
       if (inconsistent) {
         const targetEv = row.buyIn * (1 + row.rake) * (1 + row.roi);
         issues.push({

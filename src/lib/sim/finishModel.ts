@@ -37,6 +37,29 @@ export function finishModelSupportsTargetRoi(id: FinishModelId): boolean {
 }
 
 /**
+ * True for the three real-data tilt models, the only ones whose shape reads a
+ * hand-set α on a fixed-ITM row. Every other model solves its own α against
+ * the row's ROI there, so an α sent with it is ignored.
+ */
+export function supportsManualAlpha(id: FinishModelId): boolean {
+  return (
+    id === "freeze-realdata-tilt" ||
+    id === "pko-realdata-tilt" ||
+    id === "mystery-realdata-tilt"
+  );
+}
+
+/** The α override to send with `id`: the typed value, or none when `id` ignores it. */
+export function manualAlphaFor(
+  id: FinishModelId,
+  alpha: number | null | undefined,
+): number | undefined {
+  return supportsManualAlpha(id) && alpha != null && Number.isFinite(alpha)
+    ? alpha
+    : undefined;
+}
+
+/**
  * True when the model's α is solved against the ROI target — so for any
  * given `targetWinnings`, `calibrateAlpha` will move α until
  * `Σ pmf × payouts × pool ≈ targetWinnings`. False for fixed-shape models
@@ -501,6 +524,11 @@ export function calibrateShelledItm(
   // ---- 3. Solve for α on the free band ---------------------------------
   let alpha = 0;
   let feasible = true;
+  // Free-band mass the model gave no place to: it weights every free place at
+  // exactly zero at the α the bisection ended on (linear skill at its ceiling
+  // puts none on the last paid place; a stretched exponential underflows on a
+  // far-tail band).
+  let unplacedFreeMass = 0;
 
   if (freeIndices.length === 0 || freeMassTotal <= 1e-12) {
     // Nothing left to shape; locked layers fully determine the PMF.
@@ -563,6 +591,8 @@ export function calibrateShelledItm(
       for (const idx of freeIndices) {
         pmf[idx] += (adjusted[idx] / sFree) * freeMassTotal;
       }
+    } else {
+      unplacedFreeMass = freeMassTotal;
     }
   }
 
@@ -574,8 +604,12 @@ export function calibrateShelledItm(
   }
 
   // ---- 5. Report -------------------------------------------------------
-  let currentWinnings = 0;
-  for (let i = 0; i < paid; i++) currentWinnings += pmf[i] * payouts[i] * prizePool;
+  const winningsOf = (): number => {
+    let w = 0;
+    for (let i = 0; i < paid; i++) w += pmf[i] * payouts[i] * prizePool;
+    return w;
+  };
+  let currentWinnings = winningsOf();
   if (Math.abs(currentWinnings - targetWinnings) > 1e-3) feasible = false;
 
   const sumRange = (from: number, toExcl: number): number => {
@@ -583,11 +617,12 @@ export function calibrateShelledItm(
     for (let i = from; i < Math.min(toExcl, paid); i++) s += pmf[i];
     return s;
   };
-  const shells = {
+  const shellsOf = () => ({
     first: pmf[0] ?? 0,
     top3: sumRange(0, Math.min(3, paid)),
     ft: sumRange(0, ftEnd),
-  };
+  });
+  let shells = shellsOf();
 
   if (
     locks.first == null &&
@@ -607,6 +642,18 @@ export function calibrateShelledItm(
       model,
       itmTopHeavyBias,
     );
+  }
+
+  if (unplacedFreeMass > 0) {
+    // The locks and the ITM fix this band's mass whatever the model says, so
+    // it still lands on the band, spread evenly. Runs after the equilibrium
+    // first-place retry above so that retry keeps deciding on the same pmf
+    // it always saw.
+    const share = unplacedFreeMass / freeIndices.length;
+    for (const idx of freeIndices) pmf[idx] += share;
+    currentWinnings = winningsOf();
+    feasible = Math.abs(currentWinnings - targetWinnings) <= 1e-3;
+    shells = shellsOf();
   }
 
   return { alpha, pmf, currentWinnings, feasible, supportsTargetRoi: true, shells };
