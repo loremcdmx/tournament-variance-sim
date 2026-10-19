@@ -747,8 +747,8 @@ export const DICT = {
   "row.max": { en: "Max", ru: "Макс" },
   "row.buckets": { en: "Variants", ru: "Вариантов" },
   "row.fieldHint": {
-    en: "Sometimes the field is 400, sometimes 700. Pick a range and the sim will play a few different sizes so the swings reflect reality. The preview and payout card show the mean over those sizes, and AFS shows the range midpoint.",
-    ru: "Иногда поле 400, иногда 700. Задай диапазон — симулятор прогонит несколько размеров, и свинги будут ближе к реальности. Превью и карточка выплат показывают среднее по этим размерам, а AFS — середину диапазона.",
+    en: "Sometimes the field is 400, sometimes 700. Pick a range and the sim will play a few different sizes so the swings reflect reality. The single-tournament EV preview shows the mean over those sizes. The payout ladder and AFS show the range midpoint.",
+    ru: "Иногда поле 400, иногда 700. Задай диапазон — симулятор прогонит несколько размеров, и свинги будут ближе к реальности. Превью ЕВ одного турнира показывает среднее по этим размерам. Выплаты по местам и AFS показывают середину диапазона.",
   },
   "row.bountyHint": {
     en: "KO bounty as % of the buy-in. That chunk of every entry goes into the bounty pool instead of the regular prize pool, paid out as knockouts.",

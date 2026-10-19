@@ -127,9 +127,10 @@ export const CashApp = memo(function CashApp() {
     const envGrid = makeCashEnvGrid(snapshot.hands);
     const hiGrid = makeCashHiResGrid(snapshot.hands);
 
-    // Shard layout: first shard owns sStart=0 (hi-res paths live there),
-    // remaining work split across workers in ~even chunks so each worker
-    // is busy. Workers are stateless so we round-robin by shardId.
+    // Contiguous slices of [0, S), dealt round-robin by shardId to stateless
+    // workers. Every shard keeps its overlap with the global hi-res prefix
+    // (HI_RES_PATH_CAP in cashEngine.ts), so where the slices fall never
+    // changes which paths are stored.
     const S = snapshot.nSimulations;
     const W = pool.length;
     // Aim for roughly 2× workers shards so slower ones don't stall the tail.

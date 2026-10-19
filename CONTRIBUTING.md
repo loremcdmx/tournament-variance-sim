@@ -70,7 +70,7 @@ Bundle related changes. A preset rework and a lint fix go in **separate** commit
 
 ## Testing
 
-Tests live next to the file they cover: `engine.test.ts` for `engine.ts`, etc. We use Vitest, and the whole suite runs in ~30s on an idle machine (62 files / 937 tests) — keep it in that ballpark.
+Tests live next to the file they cover: `engine.test.ts` for `engine.ts`, etc. We use Vitest, and the whole suite runs in ~40s on an idle machine (118 files / 1637 tests) — keep it in that ballpark.
 
 ### What to test
 

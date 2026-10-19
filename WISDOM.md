@@ -225,6 +225,13 @@ claiming schedule-mode is point-only after `99c5f2d` already shipped a
 banded mode; the PATHS block claiming BR leaderboard hadn't been folded
 into trajectory after `43ff237` did exactly that.
 
+## Shelled-ITM Calibration Order
+
+In `calibrateShelledItm` (`finishModel.ts`) a repair of the pmf, such as spreading the
+free-band mass the model could not place, runs AFTER the equilibrium first-place retry.
+Before it, the retry reads a different `shells.first` and inputs that pass today change
+bit-wise: the engine compile, the preview and `validateSchedule` all call it.
+
 ## Three Validation Layers
 
 Inputs to the simulator pass through three independent guards. Don't
@@ -293,6 +300,9 @@ residual coefficient before being band-eligible.
   them back yet and the user is not told; a share link keeps no backup, its
   hash is cleared on import. Only the first 300 rows are validated, so a bad row
   past the cap no longer rejects the whole payload.
+- A share link carries only the `#s=` hash: `buildShareUrl` clears the sender's
+  query string, so a link copied from an `?admin=1` session does not switch the
+  recipient into advanced mode.
 - `alphaOverride` is clamped on read to `MANUAL_ALPHA_MIN`..`MAX` (-0.5..0.5,
   also what the number field accepts). A link with 10 compiled to a mean of
   5172 against 63.7 at neutral alpha.
@@ -329,6 +339,13 @@ residual coefficient before being band-eligible.
   already on the controls and the pane on the old data, so the selector is
   disabled until it finishes (`canSwitchRun`, `seedBatch.pdBusy`).
 
+- `interruptBackground` aborts only the sibling-seed precompute (`bgAbortRef`) and
+  never a PD-only job (`pdJobIdRef`): the re-run works from the cached run's input
+  snapshot, so a field edit cannot change it, and cancelling it dropped the toggle
+  with no message. `runPdOnly` aborts the sibling loop itself.
+- Under the "Like PrimeDope" preset the PD result is the LEFT pane. The PD toggles,
+  the diagnostics button and "Open PrimeDope" follow `pdComparePaneKeys(...).pdPane`,
+  never "the right pane"; captions come from the same function.
 - Isolated result-toolbar re-runs must compose patches with the pending input
   before dispatching. A real bug let sequential PrimeDope checkboxes update the
   visible React state while the second worker re-run started from an older
@@ -377,7 +394,14 @@ The same class, other doors, all closed the same way:
 - A cleared number box or a lone "-" (a number input reports "") is not a
   number: `commitDraftValue` / `parseNumericDraft` return null and the box
   reverts. `Number("")` is 0 and used to commit the clamp minimum on the
-  convergence card and a 0% reference line.
+  convergence card and a 0% reference line. `NumInput` in `ControlsPanel`
+  cancels a blank draft the same way; a new number box takes its commit from
+  `commitDraftValue`, never from `Number(draft)`.
+- Row operations in `ScheduleEditor` (edit, add, duplicate, remove, import) are
+  functional updaters from `scheduleOps.ts`, never arrays built from the rendered
+  `schedule`: a blur commit still waiting in a transition has not reached it, so an
+  array overwrote that edit. `ScheduleEditor.rowOps.test.tsx` renders the editor
+  on a stale base and fires its real handlers.
 
 Stable seeds made this visible (identical result), they did not cause it —
 before the seed became stable the same bug produced a *different* result for

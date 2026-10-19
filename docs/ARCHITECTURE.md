@@ -14,7 +14,7 @@ This document describes the data flow, module boundaries, and invariants of the 
 │                                                              │
 │  ─ src/lib/sim/useSimulation.ts                              │
 │       owns the worker pool, dispatches shards,               │
-│       merges results, exposes {status, progress, result}     │
+│       collects shards, exposes {status, progress, result}    │
 │                                                              │
 │         ▼ ShardRequest × N workers                           │
 │                                                              │
@@ -101,7 +101,7 @@ The current split is:
 
 1. **User clicks Run.** `useSimulation.onRun(input)` is called with `SimulationInput` (schedule, samples, seed, model, bankroll, noise params, etc.).
 
-2. **Build step.** The hook sends a `BuildRequest` to worker 0. That worker runs `compileSchedule(input)` which:
+2. **Compile step.** There is no separate build round-trip before the shards. A worker runs `compileSchedule(input, calibrationMode)` itself for every `ShardRequest` it receives (and again for the final `BuildRequest`); it is a pure function of the input, so every worker gets the same schedule without sharing state. It:
    - For each row, picks the effective field size (or enumerates variants if `fieldVariability` is set).
      The sizes come from `fieldVariants.ts` (`fieldVariantSizes`), the one place
      that decides them: validation checks every size, the preview averages over
@@ -119,13 +119,13 @@ The current split is:
    - Builds alias tables for fast weighted sampling.
    - Returns `CompiledEntry[]` — flat, shard-independent, serializable.
 
-3. **Shard dispatch.** The hook splits `[0, samples)` into K contiguous shards and sends one `ShardRequest` per free worker. Workers are stateless — each receives the compiled schedule in the request and runs `simulateShard(sStart, sEnd)`. Seeds are not shard-local: the hot loop uses `mixSeed(seed, sampleIdx)` where `sampleIdx` is the *global* index in `[0, samples)`. This is what makes the run deterministic independent of pool size.
+3. **Shard dispatch.** `runJob` splits `[0, samples)` of every pass into contiguous shards (formula under "Performance knobs"), pre-assigns each shard to worker `i % W` round-robin and posts all of them at once; each worker works through its own queue serially. Workers are stateless — a `ShardRequest` carries the `SimulationInput` and the calibration mode, not the compiled schedule, and the worker compiles it (step 2) and runs `simulateShard(sStart, sEnd)`. Seeds are not shard-local: the hot loop uses `mixSeed(seed, sampleIdx)` where `sampleIdx` is the *global* index in `[0, samples)`. This is what makes the run deterministic independent of pool size.
 
 4. **Progress reporting.** Workers post `ShardProgressMsg` periodically (every ~1000 samples or so). The hook aggregates into a single `progress` number exposed to the UI.
 
-5. **Shard merging.** When a worker returns `ShardResultMsg`, the hook stores the `RawShard`. Once all K shards arrive, `mergeShards([...])` concatenates the shard-local buffers, picks the global best/worst path, sums histograms, and then `buildResult()` does the post-processing: percentile envelopes, downswings catalog, row decomposition, risk-of-ruin integration, convergence curves.
+5. **Shard merging.** When a worker returns `ShardResultMsg`, the hook stores the `RawShard`. Once every shard of every pass has arrived, the hook posts one `BuildRequest` per pass (worker `i % W`), carrying that pass's shards. That worker, not the main thread, runs `mergeShards([...])` (concatenates the shard-local buffers, picks the global best/worst path, sums histograms) and then `buildResult()` for the post-processing: percentile envelopes, downswings catalog, row decomposition, risk-of-ruin integration, convergence curves. It posts `build-progress` messages while it works and the `SimulationResult` when it is done.
 
-6. **Twin run (compare mode).** When `compareWithPrimedope` is true, steps 2–5 run a *second* time with `calibrationMode: "primedope-binary-itm"` on the same seed and same schedule. The result is attached as `result.comparison`. This second run is dispatched right after the first completes to keep worker allocation simple.
+6. **Twin run (compare mode).** When `compareMode` is set, `buildPasses` adds a second pass to the same job: `"primedope"` runs `calibrationMode: "primedope-binary-itm"` on the same seed (on a PKO schedule, the same schedule with its bounties stripped), `"random"` runs the same model on a different seed. The second pass is not queued behind the first: both passes' shards go into the one pool together, each pass gets its own `BuildRequest`, and the result is attached as `result.comparison`. Under the "Like PrimeDope" preset the two calibrations swap panes (`pdPresetFlip`).
 
 ## Key types
 
@@ -152,7 +152,7 @@ for sample s in [sStart, sEnd):
     profit += payout - singleCost
 ```
 
-The payout/bounty tables are computed once in `compileSchedule()` and reused for every sample. That's the whole point of the build step — pay the finish-model + α-calibration cost once per row, not N × samples times.
+The payout/bounty tables are computed once per shard in `compileSchedule()` and reused for every sample of it. That's the whole point of the compile step — pay the finish-model + α-calibration cost once per row and shard, not N × samples times.
 
 ### KO EV share
 
@@ -284,7 +284,7 @@ All UI strings live in `src/lib/i18n/dict.ts` as a flat object `{[key]: {en, ru}
 - **Empirical histogram reproduction** — feeding a flat histogram gives uniform pmf; feeding a spike at position 1 makes the player always win.
 - **Payout normalization** — every `getPayoutTable()` result sums to 1 ± ε.
 
-Add new tests next to the file they cover. Keep them fast — the whole suite runs in ~30s on an idle machine (62 files / 937 tests; CPU-bound Monte Carlo, several times slower under load — see `CONTRIBUTING.md` on reading a red run).
+Add new tests next to the file they cover. Keep them fast — the whole suite runs in ~40s on an idle machine (118 files / 1637 tests; CPU-bound Monte Carlo, several times slower under load — see `CONTRIBUTING.md` on reading a red run).
 
 ## What lives outside `src/lib/sim/`
 

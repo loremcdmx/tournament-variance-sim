@@ -26,22 +26,13 @@ const row = (id: string, over: Partial<TournamentRow> = {}): TournamentRow => ({
 });
 
 // What React does with updaters queued while an earlier transition has not
-// rendered: they are applied in order on top of the same base state. A plain
-// array replaces whatever came before it.
-const settle = (base: TournamentRow[], queue: (Updater | TournamentRow[])[]) =>
-  queue.reduce<TournamentRow[]>(
-    (state, next) => (typeof next === "function" ? next(state) : next),
-    base,
-  );
+// rendered: they are applied in order on top of the same base state.
+const settle = (base: TournamentRow[], queue: Updater[]) =>
+  queue.reduce<TournamentRow[]>((state, next) => next(state), base);
 
 describe("row operations as updaters", () => {
   const base = [row("a"), row("b")];
   const edit: Updater = (prev) => patchRow(prev, "a", { players: 7000 });
-
-  it("loses a pending edit when the next array is computed from the rendered schedule", () => {
-    const fromRender = appendRow(base, newScheduleRow("new"));
-    expect(settle(base, [edit, fromRender])[0].players).toBe(1000);
-  });
 
   it("keeps a pending edit across Add, Duplicate, Remove and a second edit", () => {
     const settled = settle(base, [

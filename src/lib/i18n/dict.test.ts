@@ -42,6 +42,25 @@ describe("i18n dict", () => {
     expect(DICT["emp.none"].ru).not.toMatch(/power-?law/i);
   });
 
+  it("says only the EV preview averages a field-size range; the payout ladder shows the midpoint", () => {
+    // PayoutStructureCard reads derivePreviewRowEconomics at the range midpoint;
+    // only the single-tournament EV preview mixes the sizes (previewFieldMixture).
+    const hint = DICT["row.fieldHint"];
+    const sentences = (text: string) => text.split(/(?<=[.!?])\s+/u);
+    const checks = [
+      { text: hint.en, mean: /\bmean\b/i, payout: /payout/i, midpoint: /midpoint/i, preview: /preview/i },
+      { text: hint.ru, mean: /средн/i, payout: /выплат/i, midpoint: /середин/i, preview: /превью/i },
+    ];
+    for (const { text, mean, payout, midpoint, preview } of checks) {
+      const averaging = sentences(text).filter((s) => mean.test(s));
+      expect(averaging.length, text).toBe(1);
+      expect(averaging[0], text).toMatch(preview);
+      expect(averaging[0], text).not.toMatch(payout);
+      const midpointSentence = sentences(text).find((s) => midpoint.test(s));
+      expect(midpointSentence, text).toMatch(payout);
+    }
+  });
+
   it("says the run link keeps the run's seed instead of drawing a fresh one", () => {
     const hint = DICT["runExport.copyLink.hint"];
     expect(hint.en).not.toMatch(/fresh seed/i);

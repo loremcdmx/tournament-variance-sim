@@ -26,7 +26,7 @@ If code and docs disagree, the code wins — fix the doc.
 ## Things that trip up fresh sessions
 
 - **Determinism is a hard contract.** `SimulationInput + seed → byte-identical SimulationResult` regardless of pool size. No `Math.random()`, `Date.now()`, `performance.now()` inside `src/lib/sim/` (except `useSimulation.ts`, which is outside the engine). Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` — each stochastic channel uses its own XOR-offset of the seed. `sampleIdx` is the GLOBAL index in `[0, samples)`, not shard-local. New stochastic channel → fresh XOR-offset seed + determinism test.
-- **`samplePaths.paths.length` ≠ `samples`.** The first 1000 global sample indices store hi-res trajectories, independent of shard boundaries (`wantHiResPaths` in `hotLoop.ts`). Slider in `ResultsView` caps at `paths.length`.
+- **`samplePaths.paths.length` ≠ `samples`.** The first 1000 global sample indices store hi-res trajectories, independent of shard boundaries. The knob is `HI_RES_GLOBAL_CAP` in `simulateShard` (`hotLoop.ts`; `wantHiResPaths` there is only the per-shard slice derived from it), and the `Math.min(1000, …)` caps in `ResultsView.tsx` must move with it. Slider in `ResultsView` caps at `paths.length`.
 - **PrimeDope compare mode** uses a second calibration path (`calibrateShelledItm` + `pdCurves.ts`). Changes to the main calibration don't auto-propagate — check compare coverage when touching `finishModel.ts`.
 - **PKO heat** in the hot loop snaps a Gaussian per-tournament to one of `HEAT_BIN_COUNT` preconcentrated `bountyByPlace` tables. Mean bounty is preserved per bin; only σ shifts.
 - **Dev branch invariant:** `dev` is always ≥ `main`, never behind. Run `git log dev..main` before starting work; ship via `git merge --ff-only dev`.
@@ -38,7 +38,7 @@ If code and docs disagree, the code wins — fix the doc.
 ```bash
 npm install
 npm run dev         # http://localhost:3000 (user often runs on :3456 — check for stale servers first)
-npm test            # vitest, ~30s idle (62 files / 937 tests; CPU-bound Monte Carlo, slower under load)
+npm test            # vitest, ~40s idle (118 files / 1637 tests; CPU-bound Monte Carlo, slower under load)
 npx tsc --noEmit    # type check
 npm run lint
 npm run build       # catches real Next.js errors

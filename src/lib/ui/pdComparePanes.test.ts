@@ -65,19 +65,34 @@ describe("pdComparePaneKeys", () => {
     expect(keys.comparisonCapKey).toBe("twin.runB.cap");
   });
 
-  it("only returns keys that exist in both locales", () => {
+  describe("whichever pane pdPane names carries the PrimeDope caption, in every flag combination", () => {
     const flags = [false, true];
-    for (const pdPresetFlip of flags) {
-      for (const pdPkoFallback of flags) {
-        for (const hasPrimeDopePane of flags) {
-          const keys = pdComparePaneKeys({ ...base, pdPresetFlip, pdPkoFallback, hasPrimeDopePane });
-          for (const k of [keys.primaryCapKey, keys.comparisonCapKey]) {
-            expect(DICT[k].en.length).toBeGreaterThan(0);
-            expect(DICT[k].ru.length).toBeGreaterThan(0);
-          }
-        }
+    const pdCaptions: string[] = ["chart.trajectory.theirs.cap", "chart.trajectory.noKoCap"];
+    const combos = flags.flatMap((pdPresetFlip) =>
+      flags.flatMap((pdPkoFallback) =>
+        flags
+          .filter((hasPrimeDopePane) => pdPresetFlip || hasPrimeDopePane)
+          .map((hasPrimeDopePane) => ({ ...base, pdPresetFlip, pdPkoFallback, hasPrimeDopePane })),
+      ),
+    );
+
+    it.each(combos)("flip=$pdPresetFlip pko=$pdPkoFallback pdPane=$hasPrimeDopePane", (input) => {
+      const keys = pdComparePaneKeys(input);
+      const otherPane = keys.pdPane === "primary" ? "comparison" : "primary";
+      const caption = (pane: "primary" | "comparison") =>
+        pane === "primary" ? keys.primaryCapKey : keys.comparisonCapKey;
+
+      expect(caption(keys.pdPane)).toBe(
+        input.pdPkoFallback ? "chart.trajectory.noKoCap" : "chart.trajectory.theirs.cap",
+      );
+      expect(pdCaptions).not.toContain(caption(otherPane));
+      expect(caption(otherPane)).not.toMatch(/^twin\./);
+      if (input.pdPkoFallback) {
+        // The stripped-bounty PrimeDope pane is never one that only the model separates from ours.
+        expect(DICT[caption(otherPane)].en).not.toMatch(/only the model differs/i);
+        expect(DICT[caption(otherPane)].ru).not.toMatch(/отличается только модель/i);
       }
-    }
+    });
   });
 
   it("does not claim a different seed for the flipped right pane", () => {

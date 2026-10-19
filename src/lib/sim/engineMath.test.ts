@@ -11,7 +11,7 @@ import {
 } from "./engine";
 import { mulberry32, mixSeed } from "./rng";
 import type { RawShard } from "./engineTypes";
-import type { SimulationInput, SimulationResult, TournamentRow } from "./types";
+import type { SimulationInput, TournamentRow } from "./types";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 
 type TypedArray = Float64Array | Int32Array | Uint32Array | Uint8Array;
@@ -278,30 +278,21 @@ describe("pool-invariance: 1 shard vs N out-of-order shards is byte-identical", 
     expect(single.leaderboardThirds).not.toBeNull();
   });
 
-  it("hi-res paths overlap sample-for-sample where both splits stored them", () => {
-    const byIndex = new Map<number, Float64Array>();
-    for (let i = 0; i < merged.hiResPaths.length; i++) {
-      byIndex.set(merged.hiResSampleIndices[i], merged.hiResPaths[i]);
-    }
-    let compared = 0;
+  it("stores the first 1000 global sample indices as hi-res paths whatever the shard split", () => {
+    const prefix = Array.from({ length: 1000 }, (_, i) => i);
+    expect(Array.from(single.hiResSampleIndices)).toEqual(prefix);
+    expect(Array.from(merged.hiResSampleIndices)).toEqual(prefix);
+    expect(merged.hiResPaths).toHaveLength(single.hiResPaths.length);
     for (let i = 0; i < single.hiResPaths.length; i++) {
-      const path = byIndex.get(single.hiResSampleIndices[i]);
-      if (!path) continue;
-      expect(eqTyped(path, single.hiResPaths[i])).toBe(true);
-      compared++;
+      expect(eqTyped(merged.hiResPaths[i], single.hiResPaths[i]), `path ${i}`).toBe(true);
     }
-    expect(compared).toBeGreaterThan(0);
   });
 
-  it("buildResult JSON is identical outside the shard-budget path list", () => {
-    const strip = (r: SimulationResult) =>
-      JSON.stringify({
-        ...r,
-        samplePaths: { ...r.samplePaths, paths: undefined, sampleIndices: undefined },
-      });
+  it("buildResult JSON, saved paths included, is identical for a single run and an out-of-order merge", () => {
     const fromSingle = buildResult(input, compiled, single, "alpha", grid);
     const fromMerged = buildResult(input, compiled, merged, "alpha", grid);
-    expect(strip(fromMerged)).toBe(strip(fromSingle));
+    expect(fromSingle.samplePaths.paths.length).toBe(1000);
+    expect(JSON.stringify(fromMerged)).toBe(JSON.stringify(fromSingle));
     expect(fromSingle.stats.riskOfRuin).toBeGreaterThan(0);
     expect(fromSingle.battleRoyaleLeaderboard).toBeDefined();
   });

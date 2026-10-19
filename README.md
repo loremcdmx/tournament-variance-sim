@@ -156,14 +156,14 @@ SimulationInput (UI)
        ▼
 useSimulation.onRun()        ← spawnPool() если нужно
        │
-       │  1) BuildRequest → worker 0 → компилирует schedule один раз,
-       │     возвращает "плоские" таблицы payout/pmf/alpha per-row
-       │     (дорого: buildFinishPMF + calibrateAlpha)
+       │  1) ShardRequest × K → все шарды всех проходов сразу раздаются
+       │     воркерам round-robin; каждый воркер сам компилирует schedule
+       │     (compileSchedule: buildFinishPMF + calibrateAlpha, "плоские"
+       │     таблицы payout/pmf/alpha per-row) и крутит свои
+       │     samples [sStart, sEnd), шлёт ShardProgress / ShardResult
        │
-       │  2) ShardRequest × K → K воркеров параллельно крутят
-       │     samples [sStart, sEnd), шлют ShardProgress / ShardResult
-       │
-       │  3) mergeShards() + buildResult() на main thread
+       │  2) BuildRequest (по одному на проход) → воркер делает
+       │     mergeShards() + buildResult(), main thread только ждёт
        │
        ▼
 SimulationResult → ResultsView
