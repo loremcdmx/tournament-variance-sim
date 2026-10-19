@@ -406,10 +406,10 @@ export function ProveEdgeCard({
       {!isExact && (
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <div
-            className={`flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)] ${isMbr ? "opacity-60" : ""}`}
+            className={`flex min-w-0 items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)] ${isMbr ? "opacity-60" : ""}`}
             title={isMbr ? t("proveEdge.afs.lockedBR") : undefined}
           >
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-ok-label)]">
+            <span className="w-24 shrink-0 break-words uppercase leading-tight tracking-wider sm:w-32 text-[color:var(--c-ok-label)]">
               {t("proveEdge.label.fieldSize")}
             </span>
             <RangeInput
@@ -421,6 +421,7 @@ export function ProveEdgeCard({
               disabled={isMbr}
               className="flex-1"
               aria-label={t("proveEdge.label.fieldSize")}
+              aria-valuetext={fmtAfs(effectiveAfsSingle, numberLocale)}
             />
             <DraftNumberInput
               min={isMbr ? MBR_FIXED_AFS : AFS_MIN}
@@ -437,8 +438,8 @@ export function ProveEdgeCard({
             />
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-orange-label)]">
+          <div className="flex min-w-0 items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
+            <span className="w-24 shrink-0 break-words uppercase leading-tight tracking-wider sm:w-32 text-[color:var(--c-orange-label)]">
               {t("proveEdge.label.rake")}
             </span>
             <RangeInput
@@ -461,8 +462,8 @@ export function ProveEdgeCard({
             />
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-info-label)]">
+          <div className="flex min-w-0 items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
+            <span className="w-24 shrink-0 break-words uppercase leading-tight tracking-wider sm:w-32 text-[color:var(--c-info-label)]">
               {t("proveEdge.label.confidence")}
             </span>
             <RangeInput
@@ -485,8 +486,8 @@ export function ProveEdgeCard({
             />
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--color-accent)]/85">
+          <div className="flex min-w-0 items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
+            <span className="w-24 shrink-0 break-words uppercase leading-tight tracking-wider sm:w-32 text-[color:var(--color-accent)]/85">
               {t("proveEdge.label.yourRoi")}
             </span>
             <RangeInput
@@ -535,8 +536,8 @@ export function ProveEdgeCard({
       )}
       {isExact && (
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-          <div className="flex items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span className="w-32 shrink-0 whitespace-nowrap uppercase tracking-wider text-[color:var(--c-info-label)]">
+          <div className="flex min-w-0 items-center gap-2 text-[11px] text-[color:var(--color-fg-muted)]">
+            <span className="w-24 shrink-0 break-words uppercase leading-tight tracking-wider sm:w-32 text-[color:var(--c-info-label)]">
               {t("proveEdge.label.confidence")}
             </span>
             <RangeInput

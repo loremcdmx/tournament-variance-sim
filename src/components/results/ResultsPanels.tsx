@@ -18,6 +18,7 @@ import {
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
+import { rakebackRoiContribution } from "@/lib/sim/rakebackMath";
 
 export function PrimeDopeWeaknessCard() {
   const t = useT();
@@ -335,6 +336,34 @@ export function AdvancedStatsCard({
   );
 }
 
+/**
+ * What the run's realized ROI is to be read against: the schedule's target ROI
+ * (cost-weighted, as the engine weighs the rows), the rakeback the run adds on
+ * top of that target, and the realized ROI's gap to the target without it. The
+ * realized figure covers every row and includes rakeback; row 1's typed ROI
+ * does neither.
+ */
+export function settingsDumpRoi(
+  schedule: readonly TournamentRow[],
+  rakebackPct: number,
+  realizedRoi: number,
+): { target: number; rakeback: number; gap: number } {
+  let cost = 0;
+  let costRoi = 0;
+  let costRakeback = 0;
+  for (const row of schedule) {
+    const rowCost =
+      Math.max(0, row.buyIn) * (1 + Math.max(0, row.rake)) * Math.max(1, Math.floor(row.count));
+    cost += rowCost;
+    costRoi += rowCost * row.roi;
+    costRakeback += rowCost * rakebackRoiContribution(row.rake, rakebackPct);
+  }
+  const single = schedule.length === 1;
+  const target = single ? schedule[0].roi : cost > 0 ? costRoi / cost : 0;
+  const rakeback = cost > 0 ? costRakeback / cost : 0;
+  return { target, rakeback, gap: realizedRoi - rakeback - target };
+}
+
 export function SettingsDumpCard({
   settings,
   schedule,
@@ -360,7 +389,11 @@ export function SettingsDumpCard({
     result.totalBuyIn > 0 ? result.stats.mean / result.totalBuyIn : 0;
   const alphaPinned = settings.alphaOverride != null;
   const fixedShape = !finishModelSupportsTargetRoi(settings.finishModelId);
-  const roiDiverges = Math.abs(realizedRoi - r.roi) > 0.005;
+  const multiRow = schedule.length > 1;
+  const rowTag = multiRow ? " (row 1)" : "";
+  const roi = settingsDumpRoi(schedule, settings.rakebackPct, realizedRoi);
+  const roiDiverges = Math.abs(roi.gap) > 0.005;
+  const rakebackPaid = Number.isFinite(settings.rakebackPct) && settings.rakebackPct > 0;
   const totalEntries =
     schedule.reduce((acc, row) => acc + row.count, 0) * settings.scheduleRepeats;
   const elapsedStr =
@@ -379,14 +412,17 @@ export function SettingsDumpCard({
     ["totalBuyIn", `$${result.totalBuyIn.toLocaleString(numberLocale)}`],
     ["bankroll", `$${settings.bankroll.toLocaleString(numberLocale)}`],
     ["—", "—"],
-    ["players", r.players.toLocaleString(numberLocale)],
-    ["buyIn", buyInLabel(r.buyIn)],
-    ["rake", `${(r.rake * 100).toFixed(1)}%`],
-    ["bountyFraction", `${((r.bountyFraction ?? 0) * 100).toFixed(0)}%`],
-    ["payoutStructure", r.payoutStructure],
-    ["assumed ROI", `${(r.roi * 100).toFixed(1)}%`],
+    [`players${rowTag}`, r.players.toLocaleString(numberLocale)],
+    [`buyIn${rowTag}`, buyInLabel(r.buyIn)],
+    [`rake${rowTag}`, `${(r.rake * 100).toFixed(1)}%`],
+    [`bountyFraction${rowTag}`, `${((r.bountyFraction ?? 0) * 100).toFixed(0)}%`],
+    [`payoutStructure${rowTag}`, r.payoutStructure],
+    [`assumed ROI${rowTag}`, `${(r.roi * 100).toFixed(1)}%`],
+    ...(multiRow
+      ? ([["assumed ROI (all rows, by cost)", `${(roi.target * 100).toFixed(1)}%`]] as Array<[string, string]>)
+      : []),
     [
-      "realized ROI",
+      rakebackPaid ? "realized ROI (incl. rakeback)" : "realized ROI",
       `${(realizedRoi * 100).toFixed(1)}%${
         roiDiverges && alphaPinned
           ? "  ⚠ α-pinned, target ignored"

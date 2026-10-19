@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { commitCiPct, commitRakePct, commitRoiFraction } from "./convergenceInputs";
+import { commitCiPct, commitMixPct, commitRakePct, commitRoiFraction } from "./convergenceInputs";
 
 // A cleared box, a space, or a lone "-" (a number input reports it as "") is not
 // a number. Number("") is 0, which used to commit the clamp minimum: CI 75, ROI
 // 0, rake 0, and the card re-priced the run with no hint the box was only cleared.
 describe("convergence card number boxes", () => {
-  it.each(["", "  ", "-"])("leave CI, ROI and rake alone for %j", (raw) => {
+  it.each(["", "  ", "-"])("leave CI, ROI, rake and a mix share alone for %j", (raw) => {
     expect(commitCiPct(raw)).toBeNull();
     expect(commitRakePct(raw)).toBeNull();
     expect(commitRoiFraction(raw, -0.5, 1)).toBeNull();
+    expect(commitMixPct(raw)).toBeNull();
+  });
+
+  it("holds a mix share to 0..100 and keeps a real zero", () => {
+    expect(commitMixPct("0")).toBe(0);
+    expect(commitMixPct("33")).toBe(33);
+    expect(commitMixPct("150")).toBe(100);
+    expect(commitMixPct("-5")).toBe(0);
   });
 
   it("clamps a real number into the box bounds", () => {

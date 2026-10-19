@@ -205,7 +205,7 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
   );
 }
 
-function buildPrimedopeCheatSheet(
+export function buildPrimedopeCheatSheet(
   schedule: TournamentRow[],
   scheduleRepeats: number,
   locale: "en" | "ru",
@@ -246,7 +246,7 @@ function buildPrimedopeCheatSheet(
           `Places paid: ~${paidPct}% поля`,
           ``,
           schedule.length > 1
-            ? `⚠ В расписании ${schedule.length} строк — PrimeDope умеет только одну. Скопированы параметры первой строки (${r.label ?? r.id}).`
+            ? `⚠ В расписании ${schedule.length} строк — PrimeDope умеет только одну. Бай-ин, рейк, поле и ROI взяты из первой строки (${r.label ?? r.id}); число турниров — сумма по всем ${schedule.length} строкам (${totalTourneys}).`
             : ``,
         ]
       : [
@@ -259,7 +259,7 @@ function buildPrimedopeCheatSheet(
           `Places paid: ~${paidPct}% of field`,
           ``,
           schedule.length > 1
-            ? `⚠ Your schedule has ${schedule.length} rows — PrimeDope only handles one. The first row's values were copied (${r.label ?? r.id}).`
+            ? `⚠ Your schedule has ${schedule.length} rows — PrimeDope only handles one. Buy-in, rake, field size and ROI are the first row's (${r.label ?? r.id}); the tournament count is the total across all ${schedule.length} rows (${totalTourneys}).`
             : ``,
         ];
   return lines.filter(Boolean).join("\n");

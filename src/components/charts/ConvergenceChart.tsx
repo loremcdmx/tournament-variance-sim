@@ -40,7 +40,7 @@ import {
   fillRuntimeSigmaBrTicket,
 } from "@/lib/sim/formatRuntimeSigma";
 import { fillRuntimeSigmaZone } from "@/lib/sim/runtimeSigmaBands";
-import { commitCiPct, commitRakePct, commitRoiFraction } from "./convergenceInputs";
+import { commitCiPct, commitMixPct, commitRakePct, commitRoiFraction } from "./convergenceInputs";
 import { FORMAT_TAB_ACCENTS } from "./formatTabAccents";
 
 interface Props {
@@ -704,6 +704,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           disabled={afsLocked}
           className="flex-1 accent-emerald-400 disabled:cursor-not-allowed"
           aria-label="AFS"
+          aria-valuetext={fmtAfs(effectiveAfs, numberLocale)}
         />
         <input
           type="number"
@@ -1172,7 +1173,7 @@ const MIX_ACCENT_CLASSES: Record<
   },
 };
 
-function MixRow({
+export function MixRow({
   label,
   idx,
   mix,
@@ -1191,10 +1192,8 @@ function MixRow({
   const raw = rawDraft ?? String(pct);
   const commit = (s: string) => {
     setRawDraft(null);
-    const n = Number(s);
-    if (Number.isFinite(n)) {
-      onChange(idx, Math.max(0, Math.min(100, n)) / 100);
-    }
+    const n = commitMixPct(s);
+    if (n !== null) onChange(idx, n / 100);
   };
   return (
     <div className="flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">

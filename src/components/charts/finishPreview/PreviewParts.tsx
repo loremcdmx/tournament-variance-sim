@@ -92,6 +92,7 @@ export function EvBreakdownRow({
   evShare,
   fieldShare,
   eqShare,
+  eqEvShare = null,
   netDollars,
   maxEvShare,
   bountyShareOfTier = 0,
@@ -102,7 +103,11 @@ export function EvBreakdownRow({
   color: string;
   evShare: number;
   fieldShare: number | null;
+  /** The tier's share of seats under uniform play (the "eq %" column). */
   eqShare: number | null;
+  /** The tier's share of the EV a zero-skill player takes: the faint baseline
+   *  behind the solid %-of-EV bar. */
+  eqEvShare?: number | null;
   netDollars: number;
   maxEvShare?: number;
   /** 0..1 — fraction of this tier's EV that comes from the bounty pool.
@@ -133,7 +138,9 @@ export function EvBreakdownRow({
   );
   const bountyWidthPct = evWidthPct * Math.max(0, Math.min(1, bountyShareOfTier));
   const fmtWidth = (pct: number) => `${Math.min(100, Math.max(0, pct)).toFixed(4)}%`;
-  const showPopup = !!breakdown && (canHover ? hover : pinned);
+  // `hover` is only ever set where there is a mouse; the keyboard and a tap
+  // pin the popup on every device, so a focusable "button" always opens.
+  const showPopup = !!breakdown && (hover || pinned);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -161,7 +168,7 @@ export function EvBreakdownRow({
           setPinned((v) => !v);
         }}
         onKeyDown={(e) => {
-          if (!breakdown || canHover) return;
+          if (!breakdown) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             setPinned((v) => !v);
@@ -170,7 +177,7 @@ export function EvBreakdownRow({
           }
         }}
         onBlur={(e) => {
-          if (canHover || !breakdown) return;
+          if (!breakdown) return;
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
             setPinned(false);
           }
@@ -189,7 +196,7 @@ export function EvBreakdownRow({
             className="absolute inset-y-0 left-0 rounded-sm opacity-30"
             style={{
               width: fmtWidth(
-                (maxEvShare ? (eqShare ?? 0) / maxEvShare : (eqShare ?? 0)) * 100,
+                (maxEvShare ? (eqEvShare ?? 0) / maxEvShare : (eqEvShare ?? 0)) * 100,
               ),
               backgroundColor: color,
             }}

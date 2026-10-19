@@ -367,6 +367,9 @@ input[type="range"] {
   height: 32px;
   padding: 0;
   margin: 0;
+  /* A flex row cannot shrink a range below its 129px intrinsic width otherwise,
+     and the slider rows overflow a 320px screen. */
+  min-width: 0;
   vertical-align: middle;
   border-radius: 999px;
   --range-fill: var(--c-accent);

@@ -464,8 +464,9 @@ export const ControlsPanel = memo(function ControlsPanel({
       {/* Section B — Skill model (how ROI maps to finish positions) */}
       <SectionTitle>{t("controls.section.skill")}</SectionTitle>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <Field label={t("controls.finishModel")} hint={t("help.finishModel")}>
+        <Field htmlFor={`${fieldId}-finish-model`} label={t("controls.finishModel")} hint={t("help.finishModel")}>
           <select
+            id={`${fieldId}-finish-model`}
             value={value.finishModelId}
             onChange={(e) =>
               onChange(changeFinishModel(value, e.target.value as FinishModelId))
@@ -780,6 +781,7 @@ export function Field({
   children,
   hint,
 }: {
+  /** The control the caption names. Omit it for a read-only value. */
   htmlFor?: string;
   label: string;
   children: React.ReactNode;
@@ -788,14 +790,17 @@ export function Field({
   // h-full + mt-auto pushes the input to the bottom of the grid cell so
   // wrapping labels (e.g. "Турниров в сэмпле") don't shove their
   // input down and break horizontal alignment with neighbouring fields.
+  // The help button sits beside the label, not inside it: inside, a label with
+  // no `for` names the button instead of the control, and a click on the caption
+  // lands on the button.
   return (
-    <label htmlFor={htmlFor} className="flex h-full flex-col gap-1.5">
+    <div className="flex h-full flex-col gap-1.5">
       <span className="flex items-start justify-center gap-1.5 text-center text-[10px] font-bold uppercase leading-tight tracking-[0.16em] text-[color:var(--color-accent)]/90">
-        {label}
+        {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : label}
         {hint && <InfoTooltip content={hint} />}
       </span>
       <div className="mt-auto">{children}</div>
-    </label>
+    </div>
   );
 }
 

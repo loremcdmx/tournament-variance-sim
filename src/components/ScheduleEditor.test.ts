@@ -365,6 +365,87 @@ describe("parseImportCSV", () => {
   });
 });
 
+describe("CSV import: ROI range", () => {
+  const roiLine = (roi: string) => `Row, 500, 50+5, ${roi}, 1, mtt-standard`;
+
+  it.each(["-100", "-99.5", "10000.5", "20000"])(
+    "rejects ROI %s, which the editor field and a saved link cannot hold",
+    (roi) => {
+      const parsed = parseImportCSV(roiLine(roi));
+      expect(parsed.rows).toEqual([]);
+      expect(parsed.errors).toEqual(["line 1: roi must be -99..10000 (percent)"]);
+    },
+  );
+
+  it.each([["-99", -0.99], ["0", 0], ["12.5", 0.125], ["10000", 100]])(
+    "keeps ROI %s",
+    (roi, fraction) => {
+      const parsed = parseImportCSV(roiLine(roi));
+      expect(parsed.errors).toEqual([]);
+      expect(parsed.rows[0].roi).toBeCloseTo(fraction, 12);
+    },
+  );
+});
+
+describe("CSV import: delimiters and decimal commas", () => {
+  const one = (text: string) => {
+    const parsed = parseImportCSV(text);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows).toHaveLength(1);
+    return parsed.rows[0];
+  };
+
+  it("reads semicolon-separated cells, so a decimal comma stays inside its cell", () => {
+    const row = one("Row; 500; 9,20+0,80; 12,5; 3; mtt-standard");
+    expect(row).toMatchObject({ players: 500, buyIn: 9.2, count: 3, payoutStructure: "mtt-standard" });
+    expect(row.roi).toBeCloseTo(0.125, 12);
+    expect(row.rake).toBeCloseTo(0.8 / 9.2, 12);
+  });
+
+  it("reads tab-separated cells, as pasted from a spreadsheet", () => {
+    const row = one("Row\t500\t50+5\t-7,25\t4");
+    expect(row.roi).toBeCloseTo(-0.0725, 12);
+    expect(row.count).toBe(4);
+  });
+
+  it("keeps a label that holds a single semicolon on the comma reading", () => {
+    expect(one("Sat; Sun, 500, 50+5, 10, 2").label).toBe("Sat; Sun");
+  });
+
+  it("still takes a decimal comma in a count cell as an error, not a floor", () => {
+    expect(parseImportCSV("Row; 500; 50+5; 10; 1,5").errors).toEqual([
+      "line 1: count must be 1..100000",
+    ]);
+  });
+
+  it("refuses a decimal comma typed into a comma-separated list instead of shifting the columns", () => {
+    const parsed = parseImportCSV("Row, 500, 50+5, 12,5");
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.errors).toHaveLength(1);
+    expect(parsed.errors[0]).toMatch(/^line 1: .*12,5.*decimal comma/);
+    expect(parseImportCSV("Row, 500, 50+5, -12,5, mtt-standard").errors).toHaveLength(1);
+  });
+
+  it("keeps ROI and count as two cells when the commas are spaced alike", () => {
+    const row = one("Row, 500, 50+5, 12, 5");
+    expect(row.roi).toBeCloseTo(0.12, 12);
+    expect(row.count).toBe(5);
+    expect(one("Row,500,50+5,12,5,mtt-standard").count).toBe(5);
+  });
+
+  it("refuses more than six cells instead of ignoring the extra ones", () => {
+    const parsed = parseImportCSV("Row, 500, 50+5, 12, 5, mtt-standard, 99");
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.errors).toHaveLength(1);
+    expect(parsed.errors[0]).toMatch(/^line 1: too many columns/);
+  });
+
+  it("tolerates a trailing delimiter, which spreadsheets add", () => {
+    expect(one("Row, 500, 50+5, 12, 5, mtt-standard,").count).toBe(5);
+    expect(one("Row; 500; 50+5; 12; 5; mtt-standard;").count).toBe(5);
+  });
+});
+
 describe("CSV import: payout cell and format defaults", () => {
   const line = (payout: string) => `Row, 500, 50+5, 10, 1${payout === undefined ? "" : `, ${payout}`}`;
   const one = (text: string) => {
@@ -580,5 +661,97 @@ describe("AFS input under a Field-size range", () => {
 
   it("prints no range readout for a fixed field", () => {
     expect(rowHtml(base)).not.toContain(DICT["row.playersRangeReadout"].ru.split("{min}")[0]);
+  });
+});
+
+describe("row ROI box shows the ROI the engine runs", () => {
+  const rowHtml = (rows: TournamentRow[]) => {
+    vi.stubGlobal("React", React);
+    return renderToStaticMarkup(React.createElement(LocaleProvider, null,
+      React.createElement(AdvancedModeProvider, null,
+        React.createElement(ScheduleEditor, { schedule: rows, onChange: vi.fn() }),
+      ),
+    ));
+  };
+  const roiValue = (html: string, id: string) => {
+    const tag = html.match(new RegExp(`<input[^>]*id="schedule-${id}-roi"[^>]*>`));
+    expect(tag).not.toBeNull();
+    return tag![0].match(/value="([^"]*)"/)![1];
+  };
+  const rowWith = (id: string, roi: number): TournamentRow => ({
+    id, label: id, players: 500, buyIn: 20, rake: 0.1, roi,
+    payoutStructure: "mtt-standard", gameType: "freezeout", count: 1,
+  });
+
+  it("does not round a fractional ROI to a whole percent", () => {
+    const html = rowHtml([
+      rowWith("a", 0.045), rowWith("b", 0.0225), rowWith("c", 0.085), rowWith("d", 0.025),
+    ]);
+    expect(roiValue(html, "a")).toBe("4.5");
+    expect(roiValue(html, "b")).toBe("2.25");
+    expect(roiValue(html, "c")).toBe("8.5");
+    expect(roiValue(html, "d")).toBe("2.5");
+  });
+
+  it("prints whole and negative ROIs without float noise", () => {
+    const html = rowHtml([rowWith("a", 0.07), rowWith("b", 0.1), rowWith("c", -0.035), rowWith("d", 0)]);
+    expect(roiValue(html, "a")).toBe("7");
+    expect(roiValue(html, "b")).toBe("10");
+    expect(roiValue(html, "c")).toBe("-3.5");
+    expect(roiValue(html, "d")).toBe("0");
+  });
+});
+
+describe("schedule row controls have an accessible name at every width", () => {
+  const rowHtml = (rows: TournamentRow[]) => {
+    vi.stubGlobal("React", React);
+    return renderToStaticMarkup(React.createElement(LocaleProvider, null,
+      React.createElement(AdvancedModeProvider, null,
+        React.createElement(ScheduleEditor, { schedule: rows, onChange: vi.fn() }),
+      ),
+    ));
+  };
+  const controls = (html: string) => html.match(/<(?:input|select|textarea)\b[^>]*>/g) ?? [];
+  const named = (html: string, label: string) =>
+    controls(html).filter((tag) => tag.includes(`aria-label="${label}"`));
+  const base: TournamentRow = {
+    id: "r", label: "r", players: 500, buyIn: 20, rake: 0.1, roi: 0.1,
+    payoutStructure: "mtt-standard", gameType: "freezeout", count: 1,
+  };
+  const br: TournamentRow = {
+    ...base, id: "br", players: 18, payoutStructure: "battle-royale", gameType: "mystery-royale",
+    buyIn: 9.2, rake: 0.8 / 9.2, bountyFraction: 0.4565, mysteryBountyVariance: 1.8,
+  };
+
+  it("names every input and select of a freezeout row, because the visible captions are hidden from 2xl up", () => {
+    const html = rowHtml([base]);
+    expect(controls(html).length).toBeGreaterThanOrEqual(7);
+    for (const tag of controls(html)) expect(tag).toMatch(/aria-label="[^"]+"/);
+    for (const key of ["row.label", "row.buyIn", "row.players", "row.roi", "row.fixedItm", "row.payouts", "row.count", "row.gameType"] as const) {
+      expect(named(html, DICT[key].ru), key).toHaveLength(1);
+    }
+  });
+
+  it("names the bounty box and the Battle Royale tier select, in the UI language", () => {
+    const html = rowHtml([{ ...base, gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5 }, br]);
+    for (const tag of controls(html)) expect(tag).toMatch(/aria-label="[^"]+"/);
+    expect(named(html, DICT["row.bounty"].ru)).toHaveLength(2);
+    expect(named(html, DICT["row.brTier"].ru)).toHaveLength(1);
+    expect(html).not.toContain("GG Battle Royal tier");
+  });
+
+  it("binds the row label and payouts captions to their controls, so a click on the caption does not hit the tooltip", () => {
+    const html = rowHtml([base]);
+    expect(html).toMatch(/<label[^>]*for="schedule-r-label"/);
+    expect(html).toMatch(/<label[^>]*for="schedule-r-payouts"/);
+    expect(html).toMatch(/<input[^>]*id="schedule-r-label"/);
+    expect(html).toMatch(/<select[^>]*id="schedule-r-payouts"/);
+  });
+
+  it("names the Field-size kind select in the advanced panel", () => {
+    vi.stubGlobal("React", React);
+    const html = renderToStaticMarkup(React.createElement(LocaleProvider, null,
+      React.createElement(AdvancedRowPanel, { row: base, onChange: vi.fn() })));
+    expect(named(html, DICT["row.fieldSize"].ru)).toHaveLength(1);
   });
 });

@@ -5,7 +5,7 @@ import { runSimulation } from "@/lib/sim/engine";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 import type { ControlsState } from "@/components/ControlsPanel";
 import type { FinishModelConfig, SimulationResult, TournamentRow } from "@/lib/sim/types";
-import { AdvancedStatsCard, SettingsDumpCard } from "./ResultsPanels";
+import { AdvancedStatsCard, SettingsDumpCard, settingsDumpRoi } from "./ResultsPanels";
 import { CalibrationNotices, PrimedopeReportCard } from "./PrimedopeDiagnostics";
 
 const base = runSimulation({
@@ -113,5 +113,80 @@ describe("settings dump money", () => {
     );
     expect(markup).toContain("$2.76");
     expect(markup).not.toContain("2.7600000000000002");
+  });
+});
+
+describe("settings dump ROI on a multi-row schedule", () => {
+  const rowA: TournamentRow = {
+    id: "a", label: "Small", players: 500, buyIn: 10, rake: 0.1, roi: 0.05,
+    payoutStructure: "mtt-standard", count: 400,
+  };
+  const rowB: TournamentRow = {
+    id: "b", label: "Big", players: 500, buyIn: 100, rake: 0.1, roi: 0.3,
+    payoutStructure: "mtt-standard", count: 100,
+  };
+  const settings = (rakebackPct: number) => ({
+    samples: 4000, scheduleRepeats: 1, bankroll: 0, finishModelId: "power-law", alphaOverride: null,
+    modelPresetId: "custom", compareEnabled: false, compareMode: "primedope", roiStdErr: 0, rakebackPct,
+  }) as unknown as ControlsState;
+  const dump = (schedule: TournamentRow[], rakebackPct: number) => {
+    const result = runSimulation({
+      schedule, scheduleRepeats: 1, samples: 4000, bankroll: 0, seed: 11,
+      finishModel: { id: "power-law" }, rakebackFracOfRake: rakebackPct / 100,
+    });
+    return {
+      result,
+      markup: render(<SettingsDumpCard settings={settings(rakebackPct)} schedule={schedule} result={result} />),
+    };
+  };
+  const value = (markup: string, key: string) => {
+    const m = markup.match(new RegExp(`<span[^>]*>${key.replace(/[()]/g, "\\$&")}</span><span[^>]*>([^<]*)</span>`));
+    expect(m, key).not.toBeNull();
+    return m![1];
+  };
+
+  it("labels the first row's figures and adds the cost-weighted target next to them", () => {
+    const { markup } = dump([rowA, rowB], 0);
+    expect(value(markup, "assumed ROI (row 1)")).toBe("5.0%");
+    // 4400 of cost at +5 % and 11000 at +30 %: profit 3520 over cost 15400.
+    expect(value(markup, "assumed ROI (all rows, by cost)")).toBe("22.9%");
+    expect(value(markup, "buyIn (row 1)")).toBe("$10");
+    expect(markup).not.toContain(">assumed ROI<");
+  });
+
+  it("puts the realized figure next to the weighted target, where a calibrated run lands on it", () => {
+    const { markup, result } = dump([rowA, rowB], 0);
+    const realized = (result.stats.mean / result.totalBuyIn) * 100;
+    expect(realized).toBeGreaterThan(21);
+    expect(realized).toBeLessThan(25);
+    expect(value(markup, "realized ROI")).toBe(`${realized.toFixed(1)}%`);
+  });
+
+  it("keeps the one-row dump as it was", () => {
+    const { markup } = dump([rowA], 0);
+    expect(value(markup, "assumed ROI")).toBe("5.0%");
+    expect(markup).not.toContain("(row 1)");
+    expect(markup).not.toContain("all rows");
+  });
+
+  it("says the realized ROI carries the rakeback the run pays", () => {
+    expect(value(dump([rowA], 20).markup, "realized ROI (incl. rakeback)")).toMatch(/%$/);
+    expect(dump([rowA], 0).markup).not.toContain("incl. rakeback");
+  });
+
+  it("measures the target gap without the rakeback, which sits on top of the typed ROI", () => {
+    const rakeback = (0.2 * 0.1) / 1.1;
+    const one = settingsDumpRoi([rowA], 20, 0.05 + rakeback);
+    expect(one.target).toBe(0.05);
+    expect(one.rakeback).toBeCloseTo(rakeback, 12);
+    expect(one.gap).toBeCloseTo(0, 12);
+    const both = settingsDumpRoi([rowA, rowB], 20, 0.2294 + rakeback);
+    expect(both.target).toBeCloseTo(3520 / 15400, 12);
+    expect(both.rakeback).toBeCloseTo(rakeback, 12);
+    expect(both.gap).toBeCloseTo(0.2294 - 3520 / 15400, 12);
+  });
+
+  it("reads a missing rakeback as none", () => {
+    expect(settingsDumpRoi([rowA], undefined as unknown as number, 0.05).rakeback).toBe(0);
   });
 });

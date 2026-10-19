@@ -3,7 +3,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { runSimulation } from "@/lib/sim/engine";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
-import { CalibrationNotices, PrimedopeDiff, PrimedopeReportCard } from "./PrimedopeDiagnostics";
+import {
+  buildPrimedopeCheatSheet,
+  CalibrationNotices,
+  PrimedopeDiff,
+  PrimedopeReportCard,
+} from "./PrimedopeDiagnostics";
 
 const input = {
   schedule: [{ id: "test", players: 10, buyIn: 10, rake: 0, roi: .8, itmRate: .18,
@@ -50,4 +55,31 @@ describe("rendered PrimeDope results", () => {
     expect(markup).toContain("$20");
     expect(markup).toContain("$18");
   });
+});
+
+describe("PrimeDope reproduce text", () => {
+  const first = { id: "a", label: "Daily", players: 500, buyIn: 10, rake: 0.1, roi: 0.12,
+    payoutStructure: "mtt-standard" as const, count: 10 };
+  const second = { ...first, id: "b", label: "Sunday", buyIn: 100, count: 4 };
+
+  it("prints one row's numbers and no warning for a one-row schedule", () => {
+    const text = buildPrimedopeCheatSheet([first], 3, "en");
+    expect(text).toContain("Number of tournaments: 30");
+    expect(text).toContain("Buy-in: $10");
+    expect(text).not.toContain("⚠");
+  });
+
+  it.each([
+    ["en", /are the first row's \(Daily\)/, /total across all 2 rows \(28\)/, /The first row's values were copied/],
+    ["ru", /взяты из первой строки \(Daily\)/, /сумма по всем 2 строкам \(28\)/, /Скопированы параметры первой строки/],
+  ] as const)(
+    "says the tournament count is the whole schedule's, not the first row's, in %s",
+    (locale, firstRowNote, totalNote, oldWording) => {
+      const text = buildPrimedopeCheatSheet([first, second], 2, locale);
+      expect(text).toMatch(/: 28$/m);
+      expect(text).toMatch(firstRowNote);
+      expect(text).toMatch(totalNote);
+      expect(text).not.toMatch(oldWording);
+    },
+  );
 });

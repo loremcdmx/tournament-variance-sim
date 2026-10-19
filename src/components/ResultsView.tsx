@@ -2585,7 +2585,7 @@ function TrimPctSlider({
   );
 }
 
-function RunModeSlider({
+export function RunModeSlider({
   value,
   onChange,
   t,
@@ -2598,7 +2598,7 @@ function RunModeSlider({
   return (
     <div
       className="inline-flex max-w-full overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 shadow-sm"
-      role="radiogroup"
+      role="group"
       aria-label={t("runs.mode.title")}
       title={t("runs.mode.title")}
     >
@@ -2608,8 +2608,7 @@ function RunModeSlider({
           <button
             key={m}
             type="button"
-            role="radio"
-            aria-checked={active}
+            aria-pressed={active}
             onClick={() => onChange(m)}
             className={
               "px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors " +

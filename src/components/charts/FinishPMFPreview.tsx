@@ -14,6 +14,7 @@ import {
   MAX_ITM_TOP_HEAVY_BIAS,
   MIN_ITM_TOP_HEAVY_BIAS,
 } from "@/lib/sim/itmTopHeavy";
+import { equilibriumItmRateForRow } from "@/lib/sim/itmTarget";
 import {
   computeRowStats,
   type RowStats,
@@ -31,6 +32,7 @@ import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { isRepeatSubmission, settleCommitted, submitBias } from "./finishPreview/biasDraft";
 import { isTop3LockAvailable, patchFinishLocks } from "./finishPreview/shapeLocks";
 import { tierLabel, tierPlacesLabel } from "./finishPreview/tierPlaces";
+import { zeroSkillEvShares } from "./finishPreview/zeroSkillEv";
 import {
   EvBreakdownFooter,
   EvBreakdownRow,
@@ -459,12 +461,17 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
               netDollars: number;
             }>;
             const rows: ReactNode[] = [];
+            const eqEvShares = zeroSkillEvShares(stats, directRakebackPerEntry);
             // Max evShare across disjoint tiers — used as the 100% baseline
-            // for bar widths so the largest tier fills the full bar.
+            // for bar widths so the largest tier fills the full bar. The
+            // zero-skill baseline bars share the scale.
             let maxEv = 0;
             for (const tier of stats.tiers) {
               const s = tier.ev / evTotal;
               if (s > maxEv) maxEv = s;
+            }
+            for (const share of eqEvShares) {
+              if (share > maxEv) maxEv = share;
             }
             for (const extra of extraRows) {
               if (extra.evShare > maxEv) maxEv = extra.evShare;
@@ -478,7 +485,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             // even on violet tiers like "Финалка" and "Остальные кеши".
             const bountyAccent = "hsl(175, 72%, 55%)";
             const hasBounty = hasVisibleBountyEv;
-            for (const tier of stats.tiers) {
+            for (const [tierIdx, tier] of stats.tiers.entries()) {
               const evShare = tier.ev / evTotal;
               const fieldShare = tier.field;
               const bountyShareOfTier =
@@ -496,6 +503,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                   evShare={evShare}
                   fieldShare={fieldShare}
                   eqShare={tier.eqShare}
+                  eqEvShare={eqEvShares[tierIdx]}
                   netDollars={tier.netDollars}
                   maxEvShare={maxEv}
                   bountyShareOfTier={bountyShareOfTier}
@@ -597,9 +605,8 @@ export function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
       onRowChange({ itmRate: undefined, finishBuckets: undefined });
       return;
     }
-    const paidFrac = stats.paidCount / Math.max(1, row.players);
     const next: Partial<TournamentRow> = { finishBuckets: undefined };
-    if (preset === "noskill") next.itmRate = paidFrac;
+    if (preset === "noskill") next.itmRate = equilibriumItmRateForRow(row);
     else if (preset === "grinder") next.itmRate = 0.16;
     else if (preset === "crusher") next.itmRate = 0.18;
     onRowChange(next);

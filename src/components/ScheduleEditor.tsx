@@ -375,8 +375,15 @@ const IMPORT_PAYOUT_GAME_TYPE: Partial<Record<PayoutStructureId, GameType>> = {
 
 const IMPORT_PLAYERS_MAX = 1_000_000;
 const IMPORT_COUNT_MAX = 100_000;
+const IMPORT_MAX_CELLS = 6;
+// The row ROI box and the persistence clamp (-0.99..100) hold this range.
+const ROI_PCT_MIN = -99;
+const ROI_PCT_MAX = 10_000;
+// Scenario ROIs go down to 0.0225 (2.25 %), and an imported one can carry more.
+const ROI_PCT_DECIMALS = 4;
 const PLAIN_INT_RE = /^\d+$/;
 const PLAIN_NUMBER_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)$/;
+const DECIMAL_COMMA_ROI_RE = /^([+-]?\d+),(\d+)$/;
 
 function parsePlainInt(raw: string): number | null {
   if (!PLAIN_INT_RE.test(raw)) return null;
@@ -390,6 +397,38 @@ function parsePlainNumber(raw: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// A tab or two semicolons make the line a spreadsheet export, where a comma is
+// a decimal mark inside a cell. Otherwise commas separate the cells. The
+// separators are kept for that case: `12,5` typed with no space in a list that
+// spaces its other commas is a decimal ROI, not an ROI of 12 and a count of 5.
+function splitImportLine(line: string): { cells: string[]; decimalCommaPair: string | null } {
+  const delimiter = line.includes("\t")
+    ? "\t"
+    : (line.match(/;/g)?.length ?? 0) >= 2
+      ? ";"
+      : null;
+  let cells: string[];
+  let decimalCommaPair: string | null = null;
+  if (delimiter) {
+    cells = line.split(delimiter).map((cell) => cell.trim());
+  } else {
+    const parts = line.split(/(\s*,\s*)/);
+    cells = parts.filter((_, k) => k % 2 === 0);
+    const separators = parts.filter((_, k) => k % 2 === 1);
+    const spacedElsewhere = separators.some((sep, k) => k !== 3 && sep !== ",");
+    if (
+      spacedElsewhere &&
+      separators[3] === "," &&
+      /^[+-]?\d+$/.test(cells[3]) &&
+      /^\d+$/.test(cells[4])
+    ) {
+      decimalCommaPair = `${cells[3]},${cells[4]}`;
+    }
+  }
+  while (cells.length > IMPORT_MAX_CELLS && cells[cells.length - 1] === "") cells.pop();
+  return { cells, decimalCommaPair };
+}
+
 export function parseImportCSV(raw: string): {
   rows: TournamentRow[];
   errors: string[];
@@ -400,9 +439,24 @@ export function parseImportCSV(raw: string): {
   lines.forEach((line, i) => {
     const stripped = line.trim();
     if (!stripped || stripped.startsWith("#")) return;
-    const cells = stripped.split(/\s*,\s*/);
+    const { cells, decimalCommaPair } = splitImportLine(stripped);
     if (cells.length < 3) {
       errors.push(`line ${i + 1}: need at least label, players, buyIn`);
+      return;
+    }
+    if (cells.length > IMPORT_MAX_CELLS) {
+      errors.push(
+        `line ${i + 1}: too many columns (max ${IMPORT_MAX_CELLS}: label, players, buyIn, roi, count, payout); ` +
+          `a decimal comma needs ";" between the columns`,
+      );
+      return;
+    }
+    if (decimalCommaPair) {
+      const [roiCell, countCell] = decimalCommaPair.split(",");
+      errors.push(
+        `line ${i + 1}: "${decimalCommaPair}" reads as two cells (roi ${roiCell}, count ${countCell}), not a decimal comma; ` +
+          `write ${roiCell}.${countCell} or separate the columns with ";"`,
+      );
       return;
     }
     const [label, playersStr, buyInStr, roiStr, countStr, payoutStr] = cells;
@@ -422,9 +476,13 @@ export function parseImportCSV(raw: string): {
     }
     let roiPct = 0;
     if (roiStr) {
-      const parsedRoi = parsePlainNumber(roiStr);
+      const parsedRoi = parsePlainNumber(roiStr.replace(DECIMAL_COMMA_ROI_RE, "$1.$2"));
       if (parsedRoi === null) {
         errors.push(`line ${i + 1}: roi must be a plain number`);
+        return;
+      }
+      if (parsedRoi < ROI_PCT_MIN || parsedRoi > ROI_PCT_MAX) {
+        errors.push(`line ${i + 1}: roi must be ${ROI_PCT_MIN}..${ROI_PCT_MAX} (percent)`);
         return;
       }
       roiPct = parsedRoi;
@@ -699,6 +757,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
               </button>
             </div>
             <textarea
+              aria-label={t("row.importTitle")}
               value={importText}
               rows={6}
               placeholder={IMPORT_PLACEHOLDER}
@@ -900,13 +959,15 @@ const ScheduleRow = memo(function ScheduleRow({
         }
       >
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel className="2xl:hidden" hint={t("help.row.label")}>
+          <SectionLabel htmlFor={`schedule-${r.id}-label`} className="2xl:hidden" hint={t("help.row.label")}>
             {t("row.label")}
           </SectionLabel>
           <div className="grid min-w-0 gap-2 2xl:grid-cols-[minmax(0,1fr)_minmax(6.6rem,7.4rem)] 2xl:items-center">
             <div className="flex min-w-0 items-center gap-2">
               <RoomBadge payoutId={r.payoutStructure} gameType={gt} />
               <TextInput
+                id={`schedule-${r.id}-label`}
+                ariaLabel={t("row.label")}
                 value={r.label ?? ""}
                 onChange={(v) => update(r.id, { label: v })}
                 placeholder={getTournamentRowDisplayLabel(r, t)}
@@ -937,6 +998,7 @@ const ScheduleRow = memo(function ScheduleRow({
               </SectionLabel>
               <PercentNumInput
                 id={`schedule-${r.id}-bounty`}
+                ariaLabel={t("row.bounty")}
                 value={+(((r.bountyFraction ?? 0) * 100).toFixed(1))}
                 onChange={(v) =>
                   update(r.id, {
@@ -957,6 +1019,7 @@ const ScheduleRow = memo(function ScheduleRow({
           </SectionLabel>
           <BuyInInput
             id={`schedule-${r.id}-buy-in`}
+            ariaLabel={t("row.buyIn")}
             gameType={uiGt}
             buyIn={r.buyIn}
             rake={r.rake}
@@ -970,6 +1033,7 @@ const ScheduleRow = memo(function ScheduleRow({
           </SectionLabel>
           <NumInput
             id={`schedule-${r.id}-players`}
+            ariaLabel={t("row.players")}
             value={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : r.players}
             onChange={(v) => update(r.id, { players: Math.floor(v) })}
             min={isBattleRoyale ? BATTLE_ROYALE_PLAYERS : 2}
@@ -998,11 +1062,13 @@ const ScheduleRow = memo(function ScheduleRow({
           </SectionLabel>
           <PercentNumInput
             id={`schedule-${r.id}-roi`}
-            value={Math.round(r.roi * 100)}
+            ariaLabel={t("row.roi")}
+            value={r.roi * 100}
             onChange={(v) => update(r.id, { roi: v / 100 })}
-            min={-99}
-            max={10_000}
+            min={ROI_PCT_MIN}
+            max={ROI_PCT_MAX}
             step={1}
+            decimals={ROI_PCT_DECIMALS}
           />
           {gt === "mystery-royale" && (
             <BrReportedRoiControl
@@ -1019,6 +1085,7 @@ const ScheduleRow = memo(function ScheduleRow({
           </SectionLabel>
           <PercentDraftInput
             id={`schedule-${r.id}-itm`}
+            ariaLabel={t("row.fixedItm")}
             min={0}
             max={100}
             step={0.5}
@@ -1037,10 +1104,12 @@ const ScheduleRow = memo(function ScheduleRow({
         </div>
 
         <div className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel className="2xl:hidden" hint={t("help.row.payouts")}>
+          <SectionLabel htmlFor={`schedule-${r.id}-payouts`} className="2xl:hidden" hint={t("help.row.payouts")}>
             {t("row.payouts")}
           </SectionLabel>
           <select
+            id={`schedule-${r.id}-payouts`}
+            aria-label={t("row.payouts")}
             value={r.payoutStructure}
             title={current?.s.full ?? ""}
             onChange={(e) => {
@@ -1107,6 +1176,7 @@ const ScheduleRow = memo(function ScheduleRow({
           </SectionLabel>
           <NumInput
             id={`schedule-${r.id}-count`}
+            ariaLabel={t("row.count")}
             value={r.count}
             onChange={(v) => update(r.id, { count: Math.floor(v) })}
             min={1}
@@ -1318,11 +1388,13 @@ export function AdvancedRowPanel({
     <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
       {/* Field variability */}
       <div className="flex flex-col gap-1.5">
-        <SectionLabel hint={t("row.fieldHint")}>
+        <SectionLabel htmlFor={`schedule-${row.id}-field-kind`} hint={t("row.fieldHint")}>
           {t("row.fieldSize")}
         </SectionLabel>
         <div className="flex gap-2">
           <select
+            id={`schedule-${row.id}-field-kind`}
+            aria-label={t("row.fieldSize")}
             value={fv.kind}
             disabled={isBattleRoyale}
             onChange={(e) => {
@@ -1591,11 +1663,14 @@ function numbersEqual(a: number, b: number): boolean {
   return Math.abs(a - b) <= 1e-9;
 }
 
+// `places` is for a field whose values are not on the step grid (the step only
+// drives the arrow keys): a typed value is rounded to that many places instead.
 function normalizeDraftValue(
   raw: string,
   min: number | undefined,
   max: number | undefined,
   step: number | undefined,
+  places?: number,
 ): number | null {
   if (raw.trim() === "") return null;
   const parsed = Number(raw);
@@ -1603,6 +1678,12 @@ function normalizeDraftValue(
   let next = parsed;
   if (min !== undefined) next = Math.max(min, next);
   if (max !== undefined) next = Math.min(max, next);
+  if (places !== undefined) {
+    next = roundToDecimals(next, places);
+    if (min !== undefined) next = Math.max(min, next);
+    if (max !== undefined) next = Math.min(max, next);
+    return next;
+  }
   if (step !== undefined && Number.isFinite(step) && step > 0) {
     const decimals = stepDecimals(step);
     const base = min ?? 0;
@@ -1614,9 +1695,13 @@ function normalizeDraftValue(
   return next;
 }
 
-function formatStepDisplay(value: number, step: number | undefined): string {
+function formatStepDisplay(
+  value: number,
+  step: number | undefined,
+  places?: number,
+): string {
   if (!Number.isFinite(value)) return "";
-  const decimals = stepDecimals(step);
+  const decimals = places ?? stepDecimals(step);
   const rounded = roundToDecimals(value, decimals);
   return decimals > 0 ? rounded.toFixed(decimals).replace(/\.?0+$/, "") : String(rounded);
 }
@@ -1629,9 +1714,10 @@ function commitDraft(
   step: number | undefined,
   onChange: (v: number) => void,
   setDraft: (v: string | null) => void,
+  decimals?: number,
 ) {
   if (draft === null) return;
-  const next = normalizeDraftValue(draft, min, max, step);
+  const next = normalizeDraftValue(draft, min, max, step, decimals);
   if (next === null) {
     setDraft(null);
     return;
@@ -1646,11 +1732,15 @@ const INPUT_BASE =
   "h-8 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-2)]/70 px-2 text-[13px] text-[color:var(--color-fg)] outline-none transition-colors placeholder:text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-elev-2)] focus:border-[color:var(--color-accent)] focus:bg-[color:var(--color-bg)]";
 
 function TextInput({
+  id,
+  ariaLabel,
   value,
   onChange,
   placeholder,
   className = "",
 }: {
+  id?: string;
+  ariaLabel?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
@@ -1662,6 +1752,8 @@ function TextInput({
   }, [value]);
   return (
     <input
+      id={id}
+      aria-label={ariaLabel}
       type="text"
       value={draft}
       onChange={(e) => {
@@ -1832,10 +1924,12 @@ function BrPresetSelect({
   row: TournamentRow;
   onApply: (patch: Partial<TournamentRow>) => void;
 }) {
+  const t = useT();
   const current = brPresetMatch(row.buyIn, row.rake);
   const value = current ? String(current.total) : "";
   return (
     <select
+      aria-label={t("row.brTier")}
       value={value}
       onChange={(e) => {
         const p = BR_PRESETS.find((x) => String(x.total) === e.target.value);
@@ -1843,7 +1937,7 @@ function BrPresetSelect({
         onApply(battleRoyaleRowFromTotalTicket(p.total));
       }}
       className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[11px] tabular-nums text-[color:var(--color-fg)] outline-none transition-colors hover:border-[color:var(--color-border-strong)] focus:border-[color:var(--color-accent)]"
-      title="GG Battle Royal tier"
+      title={t("row.brTier")}
     >
       {current == null && <option value="">— BR tier —</option>}
       {BR_PRESETS.map((p) => (
@@ -1881,6 +1975,7 @@ function GameTypeSelect({
     g === "mystery-royale" ? "GG BR" : fullLabel(g);
   return (
     <select
+      aria-label={t("row.gameType")}
       value={value}
       onChange={(e) => onChange(e.target.value as GameType)}
       title={fullLabel(value)}
@@ -1897,12 +1992,14 @@ function GameTypeSelect({
 
 export function BuyInInput({
   id,
+  ariaLabel,
   gameType,
   buyIn,
   rake,
   onChange,
 }: {
   id: string;
+  ariaLabel?: string;
   gameType: GameType;
   buyIn: number;
   rake: number;
@@ -1936,6 +2033,7 @@ export function BuyInInput({
     <div className="flex w-full flex-col items-center gap-1">
       <input
         id={id}
+        aria-label={ariaLabel}
         type="text"
         inputMode="decimal"
         aria-invalid={invalid || undefined}
@@ -1998,6 +2096,8 @@ function NumInput({
   className = "",
   disabled = false,
   title,
+  decimals,
+  ariaLabel,
 }: {
   id?: string;
   value: number;
@@ -2009,6 +2109,9 @@ function NumInput({
   className?: string;
   disabled?: boolean;
   title?: string;
+  /** Places the value is held to, for a field that is not on its step grid. */
+  decimals?: number;
+  ariaLabel?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2024,12 +2127,13 @@ function NumInput({
     }
   };
   const display =
-    draft !== null ? draft : Number.isFinite(value) ? formatStepDisplay(value, step) : "";
+    draft !== null ? draft : Number.isFinite(value) ? formatStepDisplay(value, step, decimals) : "";
   const invalid = computeInvalid(draft, min, max);
   return (
     <input
       id={id}
       title={title}
+      aria-label={ariaLabel}
       type="number"
       value={display}
       min={min}
@@ -2044,7 +2148,7 @@ function NumInput({
         setDraft(raw);
         clearCommitTimer();
         if (commitMode === "blur") return;
-        const next = normalizeDraftValue(raw, min, max, step);
+        const next = normalizeDraftValue(raw, min, max, step, decimals);
         if (next === null) return;
         commitTimerRef.current = setTimeout(() => {
           startTransition(() => {
@@ -2063,6 +2167,7 @@ function NumInput({
           step,
           (next) => startTransition(() => onChange(next)),
           setDraft,
+          decimals,
         );
       }}
       onKeyDown={(e) => {
@@ -2078,6 +2183,7 @@ function NumInput({
             step,
             (next) => startTransition(() => onChange(next)),
             setDraft,
+            decimals,
           );
         } else if (e.key === "Escape") {
           e.preventDefault();
@@ -2111,6 +2217,7 @@ function PercentNumInput(
 
 function PercentDraftInput({
   id,
+  ariaLabel,
   value,
   onChange,
   min,
@@ -2121,6 +2228,7 @@ function PercentDraftInput({
   lockedLabel,
 }: {
   id: string;
+  ariaLabel?: string;
   value: number | "";
   onChange: (raw: string) => void;
   min: number;
@@ -2134,6 +2242,7 @@ function PercentDraftInput({
     <div className="relative w-full">
       <input
         id={id}
+        aria-label={ariaLabel}
         type="number"
         min={min}
         max={max}

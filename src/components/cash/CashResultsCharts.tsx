@@ -864,7 +864,7 @@ function RunModeToggle({
   return (
     <div
       className="inline-flex max-w-full overflow-hidden rounded-md border border-[color:var(--color-border)]"
-      role="radiogroup"
+      role="group"
       aria-label={t("runs.mode.title")}
       title={t("runs.mode.title")}
     >
@@ -874,8 +874,7 @@ function RunModeToggle({
           <button
             key={mode}
             type="button"
-            role="radio"
-            aria-checked={active}
+            aria-pressed={active}
             onClick={() => onChange(mode)}
             className={
               "px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors " +

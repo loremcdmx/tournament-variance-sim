@@ -550,8 +550,8 @@ export const DICT = {
   },
   "row.import": { en: "Import…", ru: "Импорт…" },
   "row.importTitle": {
-    en: "Import schedule — one tourney per line: label, players, buyIn (50+5), roi%, count, payout",
-    ru: "Импорт расписания — один турнир в строку: название, поле, бай-ин (50+5), roi%, count, payout",
+    en: "Import schedule — one tourney per line: label, players, buyIn (50+5), roi%, count, payout. Columns split on commas, semicolons or tabs; a decimal comma (12,5) needs semicolons or tabs.",
+    ru: "Импорт расписания — один турнир в строку: название, поле, бай-ин (50+5), roi%, count, payout. Столбцы делятся запятыми, точками с запятой или табами; десятичная запятая (12,5) требует точек с запятой или табов.",
   },
   "row.importFile": { en: "upload file", ru: "файл" },
   "row.importAppend": { en: "Append", ru: "Добавить" },
@@ -638,6 +638,7 @@ export const DICT = {
     ru: "GG Battle Royal",
   },
   "row.bounty": { en: "KO %", ru: "Ноки %" },
+  "row.brTier": { en: "GG Battle Royal tier", ru: "Уровень GG Battle Royal" },
   "shape.title": { en: "Finish shape", ru: "Форма распределения" },
   "shape.itmLabel": { en: "ITM rate %", ru: "ITM-ставка %" },
   "shape.rowFirst": { en: "P(1st)", ru: "P(1-е)" },

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Field, NumInput, type ControlsState } from "@/components/ControlsPanel";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
@@ -48,6 +48,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
+  const fieldId = useId();
   const controls = value.battleRoyaleLeaderboard;
   const latestValueRef = useRef(value);
   useLayoutEffect(() => { latestValueRef.current = value; }, [value]);
@@ -219,6 +220,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
           )}
         </div>
         <select
+          aria-label={t("controls.brLeaderboard.label")}
           value={controls.mode}
           disabled={uiDisabled}
           onChange={(e) =>
@@ -255,10 +257,12 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
         <>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <Field
+              htmlFor={`${fieldId}-manual-stake`}
               label={t("controls.brLeaderboard.manualStake")}
               hint={t("controls.brLeaderboard.manualStakeHint")}
             >
               <select
+                id={`${fieldId}-manual-stake`}
                 value={controls.manualStake}
                 disabled={uiDisabled}
                 onChange={(e) =>
@@ -287,10 +291,12 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               </select>
             </Field>
             <Field
+              htmlFor={`${fieldId}-manual-tournaments-per-day`}
               label={t("controls.brLeaderboard.lookupTournamentsPerDay")}
               hint={t("controls.brLeaderboard.lookupTournamentsPerDayHint")}
             >
               <NumInput
+                id={`${fieldId}-manual-tournaments-per-day`}
                 value={controls.manualTournamentsPerDay}
                 min={0}
                 max={1_000_000}
@@ -308,10 +314,12 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               />
             </Field>
             <Field
+              htmlFor={`${fieldId}-manual-points-per-tournament`}
               label={t("controls.brLeaderboard.lookupPointsPerTournament")}
               hint={t("controls.brLeaderboard.lookupPointsPerTournamentHint")}
             >
               <NumInput
+                id={`${fieldId}-manual-points-per-tournament`}
                 value={controls.manualPointsPerTournament}
                 min={0}
                 max={1_000_000}
@@ -400,10 +408,12 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
         <>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <Field
+              htmlFor={`${fieldId}-lookup-tournaments-per-day`}
               label={t("controls.brLeaderboard.lookupTournamentsPerDay")}
               hint={t("controls.brLeaderboard.lookupTournamentsPerDayHint")}
             >
               <NumInput
+                id={`${fieldId}-lookup-tournaments-per-day`}
                 value={controls.lookupTournamentsPerDay}
                 min={0}
                 max={1_000_000}
@@ -421,10 +431,12 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               />
             </Field>
             <Field
+              htmlFor={`${fieldId}-lookup-points-per-tournament`}
               label={t("controls.brLeaderboard.lookupPointsPerTournament")}
               hint={t("controls.brLeaderboard.lookupPointsPerTournamentHint")}
             >
               <NumInput
+                id={`${fieldId}-lookup-points-per-tournament`}
                 value={controls.lookupPointsPerTournament}
                 min={0}
                 max={1_000_000}
@@ -496,6 +508,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
                 {t("controls.brLeaderboard.lookupImportLabel")}
               </div>
               <textarea
+                aria-label={t("controls.brLeaderboard.lookupImportLabel")}
                 value={lookupImportText}
                 disabled={uiDisabled}
                 onChange={(e) => {
@@ -566,6 +579,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
             <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
               <input
                 type="text"
+                aria-label={t("controls.brLeaderboard.observedUsernameLabel")}
                 value={usernamesDraft}
                 disabled={uiDisabled}
                 onChange={(e) => setObservedUsernamesDraft(e.target.value)}
@@ -613,10 +627,12 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
               </div>
             </Field>
             <Field
+              htmlFor={`${fieldId}-observed-tournaments`}
               label={t("controls.brLeaderboard.tournaments")}
               hint={t("controls.brLeaderboard.tournamentsHint")}
             >
               <NumInput
+                id={`${fieldId}-observed-tournaments`}
                 value={controls.observedTotalTournaments}
                 min={0}
                 max={10_000_000}

@@ -759,6 +759,35 @@ Small numbers that read as exact. Do not undo these without re-measuring:
   "no data". It is strict about number types: a stake row whose totals are null
   or strings now reads as drift, not as zero.
 
+## Editor Inputs, CSV Import And Control Names
+
+Small things that read as exact or silently change what was typed. Do not undo
+these without re-checking:
+
+- The row ROI box prints and holds the stored ROI to four decimals of a percent
+  (`decimals` on `NumInput`, not the step grid, which only drives the arrow
+  keys). A whole-percent box showed 2.5 % as "3", turned a typed 7.5 into 8, and
+  took a typed 3 for "no change" against the engine's 2.5.
+- CSV import splits a line on tabs, else on `;` when it has two or more, else on
+  commas. Only the ROI cell may carry a decimal comma, and only on the first two
+  routes. On a comma line, `12,5` with no space between ROI and count, in a line
+  that spaces its other commas, is refused as a probable decimal comma, and more
+  than six cells is refused (the sixth was ignored before). A fully compact
+  `Name,500,50+5,12,5` is still read as ROI 12, count 5: nothing separates the
+  two readings. ROI outside -99..10000 is refused, since the editor box and a
+  saved link hold only that range.
+- Every row control carries an `aria-label`: the visible captions are `2xl:hidden`
+  (display none, and screen readers differ on naming from a hidden label), and a
+  caption that wraps its help button either names the control "Samples Help" or,
+  with no `for`, names the button instead. `Field` keeps the help button beside its
+  label, and a read-only value gets no label.
+- A flex row cannot shrink a range input below its 129 px intrinsic width unless it
+  has `min-width: 0` (`globals.css`). This was fixed from the arithmetic of the 320 px
+  rows; the EV-breakdown grid (its columns add up to about 300 px at the base
+  breakpoint) and the section titles at 320 px were not measured in a browser.
+- A cleared number box is not a number on any card: `commitDraftValue` and its
+  wrappers in `convergenceInputs.ts` cover CI, ROI, rake and the mix shares.
+
 ## Good Defaults For New Agents
 
 - Start read-only.

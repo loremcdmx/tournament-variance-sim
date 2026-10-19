@@ -14,6 +14,10 @@ export function commitRakePct(raw: string): number | null {
   return commitDraftValue(raw, RAKE_PCT_MIN, RAKE_PCT_MAX);
 }
 
+export function commitMixPct(raw: string): number | null {
+  return commitDraftValue(raw, 0, 100);
+}
+
 export function commitRoiFraction(raw: string, roiMin: number, roiMax: number): number | null {
   const pct = parseNumericDraft(raw);
   if (pct === null) return null;
