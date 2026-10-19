@@ -3,18 +3,28 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AdvancedRowPanel,
+  buyInToCommit,
   parseBuyIn,
   displayItmPct,
   parseImportCSV,
+  planScheduleImport,
   prepareScheduleImport,
   ScheduleEditor,
   suggestStandardBuyInFromBrCarryover,
 } from "./ScheduleEditor";
 import { battleRoyaleRowFromTotalTicket } from "@/lib/sim/battleRoyaleTicket";
+import {
+  DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+  applyGameType,
+  inferGameType,
+  normalizeGameTypeConsistency,
+  rowHasActiveBounty,
+} from "@/lib/sim/gameType";
+import { checkInputSanity } from "@/lib/sim/inputSanity";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 import { AdvancedModeProvider } from "@/lib/ui/AdvancedModeProvider";
 import { DICT } from "@/lib/i18n/dict";
-import type { TournamentRow } from "@/lib/sim/types";
+import type { PayoutStructureId, TournamentRow } from "@/lib/sim/types";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -65,10 +75,39 @@ describe("inconsistent finish locks notice", () => {
 });
 
 describe("parseBuyIn", () => {
-  it.each(["50abc", "50+50+5", "50..25+5", "0,25", "50+", "-50", "1e2"])(
+  it.each(["50abc", "50+50+5", "50..25+5", "50+", "-50", "1e2"])(
     "rejects the entire malformed ticket %s",
     (ticket) => expect(parseBuyIn(ticket, 0.1)).toBeNull(),
   );
+
+  describe("decimal and thousands commas", () => {
+    it.each([
+      ["0,25", { buyIn: 0.25, rake: 0.2 }],
+      ["0,5", { buyIn: 0.5, rake: 0.2 }],
+      ["5,5", { buyIn: 5.5, rake: 0.2 }],
+      ["1,25", { buyIn: 1.25, rake: 0.2 }],
+      ["12,34", { buyIn: 12.34, rake: 0.2 }],
+      ["9,20+0,80", { buyIn: 9.2, rake: 0.8 / 9.2 }],
+      ["0,55+0,05", { buyIn: 0.55, rake: 0.05 / 0.55 }],
+      ["2,5+0,25", { buyIn: 2.5, rake: 0.1 }],
+      ["$9,20 + $0,80", { buyIn: 9.2, rake: 0.8 / 9.2 }],
+      ["9.20+0,80", { buyIn: 9.2, rake: 0.8 / 9.2 }],
+      ["1,000", { buyIn: 1000, rake: 0.2 }],
+      ["$1,050+$50", { buyIn: 1050, rake: 50 / 1050 }],
+      ["1,000+100", { buyIn: 1000, rake: 0.1 }],
+      ["1,000,000", { buyIn: 1_000_000, rake: 0.2 }],
+      ["1,000.50", { buyIn: 1000.5, rake: 0.2 }],
+    ])("reads %s", (ticket, expected) => {
+      expect(parseBuyIn(ticket, 0.2)).toEqual(expected);
+    });
+
+    it.each([
+      "0,250", "0,500", "00,250", "1,2345", "5,", ",5", "1,5,5", "1,000,5",
+      "9,20+", "9,20+0,", "1.000,50", "5,5.5", "1,50.5", "0,0", "1,000+0,250",
+    ])("rejects %s instead of guessing a hundredfold different buy-in", (ticket) => {
+      expect(parseBuyIn(ticket, 0.2)).toBeNull();
+    });
+  });
 
   it("accepts complete decimal and grouped tickets while preserving plain-entry rake", () => {
     expect(parseBuyIn("$50 + $5", 0.2)).toEqual({ buyIn: 50, rake: 0.1 });
@@ -127,6 +166,53 @@ describe("parseBuyIn", () => {
   });
 });
 
+describe("buyInToCommit", () => {
+  const cur = (buyIn: number, rake: number) => ({ buyIn, rake });
+
+  it("leaves the row alone when the box is focused and left unchanged", () => {
+    // The box shows 0.25 at 10 % as "0.25+0.03"; read back that is a 12 % rake.
+    expect(parseBuyIn("0.25+0.03", 0.1)?.rake).toBeCloseTo(0.12, 12);
+    for (const [buyIn, text] of [
+      [0.25, "0.25+0.03"],
+      [0.35, "0.35+0.03"],
+      [0.75, "0.75+0.08"],
+      [1.25, "1.25+0.13"],
+      [50, "50+5"],
+    ] as const) {
+      expect(buyInToCommit(text, cur(buyIn, 0.1), "freezeout", "blur")).toBeNull();
+    }
+  });
+
+  it("commits a real change, and keeps it when the typed text is the new ticket", () => {
+    expect(buyInToCommit("55", cur(50, 0.1), "freezeout", "typing")).toEqual({ buyIn: 55, rake: 0.1 });
+    expect(buyInToCommit("20+3", cur(50, 0.1), "freezeout", "blur")).toEqual({ buyIn: 20, rake: 3 / 20 });
+    expect(buyInToCommit("20+3", cur(20, 3 / 20), "freezeout", "blur")).toBeNull();
+  });
+
+  it("does not re-commit text that already means the stored ticket", () => {
+    expect(buyInToCommit("10", cur(10, 0.1), "freezeout", "typing")).toBeNull();
+    expect(buyInToCommit("100", cur(92, 8 / 92), "ocean-ko", "blur")).toBeNull();
+  });
+
+  it("does not commit an unparsable box", () => {
+    expect(buyInToCommit("50+", cur(50, 0.1), "freezeout", "blur")).toBeNull();
+    expect(buyInToCommit("", cur(50, 0.1), "freezeout", "blur")).toBeNull();
+  });
+
+  it("holds a comma until the box is left, since the keystrokes in between mean other numbers", () => {
+    let committed = 0;
+    for (const typed of ["5", "5,", "5,5"]) {
+      if (buyInToCommit(typed, cur(50, 0.1), "freezeout", "typing")) committed++;
+    }
+    expect(committed).toBe(1);
+    expect(buyInToCommit("5,5", cur(50, 0.1), "freezeout", "typing")).toBeNull();
+    expect(buyInToCommit("5,5", cur(50, 0.1), "freezeout", "blur")).toEqual({ buyIn: 5.5, rake: 0.1 });
+    expect(buyInToCommit("9,20+0,80", cur(50, 0.1), "freezeout", "blur")).toEqual({
+      buyIn: 9.2, rake: 0.8 / 9.2,
+    });
+  });
+});
+
 describe("atomic schedule import", () => {
   const valid = "Valid, 500, 50+5, 10, 1, mtt-standard";
   const original = parseImportCSV(valid).rows;
@@ -147,6 +233,12 @@ describe("atomic schedule import", () => {
     expect(prepareScheduleImport(`${atCap}\n${valid}`, original, "replace", "limit")).toEqual({
       schedule: null, errors: ["limit"],
     });
+  });
+
+  it("counts the rows already in the live schedule against the cap", () => {
+    expect(planScheduleImport(valid, 299, "append", "limit").rows).toHaveLength(1);
+    expect(planScheduleImport(valid, 300, "append", "limit")).toEqual({ rows: null, errors: ["limit"] });
+    expect(planScheduleImport(valid, 300, "replace", "limit").rows).toHaveLength(1);
   });
 
   it("applies a completely valid append or replacement", () => {
@@ -258,6 +350,107 @@ describe("parseImportCSV", () => {
       payoutStructure: "battle-royale",
       count: 12,
     });
+  });
+});
+
+describe("CSV import: payout cell and format defaults", () => {
+  const line = (payout: string) => `Row, 500, 50+5, 10, 1${payout === undefined ? "" : `, ${payout}`}`;
+  const one = (text: string) => {
+    const parsed = parseImportCSV(text);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows).toHaveLength(1);
+    return parsed.rows[0];
+  };
+
+  it.each(["mtt-pokerstar", "pokerstars", "mtt standard", "custom", "mtt-gg-bounty-", "toString"])(
+    "rejects the unknown payout %s instead of importing a standard row",
+    (payout) => {
+      const parsed = parseImportCSV(line(payout));
+      expect(parsed.rows).toEqual([]);
+      expect(parsed.errors).toEqual([`line 1: unknown payout "${payout}"`]);
+    },
+  );
+
+  it("reports each bad line and still refuses the whole import", () => {
+    const text = [line("mtt-pokerstars"), line("mtt-pokerstar"), line("sng-65-35"), line("wta")].join("\n");
+    const parsed = parseImportCSV(text);
+    expect(parsed.rows.map((r) => r.payoutStructure)).toEqual(["mtt-pokerstars", "sng-65-35"]);
+    expect(parsed.errors).toEqual(['line 2: unknown payout "mtt-pokerstar"', 'line 4: unknown payout "wta"']);
+    expect(prepareScheduleImport(text, [], "replace", "limit")).toEqual({
+      schedule: null,
+      errors: parsed.errors,
+    });
+  });
+
+  it("matches the id without regard to case or padding", () => {
+    expect(one("Row, 500, 50+5, 10, 1,  MTT-PokerStars ").payoutStructure).toBe("mtt-pokerstars");
+    expect(one(line("MTT-GG-FREEZE")).payoutStructure).toBe("mtt-gg-freeze");
+  });
+
+  it("keeps an absent or empty payout cell on the standard curve", () => {
+    expect(one("Row, 500, 50+5, 10, 1").payoutStructure).toBe("mtt-standard");
+    expect(one("Row, 500, 50+5, 10, 1,").payoutStructure).toBe("mtt-standard");
+  });
+
+  it("accepts every payout the editor offers except the legacy custom one", () => {
+    const offered: Record<Exclude<PayoutStructureId, "custom">, true> = {
+      "mtt-standard": true, "mtt-primedope": true, "mtt-flat": true, "mtt-top-heavy": true,
+      "battle-royale": true, "mtt-pokerstars": true, "mtt-gg": true, "mtt-gg-freeze": true,
+      "mtt-sunday-million": true, "mtt-gg-bounty": true, "mtt-gg-mystery": true,
+      "satellite-ticket": true, "sng-50-30-20": true, "sng-65-35": true, "winner-takes-all": true,
+    };
+    for (const id of Object.keys(offered)) {
+      expect(one(line(id)).payoutStructure).toBe(id);
+    }
+  });
+
+  it("gives a PKO payout the PKO format and the editor's bounty split", () => {
+    const row = one(line("mtt-gg-bounty"));
+    const picked = applyGameType(row, "pko");
+    expect(row).toMatchObject({
+      gameType: "pko",
+      payoutStructure: "mtt-gg-bounty",
+      bountyFraction: picked.bountyFraction,
+      pkoHeadVar: picked.pkoHeadVar,
+      buyIn: 50, roi: 0.1, players: 500,
+    });
+    expect(row.bountyFraction).toBeGreaterThan(0);
+    expect(rowHasActiveBounty(row)).toBe(true);
+    expect(inferGameType(row)).toBe("pko");
+    expect(normalizeGameTypeConsistency(row)).toEqual(row);
+    expect(checkInputSanity({ tiltFastGain: 0, tiltFastScale: 0, tiltSlowGain: 0, tiltSlowThreshold: 0, bankroll: 1000, finishModelId: "power-law" }, [row])).toEqual([]);
+  });
+
+  it("gives a Mystery payout the Mystery format, split and bounty variance", () => {
+    const row = one(line("mtt-gg-mystery"));
+    const picked = applyGameType(row, "mystery");
+    expect(row).toMatchObject({
+      gameType: "mystery",
+      payoutStructure: "mtt-gg-mystery",
+      bountyFraction: picked.bountyFraction,
+      mysteryBountyVariance: picked.mysteryBountyVariance,
+    });
+    expect(row.mysteryBountyVariance).toBeGreaterThan(0);
+    expect(normalizeGameTypeConsistency(row)).toEqual(row);
+  });
+
+  it("gives Battle Royale its structural bounty share without touching the typed ticket and ROI", () => {
+    const row = one("Row, 500, 9.2+0.8, 5, 1, battle-royale");
+    expect(row).toMatchObject({
+      gameType: "mystery-royale",
+      players: 18,
+      bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+      mysteryBountyVariance: 1.8,
+      buyIn: 9.2,
+      roi: 0.05,
+    });
+    expect(row.rake).toBeCloseTo(0.8 / 9.2, 12);
+  });
+
+  it("leaves freezeout payouts without bounty fields", () => {
+    const row = one(line("mtt-primedope"));
+    expect(row.gameType).toBeUndefined();
+    expect(row.bountyFraction).toBeUndefined();
   });
 });
 

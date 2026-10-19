@@ -12,7 +12,13 @@ import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
 import { formatDuration, formatRoughDuration } from "@/lib/ui/durationFormat";
 import { computeRemainingMs } from "@/lib/ui/etaEstimator";
-import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
+import {
+  commitDraftValue,
+  isDraftInvalid,
+  liveDraftValue,
+  normalizeNumericDraft,
+} from "@/lib/ui/numberDraft";
+import { isStopClickTooEarly } from "@/lib/ui/runButtonGuard";
 import type { BattleRoyaleLeaderboardControls } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import {
   COMPLETING_HOLD_MS,
@@ -265,6 +271,10 @@ export const ControlsPanel = memo(function ControlsPanel({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- bumps a remount key on the !running → running edge; no cascade (running is external state).
     if (running) setRunToken((t) => t + 1);
+  }, [running]);
+  const runStartedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    runStartedAtRef.current = running ? performance.now() : null;
   }, [running]);
   const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
   const scheduleTournaments = Math.max(1, Math.round(tournamentsPerSchedule));
@@ -571,8 +581,12 @@ export const ControlsPanel = memo(function ControlsPanel({
         <div className="flex flex-col items-center gap-3">
           {running ? (
             <button
+              key="stop"
               type="button"
-              onClick={onCancel}
+              onClick={() => {
+                if (isStopClickTooEarly(runStartedAtRef.current, performance.now())) return;
+                onCancel();
+              }}
               className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-rose-500 to-rose-600 px-5 text-sm font-semibold text-white shadow-[0_1px_0_0_rgba(255,255,255,0.2)_inset,0_8px_24px_-8px_rgba(244,63,94,0.45)] transition-all hover:from-rose-400 hover:to-rose-500 active:translate-y-px"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -587,6 +601,7 @@ export const ControlsPanel = memo(function ControlsPanel({
             // silent "click does nothing" fallback that was tripping people
             // up before this prop existed.
             <button
+              key="blocked"
               type="button"
               onClick={() => {
                 const targetId = runBlockedScrollTarget ?? "feasibility-banner";
@@ -617,6 +632,7 @@ export const ControlsPanel = memo(function ControlsPanel({
             </button>
           ) : (
             <button
+              key="run"
               type="button"
               onClick={onRun}
               className="primary-run-button inline-flex h-12 w-full items-center justify-center gap-3 rounded-lg px-5 text-base font-semibold transition-all active:translate-y-px"
@@ -770,29 +786,12 @@ export function NumInput({
   const display =
     draft !== null ? draft : Number.isFinite(value) ? String(value) : "";
 
-  let invalid = false;
-  if (draft !== null) {
-    if (draft.trim() === "") {
-      invalid = true;
-    } else {
-      const v = Number(draft);
-      if (!Number.isFinite(v)) invalid = true;
-      else if (min !== undefined && v < min) invalid = true;
-      else if (max !== undefined && v > max) invalid = true;
-    }
-  }
+  const invalid = draft !== null && isDraftInvalid(draft, min, max);
 
   const commitDraft = () => {
     if (draft === null) return;
-    const v = Number(draft);
-    if (!Number.isFinite(v)) {
-      setDraft(null);
-      return;
-    }
-    const lo = min ?? -Infinity;
-    const hi = max ?? Infinity;
-    const clamped = Math.min(hi, Math.max(lo, v));
-    if (clamped !== value) onChange(clamped);
+    const next = commitDraftValue(draft, min, max);
+    if (next !== null && next !== value) onChange(next);
     setDraft(null);
   };
 
@@ -811,12 +810,8 @@ export function NumInput({
         const raw = normalizeNumericDraft(e.target.value);
         setDraft(raw);
         if (commitMode === "blur") return;
-        if (raw.trim() === "") return;
-        const v = Number(raw);
-        if (!Number.isFinite(v)) return;
-        if (min !== undefined && v < min) return;
-        if (max !== undefined && v > max) return;
-        onChange(v);
+        const next = liveDraftValue(raw, min, max);
+        if (next !== null) onChange(next);
       }}
       onBlur={commitDraft}
       onKeyDown={(e) => {

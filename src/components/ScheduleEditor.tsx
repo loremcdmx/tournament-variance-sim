@@ -9,6 +9,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 import type {
   FieldVariability,
@@ -38,6 +40,14 @@ import {
 } from "@/lib/sim/battleRoyaleTicket";
 import { MAX_SCHEDULE_ROWS } from "@/lib/persistence";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
+import {
+  appendRow,
+  applyImportedRows,
+  duplicateRow,
+  newScheduleRow,
+  patchRow,
+  removeRow,
+} from "@/lib/ui/scheduleOps";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
@@ -46,6 +56,23 @@ import { Card } from "./ui/Section";
 import { InfoTooltip } from "./ui/Tooltip";
 
 const MAX_BUY_IN_RAKE = 1;
+
+const PLAIN_AMOUNT = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
+const DECIMAL_COMMA_AMOUNT = /^\d+,\d{1,2}$/;
+const THOUSANDS_AMOUNT = /^\d{1,3}(?:,\d{3})+(?:\.\d*)?$/;
+
+// One side of the ticket. A comma with one or two digits after it is a decimal
+// comma ("0,25", "9,20"); only complete groups of three after it are thousands
+// ("1,000"). "0,250" is neither a sensible grouping nor a two-digit decimal,
+// and reading it as 250 would be a hundredfold error.
+function parseAmount(part: string): number | null {
+  if (PLAIN_AMOUNT.test(part)) return Number(part);
+  if (DECIMAL_COMMA_AMOUNT.test(part)) return Number(part.replace(",", "."));
+  if (THOUSANDS_AMOUNT.test(part) && !part.startsWith("0")) {
+    return Number(part.replaceAll(",", ""));
+  }
+  return null;
+}
 
 // Parse "50+5", "50 + 5", "55", "$50+$5" → { buyIn: 50, rake: 0.1 }.
 // Plain single number is treated as net buy-in (prize-pool portion); the
@@ -60,17 +87,16 @@ export function parseBuyIn(
 ): { buyIn: number; rake: number } | null {
   const cleaned = raw.replace(/[$\s]/g, "");
   if (cleaned === "") return null;
-  // A comma is a thousands separator only in complete groups. Validate the
-  // entire ticket before conversion: parseFloat accepts junk suffixes and
-  // malformed plus forms as a different, seemingly valid buy-in.
-  const amount = /^(?:\d+(?:\.\d*)?|\.\d+|\d{1,3}(?:,\d{3})+(?:\.\d*)?)$/;
+  // Validate the entire ticket before conversion: parseFloat accepts junk
+  // suffixes and malformed plus forms as a different, seemingly valid buy-in.
   const parts = cleaned.split("+");
-  if (parts.length > 2 || parts.some((part) => !amount.test(part))) return null;
-  const net = Number(parts[0].replaceAll(",", ""));
-  if (!Number.isFinite(net) || net <= 0) return null;
+  if (parts.length > 2) return null;
+  const amounts = parts.map(parseAmount);
+  const net = amounts[0];
+  if (net === null || !Number.isFinite(net) || net <= 0) return null;
   if (parts.length === 2) {
-    const fee = Number(parts[1].replaceAll(",", ""));
-    if (!isFinite(net) || !isFinite(fee) || net <= 0) return null;
+    const fee = amounts[1];
+    if (fee === null || !isFinite(fee)) return null;
     const rake = fee / net;
     if (!isFinite(rake) || rake < 0 || rake > MAX_BUY_IN_RAKE) return null;
     return { buyIn: net, rake };
@@ -87,6 +113,34 @@ function formatBuyIn(buyIn: number, rake: number): string {
 }
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+const sameAmount = (a: number, b: number) =>
+  Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+
+/**
+ * The ticket to hand to the row for the text in the buy-in box, or null when
+ * there is nothing to commit. The box shows fees rounded to the cent, so
+ * re-parsing its own text is not a no-op ("0.25+0.03" is a 12 % rake, the row
+ * holds 10 %): a focus and blur, or text that already means the stored ticket,
+ * must leave the row alone. A comma is the one ambiguous character (decimal or
+ * thousands), so text containing one is committed when the box is left, not
+ * keystroke by keystroke.
+ */
+export function buyInToCommit(
+  text: string,
+  current: { buyIn: number; rake: number },
+  gameType: GameType,
+  phase: "typing" | "blur",
+): { buyIn: number; rake: number } | null {
+  if (phase === "typing" && text.includes(",")) return null;
+  if (phase === "blur" && text === formatBuyIn(current.buyIn, current.rake)) return null;
+  const parsed = parseBuyIn(text, current.rake, gameType);
+  if (!parsed) return null;
+  if (sameAmount(parsed.buyIn, current.buyIn) && sameAmount(parsed.rake, current.rake)) {
+    return null;
+  }
+  return parsed;
 }
 
 export function displayItmPct(row: TournamentRow, globalItmPct: number | null): number {
@@ -157,7 +211,9 @@ const STRUCTURES: {
 
 interface Props {
   schedule: TournamentRow[];
-  onChange: (next: TournamentRow[]) => void;
+  /** Row operations pass updaters, so they land on top of any edit still
+   *  waiting in a transition instead of overwriting it. */
+  onChange: Dispatch<SetStateAction<TournamentRow[]>>;
   disabled?: boolean;
   /** When set, rows with no explicit itmRate inherit this default (shown
    *  as the placeholder on the per-row input). Pass null to disable. */
@@ -288,8 +344,9 @@ const ROOM_META: Record<PokerRoom, { label: string; src: string }> = {
   coinpoker: { label: "CoinPoker", src: "/logos/coinpoker.svg" },
 };
 
-const PAYOUT_IDS: PayoutStructureId[] = [
+const PAYOUT_IDS: Exclude<PayoutStructureId, "custom">[] = [
   "mtt-standard",
+  "mtt-primedope",
   "mtt-flat",
   "mtt-top-heavy",
   "battle-royale",
@@ -304,6 +361,14 @@ const PAYOUT_IDS: PayoutStructureId[] = [
   "sng-65-35",
   "winner-takes-all",
 ];
+
+const PAYOUT_ID_SET: ReadonlySet<string> = new Set(PAYOUT_IDS);
+
+const IMPORT_PAYOUT_GAME_TYPE: Partial<Record<PayoutStructureId, GameType>> = {
+  "mtt-gg-bounty": "pko",
+  "mtt-gg-mystery": "mystery",
+  "battle-royale": "mystery-royale",
+};
 
 const IMPORT_PLAYERS_MAX = 1_000_000;
 const IMPORT_COUNT_MAX = 100_000;
@@ -370,11 +435,12 @@ export function parseImportCSV(raw: string): {
       }
       count = Math.max(1, Math.floor(parsedCount));
     }
-    const payout = (
-      payoutStr && PAYOUT_IDS.includes(payoutStr as PayoutStructureId)
-        ? payoutStr
-        : "mtt-standard"
-    ) as PayoutStructureId;
+    const payoutCell = (payoutStr ?? "").trim().toLowerCase();
+    if (payoutCell !== "" && !PAYOUT_ID_SET.has(payoutCell)) {
+      errors.push(`line ${i + 1}: unknown payout "${payoutStr}"`);
+      return;
+    }
+    const payout = (payoutCell || "mtt-standard") as PayoutStructureId;
     const isBattleRoyaleImport = payout === "battle-royale";
     const importedRow: TournamentRow = {
       id: crypto.randomUUID(),
@@ -386,26 +452,50 @@ export function parseImportCSV(raw: string): {
       payoutStructure: payout,
       count,
     };
-    if (isBattleRoyaleImport) importedRow.gameType = "mystery-royale";
+    const importedGameType = IMPORT_PAYOUT_GAME_TYPE[payout];
+    if (importedGameType) {
+      // The row's own buy-in, ROI and ITM stay as typed; only the format and
+      // its bounty split come from the editor's defaults, or the row would run
+      // as a 0 %-bounty PKO / Mystery / Battle Royale.
+      const defaults = applyGameType(importedRow, importedGameType);
+      importedRow.gameType = importedGameType;
+      importedRow.bountyFraction = defaults.bountyFraction;
+      if (defaults.mysteryBountyVariance !== undefined) {
+        importedRow.mysteryBountyVariance = defaults.mysteryBountyVariance;
+      }
+      if (defaults.pkoHeadVar !== undefined) importedRow.pkoHeadVar = defaults.pkoHeadVar;
+    }
     rows.push(importedRow);
   });
   return { rows, errors };
 }
 
 /** A rejected import never replaces or partially appends to the schedule. */
+export function planScheduleImport(
+  text: string,
+  currentRowCount: number,
+  mode: "append" | "replace",
+  tooManyRowsMessage: string,
+): { rows: TournamentRow[] | null; errors: string[] } {
+  const { rows, errors } = parseImportCSV(text);
+  if (errors.length > 0 || rows.length === 0) return { rows: null, errors };
+  const total = mode === "replace" ? rows.length : currentRowCount + rows.length;
+  if (total > MAX_SCHEDULE_ROWS) {
+    return { rows: null, errors: [tooManyRowsMessage] };
+  }
+  return { rows, errors: [] };
+}
+
 export function prepareScheduleImport(
   text: string,
   schedule: TournamentRow[],
   mode: "append" | "replace",
   tooManyRowsMessage: string,
 ): { schedule: TournamentRow[] | null; errors: string[] } {
-  const { rows, errors } = parseImportCSV(text);
-  if (errors.length > 0 || rows.length === 0) return { schedule: null, errors };
-  const merged = mode === "replace" ? rows : [...schedule, ...rows];
-  if (merged.length > MAX_SCHEDULE_ROWS) {
-    return { schedule: null, errors: [tooManyRowsMessage] };
-  }
-  return { schedule: merged, errors: [] };
+  const { rows, errors } = planScheduleImport(
+    text, schedule.length, mode, tooManyRowsMessage,
+  );
+  return { schedule: rows && applyImportedRows(schedule, rows, mode), errors };
 }
 
 export const ScheduleEditor = memo(function ScheduleEditor({
@@ -428,49 +518,40 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
-  // Keep refs to latest schedule/onChange so the row-level callbacks we hand
-  // out to <ScheduleRow/> are referentially stable — without this every edit
+  // Keep a ref to the latest onChange so the row-level callbacks we hand out
+  // to <ScheduleRow/> are referentially stable — without this every edit
   // invalidates the memoized rows below, defeating the whole point.
-  const scheduleRef = useRef(schedule);
   const onChangeRef = useRef(onChange);
   useLayoutEffect(() => {
-    scheduleRef.current = schedule;
     onChangeRef.current = onChange;
   });
+  const update = useCallback((id: string, patch: Partial<TournamentRow>) => {
+    onChangeRef.current((prev) => patchRow(prev, id, patch));
+  }, []);
+  const remove = useCallback((id: string) => {
+    onChangeRef.current((prev) => removeRow(prev, id));
+  }, []);
+  const duplicate = useCallback((id: string) => {
+    const copyId = crypto.randomUUID();
+    onChangeRef.current((prev) => duplicateRow(prev, id, copyId));
+  }, []);
+  const add = useCallback(() => {
+    const row = newScheduleRow(crypto.randomUUID());
+    onChangeRef.current((prev) => appendRow(prev, row));
+  }, []);
 
   const applyImport = (text: string, mode: "append" | "replace") => {
-    const { schedule: imported, errors } = prepareScheduleImport(
-      text, schedule, mode,
+    const { rows, errors } = planScheduleImport(
+      text, schedule.length, mode,
       t("row.importTooMany").replace("{max}", String(MAX_SCHEDULE_ROWS)),
     );
     setImportErrors(errors);
-    if (!imported) return;
-    onChange(imported);
+    if (!rows) return;
+    onChange((prev) => applyImportedRows(prev, rows, mode));
     setImportText("");
     setImportOpen(false);
   };
 
-  const update = useCallback((id: string, patch: Partial<TournamentRow>) => {
-    onChangeRef.current(
-      scheduleRef.current.map((r) =>
-        r.id === id ? normalizeGameTypeConsistency({ ...r, ...patch }) : r,
-      ),
-    );
-  }, []);
-  const remove = useCallback((id: string) => {
-    onChangeRef.current(scheduleRef.current.filter((r) => r.id !== id));
-  }, []);
-  const duplicate = useCallback((id: string) => {
-    const sched = scheduleRef.current;
-    if (sched.length >= MAX_SCHEDULE_ROWS) return;
-    const row = sched.find((r) => r.id === id);
-    if (!row) return;
-    const copy = { ...row, id: crypto.randomUUID() };
-    const idx = sched.findIndex((r) => r.id === id);
-    const next = [...sched];
-    next.splice(idx + 1, 0, copy);
-    onChangeRef.current(next);
-  }, []);
   const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -479,22 +560,6 @@ export const ScheduleEditor = memo(function ScheduleEditor({
       return next;
     });
   }, []);
-  const add = () => {
-    if (schedule.length >= MAX_SCHEDULE_ROWS) return;
-    onChange([
-      ...schedule,
-      {
-        id: crypto.randomUUID(),
-        label: "",
-        players: 500,
-        buyIn: 10,
-        rake: 0.1,
-        roi: 0.2,
-        payoutStructure: "mtt-standard",
-        count: 1,
-      },
-    ]);
-  };
   const canRemove = schedule.length > 1;
   const canAdd = schedule.length < MAX_SCHEDULE_ROWS;
   const maxRowsHint = t("row.maxRows").replace("{n}", String(MAX_SCHEDULE_ROWS));
@@ -1849,7 +1914,7 @@ function BuyInInput({
         onFocus={() => setFocused(true)}
         onBlur={() => {
           setFocused(false);
-          const p = parseBuyIn(local, rake, gameType);
+          const p = buyInToCommit(local, { buyIn, rake }, gameType, "blur");
           if (p) {
             startTransition(() => onChange(p.buyIn, p.rake));
             setLocal(formatBuyIn(p.buyIn, p.rake));
@@ -1859,7 +1924,7 @@ function BuyInInput({
         }}
         onChange={(e) => {
           setLocal(e.target.value);
-          const p = parseBuyIn(e.target.value, rake, gameType);
+          const p = buyInToCommit(e.target.value, { buyIn, rake }, gameType, "typing");
           if (p) startTransition(() => onChange(p.buyIn, p.rake));
         }}
         placeholder={gameType === "ocean-ko" ? "100" : "50+5"}

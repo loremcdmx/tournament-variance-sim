@@ -11,6 +11,7 @@
  * via prop only when the Schedule tab is active. Does not modify
  * ConvergenceChart state, so the existing widget stays exactly as it is.
  */
+import { DraftNumberInput } from "@/components/ui/DraftNumberInput";
 import { RangeInput } from "@/components/ui/RangeInput";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
@@ -333,23 +334,18 @@ export function ProveEdgeCard({
               className="flex-1"
               aria-label={t("proveEdge.label.fieldSize")}
             />
-            <input
-              type="number"
+            <DraftNumberInput
               min={isMbr ? MBR_FIXED_AFS : AFS_MIN}
               max={isMbr ? MBR_FIXED_AFS : AFS_MAX}
               step={1}
-              value={Math.round(effectiveAfsSingle)}
-              onChange={(e) => {
-                if (isMbr) return;
-                const n = Number(e.target.value);
-                if (Number.isFinite(n)) {
-                  const clamped = Math.max(AFS_MIN, Math.min(AFS_MAX, n));
-                  setAfsPos(afsToPos(clamped));
-                }
+              value={effectiveAfsSingle}
+              format={(v) => String(Math.round(v))}
+              onCommit={(n) => {
+                if (!isMbr) setAfsPos(afsToPos(n));
               }}
               disabled={isMbr}
               className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed"
-              aria-label={t("proveEdge.label.fieldSize")}
+              ariaLabel={t("proveEdge.label.fieldSize")}
             />
           </div>
 
@@ -394,18 +390,14 @@ export function ProveEdgeCard({
               className="flex-1"
               aria-label={t("proveEdge.label.confidence")}
             />
-            <input
-              type="number"
+            <DraftNumberInput
               min={50}
               max={99.99}
               step={0.1}
               value={ciPct}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n)) setCiPct(Math.max(50, Math.min(99.99, n)));
-              }}
+              onCommit={setCiPct}
               className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
-              aria-label={t("proveEdge.label.confidence")}
+              ariaLabel={t("proveEdge.label.confidence")}
             />
           </div>
 
@@ -422,20 +414,14 @@ export function ProveEdgeCard({
               className="flex-1"
               aria-label={t("proveEdge.label.yourRoi")}
             />
-            <input
-              type="number"
+            <DraftNumberInput
               min={-50}
               max={100}
               step={0.1}
               value={currentRoiPct}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n)) {
-                  setCurrentRoiPct(Math.max(-50, Math.min(100, n)));
-                }
-              }}
+              onCommit={setCurrentRoiPct}
               className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
-              aria-label={t("proveEdge.label.yourRoi")}
+              ariaLabel={t("proveEdge.label.yourRoi")}
             />
           </div>
         </div>
@@ -478,18 +464,14 @@ export function ProveEdgeCard({
               className="flex-1"
               aria-label={t("proveEdge.label.confidence")}
             />
-            <input
-              type="number"
+            <DraftNumberInput
               min={50}
               max={99.99}
               step={0.1}
               value={ciPct}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n)) setCiPct(Math.max(50, Math.min(99.99, n)));
-              }}
+              onCommit={setCiPct}
               className="number-control w-20 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1.5 py-0.5 text-center font-mono tabular-nums text-[color:var(--color-fg)] focus:border-sky-400 focus:outline-none"
-              aria-label={t("proveEdge.label.confidence")}
+              ariaLabel={t("proveEdge.label.confidence")}
             />
           </div>
           {!scheduleEmpty && (

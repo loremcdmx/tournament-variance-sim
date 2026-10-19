@@ -2,6 +2,7 @@
 
 import {
   type CSSProperties,
+  type SetStateAction,
   memo,
   startTransition,
   useCallback,
@@ -593,7 +594,7 @@ export default function Home() {
   // parent render (a single keystroke, a locale flip, a mouse hover). Memoized
   // children then re-render anyway — memo broken.
   const handleScheduleChange = useCallback(
-    (s: TournamentRow[]) => {
+    (s: SetStateAction<TournamentRow[]>) => {
       queueInterruptBackground();
       setSchedule(s);
       setActiveScenarioId(null);
@@ -1359,6 +1360,7 @@ export default function Home() {
                   )}
                 </div>
                 <FinishPMFPreview
+                  key={previewRow.id}
                   row={previewRow}
                   model={previewModel}
                   rakebackPct={deferredControls.rakebackPct}
