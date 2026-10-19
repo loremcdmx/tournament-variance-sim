@@ -93,6 +93,7 @@ import {
   pct,
   pctDelta,
   saveUnitMode,
+  tourneyCountOrDash,
   type UnitMode,
 } from "@/lib/results/formatters";
 import {
@@ -1253,15 +1254,11 @@ function ResultsViewImpl({
         <MiniStat
           suit="diamond"
           label={t("stat.recoveryMedian")}
-          value={
-            Number.isFinite(s.recoveryMedian)
-              ? `${Math.round(s.recoveryMedian)} ${tourneysWord}`
-              : "—"
-          }
+          value={tourneyCountOrDash(s.recoveryMedian, tourneysWord)}
           tip={t("stat.recoveryMedian.tip")}
           pdValue={
-            pdStats && Number.isFinite(pdStats.recoveryMedian)
-              ? `${Math.round(pdStats.recoveryMedian)} ${tourneysWord}`
+            pdStats
+              ? tourneyCountOrDash(pdStats.recoveryMedian, tourneysWord)
               : undefined
           }
           pdDelta={
@@ -1272,16 +1269,12 @@ function ResultsViewImpl({
         <MiniStat
           suit="heart"
           label={t("stat.recoveryP90")}
-          value={
-            Number.isFinite(s.recoveryP90)
-              ? `${Math.round(s.recoveryP90)} ${tourneysWord}`
-              : "—"
-          }
+          value={tourneyCountOrDash(s.recoveryP90, tourneysWord)}
           tone="neg"
           tip={t("stat.recoveryP90.tip")}
           pdValue={
-            pdStats && Number.isFinite(pdStats.recoveryP90)
-              ? `${Math.round(pdStats.recoveryP90)} ${tourneysWord}`
+            pdStats
+              ? tourneyCountOrDash(pdStats.recoveryP90, tourneysWord)
               : undefined
           }
           pdDelta={pdStats ? pctDelta(s.recoveryP90, pdStats.recoveryP90) : null}
@@ -1647,12 +1640,16 @@ function BattleRoyaleLeaderboardPromoSection({
           : "border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 text-[color:var(--color-fg-dim)]"
     : "";
 
-  const subtitle = t("chart.brLeaderboardObserved.sub")
-    .replace(
-      "{tourneysPerDay}",
-      promo.current.tournamentsPerDay.toFixed(1),
-    )
-    .replace("{days}", promo.current.activeDays.toLocaleString(numberLocale));
+  const { tournamentsPerDay, activeDays } = promo.current;
+  const subtitle =
+    tournamentsPerDay != null && activeDays != null
+      ? t("chart.brLeaderboardObserved.sub")
+          .replace("{tourneysPerDay}", tournamentsPerDay.toFixed(1))
+          .replace(
+            "{days}",
+            activeDays.toLocaleString(numberLocale, { maximumFractionDigits: 2 }),
+          )
+      : undefined;
 
   return (
     <CollapsibleSection
@@ -1697,12 +1694,14 @@ function BattleRoyaleLeaderboardPromoSection({
               value={money(promo.payoutPerTournament)}
               tone={promo.payoutPerTournament >= 0 ? "pos" : "neg"}
             />
-            <MiniStat
-              suit="club"
-              label={t("chart.brLeaderboardObserved.perDay")}
-              value={money(promo.payoutPerDay)}
-              tone={promo.payoutPerDay >= 0 ? "pos" : "neg"}
-            />
+            {promo.payoutPerDay != null && (
+              <MiniStat
+                suit="club"
+                label={t("chart.brLeaderboardObserved.perDay")}
+                value={money(promo.payoutPerDay)}
+                tone={promo.payoutPerDay >= 0 ? "pos" : "neg"}
+              />
+            )}
             <MiniStat
               suit="spade"
               label={t("chart.brLeaderboardObserved.currentPct")}
@@ -1719,10 +1718,14 @@ function BattleRoyaleLeaderboardPromoSection({
               suit="spade"
               label={t("chart.brLeaderboardObserved.currentVolume")}
               value={promo.current.tournaments.toLocaleString(numberLocale)}
-              detail={t("chart.brLeaderboardObserved.currentVolumeDetail").replace(
-                "{perDay}",
-                promo.current.tournamentsPerDay.toFixed(1),
-              )}
+              detail={
+                tournamentsPerDay != null
+                  ? t("chart.brLeaderboardObserved.currentVolumeDetail").replace(
+                      "{perDay}",
+                      tournamentsPerDay.toFixed(1),
+                    )
+                  : undefined
+              }
             />
           </StatGroup>
           <div className="mt-4" />

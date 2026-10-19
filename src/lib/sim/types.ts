@@ -708,13 +708,19 @@ export interface BattleRoyaleLeaderboardPromoResultBase {
   mode: "observed" | "manual" | "lookup";
   expectedPayout: number;
   payoutPerTournament: number;
-  payoutPerDay: number;
+  /**
+   * Promo per day of `current.tournamentsPerDay` tournaments, and the number of
+   * such days the run covers. Both are null when the anchor has no day length
+   * (observed totals, a bare manual $/tournament): the run's repeat count is a
+   * sample length, not a number of days.
+   */
+  payoutPerDay: number | null;
   pctOfCurrentBuyIns: number;
   notInPathRisk: true;
   current: {
-    activeDays: number;
+    activeDays: number | null;
     tournaments: number;
-    tournamentsPerDay: number;
+    tournamentsPerDay: number | null;
     totalBuyIn: number;
     abi: number | null;
   };
@@ -746,9 +752,9 @@ export interface BattleRoyaleLeaderboardObservedPromoResult
     }>;
   };
   current: {
-    activeDays: number;
+    activeDays: number | null;
     tournaments: number;
-    tournamentsPerDay: number;
+    tournamentsPerDay: number | null;
     totalBuyIn: number;
     abi: number | null;
   };
@@ -964,7 +970,8 @@ export interface SimulationResult {
      * Recovery length after the deepest drawdown per sample — number of
      * tournaments from the trough of maxDD back to the pre-drawdown peak.
      * `recoveryUnrecoveredShare` is the fraction of samples that never
-     * recovered by end-of-schedule (infinite recovery).
+     * recovered by end-of-schedule (infinite recovery). The median and p90
+     * are taken over the recovered samples only and are NaN when none did.
      */
     recoveryMedian: number;
     recoveryP90: number;

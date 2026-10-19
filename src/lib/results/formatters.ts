@@ -42,6 +42,10 @@ export const money = (v: number): string => {
 /** Percentage from a fraction — `0.184` → `18.4%`. */
 export const pct = (v: number): string => `${(v * 100).toFixed(1)}%`;
 
+/** A count of tournaments, or a dash when the statistic does not exist (NaN). */
+export const tourneyCountOrDash = (v: number, unit: string): string =>
+  Number.isFinite(v) ? `${Math.round(v)} ${unit}` : "—";
+
 /** Integer with locale-default thousands grouping. */
 export const intFmt = (v: number): string =>
   v.toLocaleString(undefined, { maximumFractionDigits: 0 });

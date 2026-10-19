@@ -181,5 +181,7 @@ describe("aggregateStreaks", () => {
     expect(agg.stats.maxDrawdownMean).toBe(0);
     expect(agg.stats.maxDrawdownWorst).toBe(0);
     expect(agg.stats.recoveryUnrecoveredShare).toBe(0);
+    expect(Number.isNaN(agg.stats.recoveryMedian)).toBe(true);
+    expect(Number.isNaN(agg.stats.recoveryP90)).toBe(true);
   });
 });

@@ -283,9 +283,12 @@ export function rebuildEnvelopesFromPaths(
 }
 
 // Strip samples flagged in `jackpotMask` from the scale-sensitive fields that
-// drive path and histogram views. Best/worst paths are reselected from the
-// remaining stored paths so the chart does not keep the removed jackpot curve
-// as its visible extreme marker.
+// drive path and histogram views. The upper side of the envelopes and the best
+// path are rebuilt from the remaining stored paths so the chart does not keep
+// the removed jackpot curve as its visible extreme marker. A jackpot only ever
+// adds money, so the lower extremes the engine measured over every sample are
+// not rebuilt from the ~1000 stored paths, which would draw them shallower and
+// stop them deepening with the sample count.
 export function stripJackpots(result: SimulationResult): SimulationResult {
   const mask = result.jackpotMask;
   if (!mask || mask.length === 0) return result;
@@ -311,6 +314,14 @@ export function stripJackpots(result: SimulationResult): SimulationResult {
     }
   }
 
+  // The engine keeps the path of the lowest final over all samples; it stays
+  // the real worst run unless that very sample is a hidden one.
+  let lowestIdx = 0;
+  for (let i = 1; i < result.finalProfits.length; i++) {
+    if (result.finalProfits[i] < result.finalProfits[lowestIdx]) lowestIdx = i;
+  }
+  const worstRunIsKept = !mask[lowestIdx];
+
   let best = result.samplePaths.best;
   let worst = result.samplePaths.worst;
   if (keptPaths.length > 0) {
@@ -331,10 +342,30 @@ export function stripJackpots(result: SimulationResult): SimulationResult {
       }
     }
     best = keptPaths[bestIdx];
-    worst = keptPaths[worstIdx];
+    if (!worstRunIsKept) worst = keptPaths[worstIdx];
   }
 
-  const envelopes = rebuildEnvelopesFromPaths(result.envelopes, keptPaths);
+  const rebuilt = rebuildEnvelopesFromPaths(result.envelopes, keptPaths);
+  // Hidden runs shift every quantile of what is left, so past the share where
+  // the filter stops being a tidy-up the all-sample percentiles no longer
+  // describe the remaining runs. The min is a pointwise extreme and still holds.
+  const hiddenShare = 1 - keepFinal.length / mask.length;
+  const keepEngineLowerTail = hiddenShare <= JACKPOT_AUTO_HIDE_MAX_SHARE;
+  const envelopes =
+    keptPaths.length === 0
+      ? rebuilt
+      : {
+          ...rebuilt,
+          min: result.envelopes.min,
+          ...(keepEngineLowerTail
+            ? {
+                p0015: result.envelopes.p0015,
+                p025: result.envelopes.p025,
+                p05: result.envelopes.p05,
+                p15: result.envelopes.p15,
+              }
+            : null),
+        };
   return {
     ...result,
     finalProfits: filteredFinal,

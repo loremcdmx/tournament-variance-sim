@@ -49,14 +49,25 @@ function collectCurrentBrRows(params: {
   return { currentRows, currentTournaments, currentBuyIn };
 }
 
+// A day is only defined by the tournaments-per-day figure the leaderboard
+// anchor was built from. The run's repeat count is a sample length, not a
+// number of days, and observed totals or a bare manual $/tournament carry no
+// day length at all, so those report no per-day figures.
+function dayLengthOf(tournamentsPerDay: number | undefined): number | null {
+  return tournamentsPerDay != null &&
+    Number.isFinite(tournamentsPerDay) &&
+    tournamentsPerDay > 0
+    ? tournamentsPerDay
+    : null;
+}
+
 export function buildBattleRoyalePromoResult(params: {
   config: BattleRoyaleLeaderboardPromoConfig | undefined;
   schedule: readonly TournamentRow[];
   rowCounts: readonly number[];
   rowBuyIns: readonly number[];
-  activeDays: number;
 }): BattleRoyaleLeaderboardPromoResult | undefined {
-  const { config, schedule, rowCounts, rowBuyIns, activeDays } = params;
+  const { config, schedule, rowCounts, rowBuyIns } = params;
   if (!config) return undefined;
 
   const { currentRows, currentTournaments, currentBuyIn } = collectCurrentBrRows(
@@ -71,17 +82,17 @@ export function buildBattleRoyalePromoResult(params: {
     const currentAbi = currentTournaments > 0 ? currentBuyIn / currentTournaments : null;
     const pctOfCurrentBuyIns =
       currentBuyIn > 0 ? expectedPayout / currentBuyIn : 0;
+    const dayLength = dayLengthOf(config.tournamentsPerDay);
     const base = {
       expectedPayout,
       payoutPerTournament,
-      payoutPerDay:
-        activeDays > 0 ? expectedPayout / Math.max(1, activeDays) : expectedPayout,
+      payoutPerDay: dayLength == null ? null : payoutPerTournament * dayLength,
       pctOfCurrentBuyIns,
       notInPathRisk: true as const,
       current: {
-        activeDays: Math.max(1, activeDays),
+        activeDays: dayLength == null ? null : currentTournaments / dayLength,
         tournaments: currentTournaments,
-        tournamentsPerDay: currentTournaments / Math.max(1, activeDays),
+        tournamentsPerDay: dayLength,
         totalBuyIn: currentBuyIn,
         abi: currentAbi,
       },
@@ -162,8 +173,7 @@ export function buildBattleRoyalePromoResult(params: {
     mode: "observed",
     expectedPayout,
     payoutPerTournament,
-    payoutPerDay:
-      activeDays > 0 ? expectedPayout / Math.max(1, activeDays) : expectedPayout,
+    payoutPerDay: null,
     pctOfCurrentBuyIns,
     notInPathRisk: true,
     observed: {
@@ -176,9 +186,9 @@ export function buildBattleRoyalePromoResult(params: {
       pointsByStake,
     },
     current: {
-      activeDays: Math.max(1, activeDays),
+      activeDays: null,
       tournaments: currentTournaments,
-      tournamentsPerDay: currentTournaments / Math.max(1, activeDays),
+      tournamentsPerDay: null,
       totalBuyIn: currentBuyIn,
       abi: currentAbi,
     },
@@ -198,7 +208,6 @@ export function buildObservedBattleRoyalePromoResult(params: {
   schedule: readonly TournamentRow[];
   rowCounts: readonly number[];
   rowBuyIns: readonly number[];
-  activeDays: number;
 }): BattleRoyaleLeaderboardObservedPromoResult | undefined {
   const result = buildBattleRoyalePromoResult(params);
   return result?.mode === "observed" ? result : undefined;

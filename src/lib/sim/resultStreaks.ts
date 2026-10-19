@@ -61,7 +61,8 @@ export function computeStreakStats(
 
   // Recovery from deepest drawdown: -2 means no drawdown, -1 "unrecovered" — we
   // compute median / p90 over the recovered-only slice, and report the
-  // unrecovered share separately.
+  // unrecovered share separately. With no recovered sample there is no time to
+  // report: NaN, not 0, which would read as an instant recovery.
   let unrecoveredCount = 0;
   const recoveredOnly: number[] = [];
   for (let s = 0; s < S; s++) {
@@ -73,7 +74,7 @@ export function computeStreakStats(
   const recoveredCount = recoveredOnly.length;
   const recoveryPct = (p: number) =>
     recoveredCount === 0
-      ? 0
+      ? Number.NaN
       : recoveredOnly[
           Math.min(
             recoveredCount - 1,

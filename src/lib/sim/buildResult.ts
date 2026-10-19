@@ -180,7 +180,6 @@ export function buildResult(
     schedule: input.schedule,
     rowCounts: compiled.rowCounts,
     rowBuyIns: compiled.rowBuyIns,
-    activeDays: input.scheduleRepeats,
   });
 
   return {

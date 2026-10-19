@@ -12,6 +12,7 @@ import {
   pct,
   pctDelta,
   saveUnitMode,
+  tourneyCountOrDash,
 } from "./formatters";
 
 describe("fmt — template substitution", () => {
@@ -278,5 +279,25 @@ describe("mergedHistogramDomain", () => {
     expect(
       mergedHistogramDomain(null, { binEdges: [-10, 10] }, undefined),
     ).toEqual([-10, 10]);
+  });
+});
+
+describe("tourneyCountOrDash", () => {
+  it("rounds a finite count and keeps a genuine zero", () => {
+    expect(tourneyCountOrDash(240.4, "tourneys")).toBe("240 tourneys");
+    expect(tourneyCountOrDash(0, "tourneys")).toBe("0 tourneys");
+  });
+
+  it("prints a dash for a statistic that does not exist", () => {
+    expect(tourneyCountOrDash(Number.NaN, "tourneys")).toBe("—");
+    expect(tourneyCountOrDash(Number.POSITIVE_INFINITY, "tourneys")).toBe("—");
+  });
+});
+
+describe("pctDelta with an undefined recovery time", () => {
+  it("has no delta when either side is NaN", () => {
+    expect(pctDelta(Number.NaN, 120)).toBeNull();
+    expect(pctDelta(120, Number.NaN)).toBeNull();
+    expect(pctDelta(Number.NaN, Number.NaN)).toBeNull();
   });
 });

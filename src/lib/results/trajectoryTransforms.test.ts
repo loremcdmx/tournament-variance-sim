@@ -8,6 +8,7 @@ import {
   stripJackpots,
   supportsJackpotFilter,
 } from "./trajectoryTransforms";
+import { runSimulation } from "@/lib/sim/engine";
 import type { SimulationResult, TournamentRow } from "@/lib/sim/types";
 
 function makeRow(overrides: Partial<TournamentRow>): TournamentRow {
@@ -165,6 +166,130 @@ describe("stripJackpots", () => {
     expect(stripped.samplePaths.best).toBe(keptPath);
     expect(stripped.samplePaths.worst).toBe(keptPath);
     expect(Array.from(stripped.finalProfits)).toEqual([0, 10, 20]);
+  });
+});
+
+describe("stripJackpots keeps the engine's extremes", () => {
+  const X = [0, 1, 2];
+  const lowerTail = ["min", "p0015", "p025", "p05", "p15"] as const;
+  const upperSide = ["mean", "p85", "p95", "p975", "p9985", "max"] as const;
+
+  // 100 samples, finals -50..49 except the jackpot sample 3. Ten stored paths
+  // (global indices 0..9) end on their sample's final; the engine's bands are
+  // deliberately unlike anything the ten paths could produce.
+  function makeResult(flagged: number[], finalsOverride: Record<number, number> = {}) {
+    const finals = Float64Array.from({ length: 100 }, (_, i) => i - 50);
+    finals[3] = 5000;
+    for (const [i, v] of Object.entries(finalsOverride)) finals[Number(i)] = v;
+    const mask = new Uint8Array(100);
+    for (const i of flagged) mask[i] = 1;
+    const stored = Array.from({ length: 10 }, (_, i) => Float64Array.from([0, i - 5, finals[i]]));
+    const band = (v: number) => Float64Array.from([0, v, v]);
+    const engineWorst = Float64Array.from([0, -30, -50]);
+    const result = {
+      finalProfits: finals,
+      jackpotMask: mask,
+      neverBustedMask: new Uint8Array(0),
+      histogram: { binEdges: [-50, 5000], counts: [100] },
+      samplePaths: {
+        x: X,
+        paths: stored,
+        best: Float64Array.from([0, 9000, 9000]),
+        worst: engineWorst,
+        sampleIndices: Array.from({ length: 10 }, (_, i) => i),
+      },
+      envelopes: {
+        x: X,
+        mean: band(1),
+        min: band(-1000),
+        p0015: band(-900),
+        p025: band(-800),
+        p05: band(-700),
+        p15: band(-600),
+        p85: band(600),
+        p95: band(700),
+        p975: band(800),
+        p9985: band(900),
+        max: band(9000),
+      },
+    } as unknown as SimulationResult;
+    return { result, engineWorst, stored };
+  }
+
+  it("leaves the full-sample min and lower band edges alone while the filter hides a few runs", () => {
+    const { result } = makeResult([3]);
+    const stripped = stripJackpots(result);
+
+    for (const key of lowerTail) {
+      expect(stripped.envelopes[key]).toBe(result.envelopes[key]);
+    }
+    // 9 kept stored paths end on -50..-41 except sample 3: the upper side is theirs.
+    for (const key of upperSide) {
+      expect(stripped.envelopes[key]).not.toBe(result.envelopes[key]);
+      expect(stripped.envelopes[key][2]).toBeLessThan(0);
+    }
+    expect(stripped.envelopes.max[2]).toBe(-41);
+    expect(stripped.envelopes.mean[2]).toBeCloseTo((-50 - 49 - 48 - 46 - 45 - 44 - 43 - 42 - 41) / 9, 12);
+  });
+
+  it("keeps the min but rebuilds the percentiles once the filter reshapes the distribution", () => {
+    const heavy = [3, ...Array.from({ length: 20 }, (_, i) => 60 + i)];
+    const { result } = makeResult(heavy);
+    expect(heavy.length / 100).toBeGreaterThan(JACKPOT_AUTO_HIDE_MAX_SHARE);
+    const stripped = stripJackpots(result);
+
+    expect(stripped.envelopes.min).toBe(result.envelopes.min);
+    for (const key of ["p0015", "p025", "p05", "p15"] as const) {
+      expect(stripped.envelopes[key]).not.toBe(result.envelopes[key]);
+      expect(stripped.envelopes[key][2]).toBeGreaterThanOrEqual(-50);
+    }
+  });
+
+  it("keeps the engine's real worst run unless that very sample is the hidden one", () => {
+    const kept = makeResult([3]);
+    expect(stripJackpots(kept.result).samplePaths.worst).toBe(kept.engineWorst);
+
+    // Sample 0 holds the lowest final and is flagged: the worst of what remains
+    // among the stored paths is sample 1.
+    const hidden = makeResult([0, 3]);
+    const stripped = stripJackpots(hidden.result);
+    expect(stripped.samplePaths.worst).toBe(hidden.stored[1]);
+    expect(stripped.samplePaths.best).toBe(hidden.stored[9]);
+  });
+
+  it("agrees with the engine's lower tail on a real Battle Royale run", () => {
+    const r = runSimulation({
+      schedule: [
+        {
+          id: "br",
+          label: "BR",
+          players: 18,
+          buyIn: 2.7,
+          rake: 0.11,
+          roi: 0.05,
+          payoutStructure: "battle-royale",
+          gameType: "mystery-royale",
+          bountyFraction: 0.5,
+          count: 100,
+        },
+      ],
+      scheduleRepeats: 1,
+      samples: 4000,
+      bankroll: 0,
+      seed: 11,
+      finishModel: { id: "power-law" },
+    });
+    const hidden = jackpotHiddenShare(r);
+    expect(hidden).toBeGreaterThan(0);
+    expect(hideJackpotsByDefault(hidden)).toBe(true);
+
+    const stripped = stripJackpots(r);
+    for (const key of lowerTail) {
+      expect(Array.from(stripped.envelopes[key])).toEqual(Array.from(r.envelopes[key]));
+    }
+    const last = r.envelopes.x.length - 1;
+    expect(stripped.envelopes.min[last]).toBe(Math.min(...r.finalProfits));
+    expect(stripped.envelopes.max[last]).toBeLessThan(r.envelopes.max[last]);
   });
 });
 

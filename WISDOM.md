@@ -354,6 +354,25 @@ Consequences to remember:
 - Saved trajectories now select the first 1000 global sample indices. Do not reintroduce proportional per-shard rounding; both the selected paths and aggregate results must be independent of shard boundaries/order.
 - `smoke:cash` uses the actual `?admin=1` route. Browser readiness waits for product elements, not `networkidle`; dev HMR and analytics can keep the network active. `SMOKE_BROWSER_CHANNEL=chrome` uses an installed Chrome when Playwright's bundled browser is unavailable.
 
+## Chart Transforms And Per-Day Readouts
+
+- `stripJackpots` (the "hide jackpots" chart filter) must not rebuild the lower
+  extremes from the ~1000 stored hi-res paths: that drew the aggregated worst
+  line 14-30% shallower than the engine's all-sample minimum and froze it as the
+  sample count grew. A jackpot only adds money, so the engine's `min` and the
+  real worst run stay; the lower percentiles stay while the filter hides at most
+  `JACKPOT_AUTO_HIDE_MAX_SHARE` of the runs, past which the removed runs shift
+  every quantile and the paths-based rebuild is used. The upper side (max, upper
+  percentiles, mean, best run) is always rebuilt from kept paths.
+- `recoveryMedian` / `recoveryP90` are NaN when no sample recovered (as in the
+  cash engine), never 0: a 0 reads as an instant recovery. Every reader must
+  tolerate NaN; the stat cards print a dash.
+- `scheduleRepeats` is a sample-length multiplier, not a number of days (the
+  tournament-target field forces it to 1). The BR promo card's per-day figures
+  use the leaderboard anchor's own `tournamentsPerDay`; observed totals and a
+  bare manual $/tournament have no day length, so those figures are `null` and
+  hidden.
+
 ## Space → Ocean Explorer Readouts
 
 The 8 October 2026 audit found the page showing less uncertainty than the

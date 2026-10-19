@@ -4,7 +4,8 @@ import {
   buildBattleRoyalePromoResult,
   buildObservedBattleRoyalePromoResult,
 } from "./battleRoyaleLeaderboardObserved";
-import type { TournamentRow } from "./types";
+import { runSimulation } from "./engine";
+import type { BattleRoyaleLeaderboardPromoConfig, SimulationInput, TournamentRow } from "./types";
 
 function makeBrRow(
   id: string,
@@ -43,13 +44,15 @@ describe("buildObservedBattleRoyalePromoResult", () => {
       schedule: [makeBrRow("a", 100), makeBrRow("b", 50)],
       rowCounts: [100, 50],
       rowBuyIns: [278, 139],
-      activeDays: 10,
     });
 
     expect(result).toBeDefined();
     expect(result?.expectedPayout).toBeCloseTo(22.5, 10);
     expect(result?.payoutPerTournament).toBeCloseTo(0.15, 10);
-    expect(result?.payoutPerDay).toBeCloseTo(2.25, 10);
+    expect(result?.payoutPerDay).toBeNull();
+    expect(result?.current.tournamentsPerDay).toBeNull();
+    expect(result?.current.activeDays).toBeNull();
+    expect(result?.current.tournaments).toBe(150);
     expect(result?.pctOfCurrentBuyIns).toBeCloseTo(22.5 / 417, 10);
     expect(result?.observed.reconstructedAbi).toBeCloseTo(3, 10);
     expect(result?.confidence.level).toBe("aligned");
@@ -73,7 +76,6 @@ describe("buildObservedBattleRoyalePromoResult", () => {
       schedule: [makeBrRow("a", 7000)],
       rowCounts: [7000],
       rowBuyIns: [7000],
-      activeDays: 1,
     });
 
     expect(result).toBeDefined();
@@ -98,7 +100,6 @@ describe("buildObservedBattleRoyalePromoResult", () => {
       schedule: [makeBrRow("a", 100)],
       rowCounts: [100],
       rowBuyIns: [278],
-      activeDays: 5,
     });
 
     expect(result).toBeDefined();
@@ -117,7 +118,6 @@ describe("buildObservedBattleRoyalePromoResult", () => {
       schedule: [makeBrRow("a", 7000)],
       rowCounts: [7000],
       rowBuyIns: [6440],
-      activeDays: 1,
     });
 
     expect(result).toBeDefined();
@@ -143,7 +143,6 @@ describe("buildObservedBattleRoyalePromoResult", () => {
       schedule: [makeBrRow("a", 7000)],
       rowCounts: [7000],
       rowBuyIns: [6440],
-      activeDays: 1,
     });
 
     expect(result).toBeDefined();
@@ -159,5 +158,97 @@ describe("buildObservedBattleRoyalePromoResult", () => {
       paidDays: 9,
       averageDailyPrize: 8,
     });
+  });
+});
+
+describe("per-day figures come from the model's own tournaments per day", () => {
+  const manualAnchored: BattleRoyaleLeaderboardPromoConfig = {
+    mode: "manual",
+    payoutPerTournament: 0.0375,
+    stake: "3",
+    tournamentsPerDay: 160,
+    pointsPerTournament: 40,
+    targetPoints: 6400,
+    snapshotCount: 12,
+    paidDays: 9,
+    averageDailyPrize: 6,
+  };
+  const lookup: BattleRoyaleLeaderboardPromoConfig = {
+    mode: "lookup",
+    payoutPerTournament: 0.0375,
+    tournamentsPerDay: 160,
+    pointsPerTournament: 40,
+    targetPoints: 6400,
+    snapshotCount: 12,
+    paidDays: 9,
+    averageDailyPrize: 6,
+  };
+
+  it("divides the projected promo by the configured day length, not by a repeat count", () => {
+    for (const config of [manualAnchored, lookup]) {
+      const result = buildBattleRoyalePromoResult({
+        config,
+        schedule: [makeBrRow("a", 1000)],
+        rowCounts: [1000],
+        rowBuyIns: [2780],
+      });
+      expect(result?.expectedPayout).toBeCloseTo(37.5, 10);
+      expect(result?.payoutPerDay).toBeCloseTo(6, 10);
+      expect(result?.current.tournamentsPerDay).toBe(160);
+      expect(result?.current.activeDays).toBeCloseTo(6.25, 10);
+    }
+  });
+
+  it("matches the anchor's own average daily prize", () => {
+    const result = buildBattleRoyalePromoResult({
+      config: lookup,
+      schedule: [makeBrRow("a", 40)],
+      rowCounts: [40],
+      rowBuyIns: [111.2],
+    });
+    expect(result?.payoutPerDay).toBeCloseTo(6, 10);
+    expect(result?.current.activeDays).toBeCloseTo(0.25, 10);
+  });
+
+  it("has no day length for a free-form manual dollars-per-tournament", () => {
+    const result = buildBattleRoyalePromoResult({
+      config: { mode: "manual", payoutPerTournament: 0.05 },
+      schedule: [makeBrRow("a", 1000)],
+      rowCounts: [1000],
+      rowBuyIns: [2780],
+    });
+    expect(result?.expectedPayout).toBeCloseTo(50, 10);
+    expect(result?.payoutPerDay).toBeNull();
+    expect(result?.current.tournamentsPerDay).toBeNull();
+    expect(result?.current.activeDays).toBeNull();
+  });
+
+  function runWith(count: number, scheduleRepeats: number, config: BattleRoyaleLeaderboardPromoConfig) {
+    const input: SimulationInput = {
+      schedule: [makeBrRow("a", count)],
+      scheduleRepeats,
+      samples: 50,
+      seed: 7,
+      bankroll: 0,
+      finishModel: { id: "power-law" },
+      battleRoyaleLeaderboardPromo: config,
+    };
+    return runSimulation(input).battleRoyaleLeaderboardPromo;
+  }
+
+  it("does not change when the same volume is split differently into count and repeats", () => {
+    for (const config of [manualAnchored, lookup]) {
+      const oneRow = runWith(500, 1, config);
+      const repeated = runWith(100, 5, config);
+      const longRow = runWith(250, 2, config);
+      expect(oneRow?.current.tournaments).toBe(500);
+      expect(repeated?.current.tournaments).toBe(500);
+      for (const run of [oneRow, repeated, longRow]) {
+        expect(run?.payoutPerDay).toBeCloseTo(6, 10);
+        expect(run?.current.tournamentsPerDay).toBe(160);
+        expect(run?.current.activeDays).toBeCloseTo(3.125, 10);
+        expect(run?.expectedPayout).toBeCloseTo(18.75, 10);
+      }
+    }
   });
 });
