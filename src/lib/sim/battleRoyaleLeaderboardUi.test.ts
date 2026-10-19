@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import type { TournamentRow } from "./types";
+import { isBattleRoyaleRow as compilerIsBattleRoyaleRow } from "./bountySplit";
+import { normalizeGameTypeConsistency } from "./gameType";
 import {
+  type BattleRoyaleLeaderboardControls,
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  battleRoyaleLeaderboardPreview,
   battleRoyaleLeaderboardPromoPerTournament,
   OBSERVED_USERNAMES_MAX_COUNT,
   OBSERVED_USERNAME_MAX_LEN,
@@ -99,25 +104,54 @@ describe("battleRoyaleLeaderboardUi", () => {
       .toEqual(names);
   });
 
-  it("detects battle royale rows from either game type or payout structure", () => {
+  it("reads a battle royale row the way the compiler does: an explicit game type wins over a drifted payout", () => {
     expect(
-      isBattleRoyaleRow({
-        payoutStructure: "mtt-standard",
-        gameType: "freezeout",
-      }),
+      isBattleRoyaleRow({ payoutStructure: "mtt-standard", gameType: "freezeout" }),
     ).toBe(false);
     expect(
-      isBattleRoyaleRow({
-        payoutStructure: "battle-royale",
-        gameType: "freezeout",
-      }),
-    ).toBe(true);
+      isBattleRoyaleRow({ payoutStructure: "battle-royale", gameType: "freezeout" }),
+    ).toBe(false);
     expect(
-      isBattleRoyaleRow({
-        payoutStructure: "mtt-standard",
-        gameType: "mystery-royale",
-      }),
+      isBattleRoyaleRow({ payoutStructure: "mtt-standard", gameType: "mystery-royale" }),
     ).toBe(true);
+    expect(isBattleRoyaleRow({ payoutStructure: "battle-royale" })).toBe(true);
+    expect(isBattleRoyaleRow({ payoutStructure: "mtt-standard" })).toBe(false);
+  });
+
+  it("agrees with the compiled row for every game type and payout pairing", () => {
+    const gameTypes = [
+      undefined,
+      "freezeout",
+      "pko",
+      "ocean-ko",
+      "mystery",
+      "mystery-royale",
+    ] as const;
+    const payouts = [
+      "mtt-standard",
+      "mtt-gg-bounty",
+      "mtt-gg-mystery",
+      "battle-royale",
+    ] as const;
+    for (const gameType of gameTypes) {
+      for (const payoutStructure of payouts) {
+        const row: TournamentRow = {
+          id: "r",
+          players: 18,
+          buyIn: 9.2,
+          rake: 0.087,
+          roi: 0,
+          count: 1,
+          payoutStructure,
+          gameType,
+          bountyFraction: gameType && gameType !== "freezeout" ? 0.4 : undefined,
+        };
+        expect(
+          isBattleRoyaleRow(row),
+          `${gameType ?? "no game type"} + ${payoutStructure}`,
+        ).toBe(compilerIsBattleRoyaleRow(normalizeGameTypeConsistency(row)));
+      }
+    }
   });
 
   it("emits observed promo config when BR rows and observed data are present", () => {
@@ -197,11 +231,35 @@ describe("battleRoyaleLeaderboardUi", () => {
       averageDailyPrize: 6,
     });
     expect(
+      buildBattleRoyaleLeaderboardPromoConfig({ ...controls, manualStake: "10" }, brSchedule),
+    ).toBeUndefined();
+  });
+
+  it("applies no promo that the Manual panel cannot show", () => {
+    const brSchedule = [
+      { id: "br", payoutStructure: "battle-royale", gameType: "mystery-royale" },
+    ] as const;
+    const legacy = {
+      ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+      mode: "manual",
+      manualStake: "10",
+      manualPayoutPerTournament: 0.2,
+    } as unknown as BattleRoyaleLeaderboardControls;
+
+    expect(normalizeBattleRoyaleLeaderboardControls(legacy)).not.toHaveProperty(
+      "manualPayoutPerTournament",
+    );
+    // $10 has no built-in leaderboard days, so the panel shows $0.00 for it.
+    expect(buildBattleRoyaleLeaderboardPromoConfig(legacy, brSchedule)).toBeUndefined();
+    expect(
       buildBattleRoyaleLeaderboardPromoConfig(
-        { ...controls, manualStake: "10", manualPayoutPerTournament: 0 },
+        { ...legacy, manualStake: "1", manualTournamentsPerDay: 0 },
         brSchedule,
       ),
     ).toBeUndefined();
+    expect(
+      battleRoyaleLeaderboardPromoPerTournament(legacy, brSchedule),
+    ).toBe(0);
   });
 
   it("emits lookup promo config from imported leaderboard snapshots", () => {
@@ -302,5 +360,37 @@ describe("battleRoyaleLeaderboardUi", () => {
     expect(
       battleRoyaleLeaderboardPromoPerTournament(controls, freezeSchedule),
     ).toBe(0);
+  });
+
+  describe("battleRoyaleLeaderboardPreview", () => {
+    const brRow = (count: number, ticket = 10) => ({
+      payoutStructure: "battle-royale" as const,
+      gameType: "mystery-royale" as const,
+      buyIn: ticket * 0.92,
+      rake: 0.08 / 0.92,
+      count,
+    });
+
+    it("counts BR rows only and prices them at the full ticket", () => {
+      const preview = battleRoyaleLeaderboardPreview(
+        [
+          brRow(100),
+          { payoutStructure: "mtt-standard", gameType: "freezeout", buyIn: 50, rake: 0.1, count: 7 },
+          brRow(40, 3),
+        ],
+        2,
+      );
+      expect(preview.tournaments).toBe(280);
+      expect(preview.ticketCost).toBeCloseTo(200 * 10 + 80 * 3, 9);
+      expect(preview.netBuyIn).toBeCloseTo(0.92 * (200 * 10 + 80 * 3), 9);
+    });
+
+    it("is empty without BR rows", () => {
+      expect(battleRoyaleLeaderboardPreview([], 3)).toEqual({
+        tournaments: 0,
+        netBuyIn: 0,
+        ticketCost: 0,
+      });
+    });
   });
 });

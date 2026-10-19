@@ -19,6 +19,7 @@ import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
   normalizeBattleRoyaleLeaderboardControls,
 } from "@/lib/sim/battleRoyaleLeaderboardUi";
+import { compactBattleRoyaleLeaderboardLookupSnapshot } from "@/lib/sim/battleRoyaleLeaderboardLookup";
 import {
   BATTLE_ROYALE_PLAYERS,
   DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
@@ -847,9 +848,30 @@ export function removeUserPreset(id: string) {
   dropOvercapBackup(presetOvercapBackupKey(id));
 }
 
+// A link is pasted into chats and forums. The sender's GGPoker nicks (they tie
+// the run to real leaderboard winnings) and the nicks in leaderboards they
+// pasted stay in their own browser; the totals the run needs stay in the link.
+export function withoutShareIdentifiers(state: PersistedState): PersistedState {
+  const leaderboard = state.controls.battleRoyaleLeaderboard;
+  if (!leaderboard) return state;
+  return {
+    ...state,
+    controls: {
+      ...state.controls,
+      battleRoyaleLeaderboard: {
+        ...leaderboard,
+        observedResultHubUsernames: [],
+        lookupSnapshots: leaderboard.lookupSnapshots.map((snapshot) =>
+          compactBattleRoyaleLeaderboardLookupSnapshot(snapshot.id, snapshot.entries),
+        ),
+      },
+    },
+  };
+}
+
 export function buildShareUrl(state: PersistedState): string {
   if (typeof window === "undefined") return "";
-  const enc = encodeState(state);
+  const enc = encodeState(withoutShareIdentifiers(state));
   // The sender's query string is not state: `?admin=1` would switch the
   // recipient into advanced mode.
   const url = new URL(window.location.href);

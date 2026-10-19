@@ -13,6 +13,7 @@ import { useResulthubLookup } from "@/lib/sim/useResulthubLookup";
 import { mergeResulthubSummary } from "@/lib/sim/resulthubControls";
 import {
   analyzeBattleRoyaleLeaderboardLookup,
+  compactBattleRoyaleLeaderboardLookupSnapshot,
   parseBattleRoyaleLeaderboardSnapshot,
 } from "@/lib/sim/battleRoyaleLeaderboardLookup";
 import {
@@ -34,6 +35,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
   advanced,
   previewTournaments,
   previewBuyIn,
+  previewTicketCost,
 }: {
   value: ControlsState;
   onChange: (next: ControlsState) => void;
@@ -41,6 +43,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
   advanced: boolean;
   previewTournaments: number;
   previewBuyIn: number;
+  previewTicketCost: number;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -97,7 +100,7 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
   const manualExpectedPayout =
     previewTournaments * Math.max(0, manualAnalysis.payoutPerTournament);
   const manualPctOfBuyIns =
-    previewBuyIn > 0 ? manualExpectedPayout / previewBuyIn : 0;
+    previewTicketCost > 0 ? manualExpectedPayout / previewTicketCost : 0;
   const lookupAnalysis = useMemo(
     () =>
       analyzeBattleRoyaleLeaderboardLookup({
@@ -133,11 +136,10 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
         ...controls,
         lookupSnapshots: [
           ...controls.lookupSnapshots,
-          {
-            id: `lb-${Date.now().toString(36)}-${nextIndex}`,
-            label: `Day ${nextIndex}`,
-            entries: parsed.entries,
-          },
+          compactBattleRoyaleLeaderboardLookupSnapshot(
+            `lb-${Date.now().toString(36)}-${nextIndex}`,
+            parsed.entries,
+          ),
         ],
       },
     });
@@ -529,9 +531,16 @@ export const BattleRoyaleLeaderboardControl = memo(function BattleRoyaleLeaderbo
                   ? t("controls.brLeaderboard.lookupEmpty")
                   : lookupAnalysis.days
                       .slice(0, 4)
-                      .map((day) =>
+                      .map((day, index) =>
                         t("controls.brLeaderboard.lookupSnapshotLine")
-                          .replace("{label}", day.label ?? day.snapshotId)
+                          .replace(
+                            "{label}",
+                            day.label ??
+                              t("controls.brLeaderboard.lookupDayLabel").replace(
+                                "{n}",
+                                String(index + 1),
+                              ),
+                          )
                           .replace("{entries}", day.entries.toLocaleString(numberLocale))
                           .replace("{rank}", day.rank == null ? "—" : `#${day.rank}`)
                           .replace(

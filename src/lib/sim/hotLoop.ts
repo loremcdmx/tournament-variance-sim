@@ -276,7 +276,6 @@ function simulateShardInternal(
     // relative to the discarding boxMuller.
     const gaussSkill = makeGauss(skillRng);
     const gaussB = makeGauss(bRng);
-    const gaussLeaderboard = leaderboardRng ? makeGauss(leaderboardRng) : null;
 
     const deltaROI = roiStdErr > 0 ? gaussSkill() * roiStdErr : 0;
     let drift = 0;
@@ -499,7 +498,6 @@ function simulateShardInternal(
       if (
         leaderboardConfig !== null &&
         leaderboardRng !== null &&
-        gaussLeaderboard !== null &&
         isBattleRoyale &&
         leaderboardPlace >= 0
       ) {
@@ -523,7 +521,6 @@ function simulateShardInternal(
             leaderboardWindowScore,
             leaderboardConfig,
             leaderboardRng,
-            gaussLeaderboard,
           );
           leaderboardSettledWindows++;
           leaderboardRankSum += settled.rank;
@@ -675,7 +672,6 @@ function simulateShardInternal(
     if (
       leaderboardConfig !== null &&
       leaderboardRng !== null &&
-      gaussLeaderboard !== null &&
       leaderboardTournaments % leaderboardConfig.windowTournaments !== 0 &&
       leaderboardConfig.awardPartialWindow
     ) {
@@ -683,7 +679,6 @@ function simulateShardInternal(
         leaderboardWindowScore,
         leaderboardConfig,
         leaderboardRng,
-        gaussLeaderboard,
       );
       leaderboardSettledWindows++;
       leaderboardRankSum += settled.rank;

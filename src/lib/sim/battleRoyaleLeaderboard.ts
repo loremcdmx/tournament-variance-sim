@@ -49,15 +49,13 @@ function normalizePayouts(
       prizeEach: Number.isFinite(tier.prizeEach) ? Math.max(0, tier.prizeEach) : 0,
     }))
     .filter((tier) => tier.prizeEach > 0)
-    .map((tier) => {
-      const lo = Math.min(tier.rankFrom, tier.rankTo);
-      const hi = Math.max(tier.rankFrom, tier.rankTo);
-      return {
-        rankFrom: Math.min(lo, participants),
-        rankTo: Math.min(hi, participants),
-        prizeEach: tier.prizeEach,
-      };
-    })
+    .map((tier) => ({
+      rankFrom: Math.min(tier.rankFrom, tier.rankTo),
+      rankTo: Math.min(Math.max(tier.rankFrom, tier.rankTo), participants),
+      prizeEach: tier.prizeEach,
+    }))
+    // A tier that starts past the last place has no one to pay; clamping its
+    // start as well squeezed it onto last place.
     .filter((tier) => tier.rankFrom <= tier.rankTo)
     .sort((a, b) => a.rankFrom - b.rankFrom || a.rankTo - b.rankTo);
 }
@@ -123,6 +121,36 @@ export function payoutForLeaderboardRank(
   return 0;
 }
 
+const SMALLEST_NORMAL_DOUBLE = 2 ** -1022;
+const LOG_SMALLEST_DOUBLE = -745;
+
+// q^nOpp leaves double range from about nOpp * ln(1 / q) = 708; the linear
+// recurrence then multiplies a zero (or a denormal that has lost its digits)
+// for every later term, so the log of the term is carried instead.
+function expectedPayoutInLogSpace(
+  beatProb: number,
+  q: number,
+  nOpp: number,
+  maxBetter: number,
+  payouts: readonly BattleRoyaleLeaderboardPayoutTier[],
+): number {
+  const logOdds = Math.log(beatProb / q);
+  const mode = (nOpp + 1) * beatProb;
+  let logProb = nOpp * Math.log(q);
+  let expected = 0;
+  for (let better = 0; better <= maxBetter; better++) {
+    if (better > 0) {
+      logProb += Math.log((nOpp - better + 1) / better) + logOdds;
+    }
+    if (logProb > LOG_SMALLEST_DOUBLE) {
+      expected += Math.exp(logProb) * payoutForLeaderboardRank(better + 1, payouts);
+    } else if (better > mode) {
+      break;
+    }
+  }
+  return expected;
+}
+
 export function expectedLeaderboardPayoutFromBeatProb(
   beatProb: number,
   config: NormalizedBattleRoyaleLeaderboardConfig,
@@ -135,6 +163,9 @@ export function expectedLeaderboardPayoutFromBeatProb(
 
   const q = 1 - beatProb;
   let prob = Math.pow(q, nOpp);
+  if (prob < SMALLEST_NORMAL_DOUBLE) {
+    return expectedPayoutInLogSpace(beatProb, q, nOpp, maxBetter, config.payouts);
+  }
   let expected = prob * payoutForLeaderboardRank(1, config.payouts);
   for (let better = 1; better <= maxBetter; better++) {
     prob *= ((nOpp - better + 1) / better) * (beatProb / q);
@@ -144,23 +175,28 @@ export function expectedLeaderboardPayoutFromBeatProb(
   return expected;
 }
 
-function poissonKnuth(lambda: number, rng: () => number): number {
-  const L = Math.exp(-lambda);
-  let p = 1;
-  let k = 0;
-  do {
-    k++;
-    p *= rng();
-  } while (p > L);
-  return k - 1;
+function logFactorial(k: number): number {
+  if (k < 2) return 0;
+  if (k < 20) {
+    let sum = 0;
+    for (let i = 2; i <= k; i++) sum += Math.log(i);
+    return sum;
+  }
+  const inv = 1 / k;
+  const inv2 = inv * inv;
+  return (
+    k * Math.log(k) -
+    k +
+    0.5 * Math.log(2 * Math.PI * k) +
+    inv * (1 / 12 - inv2 * (1 / 360 - inv2 / 1260))
+  );
 }
 
-function sampleBinomial(
-  n: number,
-  p: number,
-  rng: () => number,
-  gauss: () => number,
-): number {
+// Walking the outcomes outward from the mode, instead of up from zero, is
+// still an exact inverse-CDF draw (any fixed order of the outcomes partitions
+// [0, 1)), but it starts on a term that is representable for any n and ends
+// after about a standard deviation of steps.
+export function sampleBinomial(n: number, p: number, rng: () => number): number {
   if (n <= 0) return 0;
   if (p <= 0) return 0;
   if (p >= 1) return n;
@@ -170,23 +206,47 @@ function sampleBinomial(
     return acc;
   }
 
-  const mean = n * p;
-  const meanFail = n * (1 - p);
-  if (mean < 18) return Math.min(n, poissonKnuth(mean, rng));
-  if (meanFail < 18) return Math.max(0, n - poissonKnuth(meanFail, rng));
-
-  const sigma = Math.sqrt(n * p * (1 - p));
-  const draw = Math.round(mean + sigma * gauss());
-  if (draw < 0) return 0;
-  if (draw > n) return n;
-  return draw;
+  const q = 1 - p;
+  const odds = p / q;
+  const mode = Math.min(n, Math.floor((n + 1) * p));
+  const u = rng();
+  let pmfUp = Math.exp(
+    logFactorial(n) -
+      logFactorial(mode) -
+      logFactorial(n - mode) +
+      mode * Math.log(p) +
+      (n - mode) * Math.log(q),
+  );
+  let pmfDown = pmfUp;
+  let cumulative = pmfUp;
+  if (u < cumulative) return mode;
+  let up = mode;
+  let down = mode;
+  // Past 12 standard deviations (and a floor of 64 for the Poisson-like thin
+  // tails) less than 2^-32 of the mass is left, below what rng() can resolve;
+  // the bound keeps an absurd field from walking n outcomes.
+  const reach = Math.ceil(12 * Math.sqrt(n * p * q)) + 64;
+  for (let step = 0; step < reach && (up < n || down > 0); step++) {
+    if (up < n) {
+      pmfUp *= ((n - up) / (up + 1)) * odds;
+      up++;
+      cumulative += pmfUp;
+      if (u < cumulative) return up;
+    }
+    if (down > 0) {
+      pmfDown *= (down / (n - down + 1)) / odds;
+      down--;
+      cumulative += pmfDown;
+      if (u < cumulative) return down;
+    }
+  }
+  return mode;
 }
 
 export function sampleBattleRoyaleLeaderboardWindow(
   score: number,
   config: NormalizedBattleRoyaleLeaderboardConfig,
   rng: () => number,
-  gauss: () => number,
 ): { rank: number; payout: number; beatProb: number; expectedPayout: number } {
   const nOpp = Math.max(0, config.participants - 1);
   const { meanScore, stdDevScore } = config.opponentModel;
@@ -200,7 +260,7 @@ export function sampleBattleRoyaleLeaderboardWindow(
   }
   if (beatProb < 0) beatProb = 0;
   else if (beatProb > 1) beatProb = 1;
-  const better = sampleBinomial(nOpp, beatProb, rng, gauss);
+  const better = sampleBinomial(nOpp, beatProb, rng);
   const rank = better + 1;
   return {
     rank,

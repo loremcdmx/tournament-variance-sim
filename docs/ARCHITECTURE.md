@@ -300,7 +300,7 @@ Add new tests next to the file they cover. Keep them fast — the whole suite ru
 - **`src/components/results/ResultsPanels.tsx`** — explanatory/report panels
   that would otherwise bloat `ResultsView.tsx`.
 - **`src/lib/scenarios.ts`** — declarative demo presets. Read by the scenario grid in `page.tsx`.
-- **`src/lib/persistence.ts`** — localStorage + share-URL. Stores only the serializable state, no worker state.
+- **`src/lib/persistence.ts`** — localStorage + share-URL. Stores only the serializable state, no worker state. `buildShareUrl` leaves the sender's ResultHub nicknames out of the link (`withoutShareIdentifiers`).
 - **`src/lib/lineStyles.ts`** — tracker-inspired color/width presets for the trajectory chart (HM2, H2N, HM3, PT4, PokerCraft, PokerDope).
 
 ## Remaining structural debt

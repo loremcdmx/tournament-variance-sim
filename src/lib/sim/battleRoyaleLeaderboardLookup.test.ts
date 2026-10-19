@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   analyzeBattleRoyaleLeaderboardLookup,
+  compactBattleRoyaleLeaderboardLookupSnapshot,
+  normalizeBattleRoyaleLeaderboardLookupSnapshots,
   parseBattleRoyaleLeaderboardSnapshot,
 } from "./battleRoyaleLeaderboardLookup";
 
@@ -81,5 +83,78 @@ describe("battleRoyaleLeaderboardLookup", () => {
       [2, 7100, 12.5],
       [3, 6400, 8],
     ]);
+  });
+
+  it("keeps rows whose points have more than one thousands group", () => {
+    const parsed = parseBattleRoyaleLeaderboardSnapshot(
+      [
+        "Rank\tPlayer\tPoints\tPrize",
+        "1\tAlpha\t3,203,532\t$1,200",
+        "2\tBeta\t1.234.567\t$50",
+        "3\tGamma\t6,400\t$8",
+      ].join("\n"),
+    );
+    expect(parsed.entries.map((entry) => [entry.rank, entry.points, entry.prize])).toEqual([
+      [1, 3_203_532, 1200],
+      [2, 1_234_567, 50],
+      [3, 6400, 8],
+    ]);
+    expect(parsed.rejectedRows).toBe(0);
+
+    const table = parseBattleRoyaleLeaderboardSnapshot(
+      "<table><tr><td>1</td><td>Alpha</td><td>12,345,678</td><td>$100</td></tr></table>",
+    );
+    expect(table.entries.map((entry) => entry.points)).toEqual([12_345_678]);
+  });
+
+  it("counts rows that look like leaderboard rows but cannot be read", () => {
+    const parsed = parseBattleRoyaleLeaderboardSnapshot(
+      [
+        "Rank\tPlayer\tPoints\tPrize",
+        "1\tAlpha\t9,200\t$30",
+        "2\tBeta\tn/a\t$12",
+        "3\tGamma\t6,400",
+      ].join("\n"),
+    );
+    expect(parsed.entries.map((entry) => entry.rank)).toEqual([1]);
+    expect(parsed.rejectedRows).toBe(2);
+  });
+
+  it("still counts a duplicate rank as rejected", () => {
+    const parsed = parseBattleRoyaleLeaderboardSnapshot(
+      "1\tAlpha\t9,200\t$30\n1\tAlphaCopy\t9,100\t$20",
+    );
+    expect(parsed.entries).toHaveLength(1);
+    expect(parsed.rejectedRows).toBe(1);
+  });
+
+  it("stores compact rank/points/prize rows without nicknames or a hard-coded label", () => {
+    const parsed = parseBattleRoyaleLeaderboardSnapshot("1\tRealNick\t9,200\t$30");
+    expect(parsed.entries[0].nickname).toBe("RealNick");
+
+    const snapshot = compactBattleRoyaleLeaderboardLookupSnapshot("lb-1", parsed.entries);
+    expect(snapshot).toEqual({ id: "lb-1", entries: [{ rank: 1, points: 9200, prize: 30 }] });
+    expect(JSON.stringify(snapshot)).not.toContain("RealNick");
+    expect("label" in snapshot).toBe(false);
+  });
+
+  it("sheds nicknames and the old English day label from saved snapshots", () => {
+    const normalized = normalizeBattleRoyaleLeaderboardLookupSnapshots([
+      {
+        id: "a",
+        label: "Day 3",
+        entries: [{ rank: 1, points: 100, prize: 5, nickname: "RealNick" }],
+      },
+      {
+        id: "b",
+        label: "Week 2 promo",
+        entries: [{ rank: 2, points: 90, prize: 4, nickname: "Other" }],
+      },
+    ]);
+    expect(normalized).toHaveLength(2);
+    expect(normalized[0].label).toBeUndefined();
+    expect(normalized[1].label).toBe("Week 2 promo");
+    expect(JSON.stringify(normalized)).not.toMatch(/RealNick|Other/);
+    expect(normalized[0].entries[0]).toMatchObject({ rank: 1, points: 100, prize: 5 });
   });
 });

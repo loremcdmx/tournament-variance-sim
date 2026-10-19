@@ -105,6 +105,12 @@ export async function GET(request: Request) {
   }
 
   const summary = parseGgBrStakeResponse(json, window);
+  if (!summary) {
+    return NextResponse.json(
+      { error: "resulthub-bad-json" },
+      { status: 502 },
+    );
+  }
   return NextResponse.json(summary, {
     headers: {
       // Browser / CDN caches must not stash this — every click should

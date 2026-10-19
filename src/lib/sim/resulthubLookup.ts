@@ -79,41 +79,50 @@ const ZERO_POINTS: BattleRoyaleLeaderboardObservedPointsByStake = {
   "25": 0,
 };
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 /**
- * Parse the raw API response into a normalized summary. Tolerant: missing
- * blocks, unknown stake names, and non-finite numbers all degrade silently
- * to zero rather than throwing — the caller is a UI lookup, not an audit
- * tool, so a partial answer beats a thrown error.
+ * Parse the raw API response into a normalized summary, or null when it no
+ * longer has the shape documented above (not an array, a non-empty answer
+ * with no BATTLE_ROYALE block, `results` that is not a list, a row whose
+ * stake name or totals are missing or not numbers). `[]` is not drift: it is
+ * what ResultHub sends for a nick it has nothing on, and reads as no data.
+ * An unknown stake name still counts toward the prize total; negative
+ * numbers clamp to zero.
  */
 export function parseGgBrStakeResponse(
   raw: unknown,
   window: { from: string; to: string },
-): ResulthubGgBrSummary {
+): ResulthubGgBrSummary | null {
+  if (!Array.isArray(raw)) return null;
   const points = { ...ZERO_POINTS };
   let totalPrizes = 0;
-  if (!Array.isArray(raw)) return { totalPrizes, pointsByStake: points, window };
+  let sawBattleRoyale = false;
   for (const block of raw as RawGameTypeBlock[]) {
-    const gameTypeName = block?.gameType?.name;
-    if (gameTypeName !== "BATTLE_ROYALE") continue;
-    if (!Array.isArray(block.results)) continue;
+    if (block?.gameType?.name !== "BATTLE_ROYALE") continue;
+    sawBattleRoyale = true;
+    if (!Array.isArray(block.results)) return null;
     for (const row of block.results) {
       const stakeName = row?.stake?.name;
-      const key =
-        stakeName && stakeName in STAKE_NAME_TO_KEY
-          ? STAKE_NAME_TO_KEY[stakeName as StakeApiName]
-          : undefined;
-      const prize =
-        typeof row?.totalPrize === "number" && Number.isFinite(row.totalPrize)
-          ? row.totalPrize
-          : 0;
-      const pts =
-        typeof row?.totalPoints === "number" && Number.isFinite(row.totalPoints)
-          ? row.totalPoints
-          : 0;
-      totalPrizes += Math.max(0, prize);
-      if (key) points[key] += Math.max(0, pts);
+      if (
+        typeof stakeName !== "string" ||
+        !isFiniteNumber(row.totalPrize) ||
+        !isFiniteNumber(row.totalPoints)
+      ) {
+        return null;
+      }
+      totalPrizes += Math.max(0, row.totalPrize);
+      if (stakeName in STAKE_NAME_TO_KEY) {
+        points[STAKE_NAME_TO_KEY[stakeName as StakeApiName]] += Math.max(
+          0,
+          row.totalPoints,
+        );
+      }
     }
   }
+  if (raw.length > 0 && !sawBattleRoyale) return null;
   return { totalPrizes, pointsByStake: points, window };
 }
 

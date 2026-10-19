@@ -30,7 +30,6 @@ export interface BattleRoyaleLeaderboardControls {
   observedTotalPrizes: number;
   observedTotalTournaments: number;
   observedPointsByStake: BattleRoyaleLeaderboardObservedPointsByStake;
-  manualPayoutPerTournament: number;
   manualStake: BattleRoyaleLeaderboardManualStakeSelection;
   manualTournamentsPerDay: number;
   manualPointsPerTournament: number;
@@ -43,7 +42,7 @@ type BattleRoyaleLeaderboardScheduleRow = Pick<
   TournamentRow,
   "gameType" | "payoutStructure"
 > &
-  Partial<Pick<TournamentRow, "buyIn" | "count">>;
+  Partial<Pick<TournamentRow, "buyIn" | "rake" | "count">>;
 
 export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS: BattleRoyaleLeaderboardObservedPointsByStake =
   {
@@ -64,7 +63,6 @@ export const DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS: BattleRoyaleLeaderboard
     observedTotalPrizes: 0,
     observedTotalTournaments: 0,
     observedPointsByStake: DEFAULT_BATTLE_ROYALE_LEADERBOARD_POINTS,
-    manualPayoutPerTournament: 0,
     manualStake: "auto",
     manualTournamentsPerDay: 160,
     manualPointsPerTournament: 40,
@@ -181,12 +179,6 @@ export function normalizeBattleRoyaleLeaderboardControls(
       finiteOr(value.observedTotalTournaments, 0, 0, 10_000_000),
     ),
     observedPointsByStake: normalizePointsByStake(value.observedPointsByStake),
-    manualPayoutPerTournament: finiteOr(
-      value.manualPayoutPerTournament,
-      0,
-      0,
-      1_000_000,
-    ),
     manualStake: normalizeBattleRoyaleLeaderboardManualStake(value.manualStake),
     manualTournamentsPerDay: finiteOr(
       value.manualTournamentsPerDay,
@@ -228,13 +220,15 @@ export function normalizeBattleRoyaleLeaderboardControls(
   };
 }
 
+// compileSchedule rewrites a row whose payout structure disagrees with an
+// explicit game type back to that game type's own payout, so the game type
+// decides; the payout structure speaks only for a legacy row with no game type.
 export function isBattleRoyaleRow(
   row: Pick<TournamentRow, "gameType" | "payoutStructure">,
 ): boolean {
-  return (
-    row.gameType === "mystery-royale" ||
-    row.payoutStructure === "battle-royale"
-  );
+  return row.gameType
+    ? row.gameType === "mystery-royale"
+    : row.payoutStructure === "battle-royale";
 }
 
 export function scheduleHasBattleRoyaleRows(
@@ -263,7 +257,7 @@ function buildManualConfig(
   if (controls.mode !== "manual") return undefined;
   const stake = resolveBattleRoyaleLeaderboardManualStake({
     selected: controls.manualStake,
-    schedule,
+    schedule: schedule.filter(isBattleRoyaleRow),
   });
   const manual = analyzeBattleRoyaleLeaderboardManual({
     stake,
@@ -284,11 +278,7 @@ function buildManualConfig(
       averageDailyPrize: manual.averageDailyPrize,
     };
   }
-  if (!(controls.manualPayoutPerTournament > 0)) return undefined;
-  return {
-    mode: "manual",
-    payoutPerTournament: Math.max(0, controls.manualPayoutPerTournament),
-  };
+  return undefined;
 }
 
 function buildLookupConfig(
@@ -341,4 +331,29 @@ export function battleRoyaleLeaderboardPromoPerTournament(
       : 0;
   }
   return Math.max(0, config.payoutPerTournament);
+}
+
+/**
+ * The BR volume the Manual and Lookup panels project onto. `ticketCost` is
+ * what the engine divides by for the result card's "of current buy-ins"
+ * (buy-in plus rake per tournament); `netBuyIn` is the prize-pool part, which
+ * is what the stake is read from.
+ */
+export function battleRoyaleLeaderboardPreview(
+  schedule: readonly BattleRoyaleLeaderboardScheduleRow[],
+  scheduleRepeats: number,
+): { tournaments: number; netBuyIn: number; ticketCost: number } {
+  const repeats = Math.max(1, scheduleRepeats);
+  let tournaments = 0;
+  let netBuyIn = 0;
+  let ticketCost = 0;
+  for (const row of schedule) {
+    if (!isBattleRoyaleRow(row)) continue;
+    const rowTournaments = Math.max(0, row.count ?? 0) * repeats;
+    const rowNetBuyIn = rowTournaments * Math.max(0, row.buyIn ?? 0);
+    tournaments += rowTournaments;
+    netBuyIn += rowNetBuyIn;
+    ticketCost += rowNetBuyIn * (1 + Math.max(0, row.rake ?? 0));
+  }
+  return { tournaments, netBuyIn, ticketCost };
 }

@@ -4,6 +4,8 @@ import {
   buildBattleRoyalePromoResult,
   buildObservedBattleRoyalePromoResult,
 } from "./battleRoyaleLeaderboardObserved";
+import { battleRoyaleLeaderboardPreview } from "./battleRoyaleLeaderboardUi";
+import { compileSchedule } from "./compile";
 import { runSimulation } from "./engine";
 import type { BattleRoyaleLeaderboardPromoConfig, SimulationInput, TournamentRow } from "./types";
 
@@ -250,5 +252,76 @@ describe("per-day figures come from the model's own tournaments per day", () => 
         expect(run?.expectedPayout).toBeCloseTo(18.75, 10);
       }
     }
+  });
+});
+
+describe("the Manual panel and the result card read one buy-in", () => {
+  const ticket10 = { buyIn: 9.2, rake: 0.08 / 0.92 };
+
+  it("prices the panel's percentage on the same full ticket the engine divides by", () => {
+    const schedule: TournamentRow[] = [
+      { ...makeBrRow("a", 100), ...ticket10 },
+      { ...makeBrRow("b", 40), ...ticket10 },
+    ];
+    const repeats = 3;
+    const compiled = compileSchedule({
+      schedule,
+      scheduleRepeats: repeats,
+      samples: 10,
+      seed: 1,
+      bankroll: 0,
+      finishModel: { id: "power-law" },
+    });
+    const config: BattleRoyaleLeaderboardPromoConfig = { mode: "manual", payoutPerTournament: 0.05 };
+    const result = buildBattleRoyalePromoResult({
+      config,
+      schedule,
+      rowCounts: compiled.rowCounts,
+      rowBuyIns: compiled.rowBuyIns,
+    });
+    const preview = battleRoyaleLeaderboardPreview(schedule, repeats);
+
+    expect(preview.tournaments).toBe(result?.current.tournaments);
+    expect(preview.ticketCost).toBeCloseTo(result!.current.totalBuyIn, 9);
+    expect((preview.tournaments * 0.05) / preview.ticketCost).toBeCloseTo(
+      result!.pctOfCurrentBuyIns,
+      12,
+    );
+    expect(preview.netBuyIn).toBeLessThan(preview.ticketCost);
+  });
+});
+
+describe("promo follows the rows the compiler plays as Battle Royale", () => {
+  const drifted: TournamentRow = {
+    id: "drifted",
+    label: "freezeout with a stale BR payout",
+    players: 500,
+    buyIn: 10,
+    rake: 0.1,
+    roi: 0.05,
+    count: 20,
+    payoutStructure: "battle-royale",
+    gameType: "freezeout",
+  };
+  const run = (schedule: TournamentRow[]) =>
+    runSimulation({
+      schedule,
+      scheduleRepeats: 1,
+      samples: 40,
+      seed: 3,
+      bankroll: 0,
+      finishModel: { id: "power-law" },
+      battleRoyaleLeaderboardPromo: { mode: "manual", payoutPerTournament: 0.5 },
+    }).battleRoyaleLeaderboardPromo;
+
+  it("adds no promo for a freezeout row whose payout structure drifted to battle-royale", () => {
+    expect(run([drifted])).toBeUndefined();
+  });
+
+  it("keeps the promo on the genuine BR row of the same schedule", () => {
+    const promo = run([drifted, makeBrRow("br", 30)]);
+    expect(promo?.current.tournaments).toBe(30);
+    expect(promo?.expectedPayout).toBeCloseTo(15, 10);
+    expect(promo?.rows.map((row) => row.rowId)).toEqual(["br"]);
   });
 });

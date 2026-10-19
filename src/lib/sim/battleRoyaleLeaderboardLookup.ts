@@ -30,6 +30,9 @@ export interface BattleRoyaleLeaderboardParseResult {
 
 const MAX_SNAPSHOT_ENTRIES = 5_000;
 const MAX_SNAPSHOTS = 60;
+// What the import button used to store as a label, in English whatever the
+// locale. Dropped on read so the day is labelled in the reader's language.
+const LEGACY_DAY_LABEL = /^Day \d+$/;
 
 function decodeEntities(text: string): string {
   return text
@@ -80,7 +83,9 @@ function parseLooseNumber(raw: string): number | null {
     const head = unsigned.slice(0, idx);
     const isThousands =
       tail.length === 3 && /^\d+$/.test(tail) && /^\d{1,3}([\s.,]\d{3})*$/.test(unsigned);
-    normalized = isThousands ? head + tail : unsigned.replace(sep, ".");
+    normalized = isThousands
+      ? head.replace(/[\s.,]/g, "") + tail
+      : unsigned.replace(sep, ".");
   }
 
   const n = Number(`${negative ? "-" : ""}${normalized}`);
@@ -112,8 +117,13 @@ function numericCandidates(cell: string): number[] {
     .filter((n): n is number => n != null && Number.isFinite(n));
 }
 
+interface RowTally {
+  unreadable: number;
+}
+
 function parseEntryFromCells(
   rawCells: readonly string[],
+  tally: RowTally,
 ): BattleRoyaleLeaderboardLookupEntry | null {
   const cells = rawCells.map((cell) => stripTags(cell)).filter(Boolean);
   if (cells.length < 3) return null;
@@ -130,6 +140,8 @@ function parseEntryFromCells(
   }
   if (rank == null) return null;
 
+  // Three cells and a rank: this was meant to be a leaderboard row, so a
+  // missing prize or score is a dropped row, not a header or a caption.
   let prize: number | null = null;
   let prizeCell = -1;
   for (let i = cells.length - 1; i >= 0; i--) {
@@ -140,7 +152,10 @@ function parseEntryFromCells(
       break;
     }
   }
-  if (prize == null) return null;
+  if (prize == null) {
+    tally.unreadable++;
+    return null;
+  }
 
   let points: number | null = null;
   let pointsCell = -1;
@@ -155,7 +170,10 @@ function parseEntryFromCells(
       break;
     }
   }
-  if (points == null) return null;
+  if (points == null) {
+    tally.unreadable++;
+    return null;
+  }
 
   const nickname =
     cells.find((_, idx) => idx !== rankCell && idx !== prizeCell && idx !== pointsCell) ??
@@ -163,20 +181,26 @@ function parseEntryFromCells(
   return { rank, points, prize, nickname };
 }
 
-function parseHtmlTableRows(source: string): BattleRoyaleLeaderboardLookupEntry[] {
+function parseHtmlTableRows(
+  source: string,
+  tally: RowTally,
+): BattleRoyaleLeaderboardLookupEntry[] {
   const entries: BattleRoyaleLeaderboardLookupEntry[] = [];
   const rowMatches = [...source.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
   for (const row of rowMatches) {
     const cells = [...row[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(
       (m) => m[1],
     );
-    const entry = parseEntryFromCells(cells.length > 0 ? cells : [row[1]]);
+    const entry = parseEntryFromCells(cells.length > 0 ? cells : [row[1]], tally);
     if (entry) entries.push(entry);
   }
   return entries;
 }
 
-function parseDelimitedTextRows(source: string): BattleRoyaleLeaderboardLookupEntry[] {
+function parseDelimitedTextRows(
+  source: string,
+  tally: RowTally,
+): BattleRoyaleLeaderboardLookupEntry[] {
   const entries: BattleRoyaleLeaderboardLookupEntry[] = [];
   const lines = decodeEntities(source)
     .replace(/<br\s*\/?>/gi, "\n")
@@ -188,7 +212,7 @@ function parseDelimitedTextRows(source: string): BattleRoyaleLeaderboardLookupEn
 
   for (const line of lines) {
     const cells = line.split(/\t+|\s{2,}|\s+[|·]\s+/).filter(Boolean);
-    const entry = parseEntryFromCells(cells.length >= 3 ? cells : [line]);
+    const entry = parseEntryFromCells(cells.length >= 3 ? cells : [line], tally);
     if (entry) entries.push(entry);
   }
   return entries;
@@ -206,7 +230,10 @@ function findJsonLikeValue(fragment: string, keys: readonly string[]): string | 
   return null;
 }
 
-function parseJsonLikeRows(source: string): BattleRoyaleLeaderboardLookupEntry[] {
+function parseJsonLikeRows(
+  source: string,
+  tally: RowTally,
+): BattleRoyaleLeaderboardLookupEntry[] {
   const entries: BattleRoyaleLeaderboardLookupEntry[] = [];
   const fragments = [...source.matchAll(/\{[^{}]{20,1200}\}/g)].map((m) => m[0]);
   for (const fragment of fragments) {
@@ -228,6 +255,7 @@ function parseJsonLikeRows(source: string): BattleRoyaleLeaderboardLookupEntry[]
       points <= 0 ||
       prize < 0
     ) {
+      tally.unreadable++;
       continue;
     }
     const nickname =
@@ -276,15 +304,39 @@ function dedupeAndSortEntries(
 export function parseBattleRoyaleLeaderboardSnapshot(
   source: string,
 ): BattleRoyaleLeaderboardParseResult {
-  const tableRows = parseHtmlTableRows(source);
+  const tableTally: RowTally = { unreadable: 0 };
+  const tableRows = parseHtmlTableRows(source, tableTally);
+  const fallbackTally: RowTally = { unreadable: 0 };
   const fallbackRows =
     tableRows.length > 0
       ? []
-      : [...parseJsonLikeRows(source), ...parseDelimitedTextRows(source)];
-  const entries = dedupeAndSortEntries(tableRows.length > 0 ? tableRows : fallbackRows);
+      : [
+          ...parseJsonLikeRows(source, fallbackTally),
+          ...parseDelimitedTextRows(source, fallbackTally),
+        ];
+  const parsedRows = tableRows.length > 0 ? tableRows : fallbackRows;
+  const unreadable =
+    tableRows.length > 0 ? tableTally.unreadable : fallbackTally.unreadable;
+  const entries = dedupeAndSortEntries(parsedRows);
   return {
     entries,
-    rejectedRows: Math.max(0, tableRows.length || fallbackRows.length) - entries.length,
+    rejectedRows: unreadable + Math.max(0, parsedRows.length - entries.length),
+  };
+}
+
+/**
+ * The persisted shape of an imported day: rank, points and prize only. The
+ * pasted nicknames belong to other players and nothing reads them, so they
+ * never reach saved state or a share link. A day label is built when it is
+ * shown, in the reader's language, not stored.
+ */
+export function compactBattleRoyaleLeaderboardLookupSnapshot(
+  id: string,
+  entries: readonly BattleRoyaleLeaderboardLookupEntry[],
+): BattleRoyaleLeaderboardLookupSnapshot {
+  return {
+    id,
+    entries: entries.map(({ rank, points, prize }) => ({ rank, points, prize })),
   };
 }
 
@@ -307,7 +359,6 @@ export function normalizeBattleRoyaleLeaderboardLookupSnapshots(
           rank: typeof e.rank === "number" ? e.rank : 0,
           points: typeof e.points === "number" ? e.points : 0,
           prize: typeof e.prize === "number" ? e.prize : 0,
-          nickname: typeof e.nickname === "string" ? e.nickname : undefined,
         };
       }),
     );
@@ -318,7 +369,9 @@ export function normalizeBattleRoyaleLeaderboardLookupSnapshots(
           ? rec.id.slice(0, 80)
           : `lb-${snapshots.length + 1}`,
       label:
-        typeof rec.label === "string" && rec.label
+        typeof rec.label === "string" &&
+        rec.label &&
+        !LEGACY_DAY_LABEL.test(rec.label)
           ? rec.label.slice(0, 80)
           : undefined,
       entries,

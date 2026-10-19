@@ -36,6 +36,17 @@ describe("ResultHub client", () => {
     await expect(fetchResulthubGgBr("current")).rejects.toMatchObject({ code: "timeout" });
   });
 
+  it("tells the user the API changed when the proxy reports a payload it cannot read", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(
+      Response.json({ error: "resulthub-bad-json" }, { status: 502 }))));
+    await expect(fetchResulthubGgBr("current")).rejects.toMatchObject({ code: "bad-json" });
+    await expect(fetchResulthubGgBrMany(["current", "previous"]))
+      .rejects.toMatchObject({ code: "bad-json" });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(
+      Response.json({ error: "resulthub-bad-status", status: 500 }, { status: 502 }))));
+    await expect(fetchResulthubGgBr("current")).rejects.toMatchObject({ code: "bad-status" });
+  });
+
   it("applies fetched totals to the latest controls and rejects a changed nickname set", () => {
     const latest = {
       ...SCENARIOS[0].controls,

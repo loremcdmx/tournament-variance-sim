@@ -665,6 +665,45 @@ dark-mode-only nicety. Do not undo these without re-measuring:
   both themes). One dark value is still under 4.5:1: the PD matching-delta pill
   (4.2:1, text at 75% alpha); it is the only entry with a lowered `minRatio`.
 
+## Battle Royale Leaderboard Readouts
+
+Small numbers that read as exact. Do not undo these without re-measuring:
+
+- Only `battleRoyaleLeaderboardPromo` is built from the page. The simulated
+  leaderboard (`SimulationInput.battleRoyaleLeaderboard`, `battleRoyaleLeaderboard.ts`)
+  is reachable from the engine API and tests, not from the UI.
+- The rank draw for a settled window is an exact binomial (`sampleBinomial`, an
+  inverse-CDF walk outward from the mode on one `rng()`), so the sampled payouts
+  and the exact `expectedLeaderboardPayoutFromBeatProb` describe one process. The
+  old Poisson (variance n p, not n p q) and rounded-normal shortcuts did not:
+  at 100 participants and beat probability 0.15 the mean sampled payout of a
+  $10 prize sat $0.17 off the exact expectation (about 1.8%, 14 standard errors
+  over 60 000 windows). Fields of 48 or fewer opponents still draw n Bernoulli
+  coins. The expected payout falls back to a log-space sum only where `q^nOpp`
+  is no longer a normal double (about 1000 opponents at beat probability 0.5,
+  5000 at 0.13), where it used to read exactly 0; elsewhere it is the old
+  recurrence, bit for bit.
+- A payout tier that starts beyond the field is dropped, not clamped onto last place.
+- `isBattleRoyaleRow` in `battleRoyaleLeaderboardUi.ts` reads a row the way
+  `compileSchedule` normalizes it: an explicit `gameType` wins over a drifted
+  `payoutStructure`. A test walks every pairing against `normalizeGameTypeConsistency`.
+- The Manual panel's "of current buy-ins" divides by the full ticket
+  (`buyIn x (1 + rake)`, `battleRoyaleLeaderboardPreview.ticketCost`), as the
+  result card does; the manual stake is still read from the net buy-in, as the
+  engine's stake inference does.
+- `manualPayoutPerTournament` no longer exists: the panel had no field for it and
+  it applied a promo the panel showed as $0.00. A stake with no built-in days
+  (`$3`, `$10`) gets no Manual promo; use Lookup.
+- Imported leaderboard days store rank, points and prize only (no nicknames, no
+  label; the "Day N" label is built when shown). Share links also drop the
+  sender's `observedResultHubUsernames`. Observed prize and point totals,
+  bankroll and row labels do travel in a link.
+- `parseGgBrStakeResponse` returns null for a payload that left the documented
+  shape (the route then answers 502 `resulthub-bad-json`, the client shows the
+  "report this" copy); `[]` is what ResultHub sends for an unknown nick and stays
+  "no data". It is strict about number types: a stake row whose totals are null
+  or strings now reads as drift, not as zero.
+
 ## Good Defaults For New Agents
 
 - Start read-only.

@@ -1782,8 +1782,8 @@ export const DICT = {
   },
   "runExport.copyLink": { en: "Copy run link", ru: "Ссылка на прогон" },
   "runExport.copyLink.hint": {
-    en: "Copy a link that opens this run's schedule, settings and seed, so running it again gives the same numbers. A recipient in basic mode does not get the advanced-only noise, tilt and compare settings.",
-    ru: "Скопировать ссылку с расписанием, настройками и сидом этого прогона: повторный запуск даст те же числа. У получателя в базовом режиме не применяются расширенные настройки шума, тильта и сравнения.",
+    en: "Copy a link that opens this run's schedule, settings and seed, so running it again gives the same numbers. A recipient in basic mode does not get the advanced-only noise, tilt and compare settings. ResultHub nicknames are left out of the link.",
+    ru: "Скопировать ссылку с расписанием, настройками и сидом этого прогона: повторный запуск даст те же числа. У получателя в базовом режиме не применяются расширенные настройки шума, тильта и сравнения. Ники ResultHub в ссылку не попадают.",
   },
   "runExport.copyCsv": { en: "Copy stats CSV", ru: "Статистика в CSV" },
   "runExport.copyCsv.hint": {
@@ -2232,8 +2232,8 @@ export const DICT = {
     ru: "{stake}: встроенные завершённые дни лидерборда с {from} по {to}.",
   },
   "controls.brLeaderboard.manualNoBuiltInData": {
-    en: "{stake}: no built-in snapshots yet. Use Lookup for this stake or keep a legacy direct $/tournament value.",
-    ru: "{stake}: встроенных snapshot-ов пока нет. Для этого лимита используй Lookup или старый прямой $/турнир.",
+    en: "{stake}: no built-in snapshots yet, so Manual adds no promo for this stake. Use Lookup for it.",
+    ru: "{stake}: встроенных snapshot-ов пока нет, поэтому Manual не добавляет промо для этого лимита. Используй Lookup.",
   },
   "controls.brLeaderboard.manualProjected": {
     en: "Projected promo",
@@ -2334,6 +2334,10 @@ export const DICT = {
   "controls.brLeaderboard.lookupEmpty": {
     en: "No leaderboard days imported yet.",
     ru: "Пока нет импортированных дней лидерборда.",
+  },
+  "controls.brLeaderboard.lookupDayLabel": {
+    en: "Day {n}",
+    ru: "День {n}",
   },
   "controls.brLeaderboard.lookupSnapshotLine": {
     en: "{label}: {entries} rows · {rank} at {points} pts · {prize}",

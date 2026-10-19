@@ -36,6 +36,7 @@ import { applyItmTarget, isItmTargetActive } from "@/lib/sim/itmTarget";
 import { inferGameType } from "@/lib/sim/gameType";
 import {
   DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+  battleRoyaleLeaderboardPreview,
   battleRoyaleLeaderboardPromoPerTournament,
   buildBattleRoyaleLeaderboardPromoConfig,
   isBattleRoyaleRow,
@@ -670,18 +671,10 @@ export default function Home() {
     () => scheduleHasBattleRoyaleRows(effectiveSchedule),
     [effectiveSchedule],
   );
-  const brLeaderboardPreview = useMemo(() => {
-    const repeats = Math.max(1, controls.scheduleRepeats);
-    let tournaments = 0;
-    let totalBuyIn = 0;
-    for (const row of effectiveSchedule) {
-      if (!isBattleRoyaleRow(row)) continue;
-      const rowTournaments = Math.max(0, row.count) * repeats;
-      tournaments += rowTournaments;
-      totalBuyIn += rowTournaments * Math.max(0, row.buyIn);
-    }
-    return { tournaments, totalBuyIn };
-  }, [effectiveSchedule, controls.scheduleRepeats]);
+  const brLeaderboardPreview = useMemo(
+    () => battleRoyaleLeaderboardPreview(effectiveSchedule, controls.scheduleRepeats),
+    [effectiveSchedule, controls.scheduleRepeats],
+  );
   const brLeaderboardPromoPerTournament = useMemo(
     () =>
       battleRoyaleLeaderboardPromoPerTournament(
@@ -1283,7 +1276,8 @@ export default function Home() {
                 disabled={running}
                 advanced={advanced}
                 previewTournaments={brLeaderboardPreview.tournaments}
-                previewBuyIn={brLeaderboardPreview.totalBuyIn}
+                previewBuyIn={brLeaderboardPreview.netBuyIn}
+                previewTicketCost={brLeaderboardPreview.ticketCost}
               />
             )}
 

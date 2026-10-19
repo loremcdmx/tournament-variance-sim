@@ -63,6 +63,7 @@ export async function fetchResulthubGgBr(
       // ignore — surface generic bad-status below
     }
     if (upstreamError === "timeout") throw new ResulthubLookupError("timeout");
+    if (upstreamError === "resulthub-bad-json") throw new ResulthubLookupError("bad-json");
     if (response.status === 429) {
       throw new ResulthubLookupError("rate-limited", undefined,
         Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? Math.ceil(retryAfterSec) : 60);

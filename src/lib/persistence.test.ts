@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { decompressFromEncodedURIComponent } from "lz-string";
 import type { ControlsState } from "@/components/ControlsPanel";
+import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS } from "./sim/battleRoyaleLeaderboardUi";
 import type { TournamentRow } from "./sim/types";
 import { STANDARD_PRESETS, applyModelPatch } from "./sim/modelPresets";
 import { applyItmTarget } from "./sim/itmTarget";
@@ -27,6 +29,7 @@ import {
   removeUserPreset,
   saveLocal,
   saveUserPresets,
+  withoutShareIdentifiers,
   type PersistedState,
   type UserPreset,
 } from "./persistence";
@@ -899,10 +902,35 @@ describe("persistence validation", () => {
       },
     });
 
-    expect(state?.controls.battleRoyaleLeaderboard).toMatchObject({
-      mode: "manual",
-      manualPayoutPerTournament: 0,
+    expect(state?.controls.battleRoyaleLeaderboard).toMatchObject({ mode: "manual" });
+    expect(state?.controls.battleRoyaleLeaderboard).not.toHaveProperty(
+      "manualPayoutPerTournament",
+    );
+  });
+
+  it("sheds pasted leaderboard nicknames and the English day label on load", () => {
+    const state = loadLocalFromPayload({
+      v: 1,
+      schedule: [row],
+      controls: {
+        battleRoyaleLeaderboard: {
+          mode: "lookup",
+          lookupSnapshots: [
+            {
+              id: "lb-1",
+              label: "Day 1",
+              entries: [{ rank: 1, points: 900, prize: 30, nickname: "SomeoneElse" }],
+            },
+          ],
+        },
+      },
     });
+
+    const snapshots = state?.controls.battleRoyaleLeaderboard.lookupSnapshots;
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots?.[0].label).toBeUndefined();
+    expect(snapshots?.[0].entries).toMatchObject([{ rank: 1, points: 900, prize: 30 }]);
+    expect(JSON.stringify(state)).not.toContain("SomeoneElse");
   });
 
   it("drops persisted BR row leaderboard split on all rows", () => {
@@ -1145,6 +1173,67 @@ describe("buildShareUrl", () => {
       expect(parseAdminParam(link.search), href).toBe(false);
       expect(link.origin).toBe("https://host.test");
     }
+  });
+
+  describe("who the sender is stays out of the link", () => {
+    const brControls = {
+      battleRoyaleLeaderboard: {
+        ...DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS,
+        mode: "observed" as const,
+        observedResultHubUsernames: ["RealGGNick", "oldAlias"],
+        observedTotalPrizes: 4016,
+        observedTotalTournaments: 76238,
+        lookupSnapshots: [
+          {
+            id: "lb-1",
+            entries: [{ rank: 1, points: 900, prize: 30, nickname: "SomeoneElse" }],
+          },
+        ],
+      },
+      bankroll: 1234,
+    } as unknown as ControlsState;
+    const brState: PersistedState = {
+      v: PERSISTED_STATE_VERSION,
+      schedule: [row],
+      controls: brControls,
+    };
+
+    it("leaves ResultHub nicknames and pasted leaderboard nicknames out of the encoded state", () => {
+      vi.stubGlobal("window", { location: new URL("https://host.test/?admin=1") });
+      let link: URL;
+      try {
+        link = new URL(buildShareUrl(brState));
+      } finally {
+        vi.unstubAllGlobals();
+      }
+      const raw = decompressFromEncodedURIComponent(link.hash.slice(3));
+      expect(raw).not.toMatch(/RealGGNick|oldAlias|SomeoneElse/);
+
+      const received = decodeState(link.hash.slice(3))?.controls.battleRoyaleLeaderboard;
+      expect(received?.observedResultHubUsernames).toEqual([]);
+      expect(received?.observedTotalPrizes).toBe(4016);
+      expect(received?.observedTotalTournaments).toBe(76238);
+      expect(received?.lookupSnapshots[0].entries).toMatchObject([
+        { rank: 1, points: 900, prize: 30 },
+      ]);
+    });
+
+    it("does not touch the sender's own state", () => {
+      const shared = withoutShareIdentifiers(brState);
+      expect(shared).not.toBe(brState);
+      expect(brState.controls.battleRoyaleLeaderboard.observedResultHubUsernames).toEqual([
+        "RealGGNick",
+        "oldAlias",
+      ]);
+      expect(brState.controls.battleRoyaleLeaderboard.lookupSnapshots[0].entries[0].nickname).toBe(
+        "SomeoneElse",
+      );
+      expect(shared.controls.bankroll).toBe(1234);
+    });
+
+    it("passes a state with no leaderboard controls through untouched", () => {
+      expect(withoutShareIdentifiers(state)).toBe(state);
+    });
   });
 
   it("keeps the path and puts the encoded state in the hash that decodeState reads back", () => {
