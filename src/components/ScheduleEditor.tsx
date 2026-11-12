@@ -1767,6 +1767,7 @@ function TextInput({
 }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- External schedule replacement must replace the immediate text draft after its transition commits.
     setDraft(value);
   }, [value]);
   return (

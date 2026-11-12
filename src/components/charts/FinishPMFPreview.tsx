@@ -925,7 +925,7 @@ export function BountyShareSlider({
     const settled = settleCommitted(inflightBiasRef.current, committedBias);
     inflightBiasRef.current = settled.inflight;
     if (!settled.external) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- an outside change to the stored bias replaces the local draft; one reset per change, no cascade.
+    // An outside change to the stored bias replaces the local draft once.
     setDraftBias(null);
     setManualText(null);
   }, [committedBias]);
@@ -1204,7 +1204,7 @@ export function TopHeavyPlacementSlider({
     const settled = settleCommitted(inflightBiasRef.current, committedBias);
     inflightBiasRef.current = settled.inflight;
     if (!settled.external) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- an outside change to the stored bias replaces the local draft; one reset per change, no cascade.
+    // An outside change to the stored bias replaces the local draft once.
     setDraftBias(null);
     setManualText(null);
   }, [committedBias]);

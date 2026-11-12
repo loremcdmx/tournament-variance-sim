@@ -309,6 +309,7 @@ export function useSimulation() {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Browser-only timing history loads after hydration so server and first client render remain identical.
     setLastRateMs(loadRate());
   }, []);
 

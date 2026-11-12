@@ -207,6 +207,7 @@ export const CashApp = memo(function CashApp() {
     };
 
     for (const w of pool) {
+      // eslint-disable-next-line react-hooks/immutability -- Worker event subscriptions are an external mutable API; this does not mutate React state.
       w.onmessage = onWorkerMessage;
       w.onerror = onWorkerError;
       w.onmessageerror = onWorkerError;
