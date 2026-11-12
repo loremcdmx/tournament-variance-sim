@@ -346,6 +346,7 @@ function ResultsViewImpl({
   const [lbIncluded, setLbIncluded] = useState<boolean>(lbExpectedPayout > 0);
   // Reset the LB toggle when a fresh run flips whether promo is configured.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A changed run default resets the user toggle once; ordinary user toggles remain independent.
     setLbIncluded(lbExpectedPayout > 0);
   }, [lbExpectedPayout]);
   // Mystery / mystery-royale runs whose envelope draw reaches ≥ 100× the mean
@@ -373,6 +374,7 @@ function ResultsViewImpl({
   // wipes those overrides. Three sets in one pass — React batches them.
   useEffect(() => {
     const on = rbFrac > 0;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A new rakeback fraction resets all three user overrides together, preserving the existing run-change behavior.
     setRbTraj(on);
     setRbStats(on);
     setRbDist(on);
