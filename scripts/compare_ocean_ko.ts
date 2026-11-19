@@ -127,8 +127,7 @@ function compare(ticket: number, field: number, seed: number) {
   const otherFormats = (["freezeout", "pko", "mystery"] as const).map((gameType) => {
     const reference = { ...row, gameType,
       bountyFraction: gameType === "freezeout" ? undefined : row.bountyFraction,
-      mysteryBountyVariance: gameType === "mystery" ? 2 : undefined,
-      pkoHeadVar: gameType === "pko" ? .4 : undefined };
+      mysteryBountyVariance: gameType === "mystery" ? 2 : undefined };
     const c = entry(reference), m = compiledEntryMoments(c);
     return { format: gameType, sigmaBI: Math.sqrt(m.secondDollar - m.meanDollar ** 2) / ticket,
       roi: m.meanDollar / ticket - 1, source: "existing-engine-analytic-model" };

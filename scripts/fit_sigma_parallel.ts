@@ -53,7 +53,6 @@ const COMMON = {
   RAKE: 0.10,
   SEED: 20260417,
   BOUNTY_FRACTION: 0.5,
-  PKO_HEAD_VAR: 0.4,
   // Bumped 0.8 → 2.0 (#71): log-normal σ² = 0.8 gave P(X > 100·mean) = 1e-8,
   // i.e. no jackpot tail. σ² = 2.0 gives ~3.7e-5, in line with BR empirical
   // tier data (#92). Still lighter than true non-BR Mystery but defensible.
@@ -144,7 +143,6 @@ function buildInput(j: Job): SimulationInput {
       payoutStructure: "mtt-gg-bounty",
       gameType: "pko",
       bountyFraction: COMMON.BOUNTY_FRACTION,
-      pkoHeadVar: COMMON.PKO_HEAD_VAR,
       count: COMMON.N_TOURNEYS,
     };
   }
@@ -562,7 +560,6 @@ async function mainOrchestrate() {
           buyIn: COMMON.BUY_IN,
           rake: COMMON.RAKE,
           bountyFraction: COMMON.BOUNTY_FRACTION,
-          pkoHeadVar: COMMON.PKO_HEAD_VAR,
           payout: "mtt-gg-bounty",
           finishModel: "pko-realdata-linear",
           mergedWithDense: true,

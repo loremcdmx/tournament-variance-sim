@@ -236,7 +236,6 @@ describe("convergence math", () => {
         payoutStructure: "mtt-gg-bounty",
         gameType: "pko",
         bountyFraction: 0.5,
-        pkoHeadVar: 0.4,
         count: 50,
       },
     ];
@@ -327,7 +326,6 @@ describe("convergence math", () => {
       gameType: "mystery-royale",
       bountyFraction: 0.5,
       mysteryBountyVariance: 1.8,
-      pkoHeadVar: 0,
       itmRate: 0.18,
       count: 1,
     };
@@ -378,7 +376,6 @@ describe("convergence math", () => {
       gameType: "mystery",
       bountyFraction: 0.5,
       mysteryBountyVariance: 2.0,
-      pkoHeadVar: 0.4,
       count: 1,
     };
     const runtime = buildExactBreakdown([row], {

@@ -7,7 +7,7 @@ function pkoInput(row: Partial<TournamentRow>, samples: number, seed: number): S
   return {
     schedule: [{
       id: "pko", label: "pko", gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5,
-      pkoHeadVar: 0.4, players: 9, buyIn: 100, rake: 0.1, roi: 0.1, count: 1, ...row,
+      players: 9, buyIn: 100, rake: 0.1, roi: 0.1, count: 1, ...row,
     }],
     scheduleRepeats: 1,
     samples,
@@ -194,12 +194,6 @@ describe("PKO knockouts in the hot loop", () => {
       const won = Math.abs(shard.finalProfits[s] - bounty - (entry.prizeByPlace[0] - entry.singleCost)) < 1e-9;
       expect(bounty).toBeCloseTo(won ? entry.bountyByPlace![0] : 0, 9);
     }
-  });
-
-  it("takes the head spread from the tree, not from pkoHeadVar", () => {
-    const off = run(pkoInput({ players: 9, pkoHeadVar: 0, count: 5 }, 2_000, 21)).shard;
-    const wide = run(pkoInput({ players: 9, pkoHeadVar: 1.5, count: 5 }, 2_000, 21)).shard;
-    expect(Buffer.from(wide.finalProfits.buffer).equals(Buffer.from(off.finalProfits.buffer))).toBe(true);
   });
 
   it("does not depend on where the shards split", () => {

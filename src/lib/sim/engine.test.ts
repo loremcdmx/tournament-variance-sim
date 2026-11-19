@@ -765,69 +765,42 @@ describe("engine", () => {
     expect(withMyst.stats.stdDev).toBeGreaterThan(plain.stats.stdDev);
   });
 
-  it("mystery rows do not inherit PKO head variance by default", () => {
-    const base = baseInput({
-      samples: 4000,
-      seed: 654,
-      schedule: [
-        {
-          id: "myst",
-          label: "Myst",
-          gameType: "mystery",
-          players: 500,
-          buyIn: 20,
-          rake: 0.1,
-          roi: 0.2,
-          payoutStructure: "mtt-gg-mystery",
-          bountyFraction: 0.5,
-          mysteryBountyVariance: 2.0,
-          count: 1,
-        },
-      ],
-    });
-    const implicit = runSimulation(base);
-    const explicitZero = runSimulation({
-      ...base,
-      schedule: base.schedule.map((r) => ({ ...r, pkoHeadVar: 0 })),
-    });
-    expect(implicit.stats.mean).toBe(explicitZero.stats.mean);
-    expect(implicit.stats.stdDev).toBe(explicitZero.stats.stdDev);
-    expect(implicit.finalProfits[0]).toBe(explicitZero.finalProfits[0]);
-    expect(
-      implicit.finalProfits[implicit.finalProfits.length - 1],
-    ).toBe(explicitZero.finalProfits[explicitZero.finalProfits.length - 1]);
-  });
-
-  it("PKO rows still default pkoHeadVar to 0.4", () => {
-    const base = baseInput({
-      samples: 4000,
-      seed: 655,
-      schedule: [
-        {
-          id: "pko",
-          label: "PKO",
-          gameType: "pko",
-          players: 500,
-          buyIn: 20,
-          rake: 0.1,
-          roi: 0.2,
-          payoutStructure: "mtt-gg-bounty",
-          bountyFraction: 0.5,
-          count: 1,
-        },
-      ],
-    });
-    const implicit = runSimulation(base);
-    const explicit = runSimulation({
-      ...base,
-      schedule: base.schedule.map((r) => ({ ...r, pkoHeadVar: 0.4 })),
-    });
-    expect(implicit.stats.mean).toBe(explicit.stats.mean);
-    expect(implicit.stats.stdDev).toBe(explicit.stats.stdDev);
-    expect(implicit.finalProfits[0]).toBe(explicit.finalProfits[0]);
-    expect(
-      implicit.finalProfits[implicit.finalProfits.length - 1],
-    ).toBe(explicit.finalProfits[explicit.finalProfits.length - 1]);
+  it("a pkoHeadVar an older save or script leaves on a row changes nothing", () => {
+    // TournamentRow has no such field any more, but an untyped payload can carry
+    // it. Every value, a negative one included, must compile and sample exactly
+    // like the clean row: on PKO (explicit and inferred), on Mystery, on a
+    // freezeout, and on the one PKO row that compiles without the elimination
+    // tree (an empirical history with every finish in the last bucket).
+    const rows: TournamentRow[] = [
+      { id: "pko", label: "PKO", gameType: "pko", players: 500, buyIn: 20, rake: 0.1, roi: 0.2, payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, count: 1 },
+      { id: "inferred", label: "Inferred", players: 9, buyIn: 20, rake: 0.1, roi: 0.2, payoutStructure: "mtt-standard", bountyFraction: 0.5, count: 1 },
+      { id: "myst", label: "Myst", gameType: "mystery", players: 500, buyIn: 20, rake: 0.1, roi: 0.2, payoutStructure: "mtt-gg-mystery", bountyFraction: 0.5, mysteryBountyVariance: 2.0, count: 1 },
+      { id: "freeze", label: "Freeze", players: 500, buyIn: 20, rake: 0.1, roi: 0.2, payoutStructure: "mtt-standard", count: 1 },
+    ];
+    const inputs: SimulationInput[] = [
+      baseInput({ samples: 2000, seed: 655, scheduleRepeats: 50, schedule: rows }),
+      baseInput({
+        samples: 2000,
+        seed: 656,
+        scheduleRepeats: 50,
+        schedule: [{ id: "hu", label: "HU", gameType: "pko", players: 2, buyIn: 20, rake: 0.1, roi: 0.2, payoutStructure: "winner-takes-all", bountyFraction: 0.5, count: 1 }],
+        finishModel: { id: "empirical", empiricalBuckets: [0, 0, 0, 0, 1] },
+      }),
+    ];
+    for (const input of inputs) {
+      const clean = runSimulation(input);
+      for (const headVar of [0, 0.4, 1.5, -1]) {
+        const stale = runSimulation({
+          ...input,
+          schedule: input.schedule.map((r) => ({ ...r, pkoHeadVar: headVar }) as TournamentRow),
+        });
+        expect(
+          Buffer.from(stale.finalProfits.buffer).equals(Buffer.from(clean.finalProfits.buffer)),
+          `${input.schedule[0].id} pkoHeadVar ${headVar}`,
+        ).toBe(true);
+        expect(stale.stats).toEqual(clean.stats);
+      }
+    }
   });
 
   it("pkoHeat=0 produces bit-exact same output as omitting the field", () => {
@@ -1706,7 +1679,6 @@ describe("compileSchedule normalizes BR ↔ mystery-royale split-brain", () => {
           payoutStructure: "mtt-gg-bounty",
           bountyFraction: 0.5,
           mysteryBountyVariance: 2,
-          pkoHeadVar: 0.4,
           pkoHeat: 0.2,
           bountyEvBias: 0.1,
           battleRoyaleLeaderboardEnabled: true,

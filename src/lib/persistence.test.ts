@@ -79,7 +79,7 @@ describe("persistence validation", () => {
       bountyFraction: 50 / 92, payoutStructure: "mtt-gg-bounty" });
     expect(saved?.mysteryBountyVariance).toBeUndefined();
     expect(saved?.pkoHeat).toBeUndefined();
-    expect(saved?.pkoHeadVar).toBeUndefined();
+    expect(Object.keys(saved!)).not.toContain("pkoHeadVar");
     expect(decodeState(encodeState(state!))?.schedule[0]).toEqual(saved);
   });
 
@@ -571,9 +571,9 @@ describe("persistence validation", () => {
       gameType: "freezeout",
       bountyFraction: undefined,
       mysteryBountyVariance: undefined,
-      pkoHeadVar: undefined,
       pkoHeat: undefined,
     });
+    expect(Object.keys(state!.schedule[0])).not.toContain("pkoHeadVar");
   });
 
   it("restores required engine knobs for persisted explicit non-freezeout game types", () => {
@@ -601,15 +601,14 @@ describe("persistence validation", () => {
     expect(state?.schedule[0]).toMatchObject({
       gameType: "pko",
       bountyFraction: 0.5,
-      pkoHeadVar: 0.4,
     });
     expect(state?.schedule[1]).toMatchObject({
       gameType: "mystery",
       bountyFraction: 0.5,
       mysteryBountyVariance: 2,
-      pkoHeadVar: undefined,
       pkoHeat: undefined,
     });
+    for (const loaded of state!.schedule) expect(Object.keys(loaded)).not.toContain("pkoHeadVar");
   });
 
   it("migrates the v1 Battle Royale default bounty share from 50% to 45% but keeps an explicit v2 50%", () => {
@@ -662,9 +661,9 @@ describe("persistence validation", () => {
       bountyFraction: 0.9,
       payJumpAggression: 0,
       mysteryBountyVariance: 0,
-      pkoHeadVar: undefined,
       pkoHeat: undefined,
     });
+    expect(Object.keys(state!.schedule[0])).not.toContain("pkoHeadVar");
   });
 
   it("drops non-boolean persisted sit-through flags so string values cannot silently enable the transform", () => {
@@ -714,9 +713,9 @@ describe("persistence validation", () => {
       guarantee: 1_000_000,
       bountyEvBias: 0.25,
       itmTopHeavyBias: -1,
-      pkoHeadVar: undefined,
       pkoHeat: undefined,
     });
+    expect(Object.keys(state!.schedule[0])).not.toContain("pkoHeadVar");
   });
 
   it("round-trips the row guarantee an older save or link carries", () => {
@@ -1227,6 +1226,54 @@ describe("a row switched to Battle Royale plays the same before and after a relo
     expect(inSession.fieldVariability).toBeUndefined();
     expect(compile(inSession).flat).toEqual(compile(reloaded).flat);
     expect(compile(inSession).flat[0].fieldSize).toBe(18);
+  });
+});
+
+describe("a pkoHeadVar from an older save, link or preset", () => {
+  // Every PKO row saved before the knob was removed carries pkoHeadVar 0.4 (the
+  // load stamped it), and older payloads carry other values. The engine never
+  // read it on these rows, so a row must load as if the key were not there.
+  const rows = [
+    { ...row, id: "pko", gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5 },
+    { ...row, id: "legacy-pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5 },
+    { ...row, id: "mystery", gameType: "mystery", payoutStructure: "mtt-gg-mystery", bountyFraction: 0.5, mysteryBountyVariance: 2 },
+  ] as TournamentRow[];
+  const withHeadVar = (headVar: number) => rows.map((r) => ({ ...r, pkoHeadVar: headVar }));
+  const expectNoHeadVar = (state: PersistedState | null) => {
+    for (const loaded of state!.schedule) expect(Object.keys(loaded)).not.toContain("pkoHeadVar");
+  };
+
+  it("loads from a link and from the autosave as the same state, under the same model preset", () => {
+    for (const preset of STANDARD_PRESETS) {
+      const selected = applyModelPatch(controls, preset.patch, preset.id);
+      const clean = { v: PERSISTED_STATE_VERSION, schedule: rows, controls: selected };
+      const expected = decodeState(encoded(clean));
+      for (const headVar of [0.4, 0, 1.5, -4]) {
+        const payload = { ...clean, schedule: withHeadVar(headVar) };
+        for (const loaded of [decodeState(encoded(payload)), loadLocalFromPayload(payload)]) {
+          expect(loaded, `${preset.id} pkoHeadVar ${headVar}`).toEqual(expected);
+          expect(loaded?.controls.modelPresetId).toBe(preset.id);
+          expectNoHeadVar(loaded);
+        }
+      }
+    }
+  });
+
+  it("keeps a saved or imported user preset valid and loads it without the key", () => {
+    const clean = { v: PERSISTED_STATE_VERSION, schedule: rows, controls };
+    const stored = {
+      id: "old",
+      name: "Old",
+      createdAt: 1,
+      state: { ...clean, schedule: withHeadVar(0.4) },
+    } as UserPreset;
+    expect(isValidUserPreset(stored)).toBe(true);
+    memoryStorage({ "tvs:user-presets": JSON.stringify([stored]) });
+    const loaded = loadUserPresets();
+    vi.unstubAllGlobals();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].state).toEqual(decodeState(encoded(clean)));
+    expectNoHeadVar(loaded[0].state);
   });
 });
 

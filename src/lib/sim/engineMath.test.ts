@@ -63,7 +63,6 @@ describe("buildScheduleAnalyticBreakdown σ — Monte-Carlo cross-check", () => 
         gameType: "pko",
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        pkoHeadVar: 0.4,
       } as TournamentRow,
     },
   ];
@@ -181,7 +180,7 @@ describe("pool-invariance: 1 shard vs N out-of-order shards is byte-identical", 
     {
       id: "pko", label: "pko", players: 1000, buyIn: 25, rake: 0.1, roi: 0.08, count: 2,
       payoutStructure: "mtt-gg-bounty", gameType: "pko",
-      bountyFraction: 0.5, pkoHeat: 0.6, pkoHeadVar: 0.4, bountyEvBias: -0.15,
+      bountyFraction: 0.5, pkoHeat: 0.6, bountyEvBias: -0.15,
     },
     {
       id: "myst", label: "myst", players: 400, buyIn: 20, rake: 0.1, roi: 0.12, count: 1,

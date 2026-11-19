@@ -4,9 +4,8 @@
  *   σ_ROI(field, roi) ≈ C(roi) · field^β
  *
  * PKO schedule: `mtt-gg-bounty` payout (matches the one real GG PKO sample
- * we have on 1st/min/paid% anchors), `bountyFraction=0.5`, default
- * `pkoHeadVar=0.4`, and the `pko-realdata-linear` finish model (empirical
- * 1.72M-finish histogram). Runs 120 k samples per grid point so tail-driven
+ * we have on 1st/min/paid% anchors), `bountyFraction=0.5` and the
+ * `pko-realdata-linear` finish model (empirical 1.72M-finish histogram). Runs 120 k samples per grid point so tail-driven
  * σ estimates on small fields settle within grid-search noise.
  *
  * This is the old 7-ROI recipe. `scripts/fit_beta_pko.json` is now the 18 x 11
@@ -31,7 +30,6 @@ const SAMPLES = 120_000;
 const BUY_IN = 50;
 const RAKE = 0.10;
 const BOUNTY_FRACTION = 0.5;
-const PKO_HEAD_VAR = 0.4;
 
 interface Point {
   field: number;
@@ -49,7 +47,6 @@ function measure(field: number, roi: number): Point {
     payoutStructure: "mtt-gg-bounty",
     gameType: "pko",
     bountyFraction: BOUNTY_FRACTION,
-    pkoHeadVar: PKO_HEAD_VAR,
     count: N_TOURNEYS,
   };
   const input: SimulationInput = {
@@ -101,7 +98,7 @@ async function main() {
     );
   }
   console.log(
-    `fit_beta_pko: N=${N_TOURNEYS} samples=${SAMPLES} buyIn=${BUY_IN} rake=${RAKE} bountyFraction=${BOUNTY_FRACTION} pkoHeadVar=${PKO_HEAD_VAR}`,
+    `fit_beta_pko: N=${N_TOURNEYS} samples=${SAMPLES} buyIn=${BUY_IN} rake=${RAKE} bountyFraction=${BOUNTY_FRACTION}`,
   );
   console.log(`payout=mtt-gg-bounty finishModel=pko-realdata-linear`);
   console.log(`fields (${FIELDS.length}): ${FIELDS.join(", ")}`);
@@ -218,7 +215,6 @@ async function main() {
       buyIn: BUY_IN,
       rake: RAKE,
       bountyFraction: BOUNTY_FRACTION,
-      pkoHeadVar: PKO_HEAD_VAR,
       payout: "mtt-gg-bounty",
       finishModel: "pko-realdata-linear",
     },

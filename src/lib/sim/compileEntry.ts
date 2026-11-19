@@ -117,11 +117,6 @@ function compileSingleEntry(
       `engine: row "${label}" mysteryBountyVariance must be ≥ 0 (got ${row.mysteryBountyVariance})`,
     );
   }
-  if (row.pkoHeadVar != null && !(row.pkoHeadVar >= 0)) {
-    throw new Error(
-      `engine: row "${label}" pkoHeadVar must be ≥ 0 (got ${row.pkoHeadVar})`,
-    );
-  }
   if (row.pkoHeat != null && !(row.pkoHeat >= 0 && row.pkoHeat <= 3)) {
     throw new Error(
       `engine: row "${label}" pkoHeat must be in [0,3] (got ${row.pkoHeat})`,
@@ -754,17 +749,10 @@ function compileSingleEntry(
     eX += p * (prizeByPlace[i] + (bountyByPlace ? bountyByPlace[i] : 0));
   }
 
-  // Combined per-KO log-variance: mystery bounty noise + PKO head-size noise.
-  // Both are independent log-normal sources, so variances add in log-space.
-  // Default pkoHeadVar to 0.4 only for rows that structurally infer as PKO;
-  // Mystery / BR rows should not inherit the PKO head-size channel. A PKO row
-  // that plays the elimination tree takes its head spread from the tree
-  // (`pkoKoLogSigma`) and does not read this sum.
-  const effectivePkoHeadVar =
-    row.pkoHeadVar ?? (gameType === "pko" ? 0.4 : 0);
+  // Per-KO log-variance of the Poisson-count bounty draw. A PKO row that plays
+  // the elimination tree takes its head spread from the tree (`pkoKoLogSigma`).
   const perKoLogVar = gameType === "ocean-ko" ? 0 :
-    Math.max(0, row.mysteryBountyVariance ?? 0) +
-    Math.max(0, effectivePkoHeadVar);
+    Math.max(0, row.mysteryBountyVariance ?? 0);
 
   // With PD's finish model off the pass plays the row's ITM, stamped from the
   // row's own payout table, on PD's table and pool, where it may not pay the

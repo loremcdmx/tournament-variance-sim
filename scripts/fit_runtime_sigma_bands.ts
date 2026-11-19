@@ -471,16 +471,18 @@ async function main(): Promise<void> {
     table[format] = spec;
     const worst = mine.reduce((w, r) => (r.dev > w.dev ? r : w), mine[0]);
     const core = mine.filter((r) => r.tag === "core");
-    const worstCore = core.reduce((w, r) => (r.dev > w.dev ? r : w), core[0]);
+    // A BANDS_FILTER run may hold no core cell.
+    const residCore =
+      core.length > 0 ? ceilPercent(Math.max(...core.map((r) => r.dev))) : null;
     summary[format] = {
       cells: mine.length,
       maxAbsGap: Math.max(...mine.map((r) => Math.abs(r.ratio - 1))),
       maxSe: Math.max(...mine.map((r) => r.se)),
-      residSpecifiedGridOnly: ceilPercent(worstCore.dev),
+      residSpecifiedGridOnly: residCore,
       worst: { id: worst.id, ratio: worst.ratio, se: worst.se, dev: worst.dev },
     };
     console.log(
-      `${format}: resid=${(spec.resid * 100).toFixed(0)}% (specified grid only: ${(ceilPercent(worstCore.dev) * 100).toFixed(0)}%)  ` +
+      `${format}: resid=${(spec.resid * 100).toFixed(0)}% (specified grid only: ${residCore === null ? "no core cell" : `${(residCore * 100).toFixed(0)}%`})  ` +
         `max|gap|=${(Math.max(...mine.map((r) => Math.abs(r.ratio - 1))) * 100).toFixed(2)}%  ` +
         `max SE=${(Math.max(...mine.map((r) => r.se)) * 100).toFixed(2)}%  worst=${worst.id}`,
     );

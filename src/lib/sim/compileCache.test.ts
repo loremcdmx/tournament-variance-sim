@@ -23,7 +23,6 @@ const schedule: TournamentRow[] = [
     payoutStructure: "mtt-gg-bounty",
     gameType: "pko",
     bountyFraction: 0.5,
-    pkoHeadVar: 0.4,
     pkoHeat: 1,
     count: 3,
   },
