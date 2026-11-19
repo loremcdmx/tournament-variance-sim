@@ -1,10 +1,11 @@
 /**
  * Percentile envelopes over the checkpoint path matrix, upsampled onto the
- * hi-res grid the sample curves live on. The column sorts dominate build
- * wall-clock for large S, so this owns the "envelopes" progress phase.
+ * hi-res grid the sample curves live on. The per-column percentiles dominate
+ * build wall-clock for large S, so this owns the "envelopes" progress phase.
  */
 import type { BuildProgressCb } from "./engineTypes";
 import { upsampleToGrid } from "./grids";
+import { selectSortedRanks } from "./orderStatistics";
 
 export function buildEnvelopes(
   pathMatrix: Float64Array,
@@ -34,32 +35,63 @@ export function buildEnvelopes(
   const ENV_CAP = 200_000;
   const envS = Math.min(S, ENV_CAP);
   const envStride = S / envS;
-  const col = new Float64Array(envS);
+  const quantiles = [p0015, p025, envP05, p15, p85, envP95, p975, p9985];
+  const ranks = Int32Array.from(
+    [0.0015, 0.025, 0.05, 0.15, 0.85, 0.95, 0.975, 0.9985],
+    (p) => Math.floor(p * (envS - 1)),
+  );
+  const picked = new Float64Array(ranks.length);
+  // The matrix is row-major (one sample after another), so reading it one
+  // column at a time misses the cache on every value. Take a block of
+  // neighbouring columns per pass over the rows instead; each column still
+  // receives its samples in ascending order, so the means add up in the same
+  // order as before.
+  const blockCols = Math.max(1, Math.min(32, K1, Math.floor(2_000_000 / envS)));
+  const block = new Float64Array(blockCols * envS);
+  const acc = new Float64Array(blockCols);
   // Emit build-progress every ~8 columns so the main thread sees steady
-  // motion through the dominant build phase (envelope sorts are ~65 % of
-  // buildResult wall time for large S).
+  // motion through the dominant build phase.
   const envEmitStride = Math.max(1, Math.floor(K1 / 10));
-  for (let j = 0; j < K1; j++) {
-    // Mean on the full S (cheap accumulator, no sort needed).
-    let acc = 0;
-    for (let s = 0; s < S; s++) acc += pathMatrix[s * K1 + j];
-    mean_[j] = acc / S;
-    // Percentiles on a stratified subsample of size envS.
-    for (let s = 0; s < envS; s++) {
-      const src = Math.min(S - 1, (s * envStride) | 0);
-      col[s] = pathMatrix[src * K1 + j];
+  for (let j0 = 0; j0 < K1; j0 += blockCols) {
+    const cols = Math.min(blockCols, K1 - j0);
+    acc.fill(0);
+    // Mean on the full S (cheap accumulator, no sort needed); percentiles on
+    // a stratified subsample of size envS.
+    if (envS === S) {
+      for (let s = 0; s < S; s++) {
+        const base = s * K1 + j0;
+        for (let c = 0; c < cols; c++) {
+          const v = pathMatrix[base + c];
+          acc[c] += v;
+          block[c * envS + s] = v;
+        }
+      }
+    } else {
+      for (let s = 0; s < S; s++) {
+        const base = s * K1 + j0;
+        for (let c = 0; c < cols; c++) acc[c] += pathMatrix[base + c];
+      }
+      for (let s = 0; s < envS; s++) {
+        const base = Math.min(S - 1, (s * envStride) | 0) * K1 + j0;
+        for (let c = 0; c < cols; c++) block[c * envS + s] = pathMatrix[base + c];
+      }
     }
-    col.sort();
-    envP05[j] = col[Math.floor(0.05 * (envS - 1))];
-    envP95[j] = col[Math.floor(0.95 * (envS - 1))];
-    p15[j] = col[Math.floor(0.15 * (envS - 1))];
-    p85[j] = col[Math.floor(0.85 * (envS - 1))];
-    p025[j] = col[Math.floor(0.025 * (envS - 1))];
-    p975[j] = col[Math.floor(0.975 * (envS - 1))];
-    p0015[j] = col[Math.floor(0.0015 * (envS - 1))];
-    p9985[j] = col[Math.floor(0.9985 * (envS - 1))];
-    if (onBuildProgress && j > 0 && j % envEmitStride === 0) {
-      onBuildProgress(0.10 + 0.70 * ((j + 1) / K1), "envelopes");
+    for (let c = 0; c < cols; c++) {
+      const j = j0 + c;
+      mean_[j] = acc[c] / S;
+      const offset = c * envS;
+      // A NaN in the column makes its sum NaN; only the sort knows where a
+      // NaN goes, so such a column takes the old route.
+      if (acc[c] !== acc[c]) {
+        const col = block.subarray(offset, offset + envS).sort();
+        for (let r = 0; r < ranks.length; r++) quantiles[r][j] = col[ranks[r]];
+      } else {
+        selectSortedRanks(block, offset, envS, ranks, picked);
+        for (let r = 0; r < ranks.length; r++) quantiles[r][j] = picked[r];
+      }
+      if (onBuildProgress && j > 0 && j % envEmitStride === 0) {
+        onBuildProgress(0.10 + 0.70 * ((j + 1) / K1), "envelopes");
+      }
     }
   }
   onBuildProgress?.(0.82, "envelopes");

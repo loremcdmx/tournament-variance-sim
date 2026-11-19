@@ -1,8 +1,7 @@
 /**
  * Path-shape catalogs: drawdown depth quantiles, breakeven / cashless streak
  * aggregates, recovery-time distribution, and the worst/best swing rankings.
- * Owns the "streaks" phase of the build progress — the two full-index sorts
- * behind the swing catalog are the expensive part.
+ * Owns the "streaks" phase of the build progress.
  */
 import type { BuildProgressCb } from "./engineTypes";
 import { histogramOf } from "./simNumerics";
@@ -109,6 +108,35 @@ export function computeStreakStats(
 }
 
 /**
+ * The three largest values' sample indices, largest first, an equal value
+ * keeping the lower index ahead: the head of a stable descending sort of all
+ * S indices, found in one pass.
+ */
+function topThreeIndices(values: Float64Array, S: number): number[] {
+  let i0 = -1;
+  let i1 = -1;
+  let i2 = -1;
+  for (let i = 0; i < S; i++) {
+    const v = values[i];
+    if (i0 < 0 || v > values[i0]) {
+      i2 = i1;
+      i1 = i0;
+      i0 = i;
+    } else if (i1 < 0 || v > values[i1]) {
+      i2 = i1;
+      i1 = i;
+    } else if (i2 < 0 || v > values[i2]) {
+      i2 = i;
+    }
+  }
+  const out: number[] = [];
+  if (i0 >= 0) out.push(i0);
+  if (i1 >= 0) out.push(i1);
+  if (i2 >= 0) out.push(i2);
+  return out;
+}
+
+/**
  * Top-3 samples by max drawdown depth (downswings) and by max run-up height
  * (upswings). Previously we showed the top-10 downswings, but the tail
  * samples clustered very tightly — rank 8-10 differ by a few bucks and add
@@ -126,25 +154,19 @@ export function buildSwingCatalog(
   downswings: SimulationResult["downswings"];
   upswings: SimulationResult["upswings"];
 } {
-  const ddIdx: number[] = new Array(S);
-  const upIdx: number[] = new Array(S);
-  for (let i = 0; i < S; i++) {
-    ddIdx[i] = i;
-    upIdx[i] = i;
-  }
   onBuildProgress?.(0.88, "streaks");
-  ddIdx.sort((a, b) => maxDrawdowns[b] - maxDrawdowns[a]);
+  const ddIdx = topThreeIndices(maxDrawdowns, S);
   onBuildProgress?.(0.93, "streaks");
-  upIdx.sort((a, b) => maxRunUps[b] - maxRunUps[a]);
+  const upIdx = topThreeIndices(maxRunUps, S);
   onBuildProgress?.(0.97, "streaks");
-  const downswings = ddIdx.slice(0, Math.min(3, S)).map((sampleIndex, i) => ({
+  const downswings = ddIdx.map((sampleIndex, i) => ({
     rank: i + 1,
     sampleIndex,
     depth: maxDrawdowns[sampleIndex],
     finalProfit: finalProfits[sampleIndex],
     longestBreakeven: longestBreakevens[sampleIndex],
   }));
-  const upswings = upIdx.slice(0, Math.min(3, S)).map((sampleIndex, i) => ({
+  const upswings = upIdx.map((sampleIndex, i) => ({
     rank: i + 1,
     sampleIndex,
     height: maxRunUps[sampleIndex],

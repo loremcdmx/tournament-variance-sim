@@ -53,6 +53,9 @@ report is not considered complete.
 Use these when making performance claims or comparing a refactor to baseline:
 
 - `bench_engine_perf.ts`
+- `result_digest.ts` (prints a digest of the whole `SimulationResult` over a
+  matrix of inputs; run it on two builds and `cmp` the outputs to prove a
+  speed change moved no number)
 - `bench_rakeback_pipeline.ts`
 - `bench_run_click_path.ts`
 - `bench_schedule_edit.ts`
