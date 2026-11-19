@@ -8,7 +8,11 @@ import type { ControlsState } from "@/components/ControlsPanel";
 import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { battleRoyaleRowFromTotalTicket } from "@/lib/sim/battleRoyaleTicket";
 import { DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION } from "@/lib/sim/gameType";
-import { DEFAULT_TOURNAMENTS_PER_SESSION } from "@/lib/sim/modelPresets";
+import {
+  DEFAULT_TILT_FAST_WINDOW,
+  DEFAULT_TILT_SLOW_WINDOW,
+  DEFAULT_TOURNAMENTS_PER_SESSION,
+} from "@/lib/sim/modelPresets";
 import type { TournamentRow } from "./sim/types";
 import type { DictKey } from "./i18n/dict";
 
@@ -40,10 +44,12 @@ const BASE_CONTROLS: ControlsState = {
   tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
   tiltFastGain: 0,
   tiltFastScale: 0,
+  tiltFastWindow: DEFAULT_TILT_FAST_WINDOW,
   tiltSlowGain: 0,
   tiltSlowThreshold: 0,
   tiltSlowMinDuration: 500,
   tiltSlowRecoveryFrac: 0.5,
+  tiltSlowWindow: DEFAULT_TILT_SLOW_WINDOW,
   modelPresetId: "naive",
   itmGlobalEnabled: true,
   itmGlobalPct: 15,

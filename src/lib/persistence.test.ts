@@ -94,7 +94,7 @@ describe("persistence validation", () => {
     expect(decodeState(encoded({ v: 1, schedule: null, controls: {} }))).toBeNull();
     expect(decodeState(encoded({ v: 1, schedule: [null], controls: {} }))).toBeNull();
     expect(decodeState(encoded({ v: 1, schedule: [row], controls: null }))).toBeNull();
-    expect(decodeState(encoded({ v: 4, schedule: [row], controls: {} }))).toBeNull();
+    expect(decodeState(encoded({ v: PERSISTED_STATE_VERSION + 1, schedule: [row], controls: {} }))).toBeNull();
   });
 
   it("rejects rows whose label or tags are not strings so the editor cannot crash on render", () => {
@@ -194,12 +194,13 @@ describe("persistence validation", () => {
   });
 
   it("writes the current schema version and upgrades legacy payloads on read", () => {
-    expect(PERSISTED_STATE_VERSION).toBe(3);
+    expect(PERSISTED_STATE_VERSION).toBe(4);
     const state: PersistedState = { v: PERSISTED_STATE_VERSION, schedule: [row], controls };
-    expect(JSON.parse(JSON.stringify(state)).v).toBe(3);
+    expect(JSON.parse(JSON.stringify(state)).v).toBe(4);
     expect(decodeState(encodeState(state))).toEqual(state);
-    expect(decodeState(encoded({ v: 1, schedule: [row], controls }))?.v).toBe(3);
-    expect(decodeState(encoded({ v: 2, schedule: [row], controls }))?.v).toBe(3);
+    expect(decodeState(encoded({ v: 1, schedule: [row], controls }))?.v).toBe(4);
+    expect(decodeState(encoded({ v: 2, schedule: [row], controls }))?.v).toBe(4);
+    expect(decodeState(encoded({ v: 3, schedule: [row], controls }))?.v).toBe(4);
   });
 
   it("clamps unsafe persisted row counts without imposing the direct-entry cap", () => {
@@ -278,7 +279,9 @@ describe("persistence validation", () => {
     const profileOf = (controls: ControlsState | undefined) => {
       const c = controls as unknown as Record<string, unknown>;
       return Object.fromEntries(
-        Object.keys(v2Profiles.naive).concat("tournamentsPerSession").map((key) => [key, c[key]]),
+        Object.keys(v2Profiles.naive)
+          .concat("tournamentsPerSession", "tiltFastWindow", "tiltSlowWindow")
+          .map((key) => [key, c[key]]),
       );
     };
     const currentProfile = (id: string) =>
@@ -322,12 +325,81 @@ describe("persistence validation", () => {
       expect(c.tournamentsPerSession).toBeUndefined();
     });
 
-    it("keeps a current custom profile, session length included, through a v3 round trip", () => {
+    it("keeps a current custom profile, session length and windows included, through a round trip", () => {
       for (const preset of STANDARD_PRESETS) {
         const selected = applyModelPatch(controls, preset.patch, "custom");
         const loaded = decodeState(encoded({ v: PERSISTED_STATE_VERSION, schedule: [row], controls: selected }));
         expect(loaded?.controls.tournamentsPerSession, preset.id).toBe(preset.patch.tournamentsPerSession);
+        expect(loaded?.controls.tiltFastWindow, preset.id).toBe(preset.patch.tiltFastWindow);
+        expect(loaded?.controls.tiltSlowWindow, preset.id).toBe(preset.patch.tiltSlowWindow);
       }
+    });
+  });
+
+  describe("v3 tilts read over the whole run", () => {
+    // What the profiles stored at v3: ABI depths for all-time extremes, no window.
+    const v3Profiles: Record<string, Record<string, number>> = {
+      "realistic-solo": {
+        roiShockPerTourney: 0.3, roiShockPerSession: 0.05, roiDriftSigma: 0.01, tournamentsPerSession: 50,
+        tiltFastGain: -0.02, tiltFastScale: 200, tiltSlowGain: 0, tiltSlowThreshold: 0,
+        tiltSlowMinDuration: 500, tiltSlowRecoveryFrac: 0.5,
+      },
+      "steady-reg": {
+        roiShockPerTourney: 0.25, roiShockPerSession: 0.04, roiDriftSigma: 0.015, tournamentsPerSession: 50,
+        tiltFastGain: 0, tiltFastScale: 0, tiltSlowGain: 0.05, tiltSlowThreshold: 2000,
+        tiltSlowMinDuration: 500, tiltSlowRecoveryFrac: 0.5,
+      },
+      naive: {
+        roiShockPerTourney: 0, roiShockPerSession: 0, roiDriftSigma: 0, tournamentsPerSession: 50,
+        tiltFastGain: 0, tiltFastScale: 0, tiltSlowGain: 0, tiltSlowThreshold: 0,
+        tiltSlowMinDuration: 500, tiltSlowRecoveryFrac: 0.5,
+      },
+    };
+    const profileKeys = [...Object.keys(v3Profiles.naive), "tiltFastWindow", "tiltSlowWindow"];
+    const profileOf = (controls: ControlsState | undefined) => {
+      const c = controls as unknown as Record<string, unknown>;
+      return Object.fromEntries(profileKeys.map((key) => [key, c[key]]));
+    };
+    const currentProfile = (id: string) =>
+      profileOf(STANDARD_PRESETS.find((preset) => preset.id === id)!.patch as ControlsState);
+
+    it.each(Object.keys(v3Profiles))("a named %s save, link or user preset loads the preset's current profile", (id) => {
+      const payload = { v: 3, schedule: [row], controls: { modelPresetId: id, ...v3Profiles[id] } };
+      const fromPreset = (state: unknown) => {
+        memoryStorage({ "tvs:user-presets": JSON.stringify([{ id: "p", name: "P", createdAt: 1, state }]) });
+        try {
+          return loadUserPresets()[0]?.state;
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      };
+      for (const load of [(state: unknown) => decodeState(encoded(state)), loadLocalFromPayload, fromPreset]) {
+        const loaded = load(payload);
+        expect(loaded?.v).toBe(PERSISTED_STATE_VERSION);
+        expect(loaded?.controls.modelPresetId).toBe(id);
+        expect(profileOf(loaded?.controls)).toEqual(currentProfile(id));
+      }
+    });
+
+    it.each(Object.keys(v3Profiles))("a hand-tuned v3 descendant of %s keeps that preset's current profile", (id) => {
+      const loaded = decodeState(encoded({
+        v: 3, schedule: [row], controls: { modelPresetId: "custom", roiStdErr: 0.07, ...v3Profiles[id] },
+      }));
+      expect(loaded?.controls.modelPresetId).toBe("custom");
+      expect(loaded?.controls.roiStdErr).toBe(0.07);
+      expect(profileOf(loaded?.controls)).toEqual(currentProfile(id));
+    });
+
+    it("reads the all-time signature only from a v3 payload, and drops one that matches no preset", () => {
+      const steady = { modelPresetId: "custom", ...v3Profiles["steady-reg"] };
+      const current = decodeState(encoded({ v: PERSISTED_STATE_VERSION, schedule: [row], controls: steady }));
+      expect(current?.controls.tiltSlowThreshold).toBeUndefined();
+      expect(current?.controls.tiltSlowWindow).toBeUndefined();
+      const tuned = decodeState(encoded({ v: 3, schedule: [row], controls: { ...steady, tiltSlowThreshold: 1999 } }));
+      const c = tuned?.controls as unknown as Record<string, unknown>;
+      expect(c.tiltSlowThreshold).toBeUndefined();
+      expect(c.tiltSlowGain).toBeUndefined();
+      expect(c.tiltSlowWindow).toBeUndefined();
     });
   });
 

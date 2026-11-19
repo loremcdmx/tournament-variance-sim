@@ -1160,28 +1160,69 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   expectedProfitPrefix, the downside report's prefix, built whenever slow tilt or the
   downside report is on. Do not go back to raw profit: there a winner's rise from the
   all-time low only grows, and 'up' held about 80 % of a 50 000-tournament run (the mirror
-  for a loser). Fast tilt keeps the raw running max. tiltChannelsActive (modelPresets.ts)
-  mirrors simulateShard's tilt gates and drives the 'Expected profit before tilt' label.
-  Change both together.
-- Slow tilt on x still measures from ALL-TIME extremes, so the swing grows like sigma_entry
-  x sqrt(distance): any fixed depth is rare on small fields and short runs and common on big
-  fields and long runs. 'Steady regular' at 2 000 ABI spends at most 7 % of the run tilted
-  for fields 500-3 000 up to 10 000 tournaments, and about 40 % for a 1 000-player field at
-  50 000. The tagline says so. Do not 'fix' this by moving the ABI number; making it rare
-  everywhere means a different reference (a rolling window, or a depth in sigma x sqrt(n)).
-- The slow tilt's small positive mean (about +0.13 to +0.15 pp) is gain x (up share - down
-  share): an MTT path reaches a deep upswing through one score sooner than an equally deep
-  drawdown builds up. At gain 0.005 the state shares are the same and the shift is 10x
-  smaller, so it is not the tilt feeding itself. Do not chase it as a reference bug.
+  for a loser). Fast tilt reads raw profit, and its peak is the best point of the last
+  tiltFastWindow tournaments, or the running max when the window is unset.
+  tiltChannelsActive (convergencePolicy.ts) mirrors simulateShard's tilt gates and drives
+  the 'Expected profit before tilt' label. A window never switches a channel on or off, so
+  it is not part of the gate (modelPresets.test.ts runs the engine to pin that). Change
+  both together.
+- Both tilts take their extremes over a trailing window: SimulationInput.tiltSlowWindow
+  and tiltFastWindow, in tournaments of the sample. Unset, NaN or under 1 keeps the
+  all-time extremes and the anchored slow exit, byte-identical for engine API callers. The
+  app always sends ControlsState's windows (DEFAULT_TILT_FAST_WINDOW 250,
+  DEFAULT_TILT_SLOW_WINDOW 1000); presets set them and basic mode resets them. On all-time
+  extremes the swing grows like sigma_entry x sqrt(distance), so no fixed depth stays rare
+  (at 1 000 players 'Steady regular' at 2 000 ABI was tilted 0.9 / 38 / 65 % of a 10 000 /
+  50 000 / 100 000-tournament run). Over the window the share is flat from about two
+  windows on: steady-reg (600 ABI, 500-tournament streak) at ROI +10 % is tilted about 1 %
+  of a run at 1 000 players, 6-7 % at 3 000, 20 % at 10 000. It grows with field size and
+  with ROI (3 000 players: 3.5 / 6.9 / 11.8 % at -10 / +10 / +30 %); both dependences are
+  real, keep them in the tagline. Do not go back to all-time extremes.
+- The slow exit over a window is a timer. A state ends when the remaining swing over the
+  window is at most (1 - tiltSlowRecoveryFrac) x the swing at entry; the extreme it started
+  from usually leaves the 1 000-tournament window first, so the gap halves with no
+  recovery (under 5 % of steady-reg states end on winning half the swing back; median
+  length 428-501 tournaments). The tagline and types.ts say so; do not write 'until you
+  win back half' again. Do not 'fix' it with the anchored exit either: windowed entries plus
+  the anchored exit bring the distance artifact back (7.9 / 32 / 49 % tilted at 10 000 /
+  50 000 / 100 000 at 1 000 players).
+- The slow tilt's mean (ROI +10 %: about +0.05 pp at 1 000 players, +0.2 pp at 3 000) is
+  gain x (up share - down share): an MTT path reaches a deep upswing through one score
+  sooner than an equally deep drawdown builds up. At gain 0.005 the shares are the same and
+  the shift is 10x smaller, so it is not the tilt feeding itself. It is not always
+  positive: on 20 000-player fields drawdowns hold more of the run (-0.18 pp), so the
+  tagline scopes its sentence to 'these field sizes'. A losing regular almost never enters
+  'down' over the window; do not write back that a +10 % and a -10 % player spend the same
+  share in each state.
+- Preset values belong to their window: realistic-solo is gain -0.02, scale 120 ABI over
+  250 tournaments; steady-reg 600 ABI over 1 000. The old 200 ABI and 2 000 ABI were fitted
+  to all-time extremes: do not put either back with a window, and do not move a window
+  apart from its depth without re-measuring both taglines.
+- Window extremes in the hot loop are found in blocks of W + 1 points (a backward suffix
+  pass when a block fills, against the current block's running extreme: the causal van
+  Herk / Gil-Werman form), in typed arrays allocated once per shard and reset per sample.
+  The code is inline because V8 does not inline a helper into simulateShard; a monotonic
+  deque was bit-exact but slower. Cost per tournament: slow windowed +28-31 ns, fast
+  windowed +7 ns.
 - Tilt depths (tiltFastScale, tiltSlowThreshold) are in average buy-ins in ControlsState and
   the presets, and in dollars in SimulationInput: buildSimulationInput multiplies by the
-  count-weighted mean ticket buyIn x (1 + rake). Payloads at schema v1 / v2 are matched
-  against V2_DOLLAR_TILT, the old dollar signatures, because hidden knobs survive a load
-  only as a preset signature; a plain dollars / ABI conversion would be dropped by that
-  rule.
-- Tilt state shares are not part of SimulationResult. The preset tests pin the tilt through
-  paired mean shifts (the preset against the same run with its gains at 0, same seed). The
-  quoted shares came from a temporary hot-loop counter that must never be committed.
+  count-weighted mean ticket buyIn x (1 + rake). Persistence is at schema v4. Payloads at
+  v1 / v2 are matched against V2_DOLLAR_TILT (dollar depths) and v3 payloads against
+  V3_ALL_TIME_TILT (solo 200 ABI, steady 2 000 ABI on all-time extremes), with the newer
+  keys left out of each match, because hidden knobs survive a load only as a preset
+  signature and a plain conversion would be dropped by that rule. tiltFastWindow and
+  tiltSlowWindow are profile keys. Changing a built-in tilt profile again needs a new
+  signature table and a schema bump, pinned in persistence.test.ts.
+- Tilt state shares are not part of SimulationResult. Mean shifts are pinned by paired runs
+  in modelPresets.test.ts (the preset against itself with its gains at 0, same seed);
+  shares, exit causes and state lengths by replaySlowWindow in engineNoise.test.ts, which
+  replays the app's steady-reg run with its noise in the engine's draw order and must equal
+  the engine's finalProfits bit for bit. When the hot loop's noise draws or their order
+  change, change the replica with them. Other quoted figures came from a temporary
+  instrumented hot loop that must never be committed.
+- scripts/result_digest.ts digests both tilt paths: scenario:*:noise carries the app's
+  windows, scenario:*:noise-all-time leaves them unset (the engine API default). A speed
+  change to the window code must keep both lines.
 - RoiStdErr is capped at ROI_STD_ERR_MAX (0.5) in the field. persistence.ts repeats it as a
   literal 0.5 in its clamp, and modelPresets.test.ts ties the two through decodeState.
 - PKO knockouts follow the uniform-killer progressive tree (compileEntry `pkoKoCash`, the

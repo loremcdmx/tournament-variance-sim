@@ -26,10 +26,12 @@ export type ModelFieldKey =
   | "tournamentsPerSession"
   | "tiltFastGain"
   | "tiltFastScale"
+  | "tiltFastWindow"
   | "tiltSlowGain"
   | "tiltSlowThreshold"
   | "tiltSlowMinDuration"
-  | "tiltSlowRecoveryFrac";
+  | "tiltSlowRecoveryFrac"
+  | "tiltSlowWindow";
 
 export type ModelPatch = Pick<ControlsState, ModelFieldKey>;
 
@@ -42,6 +44,17 @@ export interface ModelPreset {
 
 /** A day of multi-tabling: the session shock and the drift step are redrawn this often. */
 export const DEFAULT_TOURNAMENTS_PER_SESSION = 50;
+
+/**
+ * How far back, in tournaments, each tilt looks for the best (and, for the
+ * slow one, the worst) point it measures a swing from. Over the whole run the
+ * gap to that point grows like the square root of the tournaments played, so
+ * how often a tilt fires would grow with the distance; over a trailing window
+ * it settles within two windows. Five sessions for the fast tilt, twenty for
+ * the slow one.
+ */
+export const DEFAULT_TILT_FAST_WINDOW = 250;
+export const DEFAULT_TILT_SLOW_WINDOW = 1000;
 
 // Canonical "all-zero shocks" baseline. Individual presets override only
 // the fields they care about, so we keep new fields backwards-compat by
@@ -59,10 +72,12 @@ const ZERO_SHOCKS: ModelPatch = {
   tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
   tiltFastGain: 0,
   tiltFastScale: 0,
+  tiltFastWindow: DEFAULT_TILT_FAST_WINDOW,
   tiltSlowGain: 0,
   tiltSlowThreshold: 0,
   tiltSlowMinDuration: 500,
   tiltSlowRecoveryFrac: 0.5,
+  tiltSlowWindow: DEFAULT_TILT_SLOW_WINDOW,
 };
 
 export const STANDARD_PRESETS: ModelPreset[] = [
@@ -98,10 +113,12 @@ export const STANDARD_PRESETS: ModelPreset[] = [
       roiShockPerTourney: 0.3,
       roiShockPerSession: 0.05,
       roiDriftSigma: 0.01,
-      // Mild by construction: the gain caps the drag at 2 pp, and a scale of
-      // 200 average buy-ins keeps tanh off its plateau for typical drawdowns.
+      // Mild by construction: the gain caps the drag at 2 pp, and against the
+      // best point of the last 250 tournaments a scale of 120 average buy-ins
+      // keeps tanh near half way for the drawdowns of a 500-3000-player field.
       tiltFastGain: -0.02,
-      tiltFastScale: 200,
+      tiltFastScale: 120,
+      tiltFastWindow: DEFAULT_TILT_FAST_WINDOW,
     },
   },
   {
@@ -117,14 +134,15 @@ export const STANDARD_PRESETS: ModelPreset[] = [
       tiltFastGain: 0,
       tiltFastScale: 0,
       tiltSlowGain: 0.05,
-      // Average buy-ins on the drift-free path. Swings are read from all-time
-      // extremes, so they grow like the square root of distance x field
-      // variance and no fixed depth is rare everywhere: 2000 keeps a
-      // 500-3000-player regular under about 7 % of a 10 000-tournament run,
-      // while a 1000-player run of 50 000 sits about 40 % in a tilt state.
-      tiltSlowThreshold: 2000,
+      // Average buy-ins on the drift-free path, from the extremes of the last
+      // 1000 tournaments, so the share of a run spent tilted does not grow
+      // with the distance, only with the field (bigger fields swing more in
+      // buy-ins). 600 keeps it small: about 1 % of a run for a 1000-player
+      // regular, 6-7 % at 3000.
+      tiltSlowThreshold: 600,
       tiltSlowMinDuration: 500,
       tiltSlowRecoveryFrac: 0.5,
+      tiltSlowWindow: DEFAULT_TILT_SLOW_WINDOW,
     },
   },
 ];
@@ -190,10 +208,12 @@ export function sanitizeControlsForBasicMode(
     tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
     tiltFastGain: 0,
     tiltFastScale: 0,
+    tiltFastWindow: DEFAULT_TILT_FAST_WINDOW,
     tiltSlowGain: 0,
     tiltSlowThreshold: 0,
     tiltSlowMinDuration: 500,
     tiltSlowRecoveryFrac: 0.5,
+    tiltSlowWindow: DEFAULT_TILT_SLOW_WINDOW,
     compareEnabled: false,
     samples: Math.min(state.samples, BASIC_MODE_MAX_SAMPLES),
   };

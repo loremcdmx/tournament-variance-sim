@@ -129,26 +129,27 @@ for (const scenario of SCENARIOS) {
       `scenario:${scenario.id}:primedope`,
       runSimulation({ ...input, calibrationMode: "primedope-binary-itm" }),
     );
+    const noise: SimulationInput = {
+      ...input,
+      roiStdErr: 0.05,
+      roiShockPerTourney: 0.02,
+      roiShockPerSession: 0.03,
+      roiDriftSigma: 0.02,
+      tiltFastGain: 0.03,
+      tiltFastScale: 500,
+      tiltSlowGain: 0.02,
+      tiltSlowThreshold: 300,
+      tiltSlowMinDuration: 20,
+      tiltSlowRecoveryFrac: 0.5,
+      rakebackFracOfRake: 0.3,
+      collectDownsideReport: true,
+    };
+    report(`scenario:${scenario.id}:noise`, runSharded(noise, [333]));
+    // The app sends tilt windows; an engine API caller that leaves them out
+    // gets the extremes of the whole sample, a path of its own.
     report(
-      `scenario:${scenario.id}:noise`,
-      runSharded(
-        {
-          ...input,
-          roiStdErr: 0.05,
-          roiShockPerTourney: 0.02,
-          roiShockPerSession: 0.03,
-          roiDriftSigma: 0.02,
-          tiltFastGain: 0.03,
-          tiltFastScale: 500,
-          tiltSlowGain: 0.02,
-          tiltSlowThreshold: 300,
-          tiltSlowMinDuration: 20,
-          tiltSlowRecoveryFrac: 0.5,
-          rakebackFracOfRake: 0.3,
-          collectDownsideReport: true,
-        },
-        [333],
-      ),
+      `scenario:${scenario.id}:noise-all-time`,
+      runSharded({ ...noise, tiltFastWindow: undefined, tiltSlowWindow: undefined }, [333]),
     );
   }
 }

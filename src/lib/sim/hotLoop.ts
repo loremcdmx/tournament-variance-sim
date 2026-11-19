@@ -230,6 +230,30 @@ function simulateShardInternal(
   );
   const tiltSlowOn =
     tiltSlowGain !== 0 && tiltSlowThreshold > 0 && tiltSlowMinDur > 0;
+  const tiltSlowHoldFrac = 1 - tiltSlowRecFrac;
+  // An extreme over the whole sample drifts away like sqrt(distance), so a
+  // fixed depth fires ever more often on a longer run; over a trailing window
+  // the swing a tilt reads is stationary. Unset or under 1 keeps the
+  // all-time extremes.
+  //
+  // The window of point k holds the points k - W .. k. Cut the path into
+  // blocks of B = W + 1 points: the window is the tail of the previous block
+  // and the head of the current one, so its extreme is the previous block's
+  // suffix extreme (one backward pass when a block fills) against the
+  // current block's running one: O(1) amortised, and unlike a monotonic
+  // deque no loop runs a data-dependent number of times. With W >= N the
+  // whole run is one block.
+  const tiltFastWindow = Math.floor(input.tiltFastWindow ?? 0);
+  const tiltSlowWindow = Math.floor(input.tiltSlowWindow ?? 0);
+  const fastWindowed = tiltFastOn && tiltFastWindow >= 1;
+  const slowWindowed = tiltSlowOn && tiltSlowWindow >= 1;
+  const fastBlock = fastWindowed ? Math.min(tiltFastWindow, N) + 1 : 0;
+  const fastBlockVals = new Float64Array(fastBlock);
+  const fastSuffixMax = new Float64Array(fastBlock);
+  const slowBlock = slowWindowed ? Math.min(tiltSlowWindow, N) + 1 : 0;
+  const slowBlockVals = new Float64Array(slowBlock);
+  const slowSuffixMax = new Float64Array(slowBlock);
+  const slowSuffixMin = new Float64Array(slowBlock);
   // Slow tilt reads its swings off profit minus this prefix: on raw profit a
   // winner's rise from the all-time low only grows and "up" would never end.
   const expectedProfitPrefix = downsideReport || tiltSlowOn ? new Float64Array(N) : null;
@@ -308,6 +332,19 @@ function simulateShardInternal(
     let tiltExpected = 0;
     let tiltXMax = 0;
     let tiltXMin = 0;
+    // The first block starts with the point before the first tournament,
+    // profit 0, as the all-time extremes do; the window reads below are kept
+    // in tiltFastPeak / tiltXMax / tiltXMin.
+    let tiltFastPeak = 0;
+    let fastBlockAt = 1;
+    let fastBlockMax = 0;
+    let fastHasPrev = false;
+    if (fastWindowed) fastBlockVals[0] = 0;
+    let slowBlockAt = 1;
+    let slowBlockMax = 0;
+    let slowBlockMin = 0;
+    let slowHasPrev = false;
+    if (slowWindowed) slowBlockVals[0] = 0;
     let profit = 0;
     let runningMax = 0;
     let runningMin = 0;
@@ -356,8 +393,9 @@ function simulateShardInternal(
 
       let tiltShift = 0;
       if (tiltFastOn) {
+        const peak = fastWindowed ? tiltFastPeak : runningMax;
         tiltShift +=
-          tiltFastGain * Math.tanh((runningMax - profit) / tiltFastScale);
+          tiltFastGain * Math.tanh((peak - profit) / tiltFastScale);
       }
       if (tiltSlowOn) {
         const x = profit - tiltExpected;
@@ -385,14 +423,25 @@ function simulateShardInternal(
           }
         } else if (tiltState === -1) {
           tiltShift -= tiltSlowGain;
-          if (x - tiltAnchor >= tiltSlowRecFrac * tiltSwingMag) {
+          // Winning back that share of the swing is the gap to the peak
+          // shrinking to the rest of it. Read from the window's peak, an old
+          // peak stops holding the state once it is forgotten.
+          if (
+            slowWindowed
+              ? tiltXMax - x <= tiltSlowHoldFrac * tiltSwingMag
+              : x - tiltAnchor >= tiltSlowRecFrac * tiltSwingMag
+          ) {
             tiltState = 0;
             tiltStreakLen = 0;
             tiltStreakSide = 0;
           }
         } else {
           tiltShift += tiltSlowGain;
-          if (tiltAnchor - x >= tiltSlowRecFrac * tiltSwingMag) {
+          if (
+            slowWindowed
+              ? x - tiltXMin <= tiltSlowHoldFrac * tiltSwingMag
+              : tiltAnchor - x >= tiltSlowRecFrac * tiltSwingMag
+          ) {
             tiltState = 0;
             tiltStreakLen = 0;
             tiltStreakSide = 0;
@@ -545,8 +594,54 @@ function simulateShardInternal(
       if (tiltSlowOn) {
         tiltExpected = expectedProfitPrefix![i];
         const x = profit - tiltExpected;
-        if (x > tiltXMax) tiltXMax = x;
-        else if (x < tiltXMin) tiltXMin = x;
+        if (slowWindowed) {
+          // Inline on purpose: V8 does not inline a helper into this function.
+          slowBlockVals[slowBlockAt] = x;
+          if (x > slowBlockMax) slowBlockMax = x;
+          if (x < slowBlockMin) slowBlockMin = x;
+          tiltXMax = slowBlockMax;
+          tiltXMin = slowBlockMin;
+          if (slowHasPrev && slowBlockAt + 1 < slowBlock) {
+            if (slowSuffixMax[slowBlockAt + 1] > tiltXMax) tiltXMax = slowSuffixMax[slowBlockAt + 1];
+            if (slowSuffixMin[slowBlockAt + 1] < tiltXMin) tiltXMin = slowSuffixMin[slowBlockAt + 1];
+          }
+          if (++slowBlockAt === slowBlock) {
+            let hi = slowBlockVals[slowBlock - 1];
+            let lo = hi;
+            for (let j = slowBlock - 1; j >= 0; j--) {
+              const v = slowBlockVals[j];
+              if (v > hi) hi = v;
+              if (v < lo) lo = v;
+              slowSuffixMax[j] = hi;
+              slowSuffixMin[j] = lo;
+            }
+            slowBlockAt = 0;
+            slowBlockMax = Number.NEGATIVE_INFINITY;
+            slowBlockMin = Number.POSITIVE_INFINITY;
+            slowHasPrev = true;
+          }
+        } else {
+          if (x > tiltXMax) tiltXMax = x;
+          else if (x < tiltXMin) tiltXMin = x;
+        }
+      }
+      if (fastWindowed) {
+        fastBlockVals[fastBlockAt] = profit;
+        if (profit > fastBlockMax) fastBlockMax = profit;
+        tiltFastPeak = fastBlockMax;
+        if (fastHasPrev && fastBlockAt + 1 < fastBlock && fastSuffixMax[fastBlockAt + 1] > tiltFastPeak) {
+          tiltFastPeak = fastSuffixMax[fastBlockAt + 1];
+        }
+        if (++fastBlockAt === fastBlock) {
+          let hi = fastBlockVals[fastBlock - 1];
+          for (let j = fastBlock - 1; j >= 0; j--) {
+            if (fastBlockVals[j] > hi) hi = fastBlockVals[j];
+            fastSuffixMax[j] = hi;
+          }
+          fastBlockAt = 0;
+          fastBlockMax = Number.NEGATIVE_INFINITY;
+          fastHasPrev = true;
+        }
       }
       rowProfits[rowBase + t.rowIdx] += delta;
       if (satelliteSeatsWon && t.isSatellite && t.prizeByPlace[leaderboardPlace] > 0) {

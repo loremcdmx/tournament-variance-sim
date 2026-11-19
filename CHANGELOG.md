@@ -98,20 +98,33 @@ for the same inputs, the entry says for which rows.
   tournaments). A warning appears only when the whole run fits into one
   session.
 - The tilt depths in both advanced models are now measured in average buy-ins,
-  so a model means the same player at every stake. 'Solo player, real life'
-  now has a mild fast tilt: about 0.8 to 1.2 pp of ROI below the expected
-  profit for a typical regular, at any stake. Before, it took up to 15 pp off
-  from about $20 buy-ins.
-- 'Steady regular' now measures its slow tilt against your expected-profit
-  line, so a winning player no longer sits in the upswing state for most of a
-  long run, and a losing player no longer sits in the downswing state. It
-  fires only on swings deeper than 2 000 buy-ins held for 500 tournaments.
-  That is rare for regulars in fields of up to 3 000 players over 10 000
-  tournaments, and it grows with field size and distance; its description
-  says so. The Expected profit card says 'before tilt' while a tilt is on.
-- Saved setups, share links and user presets from before this change keep
-  their model: the old dollar tilt values are recognised and loaded in the
-  new units.
+  so a model means the same player at every stake (before, 'Solo player, real
+  life' took up to 15 pp of ROI off from about $20 buy-ins), and both tilts
+  look back over a fixed stretch of recent tournaments instead of the whole
+  run, so how often they fire no longer grows with the distance. Before, a
+  long run ended up tilted most of the time ('Steady regular' about 40 % of a
+  50,000-tournament run on 1,000-player fields; the solo tilt held a
+  break-even or losing player at its full drag).
+- 'Solo player, real life': the fast tilt measures your drawdown from your
+  best point of the last 250 tournaments and takes up to 2 pp off your ROI,
+  half of that at about 70 buy-ins down. On a 1,000-player schedule at +10 %
+  ROI the runs average about 0.9 pp of ROI below the expected profit over
+  1,000, 10,000 or 50,000 tournaments, at any stake (about 0.8 pp at 500
+  players and 1.2 pp at 3,000).
+- 'Steady regular': the slow tilt counts its swings against your
+  expected-profit line over the last 1,000 tournaments, so a winning player
+  no longer sits in the upswing state for most of a run and a losing player
+  not in the downswing state. It fires after 500 tournaments straight more
+  than 600 buy-ins below your best point of that stretch, or above your
+  lowest point, and usually ends when that point drops out of the last 1,000
+  tournaments, typically after 400 to 500 tournaments. At +10 % ROI a
+  1,000-player regular is tilted about 1 % of a run and a 3,000-player
+  regular 6-7 %, the same over 10,000 or 100,000 tournaments; it fires more
+  in bigger fields and at higher ROI. The Expected profit card says 'before
+  tilt' while a tilt is on.
+- Saved setups, share links and user presets from before these changes keep
+  their model: a 'Solo player, real life' or 'Steady regular' profile saved
+  with the old dollar or all-time tilt values loads with the new settings.
 - PKO rows now play every knockout on the model's own elimination tree
   instead of drawing a Poisson knockout count with a flat head-size noise. A
   tournament winner always collects at least their own final head; before, a

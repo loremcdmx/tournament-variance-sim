@@ -588,7 +588,8 @@ export interface SimulationInput {
    * `tiltFastGain · tanh(currentDrawdown / tiltFastScale)`, reacting within
    * tens of tournaments. Use for nervous grinders whose play degrades the
    * second they go down. The drawdown is measured against the sample's
-   * running max, so it decays back to 0 whenever a new high is made.
+   * running max (over the last `tiltFastWindow` tournaments when that is
+   * set), so it decays back to 0 whenever a new high is made.
    *
    *  - tiltFastGain ∈ [−1, 1]: ROI shift at saturation. −0.3 = "loses 30 pp
    *    of ROI at a deep drawdown" (typical tilter); +0.2 = "plays sharper
@@ -598,8 +599,9 @@ export interface SimulationInput {
    *    with a scale of a few dozen buy-ins the shift is close to the full
    *    gain all the time. The app stores it in average buy-ins and converts
    *    (`buildSimulationInput`), so a profile means the same player at every
-   *    stake: `realistic-solo` is −0.02 at 200 ABI, about −0.8 pp of ROI over
-   *    1 000 tournaments of a 1000-player field and −1.2 pp over 10 000.
+   *    stake: `realistic-solo` is −0.02 at 120 ABI over a 250-tournament
+   *    window, about −0.9 pp of ROI over 1 000, 10 000 or 50 000 tournaments
+   *    of a 1000-player field.
    *    Defaults to 0, which is only reachable together with a non-zero gain
    *    as a mis-configuration: the hot loop floors the divisor at $1 to avoid
    *    a division by zero, so the shift saturates from the first dollar of
@@ -607,6 +609,18 @@ export interface SimulationInput {
    */
   tiltFastGain?: number;
   tiltFastScale?: number;
+  /**
+   * Tournaments of the sample the fast tilt's peak is taken over: the peak is
+   * the best profit at the current point or any of the last
+   * `tiltFastWindow`. Against the all-time peak a break-even or losing
+   * player's drawdown only grows, and the shift sits at 90 % of the gain or
+   * more for most of a long run (`realistic-solo` with the all-time peak at
+   * 200 ABI, ROI −10 %, 1000 players: 72 % of a 10 000-tournament run, 93 %
+   * of a 50 000 one); over a trailing window the drawdown is stationary and
+   * so is the drag. Unset, NaN or under 1 keeps the all-time peak (engine
+   * API callers keep their bytes). The app always sends it (250 by default).
+   */
+  tiltFastWindow?: number;
 
   /**
    * SLOW tilt — state-machine with hysteresis. Player sits in `normal` until
@@ -618,24 +632,25 @@ export interface SimulationInput {
    * `down`, ROI shifts by `−tiltSlowGain`; while in `up`, by `+tiltSlowGain`
    * — note this is the opposite sign convention from `tiltFastGain`, so here
    * +0.1 is the tilter who bleeds 10 pp of ROI while stuck in a downswing.
-   * State exits only after recovering `tiltSlowRecoveryFrac` of the original
-   * swing.
+   * With `tiltSlowWindow` unset a state exits only after recovering
+   * `tiltSlowRecoveryFrac` of the swing that started it; over a window the
+   * exit reads the window's extreme instead, which in practice makes it a
+   * timer (see `tiltSlowWindow`).
    *
    * Both swings and both exits are read on the drift-free path
    * x = profit − (expected profit of the entries played so far): the
-   * drawdown is runningMax(x) − x and the upswing x − runningMin(x). On raw
-   * profit a winner's rise from the all-time low only grows, so `up` became
-   * near-permanent for a winner and `down` for a loser. On x a +10 % and a
-   * −10 % player spend about the same share of a long run in each state. An
-   * MTT path reaches a deep upswing (a score) sooner than an equally deep
-   * drawdown (a bleed), so `up` holds a little more of the run than `down`
-   * and the mean shift is gain × (up share − down share), slightly positive
-   * (`steady-reg`: about +0.15 pp of ROI over 10 000 tournaments of a
-   * 3000-player field). The swings are read from all-time extremes, so they
-   * grow like √(distance) × the field's per-entry spread and the share of
-   * the run spent tilted grows with both: no fixed depth is rare at every
-   * field and distance. The threshold is dollars here; the app stores it in
-   * average buy-ins.
+   * drawdown is max(x) − x and the upswing x − min(x). On raw profit a
+   * winner's rise from the low only grows, so `up` became near-permanent for
+   * a winner and `down` for a loser. On x neither is pinned to a state, but
+   * the path is not symmetric: an MTT path reaches a deep upswing (a score)
+   * sooner than an equally deep drawdown (a bleed), so `up` holds more of the
+   * run than `down` and the mean shift is gain × (up share − down share).
+   * `steady-reg` (1000-tournament window, 600 ABI) at 3000 players: +10 %
+   * ROI is up 5.3 % and down 1.5 % of a long run (+0.2 pp of ROI), −10 % up
+   * 3.5 % and almost never down, +30 % up 7.0 % and down 4.8 %; at 1000
+   * players +10 % is up 1.0 % and down 0.1 % (+0.05 pp). On very big fields
+   * the sign turns (20 000 players: up 11 %, down 15 %, −0.18 pp). The
+   * threshold is dollars here; the app stores it in average buy-ins.
    *
    * Defaults when unset: gain=0, threshold=0, minDuration=500 tournaments,
    * recoveryFrac=0.5. The channel is gated on gain ≠ 0 AND threshold > 0 AND
@@ -646,6 +661,40 @@ export interface SimulationInput {
   tiltSlowThreshold?: number;
   tiltSlowMinDuration?: number;
   tiltSlowRecoveryFrac?: number;
+  /**
+   * Tournaments of the sample the slow tilt's extremes are taken over: max(x)
+   * and min(x) above cover the current point and the last `tiltSlowWindow`.
+   * Over the whole run they drift away like √(distance) × the field's
+   * per-entry spread, so the share of a run spent tilted grows with the
+   * distance (`steady-reg` with all-time extremes at 2000 ABI, 1000 players,
+   * ROI +10 %: under 1 % of 10 000 tournaments, 38 % of 50 000, 65 % of
+   * 100 000). Over a trailing window it stops growing once the window has
+   * filled: `steady-reg` (1000 tournaments, 600 ABI, ROI +10 %) spends about
+   * 1 % of a run tilted at 1000 players and 6-7 % at 3000 from 10 000
+   * tournaments to 100 000 (10 000 players: 17 % of 10 000 tournaments,
+   * 20 % of 50 000 or 100 000); it cannot fire in the first
+   * `tiltSlowMinDuration` tournaments and rarely does in the first 1000.
+   *
+   * A state ends once the remaining swing, read over the window, is back to
+   * (1 − `tiltSlowRecoveryFrac`) of the swing that started it. While the
+   * extreme it started from is in the window that is the anchored exit, but
+   * that extreme was usually set before the entry streak and leaves the
+   * window first; the window's later extreme is nearer, so the gap shrinks
+   * with no recovery at all. A state is in practice a timer: `steady-reg`
+   * states last a median 430 (1000 players) to 500 (3000) tournaments, under
+   * 5 % of them end on winning half the swing back, and over 40 % end
+   * further out than they entered. The recovery fraction mostly sets that
+   * timer (1000 players: 0.6 / 1.1 / 1.7 / 3.2 % of a run tilted at 0.25 /
+   * 0.5 / 0.75 / 1). The anchored exit is no alternative: a `down` state
+   * bleeds the gain, and winning half the swing back can take the rest of
+   * the run (windowed entries with it: 8 / 32 / 49 % of a run tilted at 10 000
+   * / 50 000 / 100 000 tournaments, 1000 players).
+   *
+   * Unset, NaN or under 1 keeps the all-time extremes and the anchored exit
+   * (engine API callers keep their bytes). The app always sends it (1000 by
+   * default).
+   */
+  tiltSlowWindow?: number;
 }
 
 export interface RowDecomposition {

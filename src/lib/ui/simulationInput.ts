@@ -66,10 +66,12 @@ export function buildSimulationInput(
     tournamentsPerSession: effectiveControls.tournamentsPerSession,
     tiltFastGain: effectiveControls.tiltFastGain,
     tiltFastScale: effectiveControls.tiltFastScale * abi,
+    tiltFastWindow: effectiveControls.tiltFastWindow,
     tiltSlowGain: effectiveControls.tiltSlowGain,
     tiltSlowThreshold: effectiveControls.tiltSlowThreshold * abi,
     tiltSlowMinDuration: effectiveControls.tiltSlowMinDuration,
     tiltSlowRecoveryFrac: effectiveControls.tiltSlowRecoveryFrac,
+    tiltSlowWindow: effectiveControls.tiltSlowWindow,
     rakebackFracOfRake: effectiveControls.rakebackPct / 100,
     battleRoyaleLeaderboardPromo: buildBattleRoyaleLeaderboardPromoConfig(
       effectiveControls.battleRoyaleLeaderboard,

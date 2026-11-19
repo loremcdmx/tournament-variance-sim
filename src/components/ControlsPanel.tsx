@@ -77,14 +77,17 @@ export interface ControlsState {
   /**
    * Tilt mechanics — see types.ts. `tiltFastScale` and `tiltSlowThreshold`
    * are in average buy-ins of the schedule here (dollars in the engine), so a
-   * profile means the same player at every stake.
+   * profile means the same player at every stake. The windows are in
+   * tournaments in both.
    */
   tiltFastGain: number;
   tiltFastScale: number;
+  tiltFastWindow: number;
   tiltSlowGain: number;
   tiltSlowThreshold: number;
   tiltSlowMinDuration: number;
   tiltSlowRecoveryFrac: number;
+  tiltSlowWindow: number;
   /** Active model preset id. "custom" when user has hand-tuned. */
   modelPresetId: string;
   /** Global player ITM% default. Applied to every row that doesn't carry

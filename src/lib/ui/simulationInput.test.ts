@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ControlsState } from "@/components/ControlsPanel";
 import { SCENARIOS } from "@/lib/scenarios";
-import { BASIC_MODE_MAX_SAMPLES, DEFAULT_TOURNAMENTS_PER_SESSION } from "@/lib/sim/modelPresets";
+import {
+  BASIC_MODE_MAX_SAMPLES,
+  DEFAULT_TILT_FAST_WINDOW,
+  DEFAULT_TILT_SLOW_WINDOW,
+  DEFAULT_TOURNAMENTS_PER_SESSION,
+} from "@/lib/sim/modelPresets";
 import { applyItmTarget } from "@/lib/sim/itmTarget";
 import { compileSchedule } from "@/lib/sim/engine";
 import type { TournamentRow } from "@/lib/sim/types";
@@ -130,5 +135,16 @@ describe("buildSimulationInput: tilt depths and session length", () => {
     expect(basic.tournamentsPerSession).toBe(DEFAULT_TOURNAMENTS_PER_SESSION);
     expect(basic.tiltFastScale).toBe(0);
     expect(basic.tiltSlowThreshold).toBe(0);
+  });
+
+  it("sends the tilt windows as tournaments, and basic mode sends the defaults", () => {
+    const schedule: TournamentRow[] = [{ ...row, count: 20 }, { ...row, id: "r2", buyIn: 5, count: 10 }];
+    const windows = { tiltFastWindow: 120, tiltSlowWindow: 1500 };
+    const input = buildSimulationInput(schedule, controls(windows), true);
+    expect(input.tiltFastWindow).toBe(120);
+    expect(input.tiltSlowWindow).toBe(1500);
+    const basic = buildSimulationInput(schedule, controls(windows), false);
+    expect(basic.tiltFastWindow).toBe(DEFAULT_TILT_FAST_WINDOW);
+    expect(basic.tiltSlowWindow).toBe(DEFAULT_TILT_SLOW_WINDOW);
   });
 });
