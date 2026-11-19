@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type {
+  CalibrationWarning,
   SimulationResult,
   TournamentRow,
 } from "@/lib/sim/types";
@@ -22,6 +23,12 @@ import { useMoneyFmt } from "./UnitContext";
 import { Card } from "../ui/Section";
 import { InfoTooltip } from "../ui/Tooltip";
 
+const CALIBRATION_NOTICE_KEY = {
+  "primedope-target-clamped": "pd.calibrationClamped",
+  "primedope-free-itm-unreachable": "pd.freeItmUnreachable",
+  "target-unreachable": "calibration.targetUnreachable",
+} as const satisfies Record<CalibrationWarning["kind"], string>;
+
 export function CalibrationNotices({ result, schedule }: {
   result: SimulationResult;
   schedule?: TournamentRow[];
@@ -34,7 +41,7 @@ export function CalibrationNotices({ result, schedule }: {
     <ul role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-[color:var(--c-warn-fg-soft)]">
       {warnings.map((warning, index) => (
         <li key={`${warning.rowId}-${index}`}>
-          {fmt(t(warning.kind === "target-unreachable" ? "calibration.targetUnreachable" : "pd.calibrationClamped"), {
+          {fmt(t(CALIBRATION_NOTICE_KEY[warning.kind]), {
             row: schedule?.find((row) => row.id === warning.rowId)?.label || warning.rowId,
             target: formatPerUnitAmount(warning.targetWinnings, "money", 1, numberLocaleTag(locale)),
             actual: formatPerUnitAmount(warning.actualWinnings, "money", 1, numberLocaleTag(locale)),

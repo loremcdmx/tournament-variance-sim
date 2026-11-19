@@ -127,10 +127,15 @@ export interface TournamentRow {
    * grinders don't actually cash much more often than no-skill players —
    * their edge shows up in running deeper when they do cash. When the cash
    * target is at least breakeven, the fixed-ITM solver also keeps P(1st)
-   * from falling below the no-skill equilibrium 1 / field size; bounty rows
-   * reconcile any impossible cash/KO split through residual bounty EV.
+   * from falling below the no-skill equilibrium 1 / field size; below
+   * breakeven that floor falls linearly to nothing over the next 10% of the
+   * no-skill cash winnings, met by mixing in the floored solution. Bounty
+   * rows reconcile any impossible cash/KO split through residual bounty EV.
    * Undefined = old α-calibration behaviour where ITM rate is a free
-   * parameter that scales with ROI. Ignored in primedope-binary-itm mode.
+   * parameter that scales with ROI. The primedope-binary-itm pass ignores it
+   * under PD's finish model; with that model off it plays it on PD's table and
+   * pool, and frees it (with the finish locks) where that misses the ROI and
+   * a free ITM comes closer.
    */
   itmRate?: number;
 
@@ -832,7 +837,7 @@ export type BattleRoyaleLeaderboardPromoResult =
 
 export interface CalibrationWarning {
   rowId: string;
-  kind: "primedope-target-clamped" | "target-unreachable";
+  kind: "primedope-target-clamped" | "primedope-free-itm-unreachable" | "target-unreachable";
   targetWinnings: number;
   actualWinnings: number;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compileSchedule } from "./compile";
+import { withinTargetEv } from "./finishModel";
 import { runSimulation } from "./engine";
 import { computeRowStats } from "./previewRowStats";
 import { applyItmTarget } from "./itmTarget";
@@ -137,21 +138,99 @@ describe("the PrimeDope pass with PD's finish model off", () => {
       "primedope-binary-itm",
     );
 
-  it("says it missed the target when the row's ITM lands on PD's one-place table", () => {
-    // PD pays 1 place of 9 from a pool of 9 x $9: the row's 1/3 ITM wins $81
-    // a third of the time, $27 a ticket against the $11.55 the ROI asks for.
+  it("frees the ITM where the row's ITM cannot pay the ROI on PD's one-place table", () => {
+    // PD pays 1 place of 9 from a pool of 9 x $9: the row's 1/3 ITM would win
+    // $81 a third of the time, $27 a ticket against the $11.55 the ROI asks for.
     const c = pd(sng);
-    expect(c.calibrationWarnings).toEqual([
-      { rowId: "sng", kind: "primedope-target-clamped", targetWinnings: 11.55, actualWinnings: 27 },
-    ]);
-    expect(c.expectedProfit).toBeCloseTo(200 * (27 - 11), 9);
+    expect(c.calibrationWarnings).toBeUndefined();
+    expect(withinTargetEv(c.flat[0].analyticMeanSingle, 11.55)).toBe(true);
+    expect(c.expectedProfit).toBeCloseTo(200 * 11 * 0.05, 9);
+    expect(c.flat[0].itm).toBeLessThan(3 / 9);
   });
 
-  it("stays quiet on a row the pass still hits, and for a model that never aims at the ROI", () => {
-    const mtt = pd({ ...sng, players: 1000, payoutStructure: "mtt-standard", itmRate: 0.15 });
-    expect(mtt.calibrationWarnings).toBeUndefined();
-    expect(mtt.expectedProfit).toBeCloseTo(200 * 11 * 0.05, 6);
+  it("gives a heads-up 65/35 row at ITM 100% a real match to lose", () => {
+    const c = pd({ ...sng, id: "hu", players: 2, payoutStructure: "sng-65-35", itmRate: 1, roi: 0.02 });
+    expect(c.calibrationWarnings).toBeUndefined();
+    expect(withinTargetEv(c.flat[0].analyticMeanSingle, 11 * 1.02)).toBe(true);
+    expect(c.flat[0].itm).toBeGreaterThan(0.5);
+    expect(c.flat[0].itm).toBeLessThan(1);
+  });
+
+  it("lets a stripped Battle Royale row play the ROI it is given", () => {
+    const br = (roi: number) => pd({
+      ...sng, id: "br", players: 18, payoutStructure: "battle-royale", gameType: "mystery-royale", itmRate: 0.18, roi,
+    });
+    for (const roi of [0.03, 0.08]) {
+      const c = br(roi);
+      expect(c.calibrationWarnings).toBeUndefined();
+      expect(withinTargetEv(c.flat[0].analyticMeanSingle, 11 * (1 + roi))).toBe(true);
+    }
+  });
+
+  it("keeps the ITM and the bytes of a row the pass already hits", () => {
+    const mtt = { ...sng, players: 1000, payoutStructure: "mtt-standard" as const, itmRate: 0.15 };
+    const c = pd(mtt);
+    expect(c.calibrationWarnings).toBeUndefined();
+    expect(c.expectedProfit).toBeCloseTo(200 * 11 * 0.05, 6);
+    expect(c.flat[0].itm).toBeCloseTo(0.15, 12);
     expect(pd(sng, { id: "uniform" }).calibrationWarnings).toBeUndefined();
+  });
+
+  it("samples the ROI it prints on the auditors' rows", () => {
+    // 4000 runs x 200 tournaments, seed 42. Bound: the simulated mean sits
+    // within 4 standard errors of cost x ROI (|z| <= 1.3 here). The stamped
+    // ITM played +145%, +64% with every match won, -9.5% and -18.2%.
+    const rows: [TournamentRow, boolean][] = [
+      [sng, true],
+      [{ ...sng, id: "hu", players: 2, payoutStructure: "sng-65-35", itmRate: 1, roi: 0.02 }, true],
+      [{ ...sng, id: "wta", players: 2, rake: 0.05, payoutStructure: "winner-takes-all", itmRate: 0.5, roi: 0.03 }, true],
+      [{ ...sng, id: "sat", players: 100, payoutStructure: "satellite-ticket", itmRate: 0.1, roi: 0.2 }, false],
+    ];
+    for (const [r, pdPayouts] of rows) {
+      const result = runSimulation(input(r, {
+        samples: 4000, scheduleRepeats: 200, seed: 42, finishModel: { id: "powerlaw-realdata-influenced" },
+        calibrationMode: "primedope-binary-itm", usePrimedopeFinishModel: false, usePrimedopePayouts: pdPayouts,
+      }));
+      const typed = 200 * r.buyIn * (1 + r.rake) * r.roi;
+      const fp = result.finalProfits;
+      const mean = fp.reduce((a, b) => a + b, 0) / fp.length;
+      const se = Math.sqrt(fp.reduce((a, b) => a + (b - mean) ** 2, 0) / (fp.length - 1) / fp.length);
+      expect(result.calibrationWarnings).toBeUndefined();
+      expect(result.expectedProfit).toBeCloseTo(typed, 9);
+      expect(Math.abs(mean - typed)).toBeLessThan(4 * se);
+    }
+  });
+
+  it("keeps the row's ITM where a free ITM would land further from the ROI", () => {
+    // 100-runner satellite on its own table (PD payouts off) at +100%: the
+    // pinned 25% pays $22.50 against $22; linear skill with a free ITM tops
+    // out far below that.
+    const sat: TournamentRow = {
+      ...sng, id: "sat", players: 100, payoutStructure: "satellite-ticket", itmRate: 0.25, roi: 1,
+    };
+    const c = compileSchedule(
+      input(sat, {
+        samples: 10, scheduleRepeats: 200, finishModel: { id: "linear-skill" },
+        usePrimedopeFinishModel: false, usePrimedopePayouts: false,
+      }),
+      "primedope-binary-itm",
+    );
+    expect(c.flat[0].itm).toBeCloseTo(0.25, 12);
+    expect(c.calibrationWarnings).toEqual([
+      { rowId: "sat", kind: "primedope-free-itm-unreachable", targetWinnings: 22, actualWinnings: 22.5 },
+    ]);
+    expect(c.expectedProfit).toBeCloseTo(200 * (22.5 - 11), 9);
+  });
+
+  it("warns once, with its own notice, when no ITM on PD's table reaches the ROI", () => {
+    // Heads-up winner-takes-all at +100%: $22 a ticket from a $18 pool.
+    const hu: TournamentRow = { ...sng, id: "wta", players: 2, payoutStructure: "winner-takes-all", itmRate: 0.5, roi: 1 };
+    const c = pd(hu);
+    expect(c.calibrationWarnings).toHaveLength(1);
+    expect(c.calibrationWarnings?.[0]).toMatchObject({ rowId: "wta", kind: "primedope-free-itm-unreachable", targetWinnings: 22 });
+    const e = c.flat[0];
+    expect(e.analyticMeanSingle).toBeLessThan(18);
+    expect(c.expectedProfit).toBeCloseTo(200 * (e.analyticMeanSingle - 11), 9);
   });
 });
 

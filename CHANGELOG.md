@@ -40,9 +40,31 @@ for the same inputs, the entry says for which rows.
 - Empirical finish model: a pasted finish history now plays over the whole
   field with its own ITM, instead of being squeezed into the paid places at
   the row's ITM.
-- PrimeDope comparison with 'PD finish model' off: a row whose ITM misses the
-  ROI on PrimeDope's payout table now shows the calibration warning and
-  reports the EV it actually simulated.
+- PrimeDope comparison with 'PD finish model' off: a row whose ITM cannot pay
+  its ROI on PrimeDope's table and pool (9-max and 6-max SNGs, heads-up,
+  winner-takes-all, 30-player MTTs, a stripped Battle Royale or small PKO)
+  now plays that ROI with the ITM left free, so the pane simulates the ROI it
+  prints. Before, a 9-max SNG at +5 % earned +145 % there, and a heads-up
+  65/35 SNG won every match. Rows that already reached their ROI are
+  unchanged. A row that no ITM can bring to its ROI gets its own notice and
+  keeps whichever of the two solutions lands closer.
+- Rows with a fixed ITM (the global ITM target or a per-row ITM) no longer
+  change their variance in one step when the ROI crosses -rake/(1+rake)
+  (-9.09 % at 10 % rake). The no-skill first-place share now fades in over
+  the last tenth of the no-skill cash winnings below break-even, so σ and
+  the planning-card volumes move smoothly with ROI: PKO 200 at a 25 % ITM
+  target needs x1.04 the volume between -9.5 % and -9.0 %, where it needed
+  x2.49. Numbers move only for pinned-ITM rows just below break-even (about
+  -18 % to -9 % ROI at 10 % rake) and for bounty rows whose cash share falls
+  there, where σ is now higher than before. Rows at or above break-even are
+  unchanged unless the ITM top-heaviness slider is off centre, and no row
+  changes between blocked and runnable.
+- With the ITM top-heaviness slider off centre, a fixed-ITM row no longer
+  steps in variance above break-even either (up to 14 % between two
+  neighbouring ROIs on small Mystery fields, where first place reaches its
+  no-skill share).
+- A top-3 or final-table share typed below 1/N is now kept as typed; the
+  no-skill first-place share used to override it.
 - The ITM top-heaviness slider now affects only the power-law models (and
   Battle Royale rows); for other finish models it is disabled with a short
   reason, and the engine ignores it.

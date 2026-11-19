@@ -402,6 +402,7 @@ function compileSingleEntry(
         row.finishBuckets,
         model,
         row.itmTopHeavyBias ?? 0,
+        bountyFraction > 0 ? totalWinningsEV : targetRegular,
       );
       alpha = fi.alpha;
       pmf = fi.pmf;
@@ -744,15 +745,48 @@ function compileSingleEntry(
     Math.max(0, row.mysteryBountyVariance ?? 0) +
     Math.max(0, effectivePkoHeadVar);
 
-  // With PD's finish model off the pass reuses the row's ITM, which was stamped
-  // from the row's own payout table, on PD's table and pool: a 9-max SNG then
-  // paid +145% against a +5% target with no warning. Fixed-shape models never
-  // aim at the ROI, so a gap there is not a missed target (`rowIgnoresRoi`).
+  // With PD's finish model off the pass plays the row's ITM, stamped from the
+  // row's own payout table, on PD's table and pool, where it may not pay the
+  // ROI at any α. Such a row is solved again with a free ITM and plays that
+  // solution when it lands closer to the ROI, so the pane plays the ROI it
+  // prints; a row that hits keeps its ITM and its bytes. Fixed-shape models
+  // never aim at the ROI, so a gap there is not a missed target
+  // (`rowIgnoresRoi`).
+  if (
+    calibrationMode === "primedope-binary-itm" &&
+    !pdFlags.usePdFinishModel &&
+    row.itmRate != null &&
+    row.itmRate > 0 &&
+    isAlphaAdjustable(model) &&
+    !withinTargetEv(eX, totalWinningsEV)
+  ) {
+    const freeItm = compileSingleEntry(
+      { ...row, itmRate: undefined },
+      idx,
+      players,
+      model,
+      calibrationMode,
+      primedopeStyleEV,
+      forcePrimedopePayouts,
+      pdFlags,
+    );
+    if (
+      Math.abs(freeItm.analyticMeanSingle - totalWinningsEV) <
+      Math.abs(eX - totalWinningsEV)
+    ) {
+      return freeItm;
+    }
+  }
   const primedopeTargetMissed =
     calibrationMode === "primedope-binary-itm" &&
-    (pdFlags.usePdFinishModel
-      ? Math.abs(eX - totalWinningsEV) > 1e-3
-      : isAlphaAdjustable(model) && !withinTargetEv(eX, totalWinningsEV));
+    pdFlags.usePdFinishModel &&
+    Math.abs(eX - totalWinningsEV) > 1e-3;
+  // Neither the row's ITM nor a free one reaches the ROI in this pass.
+  const primedopeFreeItmMissed =
+    calibrationMode === "primedope-binary-itm" &&
+    !pdFlags.usePdFinishModel &&
+    isAlphaAdjustable(model) &&
+    !withinTargetEv(eX, totalWinningsEV);
   // `validateSchedule` blocks this in the app. The warning makes `compile` take
   // the expected profit from the pmf for a caller that skips it (scripts,
   // fits); cost x ROI would sit the whole gap away from the samples.
@@ -772,9 +806,11 @@ function compileSingleEntry(
     isSatellite: row.payoutStructure === "satellite-ticket",
     calibrationWarning: primedopeTargetMissed
       ? { rowId: row.id, kind: "primedope-target-clamped", targetWinnings: totalWinningsEV, actualWinnings: eX }
-      : targetUnreachable
-        ? { rowId: row.id, kind: "target-unreachable", targetWinnings: totalWinningsEV, actualWinnings: eX }
-        : undefined,
+      : primedopeFreeItmMissed
+        ? { rowId: row.id, kind: "primedope-free-itm-unreachable", targetWinnings: totalWinningsEV, actualWinnings: eX }
+        : targetUnreachable
+          ? { rowId: row.id, kind: "target-unreachable", targetWinnings: totalWinningsEV, actualWinnings: eX }
+          : undefined,
     rowIdx: idx,
     fieldSize: N,
     singleCost: entryCostSingle,

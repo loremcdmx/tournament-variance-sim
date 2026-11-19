@@ -263,6 +263,7 @@ function fixedItmIssueAtField(
     row.finishBuckets,
     model,
     row.itmTopHeavyBias ?? 0,
+    bountyFraction > 0 ? totalWinningsEV : targetRegular,
   );
   const bountyCeiling = bountyEvCeiling(N, row.buyIn, bountyFraction, r.pmf);
   const residualCanCloseTotal =
