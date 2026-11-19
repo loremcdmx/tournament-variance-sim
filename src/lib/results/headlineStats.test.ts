@@ -6,8 +6,12 @@ import {
 import { battleRoyaleRowFromTotalTicket } from "@/lib/sim/battleRoyaleTicket";
 import { runSimulation } from "@/lib/sim/engine";
 import type { SimulationInput, SimulationResult, TournamentRow } from "@/lib/sim/types";
+import { SCENARIOS } from "@/lib/scenarios";
+import { applyItmTarget } from "@/lib/sim/itmTarget";
+import { buildSimulationInput } from "@/lib/ui/simulationInput";
 import {
   computeHeadlineStats,
+  doneSummaryProfitStats,
   leaderboardPromoHeadlineShift,
 } from "./headlineStats";
 import {
@@ -163,5 +167,46 @@ describe("headline stats on a real Battle Royale run", () => {
     expect(rbTotal).toBeCloseTo(rbCurve![rbCurve!.length - 1], 9);
     expect(rbTotal).toBeGreaterThan(0);
     expect(withoutRb.expectedProfit).toBeCloseTo(engine.expectedProfit + lbExpected - rbTotal, 9);
+  });
+});
+
+describe("done summary under Run", () => {
+  // The Done row and the results card read the same run; with the promo folded
+  // in (the card's default) they must print the same chance to be up.
+  const scenario = SCENARIOS.find((s) => s.id === "br-leaderboard")!;
+  const schedule = applyItmTarget(scenario.schedule, {
+    enabled: scenario.controls.itmGlobalEnabled,
+    pct: scenario.controls.itmGlobalPct,
+  });
+  const input = {
+    ...buildSimulationInput(schedule, { ...scenario.controls, seed: 42 }, false),
+    samples: 2000,
+  };
+  const result = runSimulation(input, () => {});
+  const promo = result.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
+
+  it("counts the chance to be up on the same promo-shifted finals as the card", () => {
+    const lbCurve = computeExpectedLeaderboardCurve(
+      promo,
+      result.tournamentsPerSample,
+      Array.from(result.samplePaths.x),
+    )!;
+    const card = shiftResultByRakeback(result, lbCurve, 1);
+    const done = doneSummaryProfitStats(result);
+
+    expect(promo).toBeGreaterThan(0);
+    expect(done.probProfit).toBe(card.stats.probProfit);
+    expect(done.probProfit).toBeGreaterThan(result.stats.probProfit);
+    expect(done.mean).toBeCloseTo(card.stats.mean, 9);
+    expect(done.mean).toBeCloseTo(result.stats.mean + promo, 9);
+    expect(done.roi).toBeCloseTo(done.mean / result.totalBuyIn, 12);
+  });
+
+  it("keeps the engine's numbers when the run has no promo", () => {
+    const bare = { ...result, battleRoyaleLeaderboardPromo: undefined };
+    const done = doneSummaryProfitStats(bare);
+    expect(done.probProfit).toBe(result.stats.probProfit);
+    expect(done.mean).toBe(result.stats.mean);
+    expect(done.median).toBe(result.stats.median);
   });
 });

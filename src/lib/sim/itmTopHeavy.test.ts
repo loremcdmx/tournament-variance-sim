@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   applyItmTopHeavyToFreeBand,
   clampItmTopHeavyBias,
+  finishModelSupportsItmTopHeavy,
   ITM_TOP_HEAVY_BIAS_STEP,
   MAX_ITM_TOP_HEAVY_BIAS,
   MIN_ITM_TOP_HEAVY_BIAS,
@@ -72,7 +73,7 @@ describe("applyItmTopHeavyToFreeBand", () => {
     expect(freeSum).toBeCloseTo(0.08, 12);
   });
 
-  it("positive bias amplifies the END of freeIndices (upstream convention: end = top placement)", () => {
+  it("positive bias amplifies the END of freeIndices (the worst free place; α turns it into more first places)", () => {
     const band = makeBand([0.10, 0.10, 0.10, 0.10, 0.10]);
     const freeIdx = [0, 1, 2, 3, 4];
     const { adjusted } = applyItmTopHeavyToFreeBand(band, freeIdx, 1);
@@ -151,5 +152,15 @@ describe("applyItmTopHeavyToFreeBand", () => {
     const original = Array.from(band);
     applyItmTopHeavyToFreeBand(band, [0, 1, 2], 0.7);
     expect(Array.from(band)).toEqual(original);
+  });
+});
+
+describe("finishModelSupportsItmTopHeavy", () => {
+  it("is true only for the power-law family", () => {
+    expect(finishModelSupportsItmTopHeavy("power-law")).toBe(true);
+    expect(finishModelSupportsItmTopHeavy("powerlaw-realdata-influenced")).toBe(true);
+    for (const id of ["plackett-luce", "stretched-exp", "linear-skill", "uniform", "empirical", "freeze-realdata-tilt"] as const) {
+      expect(finishModelSupportsItmTopHeavy(id)).toBe(false);
+    }
   });
 });

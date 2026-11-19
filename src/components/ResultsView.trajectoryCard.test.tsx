@@ -183,3 +183,38 @@ describe("trajectory card names the overlaid pass by what it is", () => {
     );
   });
 });
+
+describe("trajectory card labels the cash-only ITM on the pass that kept its bounties", () => {
+  const second = fixture();
+  const pko = {
+    id: "pko", players: 500, buyIn: 10, rake: 0.1, roi: 0.2, payoutStructure: "mtt-standard" as const,
+    count: 200, gameType: "pko" as const, bountyFraction: 0.5,
+  };
+  const cashOnlyByPane = (over: Partial<Props>) => {
+    const out = hookHarness.render(() =>
+      renderCard(baseProps({
+        compareMode: "primedope", pdChart: second, displayPdChart: second,
+        schedule: [pko], scheduleRepeats: 1, pdPkoFallback: true, ...over,
+      })),
+    );
+    const panes: boolean[] = [];
+    const walk = (node: unknown) => {
+      if (Array.isArray(node)) node.forEach(walk);
+      else if (node && typeof node === "object" && "props" in node) {
+        const props = (node as El).props;
+        if ("itmCashOnly" in props) panes.push(props.itmCashOnly as boolean);
+        walk(props.children);
+      }
+    };
+    walk(out);
+    return panes;
+  };
+
+  it("marks our left pane cash-only and the stripped PrimeDope pane on the right plain", () => {
+    expect(cashOnlyByPane({})).toEqual([true, false]);
+  });
+
+  it("swaps the marks under the Like PrimeDope preset, where PrimeDope is the left pane", () => {
+    expect(cashOnlyByPane({ pdPresetFlip: true })).toEqual([false, true]);
+  });
+});

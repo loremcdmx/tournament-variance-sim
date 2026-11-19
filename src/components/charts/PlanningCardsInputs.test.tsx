@@ -87,6 +87,14 @@ describe("the convergence card opens on the schedule's own ROI", () => {
   });
 });
 
+describe("the prove-edge answer states the chance its volume delivers", () => {
+  it("prints 97.5 % at the default 95 % confidence, next to the 95 % bar", () => {
+    const markup = render(<ProveEdgeCard schedule={[freezeRow({})]} itmTarget={OFF} />);
+    expect(markup).toContain("с вероятностью 97.5%");
+    expect(markup).toContain("порог 95%-й уверенности");
+  });
+});
+
 describe("the prove-edge rake box stays inside the grid the bands were probed on", () => {
   it("caps the slider and the number box at the same 20 %", () => {
     const markup = render(<ProveEdgeCard itmTarget={OFF} />);

@@ -3,6 +3,7 @@ import {
   computeExpectedRakebackCurve,
   hideJackpotsByDefault,
   jackpotHiddenShare,
+  jackpotHiddenShareAcross,
   JACKPOT_AUTO_HIDE_MAX_SHARE,
   shiftResultByRakeback,
   stripJackpots,
@@ -69,6 +70,32 @@ describe("jackpot filter default", () => {
     expect(hideJackpotsByDefault(0.21)).toBe(false);
     expect(hideJackpotsByDefault(0.69)).toBe(false);
     expect(hideJackpotsByDefault(0)).toBe(true);
+  });
+});
+
+describe("jackpot share across the PrimeDope comparison", () => {
+  // Under the "Like PrimeDope" preset the primary pass is the binary-ITM one
+  // with its bounties stripped and the comparison is our model: only the
+  // comparison draws mystery jackpots, and the filter strips both panes.
+  const base = makeRow({ id: "m", players: 1000, buyIn: 50, gameType: "freezeout", roi: 0.05, count: 20000 });
+  const mystery: TournamentRow = { ...base, ...applyGameType(base, "mystery"), buyIn: 50, rake: 0.1, roi: 0.05 };
+  const run = { scheduleRepeats: 1, samples: 600, bankroll: 0, seed: 5, finishModel: { id: "power-law" as const } };
+  const ours = runSimulation({ ...run, schedule: [mystery] });
+  const pdPrimary = runSimulation({ ...run, schedule: [{ ...mystery, bountyFraction: 0 }],
+    calibrationMode: "primedope-binary-itm" });
+
+  it("reads the share from the pass that carries the jackpot mask, in either order", () => {
+    expect(jackpotHiddenShare(pdPrimary)).toBe(0);
+    const oursShare = jackpotHiddenShare(ours);
+    expect(oursShare).toBeGreaterThan(JACKPOT_AUTO_HIDE_MAX_SHARE);
+    expect(jackpotHiddenShareAcross([pdPrimary, ours])).toBe(oursShare);
+    expect(jackpotHiddenShareAcross([ours, pdPrimary])).toBe(oursShare);
+    expect(hideJackpotsByDefault(jackpotHiddenShareAcross([pdPrimary, ours]))).toBe(false);
+  });
+
+  it("is the primary's own share without a comparison", () => {
+    expect(jackpotHiddenShareAcross([ours, null])).toBe(jackpotHiddenShare(ours));
+    expect(jackpotHiddenShareAcross([pdPrimary, undefined])).toBe(0);
   });
 });
 

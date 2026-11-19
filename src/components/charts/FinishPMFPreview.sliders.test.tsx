@@ -222,3 +222,21 @@ describe("top-heavy slider follows the stored bias", () => {
     expect(onCommit).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("top-heavy slider on a model that ignores the bias", () => {
+  it("disables the slider and the number box and says why", () => {
+    store.cells = [];
+    store.deps = [];
+    store.at = 0;
+    store.effects = [];
+    const el = (TopHeavyPlacementSlider as (p: typeof TOP & {
+      onCommit: (v: number) => void;
+      disabledReason?: string;
+    }) => ReactElement<Record<string, unknown>>)({ ...TOP, onCommit: vi.fn(), disabledReason: "ignored" });
+    const inputs = find(el, (n) => n.type === "input");
+    expect(inputs).toHaveLength(2);
+    for (const input of inputs) expect(input.props?.disabled).toBe(true);
+    expect(el.props.title).toBe("ignored");
+    expect(find(el, (n) => n.type === "p" && n.props?.children === "ignored")).toHaveLength(1);
+  });
+});

@@ -31,8 +31,7 @@ export class ResulthubLookupError extends Error {
  * Empty / whitespace-only username is rejected up front to avoid sending
  * garbage to the server route. The route does not cache — every call is a
  * fresh upstream roundtrip — and it rate-limits per client IP (429 with
- * Retry-After), so the multi-nick fan-out in the control counts against
- * that budget.
+ * Retry-After), one token per nick.
  */
 export async function fetchResulthubGgBr(
   username: string,
@@ -40,43 +39,47 @@ export async function fetchResulthubGgBr(
 ): Promise<ResulthubGgBrSummary> {
   const trimmed = username.trim();
   if (!trimmed) throw new ResulthubLookupError("empty-username");
+  const response = await requestLookup(`username=${encodeURIComponent(trimmed)}`, signal);
+  return readLookupAnswer(response.status, await readJson(response), retryAfterHeader(response));
+}
 
-  let response: Response;
+async function requestLookup(query: string, signal?: AbortSignal): Promise<Response> {
   try {
-    response = await fetch(
-      `/api/resulthub/gg-br?username=${encodeURIComponent(trimmed)}`,
-      { signal, cache: "no-store" },
-    );
+    return await fetch(`/api/resulthub/gg-br?${query}`, { signal, cache: "no-store" });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     throw new ResulthubLookupError("network");
   }
+}
 
-  if (!response.ok) {
-    let upstreamError: string | undefined;
-    let retryAfterSec = Number(response.headers.get("retry-after"));
-    try {
-      const body = (await response.json()) as { error?: string; reason?: string; retryAfterSec?: number };
-      upstreamError = body?.reason ?? body?.error;
-      if (Number.isFinite(body.retryAfterSec)) retryAfterSec = body.retryAfterSec!;
-    } catch {
-      // ignore — surface generic bad-status below
-    }
+async function readJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+}
+
+function retryAfterHeader(response: Response): number {
+  return Number(response.headers.get("retry-after"));
+}
+
+/** One nick's answer, whether it came as its own response or as an entry of a batch. */
+function readLookupAnswer(status: number, json: unknown, retryAfterSecHeader: number): ResulthubGgBrSummary {
+  if (status < 200 || status >= 300) {
+    const body = (json ?? {}) as { error?: string; reason?: string; retryAfterSec?: number };
+    const upstreamError = body.reason ?? body.error;
+    const retryAfterSec = Number.isFinite(body.retryAfterSec) ? body.retryAfterSec! : retryAfterSecHeader;
     if (upstreamError === "timeout") throw new ResulthubLookupError("timeout");
     if (upstreamError === "resulthub-bad-json") throw new ResulthubLookupError("bad-json");
-    if (response.status === 429) {
+    if (status === 429) {
       throw new ResulthubLookupError("rate-limited", undefined,
         Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? Math.ceil(retryAfterSec) : 60);
     }
     throw new ResulthubLookupError("bad-status", upstreamError);
   }
-
-  let body: ResulthubGgBrSummary;
-  try {
-    body = (await response.json()) as ResulthubGgBrSummary;
-  } catch {
-    throw new ResulthubLookupError("bad-json");
-  }
+  if (typeof json !== "object" || json === null) throw new ResulthubLookupError("bad-json");
+  const body = json as ResulthubGgBrSummary;
 
   const totalPoints = Object.values(body.pointsByStake ?? {}).reduce(
     (a, b) => a + (Number.isFinite(b) ? b : 0),
@@ -89,6 +92,29 @@ export async function fetchResulthubGgBr(
     throw new ResulthubLookupError("no-data");
   }
   return body;
+}
+
+/** Several nicks go to the route in one call, so the click is rate-limited as one unit. */
+async function fetchResulthubGgBrBatch(
+  usernames: readonly string[],
+  signal?: AbortSignal,
+): Promise<PromiseSettledResult<ResulthubGgBrSummary>[]> {
+  const query = usernames.map((u) => `username=${encodeURIComponent(u)}`).join("&");
+  const response = await requestLookup(query, signal);
+  const json = await readJson(response);
+  if (!response.ok) readLookupAnswer(response.status, json, retryAfterHeader(response));
+  const results = (json as { results?: unknown } | undefined)?.results;
+  if (!Array.isArray(results) || results.length !== usernames.length) {
+    throw new ResulthubLookupError("bad-json");
+  }
+  return results.map((entry: { status?: unknown; body?: unknown } | null) => {
+    try {
+      const status = typeof entry?.status === "number" ? entry.status : 502;
+      return { status: "fulfilled", value: readLookupAnswer(status, entry?.body, Number.NaN) };
+    } catch (reason) {
+      return { status: "rejected", reason };
+    }
+  });
 }
 
 /**
@@ -108,9 +134,9 @@ export async function fetchResulthubGgBrMany(
   const cleaned = usernames.map((u) => u.trim()).filter((u) => u.length > 0);
   if (cleaned.length === 0) throw new ResulthubLookupError("empty-username");
 
-  const settled = await Promise.allSettled(
-    cleaned.map((u) => fetchResulthubGgBr(u, signal)),
-  );
+  const settled = cleaned.length === 1
+    ? await Promise.allSettled([fetchResulthubGgBr(cleaned[0], signal)])
+    : await fetchResulthubGgBrBatch(cleaned, signal);
 
   let totalPrizes = 0;
   const points = { "0.25": 0, "1": 0, "3": 0, "10": 0, "25": 0 } as Record<

@@ -16,6 +16,9 @@ interface PdComparePaneKeys {
   // The pane that holds the PrimeDope result. The PD toggles re-run its pass and
   // "Open PrimeDope" reproduces it, so both belong with that pane.
   pdPane: "primary" | "comparison";
+  // The pane whose pass ran with every bounty stripped (the PD pass on a bounty
+  // schedule): its ITM is a plain one, the other pane's is cash-only.
+  bountyStrippedPane: "primary" | "comparison" | null;
 }
 
 export function pdComparePaneKeys({
@@ -35,6 +38,7 @@ export function pdComparePaneKeys({
         ? "chart.trajectory.ours.cap.pdPresetNoKo"
         : "chart.trajectory.ours.cap.pdPreset",
       pdPane: "primary",
+      bountyStrippedPane: pdPkoFallback ? "primary" : null,
     };
   }
   return {
@@ -45,6 +49,7 @@ export function pdComparePaneKeys({
         ? "chart.trajectory.theirs.cap"
         : "twin.runB.cap",
     pdPane: "comparison",
+    bountyStrippedPane: pdPkoFallback ? "comparison" : null,
   };
 }
 
@@ -81,5 +86,38 @@ export function pdOverlayLabelKeys({
     overlayKey: pdPkoFallback ? "chart.overlay.freezeouts" : null,
     badgeKey: pdPkoFallback ? "stat.pd.badge.freezeouts" : null,
     primaryLegendKey: null,
+  };
+}
+
+export interface PdDiffCopyKeys {
+  sectionKey: DictKey;
+  titleKey: DictKey;
+  subtitleKey: DictKey;
+  // null: the default "PrimeDope" column header.
+  theirsLabelKey: DictKey | null;
+}
+
+// On a bounty schedule the PrimeDope pass also has its bounties stripped, so the
+// diff table never says only one thing separates its columns.
+export function pdDiffCopyKeys({
+  pdPresetFlip,
+  pdPkoFallback,
+}: {
+  pdPresetFlip: boolean;
+  pdPkoFallback: boolean;
+}): PdDiffCopyKeys {
+  if (pdPkoFallback && !pdPresetFlip) {
+    return {
+      sectionKey: "section.pdDiff.freezeouts",
+      titleKey: "pd.title.freezeouts",
+      subtitleKey: "pd.subtitle.freezeouts",
+      theirsLabelKey: "chart.overlay.freezeouts",
+    };
+  }
+  return {
+    sectionKey: "section.pdDiff",
+    titleKey: "pd.title",
+    subtitleKey: pdPkoFallback ? "pd.subtitle.pdPresetNoKo" : "pd.subtitle",
+    theirsLabelKey: null,
   };
 }

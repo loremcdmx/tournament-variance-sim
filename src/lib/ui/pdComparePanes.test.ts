@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DICT } from "@/lib/i18n/dict";
-import { pdComparePaneKeys, pdOverlayLabelKeys } from "./pdComparePanes";
+import { pdComparePaneKeys, pdDiffCopyKeys, pdOverlayLabelKeys } from "./pdComparePanes";
 
 const base = {
   pdPresetFlip: false,
@@ -102,6 +102,20 @@ describe("pdComparePaneKeys", () => {
   });
 });
 
+describe("which pane ran with its bounties stripped", () => {
+  it("is the PrimeDope pane on a bounty schedule, left under the preset and right otherwise", () => {
+    expect(pdComparePaneKeys({ ...base, pdPkoFallback: true }).bountyStrippedPane).toBe("comparison");
+    expect(pdComparePaneKeys({ ...base, pdPresetFlip: true, pdPkoFallback: true }).bountyStrippedPane)
+      .toBe("primary");
+  });
+
+  it("is neither pane when no pass dropped its bounties", () => {
+    expect(pdComparePaneKeys(base).bountyStrippedPane).toBeNull();
+    expect(pdComparePaneKeys({ ...base, pdPresetFlip: true }).bountyStrippedPane).toBeNull();
+    expect(pdComparePaneKeys({ ...base, hasPrimeDopePane: false }).bountyStrippedPane).toBeNull();
+  });
+});
+
 describe("pdOverlayLabelKeys", () => {
   it("names the second pass PrimeDope only when it really is the binary-ITM pass", () => {
     const keys = pdOverlayLabelKeys({ pdPresetFlip: false, pdPkoFallback: false });
@@ -139,5 +153,44 @@ describe("pdOverlayLabelKeys", () => {
   it("has a badge text in both languages", () => {
     expect(DICT["stat.pd.badge.ours"].en).toBeTruthy();
     expect(DICT["stat.pd.badge.ours"].ru).toBeTruthy();
+  });
+});
+
+describe("pdDiffCopyKeys", () => {
+  it("keeps the PrimeDope diff texts when no pass drops its bounties", () => {
+    for (const pdPresetFlip of [false, true]) {
+      expect(pdDiffCopyKeys({ pdPresetFlip, pdPkoFallback: false })).toEqual({
+        sectionKey: "section.pdDiff", titleKey: "pd.title", subtitleKey: "pd.subtitle", theirsLabelKey: null,
+      });
+    }
+  });
+
+  it("names both differences when the PrimeDope column has its bounties stripped, on either side", () => {
+    const right = pdDiffCopyKeys({ pdPresetFlip: false, pdPkoFallback: true });
+    const left = pdDiffCopyKeys({ pdPresetFlip: true, pdPkoFallback: true });
+    expect(right.subtitleKey).toBe("pd.subtitle.freezeouts");
+    expect(left.subtitleKey).toBe("pd.subtitle.pdPresetNoKo");
+    for (const key of [right.subtitleKey, left.subtitleKey]) {
+      expect(DICT[key].en).toMatch(/two differences/);
+      expect(DICT[key].en).toMatch(/PrimeDope/);
+      expect(DICT[key].en).toMatch(/bount/);
+      expect(DICT[key].en).not.toMatch(/only difference/i);
+      expect(DICT[key].ru).toMatch(/отличий два/);
+      expect(DICT[key].ru).toMatch(/PrimeDope/);
+      expect(DICT[key].ru).toMatch(/нок/);
+      expect(DICT[key].ru).not.toMatch(/отличаются только|отличается только/);
+    }
+  });
+
+  it("calls the stripped-bounty PrimeDope pass PrimeDope wherever it is named", () => {
+    const keys = [
+      "pd.title.freezeouts", "section.pdDiff.freezeouts", "chart.overlay.freezeouts",
+      "chart.trajectory.noKoLabel", "chart.trajectory.noKoCap", "chart.legend.noKoOverlay",
+      "chart.trajectory.overlayNoKo", "chart.trajectory.overlayNoKoHint", "stat.pd.badge.freezeouts",
+    ] as const;
+    for (const key of keys) {
+      expect(DICT[key].en, key).toMatch(/PrimeDope|PD/);
+      expect(DICT[key].ru, key).toMatch(/PrimeDope|PD/);
+    }
   });
 });

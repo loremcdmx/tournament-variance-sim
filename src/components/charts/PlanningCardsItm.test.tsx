@@ -1,6 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { DICT } from "@/lib/i18n/dict";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 import {
   afsToPos,
@@ -92,5 +93,51 @@ describe("planning cards compile their row with the run's global ITM target", ()
     expect(on).not.toContain(cell(OFF));
     expect(off).toContain(cell(OFF));
     expect(off).not.toContain(cell(ON));
+  });
+});
+
+describe("an ROI the pinned-ITM row cannot pay gets no distance on either card", () => {
+  // A 50 % global ITM forces a freezeout at field 200 above +18 %, so the
+  // cards' default +10 % is a row Run blocks.
+  const HIGH: ItmTargetConfig = { enabled: true, pct: 50 };
+  const schedule: TournamentRow[] = [{
+    id: "f",
+    label: "f",
+    players: 200,
+    buyIn: 10,
+    rake: 0.1,
+    roi: 0.1,
+    payoutStructure: "mtt-standard",
+    gameType: "freezeout",
+    count: 100,
+  }];
+  const ru = (key: keyof typeof DICT) => DICT[key].ru;
+
+  it("the convergence card says so and prints no distances", () => {
+    const blocked = render(<ConvergenceChart schedule={schedule} itmTarget={HIGH} />);
+    expect(blocked).toContain(ru("chart.convergence.unreachable"));
+    const ok = render(<ConvergenceChart schedule={schedule} itmTarget={OFF} />);
+    expect(ok).not.toContain(ru("chart.convergence.unreachable"));
+    const sigma = computeProveEdge({
+      format: "freeze",
+      afs: posToAfs(afsToPos(200)),
+      rake: 0.1,
+      itmTarget: HIGH,
+      z: z95,
+      currentRoi: 0.1,
+      candidates: [0.1],
+    }).anchor.sigma;
+    const k50 = Math.ceil(Math.pow((z95 * sigma) / 0.5, 2));
+    expect(blocked).not.toContain(`>${k50.toLocaleString("ru-RU")}</span>`);
+  });
+
+  it("the prove-edge card replaces the answer with the warning", () => {
+    const blocked = render(<ProveEdgeCard schedule={schedule} itmTarget={HIGH} />);
+    expect(blocked).toContain(ru("proveEdge.unreachable").replace("{roi}", "+10 %"));
+    expect(blocked).not.toContain(ru("proveEdge.anchor.prefix"));
+    expect(blocked).toContain(ru("proveEdge.row.unreachable"));
+    const ok = render(<ProveEdgeCard schedule={schedule} itmTarget={OFF} />);
+    expect(ok).toContain(ru("proveEdge.anchor.prefix"));
+    expect(ok).not.toContain(ru("proveEdge.row.unreachable"));
   });
 });

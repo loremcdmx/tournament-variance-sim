@@ -59,10 +59,15 @@ export function integerHistogram(
   return { binEdges, counts };
 }
 
-/** Seat counts held by a bar of `integerHistogram`: `0`, `3 – 5`. */
+/**
+ * Whole numbers held by a bar `[lo, hi)`: `0`, `3 – 5`. Edges are half-integers
+ * for seats and the streak lengths, but the breakeven chords are scaled by
+ * N / K and land on whole numbers when N is a multiple of 240, so `hi` itself
+ * belongs to the next bar.
+ */
 export function integerBinLabel(lo: number, hi: number): string {
   const from = Math.ceil(lo);
-  const to = Math.floor(hi);
+  const to = Math.ceil(hi) - 1;
   return from >= to ? String(from) : `${from} – ${to}`;
 }
 

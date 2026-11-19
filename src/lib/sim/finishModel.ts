@@ -1,5 +1,9 @@
 import { buildFreezeCashPMF } from "./freezeShape";
-import { applyItmTopHeavyToFreeBand, clampItmTopHeavyBias } from "./itmTopHeavy";
+import {
+  applyItmTopHeavyToFreeBand,
+  clampItmTopHeavyBias,
+  finishModelSupportsItmTopHeavy,
+} from "./itmTopHeavy";
 import { buildMysteryCashPMF } from "./mysteryShape";
 import { buildPkoCashPMF } from "./pkoShape";
 import type { FinishModelConfig, FinishModelId } from "./types";
@@ -52,6 +56,26 @@ export function cashTargetFloor(entryCost: number): number {
 }
 
 /**
+ * The most bounty EV one entry can collect: the whole bounty pool, and nothing
+ * when it finishes last. When the pinned ITM caps the cash side, the engine
+ * pays the rest of the ROI as bounty; past this ceiling that is money the
+ * table does not hold (heads-up PKO at any winning ROI paid the winner $131
+ * from a $100 pool).
+ */
+export function bountyEvCeiling(
+  N: number,
+  buyIn: number,
+  bountyFraction: number,
+  pmf: Float64Array,
+): number {
+  return N * buyIn * bountyFraction * (1 - (pmf[N - 1] ?? 0));
+}
+
+export function bountyResidualFits(residual: number, ceiling: number): boolean {
+  return residual <= ceiling + targetEvTolerance(ceiling);
+}
+
+/**
  * True when the model calibrates its α (or shell mass) so that
  * Σ pmf·prize = singleCost·(1+ROI). False for the fixed shapes that ignore
  * the ROI target by design: every realdata-* model, uniform and empirical.
@@ -59,6 +83,17 @@ export function cashTargetFloor(entryCost: number): number {
  */
 export function finishModelSupportsTargetRoi(id: FinishModelId): boolean {
   return !FIXED_SHAPE_MODELS.has(id);
+}
+
+/**
+ * True when the model carries its own whole-field finish distribution, so the
+ * row's ITM, shell locks and top-heaviness do not apply: the realdata shapes
+ * and a pasted empirical history. An empirical model with no data keeps the
+ * documented fallback (uniform over the paid places at the row's ITM).
+ */
+export function playsWholeFieldShape(model: FinishModelConfig): boolean {
+  if (REFERENCE_SHAPE_MODELS.has(model.id)) return true;
+  return model.id === "empirical" && (model.empiricalBuckets?.some((v) => v > 0) ?? false);
 }
 
 /**
@@ -400,7 +435,9 @@ export function calibrateShelledItm(
   const pmf = new Float64Array(N);
   const paid = Math.max(0, Math.min(paidCount, N));
   const clampedItm = paid === N ? 1 : Math.max(0, Math.min(1, itmRate));
-  const clampedTopHeavyBias = clampItmTopHeavyBias(itmTopHeavyBias);
+  const clampedTopHeavyBias = finishModelSupportsItmTopHeavy(model.id)
+    ? clampItmTopHeavyBias(itmTopHeavyBias)
+    : 0;
 
   const emptyShells = { first: 0, top3: 0, ft: 0 };
   // Uniform and empirical have no α to move, so the free band lands wherever
@@ -408,20 +445,12 @@ export function calibrateShelledItm(
   // the locks are satisfiable, and the engine plays the shape either way.
   const ignoresTarget = !finishModelSupportsTargetRoi(model.id);
 
-  // Real-data freeze shapes embed the sample's empirical ITM (18.7%) and
-  // cash-band width (15.5%). Per-row itmRate / shell locks don't apply —
-  // we build the full PMF directly and report whatever E[W] it produces.
-  if (
-    model.id === "freeze-realdata-step" ||
-    model.id === "freeze-realdata-linear" ||
-    model.id === "freeze-realdata-tilt" ||
-    model.id === "pko-realdata-step" ||
-    model.id === "pko-realdata-linear" ||
-    model.id === "pko-realdata-tilt" ||
-    model.id === "mystery-realdata-step" ||
-    model.id === "mystery-realdata-linear" ||
-    model.id === "mystery-realdata-tilt"
-  ) {
+  // Real-data shapes embed the sample's ITM and cash-band width, and a pasted
+  // history is a histogram over the whole field: squeezing it into the paid
+  // places turned its busts into min-cashes and replaced its ITM with the
+  // table's. Per-row itmRate / shell locks don't apply — we build the full PMF
+  // directly and report whatever E[W] it produces.
+  if (playsWholeFieldShape(model)) {
     const alpha = model.alpha ?? 0;
     const full = buildFinishPMF(N, model, alpha);
     let ew = 0;

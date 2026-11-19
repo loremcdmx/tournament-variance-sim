@@ -38,6 +38,25 @@ describe("computeStreakStats recovery", () => {
     expect(Number.isNaN(out.recoveryP90)).toBe(true);
   });
 
+  it("bins recovery lengths on whole tournaments: no empty bar between occupied lengths", () => {
+    const lengths: number[] = [];
+    for (let len = 1; len <= 14; len++) for (let k = 0; k < 15 - len; k++) lengths.push(len);
+    const h = streaksFor(lengths).recoveryHistogram;
+    expect(h.binEdges[0]).toBe(0.5);
+    expect(h.binEdges[1] - h.binEdges[0]).toBe(1);
+    // p99.9 is 13 here, so the single 14 folds into the last bar.
+    expect(h.counts).toEqual([14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 3]);
+  });
+
+  it("gives every recovery bar the same number of lengths over a long horizon", () => {
+    const lengths: number[] = [];
+    for (let len = 1; len <= 120; len++) for (let k = 0; k < 100; k++) lengths.push(len);
+    const h = streaksFor(lengths).recoveryHistogram;
+    expect(h.binEdges[1] - h.binEdges[0]).toBe(3);
+    expect(h.counts.reduce((a, b) => a + b, 0)).toBe(12_000);
+    expect(h.counts.every((c) => c === 300)).toBe(true);
+  });
+
   it("keeps a genuine zero-length recovery as a number", () => {
     const out = streaksFor([0, 0, 0]);
     expect(out.recoveryMedian).toBe(0);

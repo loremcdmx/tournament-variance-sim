@@ -33,6 +33,7 @@ import {
 import { visualDistanceToSeries } from "@/lib/results/trajectoryHitTest";
 import {
   formatTailPercent,
+  trajectoryEvLegend,
   trajectoryLineTitle,
   type TrajectoryLineMeta,
 } from "@/lib/results/trajectoryLabels";
@@ -178,7 +179,7 @@ export function TrajectoryPlot({
     return [
       ev && {
         key: "ev",
-        label: t("chart.traj.legend.ev"),
+        label: trajectoryEvLegend(ev, t, compactMoney),
         color: ev.color,
         dash: true,
       },
@@ -207,7 +208,7 @@ export function TrajectoryPlot({
         dash: true,
       },
     ].filter(Boolean) as Array<{ key: string; label: string; color: string; dash?: boolean }>;
-  }, [assets, locale, numberLocale, representativeBand, t, visibleRuns, visibilityGate]);
+  }, [assets, compactMoney, locale, numberLocale, representativeBand, t, visibleRuns, visibilityGate]);
 
   // Imperative visibility layer: instead of rebuilding the uPlot instance
   // on every slider tick, flip `show` on the pre-built path/band/best/worst
@@ -980,6 +981,7 @@ export function buildTrajectoryAssets(
   runMode: RunMode = "random",
   extremeStyles: ExtremeStyles = DEFAULT_EXTREME_STYLES,
   overlayLabel: string = "PrimeDope",
+  evBeforeTilt: boolean = false,
 ): {
   data: AlignedData;
   opts: Omit<Options, "width" | "height">;
@@ -1066,6 +1068,9 @@ export function buildTrajectoryAssets(
       color: preset.ev.stroke,
       seriesIdx: evIdx,
       kind: "ref",
+      ...(evBeforeTilt
+        ? { titleKey: "chart.traj.line.evBeforeTilt" as const, simulatedMean: r.stats.mean }
+        : {}),
     });
   }
 

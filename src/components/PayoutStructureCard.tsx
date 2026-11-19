@@ -14,6 +14,8 @@ import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 
 interface Props {
   schedule: TournamentRow[];
+  /** The "Like PrimeDope" preset runs PrimeDope's own table, not this one. */
+  primeDopePreset?: boolean;
 }
 
 const TOP_ROWS = 9;
@@ -90,6 +92,7 @@ function formatInteger(n: number, locale: Locale): string {
 
 export const PayoutStructureCard = memo(function PayoutStructureCard({
   schedule,
+  primeDopePreset = false,
 }: Props) {
   const { locale, t } = useLocale();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -205,6 +208,12 @@ export const PayoutStructureCard = memo(function PayoutStructureCard({
           )}
         </div>
       </div>
+
+      {primeDopePreset && (
+        <p className="mb-3 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("payouts.primedopeNote")}
+        </p>
+      )}
 
       {hasBounty && (
         <PoolSplit

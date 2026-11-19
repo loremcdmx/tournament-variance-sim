@@ -7,9 +7,12 @@
  */
 import {
   applyBountyBias,
+  bountyEvCeiling,
+  bountyResidualFits,
   calibrateShelledItm,
   cashTargetFloor,
   isAlphaAdjustable,
+  playsWholeFieldShape,
   targetEvTolerance,
   withinTargetEv,
 } from "./finishModel";
@@ -126,8 +129,7 @@ function fixedItmIssueAtField(
   const paidCount = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
   // The shelled solver normalizes even invalid raw inputs, but a pinned
   // probability must not silently change in an interactive run.
-  const ignoresShellLocks = /^(freeze|pko|mystery)-realdata-(step|linear|tilt)$/.test(model.id);
-  if (!ignoresShellLocks && row.finishBuckets) {
+  if (!playsWholeFieldShape(model) && row.finishBuckets) {
     const locks = row.finishBuckets;
     const boundaries = [
       [1, locks.first],
@@ -262,15 +264,18 @@ function fixedItmIssueAtField(
     model,
     row.itmTopHeavyBias ?? 0,
   );
+  const bountyCeiling = bountyEvCeiling(N, row.buyIn, bountyFraction, r.pmf);
   const residualCanCloseTotal =
     bountyFraction > 0 &&
-    r.currentWinnings <= totalWinningsEV + targetEvTolerance(totalWinningsEV);
+    r.currentWinnings <= totalWinningsEV + targetEvTolerance(totalWinningsEV) &&
+    bountyResidualFits(totalWinningsEV - r.currentWinnings, bountyCeiling);
   const feasible = r.feasible || residualCanCloseTotal;
   if (!feasible) {
     const targetEv = bountyFraction > 0 ? totalWinningsEV : targetRegular;
     const currentEv =
       bountyFraction > 0
-        ? r.currentWinnings + Math.max(0, totalWinningsEV - r.currentWinnings)
+        ? r.currentWinnings +
+          Math.min(bountyCeiling, Math.max(0, totalWinningsEV - r.currentWinnings))
         : r.currentWinnings;
     return {
       rowId: row.id,

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import bridgeProfile from "./ocean-bridge-profile.json";
 import profile from "./space-runtime-profile.json";
 import { transportOceanMoments, type EmpiricalBridgeData } from "./oceanTransport";
-import { DISTANCE_SD_STEP_BI, passesPrecisionGate, precisionCount, precisionRowFor, roundSignificant, roundToStep, sigmaRange, type SigmaScenario } from "./explorerView";
+import { DISTANCE_SD_STEP_BI, SIGMA_DECIMALS, SIGMA_GAP_DECIMALS, passesPrecisionGate, precisionCount, precisionRowFor, roundSignificant, roundToStep, sigmaRange, type SigmaScenario } from "./explorerView";
 
 const bridge = bridgeProfile as unknown as EmpiricalBridgeData;
 const precision = bridge.numericPrecision!;
@@ -98,4 +98,23 @@ describe("how many bridge scenarios meet the numerical gates", () => {
     expect(precisionRowFor(undefined, 0.5, 100, 100)).toBeUndefined();
   });
 
+});
+
+describe("the σ gap sentence under the Space and Ocean cards", () => {
+  const states = ([25, 100] as const).flatMap(cap => ([10, 100] as const).flatMap(ticket => [0.5, 1, 2].map(theta => {
+    const anchor = profile.anchors.find(model => model.capBountyBI === cap)!;
+    const pick = (roomId: string) => bridge.records.find(record => record.theta === theta && record.roomId === roomId && record.support.capBountyBI === cap)!;
+    const result = transportOceanMoments({ anchor: anchor.moments, capBountyBI: cap, anchorProfileId: profile.profileId, anchorFieldBin: "1000-1499",
+      source: pick("space-eur10"), target: pick(`ocean-usd${ticket}`), allowSingleEntryBridge: true, allowRepresentativeField: true });
+    if (!result.supported) throw new Error("scenario must be supported");
+    return { space: result.anchor.sigma, ocean: result.transported.sigma };
+  })));
+  const printed = (value: number, decimals: number) => Number(value.toFixed(decimals));
+
+  it("needs more decimals than the cards, which contradict a one-decimal gap in seven of twelve states", () => {
+    const contradicted = states.filter(({ space, ocean }) =>
+      printed(ocean - space, SIGMA_DECIMALS) !== printed(printed(ocean, SIGMA_DECIMALS) - printed(space, SIGMA_DECIMALS), SIGMA_DECIMALS));
+    expect(contradicted).toHaveLength(7);
+    expect(SIGMA_GAP_DECIMALS).toBeGreaterThan(SIGMA_DECIMALS);
+  });
 });

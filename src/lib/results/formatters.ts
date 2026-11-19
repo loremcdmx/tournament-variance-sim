@@ -9,6 +9,9 @@
  * those needs more care since they're consumed by deeply nested cards.
  */
 
+import type { Locale } from "@/lib/i18n/dict";
+import { withPlural, type WORDS } from "@/lib/i18n/plural";
+
 /**
  * Tiny mustache-style template substitution. Not i18n — used for
  * client-side string composition where the keys are known at compile
@@ -67,9 +70,18 @@ export const pct = (v: number): string => {
   return `${v < 0 && Number(text) !== 0 ? MINUS : ""}${text}%`;
 };
 
-/** A count of tournaments, or a dash when the statistic does not exist (NaN). */
-export const tourneyCountOrDash = (v: number, unit: string): string =>
-  Number.isFinite(v) ? `${Math.round(v)} ${unit}` : "—";
+/** A count beside its noun ("{n} {_tournament}"), or a dash when the statistic does not exist (NaN). */
+export const countOrDash = (
+  v: number,
+  template: string,
+  locale: Locale,
+  word: keyof typeof WORDS,
+  numberLocale = "en-US",
+): string => {
+  if (!Number.isFinite(v)) return "—";
+  const n = Math.round(v);
+  return fmt(withPlural(template, locale, n, word), { n: intFmt(n, numberLocale) });
+};
 
 /** Integer with thousands grouping for `locale` (the UI's, not the browser's). */
 export const intFmt = (v: number, locale = "en-US"): string =>
@@ -99,6 +111,30 @@ export function formatMinimumBankroll(
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   });
   return unit === "abi" ? `${text} ABI` : `$${text}`;
+}
+
+/**
+ * An amount per tournament or per day (a promo is a few cents a tournament),
+ * which `money` and `makeAbiMoney` would round to "$0" / "0.0 ABI". Two
+ * decimals from one unit up, three significant digits below it, so a promo
+ * the user typed ($0.0375) reads back as typed and times the tournament count
+ * reproduces the projected total.
+ */
+export function formatPerUnitAmount(
+  value: number,
+  unit: UnitMode = "money",
+  abi = 1,
+  locale = "en-US",
+): string {
+  if (!Number.isFinite(value)) return "—";
+  const n = Math.abs(value) / (unit === "abi" && abi > 0 ? abi : 1);
+  const digits = n >= 1 || n === 0 ? 2 : Math.min(8, Math.max(2, 2 - Math.floor(Math.log10(n))));
+  const options = { minimumFractionDigits: 2, maximumFractionDigits: digits };
+  const zero = Number(n.toFixed(digits)) === 0;
+  const sign = value < 0 && !zero ? MINUS : "";
+  return unit === "abi"
+    ? `${sign}${n.toLocaleString("en-US", { ...options, useGrouping: false })} ABI`
+    : `${sign}$${n.toLocaleString(locale, options)}`;
 }
 
 /** USD-denominated formatter pair. Default for new result widgets. */

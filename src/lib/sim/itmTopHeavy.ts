@@ -1,3 +1,16 @@
+import type { FinishModelId } from "./types";
+
+/**
+ * The tilt below is applied before α closes EV, so its visible direction is
+ * whatever the α re-solve makes of it. Only the power-law family turns a
+ * positive bias into more first places at the same EV; Plackett-Luce reverses
+ * it, stretched-exp absorbs it into α exactly, linear skill runs out of α, and
+ * uniform / empirical / realdata have no α, so the raw tilt moved their EV.
+ */
+export function finishModelSupportsItmTopHeavy(id: FinishModelId): boolean {
+  return id === "power-law" || id === "powerlaw-realdata-influenced";
+}
+
 export const MIN_ITM_TOP_HEAVY_BIAS = -1;
 export const MAX_ITM_TOP_HEAVY_BIAS = 1;
 export const ITM_TOP_HEAVY_BIAS_STEP = 0.05;
@@ -25,9 +38,11 @@ export function applyItmTopHeavyToFreeBand(
     return { adjusted, freeSum };
   }
 
-  // Positive bias pushes mass upward inside the free paid band; negative
-  // bias flattens / bottom-heavies it. The transform is multiplicative and
-  // order-only, so α can still close total EV by re-scaling the same band.
+  // A positive bias weights the top free place down and the bottom one up
+  // (freeIndices run from the best place); on the power-law family the α
+  // re-solve over-compensates, which is what lands more mass on first place.
+  // The transform is multiplicative and order-only, so α can still close
+  // total EV by re-scaling the same band.
   const last = freeIndices.length - 1;
   const strength = -clamped * 2.2;
   let freeSum = 0;

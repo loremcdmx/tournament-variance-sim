@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/Section";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
+import { countOrDash } from "@/lib/results/formatters";
 import { MIX_BLOCK_HANDS } from "@/lib/sim/cashEngine";
 import { cashRakeModelled } from "@/lib/sim/cashInput";
 import type { CashResult } from "@/lib/sim/cashTypes";
@@ -53,10 +54,7 @@ export function CashResultsView({ result }: { result: CashResult }) {
 
   const fmtPct = fmt.pct;
   const fmtMoney = (vBb: number) => fmt.money(vBb, moneyUnit, bb);
-  const fmtHands = (v: number) =>
-    Number.isFinite(v)
-      ? `${Math.round(v).toLocaleString(numberLocale)} ${t("cash.axis.hands")}`
-      : "—";
+  const fmtHands = (v: number) => countOrDash(v, t("cash.handCount"), locale, "hand", numberLocale);
   const moneyAxisLabel =
     moneyUnit === "usd" ? t("cash.axis.usd") : t("cash.axis.bb");
   const moneyUnitLabel =
@@ -338,7 +336,13 @@ export function CashResultsView({ result }: { result: CashResult }) {
               note={t("cash.chart.recovery.note")}
             />
             {isEmptyHistogram(result.recoveryHistogram) ? (
-              <CashChartEmpty message={t("cash.chart.recovery.empty")} />
+              <CashChartEmpty
+                message={t(
+                  isEmptyHistogram(result.longestBreakevenHistogram)
+                    ? "cash.chart.recovery.noDrawdown"
+                    : "cash.chart.recovery.empty",
+                )}
+              />
             ) : (
               <HistogramChart
                 hist={result.recoveryHistogram}
@@ -364,7 +368,7 @@ export function CashResultsView({ result }: { result: CashResult }) {
           <SummaryStrip items={oddsSummary} />
           <CashOddsChart result={result} />
         </Card>
-        <Card className="data-surface-card p-4">
+        <Card className="data-surface-card p-4 xl:self-start">
           <ChartTitle
             suit="diamond"
             title={t("cash.section.economics.title")}
@@ -503,7 +507,7 @@ function MixBreakdownRowCard({
           </div>
           <div className="flex flex-wrap gap-2">
             <MixTag accent="diamond">
-              {row.hands.toLocaleString(numberLocale)} {t("cash.axis.hands")}
+              {countOrDash(row.hands, t("cash.handCount"), locale, "hand", numberLocale)}
             </MixTag>
             <MixTag accent="club">
               {t("cash.wrBb100.label")}: {fmt.signedBb100(row.wrBb100)}
@@ -528,7 +532,7 @@ function MixBreakdownRowCard({
           accent="diamond"
           label={t("cash.mix.metric.hands")}
           share={row.handShare}
-          detail={`${fmt.pct(row.handShare)} · ${row.hands.toLocaleString(numberLocale)} ${t("cash.axis.hands")}`}
+          detail={`${fmt.pct(row.handShare)} · ${countOrDash(row.hands, t("cash.handCount"), locale, "hand", numberLocale)}`}
         />
         <MixMetricBar
           accent="heart"

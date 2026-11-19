@@ -92,3 +92,15 @@ describe("comparison execution without unused calculator collectors", () => {
     expect(() => simulateDownsideShard({ ...input, collectDownsideReport: false }, compiled, 0, 8, grid)).toThrow();
   });
 });
+
+describe("default report readouts quoted in docs/OCEAN_DOWNSIDE_REPORT.md", () => {
+  it("prints the medians of the longest spell below EV and the Ocean / PKO drawdown ratio the doc quotes", () => {
+    const rows = Object.fromEntries(compileFormatComparison(FORMAT_COMPARISON_DEFAULTS).map(({ scenario, compiled, moments }) => {
+      const grid = grids.makeCheckpointGrid(compiled.tournamentsPerSample);
+      const raw = simulateDownsideShard(scenario.input, compiled, 0, FORMAT_COMPARISON_DEFAULTS.samples, grid);
+      return [scenario.format, summarizeFormatComparisonScenario(scenario, compiled, raw, grid, moments)];
+    }));
+    expect([rows["ocean-ko"], rows.freezeout, rows.pko, rows.mystery].map(row => row.longestBelowEv.median)).toEqual([402, 350, 347, 353]);
+    expect((rows["ocean-ko"].maxDrawdownBI.p95 / rows.pko.maxDrawdownBI.p95).toFixed(1)).toBe("1.1");
+  });
+});

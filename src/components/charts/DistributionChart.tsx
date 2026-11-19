@@ -356,7 +356,7 @@ function DistributionChartImpl({
     const lo = merged.edges[binIdx] / divisor;
     const hi = merged.edges[binIdx + 1] / divisor;
     const rangeLabel =
-      unitLabel === "seats"
+      unitLabel === "seats" || unitLabel === "tourneys"
         ? integerBinLabel(lo, hi)
         : `${formatEdge(lo, unitLabel)} – ${formatEdge(hi, unitLabel)}`;
     const count = merged.counts[binIdx] ?? 0;

@@ -126,12 +126,7 @@ export function EvBreakdownRow({
   const [pinned, setPinned] = useState(false);
   const [canHover, setCanHover] = useState(false);
   const labelClass = "text-[color:var(--color-fg)]";
-  const netClass =
-    netDollars > 0
-      ? "text-[color:var(--color-accent)]"
-      : netDollars < 0
-        ? "text-[color:var(--color-danger)]"
-        : "text-[color:var(--color-fg-dim)]";
+  const netClass = signedMoneyClass(netDollars);
   const evWidthPct = Math.min(
     100,
     Math.max(0, (maxEvShare ? evShare / maxEvShare : evShare) * 100),
@@ -241,7 +236,7 @@ export function EvBreakdownRow({
   );
 }
 
-function TierHoverPopup({
+export function TierHoverPopup({
   label,
   breakdown,
 }: {
@@ -251,13 +246,10 @@ function TierHoverPopup({
   const t = useT();
   const { locale } = useLocale();
   const { tier, hasBounty, bountyColor, posRangeLabel } = breakdown;
-  const oddsStr =
-    tier.field > 1e-9
-      ? `1 ${t("preview.hover.oddsIn")} ${Math.max(
-          1,
-          Math.round(1 / tier.field),
-        )}`
-      : "—";
+  const odds = oddsDenominator(tier.field, locale);
+  // A heads-up Mystery winner takes the bounty as one lump with no KO count
+  // behind it, so "KOs 0.00" and "avg KO size $0" would contradict the total.
+  const showKoCount = tier.bustsGivenFinish > 1e-9;
   const [placement, setPlacement] = useState<"right" | "left" | "below" | null>(
     null,
   );
@@ -333,7 +325,8 @@ function TierHoverPopup({
           {t("preview.hover.hitRate")}
         </span>
         <span className="font-mono tabular-nums text-[color:var(--color-fg)]">
-          {pct(tier.field)} · {oddsStr}
+          {pct(tier.field)}
+          {odds != null && ` · 1 ${t("preview.hover.oddsIn")} ${odds}`}
         </span>
       </div>
       <div className="flex flex-col gap-1 border-t border-[color:var(--color-border)]/70 pt-1.5">
@@ -366,6 +359,8 @@ function TierHoverPopup({
                 {fmtMoneyAbs(tier.bountyGivenFinish, locale)}
               </span>
             </div>
+            {showKoCount && (
+            <>
             <div className="flex items-center justify-between gap-2 text-[color:var(--color-fg-dim)]">
               <span>{t("preview.hover.bountyHeads")}</span>
               <span className="font-mono tabular-nums">
@@ -380,6 +375,8 @@ function TierHoverPopup({
                 {fmtMoneyAbs(tier.bountySizePerBust, locale)}
               </span>
             </div>
+            </>
+            )}
           </>
         )}
         <div className="mt-1 flex items-center justify-between gap-2 border-t border-[color:var(--color-border)]/50 pt-1 text-[color:var(--color-fg)]">
@@ -420,12 +417,7 @@ export function EvBreakdownFooter({
   eqNetDollars?: number;
 }) {
   const { locale } = useLocale();
-  const netClass =
-    netDollars > 0
-      ? "text-[color:var(--color-accent)]"
-      : netDollars < 0
-        ? "text-[color:var(--color-danger)]"
-        : "text-[color:var(--color-fg-dim)]";
+  const netClass = signedMoneyClass(netDollars);
   return (
     <div
       className={`mt-0.5 grid ${EV_BREAKDOWN_GRID} ${EV_BREAKDOWN_GAP} items-center border-t border-[color:var(--color-border)] pt-1.5 text-[9px] font-semibold sm:text-[11px]`}
@@ -447,6 +439,21 @@ export function EvBreakdownFooter({
   );
 }
 
+/** The colour follows the printed value: a net that rounds to $0 is neutral. */
+export function signedMoneyClass(v: number): string {
+  if (!Number.isFinite(v) || Math.abs(v) < 0.005) return "text-[color:var(--color-fg-dim)]";
+  return v > 0 ? "text-[color:var(--color-accent)]" : "text-[color:var(--color-danger)]";
+}
+
+/** ROI as a signed percent whose sign is taken from the rounded figure, so a
+ *  break-even row reads "0.0%", never "-0.0%" or "+0.0%". */
+export function fmtSignedPct(v: number, digits = 1): string {
+  const scale = 10 ** digits;
+  const rounded = Math.round(v * 100 * scale) / scale;
+  if (rounded === 0) return `${(0).toFixed(digits)}%`;
+  return `${rounded > 0 ? "+" : ""}${rounded.toFixed(digits)}%`;
+}
+
 export function fmtSignedMoney(v: number, locale: Locale): string {
   if (!Number.isFinite(v) || Math.abs(v) < 0.005) return "$0";
   const sign = v < 0 ? "−" : "+";
@@ -461,6 +468,16 @@ export function fmtSignedMoney(v: number, locale: Locale): string {
 function clampUnit(v: number): number {
   if (!Number.isFinite(v)) return 0;
   return Math.max(0, Math.min(1, v));
+}
+
+/** The N of "1 in N" in the locale's number format, or null where it says
+ *  nothing the percentage does not (p above one half, or none). A whole N is
+ *  up to a third off a large probability, so N under 10 keeps one decimal. */
+export function oddsDenominator(p: number, locale: Locale): string | null {
+  if (!(p > 1e-9) || p > 0.5) return null;
+  const n = 1 / p;
+  const digits = n < 9.95 ? 1 : 0;
+  return n.toLocaleString(numberLocaleTag(locale), { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 export function pct(v: number): string {

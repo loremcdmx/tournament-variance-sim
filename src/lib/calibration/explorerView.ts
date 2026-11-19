@@ -7,6 +7,8 @@ export type PrecisionRow = Precision["rows"][number];
 /** σ, its standard error and ROI are shown to one decimal: the anchor's own error is two to three percent. */
 export const SIGMA_DECIMALS = 1;
 export const ROI_DECIMALS = 1;
+/** The σ gap is a few tenths of a BI; at the cards' one decimal it read "0.2" under cards of 5.9 and 6.2. */
+export const SIGMA_GAP_DECIMALS = 2;
 /** The θ block exists to show differences of a few hundredths of a BI; one decimal would print "6,2–6,2". */
 export const THETA_SIGMA_DECIMALS = 2;
 /** The result SD over a distance is rounded to tens of BI: hundreds would print Space and Ocean as the same "≈ 1 000". */

@@ -32,6 +32,7 @@ import {
   type RuntimeSigmaFormat,
 } from "./runtimeSigmaBands";
 import type { FinishModelConfig, GameType, TournamentRow } from "./types";
+import { validateSchedule } from "./validation";
 
 export { runtimeSigmaBandResid, type RuntimeSigmaFormat };
 
@@ -81,7 +82,7 @@ export interface RuntimeSigmaPoint {
  */
 export function buildFormatRuntimeRow(
   format: RuntimeSigmaFormat,
-  point: Pick<RuntimeSigmaPoint, "afs" | "roi" | "rake" | "itmTarget">,
+  point: Pick<RuntimeSigmaPoint, "afs" | "roi" | "rake" | "finishModel" | "itmTarget">,
 ): TournamentRow {
   const isBr = format === "mystery-royale";
   const base: TournamentRow = {
@@ -108,11 +109,16 @@ export function buildFormatRuntimeRow(
     rake: base.rake,
     roi: base.roi,
   };
-  return applyItmTarget([typed], point.itmTarget ?? DEFAULT_ITM_TARGET)[0];
+  return applyItmTarget([typed], point.itmTarget ?? DEFAULT_ITM_TARGET, point.finishModel)[0];
 }
 
 const SIGMA_CACHE_LIMIT = 512;
-const sigmaCache = new Map<string, number | null>();
+interface RuntimeSigmaEntry {
+  sigma: number | null;
+  /** Whether Run would accept the row, i.e. the pinned ITM leaves room for the ROI. */
+  reached: boolean;
+}
+const sigmaCache = new Map<string, RuntimeSigmaEntry>();
 
 function cacheKey(format: RuntimeSigmaFormat, point: RuntimeSigmaPoint): string {
   const afs = format === "mystery-royale" ? RUNTIME_SIGMA_BR_FIELD : point.afs;
@@ -148,19 +154,42 @@ export function formatRuntimeSigma(
   format: RuntimeSigmaFormat,
   point: RuntimeSigmaPoint,
 ): number | null {
+  return runtimeSigmaEntry(format, point).sigma;
+}
+
+/**
+ * Whether the format's row can pay `point.roi` at its pinned ITM, decided by
+ * `validateSchedule`, the gate Run uses. Out of reach, the compiled row
+ * saturates at another ROI and its σ belongs to that ROI, not the label.
+ * Fixed-shape models never calibrate to the ROI and always pass.
+ */
+export function formatRuntimeRoiReached(
+  format: RuntimeSigmaFormat,
+  point: RuntimeSigmaPoint,
+): boolean {
+  return runtimeSigmaEntry(format, point).reached;
+}
+
+function runtimeSigmaEntry(
+  format: RuntimeSigmaFormat,
+  point: RuntimeSigmaPoint,
+): RuntimeSigmaEntry {
   const key = cacheKey(format, point);
   const hit = sigmaCache.get(key);
   if (hit !== undefined) return hit;
-  const breakdown = buildExactBreakdown([buildFormatRuntimeRow(format, point)], {
-    finishModel: point.finishModel,
-  });
-  const sigma = breakdown ? breakdown.sigmaEff : null;
+  const model = point.finishModel ?? { id: "power-law" };
+  const row = buildFormatRuntimeRow(format, point);
+  const breakdown = buildExactBreakdown([row], { finishModel: model });
+  const entry: RuntimeSigmaEntry = {
+    sigma: breakdown ? breakdown.sigmaEff : null,
+    reached: validateSchedule([row], model).ok,
+  };
   if (sigmaCache.size >= SIGMA_CACHE_LIMIT) {
     const oldest = sigmaCache.keys().next().value;
     if (oldest !== undefined) sigmaCache.delete(oldest);
   }
-  sigmaCache.set(key, sigma);
-  return sigma;
+  sigmaCache.set(key, entry);
+  return entry;
 }
 
 export function formatRuntimeSigmaBand(
@@ -184,19 +213,36 @@ export function buildRuntimeSigmaOverrides(input: {
   point: RuntimeSigmaPoint;
 }): Partial<Record<ConvergenceRowFormat, SigmaBand>> | undefined {
   const { format, mix, point } = input;
-  const wanted: RuntimeSigmaFormat[] =
-    format === "freeze" ||
-    format === "pko" ||
-    format === "mystery" ||
-    format === "mystery-royale"
-      ? [format]
-      : format === "mix"
-        ? (["freeze", "pko", "mystery"] as const).filter((_, i) => mix[i] > 0)
-        : [];
   const overrides: Partial<Record<ConvergenceRowFormat, SigmaBand>> = {};
-  for (const f of wanted) {
+  for (const f of runtimeSigmaFormats(format, mix)) {
     const band = formatRuntimeSigmaBand(f, point);
     if (band) overrides[f] = band;
   }
   return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+/** Whether every format the selection uses can pay the chosen ROI (see
+ *  `formatRuntimeRoiReached`); true for tabs with no runtime row. */
+export function runtimeRoiReached(input: {
+  format: ConvergenceFormat;
+  mix: MixTuple;
+  point: RuntimeSigmaPoint;
+}): boolean {
+  return runtimeSigmaFormats(input.format, input.mix).every((f) =>
+    formatRuntimeRoiReached(f, input.point),
+  );
+}
+
+function runtimeSigmaFormats(
+  format: ConvergenceFormat,
+  mix: MixTuple,
+): RuntimeSigmaFormat[] {
+  return format === "freeze" ||
+    format === "pko" ||
+    format === "mystery" ||
+    format === "mystery-royale"
+    ? [format]
+    : format === "mix"
+      ? (["freeze", "pko", "mystery"] as const).filter((_, i) => mix[i] > 0)
+      : [];
 }

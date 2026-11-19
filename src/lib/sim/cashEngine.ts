@@ -281,7 +281,7 @@ export interface CashShard {
   maxDrawdownBb: Float64Array;
   /** Longest breakeven stretch in hands per sample. */
   longestBreakevenHands: Int32Array;
-  /** Hands from deepest drawdown to recovery; -1 if never recovered. */
+  /** Hands from deepest drawdown to recovery; -1 if never recovered, -2 if the path never had a drawdown. */
   recoveryHands: Int32Array;
   /** 1 if the running minimum touched <= -thresholdBb at any point. */
   hitBelowThreshold: Uint8Array;
@@ -495,7 +495,7 @@ export function simulateCashShard(
     maxDrawdownBb[localS] = maxDd;
     longestBreakevenHands[localS] = longestBreakeven;
     recoveryHands[localS] =
-      deepestDdHand < 0 ? 0 : recoveryHand < 0 ? -1 : recoveryHand;
+      deepestDdHand < 0 ? -2 : recoveryHand < 0 ? -1 : recoveryHand;
 
     // Track best / worst by final BR across the shard so downstream
     // merging just compares two finals.
@@ -772,7 +772,7 @@ export function buildCashResult(
   const histogram = histogramOf(finalBb, 60, false, false);
   const drawdownHistogram = histogramOf(maxDd, 50, true, true);
   const longestBreakevenHistogram = histogramOfInt(longestBe, 50, true);
-  // Recovery: skip -1 (unrecovered), hist the recovered-only slice.
+  // Recovery: skip -1 (unrecovered) and -2 (no drawdown), hist the recovered-only slice.
   const recovered: number[] = [];
   for (let s = 0; s < S; s++) {
     if (recovery[s] >= 0) recovered.push(recovery[s]);

@@ -29,7 +29,7 @@ vi.mock("@/lib/i18n/LocaleProvider", () => ({
   useLocale: () => ({ locale: "en" }),
 }));
 
-import { EvBreakdownRow } from "./PreviewParts";
+import { EvBreakdownRow, fmtSignedPct, oddsDenominator, signedMoneyClass } from "./PreviewParts";
 
 type El = { type: unknown; props: Record<string, unknown> };
 type Fn = (...args: unknown[]) => unknown;
@@ -140,5 +140,44 @@ describe("EV breakdown row zero-skill bar", () => {
 
   it("draws no baseline for a row that has none", () => {
     expect(ghostWidth({ eqShare: null, eqEvShare: null, maxEvShare: 0.3 })).toBe("0.0000%");
+  });
+});
+
+describe("tier popup odds", () => {
+  it("keeps a decimal where a whole N would contradict the percentage beside it", () => {
+    expect(oddsDenominator(0.4, "en")).toBe("2.5");
+    expect(oddsDenominator(0.273333, "en")).toBe("3.7");
+  });
+
+  it("writes the decimal mark of the UI language", () => {
+    expect(oddsDenominator(0.273333, "ru")).toBe("3,7");
+  });
+
+  it("drops the odds of a near-certain finish, which printed 1 in 1.0", () => {
+    for (const p of [0.51, 0.884, 0.96, 1]) expect(oddsDenominator(p, "en")).toBeNull();
+    expect(oddsDenominator(0, "en")).toBeNull();
+  });
+
+  it("stays a whole number for small probabilities", () => {
+    expect(oddsDenominator(0.1, "en")).toBe("10");
+    expect(oddsDenominator(1 / 441, "en")).toBe("441");
+  });
+});
+
+describe("signed readouts take the sign from the rounded value", () => {
+  it("prints a break-even ROI as a neutral 0.0%, whichever side of zero it landed", () => {
+    expect(fmtSignedPct(-8.4e-13)).toBe("0.0%");
+    expect(fmtSignedPct(8.4e-13)).toBe("0.0%");
+    expect(fmtSignedPct(-0.0004)).toBe("0.0%");
+    expect(fmtSignedPct(-0.0006)).toBe("-0.1%");
+    expect(fmtSignedPct(0.1)).toBe("+10.0%");
+  });
+
+  it("colours a net that prints as $0 neutral", () => {
+    const dim = "text-[color:var(--color-fg-dim)]";
+    expect(signedMoneyClass(-9e-14)).toBe(dim);
+    expect(signedMoneyClass(0.004)).toBe(dim);
+    expect(signedMoneyClass(-0.01)).toBe("text-[color:var(--color-danger)]");
+    expect(signedMoneyClass(0.01)).toBe("text-[color:var(--color-accent)]");
   });
 });

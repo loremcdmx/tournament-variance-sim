@@ -432,7 +432,7 @@ function normalizePersistedControls(controls: ControlsState): ControlsState {
   normalizeNumber("rakebackPct", 0, 100);
   // Zero means equilibrium in resolveItmTarget, including a cleared input.
   normalizeNumber("itmGlobalPct", 0, 99);
-  normalizeNumber("roiStdErr", 0, 5);
+  normalizeNumber("roiStdErr", 0, 0.5);
   normalizeBoolean("usePrimedopePayouts");
   normalizeBoolean("usePrimedopeFinishModel");
   normalizeBoolean("usePrimedopeRakeMath");

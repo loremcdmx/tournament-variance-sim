@@ -14,6 +14,7 @@ import {
 } from "react";
 import type {
   FieldVariability,
+  FinishModelConfig,
   GameType,
   PayoutStructureId,
   TournamentRow,
@@ -148,13 +149,17 @@ export function buyInToCommit(
   return parsed;
 }
 
-export function displayItmPct(row: TournamentRow, globalItmPct: number | null): number {
+export function displayItmPct(
+  row: TournamentRow,
+  globalItmPct: number | null,
+  finishModel?: FinishModelConfig,
+): number {
   // Resolve inheritance, zero-as-auto and all-paid rows exactly as the run
   // does. A raw zero must not be displayed as 0% when the engine uses paid/N.
   const [effective] = applyItmTarget([row], {
     enabled: globalItmPct != null,
     pct: globalItmPct ?? 0,
-  });
+  }, finishModel);
   return round2(effective.itmRate! * 100);
 }
 
@@ -192,6 +197,8 @@ interface Props {
   /** When set, rows with no explicit itmRate inherit this default (shown
    *  as the placeholder on the per-row input). Pass null to disable. */
   globalItmPct?: number | null;
+  /** The run's finish model: on a one-prize-level table it decides the ITM default. */
+  finishModel?: FinishModelConfig;
   /** Global rakeback %, used only for Battle Royale ROI helper copy. */
   globalRakebackPct?: number;
   /** Optional extras rendered in the toolbar row (right of Add / Import). */
@@ -352,6 +359,9 @@ const ROI_PCT_MIN = -99;
 const ROI_PCT_MAX = 10_000;
 // Scenario ROIs go down to 0.0225 (2.25 %), and an imported one can carry more.
 const ROI_PCT_DECIMALS = 4;
+// The structural shares (Ocean 54.35 %, Battle Royale 45.65 %) and a typed 33 %
+// sit off the 5-point arrow-key grid.
+const BOUNTY_PCT_DECIMALS = 1;
 const PLAIN_INT_RE = /^\d+$/;
 const PLAIN_NUMBER_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)$/;
 const DECIMAL_COMMA_ROI_RE = /^([+-]?\d+),(\d+)$/;
@@ -371,8 +381,13 @@ function parsePlainNumber(raw: string): number | null {
 // A tab or two semicolons make the line a spreadsheet export, where a comma is
 // a decimal mark inside a cell. Otherwise commas separate the cells. The
 // separators are kept for that case: `12,5` typed with no space in a list that
-// spaces its other commas is a decimal ROI, not an ROI of 12 and a count of 5.
-function splitImportLine(line: string): { cells: string[]; decimalCommaPair: string | null } {
+// spaces its other commas is a decimal ROI, not an ROI of 12 and a count of 5,
+// and `2,500` in the players cell is a thousands separator, not 2 players at $500.
+function splitImportLine(line: string): {
+  cells: string[];
+  decimalCommaPair: string | null;
+  thousandsPair: string | null;
+} {
   const delimiter = line.includes("\t")
     ? "\t"
     : (line.match(/;/g)?.length ?? 0) >= 2
@@ -380,6 +395,7 @@ function splitImportLine(line: string): { cells: string[]; decimalCommaPair: str
       : null;
   let cells: string[];
   let decimalCommaPair: string | null = null;
+  let thousandsPair: string | null = null;
   if (delimiter) {
     cells = line.split(delimiter).map((cell) => cell.trim());
   } else {
@@ -395,15 +411,27 @@ function splitImportLine(line: string): { cells: string[]; decimalCommaPair: str
     ) {
       decimalCommaPair = `${cells[3]},${cells[4]}`;
     }
+    if (
+      separators[1] === "," &&
+      separators.some((sep, k) => k !== 1 && sep !== ",") &&
+      /^[1-9]\d{0,2}$/.test(cells[1]) &&
+      /^\d{3}$/.test(cells[2])
+    ) {
+      let last = 2;
+      while (separators[last] === "," && /^\d{3}$/.test(cells[last + 1] ?? "")) last++;
+      thousandsPair = cells.slice(1, last + 1).join(",");
+    }
   }
   while (cells.length > IMPORT_MAX_CELLS && cells[cells.length - 1] === "") cells.pop();
-  return { cells, decimalCommaPair };
+  return { cells, decimalCommaPair, thousandsPair };
 }
 
 type ImportMessageKey =
   | "row.importErr.minCells"
   | "row.importErr.tooManyColumns"
   | "row.importErr.decimalComma"
+  | "row.importErr.thousandsComma"
+  | "row.importErr.thousandsCommaGroups"
   | "row.importErr.players"
   | "row.importErr.buyIn"
   | "row.importErr.roiNumber"
@@ -443,9 +471,27 @@ export function parseImportCSV(
     if (!trimmed || trimmed.startsWith("#")) return;
     // A leading tab is an empty label cell of a spreadsheet row, not padding.
     const stripped = line.includes("\t") ? line.replace(/\s+$/, "") : trimmed;
-    const { cells, decimalCommaPair } = splitImportLine(stripped);
+    const { cells, decimalCommaPair, thousandsPair } = splitImportLine(stripped);
     if (cells.length < 3) {
       errors.push(message("row.importErr.minCells", { line: i + 1 }));
+      return;
+    }
+    if (thousandsPair) {
+      const groups = thousandsPair.split(",");
+      const joined = thousandsPair.replaceAll(",", "");
+      // Only a single comma has a players-and-buy-in reading; more groups would
+      // spill into the ROI and count cells.
+      errors.push(
+        groups.length === 2
+          ? message("row.importErr.thousandsComma", {
+              line: i + 1,
+              pair: thousandsPair,
+              players: groups[0],
+              buyIn: groups[1],
+              joined,
+            })
+          : message("row.importErr.thousandsCommaGroups", { line: i + 1, pair: thousandsPair, joined }),
+      );
       return;
     }
     if (cells.length > IMPORT_MAX_CELLS) {
@@ -577,6 +623,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
   onChange,
   disabled,
   globalItmPct = null,
+  finishModel,
   globalRakebackPct = 0,
   toolbarExtras,
   feasibilityIssues,
@@ -702,6 +749,7 @@ export const ScheduleEditor = memo(function ScheduleEditor({
               advanced={advanced}
               isOpen={advanced && expanded.has(r.id)}
               globalItmPct={globalItmPct}
+              finishModel={finishModel}
               globalRakebackPct={globalRakebackPct}
               canRemove={canRemove}
               canAdd={canAdd}
@@ -860,6 +908,7 @@ interface ScheduleRowProps {
   advanced: boolean;
   isOpen: boolean;
   globalItmPct: number | null;
+  finishModel: FinishModelConfig | undefined;
   globalRakebackPct: number;
   canRemove: boolean;
   canAdd: boolean;
@@ -880,6 +929,7 @@ const ScheduleRow = memo(function ScheduleRow({
   advanced,
   isOpen,
   globalItmPct,
+  finishModel,
   globalRakebackPct,
   canRemove,
   canAdd,
@@ -1027,6 +1077,7 @@ const ScheduleRow = memo(function ScheduleRow({
                 min={0}
                 max={90}
                 step={5}
+                decimals={BOUNTY_PCT_DECIMALS}
               />
             </div>
           )}
@@ -1108,7 +1159,7 @@ const ScheduleRow = memo(function ScheduleRow({
             min={0}
             max={100}
             step={0.5}
-            value={displayItmPct(r, globalItmPct)}
+            value={displayItmPct(r, globalItmPct, finishModel)}
             placeholder=""
             onChange={(raw) => {
               if (raw === "") {
@@ -1856,10 +1907,6 @@ function formatPct(v: number, digits = 1): string {
   return `${sign}${pct.toFixed(digits)}%`;
 }
 
-function roundRoiToWholePct(roi: number): number {
-  return Math.round(roi * 100) / 100;
-}
-
 function BrReportedRoiControl({
   row,
   globalRakebackPct,
@@ -1895,16 +1942,16 @@ function BrReportedRoiControl({
             row.rake,
             rbPct,
           );
-          const roundedFieldRoi = roundRoiToWholePct(fieldRoi);
-          const isActive = Math.abs(roundedFieldRoi - row.roi) < 0.0001;
+          const appliedRoi = roundToDecimals(fieldRoi * 100, ROI_PCT_DECIMALS) / 100;
+          const isActive = Math.abs(appliedRoi - row.roi) < 0.0001;
           const optionTitle = t(p.labelKey)
             .replace("{reported}", formatPct(p.reportedRoi))
-            .replace("{field}", formatPct(roundedFieldRoi));
+            .replace("{field}", formatPct(appliedRoi, 2));
           return (
             <button
               key={p.id}
               type="button"
-              onClick={() => onApply(roundedFieldRoi)}
+              onClick={() => onApply(appliedRoi)}
               className={
                 "h-7 min-w-0 rounded-[5px] px-0.5 text-[10px] font-semibold tabular-nums transition-colors focus:outline-none " +
                 (isActive

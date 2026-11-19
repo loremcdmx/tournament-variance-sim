@@ -22,6 +22,8 @@ export interface TrajectoryLineMeta {
   overlayLabel?: string;
   /** A line whose title is a plain dictionary entry. */
   titleKey?: DictKey;
+  /** On an EV line drawn before tilt: the profit the runs actually averaged. */
+  simulatedMean?: number;
 }
 
 type Translate = (key: DictKey) => string;
@@ -55,6 +57,17 @@ function extremeKey(line: TrajectoryLineMeta): DictKey {
     return agg ? "chart.traj.extreme.aggBest" : "chart.traj.extreme.realBest";
   }
   return agg ? "chart.traj.extreme.aggWorst" : "chart.traj.extreme.realWorst";
+}
+
+/** Legend text of the EV line; a pre-tilt EV names the simulated mean beside it. */
+export function trajectoryEvLegend(
+  line: TrajectoryLineMeta,
+  t: Translate,
+  money: (v: number) => string,
+): string {
+  return line.simulatedMean != null
+    ? fmt(t("chart.traj.legend.evBeforeTilt"), { mean: money(line.simulatedMean) })
+    : t(line.titleKey ?? "chart.traj.legend.ev");
 }
 
 /** Header of the hover tooltip, in the UI language. */

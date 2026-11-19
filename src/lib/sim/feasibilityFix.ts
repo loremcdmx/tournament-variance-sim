@@ -1,5 +1,4 @@
-import { fieldVariantSizes } from "./fieldVariants";
-import { inferGameType, normalizeGameTypeConsistency } from "./gameType";
+import { inferGameType } from "./gameType";
 import { applyItmTarget, type ItmTargetConfig } from "./itmTarget";
 import { validateSchedule, type RowFeasibilityIssue } from "./validation";
 import type { FinishModelConfig, TournamentRow } from "./types";
@@ -19,8 +18,12 @@ function clampRoi(v: number): number | null {
   return Math.max(ROI_MIN, Math.min(ROI_MAX, v));
 }
 
-function rowForValidation(row: TournamentRow, itmTargetCfg: ItmTargetConfig): TournamentRow {
-  return applyItmTarget([row], itmTargetCfg)[0] ?? row;
+function rowForValidation(
+  row: TournamentRow,
+  model: FinishModelConfig,
+  itmTargetCfg: ItmTargetConfig,
+): TournamentRow {
+  return applyItmTarget([row], itmTargetCfg, model)[0] ?? row;
 }
 
 function candidatePasses(
@@ -28,11 +31,7 @@ function candidatePasses(
   model: FinishModelConfig,
   itmTargetCfg: ItmTargetConfig,
 ): boolean {
-  return validateSchedule([rowForValidation(row, itmTargetCfg)], model).ok;
-}
-
-function playsSeveralFields(row: TournamentRow): boolean {
-  return fieldVariantSizes(normalizeGameTypeConsistency(row)).length > 1;
+  return validateSchedule([rowForValidation(row, model, itmTargetCfg)], model).ok;
 }
 
 const ROI_SEARCH_STEPS = 24;
@@ -45,7 +44,9 @@ const ROI_SEARCH_STEPS = 24;
  * below. Moving the target to the nearest bound and asking again tightens the
  * bracket until a ROI passes or the bounds cross, which means no single ROI
  * fits every size. Matching the worst size alone flips the failure to another
- * size and back.
+ * size and back. A single field can need the same walk: its reachable EV jumps
+ * where the first-place floor switches on at break-even, so the EV reached
+ * under the old target need not be reachable under the new one.
  */
 function fitRoiAcrossFields(
   row: TournamentRow,
@@ -72,7 +73,7 @@ function fitRoiAcrossFields(
     const roi = clampRoi(target / entryCost - 1);
     if (roi === null) return null;
     const candidate = { ...row, roi };
-    const next = validateSchedule([rowForValidation(candidate, itmTargetCfg)], model).issues[0];
+    const next = validateSchedule([rowForValidation(candidate, model, itmTargetCfg)], model).issues[0];
     if (!next) return candidate;
     if (next.reason) return null;
     issue = next;
@@ -102,7 +103,6 @@ export function chooseClosestFeasibilityFix(
 ): FeasibilityFixChoice {
   const candidates: FeasibilityFixChoice[] = [];
   const entryCost = row.buyIn * (1 + row.rake);
-  const ranged = playsSeveralFields(row);
   const matchedRoi =
     entryCost > 0 ? clampRoi(issue.currentEv / entryCost - 1) : null;
   if (matchedRoi !== null && issue.reason !== "inconsistent-finish-locks") {
@@ -110,7 +110,7 @@ export function chooseClosestFeasibilityFix(
       kind: "match-roi",
       row: { ...row, roi: matchedRoi },
     };
-    if (!ranged || candidatePasses(matched.row, model, itmTargetCfg)) {
+    if (candidatePasses(matched.row, model, itmTargetCfg)) {
       candidates.push(matched);
     } else {
       const fitted = fitRoiAcrossFields(row, issue, model, itmTargetCfg, entryCost);
@@ -141,12 +141,10 @@ export function chooseClosestFeasibilityFix(
   const viable = candidates.filter((candidate) =>
     candidatePasses(candidate.row, model, itmTargetCfg),
   );
-  if (viable.length === 0) {
-    // Rewriting the ROI to one size's reachable EV would only move the failure
-    // to another size, so a ranged row nothing can unblock stays as it is.
-    if (ranged && issue.reason === undefined) return { kind: "none", row };
-    return candidates[0] ?? { kind: "clear-locks", row };
-  }
+  // A candidate that still fails would only move the block somewhere else (for
+  // a ranged row, to another field size), so a row nothing unblocks stays as
+  // it is and the caller says so.
+  if (viable.length === 0) return { kind: "none", row };
   return viable.reduce((best, candidate) =>
     changeScore(row, candidate.row) < changeScore(row, best.row)
       ? candidate
@@ -163,7 +161,7 @@ export function rowsFitCannotUnblock(
   model: FinishModelConfig,
   itmTargetCfg: ItmTargetConfig,
 ): string[] {
-  const live = applyItmTarget([...schedule], itmTargetCfg);
+  const live = applyItmTarget([...schedule], itmTargetCfg, model);
   const stuck: string[] = [];
   for (const issue of validateSchedule(live, model).issues) {
     const row = schedule.find((r) => r.id === issue.rowId);

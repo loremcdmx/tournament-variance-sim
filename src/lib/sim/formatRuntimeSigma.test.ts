@@ -10,12 +10,16 @@ import {
 import {
   buildFormatRuntimeRow,
   buildRuntimeSigmaOverrides,
+  formatRuntimeRoiReached,
   formatRuntimeSigma,
   formatRuntimeSigmaBand,
   hasFormatRuntimeSigma,
+  runtimeRoiReached,
   runtimeSigmaBandResid,
   type RuntimeSigmaFormat,
 } from "./formatRuntimeSigma";
+import { runSimulation } from "./engine";
+import { validateSchedule } from "./validation";
 import { applyGameType } from "./gameType";
 import { applyItmTarget, type ItmTargetConfig } from "./itmTarget";
 import { computeProveEdge, proveEdgeRuntimeSigmaPoints } from "./proveEdge";
@@ -474,5 +478,67 @@ describe("card σ moves the way the sliders say", () => {
       );
       expect(isIncreasing([...sigmas].reverse()), format).toBe(true);
     }
+  });
+});
+
+describe("a card knows when its row cannot pay the ROI on the label", () => {
+  const corner = { afs: 50, roi: 1.0, rake: 0.2 };
+
+  it("agrees with validateSchedule, the gate Run uses, on the editor's own row", () => {
+    const cases: { format: RuntimeSigmaFormat; afs: number; roi: number; rake: number; itm?: ItmTargetConfig }[] = [
+      { format: "freeze", ...corner },
+      { format: "freeze", afs: 50, roi: 1.0, rake: 0.1 },
+      { format: "freeze", afs: 50, roi: 0.95, rake: 0.15 },
+      { format: "freeze", afs: 200, roi: 0.1, rake: 0.1, itm: { enabled: true, pct: 50 } },
+      { format: "freeze", afs: 200, roi: 0.6, rake: 0.1, itm: { enabled: true, pct: 50 } },
+      { format: "freeze", afs: 1000, roi: 0.1, rake: 0.1 },
+      { format: "pko", afs: 200, roi: 0.1, rake: 0.1, itm: { enabled: true, pct: 50 } },
+      { format: "mystery", afs: 50, roi: 0.5, rake: 0.2 },
+    ];
+    const verdicts = cases.map(({ format, afs, roi, rake, itm }) => {
+      const reached = formatRuntimeRoiReached(format, { afs, roi, rake, itmTarget: itm });
+      expect(reached).toBe(
+        validateSchedule([editorRow(format, afs, roi, rake, itm)], { id: "power-law" }).ok,
+      );
+      return reached;
+    });
+    expect(verdicts).toEqual([false, true, false, false, true, true, true, true]);
+  });
+
+  it("the engine plays the blocked corner row well below its label (Monte Carlo z-score)", () => {
+    const row = buildFormatRuntimeRow("freeze", corner);
+    const r = runSimulation({
+      schedule: [row],
+      scheduleRepeats: 50,
+      samples: 4000,
+      bankroll: 1000,
+      seed: 20261119,
+      finishModel: { id: "power-law" },
+    });
+    const realized = r.stats.mean / r.totalBuyIn;
+    const se = r.stats.stdDev / Math.sqrt(r.samples) / r.totalBuyIn;
+    expect((corner.roi - realized) / se).toBeGreaterThan(10);
+    const reachable = runSimulation({
+      schedule: [buildFormatRuntimeRow("freeze", { ...corner, rake: 0.1 })],
+      scheduleRepeats: 50,
+      samples: 4000,
+      bankroll: 1000,
+      seed: 20261119,
+      finishModel: { id: "power-law" },
+    });
+    const realizedOk = reachable.stats.mean / reachable.totalBuyIn;
+    const seOk = reachable.stats.stdDev / Math.sqrt(reachable.samples) / reachable.totalBuyIn;
+    expect(Math.abs(realizedOk - corner.roi) / seOk).toBeLessThan(4);
+  });
+
+  it("models that ignore the row ROI pass, as Run lets them", () => {
+    expect(formatRuntimeRoiReached("freeze", { ...corner, finishModel: { id: "uniform" } })).toBe(true);
+  });
+
+  it("a Mix is reachable only when every weighted component is", () => {
+    const point = { afs: 200, roi: 0.1, rake: 0.1, itmTarget: { enabled: true, pct: 50 } };
+    expect(runtimeRoiReached({ format: "mix", mix: [0.5, 0.5, 0], point })).toBe(false);
+    expect(runtimeRoiReached({ format: "mix", mix: [0, 0.5, 0.5], point })).toBe(true);
+    expect(runtimeRoiReached({ format: "exact", mix: [1, 0, 0], point })).toBe(true);
   });
 });

@@ -22,13 +22,13 @@ import type {
 } from "@/lib/sim/types";
 import { rowHasActiveBounty } from "@/lib/sim/gameType";
 import { finishModelSupportsTargetRoi } from "@/lib/sim/finishModel";
-import { noiseChannelsActive } from "@/lib/sim/convergencePolicy";
+import { noiseChannelsActive, tiltChannelsActive } from "@/lib/sim/convergencePolicy";
 import { type RunMode } from "@/lib/trajectorySelection";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { withPlural } from "@/lib/i18n/plural";
 import { useAdvancedMode } from "@/lib/ui/AdvancedModeProvider";
-import { pdComparePaneKeys, pdOverlayLabelKeys } from "@/lib/ui/pdComparePanes";
+import { pdComparePaneKeys, pdDiffCopyKeys, pdOverlayLabelKeys } from "@/lib/ui/pdComparePanes";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import type { DictKey } from "@/lib/i18n/dict";
 import type { PersistedState } from "@/lib/persistence";
@@ -80,7 +80,7 @@ import {
   computeExpectedRakebackCurve,
   shiftResultByRakeback,
   hideJackpotsByDefault,
-  jackpotHiddenShare,
+  jackpotHiddenShareAcross,
   stripJackpots,
   supportsJackpotFilter,
 } from "@/lib/results/trajectoryTransforms";
@@ -88,6 +88,7 @@ import {
   GLOBAL_UNIT_KEY,
   fmt,
   formatMinimumBankroll,
+  formatPerUnitAmount,
   intFmt,
   loadUnitMode,
   makeAbiMoney,
@@ -96,7 +97,7 @@ import {
   pct,
   pctDelta,
   saveUnitMode,
-  tourneyCountOrDash,
+  countOrDash,
   type UnitMode,
 } from "@/lib/results/formatters";
 import {
@@ -235,9 +236,7 @@ function ResultsViewImpl({
   // the comparison is our own model, so the PD labels move to the other side.
   const pdPresetFlip = modelPresetId === "primedope" && isPrimeDopeCompare;
   const pdLabelKeys = pdOverlayLabelKeys({ pdPresetFlip, pdPkoFallback });
-  // The "Freezeouts" diff texts describe a right column with the bounties
-  // stripped; under the flip that is the left column and the right one is ours.
-  const noKoSecond = pdPkoFallback && !pdPresetFlip;
+  const pdDiffKeys = pdDiffCopyKeys({ pdPresetFlip, pdPkoFallback });
   const ourModelLabel = finishModelId
     ? t(FINISH_MODEL_LABEL_KEY[finishModelId])
     : t("twin.runB");
@@ -359,8 +358,8 @@ function ResultsViewImpl({
   // share; the share itself is shown next to the checkbox.
   const canHideJackpots = useMemo(() => supportsJackpotFilter(schedule), [schedule]);
   const jackpotShare = useMemo(
-    () => jackpotHiddenShare({ jackpotMask: result.jackpotMask }),
-    [result.jackpotMask],
+    () => jackpotHiddenShareAcross([result, pdChart]),
+    [result, pdChart],
   );
   // null = the user has not chosen yet and the share-based default applies.
   const [hideJackpotsChoice, setHideJackpots] = useState<boolean | null>(null);
@@ -542,6 +541,7 @@ function ResultsViewImpl({
           `${((totalExpectedProfit / displayResultStats.totalBuyIn) * 100).toFixed(1)}%`,
         )
       : "";
+  const tiltActive = settings != null && tiltChannelsActive(settings);
   // Browsing the cached seed batch swaps the displayed run without touching
   // the controls, so the exported seed is the active run's, not settings'.
   const runExportSeed = (activeSeed ?? settings?.seed ?? 0) >>> 0;
@@ -612,13 +612,13 @@ function ResultsViewImpl({
   // money(...) call sites pick up the unit-aware pair.
   const { money } = moneyFmt;
   const minimumBankroll = (value: number) => formatMinimumBankroll(value, unit, abi, numberLocale);
-  const tourneysWord = t("unit.tourneys");
+  const tourneys = (v: number) => countOrDash(v, t("unit.tourneyCount"), locale, "tournament", numberLocale);
   // The worst run's own longest flat stretch — `longestBreakevenMean` is the
   // average over all runs and already has its own card.
   const worstRunLongestBreakeven = result.downswings[0]?.longestBreakeven;
   const worstRunFlatline =
     worstRunLongestBreakeven != null
-      ? `${Math.round(worstRunLongestBreakeven)} ${tourneysWord}`
+      ? tourneys(worstRunLongestBreakeven)
       : undefined;
 
   const [lineStylePresetId, setLineStylePresetId] =
@@ -853,7 +853,7 @@ function ResultsViewImpl({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <BigStat
           suit="club"
-          label={t("stat.expectedProfit")}
+          label={t(tiltActive ? "stat.expectedProfit.beforeTilt" : "stat.expectedProfit")}
           value={money(totalExpectedProfit)}
           rangeSubline={{
             label: t("stat.range.spread"),
@@ -874,6 +874,7 @@ function ResultsViewImpl({
               .replace("{roi}", `${(roi * 100).toFixed(1)}%`)
               .replace("{median}", money(totalMedian)),
             fixedShapeRoiNote,
+            tiltActive ? t("stat.expectedProfit.tiltNote") : "",
           ]
             .filter(Boolean)
             .join(" ")}
@@ -1092,7 +1093,7 @@ function ResultsViewImpl({
           title={t("section.primedopeReport")}
           showUnitToggle={false}
         >
-          <PrimedopeReportCard result={result} />
+          <PrimedopeReportCard result={result} tiltActive={tiltActive} />
         </CollapsibleSection>
       )}
 
@@ -1112,16 +1113,17 @@ function ResultsViewImpl({
       {advanced && hasPrimeDopeCompare && result.comparison && (
         <CollapsibleSection
           id="pdDiff"
-          title={noKoSecond ? t("section.pdDiff.freezeouts") : t("section.pdDiff")}
+          title={t(pdDiffKeys.sectionKey)}
         >
           <PrimedopeDiff
             primary={result}
             other={result.comparison}
             bankroll={bankroll}
-            theirsLabel={noKoSecond ? t("chart.overlay.freezeouts") : undefined}
-            title={noKoSecond ? t("pd.title.freezeouts") : undefined}
-            subtitle={noKoSecond ? t("pd.subtitle.freezeouts") : undefined}
+            theirsLabel={pdDiffKeys.theirsLabelKey ? t(pdDiffKeys.theirsLabelKey) : undefined}
+            title={t(pdDiffKeys.titleKey)}
+            subtitle={t(pdDiffKeys.subtitleKey)}
             hasBounty={hasPko}
+            tiltActive={tiltActive}
           />
         </CollapsibleSection>
       )}
@@ -1213,11 +1215,11 @@ function ResultsViewImpl({
         <MiniStat
           suit="diamond"
           label={t("stat.longestBE")}
-          value={`${Math.round(s.longestBreakevenMean)} ${tourneysWord}`}
+          value={tourneys(s.longestBreakevenMean)}
           tip={t("stat.longestBE.tip")}
           pdValue={
             pdStats
-              ? `${Math.round(pdStats.longestBreakevenMean)} ${tourneysWord}`
+              ? tourneys(pdStats.longestBreakevenMean)
               : undefined
           }
           pdDelta={
@@ -1230,17 +1232,17 @@ function ResultsViewImpl({
         <MiniStat
           suit="diamond"
           label={t("stat.avgBEStreak")}
-          value={`${Math.round(s.breakevenStreakMean)} ${tourneysWord}`}
+          value={tourneys(s.breakevenStreakMean)}
           tip={t("stat.avgBEStreak.tip")}
         />
         <MiniStat
           suit="diamond"
           label={t("stat.cashlessMean")}
-          value={`${Math.round(s.longestCashlessMean)} ${tourneysWord}`}
+          value={tourneys(s.longestCashlessMean)}
           tip={t("stat.cashlessMean.tip")}
           pdValue={
             pdStats
-              ? `${Math.round(pdStats.longestCashlessMean)} ${tourneysWord}`
+              ? tourneys(pdStats.longestCashlessMean)
               : undefined
           }
           pdDelta={
@@ -1253,11 +1255,11 @@ function ResultsViewImpl({
         <MiniStat
           suit="heart"
           label={t("stat.cashlessWorst")}
-          value={`${s.longestCashlessWorst} ${tourneysWord}`}
+          value={tourneys(s.longestCashlessWorst)}
           tone="neg"
           tip={t("stat.cashlessWorst.tip")}
           pdValue={
-            pdStats ? `${pdStats.longestCashlessWorst} ${tourneysWord}` : undefined
+            pdStats ? tourneys(pdStats.longestCashlessWorst) : undefined
           }
           pdDelta={
             pdStats
@@ -1270,11 +1272,11 @@ function ResultsViewImpl({
         <MiniStat
           suit="diamond"
           label={t("stat.recoveryMedian")}
-          value={tourneyCountOrDash(s.recoveryMedian, tourneysWord)}
+          value={tourneys(s.recoveryMedian)}
           tip={t("stat.recoveryMedian.tip")}
           pdValue={
             pdStats
-              ? tourneyCountOrDash(pdStats.recoveryMedian, tourneysWord)
+              ? tourneys(pdStats.recoveryMedian)
               : undefined
           }
           pdDelta={
@@ -1285,12 +1287,12 @@ function ResultsViewImpl({
         <MiniStat
           suit="heart"
           label={t("stat.recoveryP90")}
-          value={tourneyCountOrDash(s.recoveryP90, tourneysWord)}
+          value={tourneys(s.recoveryP90)}
           tone="neg"
           tip={t("stat.recoveryP90.tip")}
           pdValue={
             pdStats
-              ? tourneyCountOrDash(pdStats.recoveryP90, tourneysWord)
+              ? tourneys(pdStats.recoveryP90)
               : undefined
           }
           pdDelta={pdStats ? pctDelta(s.recoveryP90, pdStats.recoveryP90) : null}
@@ -1398,10 +1400,10 @@ function ResultsViewImpl({
             <DownswingsCard
               downswings={displayResultStreaks.downswings}
               upswings={displayResultStreaks.upswings}
-              tourneysWord={tourneysWord}
+              tourneys={tourneys}
               streaks={
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:grid-rows-[auto_1fr_auto_auto]">
-                  <div className="flex flex-col gap-1.5 sm:grid sm:grid-rows-subgrid sm:row-span-4">
+                  <div className="flex min-w-0 flex-col gap-1.5 sm:grid sm:grid-cols-1 sm:grid-rows-subgrid sm:row-span-4">
                     <ChartHeader
                       title={t("chart.longestBE")}
                       showUnitToggle={false}
@@ -1433,7 +1435,7 @@ function ResultsViewImpl({
                     </div>
                     <div />
                   </div>
-                  <div className="flex flex-col gap-1.5 sm:grid sm:grid-rows-subgrid sm:row-span-4">
+                  <div className="flex min-w-0 flex-col gap-1.5 sm:grid sm:grid-cols-1 sm:grid-rows-subgrid sm:row-span-4">
                     <ChartHeader
                       title={t("chart.longestCashless")}
                       showUnitToggle={false}
@@ -1472,7 +1474,7 @@ function ResultsViewImpl({
                     </div>
                     <div />
                   </div>
-                  <div className="flex flex-col gap-1.5 sm:grid sm:grid-rows-subgrid sm:row-span-4">
+                  <div className="flex min-w-0 flex-col gap-1.5 sm:grid sm:grid-cols-1 sm:grid-rows-subgrid sm:row-span-4">
                     <ChartHeader
                       title={t("chart.recovery")}
                       showUnitToggle={false}
@@ -1637,7 +1639,7 @@ function SatelliteCard({
   );
 }
 
-function BattleRoyaleLeaderboardPromoSection({
+export function BattleRoyaleLeaderboardPromoSection({
   promo,
 }: {
   promo: NonNullable<SimulationResult["battleRoyaleLeaderboardPromo"]>;
@@ -1645,7 +1647,9 @@ function BattleRoyaleLeaderboardPromoSection({
   const t = useT();
   const { locale } = useLocale();
   const numberLocale = numberLocaleTag(locale);
-  const { money } = useMoneyFmt();
+  const { money, unit } = useMoneyFmt();
+  const abi = useContext(AbiContext);
+  const perUnit = (value: number) => formatPerUnitAmount(value, unit, abi, numberLocale);
   const price = (value: number) => value.toLocaleString(numberLocale, {
     style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2,
   });
@@ -1712,14 +1716,14 @@ function BattleRoyaleLeaderboardPromoSection({
             <MiniStat
               suit="club"
               label={t("chart.brLeaderboardObserved.perTournament")}
-              value={money(promo.payoutPerTournament)}
+              value={perUnit(promo.payoutPerTournament)}
               tone={promo.payoutPerTournament >= 0 ? "pos" : "neg"}
             />
             {promo.payoutPerDay != null && (
               <MiniStat
                 suit="club"
                 label={t("chart.brLeaderboardObserved.perDay")}
-                value={money(promo.payoutPerDay)}
+                value={perUnit(promo.payoutPerDay)}
                 tone={promo.payoutPerDay >= 0 ? "pos" : "neg"}
               />
             )}
@@ -1829,14 +1833,14 @@ function BattleRoyaleLeaderboardPromoSection({
               <MiniStat
                 suit="club"
                 label={t("chart.brLeaderboardManual.perTournament")}
-                value={money(promo.manual.payoutPerTournament)}
+                value={perUnit(promo.manual.payoutPerTournament)}
                 tone={promo.manual.payoutPerTournament >= 0 ? "pos" : "neg"}
               />
               {promo.manual.averageDailyPrize != null && (
                 <MiniStat
                   suit="diamond"
                   label={t("chart.brLeaderboardManual.avgPrize")}
-                  value={money(promo.manual.averageDailyPrize)}
+                  value={perUnit(promo.manual.averageDailyPrize)}
                 />
               )}
               {promo.manual.targetPoints != null && (
@@ -1877,7 +1881,7 @@ function BattleRoyaleLeaderboardPromoSection({
                 suit="diamond"
                 label={t("chart.brLeaderboardManual.formula")}
                 value={t("chart.brLeaderboardManual.formulaValue")
-                  .replace("{perTournament}", money(promo.manual.payoutPerTournament))
+                  .replace("{perTournament}", perUnit(promo.manual.payoutPerTournament))
                   .replace(
                     "{tournaments}",
                     promo.current.tournaments.toLocaleString(numberLocale),
@@ -1889,13 +1893,13 @@ function BattleRoyaleLeaderboardPromoSection({
               <MiniStat
                 suit="club"
                 label={t("chart.brLeaderboardLookup.perTournament")}
-                value={money(promo.lookup.payoutPerTournament)}
+                value={perUnit(promo.lookup.payoutPerTournament)}
                 tone={promo.lookup.payoutPerTournament >= 0 ? "pos" : "neg"}
               />
               <MiniStat
                 suit="diamond"
                 label={t("chart.brLeaderboardLookup.avgPrize")}
-                value={money(promo.lookup.averageDailyPrize)}
+                value={perUnit(promo.lookup.averageDailyPrize)}
               />
               <MiniStat
                 suit="spade"
@@ -1987,23 +1991,28 @@ function BattleRoyaleLeaderboardPromoSection({
             </div>
           ) : promo.mode === "manual" ? (
             <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-3 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
-              {t("chart.brLeaderboardManual.anchorNote")
-                .replace("{perTournament}", money(promo.manual.payoutPerTournament))
+              {withPlural(
+                t("chart.brLeaderboardManual.anchorNote"),
+                locale,
+                Math.round(promo.current.tournaments),
+                "tournament",
+              )
+                .replace("{perTournament}", perUnit(promo.manual.payoutPerTournament))
                 .replace(
                   "{tournaments}",
-                  promo.current.tournaments.toLocaleString(numberLocale),
+                  Math.round(promo.current.tournaments).toLocaleString(numberLocale),
                 )
                 .replace("{payout}", money(promo.expectedPayout))}
             </div>
           ) : (
             <div className="mt-4 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/35 p-3 text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
               {t("chart.brLeaderboardLookup.anchorNote")
-                .replace("{perTournament}", money(promo.lookup.payoutPerTournament))
+                .replace("{perTournament}", perUnit(promo.lookup.payoutPerTournament))
                 .replace(
                   "{days}",
                   promo.lookup.snapshotCount.toLocaleString(numberLocale),
                 )
-                .replace("{dailyPrize}", money(promo.lookup.averageDailyPrize))
+                .replace("{dailyPrize}", perUnit(promo.lookup.averageDailyPrize))
                 .replace("{payout}", money(promo.expectedPayout))}
             </div>
           )}
@@ -2174,6 +2183,7 @@ export const TrajectoryCard = memo(function TrajectoryCard({
   // uPlot reads this during paint, not React render — the ref indirection is
   // intentional so a unit-mode toggle doesn't rebuild the whole chart.
   const stableAxisFmt = useMemo(() => (v: number) => axisFmtRef.current(v), []);
+  const evBeforeTilt = settings != null && tiltChannelsActive(settings);
   const primary = useMemo(
     () =>
       buildTrajectoryAssets(
@@ -2190,8 +2200,9 @@ export const TrajectoryCard = memo(function TrajectoryCard({
         runMode,
         extremeStyles,
         overlayLabel,
+        evBeforeTilt,
       ),
-    [displayResult, builtYRange, overlayPd, displayPdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, extremeStyles, overlayLabel],
+    [displayResult, builtYRange, overlayPd, displayPdChart, stableAxisFmt, linePreset, maxPathCount, refLines, lineOverrides, runMode, extremeStyles, overlayLabel, evBeforeTilt],
   );
   const pdPanePreset = PRIMEDOPE_PANE_PRESET;
   const secondary = useMemo(
@@ -2210,9 +2221,11 @@ export const TrajectoryCard = memo(function TrajectoryCard({
             lineOverrides,
             runMode,
             extremeStyles,
+            undefined,
+            evBeforeTilt,
           )
         : null,
-    [displayPdChart, builtYRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, extremeStyles],
+    [displayPdChart, builtYRange, stableAxisFmt, pdPanePreset, secondaryMaxPathCount, refLines, lineOverrides, runMode, extremeStyles, evBeforeTilt],
   );
   const extremeRows: Array<{ key: ExtremeKey; labelKey: DictKey }> = [
     { key: "realBest", labelKey: "chart.traj.extreme.realBest" },
@@ -2324,6 +2337,7 @@ export const TrajectoryCard = memo(function TrajectoryCard({
           <PrimedopeReproduceButton
             schedule={schedule}
             scheduleRepeats={scheduleRepeats}
+            usePdPayouts={usePdPayouts}
           />
         </div>
       ) : null;
@@ -2371,7 +2385,7 @@ export const TrajectoryCard = memo(function TrajectoryCard({
             sublabel={null}
             hueDot="#34d399"
             itmRate={result.stats.itmRate}
-            itmCashOnly={hasBounty}
+            itmCashOnly={hasBounty && paneKeys.bountyStrippedPane !== "primary"}
             caption={t(paneKeys.primaryCapKey)}
             action={
               paneKeys.pdPane === "primary" ? pdPaneActions : overlayLegend
@@ -2397,7 +2411,7 @@ export const TrajectoryCard = memo(function TrajectoryCard({
             }
             hueDot="#60a5fa"
             itmRate={pdChart?.stats.itmRate}
-            itmCashOnly={hasBounty && !pdPkoFallback}
+            itmCashOnly={hasBounty && paneKeys.bountyStrippedPane !== "comparison"}
             caption={t(paneKeys.comparisonCapKey)}
             action={paneKeys.pdPane === "comparison" ? pdPaneActions : null}
           >
@@ -2496,12 +2510,12 @@ function MoneyDistributionCard({
 function DownswingsCard({
   downswings,
   upswings,
-  tourneysWord,
+  tourneys,
   streaks,
 }: {
   downswings: SimulationResult["downswings"];
   upswings: SimulationResult["upswings"];
-  tourneysWord: string;
+  tourneys: (v: number) => string;
   streaks?: React.ReactNode;
 }) {
   const t = useT();
@@ -2530,7 +2544,7 @@ function DownswingsCard({
         {money(finalProfit)}
       </td>
       <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap text-[color:var(--color-fg-muted)]">
-        {Math.round(longestBreakeven)} {tourneysWord}
+        {tourneys(longestBreakeven)}
       </td>
     </tr>
   );

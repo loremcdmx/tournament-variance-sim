@@ -29,7 +29,7 @@ describe("Space → Ocean explorer at its default scenario", () => {
     const roiSd = [...plain.matchAll(/SD среднего ROI ([\d,]+ п\.п\.)/g)].map(match => match[1]);
     expect(roiSd).toEqual(["5,0 п.п.", "5,2 п.п."]);
     expect(plain).toContain("Ocean · сценарий, баунти до порога · $100 Масштаб разброса σ 7,4 BI");
-    expect(plain).toContain("Разница σ Ocean и Space: 0,3 BI");
+    expect(plain).toContain("Разница σ Ocean и Space: 0,31 BI");
   });
 
   it("explains the ± as the anchor's standard error that the θ range does not contain", () => {

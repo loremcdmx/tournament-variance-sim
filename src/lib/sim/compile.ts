@@ -275,5 +275,7 @@ export function buildScheduleAnalyticBreakdown(input: {
     sigmaRoiPerPass,
     totalCost: compiled.totalBuyIn,
     tournamentsPerPass: compiled.tournamentsPerPass,
+    expectedRoi:
+      (compiled.expectedProfit - compiled.expectedDirectRakeback) / compiled.totalBuyIn,
   };
 }

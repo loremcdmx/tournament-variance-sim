@@ -33,12 +33,20 @@ vi.mock("react", async (importOriginal) => {
     useLayoutEffect: (fn: () => void) => fn(),
   };
 });
-vi.mock("@/lib/i18n/LocaleProvider", () => ({ useT: () => (key: string) => key }));
+vi.mock("@/lib/i18n/LocaleProvider", async () => {
+  const { DICT } = await import("@/lib/i18n/dict");
+  return { useT: () => (key: keyof typeof DICT) => DICT[key].en };
+});
 vi.mock("@/lib/ui/AdvancedModeProvider", () => ({
   useAdvancedMode: () => ({ advanced: false }),
 }));
 
 import { ScheduleEditor } from "./ScheduleEditor";
+import { applyGameType } from "@/lib/sim/gameType";
+import {
+  BATTLE_ROYALE_MARKETED_RAKE_SHARE_OF_TOTAL,
+  battleRoyaleRowFromTotalTicket,
+} from "@/lib/sim/battleRoyaleTicket";
 import type { TournamentRow } from "@/lib/sim/types";
 
 type El = { type: unknown; props: Record<string, unknown> };
@@ -63,18 +71,23 @@ const row = (roi: number): TournamentRow => ({
   payoutStructure: "mtt-standard", gameType: "freezeout", count: 1,
 });
 
-// Renders the editor, its row, the row's ROI box and the <input> inside it, with
-// the hook cells of the box (the third component down) kept between renders.
-function mountRoiBox(roi: number) {
+function mountRow(r: TournamentRow, globalRakebackPct = 0) {
   store.cells = [];
   store.at = 0;
   const update = vi.fn();
-  const editor = unwrap(ScheduleEditor)({ schedule: [row(roi)], onChange: vi.fn() });
+  const editor = unwrap(ScheduleEditor)({ schedule: [r], onChange: vi.fn(), globalRakebackPct });
   const rowEl = elements(editor).find((e) => typeof e.props.update === "function")!;
   const rowTree = unwrap(rowEl.type)({ ...rowEl.props, update });
-  const roiEl = elements(rowTree).find((e) => e.props.id === "schedule-a-roi")!;
-  const boxTree = unwrap(roiEl.type)(roiEl.props);
-  const numEl = elements(boxTree).find((e) => e.props.id === "schedule-a-roi" && e.type !== roiEl.type)!;
+  return { update, rowTree };
+}
+
+// Renders the editor, its row, the row's number box `id` and the <input> inside
+// it, with the hook cells of the box (the third component down) kept between renders.
+function mountBox(r: TournamentRow, id: string) {
+  const { update, rowTree } = mountRow(r);
+  const boxEl = elements(rowTree).find((e) => e.props.id === id)!;
+  const boxTree = unwrap(boxEl.type)(boxEl.props);
+  const numEl = elements(boxTree).find((e) => e.props.id === id && e.type !== boxEl.type)!;
   store.cells = [];
   const input = () => {
     store.at = 0;
@@ -82,6 +95,8 @@ function mountRoiBox(roi: number) {
   };
   return { update, input };
 }
+
+const mountRoiBox = (roi: number) => mountBox(row(roi), "schedule-a-roi");
 
 beforeEach(() => {
   vi.stubGlobal("React", React);
@@ -126,5 +141,94 @@ describe("row ROI box commits what was typed", () => {
     (input().props.onChange as Fn)({ target: { value: "-250" } });
     (input().props.onBlur as Fn)();
     expect(update).toHaveBeenCalledExactlyOnceWith("a", { roi: -0.99 });
+  });
+});
+
+describe("row bounty-share box keeps what was typed, one decimal", () => {
+  const pko = (bountyFraction: number): TournamentRow => ({
+    ...row(0.1),
+    ...applyGameType(row(0.1), "pko"),
+    bountyFraction,
+  });
+  const typed = (start: TournamentRow, text: string) => {
+    const { update, input } = mountBox(start, "schedule-a-bounty");
+    (input().props.onChange as Fn)({ target: { value: text } });
+    (input().props.onBlur as Fn)();
+    return update;
+  };
+
+  it.each([
+    ["33", 0.33],
+    ["42", 0.42],
+    ["12.5", 0.125],
+    ["2", 0.02],
+    ["33.33", 0.333],
+  ])("commits a typed %s as a share of %s, not the nearest multiple of 5", (text, fraction) => {
+    const update = typed(pko(0.5), text);
+    expect(update).toHaveBeenCalledOnce();
+    expect(update.mock.calls[0][0]).toBe("a");
+    expect(update.mock.calls[0][1].bountyFraction).toBeCloseTo(fraction, 12);
+  });
+
+  it("still clamps to 0..90", () => {
+    expect(typed(pko(0.5), "95")).toHaveBeenCalledExactlyOnceWith("a", { bountyFraction: 0.9 });
+  });
+
+  it("shows the Ocean and Battle Royale structural shares to one decimal, and retyping them is no change", () => {
+    for (const [gameType, shown] of [["ocean-ko", "54.3"], ["mystery-royale", "45.7"]] as const) {
+      const start = { ...row(0.1), ...applyGameType(row(0.1), gameType) };
+      expect(mountBox(start, "schedule-a-bounty").input().props.value).toBe(shown);
+      expect(typed(start, shown)).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe("Battle Royale reported-ROI presets land on the ROI on the button", () => {
+  const br = (roi: number): TournamentRow => ({
+    ...row(roi),
+    ...applyGameType(row(roi), "mystery-royale"),
+    ...battleRoyaleRowFromTotalTicket(10),
+    roi,
+  });
+  // The fee is 8 % of a BR ticket, so rakeback pays rb x 8 % of what a ticket costs.
+  const reported = (fieldRoi: number, rbPct: number) =>
+    fieldRoi + (rbPct / 100) * BATTLE_ROYALE_MARKETED_RAKE_SHARE_OF_TOTAL;
+  const buttons = (roi: number, rbPct: number) => {
+    const { update, rowTree } = mountRow(br(roi), rbPct);
+    const control = elements(rowTree).find((e) => typeof e.props.onApply === "function" && "globalRakebackPct" in e.props)!;
+    const tree = unwrap(control.type)(control.props);
+    const list = elements(tree).filter((e) => e.type === "button");
+    expect(list.map((b) => b.props.children)).toEqual(["3", "5", "7", "10"]);
+    return { update, list };
+  };
+
+  it.each([20, 30, 33, 40, 45])("each button writes the field ROI that gives its reported ROI at rakeback %s", (rbPct) => {
+    const { update, list } = buttons(0.1, rbPct);
+    for (const [k, target] of [0.03, 0.05, 0.07, 0.1].entries()) {
+      update.mockClear();
+      (list[k].props.onClick as Fn)();
+      expect(update).toHaveBeenCalledOnce();
+      const patch = update.mock.calls[0][1] as Partial<TournamentRow>;
+      expect(patch.bountyEvBias).toBe(0);
+      expect(reported(patch.roi!, rbPct)).toBeCloseTo(target, 6);
+    }
+  });
+
+  it("lights the button whose reported ROI the row gives, and only that one", () => {
+    const pressed = (roi: number, rbPct: number) =>
+      buttons(roi, rbPct).list.map((b) => b.props["aria-pressed"]);
+    expect(pressed(0.014, 20)).toEqual([true, false, false, false]);
+    expect(pressed(0.01, 20)).toEqual([false, false, false, false]);
+    expect(pressed(-0.002, 40)).toEqual([true, false, false, false]);
+  });
+
+  it("states the field ROI the button writes, so the tooltip adds up", () => {
+    expect(buttons(0.1, 20).list.map((b) => b.props.title)).toEqual([
+      "+3.0% total -> +1.40% field",
+      "+5.0% good reg -> +3.40% field",
+      "+7.0% good reg -> +5.40% field",
+      "+10.0% top reg -> +8.40% field",
+    ]);
+    expect(buttons(0.1, 40).list[0].props["aria-label"]).toBe("+3.0% total -> -0.20% field");
   });
 });

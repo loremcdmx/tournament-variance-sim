@@ -19,6 +19,7 @@ import {
   cashTargetFloor,
   isAlphaAdjustable,
   itmProbability,
+  withinTargetEv,
 } from "./finishModel";
 import { clampBountyMean, isBattleRoyaleRow } from "./bountySplit";
 import {
@@ -555,6 +556,12 @@ function compileSingleEntry(
     } else if (Z > 1e-12) {
       const scale = bountyMean / Z;
       for (let i = 0; i < N; i++) bountyByPlace[i] = raw[i] * scale;
+    } else if (pmf[0] > 1e-12) {
+      // An empty KO window (a Mystery table that pays one place, heads-up
+      // included) still has a last knockout, and the winner makes it. A lump
+      // on every place paid the loser a bounty and halved the heads-up σ.
+      // One deterministic envelope keeps the bounty RNG of later rows intact.
+      bountyByPlace[0] = bountyMean / pmf[0];
     } else {
       for (let i = 0; i < N; i++) bountyByPlace[i] = bountyMean;
     }
@@ -659,6 +666,23 @@ function compileSingleEntry(
     Math.max(0, row.mysteryBountyVariance ?? 0) +
     Math.max(0, effectivePkoHeadVar);
 
+  // With PD's finish model off the pass reuses the row's ITM, which was stamped
+  // from the row's own payout table, on PD's table and pool: a 9-max SNG then
+  // paid +145% against a +5% target with no warning. Fixed-shape models never
+  // aim at the ROI, so a gap there is not a missed target (`rowIgnoresRoi`).
+  const primedopeTargetMissed =
+    calibrationMode === "primedope-binary-itm" &&
+    (pdFlags.usePdFinishModel
+      ? Math.abs(eX - totalWinningsEV) > 1e-3
+      : isAlphaAdjustable(model) && !withinTargetEv(eX, totalWinningsEV));
+  // `validateSchedule` blocks this in the app. The warning makes `compile` take
+  // the expected profit from the pmf for a caller that skips it (scripts,
+  // fits); cost x ROI would sit the whole gap away from the samples.
+  const targetUnreachable =
+    calibrationMode !== "primedope-binary-itm" &&
+    isAlphaAdjustable(model) &&
+    !withinTargetEv(eX, totalWinningsEV);
+
   // Attach discrete envelope tiers only for GG Mystery Battle Royale.
   // The sampler replaces the log-normal per-KO draw inside the hot loop,
   // restoring the heavy-tailed jackpot shape that ~1.8 log-variance can't
@@ -668,9 +692,11 @@ function compileSingleEntry(
   return {
     oceanKo,
     isSatellite: row.payoutStructure === "satellite-ticket",
-    calibrationWarning: calibrationMode === "primedope-binary-itm" && pdFlags.usePdFinishModel && Math.abs(eX - totalWinningsEV) > 1e-3
+    calibrationWarning: primedopeTargetMissed
       ? { rowId: row.id, kind: "primedope-target-clamped", targetWinnings: totalWinningsEV, actualWinnings: eX }
-      : undefined,
+      : targetUnreachable
+        ? { rowId: row.id, kind: "target-unreachable", targetWinnings: totalWinningsEV, actualWinnings: eX }
+        : undefined,
     rowIdx: idx,
     fieldSize: N,
     singleCost: entryCostSingle,

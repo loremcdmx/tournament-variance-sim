@@ -94,3 +94,33 @@ describe("pure reducers", () => {
     expect(applyImportedRows(nearFull, [row("x")], "replace")).toHaveLength(1);
   });
 });
+
+describe("a guarantee the editor cannot show", () => {
+  const base = [row("a", { players: 6500, buyIn: 100, guarantee: 750_000 })];
+
+  it.each([
+    ["players", { players: 3000 }],
+    ["buy-in", { buyIn: 20 }],
+    ["field range", { fieldVariability: { kind: "uniform", min: 2000, max: 4000 } }],
+    ["game type", { gameType: "pko" }],
+    ["payout table", { payoutStructure: "mtt-top-heavy" }],
+  ] as const)("is dropped when the %s changes the visible pool", (_, patch) => {
+    expect(patchRow(base, "a", patch)[0].guarantee).toBeUndefined();
+  });
+
+  it.each([
+    ["label", { label: "renamed" }],
+    ["ROI", { roi: 0.3 }],
+    ["count", { count: 5 }],
+    ["ITM", { itmRate: 0.2 }],
+    ["same players", { players: 6500 }],
+  ] as const)("survives a %s edit", (_, patch) => {
+    expect(patchRow(base, "a", patch)[0].guarantee).toBe(750_000);
+  });
+
+  it("keeps a guarantee the patch sets itself", () => {
+    expect(
+      patchRow(base, "a", { players: 3000, guarantee: 400_000 })[0].guarantee,
+    ).toBe(400_000);
+  });
+});

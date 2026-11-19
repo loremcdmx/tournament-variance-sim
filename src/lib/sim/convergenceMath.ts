@@ -10,6 +10,8 @@ import {
 import { runtimeSigmaBandResid } from "./runtimeSigmaBands";
 import { buildScheduleAnalyticBreakdown } from "./compile";
 import { applyGameType } from "./gameType";
+import { applyItmTarget, type ItmTargetConfig } from "./itmTarget";
+import { validateSchedule } from "./validation";
 import {
   CONVERGENCE_FIELD_MAX,
   CONVERGENCE_FIELD_MIN,
@@ -85,6 +87,8 @@ export interface ExactBreakdown {
   sigmaEff: number;
   sigmaEffLo: number;
   sigmaEffHi: number;
+  /** The engine's expected ROI of the schedule (before rakeback). */
+  expectedRoi: number;
 }
 
 export interface ExactBreakdownOptions {
@@ -203,8 +207,10 @@ export function ciToZ(ciFrac: number): number {
   return Math.SQRT2 * inverseErf(clamped);
 }
 
-/** Cost-weighted mean ROI of a schedule: its profit over what it costs, which
- *  is the aggregate ROI the planning tables are about. */
+/** Cost-weighted mean of the typed row ROIs: the schedule's profit over what
+ *  it costs when the finish model calibrates to the row ROI. A model that
+ *  ignores it (uniform, empirical, `*-realdata-*`, a pinned α) plays its own
+ *  pmf instead; `ExactBreakdown.expectedRoi` carries that. */
 export function scheduleEffectiveRoi(
   schedule: readonly TournamentRow[],
 ): number {
@@ -320,6 +326,7 @@ export function buildExactBreakdown(
     sigmaEff: analytic.sigmaRoiPerTourney,
     sigmaEffLo: analytic.sigmaRoiPerTourney * (1 - weightedResid),
     sigmaEffHi: analytic.sigmaRoiPerTourney * (1 + weightedResid),
+    expectedRoi: analytic.expectedRoi,
   };
 }
 
@@ -339,13 +346,17 @@ export function defaultOceanKoTicket(schedule?: readonly TournamentRow[] | null)
   return count > 0 ? Math.max(0.01, ticketTotal / count) : 100;
 }
 
-export function buildOceanKoSigmaBand(input: {
+export interface OceanKoRuntimeInput {
   afs: number;
   roi: number;
   rake: number;
   totalTicket: number;
   finishModel?: SimulationInput["finishModel"];
-}): SigmaBand {
+  /** Global ITM target of the run path; off means the payout table's paid share. */
+  itmTarget?: ItmTargetConfig;
+}
+
+function buildOceanKoRuntimeRow(input: OceanKoRuntimeInput): TournamentRow {
   const base: TournamentRow = {
     id: "convergence-ocean-ko-runtime",
     players: Math.max(2, Math.round(input.afs)),
@@ -361,12 +372,28 @@ export function buildOceanKoSigmaBand(input: {
     buyIn: base.buyIn,
     rake: base.rake,
   };
-  const breakdown = buildExactBreakdown([ocean], { finishModel: input.finishModel });
+  // The run path pins every row's ITM; an unpinned row is one Run never plays.
+  return applyItmTarget([ocean], input.itmTarget ?? { enabled: false, pct: 0 })[0];
+}
+
+export function buildOceanKoSigmaBand(input: OceanKoRuntimeInput): SigmaBand {
+  const breakdown = buildExactBreakdown([buildOceanKoRuntimeRow(input)], {
+    finishModel: input.finishModel,
+  });
   if (!breakdown) throw new Error("Ocean KO runtime moments unavailable");
   const s = breakdown.sigmaEff;
   // Ocean's runtime sigma is an analytic upper bound. Equal endpoints mean
   // no calibrated residual band; they do not make this an exact sigma.
   return { s, lo: s, hi: s };
+}
+
+/** Whether Run would accept the Ocean tab's pinned row, by the same gate
+ *  (`validateSchedule`) as `formatRuntimeRoiReached` for the other tabs. */
+export function oceanKoRoiReached(input: OceanKoRuntimeInput): boolean {
+  return validateSchedule(
+    [buildOceanKoRuntimeRow(input)],
+    input.finishModel ?? { id: "power-law" },
+  ).ok;
 }
 
 export function computeConvergenceRows(input: {
@@ -378,6 +405,7 @@ export function computeConvergenceRows(input: {
   rakePct: number;
   oceanKoTotalTicket?: number;
   finishModel?: SimulationInput["finishModel"];
+  itmTarget?: ItmTargetConfig;
   exactBreakdown?: ExactBreakdown | null;
   sigmaOverrides?: Partial<Record<RowFormat, SigmaBand>>;
 }): ConvergenceTableRow[] {
@@ -406,6 +434,7 @@ export function computeConvergenceRows(input: {
         rake: rakePct / 100,
         totalTicket: input.oceanKoTotalTicket ?? 100,
         finishModel: input.finishModel,
+        itmTarget: input.itmTarget,
       })
     : null;
   const [fFreeze, fPko, fMystery] = mix;

@@ -642,7 +642,7 @@ describe("persistence validation", () => {
     });
   });
 
-  it("round-trips the row guarantee the demo scenarios rely on", () => {
+  it("round-trips the row guarantee an older save or link carries", () => {
     const state: PersistedState = {
       v: PERSISTED_STATE_VERSION,
       schedule: [

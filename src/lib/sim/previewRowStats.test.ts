@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 import { compileSchedule } from "./engine";
 import { computeRowStats } from "./previewRowStats";
+import { applyGameType, normalizeGameTypeConsistency } from "./gameType";
+import { applyItmTarget } from "./itmTarget";
 import { compiledEntryMoments } from "./scheduleMoments";
 import type { TournamentRow } from "./types";
 import { validateSchedule } from "./validation";
@@ -254,6 +256,35 @@ describe("computeRowStats on a Field-size range describes the fields the engine 
     expect(keys[keys.length - 1]).toBe("ootm");
   });
 
+  it("prints the last paid place and the bubble at their mixed probability when some fields pay 27 or fewer", () => {
+    const row: TournamentRow = {
+      ...base, buyIn: 10, players: 200, fieldVariability: range(120, 280),
+    };
+    const stats = computeRowStats(row, model);
+    const { variants } = compiledVariants(row);
+    const paidOf = (v: { prizeByPlace: ArrayLike<number> }) =>
+      Array.from(v.prizeByPlace).filter((p) => p > 0).length;
+    expect(variants.some((v) => paidOf(v) <= 27)).toBe(true);
+    expect(variants.some((v) => paidOf(v) > 27)).toBe(true);
+
+    const tier = (key: string) => stats.tiers.find((t) => t.key === key)!;
+    const lastPaid = mean(variants.map((v) => placeProbability(v, paidOf(v) - 1)));
+    const bubble = mean(variants.map((v) => placeProbability(v, paidOf(v))));
+    expect(tier("firstMincash").field).toBeCloseTo(lastPaid, 9);
+    expect(tier("firstMincash").field).toBeCloseTo(stats.shellFirstCash, 12);
+    expect(tier("bubble").field).toBeCloseTo(bubble, 9);
+    expect(tier("firstMincash").eqShare).toBeCloseTo(mean(variants.map((v) => 1 / v.prizeByPlace.length)), 12);
+    expect(stats.tiers.reduce((a, t) => a + t.field, 0)).toBeCloseTo(1, 12);
+  });
+
+  it("leaves a fixed field that pays 27 or fewer on its own layout", () => {
+    const fixed = computeRowStats({ ...base, buyIn: 10, players: 136 }, model);
+    expect(fixed.paidCount).toBeLessThanOrEqual(27);
+    expect(fixed.tiers.at(-3)!.key).toBe("top27");
+    expect(fixed.tiers.at(-3)!.posHi).toBe(fixed.paidCount);
+    expect(fixed.tiers.some((t) => t.key === "firstMincash")).toBe(false);
+  });
+
   it("carries the engine's mixture σ even when the compiled σ is skipped", () => {
     const row: TournamentRow = { ...base, fieldVariability: range(100, 3000, 4) };
     const { slot } = compiledVariants(row);
@@ -284,6 +315,15 @@ describe("computeRowStats shell feasibility agrees with validateSchedule on boun
     const row = pko({ roi: 0.2, finishBuckets: { first: 0.05 } });
     expect(validateSchedule([row], model).ok).toBe(false);
     expect(computeRowStats(row, model).shellFeasible).toBe(false);
+  });
+
+  it("is infeasible when the residual bounty would pass the whole bounty pool", () => {
+    const hu = pko({ players: 2, buyIn: 100, roi: 0.05, itmRate: 0.5 });
+    expect(validateSchedule([hu], model).ok).toBe(false);
+    expect(computeRowStats(hu, model).shellFeasible).toBe(false);
+    const fair = { ...hu, itmRate: 0.5775 };
+    expect(validateSchedule([fair], model).ok).toBe(true);
+    expect(computeRowStats(fair, model).shellFeasible).toBe(true);
   });
 
   it("keeps a freezeout row's own feasibility rule", () => {
@@ -328,5 +368,46 @@ describe("computeRowStats zero-skill column sums to the rake", () => {
     const stats = computeRowStats(rows[0][1], model);
     const net = stats.tiers.reduce((a, t) => a + t.netDollars, 0);
     expect(net).toBeCloseTo(stats.evPerEntry - stats.cost, 6);
+  });
+});
+
+describe("computeRowStats on a Mystery field that pays one place", () => {
+  const model = { id: "power-law" as const };
+  // The editor's route: switch the format to Mystery, then type 2 players.
+  const headsUp = (roi: number, itm: { enabled: boolean; pct: number }): TournamentRow => {
+    const seed: TournamentRow = {
+      id: "hu", label: "hu", players: 500, buyIn: 10, rake: 0.1, roi,
+      payoutStructure: "mtt-standard", gameType: "freezeout", count: 1,
+    };
+    const row = { ...seed, ...applyGameType(seed, "mystery"), players: 2 };
+    return normalizeGameTypeConsistency(applyItmTarget([row], itm)[0]);
+  };
+
+  it.each([
+    [0.1, false],
+    [0, false],
+    [-0.0909, false],
+    [0, true],
+  ])("keeps the typed ROI at ROI %d (global ITM %s), as the engine does", (roi, enabled) => {
+    const row = headsUp(roi, { enabled, pct: 18.7 });
+    const stats = computeRowStats(row, model);
+    const cost = row.buyIn * (1 + row.rake);
+    expect(stats.paidCount).toBe(1);
+    expect(stats.evPerEntry).toBeCloseTo(cost * (1 + roi), 9);
+    const entry = compileSchedule({
+      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 1, seed: 1, finishModel: model,
+    }).flat[0];
+    expect(stats.evPerEntry).toBeCloseTo(entry.analyticMeanSingle, 9);
+    expect(stats.bountyEvPerEntry).toBeGreaterThan(0);
+    expect(stats.cashEvPerEntry + stats.bountyEvPerEntry).toBeCloseTo(stats.evPerEntry, 12);
+  });
+
+  it("pays the whole bounty pool to the winner, as compileEntry's fallback does", () => {
+    const stats = computeRowStats(headsUp(0.1, { enabled: false, pct: 18.7 }), model);
+    const [winner, loser] = stats.tiers;
+    expect(winner.key).toBe("winner");
+    expect(winner.bountyEv).toBeCloseTo(stats.bountyEvPerEntry, 12);
+    expect(loser.bountyEv).toBe(0);
+    expect(stats.tiers.reduce((a, t) => a + t.eqNetDollars, 0)).toBeCloseTo(-1, 9);
   });
 });

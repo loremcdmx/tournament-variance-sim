@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildBattleRoyaleLeaderboardPromoConfig } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { compileSchedule } from "@/lib/sim/engine";
-import { applyItmTarget } from "@/lib/sim/itmTarget";
+import { applyItmTarget, equilibriumItmRateForRow } from "@/lib/sim/itmTarget";
 import { validateSchedule } from "@/lib/sim/validation";
 import { buildSimulationInput } from "@/lib/ui/simulationInput";
 
@@ -34,6 +34,32 @@ describe("demo scenarios", () => {
       );
       expect(promo, id).toBeDefined();
       expect(promo?.mode, id).toBe("observed");
+    }
+  });
+
+  // The editor has no guarantee field: a demo guarantee would be a prize pool
+  // the user cannot see, and the first edit of the field or the buy-in would
+  // turn it into an overlay (patchRow drops it then, but the shipped numbers
+  // would already have carried one).
+  it("ship no row with a hidden guarantee", () => {
+    const guaranteed = SCENARIOS.flatMap((s) =>
+      s.schedule.filter((r) => r.guarantee !== undefined).map((r) => `${s.id}/${r.label}`),
+    );
+    expect(guaranteed).toEqual([]);
+  });
+
+  // A Battle Royale row with no ITM takes the global target, and 15% is under
+  // the no-skill 3/18: the solver then piles a +5% player's cash onto first
+  // place (12.07% wins, 0.01% thirds in the mixed GG demo).
+  it("never play a Battle Royale row below the no-skill cash rate", () => {
+    for (const scenario of SCENARIOS) {
+      const schedule = applyItmTarget(scenario.schedule, {
+        enabled: scenario.controls.itmGlobalEnabled,
+        pct: scenario.controls.itmGlobalPct,
+      });
+      for (const row of schedule.filter((r) => r.gameType === "mystery-royale")) {
+        expect(row.itmRate, `${scenario.id}/${row.id}`).toBeGreaterThanOrEqual(equilibriumItmRateForRow(row));
+      }
     }
   });
 

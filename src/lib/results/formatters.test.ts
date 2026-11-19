@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { DICT } from "@/lib/i18n/dict";
 import {
   compactMoney,
   fmt,
   formatMinimumBankroll,
+  formatPerUnitAmount,
   GLOBAL_UNIT_KEY,
   intFmt,
   loadUnitMode,
@@ -13,7 +15,7 @@ import {
   pct,
   pctDelta,
   saveUnitMode,
-  tourneyCountOrDash,
+  countOrDash,
 } from "./formatters";
 
 describe("fmt — template substitution", () => {
@@ -102,6 +104,30 @@ describe("minimum bankroll formatting", () => {
         expect(shown).toBeGreaterThanOrEqual(amount / abi);
       }
     }
+  });
+});
+
+describe("per-tournament and per-day amounts", () => {
+  it("keeps three significant digits below one unit in dollars", () => {
+    expect(formatPerUnitAmount(0.15)).toBe("$0.15");
+    expect(formatPerUnitAmount(0.0375)).toBe("$0.0375");
+    expect(formatPerUnitAmount(0.015625)).toBe("$0.0156");
+    expect(formatPerUnitAmount(0.46875)).toBe("$0.469");
+    expect(formatPerUnitAmount(12.5)).toBe("$12.50");
+    expect(formatPerUnitAmount(1234.5, "money", 1, "ru-RU")).toBe("$1\u00a0234,50");
+  });
+
+  it("keeps three significant digits below one ABI", () => {
+    expect(formatPerUnitAmount(0.15, "abi", 3)).toBe("0.05 ABI");
+    expect(formatPerUnitAmount(0.46875, "abi", 25)).toBe("0.0188 ABI");
+    expect(formatPerUnitAmount(0.015625, "abi", 0.25)).toBe("0.0625 ABI");
+    expect(formatPerUnitAmount(75, "abi", 25)).toBe("3.00 ABI");
+  });
+
+  it("prints no minus on an amount that rounds to zero", () => {
+    expect(formatPerUnitAmount(0)).toBe("$0.00");
+    expect(formatPerUnitAmount(-1e-12)).toBe("$0.00");
+    expect(formatPerUnitAmount(-0.0375, "abi", 1)).toBe("\u22120.0375 ABI");
   });
 });
 
@@ -283,15 +309,36 @@ describe("mergedHistogramDomain", () => {
   });
 });
 
-describe("tourneyCountOrDash", () => {
+describe("countOrDash", () => {
+  const template = DICT["unit.tourneyCount"];
+
   it("rounds a finite count and keeps a genuine zero", () => {
-    expect(tourneyCountOrDash(240.4, "tourneys")).toBe("240 tourneys");
-    expect(tourneyCountOrDash(0, "tourneys")).toBe("0 tourneys");
+    expect(countOrDash(240.4, template.en, "en", "tournament")).toBe("240 tournaments");
+    expect(countOrDash(0, template.en, "en", "tournament")).toBe("0 tournaments");
+  });
+
+  it.each([
+    [1, "1 tournament", "1 турнир"],
+    [2, "2 tournaments", "2 турнира"],
+    [24, "24 tournaments", "24 турнира"],
+    [21, "21 tournaments", "21 турнир"],
+    [11, "11 tournaments", "11 турниров"],
+    [1234, "1,234 tournaments", "1\u00a0234 турнира"],
+  ])("agrees the noun with %i", (n, en, ru) => {
+    expect(countOrDash(n, template.en, "en", "tournament")).toBe(en);
+    expect(countOrDash(n, template.ru, "ru", "tournament", "ru-RU")).toBe(ru);
+  });
+
+  it("agrees a hand count in Russian", () => {
+    const hands = DICT["cash.handCount"].ru;
+    expect([1, 3, 5, 21, 1000].map((n) => countOrDash(n, hands, "ru", "hand", "ru-RU"))).toEqual([
+      "1 раздача", "3 раздачи", "5 раздач", "21 раздача", "1\u00a0000 раздач",
+    ]);
   });
 
   it("prints a dash for a statistic that does not exist", () => {
-    expect(tourneyCountOrDash(Number.NaN, "tourneys")).toBe("—");
-    expect(tourneyCountOrDash(Number.POSITIVE_INFINITY, "tourneys")).toBe("—");
+    expect(countOrDash(Number.NaN, template.en, "en", "tournament")).toBe("—");
+    expect(countOrDash(Number.POSITIVE_INFINITY, template.en, "en", "tournament")).toBe("—");
   });
 });
 
