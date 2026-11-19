@@ -84,7 +84,7 @@ describe("calibration notices print the row label as typed", () => {
   }];
   const result = {
     ...base,
-    calibrationWarnings: [{ rowId: "t", targetWinnings: 55, actualWinnings: 50 }],
+    calibrationWarnings: [{ rowId: "t", kind: "primedope-target-clamped", targetWinnings: 55, actualWinnings: 50 }],
   } as unknown as SimulationResult;
 
   it("keeps $ sequences and braces in a user label out of the template engine", () => {

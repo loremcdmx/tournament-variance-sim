@@ -85,6 +85,17 @@ describe("PrimeDope clamp notice", () => {
     expect(markup).toContain("Модель финишей не смогла выйти на заданный ROI");
     expect(markup).toContain("запрошено $10,82, смоделировано $10,00");
   });
+
+  it("says our model missed in the PrimeDope pass when the free-ITM retry still falls short", () => {
+    const result = runSimulation(input);
+    const missed = { ...result, calibrationWarnings: [{ rowId: "test",
+      kind: "primedope-free-itm-unreachable" as const, targetWinnings: 22, actualWinnings: 17.5 }] };
+    const markup = renderToStaticMarkup(<LocaleProvider><CalibrationNotices result={missed} /></LocaleProvider>);
+    expect(markup).toContain("наша модель финишей не смогла выйти на заданный ROI");
+    expect(markup).toContain("даже без фиксации ITM, финишей и настройки топ-хеви");
+    expect(markup).not.toContain("PrimeDope не достиг");
+    expect(markup).toContain("запрошено $22,00, смоделировано $17,50");
+  });
 });
 
 describe("PrimeDope reproduce text", () => {

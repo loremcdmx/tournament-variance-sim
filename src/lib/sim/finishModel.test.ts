@@ -21,6 +21,9 @@ import { applyItmTarget } from "./itmTarget";
 import { getPayoutTable } from "./payouts";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 import { compileSchedule, runSimulation } from "./engine";
+import { validateSchedule } from "./validation";
+import { applyGameType } from "./gameType";
+import { compiledEntryMoments } from "./scheduleMoments";
 import type { FinishModelConfig, SimulationInput, TournamentRow } from "./types";
 
 const MODELS: FinishModelConfig[] = [
@@ -707,5 +710,194 @@ describe("ITM top-heaviness reaches only the models where it has a labelled mean
       const r = calibrateShelledItm(N, paid, payouts, pool, target, paid / N, undefined, model, bias);
       expect(Array.from(r.pmf)).toEqual(Array.from(neutral.pmf));
     }
+  });
+});
+
+describe("calibrateShelledItm: the first-place floor around break-even", () => {
+  // Freezeout of 1000 at $10 + 10%, ITM pinned at 25% against a table that
+  // pays 15%: the free solution puts first place under 1/N at break-even.
+  const N = 1000;
+  const payouts = getPayoutTable("mtt-standard", N);
+  const paid = payouts.reduce((n, p) => (p > 0 ? n + 1 : n), 0);
+  const pool = N * 10;
+  const itm = 0.25;
+  const noSkillWinnings = payouts.slice(0, paid).reduce((s, p) => s + (p * pool) / N, 0);
+  const solve = (target: number, locks?: { first?: number }) =>
+    calibrateShelledItm(N, paid, payouts, pool, target, itm, locks, { id: "power-law" });
+  const paidMass = (pmf: Float64Array) => pmf.slice(0, paid).reduce((a, b) => a + b, 0);
+
+  it("does not jump between two targets a millionth either side of the no-skill winnings", () => {
+    // The free solution has P(1st)·N 0.475 here; the floor at the no-skill
+    // winnings is 1.
+    const below = solve(noSkillWinnings * (1 - 1e-6));
+    const at = solve(noSkillWinnings);
+    expect(at.pmf[0] * N).toBeCloseTo(1, 12);
+    expect(Math.abs(below.pmf[0] - at.pmf[0]) * N).toBeLessThan(1e-3);
+    for (const r of [below, at]) {
+      expect(r.feasible).toBe(true);
+      expect(paidMass(r.pmf)).toBeCloseTo(itm, 12);
+    }
+  });
+
+  it("from the no-skill winnings up is the solution with first place locked at 1/N, bit for bit", () => {
+    for (const ratio of [1, 1.05, 1.3]) {
+      const target = noSkillWinnings * ratio;
+      expect(Array.from(solve(target).pmf)).toEqual(Array.from(solve(target, { first: 1 / N }).pmf));
+    }
+  });
+
+  it("fades in over the band below, P(1st) rising with the target at the exact ITM, at any top-heaviness", () => {
+    // Deterministic solves, 0.0025 of the no-skill winnings apart. The second
+    // case is a row whose 1/N solution overpays at the bottom of its α range,
+    // where the floored share stops at the target's tolerance.
+    const cases = [
+      { model: { id: "power-law" } as FinishModelConfig, n: N, table: payouts, cut: paid, p: pool, i: itm },
+      (() => {
+        const t = getPayoutTable("mtt-standard", 500);
+        return { model: { id: "linear-skill" } as FinishModelConfig, n: 500, table: t, cut: t.filter((x) => x > 0).length, p: 5000, i: 0.35 };
+      })(),
+    ];
+    for (const c of cases) {
+      const eqW = c.table.slice(0, c.cut).reduce((acc, x) => acc + (x * c.p) / c.n, 0);
+      for (const bias of [-1, 0, 1]) {
+        let last = 0;
+        for (let k = 0; k <= 60; k++) {
+          const target = eqW * (0.85 + k * 0.0025);
+          const r = calibrateShelledItm(c.n, c.cut, c.table, c.p, target, c.i, undefined, c.model, bias);
+          expect(r.pmf.slice(0, c.cut).reduce((a, b) => a + b, 0)).toBeCloseTo(c.i, 12);
+          if (r.feasible) expect(withinTargetEv(r.currentWinnings, target)).toBe(true);
+          expect(r.pmf[0]).toBeGreaterThanOrEqual(last);
+          last = r.pmf[0];
+        }
+      }
+    }
+    // Below the band the free solution is untouched.
+    const low = solve(noSkillWinnings * 0.89);
+    expect(low.pmf[0]).toBeLessThan(0.5 / N);
+  });
+
+  it("does not reorder the places below first where the floor starts to bind under a top-heavy tilt", () => {
+    // 50 runners, mtt-top-heavy (6 paid), ITM 25%, tilt +1. Locking first
+    // place moves the tilt's top onto 2nd; re-solving with first held at its
+    // natural share there moved P(2nd)·N 0.361 -> 0.406 at one target. The
+    // mixture moves no place by more than 0.0029/N per 1e-4 of the no-skill
+    // winnings across the band; the old switch at break-even moved 1.89/N.
+    const n = 50;
+    const table = getPayoutTable("mtt-top-heavy", n);
+    const cut = table.filter((x) => x > 0).length;
+    const eqW = table.slice(0, cut).reduce((acc, x) => acc + (x * 500) / n, 0);
+    let prev: Float64Array | null = null;
+    let worst = 0;
+    for (let k = 0; k <= 1100; k++) {
+      const r = calibrateShelledItm(n, cut, table, 500, eqW * (0.89 + k * 1e-4), 0.25, undefined, { id: "power-law" }, 1);
+      if (prev) for (let i = 0; i < n; i++) worst = Math.max(worst, Math.abs(r.pmf[i] - prev[i]) * n);
+      prev = r.pmf;
+    }
+    expect(worst).toBeLessThan(0.01);
+  });
+
+  it("σ along ROI -20%..+5% has no step on rows pinned above the paid share", () => {
+    // Deterministic compile, no sampling. Bound: between two ROIs 0.1 pp
+    // apart that both validate, σ moves by at most 0.5% or by at most 1.5x
+    // the larger of its two neighbouring moves, so every move is the local
+    // slope. The old floor switched on at -rake/(1+rake): on these rows that
+    // was a 13.9% to 81.9% step next to neighbours of 0.1-4.8% (isolation 17x
+    // to 320x). Now the largest move is 19.1% (Mystery 30, tilt +1, at the
+    // band's onset) at 1.17x its neighbour; the others are under 3.4%.
+    const model: FinishModelConfig = { id: "powerlaw-realdata-influenced" };
+    for (const [gameType, players, pinned, bias] of [
+      ["freezeout", 500, 0.25, 0],
+      ["pko", 200, 0.25, -1],
+      ["pko", 45, 0.187, 0],
+      ["mystery", 30, 0.15, 1],
+      ["mystery", 24, 0.187, 0],
+    ] as const) {
+      const sigma: (number | null)[] = [];
+      for (let k = -200; k <= 50; k++) {
+        let row: TournamentRow = { id: "r", players, buyIn: 100, rake: 0.1, roi: k / 1000, payoutStructure: "mtt-standard", count: 1 };
+        row = { ...row, ...applyGameType(row, gameType), players, itmRate: pinned, itmTopHeavyBias: bias };
+        if (!validateSchedule([row], model).ok) {
+          sigma.push(null);
+          continue;
+        }
+        const e = compileSchedule({ schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model }).flat[0];
+        const m = compiledEntryMoments(e);
+        sigma.push(Math.sqrt(m.secondDollar - m.meanDollar ** 2));
+      }
+      expect(sigma.filter((x) => x != null).length).toBe(251);
+      const steps = sigma.slice(1).map((x, i) => Math.abs((x as number) - (sigma[i] as number)) / (sigma[i] as number));
+      for (let i = 0; i < steps.length; i++) {
+        const neighbour = Math.max(steps[i - 1] ?? 0, steps[i + 1] ?? 0);
+        expect(steps[i]).toBeLessThanOrEqual(Math.max(0.005, 1.5 * neighbour));
+      }
+    }
+  });
+
+  it("leaves a top-3 lock typed under 1/N alone", () => {
+    // 500 runners, P(top 3) locked at 0.0015 against 1/N = 0.002. Holding
+    // first place to 1/N lifted P(top 3) to 0.0018-0.0020 and left 2nd and
+    // 3rd with nothing.
+    const n = 500;
+    const table = getPayoutTable("mtt-standard", n);
+    const cut = table.filter((x) => x > 0).length;
+    const eqW = table.slice(0, cut).reduce((acc, x) => acc + (x * 5000) / n, 0);
+    for (const ratio of [0.92, 0.97, 0.999, 1, 1.02, 1.1]) {
+      const r = calibrateShelledItm(
+        n, cut, table, 5000, eqW * ratio, 0.2, { top3: 0.0015, ft: 0.02 }, { id: "powerlaw-realdata-influenced" },
+      );
+      expect(r.pmf[0] + r.pmf[1] + r.pmf[2]).toBeCloseTo(0.0015, 12);
+      expect(r.pmf[1]).toBeGreaterThan(0);
+    }
+  });
+
+  it("under a top-heavy tilt has no σ step where the free P(1st) crosses 1/N above break-even", () => {
+    // With first place locked the tilt's top sits on 2nd place, so the 1/N
+    // solution and the free one differ even at equal P(1st). Returning the
+    // free one from the crossing on moved σ by 14.3% (Mystery 18, ITM 25%,
+    // at ROI +28.6%) and 9.2% (ITM 18.7%, at +2.6%) between two ROIs; the
+    // 1/N solution's share now fades out over the next tenth of 1/N.
+    const model: FinishModelConfig = { id: "powerlaw-realdata-influenced" };
+    for (const [gameType, players, pinned, from, to] of [
+      ["mystery", 18, 0.25, 200, 400],
+      ["mystery", 18, 0.187, -50, 100],
+      ["pko", 18, 0.25, 200, 400],
+      ["pko", 24, 3 / 24, -100, 0],
+    ] as const) {
+      const sigma: number[] = [];
+      for (let k = from; k <= to; k++) {
+        let row: TournamentRow = { id: "r", players, buyIn: 100, rake: 0.1, roi: k / 1000, payoutStructure: "mtt-standard", count: 1 };
+        row = { ...row, ...applyGameType(row, gameType), players, itmRate: pinned, itmTopHeavyBias: -1 };
+        expect(validateSchedule([row], model).ok).toBe(true);
+        const e = compileSchedule({ schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model }).flat[0];
+        const m = compiledEntryMoments(e);
+        sigma.push(Math.sqrt(m.secondDollar - m.meanDollar ** 2));
+      }
+      const steps = sigma.slice(1).map((x, i) => Math.abs(x - sigma[i]) / sigma[i]);
+      for (let i = 0; i < steps.length; i++) {
+        const neighbour = Math.max(steps[i - 1] ?? 0, steps[i + 1] ?? 0);
+        expect(steps[i]).toBeLessThanOrEqual(Math.max(0.005, 1.5 * neighbour));
+      }
+    }
+  });
+
+  it("keeps a losing row Run accepts accepted, on target and at its ITM", () => {
+    // 30 runners, ITM 18.7% against 4 paid places: at ROI -10% the full 1/N
+    // floor overpays the target at every α, so the floored share stops at the
+    // target's tolerance (P(1st)·N 0.111 -> 0.121 against a band floor of 0.9).
+    const row: TournamentRow = {
+      id: "r", players: 30, buyIn: 10, rake: 0.1, roi: -0.1, payoutStructure: "mtt-standard", count: 1, itmRate: 0.187,
+    };
+    expect(validateSchedule([row], { id: "powerlaw-realdata-influenced" }).ok).toBe(true);
+    const e = compileSchedule(
+      { schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: { id: "powerlaw-realdata-influenced" } },
+    ).flat[0];
+    expect(withinTargetEv(e.analyticMeanSingle, 11 * 0.9)).toBe(true);
+    expect(e.itm).toBeCloseTo(0.187, 12);
+    let first = 0;
+    for (let i = 0; i < e.fieldSize; i++) {
+      if (i === 0) first += e.aliasProb[i] / e.fieldSize;
+      if (e.aliasIdx[i] === 0) first += (1 - e.aliasProb[i]) / e.fieldSize;
+    }
+    expect(first * e.fieldSize).toBeCloseTo(0.121, 3);
   });
 });

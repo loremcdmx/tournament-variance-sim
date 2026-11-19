@@ -444,6 +444,7 @@ function computeRowStatsAtField(
         row.finishBuckets,
         model,
         row.itmTopHeavyBias ?? 0,
+        bountyFraction > 0 ? totalWinningsEV : targetRegular,
       );
       alpha = fi.alpha;
       pmf = fi.pmf;

@@ -114,6 +114,27 @@ describe("computeRowStats σ is the compiled entry's σ", () => {
     expect(computeRowStats(row, model).payoutStd).toBeCloseTo(compiledMoments(row).std, 8);
   });
 
+  it("solves the same first place as the engine on a bounty row whose cash side overpays below break-even", () => {
+    // PKO 45 at ITM 18.7%, ROI -9.5%: the 1/N solution's cash side overpays
+    // its target and the KO budget hands the excess back, so the first-place
+    // floor's share depends on the row's total winnings. The preview has to
+    // pass the same total as the engine, or its P(1st) falls short.
+    let row: TournamentRow = { ...base, players: 45, buyIn: 100, roi: -0.095 };
+    row = { ...row, ...applyGameType(row, "pko"), players: 45, itmRate: 0.187 };
+    const fm = { id: "powerlaw-realdata-influenced" as const };
+    const entry = compileSchedule({
+      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 1, seed: 1, finishModel: fm,
+    }).flat[0];
+    let first = 0;
+    for (let i = 0; i < entry.fieldSize; i++) {
+      if (i === 0) first += entry.aliasProb[i] / entry.fieldSize;
+      if (entry.aliasIdx[i] === 0) first += (1 - entry.aliasProb[i]) / entry.fieldSize;
+    }
+    const stats = computeRowStats(row, fm);
+    expect(stats.shellP1).toBeCloseTo(first, 10);
+    expect(first * 45).toBeGreaterThan(0.5);
+  });
+
   it("the PKO figure now carries the bounty noise the place-only σ left out", () => {
     const withNoise = computeRowStats(pko, model).payoutStd;
     const placesOnly = computeRowStats(pko, model, { skipCompiledSigma: true }).payoutStd;

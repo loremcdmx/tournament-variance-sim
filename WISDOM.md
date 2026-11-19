@@ -239,6 +239,45 @@ free-band mass the model could not place, runs AFTER the equilibrium first-place
 Before it, the retry reads a different `shells.first` and inputs that pass today change
 bit-wise: the engine compile, the preview and `validateSchedule` all call it.
 
+The first-place floor is continuous in the cash target. At and above the no-skill cash
+winnings (`eqW`), where the natural P(1st) is under 1/N, the code makes the old call (first
+locked at 1/N, same arguments) and returns it: that is the byte-identity guarantee for
+untilted rows at or above break-even, and `finishModel.test.ts` pins it. Short of that full
+lock it MIXES the natural pmf with the 1/N-locked one. The old one-step switch moved σ by
+4-56 % at ROI = -rake/(1+rake) on rows pinned above the paid share (516 of 936 scanned
+configurations; 0 after). Rules that keep it working:
+
+- The share without a top-heavy tilt is the least that lifts P(1st) to the floor,
+  `(floor - P1nat) / (1/N - P1nat)`, with `firstPlaceFloor` ramping from 0 at 0.9 x eqW
+  (`FIRST_PLACE_FLOOR_BAND`) to 1/N at eqW. At bias 0 the locked solution equals the natural
+  one where P1nat = 1/N, so nothing more is needed above break-even.
+- With `itmTopHeavyBias` != 0 the two solutions differ below first place even at equal
+  P(1st): locking first moves the tilt's top onto 2nd (`applyItmTopHeavyToFreeBand` ranks
+  inside `freeIndices`). So the tilted share is ramp x fade: the floor's ramp (floor x N)
+  times a fade over the natural P(1st) from 1/N to 1.1/N (`FIRST_PLACE_LOCK_FADE`). It is 1
+  where the full lock applies, 0 at the band's onset and past the fade, and a product of
+  two continuous factors in between. Returning the natural solution from P1nat = 1/N on
+  stepped σ by up to 14.3 % above break-even (Mystery 18, ITM 25 %, tilt -1, at ROI +28.6
+  %). Do not re-lock first place at a ramped value either: that jumped wherever the lock
+  started (Mystery 30, tilt +1: σ 1319 -> 3189 at one ROI).
+- A top-3 or final-table lock typed below 1/N switches the floor off (`floorFitsLocks`):
+  the floor used to lift P(top 3) to 1/N and leave 2nd and 3rd with nothing, above
+  break-even too.
+- The share is capped where the mixture's cash winnings would leave the target's own
+  tolerance or, on a bounty row, pass `totalWinningsEV`. compileEntry, validation and
+  previewRowStats pass that total as the last argument (`maxCashWinnings`) whenever
+  `bountyFraction > 0`; all three must pass the same value or the preview, Run's gate and
+  the engine disagree (a previewRowStats test pins the preview's P(1st) to the engine's).
+  The Battle Royale neutral solves deliberately pass nothing.
+- The gate and the share read the natural P(1st) BEFORE the unplacedFreeMass repair; the
+  mixture runs AFTER it. That keeps both the order above and continuity at eqW.
+- "Continuous" means wherever the row stays on target. A 1/N solution that misses its
+  target at eqW is the old blocked row; the mixture stops at the tolerance edge just below
+  it, and the pmf does jump there, between a runnable row and a blocked one.
+- Known trade-off: where the cap binds, the row pays up to +0.1 % of its cash target (the
+  engine's on-target tolerance), as floored rows above break-even always could; the printed
+  expected profit stays cost x ROI.
+
 ## Three Validation Layers
 
 Inputs to the simulator pass through three independent guards. Don't
@@ -1212,6 +1251,16 @@ a decision that was left open on purpose. Do not undo these without re-checking:
 
 ### Second pass (late findings and review notes)
 
+- PrimeDope pass with the PD finish model off: a row whose stamped itmRate misses
+  withinTargetEv is compiled again with itmRate undefined (calibrateAlpha), and that compile
+  is used ONLY if it lands closer to the ROI (a 9-max SNG at +5 % used to simulate +145 %).
+  Never adopt it unconditionally: on linear-skill rows a free ITM can land much further away
+  (satellite 100 at +100 %: +104.5 % stamped against +56 % free). The fallback also drops
+  finishBuckets, which calibrateAlpha has no notion of; the notice, the hint and
+  ARCHITECTURE say so. Rows that already hit keep their ITM and their bytes. Warning kinds
+  are three exclusive branches: primedope-target-clamped (PD finish model on),
+  primedope-free-itm-unreachable (finish model off, still missing after the retry),
+  target-unreachable (alpha pass).
 - compileSingleEntry raises calibrationWarning kind "target-unreachable" on the alpha path
   when an alpha-adjustable model misses withinTargetEv. It uses the same tolerance as
   validateSchedule, so a validated row never gets it (0 of 10,206 validated rows in a
