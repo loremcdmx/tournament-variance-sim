@@ -108,12 +108,15 @@ export function compileSchedule(
     }
   }
 
-  const calibrationWarnings = variants.flatMap((row) =>
-    row.flatMap(({ entry }) => entry.calibrationWarning ? [entry.calibrationWarning] : []),
-  );
   const rowExpectedWinnings = variants.map((row) =>
     row.reduce((sum, { entry, share }) => sum + share * entry.analyticMeanSingle, 0),
   );
+  // One notice per row: a Field-size range compiles one entry per size, and the
+  // run plays their mixture, which is also what the expected profit reads.
+  const calibrationWarnings = variants.flatMap((row, r) => {
+    const warning = row.find(({ entry }) => entry.calibrationWarning)?.entry.calibrationWarning;
+    return warning ? [{ ...warning, actualWinnings: rowExpectedWinnings[r] }] : [];
+  });
   const rowTargetClamped = variants.map((row) => row.some(({ entry }) => entry.calibrationWarning));
   // Fixed-shape models (uniform, empirical, *-realdata-*) and a pinned α never
   // solve for the row's ROI, so the typed ROI says nothing about their mean:

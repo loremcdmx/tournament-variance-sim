@@ -155,6 +155,19 @@ for the same inputs, the entry says for which rows.
   modelled one instead of cost x ROI. The results screen explains such a
   warning without blaming PrimeDope.
 
+- A row with a field-size range now raises one calibration notice instead of
+  one per field size, quoting the row's average payout over its sizes (the
+  figure its expected profit uses); the PrimeDope comparison listed such a
+  row three to five times. Nothing simulated changes.
+- Run's feasibility check now aims at the same Battle Royale cash/KO split as
+  the simulation. A Battle Royale row with a first-place, top-3 or final-table
+  lock (or, in scripts, late registration) whose cash prizes alone would pay
+  more than its ROI is now blocked, instead of running above the ROI it
+  printed. Rows on the standard 18-max table without locks are unaffected.
+- A row with a field-size range and no pinned ITM (scripts and the engine
+  API; the app pins every row's ITM) is now blocked when one of its field
+  sizes cannot reach the ROI, as pinned-ITM rows already were.
+
 ### Results screen
 
 - The risk-of-ruin card shows its "within N tournaments" caption again once a

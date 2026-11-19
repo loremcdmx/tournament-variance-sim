@@ -18,7 +18,7 @@ import {
   resolveBattleRoyaleCashTarget,
 } from "@/lib/sim/battleRoyaleWinnerFirst";
 import { makeBrTierSampler } from "@/lib/sim/brBountyTiers";
-import { inferGameType } from "@/lib/sim/gameType";
+import { inferGameType, normalizeGameTypeConsistency } from "@/lib/sim/gameType";
 import { compileRowVariants } from "@/lib/sim/compileEntry";
 import { fieldVariantSizes, isFieldRangeActive } from "@/lib/sim/fieldVariants";
 import { mixRowStats } from "@/lib/sim/previewFieldMixture";
@@ -256,10 +256,14 @@ function compiledPayoutStd(
  * probes): it spares the extra compile that `payoutStd` costs on bounty rows.
  */
 export function computeRowStats(
-  row: TournamentRow,
+  rawRow: TournamentRow,
   model: FinishModelConfig,
   options: { skipCompiledSigma?: boolean } = {},
 ): RowStats {
+  // compileSchedule and validateSchedule read the normalized row (a Battle
+  // Royale row drops its Field-size range, drifted format flags are aligned),
+  // so the preview has to describe that row, not the raw one.
+  const row = normalizeGameTypeConsistency(rawRow);
   if (!isFieldRangeActive(row)) return computeRowStatsAtField(row, model, options);
   const sizes = fieldVariantSizes(row);
   const mixed = mixRowStats(

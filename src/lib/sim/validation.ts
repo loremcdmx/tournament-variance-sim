@@ -46,20 +46,19 @@ export interface ScheduleFeasibility {
 }
 
 /**
- * Replicates engine.ts compileSingleEntry's calibration pre-step closely
- * enough to decide feasibility of the fixed-ITM shelled solver for each
- * row. Fixed-ITM rows can be infeasible when explicit shell locks or the
- * solver's equilibrium first-place floor leave no alpha room to hit the
- * requested cash target; everything else is trivially OK (the α solver
- * clamps silently and PD-binary-itm is always feasible by construction).
- * A row with a Field-size range is checked at every field size the engine
- * plays, and reports the size that misses its target the most. A model with no
- * α to move (uniform, empirical, realdata-*) is held to its shell locks only:
- * its shape, not the typed ROI, decides what the row pays.
+ * Replicates compileEntry.ts compileSingleEntry's calibration pre-step
+ * closely enough to decide whether the engine can play each row at its ROI.
+ * Fixed-ITM rows can be infeasible when explicit shell locks, the solver's
+ * first-place floor or the payout table leave no alpha room to hit the cash
+ * target; free-ITM rows when the α solver saturates short of it. A row with
+ * a Field-size range is checked at every field size the engine plays, on
+ * both branches, and reports the size that misses its target the most. A
+ * model with no α to move (uniform, empirical, realdata-*) is held to its
+ * shell locks only: its shape, not the typed ROI, decides what the row pays.
  *
- * NOTE: this mirrors engine-side math, not sim-side. If engine.ts changes
- * its targetRegular formula (bounty lift, rake convention, overlay), update
- * here too — or the run-blocking banner will disagree with reality.
+ * This mirrors compileEntry's targetRegular, its Battle Royale cash/KO
+ * centre and its bounty lift; change them together, or the run-blocking
+ * banner will disagree with what the engine plays.
  */
 export function validateSchedule(
   schedule: readonly TournamentRow[],
@@ -70,23 +69,30 @@ export function validateSchedule(
     const row = normalizeGameTypeConsistency(rawRow);
     if (row.itmRate == null || row.itmRate <= 0) {
       if (!isAlphaAdjustable(model)) return;
-      const analytic = buildScheduleAnalyticBreakdown({
-        schedule: [{ ...row, count: 1 }],
-        finishModel: model,
-      });
-      const meanSingle = analytic?.perRow[0]?.meanSingle;
+      // Per field size, as the engine warns per size: a size that cannot reach
+      // the ROI blocks even when the other sizes dilute the mixture's gap to
+      // within the tolerance.
       const targetEv = row.buyIn * (1 + row.rake) * (1 + row.roi);
-      if (meanSingle == null || !Number.isFinite(meanSingle)) return;
-      const gap = meanSingle - targetEv;
-      if (withinTargetEv(meanSingle, targetEv)) return;
-      issues.push({
-        rowId: row.id,
-        rowIdx: idx,
-        label: row.label || `#${idx + 1}`,
-        targetEv,
-        currentEv: meanSingle,
-        gap,
-      });
+      let worst: RowFeasibilityIssue | null = null;
+      for (const players of fieldVariantSizes(row)) {
+        const analytic = buildScheduleAnalyticBreakdown({
+          schedule: [{ ...row, players, fieldVariability: undefined, count: 1 }],
+          finishModel: model,
+        });
+        const meanSingle = analytic?.perRow[0]?.meanSingle;
+        if (meanSingle == null || !Number.isFinite(meanSingle)) continue;
+        if (withinTargetEv(meanSingle, targetEv)) continue;
+        const issue: RowFeasibilityIssue = {
+          rowId: row.id,
+          rowIdx: idx,
+          label: row.label || `#${idx + 1}`,
+          targetEv,
+          currentEv: meanSingle,
+          gap: meanSingle - targetEv,
+        };
+        if (worst === null || relativeGap(issue) > relativeGap(worst)) worst = issue;
+      }
+      if (worst !== null) issues.push(worst);
       return;
     }
 
@@ -180,13 +186,14 @@ function fixedItmIssueAtField(
     pmf: Float64Array;
     cashEV: number;
   } | null = null;
+  let defaultBountyMean = 0;
   if (bountyFraction > 0) {
     const bountyPerSeat = row.buyIn * bountyFraction;
     const bountyLift = Math.max(
       0.1,
       Math.min(3, (1 + row.rake) * (1 + row.roi)),
     );
-    const defaultBountyMean = bountyPerSeat * bountyLift;
+    defaultBountyMean = bountyPerSeat * bountyLift;
     bountyMean = applyBountyBias(defaultBountyMean, totalWinningsEV, bias);
   }
 
@@ -196,8 +203,11 @@ function fixedItmIssueAtField(
     row.itmRate != null &&
     row.itmRate > 0
   ) {
-    // Mirror engine.ts: BR fixed-ITM exposes the full feasible cash/KO EV
-    // interval around a true 50/50 gross-EV midpoint.
+    // Mirror compileEntry: BR fixed-ITM exposes the full feasible cash/KO EV
+    // interval around the configured KO-pool baseline. Off the 18-max table
+    // (late registration, finish locks) the BR solver steps aside and the
+    // shelled solve below aims at this centre, so it must be the engine's or
+    // the gate judges a solve the run never plays.
     const neutralBountyMean = entryCost * bountyFraction;
     const cashFloor = cashTargetFloor(entryCost);
     const neutralTargetRegular = Math.max(cashFloor, entryCost - neutralBountyMean);
@@ -212,7 +222,8 @@ function fixedItmIssueAtField(
       model,
       row.itmTopHeavyBias ?? 0,
     );
-    const centerCashTarget = Math.max(cashFloor, totalWinningsEV * 0.5);
+    const centerBountyMean = clampBountyMean(defaultBountyMean, totalWinningsEV);
+    const centerCashTarget = Math.max(cashFloor, totalWinningsEV - centerBountyMean);
     const resolvedCash = resolveBattleRoyaleCashTarget({
       N,
       payouts,

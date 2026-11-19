@@ -70,10 +70,16 @@ This area produced the most false confidence. Remember:
   range), so the band is mostly 2 SE of Monte-Carlo noise, and BR's 6 % is
   noise-limited (the 10 000x envelope), not a measured error. The band does not
   cover the gap between the model and real play, and the footnotes say so.
-- Battle Royale KO EV split now centers on the row's configured
-  `bountyFraction` baseline. Do not resurrect older "BR is always 50/50
-  cash/KO at slider center" wording without re-checking `compileEntry.ts` (the
-  bounty-split lives there now) and `previewRowStats.ts`.
+- Battle Royale KO EV split centres on the row's configured `bountyFraction`
+  baseline: centre cash = total - clampBountyMean(defaultBountyMean, total),
+  about 54 % cash at the default share. `compileEntry.ts`, `previewRowStats.ts`
+  and `validation.ts` compute it identically; change all three together and
+  do not resurrect a 50/50 centre in any of them (validation kept 0.5 x total
+  until 19 November 2026 and passed late-registration BR rows the engine
+  overpaid). On the 18-max table (3 paid, no locks) the BR verdict does not
+  depend on the centre (feasible iff total >= ITM x 3rd prize); off it (21+
+  entrants after late registration, any finish lock, a custom table) the
+  shelled solve aims at the centre.
 - The closed-form surfaces (`SIGMA_ROI_*`) are only the fallback of
   `computeConvergenceRows` when no runtime override is passed; their `resid` is
   their own error against their own grid, not a card's band.
@@ -306,9 +312,19 @@ residual coefficient before being band-eligible.
 
 - `fieldVariants.ts` (`fieldVariantSizes`) is the only place that turns
   `fieldVariability` into field sizes. The engine compiles one entry per size,
-  `validateSchedule` checks every size (a small bucket can miss the ROI target
-  while the nominal field is fine, and the run used to claim the typed ROI
-  anyway), and `computeRowStats` averages over them (`previewFieldMixture.ts`).
+  `validateSchedule` checks every size on both the pinned-ITM and the free-ITM
+  branch (a small bucket can miss the ROI target while the nominal field, or
+  the mixture's mean, is fine), and `computeRowStats` averages over them
+  (`previewFieldMixture.ts`). compileSchedule emits at most one calibration
+  warning per row; for a range its actualWinnings is the row's mixture mean,
+  the figure expectedProfit reads. Do not go back to flattening the variants'
+  warnings (the PrimeDope pane listed a ranged row 3-5 times).
+- computeRowStats normalizes its own row (normalizeGameTypeConsistency), as
+  compileSchedule and validateSchedule do. A raw BR row with a range was
+  previewed over 10-26 entrants, and a Mystery row left on the battle-royale
+  table read σ 208.6 against the engine's 122.8. Do not drop the call because
+  FinishPMFPreview already normalizes: scripts, tests and new callers pass raw
+  rows.
   New code must not read `row.players` as "the field" of a range row.
 - Under a uniform range the engine ignores `players`.
   `normalizeGameTypeConsistency` writes the range midpoint into the effective
@@ -1289,8 +1305,11 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   target-unreachable (alpha pass).
 - compileSingleEntry raises calibrationWarning kind "target-unreachable" on the alpha path
   when an alpha-adjustable model misses withinTargetEv. It uses the same tolerance as
-  validateSchedule, so a validated row never gets it (0 of 10,206 validated rows in a
-  sweep). Do not replace it with "always take expectedProfit from the pmf": that moves
+  validateSchedule, and validateSchedule checks every field size on both ITM branches
+  with the engine's own Battle Royale centre, so a validated row never gets it (0 over a
+  75,600-row grid, 80,000 fuzz rows and 43,560 free-ITM ranged rows). Auditing the three
+  layers: 'blocked while the engine hits' rows (3,300 of the 75,600) all need more bounty
+  EV than N x buyIn x bountyFraction x (1 - P(last)); that block is deliberate. Do not replace it with "always take expectedProfit from the pmf": that moves
   expectedProfit by 1e-13..1e-10 for every row and breaks byte-identity.
 - tiltChannelsActive and noiseChannelsActive both live in convergencePolicy.ts, and the
   first calls the second's tilt half. They must mirror simulateShard's tiltFastOn /

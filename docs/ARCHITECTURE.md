@@ -104,10 +104,13 @@ The current split is:
 2. **Compile step.** There is no separate build round-trip before the shards. A worker runs `compileSchedule(input, calibrationMode)` itself for every `ShardRequest` it receives (and again for the final `BuildRequest`); it is a pure function of the input, so every worker gets the same schedule without sharing state. It:
    - For each row, picks the effective field size (or enumerates variants if `fieldVariability` is set).
      The sizes come from `fieldVariants.ts` (`fieldVariantSizes`), the one place
-     that decides them: validation checks every size, the preview averages over
-     them, and under a range `players` is read as the range midpoint
+     that decides them: validation checks every size (pinned or free ITM), the
+     preview averages over them, a calibration warning is raised once per row
+     and quotes the mixture's mean (what the expected profit reads), and under
+     a range `players` is read as the range midpoint
      (`normalizeGameTypeConsistency`), never as a field of its own. A Battle
-     Royale row carries no range.
+     Royale row carries no range; `compileSchedule`, `validateSchedule` and
+     `computeRowStats` all normalize the row first, so none of them plays one.
    - Calls `buildFinishPMF(N, model, α)` with a starting α, then `calibrateAlpha()` which binary-searches α so that the *realized* ROI (Σ pmf × payout − cost) matches `row.roi`. This is the honest calibration.
    - For the PrimeDope compare run (`calibrationMode: "primedope-binary-itm"`), `buildBinaryItmAssets` builds the binary-ITM pmf directly (every paid place equally likely, real top-heavy payouts kept) and there is no α search. `compileEntry.ts` falls back to `calibrateShelledItm` (a row with a pinned `itmRate`) or `calibrateAlpha` only when the PD finish-model flag is off. The pinned ITM was stamped from the row's own payout table, so a row whose ITM cannot pay its ROI on PD's table and pool is compiled again with a free ITM (`calibrateAlpha`, which also drops the row's finish locks) and plays that compile when it lands closer to the ROI; a row that hits keeps its ITM and its bytes, and a row that neither compile reaches carries the `primedope-free-itm-unreachable` warning. `pdCurves.ts` is PD's payout-table family, read by the `mtt-primedope` payout structure; it does not calibrate anything.
    - For bounty rows, applies the requested KO EV share as a finish-shape
@@ -168,6 +171,15 @@ Battle Royale has one extra invariant: the GG-style tier table fixes the
 average dollars per envelope. The engine therefore scales `bountyKmean`
 (expected envelope-dropping KOs), not the average envelope size, when the KO
 share changes.
+
+A fixed-ITM Battle Royale row centres its cash target on the configured KO
+pool: `singleCost * (1 + roi)` minus the lifted per-seat bounty, about 54 % of
+the winnings in cash at the default share. `compileEntry`, `previewRowStats` and
+`validation` compute that centre the same way. Off the 18-max table (late
+registration that lifts the field to 21 or more pays four places, or a finish
+lock is set) the BR solver steps aside and the shelled solver aims at that
+centre, so a different centre in one of the three gates or previews a solve
+the run never plays.
 
 ### PKO knockouts
 

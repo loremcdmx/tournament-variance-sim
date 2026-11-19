@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { validateSchedule } from "./validation";
 import { compileSchedule } from "./engine";
-import { calibrateShelledItm } from "./finishModel";
+import { calibrateShelledItm, withinTargetEv } from "./finishModel";
+import { applyGameType } from "./gameType";
 import { chooseClosestFeasibilityFix } from "./feasibilityFix";
 import { getPayoutTable } from "./payouts";
 import { fieldVariantSizes } from "./fieldVariants";
@@ -420,6 +421,85 @@ describe("validateSchedule plays every field of a Field-size range", () => {
     const r = ranged({ fieldVariability: undefined });
     expect(validateSchedule([r], baseModel)).toEqual(atField(r, 100));
     expect(validateSchedule([ranged({ fieldVariability: { kind: "fixed" } })], baseModel).ok).toBe(true);
+  });
+
+  it("holds a row without a pinned ITM to every field as well, as the engine's warning does", () => {
+    // $10+10% 50/30/20 SNG at +310%: the 9-entrant bucket tops out at $45
+    // (always first, half of a $90 pool) against a $45.10 target. The mixture
+    // of the four buckets is within a thousandth of the target, so a check of
+    // the mixture alone lets the row run while the engine warns that it misses.
+    const r = row({
+      players: 18,
+      buyIn: 10,
+      roi: 3.1,
+      payoutStructure: "sng-50-30-20",
+      fieldVariability: { kind: "uniform", min: 6, max: 30, buckets: 4 },
+    });
+    const compiled = compileSchedule(
+      { schedule: [r], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: baseModel },
+      "alpha",
+    );
+    const slot = compiled.flat[0];
+    const targetEv = 11 * (1 + 3.1);
+    expect(slot.variants!.map((v) => v.fieldSize)).toEqual([9, 15, 21, 27]);
+    expect(Math.abs(compiled.expectedProfit + compiled.totalBuyIn - targetEv) / targetEv).toBeLessThan(1e-3);
+    expect(compiled.calibrationWarnings).toHaveLength(1);
+
+    const res = validateSchedule([r], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0].currentEv).toBeCloseTo(slot.variants![0].analyticMeanSingle, 9);
+    expect(res.issues[0].currentEv).toBeLessThan(45);
+    expect(validateSchedule([{ ...r, roi: 3 }], baseModel).ok).toBe(true);
+  });
+});
+
+describe("validateSchedule gates the Battle Royale solve the engine plays", () => {
+  // The editor's $10 BR row. Off the 18-max table (late registration pays 4+
+  // places, finish locks) the BR solver steps aside and the shelled solve aims
+  // at the KO-pool centre, 54 % of the winnings in cash. A gate that aims at
+  // 50 % passes rows whose engine solve overshoots the target.
+  const editorRow = row({ players: 18, buyIn: 10 });
+  const br = (over: Partial<TournamentRow>): TournamentRow => ({
+    ...editorRow,
+    ...applyGameType(editorRow, "mystery-royale"),
+    ...over,
+  });
+  const engineEntry = (r: TournamentRow) =>
+    compileSchedule(
+      { schedule: [r], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: baseModel },
+      "alpha",
+    ).flat[0];
+  const engineHits = (r: TournamentRow) =>
+    withinTargetEv(engineEntry(r).analyticMeanSingle, r.buyIn * (1 + r.rake) * (1 + r.roi));
+
+  it("blocks a late-registration row whose cash side alone passes the target", () => {
+    const r = br({ itmRate: 0.54, roi: -0.05, lateRegMultiplier: 1.17 });
+    const entry = engineEntry(r);
+    expect(entry.fieldSize).toBe(21);
+    expect(entry.paidCount).toBe(4);
+    expect(engineHits(r)).toBe(false);
+
+    const res = validateSchedule([r], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues[0].targetEv).toBeCloseTo(9.5, 9);
+    expect(res.issues[0].currentEv).toBeCloseTo(entry.analyticMeanSingle, 9);
+  });
+
+  it("lets Run through exactly the rows the engine plays on target", () => {
+    let compared = 0;
+    for (const lateRegMultiplier of [1, 1.17, 1.5])
+      for (const itmRate of [0.14, 0.3, 0.54])
+        for (const roi of [-0.3, -0.05, 0.2])
+          for (const bountyEvBias of [-0.25, 0, 0.25])
+            for (const finishBuckets of [undefined, { first: itmRate * 0.3 }]) {
+              const r = br({ itmRate, roi, bountyEvBias, lateRegMultiplier, finishBuckets });
+              const res = validateSchedule([r], baseModel);
+              if (res.issues[0]?.reason) continue;
+              expect(res.ok, JSON.stringify({ lateRegMultiplier, itmRate, roi, bountyEvBias, finishBuckets })).toBe(engineHits(r));
+              compared++;
+            }
+    expect(compared).toBe(162);
   });
 });
 
