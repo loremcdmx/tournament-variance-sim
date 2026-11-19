@@ -83,13 +83,11 @@ This area produced the most false confidence. Remember:
 - The closed-form surfaces (`SIGMA_ROI_*`) are only the fallback of
   `computeConvergenceRows` when no runtime override is passed; their `resid` is
   their own error against their own grid, not a card's band.
-- `SIGMA_ROI_MYSTERY` and `scripts/fit_beta_mystery.json` were trained on rows
-  that carried `pkoHeadVar` 0.4, i.e. a per-KO log-variance of 2.4 (the stored
-  grid cells at field 1000 / ROI +20 % and 5000 / +30 % match a 2.4 run within
-  0.3 %). The engine now ignores `pkoHeadVar` on every row that is or infers
-  Mystery / Mystery-Royale (`normalizeFormatFields` keys on `inferGameType`, not
-  only on an explicit `gameType`) and compiles 2.0, and no recipe in `scripts/`
-  sets it on a Mystery row any more. On the current engine (20k samples,
+- `SIGMA_ROI_MYSTERY` and `scripts/fit_beta_mystery.json` were trained at a per-KO
+  log-variance of 2.4: the old Monte-Carlo recipe added a 0.4 PKO head-size term
+  (`pkoHeadVar`, a row field that no longer exists) to `mysteryBountyVariance` 2.0 (the
+  stored grid cells at field 1000 / ROI +20 % and 5000 / +30 % match a 2.4 run within
+  0.3 %). Mystery compiles at 2.0. On the current engine (20k samples,
   `mystery-realdata-linear`, bounty share 0.5) the surface reads 1.04x, 1.11x
   and 1.12x the engine at field 100 / ROI 0, 1000 / +20 % and 5000 / +30 %,
   inside its own 13 % but well over the 2 % of the runtime band. It has no
@@ -1202,10 +1200,13 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   in N and the place and tends to about 0.43 in big fields (why 0.4 used to work there).
 - Do not put a flat per-KO head noise back on PKO: on top of exact knockouts it
   double-counts the head spread the tree already has (2-7 % too much σ at small fields
-  with a high ROI or bounty share 0.9). pkoHeadVar is therefore not read on PKO rows
-  (types.ts says so, a test pins it). The field is still stamped by applyGameType and
-  formatComparison; removing it means touching persistence, gameType, the editor import and
-  the preview. A mysteryBountyVariance on an explicit PKO row still stacks as its own
+  with a high ROI or bounty share 0.9). The row field `pkoHeadVar` no longer exists: types, gameType, compileEntry, the CSV
+  import, the preview, formatComparison and the scripts dropped it, and
+  `normalizePersistedState` removes the key from every stored row on read (old saves carry
+  0.4 on every PKO row because the old load stamped it; they load as the same state under
+  the same model preset, persistence.test.ts). An untyped engine input that still carries
+  the key, with any value, compiles byte-identically to the clean row (engine.test.ts).
+  Do not reintroduce a per-KO head-size knob on PKO. A mysteryBountyVariance on an explicit PKO row still stacks as its own
   channel.
 - Where the Bernoulli count at mean cash already spreads more than the tree (2nd place in
   fields of 4 to 44, 3rd in fields of 5 to 10; up to +3.8 % in sd, at 2nd of 7), no
@@ -1240,9 +1241,24 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   PKO with Mystery or Battle Royale rows the PKO change moved the Mystery / BR draws too.
   Byte-identity with the old engine holds only for schedules with no PKO row.
 - The PKO tree walk costs about 5 % per tournament on a 3 000-player row against the old
-  Poisson draw; single tables got faster. The PKO runtime band (2 %) was spot-checked on
-  ten cells and two seeds after the change, not refitted. The stored SIGMA_ROI_PKO grid
-  predates it (measured with the flat 0.4 noise): re-measure before any refit.
+  Poisson draw; single tables got faster. The PKO runtime band was re-measured on the tree over all 55 cells: 6.72 G tournaments,
+  every SE <= 0.45 %, largest gap 0.59 %, so it stays 2 %. SIGMA_ROI_PKO was refitted on a
+  grid read off the current compile; its resid went from 11 % to 5 %.
+
+- Canonical σ grids are read off the compile, not sampled: `resweep_sigma.ts` takes each
+  cell from `compiledEntryMoments`, exact for a single row with independent tournaments
+  (about a second per format); `fit_runtime_sigma_bands.ts` is where the hot loop is
+  checked against that σ. The July 2026 PKO grid had drifted to 0.67-1.05x the engine (the
+  October `mtt-gg-bounty` curve raised σ by 2-49 %, the elimination tree lowered it by up
+  to 7 % at field 50) and nothing failed. convergenceFit.test.ts now compares every stored
+  PKO grid cell with the compile (1 %), and runtimeSigmaBands.test.ts ties every PKO band
+  cell's stored analytic σ to today's formatRuntimeSigma. When the compile, a payout table
+  or a finish model changes, re-run `FORMAT=<format> npx tsx scripts/resweep_sigma.ts` and
+  `refit_2d_logpoly.ts` together; do not go back to a Monte-Carlo resweep for the grid.
+- `scripts/fit_runtime_sigma_bands.ts` with `BANDS_FILTER` writes only the filtered cells
+  to `scripts/fit_runtime_sigma_bands.json`, overwriting the other formats. Save the file
+  first and merge in node so the `JSON.stringify(..., null, 1)` formatting stays identical.
+  `BANDS_RESUME=1` with a larger `BANDS_BATCHES` adds batches to existing cells.
 
 ### Streak statistics
 

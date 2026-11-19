@@ -198,7 +198,6 @@ function normalizeFormatFields(row: TournamentRow): TournamentRow {
       ...row,
       bountyFraction: row.bountyFraction ?? DEFAULT_OCEAN_BOUNTY_FRACTION,
       mysteryBountyVariance: undefined,
-      pkoHeadVar: undefined,
       pkoHeat: undefined,
       battleRoyaleLeaderboardEnabled: undefined,
       battleRoyaleLeaderboardShare: undefined,
@@ -215,7 +214,6 @@ function normalizeFormatFields(row: TournamentRow): TournamentRow {
     };
     clear("bountyFraction");
     clear("mysteryBountyVariance");
-    clear("pkoHeadVar");
     clear("pkoHeat");
     clear("bountyEvBias");
     clear("battleRoyaleLeaderboardEnabled");
@@ -228,18 +226,17 @@ function normalizeFormatFields(row: TournamentRow): TournamentRow {
   }
   const inferred = inferGameType(row);
   if (inferred === "mystery" || inferred === "mystery-royale") {
-    // PKO head-size noise and heat are PKO-only. The row keeps them when a PKO
-    // row is flipped here, and compileEntry adds an explicit pkoHeadVar to the
-    // Mystery log-variance, so the same-looking row simulated a wider σ until
-    // a reload (persistence strips the field) made it vanish. Keyed on the
-    // inferred type: a row with no gameType that reads as Mystery from its
-    // payout or bounty fields is reloaded as Mystery too.
-    if (row.pkoHeadVar === undefined && row.pkoHeat === undefined) {
+    // PKO heat is PKO-only. The row keeps it when a PKO row is flipped here,
+    // and compileEntry would reshape the Mystery bounty bank with it, so the
+    // same-looking row simulated another σ until a reload (persistence strips
+    // the field) made it vanish. Keyed on the inferred type: a row with no
+    // gameType that reads as Mystery from its payout or bounty fields is
+    // reloaded as Mystery too.
+    if (row.pkoHeat === undefined) {
       return normalizeBrMrConsistency(row);
     }
     return normalizeBrMrConsistency({
       ...row,
-      pkoHeadVar: undefined,
       pkoHeat: undefined,
     });
   }
@@ -311,7 +308,6 @@ export function applyGameType(
       patch.rake = ticket.rake;
       patch.bountyFraction = DEFAULT_OCEAN_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = undefined;
-      patch.pkoHeadVar = undefined;
       patch.pkoHeat = undefined;
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
@@ -322,7 +318,6 @@ export function applyGameType(
     case "pko":
       patch.bountyFraction = ownShare();
       patch.mysteryBountyVariance = undefined;
-      patch.pkoHeadVar = row.pkoHeadVar ?? 0.4;
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
       patch.payoutStructure = "mtt-gg-bounty";
@@ -342,7 +337,6 @@ export function applyGameType(
       // gave P(>100×) = 1e-8 — effectively zero jackpot tail. When real
       // non-BR Mystery tier data lands, switch to discrete-tier draw like BR.
       patch.mysteryBountyVariance = 2.0;
-      patch.pkoHeadVar = undefined;
       patch.pkoHeat = undefined;
       patch.battleRoyaleLeaderboardEnabled = undefined;
       patch.battleRoyaleLeaderboardShare = undefined;
@@ -356,7 +350,6 @@ export function applyGameType(
       // misprice the 40/30/20 cash part.
       patch.bountyFraction = DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION;
       patch.mysteryBountyVariance = 1.8;
-      patch.pkoHeadVar = undefined;
       patch.pkoHeat = undefined;
       patch.rake = brDefault.rake;
       patch.buyIn = brDefault.buyIn;

@@ -555,9 +555,9 @@ describe("CSV import: payout cell and format defaults", () => {
       gameType: "pko",
       payoutStructure: "mtt-gg-bounty",
       bountyFraction: picked.bountyFraction,
-      pkoHeadVar: picked.pkoHeadVar,
       buyIn: 50, roi: 0.1, players: 500,
     });
+    expect(Object.keys(row)).not.toContain("pkoHeadVar");
     expect(row.bountyFraction).toBeGreaterThan(0);
     expect(rowHasActiveBounty(row)).toBe(true);
     expect(inferGameType(row)).toBe("pko");

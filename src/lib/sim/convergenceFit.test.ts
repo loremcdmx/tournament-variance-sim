@@ -9,9 +9,11 @@ import {
   SIGMA_ROI_PKO,
   sigmaRoiForRow,
 } from "./convergenceFit";
-import type { TournamentRow } from "./types";
+import type { SimulationInput, TournamentRow } from "./types";
 import { applyGameType } from "./gameType";
-import { buildScheduleAnalyticBreakdown } from "./compile";
+import { buildScheduleAnalyticBreakdown, compileSchedule } from "./compile";
+import { compiledEntryMoments } from "./scheduleMoments";
+import pkoGrid from "../../../scripts/fit_beta_pko.json";
 
 /**
  * Critical canary tests on the σ-fit coefficients. These fits drive every
@@ -118,9 +120,53 @@ describe("evalSigma — coefficient shape", () => {
     }
   });
 
-  it("freeze residual ≤ PKO residual ≤ Mystery residual (data-driven heterogeneity)", () => {
-    expect(SIGMA_ROI_FREEZE.resid).toBeLessThanOrEqual(SIGMA_ROI_PKO.resid);
+  it("PKO residual ≤ Mystery residual (the envelope tail is the harder surface)", () => {
+    // Freeze is not ordered against them: its single-β form misses its own grid
+    // by up to 12 %, while the 2D PKO surface fits a noise-free grid to 5 % at p95.
     expect(SIGMA_ROI_PKO.resid).toBeLessThanOrEqual(SIGMA_ROI_MYSTERY.resid);
+  });
+});
+
+describe("SIGMA_ROI_PKO and its canonical grid", () => {
+  // The grid must be the engine's: a stale grid is refitted faithfully and the
+  // surface inherits its error. 1 % lets a sub-percent engine tweak through; a
+  // payout-curve or knockout-model change fails here, and the fix is
+  // `FORMAT=pko npx tsx scripts/resweep_sigma.ts`, then the refit.
+  const cellSigma = (field: number, roi: number) => {
+    const row: TournamentRow = {
+      id: "p", label: "p", players: field, buyIn: 50, rake: 0.1, roi, count: 1,
+      payoutStructure: "mtt-gg-bounty", gameType: "pko", bountyFraction: 0.5,
+    };
+    const input: SimulationInput = {
+      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1,
+      finishModel: { id: "pko-realdata-linear" },
+    };
+    const entry = compileSchedule(input, "alpha").flat[0];
+    const m = compiledEntryMoments(entry);
+    return Math.sqrt(m.secondDollar - m.meanDollar * m.meanDollar) / entry.singleCost;
+  };
+  const table = pkoGrid.table as Record<string, number[]>;
+
+  it("is the current engine's σ of the canonical row in every cell", () => {
+    for (const roiKey of Object.keys(table)) {
+      pkoGrid.fields.forEach((field: number, i: number) => {
+        const stored = table[roiKey][i];
+        expect(Math.abs(stored / cellSigma(field, Number(roiKey)) - 1), `field ${field} roi ${roiKey}`).toBeLessThan(0.01);
+      });
+    }
+  });
+
+  it("fits that grid within its resid at p95, and within 9 % in every cell", () => {
+    const misses: number[] = [];
+    for (const roi of pkoGrid.rois) {
+      pkoGrid.fields.forEach((field, i) => {
+        misses.push(Math.abs(evalSigma(SIGMA_ROI_PKO, field, roi) / table[String(roi)][i] - 1));
+      });
+    }
+    misses.sort((a, b) => a - b);
+    expect(misses).toHaveLength(198);
+    expect(misses[Math.floor(0.95 * misses.length)]).toBeLessThanOrEqual(SIGMA_ROI_PKO.resid);
+    expect(misses[misses.length - 1]).toBeLessThan(0.09);
   });
 });
 
@@ -241,10 +287,10 @@ describe("σ reference canaries (5% tolerance)", () => {
     expect(s).toBeLessThan(6.6);
   });
 
-  it("PKO @ AFS=500 ROI=10% lands in the validated band", () => {
+  it("PKO @ AFS=500 ROI=10% lands near the engine's 4.22", () => {
     const s = evalSigma(SIGMA_ROI_PKO, 500, 0.10);
-    expect(s).toBeGreaterThan(2.5);
-    expect(s).toBeLessThan(4.5);
+    expect(s).toBeGreaterThan(4.0);
+    expect(s).toBeLessThan(4.45);
   });
 
   it("Mystery @ AFS=500 ROI=10% lands in the validated band", () => {

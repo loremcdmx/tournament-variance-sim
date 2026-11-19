@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import calibration from "../../../scripts/fit_runtime_sigma_bands.json";
 import { DICT } from "../i18n/dict";
+import { formatRuntimeSigma } from "./formatRuntimeSigma";
+import type { FinishModelId } from "./types";
 import {
   isInsideRuntimeSigmaBox,
   RUNTIME_SIGMA_BANDS,
@@ -72,6 +74,32 @@ describe("runtime σ band table = the Monte-Carlo calibration artifact", () => {
       expect(runtimeSigmaBandResid(format)).toBeLessThanOrEqual(0.05);
     }
     expect(runtimeSigmaBandResid("mystery-royale")).toBeGreaterThan(runtimeSigmaBandResid("freeze"));
+  });
+});
+
+describe("the PKO cells were measured on the current knockout model", () => {
+  const pko = calibration.cells.filter((c) => c.format === "pko");
+
+  it("their analytic σ is the cards' σ today, within 1 %", () => {
+    // A cell measured on another PKO model (the Poisson count with flat head
+    // noise, an older payout curve) says nothing about today's gap. 1 % lets a
+    // sub-percent engine tweak through; anything larger means re-measuring
+    // with `BANDS_FILTER="pko|"`.
+    expect(pko).toHaveLength(55);
+    for (const c of pko) {
+      const sigma = formatRuntimeSigma("pko", {
+        afs: c.afs,
+        roi: c.roi,
+        rake: c.rake,
+        finishModel: { id: c.finishModelId as FinishModelId },
+        itmTarget: "itmPct" in c && typeof c.itmPct === "number" ? { enabled: true, pct: c.itmPct } : undefined,
+      });
+      expect(Math.abs(sigma! / c.sigmaAnalytic - 1), c.id).toBeLessThan(0.01);
+    }
+  });
+
+  it("every cell's σ has a standard error of at most 0.5 %", () => {
+    for (const c of pko) expect(c.se, c.id).toBeLessThanOrEqual(0.005);
   });
 });
 

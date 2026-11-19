@@ -155,7 +155,7 @@ export function buildFormatComparisonScenarios(config: FormatComparisonConfig): 
         bountyFraction: format === "ocean-ko" ? 50 / 92 : 0.5,
       } : {}),
       ...(format === "mystery" ? { mysteryBountyVariance: config.mysteryLogVariance } : {}),
-      ...(format === "pko" ? { pkoHeadVar: 0.4, pkoHeat: 0 } : {}),
+      ...(format === "pko" ? { pkoHeat: 0 } : {}),
     };
     return {
       format,

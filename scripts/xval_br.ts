@@ -40,7 +40,6 @@ function buildInput(roi: number): SimulationInput {
     gameType: "mystery-royale",
     bountyFraction: 0.5,
     mysteryBountyVariance: 1.8,
-    pkoHeadVar: 0,
     itmRate: 0.18,
     count: N_TOURNEYS,
   };

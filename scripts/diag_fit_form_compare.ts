@@ -74,7 +74,6 @@ function buildRow(format: Format, field: number, roi: number): TournamentRow {
     payoutStructure: "mtt-gg-bounty",
     gameType: "pko",
     bountyFraction: 0.5,
-    pkoHeadVar: 0.4,
     count: N_TOURNEYS,
   };
 }

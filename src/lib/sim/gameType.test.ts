@@ -3,6 +3,7 @@ import {
   applyGameType,
   DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
   DEFAULT_OCEAN_BOUNTY_FRACTION,
+  GAME_TYPE_ORDER,
   inferGameType,
   normalizeBrMrConsistency,
   normalizeGameTypeConsistency,
@@ -51,12 +52,11 @@ describe("Ocean KO format", () => {
   it("keeps Ocean authoritative over stale BR and Mystery fields", () => {
     const ocean = normalizeGameTypeConsistency(row({
       gameType: "ocean-ko", payoutStructure: "battle-royale",
-      mysteryBountyVariance: 3, pkoHeadVar: 10, pkoHeat: 0.5,
+      mysteryBountyVariance: 3, pkoHeat: 0.5,
     }));
     expect(ocean.payoutStructure).toBe("mtt-gg-bounty");
     expect(ocean.bountyFraction).toBe(DEFAULT_OCEAN_BOUNTY_FRACTION);
     expect(ocean.mysteryBountyVariance).toBeUndefined();
-    expect(ocean.pkoHeadVar).toBeUndefined();
     expect(ocean.pkoHeat).toBeUndefined();
   });
 });
@@ -298,7 +298,6 @@ describe("normalizeGameTypeConsistency", () => {
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
         mysteryBountyVariance: 2,
-        pkoHeadVar: 0.4,
         pkoHeat: 0.2,
         bountyEvBias: 0.1,
         battleRoyaleLeaderboardEnabled: true,
@@ -309,7 +308,6 @@ describe("normalizeGameTypeConsistency", () => {
     expect(fixed.payoutStructure).toBe("mtt-standard");
     expect(fixed.bountyFraction).toBeUndefined();
     expect(fixed.mysteryBountyVariance).toBeUndefined();
-    expect(fixed.pkoHeadVar).toBeUndefined();
     expect(fixed.pkoHeat).toBeUndefined();
     expect(fixed.bountyEvBias).toBeUndefined();
     expect(fixed.battleRoyaleLeaderboardEnabled).toBeUndefined();
@@ -331,7 +329,7 @@ describe("normalizeGameTypeConsistency", () => {
 
 });
 
-describe("PKO head-size noise does not follow a row into Mystery", () => {
+describe("PKO heat does not follow a row into Mystery", () => {
   // ScheduleEditor.update(): the patch is merged and normalised on every edit.
   const update = (r: TournamentRow, patch: Partial<TournamentRow>) =>
     normalizeGameTypeConsistency({ ...r, ...patch });
@@ -348,16 +346,13 @@ describe("PKO head-size noise does not follow a row into Mystery", () => {
     ...extra,
   });
 
-  it("the Mystery and Mystery-Royale patches clear pkoHeadVar and pkoHeat", () => {
+  it("the Mystery and Mystery-Royale patches clear pkoHeat", () => {
     const pko = {
       ...switchTo(start, "pko"),
       pkoHeat: 0.3,
     };
-    expect(pko.pkoHeadVar).toBe(0.4);
     for (const next of ["mystery", "mystery-royale"] as const) {
       const patch = applyGameType(pko, next);
-      expect("pkoHeadVar" in patch).toBe(true);
-      expect(patch.pkoHeadVar).toBeUndefined();
       expect("pkoHeat" in patch).toBe(true);
       expect(patch.pkoHeat).toBeUndefined();
     }
@@ -366,7 +361,6 @@ describe("PKO head-size noise does not follow a row into Mystery", () => {
   it("a PKO row flipped to Mystery compiles to the same per-KO variance as a fresh Mystery row", () => {
     const fresh = switchTo(start, "mystery");
     const viaPko = switchTo(switchTo(start, "pko"), "mystery");
-    expect(viaPko.pkoHeadVar).toBeUndefined();
     expect(compileSchedule(inputFor(viaPko), "alpha").flat[0].mysteryBountyLogVar).toBe(2);
     expect(compileSchedule(inputFor(fresh), "alpha").flat[0].mysteryBountyLogVar).toBe(2);
     const a = runSimulation(inputFor(fresh));
@@ -375,42 +369,38 @@ describe("PKO head-size noise does not follow a row into Mystery", () => {
     expect(b.stats.stdDev).toBe(a.stats.stdDev);
   });
 
-  it("PKO → Mystery-Royale → Mystery does not bring the head-size noise back", () => {
+  it("PKO → Mystery-Royale → Mystery does not bring PKO heat back", () => {
     const viaRoyale = switchTo(switchTo(switchTo(start, "pko"), "mystery-royale"), "mystery");
-    expect(viaRoyale.pkoHeadVar).toBeUndefined();
     expect(viaRoyale.pkoHeat).toBeUndefined();
     expect(compileSchedule(inputFor(viaRoyale), "alpha").flat[0].mysteryBountyLogVar).toBe(2);
   });
 
-  it("normalisation strips a leftover pkoHeadVar / pkoHeat from an explicit Mystery or Mystery-Royale row", () => {
+  it("normalisation strips a leftover pkoHeat from an explicit Mystery or Mystery-Royale row", () => {
     for (const gameType of ["mystery", "mystery-royale"] as const) {
       const stale = row({
         gameType,
         payoutStructure: gameType === "mystery" ? "mtt-gg-mystery" : "battle-royale",
         bountyFraction: 0.5,
         mysteryBountyVariance: gameType === "mystery" ? 2 : 1.8,
-        pkoHeadVar: 0.4,
         pkoHeat: 0.2,
       });
       const fixed = normalizeGameTypeConsistency(stale);
-      expect(fixed.pkoHeadVar).toBeUndefined();
       expect(fixed.pkoHeat).toBeUndefined();
       expect(fixed.mysteryBountyVariance).toBe(stale.mysteryBountyVariance);
       expect(fixed.bountyFraction).toBe(0.5);
     }
   });
 
-  it("strips them from a row that has no gameType and only infers Mystery", () => {
+  it("strips it from a row that has no gameType and only infers Mystery", () => {
     const inferredMystery: Partial<TournamentRow>[] = [
       { payoutStructure: "mtt-gg-mystery", bountyFraction: 0.5, mysteryBountyVariance: 2 },
       { payoutStructure: "mtt-standard", bountyFraction: 0.5, mysteryBountyVariance: 2 },
       { payoutStructure: "battle-royale", bountyFraction: 0.4565, mysteryBountyVariance: 1.8 },
     ];
     for (const shape of inferredMystery) {
-      const legacy = row({ ...shape, pkoHeadVar: 0.4, pkoHeat: 0.2 });
+      const legacy = row({ ...shape, pkoHeat: 0.2 });
       expect(legacy.gameType).toBeUndefined();
       const fixed = normalizeGameTypeConsistency(legacy);
-      expect(fixed.pkoHeadVar).toBeUndefined();
       expect(fixed.pkoHeat).toBeUndefined();
       expect(fixed.mysteryBountyVariance).toBe(legacy.mysteryBountyVariance);
     }
@@ -418,24 +408,24 @@ describe("PKO head-size noise does not follow a row into Mystery", () => {
       payoutStructure: "mtt-gg-mystery",
       bountyFraction: 0.5,
       mysteryBountyVariance: 2,
-      pkoHeadVar: 0.4,
+      pkoHeat: 0.2,
     });
     const compiled = compileSchedule(inputFor(legacyMystery), "alpha").flat[0];
+    expect(compiled.heatBountyByPlace).toBeNull();
     expect(compiled.mysteryBountyLogVar).toBe(2);
     const explicit = row({ ...legacyMystery, gameType: "mystery" });
     expect(compileSchedule(inputFor(explicit), "alpha").flat[0].mysteryBountyLogVar).toBe(2);
   });
 
-  it("keeps the head-size noise of a legacy row that infers PKO", () => {
+  it("keeps the heat of a legacy row that infers PKO", () => {
     const legacyPko = row({
       payoutStructure: "mtt-gg-bounty",
       bountyFraction: 0.5,
-      pkoHeadVar: 0.8,
       pkoHeat: 0.2,
     });
     const fixed = normalizeGameTypeConsistency(legacyPko);
     expect(fixed).toBe(legacyPko);
-    expect(compileSchedule(inputFor(legacyPko), "alpha").flat[0].mysteryBountyLogVar).toBe(0.8);
+    expect(compileSchedule(inputFor(legacyPko), "alpha").flat[0].heatBountyByPlace).not.toBeNull();
   });
 
   it("returns a consistent Mystery row untouched (same object)", () => {
@@ -443,9 +433,12 @@ describe("PKO head-size noise does not follow a row into Mystery", () => {
     expect(normalizeGameTypeConsistency(clean)).toBe(clean);
   });
 
-  it("leaves PKO's own head-size default alone", () => {
-    const pko = switchTo(start, "pko");
-    expect(normalizeGameTypeConsistency(pko).pkoHeadVar).toBe(0.4);
+  it("stamps no PKO head-size knob on any format: the elimination tree carries the head spread", () => {
+    for (const next of GAME_TYPE_ORDER) {
+      const patch = applyGameType(switchTo(start, "pko"), next);
+      expect(Object.keys(patch), next).not.toContain("pkoHeadVar");
+      expect(Object.keys(switchTo(start, next)), next).not.toContain("pkoHeadVar");
+    }
   });
 });
 

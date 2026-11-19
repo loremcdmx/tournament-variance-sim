@@ -34,7 +34,6 @@ function measure(roi: number): number {
     gameType: "mystery-royale",
     bountyFraction: 0.5,
     mysteryBountyVariance: 1.8,
-    pkoHeadVar: 0,
     itmRate: 0.18,
     count: 1,
   };
@@ -98,7 +97,6 @@ async function main() {
           buyIn: BUY_IN,
           rake: RAKE,
           bountyFraction: 0.5,
-          pkoHeadVar: 0,
           payout: "battle-royale",
           finishModel: "powerlaw-realdata-influenced",
           fixedAfs: AFS,

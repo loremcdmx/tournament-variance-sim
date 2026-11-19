@@ -11,10 +11,9 @@
  *   - leave-one-out xval residuals (mean |Δ/σ|, max, ±resid for UI)
  *   - comparison vs current production single-β constants
  *
- * No new measurements — reuses the existing 11×18 = 198 production data
- * points per format (120k samples each, N=500). This is the right data set
- * for promoting new production coefficients: denser and better-sampled than
- * any ad-hoc re-run, and matches the exact assumptions in production code.
+ * No new measurements: it reads the 11×18 = 198 cells per format that
+ * `resweep_sigma.ts` writes, so re-run that first whenever the engine has
+ * changed (a stored grid describes the engine that measured it).
  *
  *   npx tsx scripts/refit_2d_logpoly.ts
  */

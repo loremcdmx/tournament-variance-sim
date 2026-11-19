@@ -235,21 +235,6 @@ export interface TournamentRow {
   pkoHeat?: number;
 
   /**
-   * PKO head-size log-variance σ² — within-place bounty noise from the
-   * natural dispersion of opponent head values. In progressive PKO, the
-   * cash you receive per KO depends on the opponent's accumulated head,
-   * which ranges from ~starting_bounty/2 to many multiples of it. This
-   * parameter models that per-KO payout variance as log-normal noise
-   * (same mechanism as mystery bounty). Adds to `mysteryBountyVariance`
-   * when both are present. Typical range 0.2–0.6. Defaults to 0.4 for
-   * PKO game types (CV ≈ 0.68), 0 for non-bounty formats.
-   * A PKO row whose knockouts the engine plays on the elimination tree
-   * (`pkoKoCash` in engineTypes) takes the head spread from the tree and
-   * does not read this field.
-   */
-  pkoHeadVar?: number;
-
-  /**
    * Bounty EV bias slider ∈ [−0.25, +0.25], default 0. Shifts the split of
    * the player's expected winnings between cash (finish-place payouts) and
    * bounty (KO collections) without changing total ROI:

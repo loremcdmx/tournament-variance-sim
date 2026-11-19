@@ -107,7 +107,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
     payJumpAggression,
     mysteryBountyVariance,
     pkoHeat,
-    pkoHeadVar,
   } = effectiveRow;
 
   const committedBias = clampBountyBias(effectiveRow.bountyEvBias ?? 0);
@@ -151,7 +150,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       payJumpAggression,
       mysteryBountyVariance,
       pkoHeat,
-      pkoHeadVar,
       bountyEvBias: 0,
     }),
     [
@@ -176,7 +174,6 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       payJumpAggression,
       mysteryBountyVariance,
       pkoHeat,
-      pkoHeadVar,
     ],
   );
   const { defaultBountyShare, minBountyShare, maxBountyShare } = useMemo(() => {

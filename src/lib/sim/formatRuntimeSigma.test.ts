@@ -158,9 +158,8 @@ describe("runtime σ replaces the stale synthetic rows", () => {
     expect(at500).toBe(at18);
   });
 
-  it("Mystery does not inherit the PKO head-size channel", () => {
+  it("the Mystery row is the editor's: envelope variance 2.0 on the Mystery payout", () => {
     const row = buildFormatRuntimeRow("mystery", { afs: 1000, roi: 0.1, rake: 0.1 });
-    expect(row.pkoHeadVar).toBeUndefined();
     expect(row.mysteryBountyVariance).toBe(2.0);
     expect(row.payoutStructure).toBe("mtt-gg-mystery");
   });

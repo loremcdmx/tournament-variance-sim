@@ -563,7 +563,12 @@ function normalizePersistedState(
   const keptRows = truncated
     ? state.schedule.slice(0, MAX_SCHEDULE_ROWS)
     : state.schedule;
-  const schedule = keptRows.map((row) => {
+  const schedule = keptRows.map((storedRow) => {
+    // Older saves and links carry `pkoHeadVar`, a PKO head-size knob the
+    // engine no longer has; the row loads without it.
+    const { pkoHeadVar: retiredHeadVar, ...row } = storedRow as TournamentRow & {
+      pkoHeadVar?: unknown;
+    };
     const nextLabel = typeof row.label === "string" ? row.label : undefined;
     const nextTags = isStringArray(row.tags) ? row.tags : undefined;
     const nextGameType = normalizePersistedGameType(row.gameType);
@@ -622,7 +627,6 @@ function normalizePersistedState(
       PERSISTED_ROW_MYSTERY_VARIANCE_MIN,
       PERSISTED_ROW_MYSTERY_VARIANCE_MAX,
     );
-    const nextPkoHeadVar = undefined;
     const nextPkoHeat = undefined;
     const nextBattleRoyaleLeaderboardEnabled = undefined;
     const nextBattleRoyaleLeaderboardShare = undefined;
@@ -633,7 +637,6 @@ function normalizePersistedState(
     let finalBountyFraction: number | undefined = nextBountyFraction;
     let finalMysteryBountyVariance: number | undefined =
       nextMysteryBountyVariance;
-    let finalPkoHeadVar: number | undefined = nextPkoHeadVar;
     let finalPkoHeat: number | undefined = nextPkoHeat;
     let finalBattleRoyaleLeaderboardEnabled:
       | boolean
@@ -643,27 +646,23 @@ function normalizePersistedState(
     if (finalGameType === "freezeout") {
       finalBountyFraction = undefined;
       finalMysteryBountyVariance = undefined;
-      finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
     } else if (finalGameType === "ocean-ko") {
       finalBountyFraction = nextBountyFraction ?? DEFAULT_OCEAN_BOUNTY_FRACTION;
       finalMysteryBountyVariance = undefined;
-      finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
     } else if (finalGameType === "pko") {
       finalBountyFraction = nextBountyFraction ?? DEFAULT_BOUNTY_FRACTION;
       finalMysteryBountyVariance = undefined;
-      finalPkoHeadVar = nextPkoHeadVar ?? 0.4;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
     } else if (finalGameType === "mystery") {
       finalBountyFraction = nextBountyFraction ?? DEFAULT_BOUNTY_FRACTION;
       finalMysteryBountyVariance = nextMysteryBountyVariance ?? 2.0;
-      finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
@@ -675,7 +674,6 @@ function normalizePersistedState(
           ? DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION
           : nextBountyFraction;
       finalMysteryBountyVariance = nextMysteryBountyVariance ?? 1.8;
-      finalPkoHeadVar = undefined;
       finalPkoHeat = undefined;
       finalBattleRoyaleLeaderboardEnabled = undefined;
       finalBattleRoyaleLeaderboardShare = undefined;
@@ -717,7 +715,7 @@ function normalizePersistedState(
       nextPayJumpAggression === row.payJumpAggression &&
       nextItmTopHeavyBias === row.itmTopHeavyBias &&
       finalMysteryBountyVariance === row.mysteryBountyVariance &&
-      finalPkoHeadVar === row.pkoHeadVar &&
+      retiredHeadVar === undefined &&
       finalPkoHeat === row.pkoHeat &&
       finalBattleRoyaleLeaderboardEnabled ===
         row.battleRoyaleLeaderboardEnabled &&
@@ -749,7 +747,6 @@ function normalizePersistedState(
       payJumpAggression: nextPayJumpAggression,
       itmTopHeavyBias: nextItmTopHeavyBias,
       mysteryBountyVariance: finalMysteryBountyVariance,
-      pkoHeadVar: finalPkoHeadVar,
       pkoHeat: finalPkoHeat,
       battleRoyaleLeaderboardEnabled: finalBattleRoyaleLeaderboardEnabled,
       battleRoyaleLeaderboardShare: finalBattleRoyaleLeaderboardShare,

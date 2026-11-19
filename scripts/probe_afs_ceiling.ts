@@ -55,7 +55,6 @@ const COMMON = {
   RAKE: 0.10,
   SEED: 20260420,
   BOUNTY_FRACTION: 0.5,
-  PKO_HEAD_VAR: 0.4,
   MYSTERY_LOG_VAR: 2.0,
 };
 
@@ -108,7 +107,6 @@ function buildRow(j: Job): TournamentRow {
       payoutStructure: "mtt-gg-bounty",
       gameType: "pko",
       bountyFraction: COMMON.BOUNTY_FRACTION,
-      pkoHeadVar: COMMON.PKO_HEAD_VAR,
     };
   }
   return {

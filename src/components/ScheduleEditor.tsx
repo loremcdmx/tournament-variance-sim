@@ -581,7 +581,6 @@ export function parseImportCSV(
       if (defaults.mysteryBountyVariance !== undefined) {
         importedRow.mysteryBountyVariance = defaults.mysteryBountyVariance;
       }
-      if (defaults.pkoHeadVar !== undefined) importedRow.pkoHeadVar = defaults.pkoHeadVar;
     }
     rows.push(importedRow);
   });

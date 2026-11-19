@@ -159,7 +159,7 @@ function eliminationTreeRecursion(players: number) {
 
 function pko(players: number, overrides: Partial<TournamentRow> = {}): TournamentRow {
   return {
-    id: "pko", gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, pkoHeadVar: 0.4,
+    id: "pko", gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5,
     players, buyIn: 100, rake: 0.1, roi: 0.05, count: 1, ...overrides,
   };
 }
@@ -215,15 +215,13 @@ describe("PKO bounty against the exact elimination tree", () => {
     }
   });
 
-  it("keeps the tree's mean at every place, with and without head noise", () => {
+  it("keeps the tree's mean at every place", () => {
     for (let players = 2; players <= 7; players++) {
       const tree = eliminationTree(players);
-      for (const pkoHeadVar of [0, 0.4]) {
-        const entry = compileOne(pko(players, { pkoHeadVar }), REALDATA);
-        const scale = entry.bountyByPlace![0] / tree.mean[0];
-        for (let i = 0; i < players; i++) {
-          expect(Math.abs(bountyAtPlace(entry, i).mean - tree.mean[i] * scale)).toBeLessThan(1e-9 * scale);
-        }
+      const entry = compileOne(pko(players), REALDATA);
+      const scale = entry.bountyByPlace![0] / tree.mean[0];
+      for (let i = 0; i < players; i++) {
+        expect(Math.abs(bountyAtPlace(entry, i).mean - tree.mean[i] * scale)).toBeLessThan(1e-9 * scale);
       }
     }
   });
@@ -234,19 +232,17 @@ describe("PKO bounty against the exact elimination tree", () => {
     // those places are shrunk onto the tree; everywhere else a log-normal factor widens them.
     for (let players = 2; players <= 7; players++) {
       const tree = eliminationTree(players);
-      for (const pkoHeadVar of [0, 0.4]) {
-        const entry = compileOne(pko(players, { pkoHeadVar }), REALDATA);
-        const scale = entry.bountyByPlace![0] / tree.mean[0];
-        expect(bountyAtPlace(entry, players - 1).variance).toBe(0);
-        for (let i = 0; i < players - 1; i++) {
-          const treeSd = Math.sqrt(tree.variance[i]) * scale;
-          const sd = Math.sqrt(Math.max(0, bountyAtPlace(entry, i).variance));
-          if (treeSd < 1e-9 * scale) {
-            expect(sd).toBeLessThan(1e-6 * scale);
-            continue;
-          }
-          expect(sd / treeSd, `N=${players} place ${i + 1}`).toBeCloseTo(1, 9);
+      const entry = compileOne(pko(players), REALDATA);
+      const scale = entry.bountyByPlace![0] / tree.mean[0];
+      expect(bountyAtPlace(entry, players - 1).variance).toBe(0);
+      for (let i = 0; i < players - 1; i++) {
+        const treeSd = Math.sqrt(tree.variance[i]) * scale;
+        const sd = Math.sqrt(Math.max(0, bountyAtPlace(entry, i).variance));
+        if (treeSd < 1e-9 * scale) {
+          expect(sd).toBeLessThan(1e-6 * scale);
+          continue;
         }
+        expect(sd / treeSd, `N=${players} place ${i + 1}`).toBeCloseTo(1, 9);
       }
     }
   });
@@ -289,14 +285,6 @@ describe("PKO bounty against the exact elimination tree", () => {
     expect(checked).toBeGreaterThan(200);
   });
 
-  it("does not read pkoHeadVar on a PKO row", () => {
-    for (const players of [6, 500]) {
-      const off = compiledEntryMoments(compileOne(pko(players, { pkoHeadVar: 0 }), REALDATA));
-      const wide = compiledEntryMoments(compileOne(pko(players, { pkoHeadVar: 1.5 }), REALDATA));
-      expect(wide.secondDollar).toBe(off.secondDollar);
-    }
-  });
-
   it("pays a heads-up winner exactly both heads", () => {
     const entry = compileOne(pko(2), REALDATA);
     expect(bountyAtPlace(entry, 0).variance).toBeCloseTo(0, 9);
@@ -322,8 +310,8 @@ describe("PKO bounty against the exact elimination tree", () => {
   });
 
   it("leaves Mystery and Battle Royale on their Poisson knockout draw", () => {
-    const mystery = compileOne(pko(500, { gameType: "mystery", mysteryBountyVariance: 2, pkoHeadVar: undefined }), REALDATA);
-    const royale = compileOne({ ...pko(18, { pkoHeadVar: undefined }), gameType: "mystery-royale", payoutStructure: "battle-royale", buyIn: 10, rake: 0.08 }, REALDATA);
+    const mystery = compileOne(pko(500, { gameType: "mystery", mysteryBountyVariance: 2 }), REALDATA);
+    const royale = compileOne({ ...pko(18), gameType: "mystery-royale", payoutStructure: "battle-royale", buyIn: 10, rake: 0.08 }, REALDATA);
     for (const entry of [mystery, royale]) {
       expect(entry.pkoKoCash).toBeNull();
       expect(entry.pkoRawInv).toBeNull();

@@ -49,7 +49,7 @@
 | ROI shock per tourney/session | `controls.roiShockPerTourney`, `roiShockPerSession`, `roiDriftSigma` | Исследовательский noise model |
 | Compare mode целиком | `controls.compareEnabled`, `compareMode` | Развитие движка, не урок вариации |
 | Alpha override | `controls.alphaOverride` | Тонкая настройка finish model |
-| Mystery / BR exotic configs | `mysteryBountyVariance`, BR leaderboard advanced, `pkoHeat`, `pkoHeadVar` | Доп. форматы, не PKO mainstream |
+| Mystery / BR exotic configs | `mysteryBountyVariance`, BR leaderboard advanced, `pkoHeat` | Доп. форматы, не PKO mainstream |
 | ItmTopHeavyBias / BountyEvBias sliders | `FinishPMFPreview.tsx` | Knob-уровень модели |
 | Convergence band customizer | политика бандов | Для исследований |
 | All current `advanced` controls | `useAdvancedMode` | По умолчанию OFF для кандидата |
