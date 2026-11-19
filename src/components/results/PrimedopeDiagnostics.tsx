@@ -7,15 +7,16 @@ import type {
 } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
-import { fmt, formatMinimumBankroll, money as usdMoney, pct } from "@/lib/results/formatters";
+import { fmt, formatMinimumBankroll, formatPerUnitAmount, pct } from "@/lib/results/formatters";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { withPlural } from "@/lib/i18n/plural";
-import { relativeDifferencePct, summarizePdStats } from "@/lib/results/primedopeDiagnostics";
+import { pdDiagnosticPasses, relativeDifferencePct, summarizePdStats } from "@/lib/results/primedopeDiagnostics";
 import {
   formatSigmaError,
   hasHeavyTail,
   sigmaRelativeError,
 } from "@/lib/results/sigmaReliability";
+import { getPayoutTable } from "@/lib/sim/payouts";
 import type { ControlsState } from "../ControlsPanel";
 import { useMoneyFmt } from "./UnitContext";
 import { Card } from "../ui/Section";
@@ -33,10 +34,10 @@ export function CalibrationNotices({ result, schedule }: {
     <ul role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-[color:var(--c-warn-fg-soft)]">
       {warnings.map((warning, index) => (
         <li key={`${warning.rowId}-${index}`}>
-          {fmt(t("pd.calibrationClamped"), {
+          {fmt(t(warning.kind === "target-unreachable" ? "calibration.targetUnreachable" : "pd.calibrationClamped"), {
             row: schedule?.find((row) => row.id === warning.rowId)?.label || warning.rowId,
-            target: usdMoney(warning.targetWinnings, numberLocaleTag(locale)),
-            actual: usdMoney(warning.actualWinnings, numberLocaleTag(locale)),
+            target: formatPerUnitAmount(warning.targetWinnings, "money", 1, numberLocaleTag(locale)),
+            actual: formatPerUnitAmount(warning.actualWinnings, "money", 1, numberLocaleTag(locale)),
           })}
         </li>
       ))}
@@ -44,7 +45,14 @@ export function CalibrationNotices({ result, schedule }: {
   );
 }
 
-export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
+// PrimeDope prints mean ± k·SD, not quantiles of the runs; the labels say so.
+const INTERVAL_LINES = [
+  { coverage: "70%", k: 1.036, key: "ci70" },
+  { coverage: "95%", k: 1.96, key: "ci95" },
+  { coverage: "99.7%", k: 3, key: "ci997" },
+] as const;
+
+export function PrimedopeReportCard({ result, tiltActive = false }: { result: SimulationResult; tiltActive?: boolean }) {
   const t = useT();
   const { locale } = useLocale();
   const minimumBankroll = (value: number) => formatMinimumBankroll(value, "money", 1, numberLocaleTag(locale));
@@ -77,9 +85,7 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
       lo: meanSim - k * sdSim,
       hi: meanSim + k * sdSim,
     });
-    const ci70 = ci(1.036);
-    const ci95 = ci(1.96);
-    const ci997 = ci(3);
+    const [ci70, ci95, ci997] = INTERVAL_LINES.map(({ k }) => ci(k));
     const probLoss = 1 - r.stats.probProfit;
     const heavyTail = hasHeavyTail(r.stats);
     const sigmaError = sigmaRelativeError(r.stats);
@@ -153,7 +159,7 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
               <Line k={t("pd.report.tournaments")} v={col.data.N.toLocaleString()} />
               <Line k={t("pd.report.samples")} v={col.res.samples.toLocaleString()} />
               <Line k={t("pd.report.buyIns")} v={fmt$(col.data.cost)} />
-              <Line k={t("pd.report.expectedProfit")} v={fmt$(col.data.evMath)} />
+              <Line k={t(tiltActive ? "pd.report.expectedProfit.beforeTilt" : "pd.report.expectedProfit")} v={fmt$(col.data.evMath)} />
               <Line k={t("pd.report.mean")} v={fmt$(col.data.meanSim)} />
               <Line k={t("pd.report.expectedRoi")} v={fmtPct(col.data.roiMath)} />
               <Line k={t("pd.report.realizedRoi")} v={fmtPct(col.data.roiSim)} />
@@ -163,18 +169,16 @@ export function PrimedopeReportCard({ result }: { result: SimulationResult }) {
               />
             </Section>
             <Section title={t("pd.report.intervals")}>
-              <Line
-                k="70%"
-                v={`${fmt$(col.data.ci70.lo)} – ${fmt$(col.data.ci70.hi)}`}
-              />
-              <Line
-                k="95%"
-                v={`${fmt$(col.data.ci95.lo)} – ${fmt$(col.data.ci95.hi)}`}
-              />
-              <Line
-                k="99.7%"
-                v={`${fmt$(col.data.ci997.lo)} – ${fmt$(col.data.ci997.hi)}`}
-              />
+              {INTERVAL_LINES.map(({ coverage, k, key }) => (
+                <Line
+                  key={coverage}
+                  k={fmt(t("pd.report.intervalLine"), {
+                    coverage,
+                    k: k.toLocaleString(numberLocaleTag(locale), { maximumFractionDigits: 2 }),
+                  })}
+                  v={`${fmt$(col.data[key].lo)} – ${fmt$(col.data[key].hi)}`}
+                />
+              ))}
             </Section>
             <Section title={t("pd.report.bankroll")}>
               <Line k={t("pd.report.ror50")} v={minimumBankroll(col.data.ror50)} />
@@ -214,31 +218,21 @@ export function buildPrimedopeCheatSheet(
   schedule: TournamentRow[],
   scheduleRepeats: number,
   locale: "en" | "ru",
+  usePdPayouts: boolean,
 ): string {
   const r = schedule[0];
   const totalTourneys = Math.round(
     schedule.reduce((acc, row) => acc + row.count, 0) * scheduleRepeats,
   );
-  const paidPct =
-    r.payoutStructure === "satellite-ticket"
-      ? 10
-      : r.payoutStructure === "mtt-flat"
-      ? 20
-      : r.payoutStructure === "battle-royale"
-      ? (3 / 18) * 100
-      : r.payoutStructure === "mtt-top-heavy"
-      ? 12
-      : r.payoutStructure === "mtt-gg"
-      ? 18
-      : r.payoutStructure === "mtt-gg-freeze"
-      ? 14.5
-      : r.payoutStructure === "mtt-gg-bounty"
-      ? 11.5
-      : r.payoutStructure === "mtt-gg-mystery"
-      ? 13
-      : r.payoutStructure === "mtt-sunday-million"
-      ? 13.8
-      : 15;
+  // The places the PrimeDope pass actually paid: PD's own 15% curve while
+  // "PD payouts" is on, the row's table otherwise, on the field it compiles.
+  const field = Math.max(1, Math.floor(r.players * Math.max(1, r.lateRegMultiplier ?? 1)));
+  const paid = getPayoutTable(
+    usePdPayouts ? "mtt-primedope" : r.payoutStructure,
+    field,
+    r.customPayouts,
+  ).filter((share) => share > 0).length;
+  const paidPct = ((100 * paid) / field).toFixed(1);
   const lines =
     locale === "ru"
       ? [
@@ -246,9 +240,9 @@ export function buildPrimedopeCheatSheet(
           `Number of tournaments: ${totalTourneys}`,
           `Buy-in: $${r.buyIn}`,
           `Rake: ${(r.rake * 100).toFixed(1)}%`,
-          `Field size: ${r.players}`,
+          `Field size: ${field}`,
           `ROI: ${(r.roi * 100).toFixed(1)}%`,
-          `Places paid: ~${paidPct}% поля`,
+          `Places paid: ${paid} (~${paidPct}% поля)`,
           ``,
           schedule.length > 1
             ? `⚠ В расписании ${schedule.length} строк — PrimeDope умеет только одну. Бай-ин, рейк, поле и ROI взяты из первой строки (${r.label ?? r.id}); число турниров — сумма по всем ${schedule.length} строкам (${totalTourneys}).`
@@ -259,9 +253,9 @@ export function buildPrimedopeCheatSheet(
           `Number of tournaments: ${totalTourneys}`,
           `Buy-in: $${r.buyIn}`,
           `Rake: ${(r.rake * 100).toFixed(1)}%`,
-          `Field size: ${r.players}`,
+          `Field size: ${field}`,
           `ROI: ${(r.roi * 100).toFixed(1)}%`,
-          `Places paid: ~${paidPct}% of field`,
+          `Places paid: ${paid} (~${paidPct}% of field)`,
           ``,
           schedule.length > 1
             ? `⚠ Your schedule has ${schedule.length} rows — PrimeDope only handles one. Buy-in, rake, field size and ROI are the first row's (${r.label ?? r.id}); the tournament count is the total across all ${schedule.length} rows (${totalTourneys}).`
@@ -347,15 +341,17 @@ export function PdCompareToggles({
 export function PrimedopeReproduceButton({
   schedule,
   scheduleRepeats,
+  usePdPayouts,
 }: {
   schedule: TournamentRow[];
   scheduleRepeats: number;
+  usePdPayouts: boolean;
 }) {
   const t = useT();
   const { locale } = useLocale();
   const [copied, setCopied] = useState(false);
   const handleClick = async () => {
-    const cheat = buildPrimedopeCheatSheet(schedule, scheduleRepeats, locale);
+    const cheat = buildPrimedopeCheatSheet(schedule, scheduleRepeats, locale, usePdPayouts);
     try {
       await navigator.clipboard.writeText(cheat);
       setCopied(true);
@@ -413,9 +409,11 @@ export function CopyPdDiagButton({
   usePdFinishModel: boolean;
   usePdRakeMath: boolean;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const handleClick = async () => {
     const statSummary = summarizePdStats;
+    const passes = pdDiagnosticPasses(result, pdChart);
     const dump = {
       timestamp: new Date().toISOString(),
       scheduleRepeats,
@@ -448,7 +446,8 @@ export function CopyPdDiagButton({
         : null,
       pdOverrideStatus,
       primary: statSummary(result),
-      pdPane: statSummary(pdChart ?? null),
+      pdPane: statSummary(passes.pd),
+      ourPane: statSummary(passes.ours),
       comparisonPresent: !!result.comparison,
       pdOverrideVsComparison:
         pdChart && result.comparison
@@ -469,10 +468,10 @@ export function CopyPdDiagButton({
     <button
       type="button"
       onClick={handleClick}
-      title="Copy PD diagnostic logs to clipboard"
+      title={t("pd.copyLogs.title")}
       className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg)]"
     >
-      {copied ? "copied ✓" : "copy PD logs"}
+      {t(copied ? "pd.copyLogs.done" : "pd.copyLogs")}
     </button>
   );
 }
@@ -485,6 +484,7 @@ export function PrimedopeDiff({
   subtitle,
   hasBounty,
   bankroll = 0,
+  tiltActive = false,
 }: {
   primary: SimulationResult;
   other: SimulationResult;
@@ -493,6 +493,7 @@ export function PrimedopeDiff({
   subtitle?: string;
   hasBounty?: boolean;
   bankroll?: number;
+  tiltActive?: boolean;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -524,12 +525,21 @@ export function PrimedopeDiff({
     highlight?: boolean;
   }[] = [
     {
-      label: t("pd.row.ev"),
+      label: t(tiltActive ? "pd.row.evBeforeTilt" : "pd.row.ev"),
       ours: money(primary.expectedProfit),
       theirs: money(other.expectedProfit),
       delta: diffMoney(primary.expectedProfit, other.expectedProfit),
-      highlight: true,
+      highlight: !tiltActive,
     },
+    ...(tiltActive
+      ? [{
+          label: t("pd.row.mean"),
+          ours: money(ours.mean),
+          theirs: money(theirs.mean),
+          delta: diffMoney(ours.mean, theirs.mean),
+          highlight: true,
+        }]
+      : []),
     {
       label: hasBounty ? t("pd.row.itm.cash") : t("pd.row.itm"),
       ours: pct(ours.itmRate),

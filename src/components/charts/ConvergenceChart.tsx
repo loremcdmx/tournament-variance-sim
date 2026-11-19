@@ -28,6 +28,7 @@ import {
   formatTargetPct,
   isRoiControlActive,
   normalizeMix,
+  oceanKoRoiReached,
   posToAfs,
   roiControlBoundsForFormat,
   scheduleEffectiveRoi,
@@ -38,6 +39,7 @@ import {
 import {
   buildRuntimeSigmaOverrides,
   fillRuntimeSigmaBrTicket,
+  runtimeRoiReached,
 } from "@/lib/sim/formatRuntimeSigma";
 import { fillRuntimeSigmaZone } from "@/lib/sim/runtimeSigmaBands";
 import { fmt } from "@/lib/results/formatters";
@@ -385,6 +387,43 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     finishModel,
     itmTarget,
   ]);
+  // Out of reach at the pinned ITM, the row saturates at another ROI and its σ
+  // is not the label's; Run blocks such a row, so the distances are withheld.
+  const roiReached = useMemo(
+    () =>
+      effectiveMode === "exact" ||
+      (format === "ocean-ko"
+        ? oceanKoRoiReached({
+            afs: effectiveAfs,
+            roi: effectiveRoi,
+            rake: rakePct / 100,
+            totalTicket: oceanKoTotalTicket,
+            finishModel,
+            itmTarget,
+          })
+        : runtimeRoiReached({
+            format,
+            mix,
+            point: {
+              afs: effectiveAfs,
+              roi: effectiveRoi,
+              rake: rakePct / 100,
+              finishModel,
+              itmTarget,
+            },
+          })),
+    [
+      effectiveMode,
+      format,
+      mix,
+      effectiveAfs,
+      effectiveRoi,
+      rakePct,
+      oceanKoTotalTicket,
+      finishModel,
+      itmTarget,
+    ],
+  );
   const oceanKoSigmaOverride = useMemo<SigmaBand | null>(() => {
     if (format !== "ocean-ko") return null;
     return buildOceanKoSigmaBand({
@@ -393,8 +432,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       rake: rakePct / 100,
       totalTicket: oceanKoTotalTicket,
       finishModel,
+      itmTarget,
     });
-  }, [format, effectiveAfs, effectiveRoi, rakePct, finishModel, oceanKoTotalTicket]);
+  }, [format, effectiveAfs, effectiveRoi, rakePct, finishModel, oceanKoTotalTicket, itmTarget]);
   const sigmaOverrides = useMemo<
     Partial<Record<ConvergenceRowFormat, SigmaBand>> | undefined
   >(
@@ -472,7 +512,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     () => getConvergenceBandPolicy(fitBoxSamples),
     [fitBoxSamples],
   );
-  const showBand = bandPolicy?.kind === "numeric";
+  const showBand = bandPolicy?.kind === "numeric" && roiReached;
   const hasOceanKo = fitBoxSamples.some((sample) => sample.format === "ocean-ko");
 
   const fmtInt = (n: number): string => {
@@ -503,7 +543,18 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     }
     return fmtAfs(row.afs, numberLocale);
   };
-  const displayRows = rows.map((row) => {
+  const displayRows = rows.map((computed) => {
+    const row = roiReached
+      ? computed
+      : {
+          ...computed,
+          tourneys: NaN,
+          tourneysLo: NaN,
+          tourneysHi: NaN,
+          fields: NaN,
+          fieldsLo: NaN,
+          fieldsHi: NaN,
+        };
     const showTourneysRange = showBand && row.tourneysLo !== row.tourneysHi;
     const showFieldsRange = showBand && row.fieldsLo !== row.fieldsHi;
     const tourneysPointLabel = fmtInt(row.tourneys);
@@ -937,7 +988,12 @@ export const ConvergenceChart = memo(function ConvergenceChart({
           </span>
         </div>
       )}
-      {bandPolicy?.kind === "warning" && (
+      {!roiReached && (
+        <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-[color:var(--c-warn-fg-soft)]">
+          {t("chart.convergence.unreachable")}
+        </div>
+      )}
+      {roiReached && bandPolicy?.kind === "warning" && (
         <div className="mb-2 rounded border border-amber-400/40 bg-amber-400/5 px-2 py-1.5 text-[11px] leading-snug text-[color:var(--c-warn-fg-soft)]">
           {hasOceanKo
             ? t("chart.convergence.bandWarning.oceanKo")

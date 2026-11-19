@@ -532,3 +532,54 @@ describe("validateSchedule: how close counts as on target", () => {
     expect(validateSchedule([{ ...r, buyIn: 10 }], { id: "linear-skill" }).ok).toBe(false);
   });
 });
+
+describe("validateSchedule: the bounty residual cannot exceed the bounty pool", () => {
+  const model: FinishModelConfig = { id: "powerlaw-realdata-influenced" };
+  const hu = (over: Partial<TournamentRow> = {}) =>
+    row({
+      players: 2, buyIn: 100, roi: 0.05, gameType: "pko", payoutStructure: "mtt-gg-bounty",
+      bountyFraction: 0.5, ...over,
+    });
+
+  it("blocks heads-up PKO at the zero-skill ITM and a winning ROI", () => {
+    // P(win) 0.5 pays $50 cash; the other $65.50 of the $115.50 target would
+    // be bounty, from a $100 pool the winner takes only half the time. Typed:
+    // a blank ITM would get the one the ROI implies (applyItmTarget).
+    const res = validateSchedule([hu({ itmRate: 0.5 })], model);
+    expect(res.ok).toBe(false);
+    expect(res.issues[0].targetEv).toBeCloseTo(115.5, 9);
+    expect(res.issues[0].currentEv).toBeCloseTo(50 + 100 * 0.5, 9);
+  });
+
+  it("lets the same row run at the ITM its ROI implies, which a blank ITM gets", () => {
+    expect(validateSchedule([hu({ itmRate: 0.5775 })], model).ok).toBe(true);
+    const live = applyItmTarget([hu()], { enabled: false, pct: 18.7 }, model);
+    expect(live[0].itmRate).toBeCloseTo(0.5775, 12);
+  });
+
+  it("blocks a 6-max PKO whose bounty EV would pass the whole pool", () => {
+    const r = row({
+      players: 6, buyIn: 100, roi: 2, gameType: "pko", payoutStructure: "mtt-gg-bounty",
+      bountyFraction: 0.5,
+    });
+    expect(validateSchedule(applyItmTarget([r], { enabled: false, pct: 18.7 }), model).ok).toBe(false);
+  });
+
+  it("keeps ordinary fixed-ITM bounty rows that the residual closes", () => {
+    const r = row({
+      players: 500, buyIn: 100, roi: 0.3, gameType: "pko", payoutStructure: "mtt-gg-bounty",
+      bountyFraction: 0.5,
+    });
+    expect(validateSchedule(applyItmTarget([r], { enabled: false, pct: 18.7 }), model).ok).toBe(true);
+  });
+});
+
+describe("validateSchedule: an empirical history plays its own shape", () => {
+  it("does not hold a pasted history to row locks it ignores", () => {
+    const r = row({ players: 300, itmRate: 0.2, finishBuckets: { first: 0.1, top3: 0.05 } });
+    const history: FinishModelConfig = { id: "empirical", empiricalBuckets: [8, 4, 2, 1, 1, 1, 1, 1, 1, 1] };
+    expect(validateSchedule([r], history).ok).toBe(true);
+    // With no data the model falls back to the row's ITM and locks, so they are checked.
+    expect(validateSchedule([r], { id: "empirical" }).ok).toBe(false);
+  });
+});

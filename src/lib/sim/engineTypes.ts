@@ -167,6 +167,9 @@ export interface ScheduleAnalyticBreakdown {
   sigmaRoiPerPass: number;
   totalCost: number;
   tournamentsPerPass: number;
+  /** The engine's expected ROI before rakeback; a model that ignores the row
+   *  ROI reports its own finish pmf here, not the typed ROI. */
+  expectedRoi: number;
 }
 
 export interface DownsideReportArrays {
@@ -191,8 +194,8 @@ export interface RawShard {
   runningMins: Float64Array;
   longestBreakevens: Float64Array;
   /** Per-sample mean first-forward-return chord length, in tournament units.
-   *  For each checkpoint ii, scan forward for the first jj>ii where the
-   *  segment [jj-1, jj] crosses Y[ii]; record (jj-ii); average across all
+   *  For each checkpoint ii, scan forward tournament by tournament for the
+   *  first step that reaches Y[ii]; record its length; average across all
    *  starting points that had a return. Zero for samples with no returns
    *  (monotone paths). This is the "any streak between two equal-Y points"
    *  metric — the dual of longestBreakevens (max chord per sample). */

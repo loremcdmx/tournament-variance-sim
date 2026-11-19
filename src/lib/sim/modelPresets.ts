@@ -94,9 +94,11 @@ export const STANDARD_PRESETS: ModelPreset[] = [
       roiShockPerSession: 0.05,
       roiDriftSigma: 0.01,
       tiltFastGain: -0.15,
-      // Historical solo-mode scale used ABI-like semantics; keep the preset
-      // meaningful under the current "$ drawdown" engine by using a
-      // conservative absolute threshold instead of the old raw "50".
+      // The engine reads the scale in dollars of drawdown (the old raw "50"
+      // was ABI-like). $2500 is about 45 entries at $55, and a player sits
+      // below the running peak in nearly every tournament, so from about $20
+      // buy-ins this is close to the full -15 pp all the time; the tagline
+      // says so.
       tiltFastScale: 2500,
     },
   },
@@ -135,6 +137,19 @@ const ADVANCED_ONLY_PRESET_IDS = new Set([
   ...STANDARD_PRESETS.filter((preset) => preset.id !== "naive").map((preset) => preset.id),
   "custom",
 ]);
+
+/**
+ * Upper bound of the "uncertainty about your true ROI" field (a fraction, so
+ * ±50 pp one sigma). The ROI standard error of a few hundred large-field MTTs
+ * is 30-40 pp, so a lower bound would refuse an honest input. The draw is
+ * additive and unbounded and the hot loop takes it off the ticket price, so a
+ * run with a negative shift pays more than the nominal buy-in and can lose
+ * more than the schedule's cost. No bound closes that: on 1000-player $10
+ * rows at ROI ±10 %, 20 000 runs, it happens to 0.1 % of 100-tournament runs
+ * at 0.1, 3-4 % at 0.25 and 10-13 % at 0.5, and to 0, 0.03-0.13 % and
+ * 2-4 % of 2000-tournament runs. The old bound of 5 did it to 42 %.
+ */
+export const ROI_STD_ERR_MAX = 0.5;
 
 /** The simulation count every demo scenario and the first visit start from; basic mode has no field to change it. */
 export const BASIC_MODE_MAX_SAMPLES = 10_000;

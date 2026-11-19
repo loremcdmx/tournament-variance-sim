@@ -52,6 +52,7 @@ import {
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import { plural, WORDS } from "@/lib/i18n/plural";
 import { normalizeNumericDraft } from "@/lib/ui/numberDraft";
+import { useBankrollDraft } from "@/lib/ui/useBankrollDraft";
 import { blurFocusedField, restoreFocusedField } from "@/lib/ui/blurFocusedField";
 import { canStartRun } from "@/lib/ui/runGate";
 import { controlsForLoadedState } from "@/lib/ui/loadedControls";
@@ -68,6 +69,13 @@ import { ScheduleToolbarExtras } from "@/components/ScheduleToolbarExtras";
 import { manualAlphaFor } from "@/lib/sim/finishModel";
 import { sanitizeControlsForBasicMode, withSupportedAlpha } from "@/lib/sim/modelPresets";
 import { buildSimulationInput } from "@/lib/ui/simulationInput";
+import { doneSummaryProfitStats } from "@/lib/results/headlineStats";
+import {
+  brItmOnEnter,
+  brItmOnLeave,
+  holdsBrItmTarget,
+  type ItmTargetControls,
+} from "@/lib/ui/brItmDefault";
 
 function LoadingPanel() {
   const t = useT();
@@ -170,8 +178,6 @@ const UNTOUCHED_STATES = [
   { schedule: [{ id: "reset", ...RESET_ROW }], controls: initialControls },
 ];
 
-const DEFAULT_BR_GLOBAL_ITM_PCT = 20;
-
 function isPureBattleRoyaleSchedule(schedule: TournamentRow[]): boolean {
   return (
     schedule.length > 0 &&
@@ -223,6 +229,9 @@ export default function Home() {
     [schedule],
   );
   const prevPureBattleRoyaleRef = useRef(pureBattleRoyaleSchedule);
+  // The ITM target the app replaced on entering pure BR (memory only), so
+  // leaving BR can put it back; any other writer of the target forgets it.
+  const brItmReplacedRef = useRef<ItmTargetControls | null>(null);
   // Advanced mode off → force MTT view regardless of persisted state.
   const activeMode: "mtt" | "cash" = advanced ? mode : "mtt";
   if (activeMode === "cash" && !cashVisited) setCashVisited(true);
@@ -313,23 +322,26 @@ export default function Home() {
   useEffect(() => {
     const wasPureBattleRoyale = prevPureBattleRoyaleRef.current;
     prevPureBattleRoyaleRef.current = pureBattleRoyaleSchedule;
-    if (!pureBattleRoyaleSchedule || wasPureBattleRoyale) return;
+    if (pureBattleRoyaleSchedule === wasPureBattleRoyale) return;
     const timeoutId = window.setTimeout(() => {
+      if (pureBattleRoyaleSchedule) {
+        setControls((prev) => {
+          const next = brItmOnEnter(prev, initialControls.itmGlobalPct);
+          if (!next) return prev;
+          brItmReplacedRef.current = {
+            itmGlobalEnabled: prev.itmGlobalEnabled,
+            itmGlobalPct: prev.itmGlobalPct,
+          };
+          return { ...prev, ...next };
+        });
+        return;
+      }
+      const before = brItmReplacedRef.current;
+      if (!before) return;
+      brItmReplacedRef.current = null;
       setControls((prev) => {
-        const hasGenericItmDefault =
-          Math.abs(prev.itmGlobalPct - initialControls.itmGlobalPct) < 1e-9;
-        if (!hasGenericItmDefault) return prev;
-        if (
-          prev.itmGlobalEnabled &&
-          Math.abs(prev.itmGlobalPct - DEFAULT_BR_GLOBAL_ITM_PCT) < 1e-9
-        ) {
-          return prev;
-        }
-        return {
-          ...prev,
-          itmGlobalEnabled: true,
-          itmGlobalPct: DEFAULT_BR_GLOBAL_ITM_PCT,
-        };
+        const next = brItmOnLeave(prev, before);
+        return next ? { ...prev, ...next } : prev;
       });
     }, 0);
     return () => window.clearTimeout(timeoutId);
@@ -365,21 +377,6 @@ export default function Home() {
     [controls.itmGlobalEnabled, controls.itmGlobalPct],
   );
   const itmTargetLocked = isItmTargetActive(itmTargetCfg);
-  const effectiveSchedule = useMemo(
-    () => applyItmTarget(schedule, itmTargetCfg),
-    [schedule, itmTargetCfg],
-  );
-  const resultInputsChanged = useMemo(() => resultInput != null &&
-    JSON.stringify({ ...buildInput(effectiveSchedule, controls), seed: 0 }) !==
-      JSON.stringify({ ...resultInput, seed: 0 }),
-  [buildInput, effectiveSchedule, controls, resultInput]);
-  // Heavy downstream widgets (FinishPMFPreview calibrates α via bisection on
-  // N places; PayoutStructureCard / ConvergenceChart re-walk the schedule)
-  // re-run on every keystroke and on gameType flips that rewrite 4+ row
-  // fields at once. Deferring their input lets React keep the inputs /
-  // selects responsive — the preview catches up in the background instead
-  // of blocking the click.
-  const deferredSchedule = useDeferredValue(effectiveSchedule);
   const deferredControls = useDeferredValue(controls);
   const effectiveResultsControls = useMemo(
     () => (advanced ? controls : sanitizeControlsForBasicMode(controls)),
@@ -408,6 +405,21 @@ export default function Home() {
       effectiveResultsControls.empiricalBuckets,
     ],
   );
+  const effectiveSchedule = useMemo(
+    () => applyItmTarget(schedule, itmTargetCfg, previewModel),
+    [schedule, itmTargetCfg, previewModel],
+  );
+  const resultInputsChanged = useMemo(() => resultInput != null &&
+    JSON.stringify({ ...buildInput(effectiveSchedule, controls), seed: 0 }) !==
+      JSON.stringify({ ...resultInput, seed: 0 }),
+  [buildInput, effectiveSchedule, controls, resultInput]);
+  // Heavy downstream widgets (FinishPMFPreview calibrates α via bisection on
+  // N places; PayoutStructureCard / ConvergenceChart re-walk the schedule)
+  // re-run on every keystroke and on gameType flips that rewrite 4+ row
+  // fields at once. Deferring their input lets React keep the inputs /
+  // selects responsive — the preview catches up in the background instead
+  // of blocking the click.
+  const deferredSchedule = useDeferredValue(effectiveSchedule);
   const deferredPreviewModel = useMemo(
     () => ({
       id: deferredResultsControls.finishModelId,
@@ -447,6 +459,9 @@ export default function Home() {
           tiltSlowGain: deferredResultsControls.tiltSlowGain,
           tiltSlowThreshold: deferredResultsControls.tiltSlowThreshold,
           tiltSlowMinDuration: deferredResultsControls.tiltSlowMinDuration,
+          roiShockPerSession: deferredResultsControls.roiShockPerSession,
+          roiDriftSigma: deferredResultsControls.roiDriftSigma,
+          scheduleRepeats: deferredResultsControls.scheduleRepeats,
           bankroll: deferredResultsControls.bankroll,
           finishModelId: deferredResultsControls.finishModelId,
           empiricalBuckets: deferredResultsControls.empiricalBuckets,
@@ -459,6 +474,9 @@ export default function Home() {
       deferredResultsControls.tiltSlowGain,
       deferredResultsControls.tiltSlowThreshold,
       deferredResultsControls.tiltSlowMinDuration,
+      deferredResultsControls.roiShockPerSession,
+      deferredResultsControls.roiDriftSigma,
+      deferredResultsControls.scheduleRepeats,
       deferredResultsControls.bankroll,
       deferredResultsControls.finishModelId,
       deferredResultsControls.empiricalBuckets,
@@ -615,6 +633,7 @@ export default function Home() {
     queueInterruptBackground();
     setMttModel("mechanical");
     setSchedule(s.schedule);
+    brItmReplacedRef.current = null;
     setControls((c) => controlsForLoadedState(initialControls, s.controls, c.seed));
     setActiveScenarioId(id);
   }, [confirmReplacingState, queueInterruptBackground]);
@@ -634,6 +653,7 @@ export default function Home() {
   const handleControlsChange = useCallback(
     (c: ControlsState) => {
       queueInterruptBackground();
+      if (!holdsBrItmTarget(c)) brItmReplacedRef.current = null;
       setControls(c);
       setActiveScenarioId(null);
     },
@@ -737,23 +757,15 @@ export default function Home() {
   const doneSummary = useMemo(
     () =>
       status === "done" && result
-        ? (() => {
-            const observedPromo =
-              result.battleRoyaleLeaderboardPromo?.expectedPayout ?? 0;
-            const mean = result.stats.mean + observedPromo;
-            return {
-              mean,
-              median: result.stats.median + observedPromo,
-              roi: mean / result.totalBuyIn,
-              probProfit: result.stats.probProfit,
-              riskOfRuin: result.stats.riskOfRuin,
-              bankrollOff: (resultInput?.bankroll ?? 0) <= 0,
-              worstDrawdown: result.stats.maxDrawdownP99,
-              longestCashlessWorst: result.stats.longestCashlessWorst,
-              elapsedMs,
-              resultsAnchorId: "results-top",
-            };
-          })()
+        ? {
+            ...doneSummaryProfitStats(result),
+            riskOfRuin: result.stats.riskOfRuin,
+            bankrollOff: (resultInput?.bankroll ?? 0) <= 0,
+            worstDrawdown: result.stats.maxDrawdownP99,
+            longestCashlessWorst: result.stats.longestCashlessWorst,
+            elapsedMs,
+            resultsAnchorId: "results-top",
+          }
         : null,
     [status, result, elapsedMs, resultInput],
   );
@@ -808,7 +820,7 @@ export default function Home() {
       }
       queueInterruptBackground();
       setSchedule((prev) => {
-        const liveSchedule = applyItmTarget(prev, itmTargetCfg);
+        const liveSchedule = applyItmTarget(prev, itmTargetCfg, previewModel);
         const issue = validateSchedule(liveSchedule, previewModel).issues.find(
           (i) => i.rowId === rowId,
         );
@@ -829,12 +841,12 @@ export default function Home() {
     const live = scheduleRef.current;
     const stuck = rowsFitCannotUnblock(live, previewModel, itmTargetCfg);
     if (stuck.length > 0) window.alert(t("shape.fixClosestStuck"));
-    const blocked = validateSchedule(applyItmTarget(live, itmTargetCfg), previewModel).issues;
+    const blocked = validateSchedule(applyItmTarget(live, itmTargetCfg, previewModel), previewModel).issues;
     if (stuck.length >= blocked.length) return;
     queueInterruptBackground();
     setSchedule((prev) =>
       (() => {
-        const liveSchedule = applyItmTarget(prev, itmTargetCfg);
+        const liveSchedule = applyItmTarget(prev, itmTargetCfg, previewModel);
         const issues = validateSchedule(liveSchedule, previewModel).issues;
         if (issues.length === 0) return prev;
         const issueByRow = new Map(issues.map((i) => [i.rowId, i]));
@@ -886,6 +898,7 @@ export default function Home() {
     queueInterruptBackground();
     setMttModel("mechanical");
     setSchedule(p.state.schedule);
+    brItmReplacedRef.current = null;
     setControls((c) => controlsForLoadedState(initialControls, p.state.controls, c.seed));
     setActiveScenarioId(p.id);
   };
@@ -1313,6 +1326,7 @@ export default function Home() {
               onChange={handleScheduleChange}
               disabled={running}
               globalItmPct={scheduleGlobalItmPct}
+              finishModel={previewModel}
               globalRakebackPct={controls.rakebackPct}
               toolbarExtras={scheduleToolbarExtras}
               feasibilityIssues={feasibility.issues}
@@ -1381,7 +1395,10 @@ export default function Home() {
               }
             />
 
-            <PayoutStructureCard schedule={deferredSchedule} />
+            <PayoutStructureCard
+              schedule={deferredSchedule}
+              primeDopePreset={effectiveResultsControls.modelPresetId === "primedope"}
+            />
           </div>
 
           <aside className="flex min-w-0 flex-col gap-3 xl:sticky xl:top-3 xl:self-start">
@@ -1444,6 +1461,7 @@ export default function Home() {
                   }
                   itmLocked={itmTargetLocked && previewSourceRow?.itmRate == null}
                   onRowChange={onPreviewRowChange}
+                  primeDopePreset={effectiveResultsControls.modelPresetId === "primedope"}
                 />
               </Card>
             )}
@@ -1829,7 +1847,9 @@ const BankrollControl = memo(function BankrollControl({
 }) {
   const t = useT();
   const [brMode, setBrMode] = useState<"$" | "abi">("$");
-  const displayVal = brMode === "$" ? value.bankroll : (abi > 0 ? Math.round(value.bankroll / abi) : 0);
+  const box = useBankrollDraft(value.bankroll, brMode, abi, (bankroll) =>
+    onChange({ ...value, bankroll }),
+  );
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] p-2.5">
       <span className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--color-accent)]/90">
@@ -1839,21 +1859,26 @@ const BankrollControl = memo(function BankrollControl({
         <input
           type="number"
           min={0}
-          max={brMode === "$" ? 1_000_000_000 : 100_000}
+          max={box.max}
           aria-label={t("controls.bankroll")}
           step={brMode === "$" ? 100 : 10}
-          value={displayVal}
+          value={box.text}
           disabled={disabled}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            if (!Number.isFinite(v) || v < 0) return;
-            onChange({ ...value, bankroll: brMode === "$" ? v : Math.round(v * abi) });
+          inputMode="decimal"
+          onChange={(e) => box.change(e.target.value)}
+          onBlur={box.commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") box.commit();
+            else if (e.key === "Escape") box.cancel();
           }}
           className="number-control w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-center text-[12px] font-semibold tabular-nums text-[color:var(--color-fg)] outline-none focus:border-[color:var(--color-accent)] disabled:opacity-40"
         />
         <button
           type="button"
-          onClick={() => setBrMode((m) => (m === "$" ? "abi" : "$"))}
+          onClick={() => {
+            box.discard();
+            setBrMode((m) => (m === "$" ? "abi" : "$"));
+          }}
           disabled={disabled}
           className="shrink-0 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-40"
           title={brMode === "$" ? "Switch to ABI multiples" : "Switch to dollars"}

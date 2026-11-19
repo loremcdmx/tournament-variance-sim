@@ -331,10 +331,25 @@ describe("cashEngine — output shape", () => {
     expect(r.stats.maxDrawdownMedian).toBeCloseTo(0, 9);
     expect(r.stats.maxDrawdownP95).toBeCloseTo(0, 9);
     expect(r.stats.longestBreakevenMedian).toBeCloseTo(0, 9);
-    expect(r.stats.recoveryMedian).toBeCloseTo(0, 9);
-    expect(r.stats.recoveryP90).toBeCloseTo(0, 9);
+    expect(r.stats.recoveryMedian).toBeNaN();
+    expect(r.stats.recoveryP90).toBeNaN();
     expect(r.stats.probProfit).toBeCloseTo(1, 9);
     expect(r.stats.probLoss).toBeCloseTo(0, 9);
+  });
+
+  it("keeps a run with no drawdown out of both recovery groups", () => {
+    const r = simulateCash(
+      baseInput({ wrBb100: 40, sdBb100: 1, hands: 1000, nSimulations: 2000 }),
+    );
+    const total = (h: { counts: number[] }) =>
+      h.counts.reduce((a, b) => a + b, 0);
+    const dipped = total(r.longestBreakevenHistogram);
+    const recovered = total(r.recoveryHistogram);
+    const unrecovered = Math.round(r.stats.recoveryUnrecoveredShare * r.samples);
+    expect(dipped).toBeLessThan(r.samples / 10);
+    expect(recovered + unrecovered).toBe(dipped);
+    expect(r.stats.recoveryMedian).toBe(1);
+    expect(r.stats.recoveryP90).toBe(1);
   });
 
   it("tracks user-facing odds over distance on the envelope checkpoints", () => {

@@ -186,3 +186,41 @@ describe("Fit closest on a row with a Field-size range", () => {
     expect(fix.kind).toBe("match-roi");
   });
 });
+
+describe("Fit closest on a single field never returns a row that is still blocked", () => {
+  const model: FinishModelConfig = { id: "powerlaw-realdata-influenced" };
+  const globalItm = { enabled: true, pct: 18.7 };
+  const blockedWith = (r: TournamentRow) =>
+    validateSchedule(applyItmTarget([r], globalItm), model).issues[0];
+
+  it("walks past the break-even jump in one click", () => {
+    // ROI -10% reaches $118.50, but at that target the first-place floor
+    // switches on and the reachable EV jumps to $145.73.
+    const r = row({
+      players: 30, buyIn: 100, rake: 0.1, roi: -0.1, payoutStructure: "mtt-top-heavy",
+      itmRate: undefined, count: 1,
+    });
+    const issue = blockedWith(r);
+    expect(issue).toBeDefined();
+    const fix = chooseClosestFeasibilityFix(r, issue!, model, globalItm);
+    expect(fix.kind).toBe("match-roi");
+    expect(blockedWith(fix.row)).toBeUndefined();
+  });
+
+  it("leaves a row nothing unblocks as it is and names it", () => {
+    // Locks that contradict each other, on a heads-up bounty row whose ROI no
+    // ITM reaches: +100% needs $220 of a $200 table.
+    const r = row({
+      id: "hu", players: 2, buyIn: 100, rake: 0.1, roi: 1, gameType: "pko",
+      payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, itmRate: 0.5, count: 1,
+      finishBuckets: { first: 0.6 },
+    });
+    const off = { enabled: false, pct: 18.7 };
+    const issue = validateSchedule(applyItmTarget([r], off), model).issues[0];
+    expect(issue).toBeDefined();
+    const fix = chooseClosestFeasibilityFix(r, issue!, model, off);
+    expect(fix.kind).toBe("none");
+    expect(fix.row).toBe(r);
+    expect(rowsFitCannotUnblock([r], model, off)).toEqual(["hu"]);
+  });
+});

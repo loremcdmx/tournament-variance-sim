@@ -187,3 +187,87 @@ export function scanPathChordsReference(
   scratch.firstReturnSum = firstReturnSum;
   scratch.firstReturnCount = firstReturnCount;
 }
+
+/**
+ * First return to each starting checkpoint's level, read at every tournament
+ * of `trace` (the profit after 0..N tournaments). On the checkpoint grid a
+ * return can only be seen from the second checkpoint on, so above 240
+ * tournaments the grid read the average 1.4x too long at 1 000 tournaments
+ * and 4.6x at 20 000, growing with the grid step alone.
+ *
+ * One sweep over the trace. A start settles at the first tournament whose
+ * step reaches its level (the grid scan's "segment covers the level" at a
+ * one-tournament grid); the step out of the start counts only when it ends on
+ * the level. Open starts the path is below wait on one stack, those it is
+ * above on another. Every open level on the "below" stack is above the path,
+ * and a start opens at the path, so a new one is the lowest there and the
+ * stack stays sorted with the lowest level on top; the "above" stack mirrors
+ * it. Starts are checkpoints 0..K-1; leaves the sum (in tournaments) and the
+ * count of the starts that came back in `scratch`.
+ */
+export function scanFirstReturns(
+  trace: Float64Array,
+  N: number,
+  checkpointIdx: Int32Array,
+  K: number,
+  scratch: FirstReturnScratch,
+): void {
+  const { belowLevel, belowStart, aboveLevel, aboveStart } = scratch;
+  let below = 0;
+  let above = 0;
+  let sum = 0;
+  let count = 0;
+  let nextStart = 0;
+  let pendingAt = K > 0 ? checkpointIdx[0] : -1;
+  for (let t = 1; t <= N; t++) {
+    const p = trace[t];
+    while (below > 0 && p >= belowLevel[below - 1]) {
+      below--;
+      sum += t - belowStart[below];
+      count++;
+    }
+    while (above > 0 && p <= aboveLevel[above - 1]) {
+      above--;
+      sum += t - aboveStart[above];
+      count++;
+    }
+    if (t - 1 === pendingAt) {
+      // A NaN on either side matches nothing, as in the grid scan.
+      const level = trace[pendingAt];
+      if (p === level) {
+        sum += 1;
+        count++;
+      } else if (p > level) {
+        aboveLevel[above] = level;
+        aboveStart[above++] = pendingAt;
+      } else if (p < level) {
+        belowLevel[below] = level;
+        belowStart[below++] = pendingAt;
+      }
+      nextStart++;
+      pendingAt = nextStart < K ? checkpointIdx[nextStart] : -1;
+    }
+  }
+  scratch.firstReturnSum = sum;
+  scratch.firstReturnCount = count;
+}
+
+export interface FirstReturnScratch {
+  belowLevel: Float64Array;
+  belowStart: Int32Array;
+  aboveLevel: Float64Array;
+  aboveStart: Int32Array;
+  firstReturnSum: number;
+  firstReturnCount: number;
+}
+
+export function createFirstReturnScratch(K: number): FirstReturnScratch {
+  return {
+    belowLevel: new Float64Array(K),
+    belowStart: new Int32Array(K),
+    aboveLevel: new Float64Array(K),
+    aboveStart: new Int32Array(K),
+    firstReturnSum: 0,
+    firstReturnCount: 0,
+  };
+}

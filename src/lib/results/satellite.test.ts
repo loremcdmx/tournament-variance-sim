@@ -64,6 +64,14 @@ describe("seat-count histogram", () => {
     expect(integerBinLabel(2.5, 5.5)).toBe("3 – 5");
   });
 
+  it("does not print a whole-number edge in both bars that share it", () => {
+    // Breakeven chords of a 480-tournament run: grid lengths x 2, edges 3, 11, 19.
+    expect(integerBinLabel(3, 11)).toBe("3 – 10");
+    expect(integerBinLabel(11, 19)).toBe("11 – 18");
+    expect(integerBinLabel(1, 3)).toBe("1 – 2");
+    expect(integerBinLabel(0.75, 2.25)).toBe("1 – 2");
+  });
+
   it("builds the card's histogram on whole numbers from a real run", () => {
     const input: SimulationInput = {
       schedule: [{ id: "sat", players: 100, buyIn: 10, rake: .1, roi: .2, itmRate: .132,

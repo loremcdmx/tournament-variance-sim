@@ -691,7 +691,9 @@ Small numbers that read as exact. Do not undo these without re-measuring:
 - A candidate row outside the validated zone while the anchor is inside prints a bare
   point under a table that otherwise shows ranges; the row carries a mark and a
   footnote (`rowIsPointOnly`). The synthetic tabs' starting ROI is cost-weighted
-  (`scheduleEffectiveRoi`), as the prove-edge anchor is.
+  (`scheduleEffectiveRoi`). The prove-edge anchor is too, except in schedule mode with a
+  finish model that ignores the typed ROI, where it takes the ROI the engine compiles
+  (`ExactBreakdown.expectedRoi`).
 - Histograms keep `binEdges.length === counts.length + 1` even when empty (no
   streak, no recovery). A zero-length streak is not counted, in tournament and cash
   mode alike; the cash streaks card shows a sentence instead of an empty hands axis,
@@ -728,23 +730,33 @@ anchor really has. Do not undo these without re-measuring:
 The 8 October 2026 audit found the arithmetic of the Ocean tab correct and its
 presentation misleading. Do not undo these without re-measuring:
 
-- The longest spell below EV has a P95 of about the whole distance in every format
-  (arcsine law: 0.975-1.000 of the distance at 1k, 5k and 20k entries). Advice to
-  "extend the horizon" is wrong for it; the card shows the median, and tables
-  print "≈ full distance" from 97% of the distance. The spell below the previous
-  peak is different: at 1k entries its P95 is also about the whole distance
-  (0.97-1.00 in all four formats), but its share of the distance falls to about
-  0.7-0.96 at 5k and 0.33-0.69 at 20k, so a longer horizon does show more there.
-- Ratios between formats carry Monte Carlo noise in the second digit and change
-  with the distance (Ocean / PKO drawdown P95 about 1.2 / 1.4 / 1.4-1.5x at 1k / 5k / 20k).
-  Show one digit.
-- Risk curves use one dynamic grid per metric, shared by every format in a chart
-  and ending at a round number strictly above the deepest career. A fixed 0-1000 BI
-  grid cut 12% of the freezeout careers (drawdown) and 34-37% (EV shortfall) at 20k.
-- All formats share the seed, so their careers are positively correlated (Spearman
-  0.56-0.89 of final profit). Monte Carlo intervals are per format, not for differences.
+- The longest spell below EV has a P95 of about the whole distance in every format (arcsine
+  law: 0.98-1.00 of the distance at 1k, 5k and 20k entries). Advice to "extend the horizon"
+  is wrong for it; the card shows the median, and tables print "≈ full distance" from 97% of
+  the distance. The spell below the previous peak is different: at 1k entries its P95 is
+  also about the whole distance (0.99-1.00 in all four formats), but its share of the
+  distance falls to about 0.87-0.95 at 5k and 0.49-0.66 at 20k (freezeout highest, PKO
+  lowest), so a longer horizon does show more there.
+- Ratios between formats carry Monte Carlo noise in the second digit and change with the
+  distance (Ocean / PKO drawdown P95 about 1.1 / 1.2 / 1.3x at 1k / 5k / 20k; 1.14 / 1.18 /
+  1.35 at the default seed, 1.13 ± 0.03 over twelve seeds at 1k). Show one digit. Only
+  Ocean's below-EV median stands apart (402 at the default seed, 438 ± 13 over twelve seeds,
+  against 347-370 for the other three); the order of freezeout, PKO and Mystery is seed
+  noise.
+- Risk curves use one dynamic grid per metric, shared by every format in a chart and ending
+  at a round number strictly above the deepest career. A fixed 0-1000 BI grid would cut 8%
+  of the freezeout careers (drawdown) and 31% (EV shortfall) at 20k.
+- All formats share the seed, so their careers are positively correlated (Spearman of final
+  profit 0.64-0.97 at 1k entries, 0.49-0.97 at 20k; freezeout and PKO 0.97). Monte Carlo
+  intervals are per format, not for differences.
 - Streak ties use a tolerance of 1e-9 of a ticket: a Battle Royale break-even entry
   can sum to -1.78e-15 and must not count as a loss.
+- These figures were re-measured after the 9 October payout curves (mtt-gg-bounty,
+  mtt-gg-freeze) and the xoshiro128** generator, at the default config (seed 20261008, 2,000
+  careers). The figures quoted before were from 8 October and read 434 / 371 / 355 / 344 and
+  1.2 / 1.4 / 1.4-1.5x. `formatComparisonExecution.test.ts` pins the medians and the 1k
+  ratio the doc quotes. Re-measure the doc and these lines whenever a GG MTT payout curve or
+  the generator changes.
 
 ## Heavy-Tail Readouts And Fixed Shapes
 
@@ -927,6 +939,292 @@ describe. Do not undo these without re-checking:
   light `--c-fg-dim` (#6e687d) was never below 4.6:1 on those surfaces, so an audit
   note that it fails there was wrong. A solid bg-elev-2 fill (hover state of an
   editor input) is 4.3:1 in the dark theme and is not in the measured set.
+
+## Audit Of 19 November 2026
+
+Fourteen area audits with one independent verifier per finding confirmed 84 defects; most
+are fixed and pinned by tests. Each note below is a fix a later change could quietly undo, or
+a decision that was left open on purpose. Do not undo these without re-checking:
+
+### Results screen
+
+- Per-tournament / per-day money (BR promo, PD clamp notice) goes through
+  formatPerUnitAmount: two decimals from one unit up, three significant digits below. Do not
+  drop it to two significant digits or to money()/makeAbiMoney: $0.0375 then reads $0.038 or
+  $0, and the promo Formula no longer multiplies out to the projected total (brPromo test
+  pins 0.0156 x 1000 = 15.6).
+- The PrimeDope cheat sheet must describe the field the PD pass compiles: floor(players x
+  lateRegMultiplier) for both Field size and Places paid, and the paid count from
+  mtt-primedope while PD payouts are on. Printing r.players next to a late-reg paid count
+  makes the sheet irreproducible in PrimeDope.
+- Toggle-hint tables in dict.ts (pdFinishModel, pdRakeMath) are pinned by a test that
+  compiles the hint's example row; when the engine changes, update the copy from that test,
+  not by hand. Unpaid places are ~1.0x base in our α-model, not 0.
+- On a bounty schedule PD compare hides the PD toggles, but the PD pass still reads the
+  persisted usePrimedopePayouts / usePrimedopeRakeMath / finish-model flags. Copy for that
+  mode says "PrimeDope's calibration" without naming its parts on purpose.
+- In a PD comparison only one pass keeps its bounties; jackpot share and cash-only ITM must
+  come from that pass (jackpotHiddenShareAcross, bountyStrippedPane), never from the primary
+  result by position.
+
+### Page state
+
+- The Done row under Run reads the run with the BR leaderboard promo in, like the results
+  card's default: mean, median, ROI and probProfit all come from doneSummaryProfitStats
+  (headlineStats.ts), which counts finalProfits + promo > 0. Do not put back
+  result.stats.probProfit next to a promo-inclusive mean. Risk of ruin, drawdown and
+  cashless streak stay engine values, as in ResultsView.
+- Row guarantee (GTD) has no editor field. patchRow drops it when players, buyIn,
+  fieldVariability, gameType or payoutStructure change, and no demo row may carry one
+  (scenarios.test.ts pins it). Removing them changed the PrimeDope pane of five demos,
+  because the PD pass shrinks the pool by rake and the guarantee topped it back up.
+  Persistence still round-trips guarantee for old saves and links; it is not a demo
+  dependency any more.
+- The pure-BR 20% global ITM target is undone on leaving pure BR only while the controls
+  still hold exactly enabled/20 and the page remembers it set them (brItmReplacedRef, memory
+  only; brItmDefault.ts). Scenario/preset loads and any controls edit off enabled/20 forget
+  it. A target set before a reload stays (same limitation as reconcileLockItmStamp).
+- The bankroll box keeps a local draft (normalizeNumericDraft / liveDraftValue /
+  commitDraftValue) and stores ABI multiples to the cent (bankrollUnits.ts). A controlled
+  box re-synced from Math.round(v * abi) appended the next digit to a rounded count below a
+  $1 ABI. Do not go back to whole dollars or to a raw controlled value.
+
+### Schedule editor
+
+- The BR reported-ROI preset buttons write the exact field ROI (reported - rb x
+  rake/(1+rake)), rounded only to the ROI box's ROI_PCT_DECIMALS; the tooltip prints it to
+  two decimals. The old whole-percent rounding dated from the whole-percent ROI box and
+  missed the button by up to 0.48 pp (0.4 pp at the default 20% rakeback). Do not round it
+  back.
+- The row bounty-share box holds one decimal (BOUNTY_PCT_DECIMALS via `decimals`), like the
+  ROI box: step 5 only drives the arrow keys. Snapping to the grid turned 33 into 35 and 2
+  into 0 (which switches the bounty channel off), and showed Ocean's 54.35% as 54, which
+  became 55 when retyped. The advanced-only sigma^2 and aggression NumInputBoxes still snap
+  (owner decision pending).
+- CSV import, comma route: in a line that spaces its other commas, an unspaced `d{1,3},ddd`
+  between the players and buy-in cells is refused as a thousands separator
+  (row.importErr.thousandsComma), the same trade-off as the `12,5` ROI guard. The message
+  must not suggest `;`, because the players cell refuses `2,500` on that route too. A fully
+  compact `HU,2,500,55,10` still reads as 2 players at $500.
+
+### Row preview
+
+- Empty Mystery KO window (a field that pays one place): compileEntry and previewRowStats
+  both give the whole bounty pool to the winner (bountyByPlace[0] = bountyMean / pmf[0]) and
+  fall back to an even lump only when pmf[0] is 0. Change both together, as with the cash
+  floor and tolerance.
+- Shape-panel locks stamp RowStats.lockP1 / lockTop3 / lockFt, the shells of the solver's
+  pmf BEFORE applySitThroughPayJumps, never shellP1 / shellTop3 / shellFt (the played pmf).
+  calibrateShelledItm pins locks before the transform, so stamping the played value made a
+  click raise P(1st) by 10-20% under sit-through. Separate, unchanged property of the
+  solver: locking FT alone moves P(1st) even without sit-through (500 entrants, +20%: 0.348%
+  -> 0.362%).
+- A Field-size range row builds each bucket's tiers with carveLastPaid: the top-3 / FT /
+  top-27 cuts stop at paidCount - 1, so 'First min-cash' has the same meaning in every
+  bucket. mixTiers averages by key and counts a missing key as 0, so a bucket whose top-27
+  cut swallowed the last paid place halved the mixed share. Fixed fields and one-bucket
+  ranges keep the old layout (a test pins it), so a range row's table differs from the fixed
+  table of its middle bucket by exactly that carve.
+- A Battle Royale row's last preview tier is key 'brTail' and is labelled by its places, not
+  'Not ITM': the bubble and 5th-9th are split out before it, so it holds places 10-18 only.
+- Preview readouts take their sign and colour from the rounded value (fmtSignedPct,
+  signedMoneyClass, fmtSignedMoney; moneyFmt prints $0 under half a cent). A calibrated
+  break-even EV lands about 1e-13 on either side of the ticket.
+- The preview's KO-share slider divides by winnings (cash + KOs); the EV mix card divides by
+  winnings + rakeback + BR promo. The two are different on purpose, and the slider's title
+  and tip name the base. Do not 'unify' them without changing the copy.
+
+### Planning cards
+
+- Planning-card reachability uses the same check as Run: formatRuntimeRoiReached /
+  runtimeRoiReached / oceanKoRoiReached call validateSchedule on the exact stamped row Run
+  would receive. Do not replace this with a heuristic. An unreachable row's σ belongs to the
+  ROI it saturates at, so printing a volume for it is wrong.
+- Unreachable is not the same as too high. With a high global ITM target, the row's floor
+  sits ABOVE a low requested ROI (it cannot lose that much). The warning copy must stay
+  neutral about direction ('cannot be tuned to this ROI').
+- The Ocean KO planning row goes through applyItmTarget (buildOceanKoRuntimeRow) like every
+  other tab. An unpinned row is one Run never plays.
+- A prove-edge volume at confidence C with the z + z sizing gives detection probability (1 +
+  C)/2, not C. The card prints that number; do not 'fix' the volume to match C without an
+  owner decision.
+
+### Calibration and feasibility
+
+- `applyItmTarget(schedule, cfg, model?)`: on a one-prize-level table (every paid place pays
+  the same: WTA, satellite-ticket, equal-share custom, standard MTT tables at small fields
+  such as mtt-standard <= 13 players) a blank ITM becomes cost x (1+ROI) / prize, because
+  the cash EV there is ITM x prize and the zero-skill ITM leaves exactly one reachable ROI.
+  Heads-up bounty rows use cost x (1+ROI) / (cash prize + N x buyIn x bountyFraction): the
+  winner takes the whole bounty pool. This applies only when the model aims at the ROI
+  (`isAlphaAdjustable`); uniform, empirical, realdata and pinned-alpha models keep the
+  table's ITM so their no-skill reference holds. A missing model reads as the default model.
+  Every call site that knows the run's model must pass it (page.tsx effectiveSchedule and
+  the Fit closest callbacks, feasibilityFix, ScheduleEditor's displayItmPct,
+  formatRuntimeSigma); otherwise the display, validation and run disagree for uniform /
+  empirical rows.
+- The bounty residual that closes a short cash side is capped at N x buyIn x bountyFraction
+  x (1 - P(last)) (`bountyEvCeiling`); validation and computeRowStats.shellFeasible use the
+  same predicate. A heads-up bounty row at a typed ITM of 0.5 is blocked at every ROI above
+  -rake/(1+rake). That is correct, and the blank-ITM default above is what keeps default
+  heads-up rows runnable. Do not remove one without the other.
+- An empty KO window (a Mystery table paying one place, heads-up included) pays the whole
+  bounty budget to the winner: bountyByPlace[0] = bountyMean / pmf[0]. A lump on every place
+  paid the loser and halved the heads-up sigma. A heads-up regression test must use a row
+  validateSchedule accepts (ITM 0.605 for $10+$1 at +10%, 50% bounty), not ITM 0.5 with a
+  winning ROI.
+- The ITM top-heaviness bias is applied only for power-law and powerlaw-realdata-influenced
+  (`finishModelSupportsItmTopHeavy`). Plackett-Luce, stretched-exp and linear skill do have
+  a skill curve, but the alpha re-solve reverses, absorbs or saturates the bias at a fixed
+  EV. Copy must not claim these models have 'no skill curve'.
+- A pasted empirical history (`playsWholeFieldShape`) is a whole-field pmf like the realdata
+  shapes; row ITM, locks and top-heaviness do not apply to it. Empirical with no data keeps
+  the uniform-over-paid fallback at the row's ITM.
+
+### Payout tables, noise and tilt
+
+- Paid-place counts in payouts.ts go through paidShare(players, perMille) (integer
+  arithmetic). Do not write Math.floor(players * 0.145) back: 0.145 and 0.143 are stored
+  below their decimal value, and 200 * 0.145 = 28.999999999999996 paid one place short at
+  310 round GG Freezeout fields and 120 PokerStars fields.
+- BuildRealisticCurve's overfull fallback (the tail cannot hold 1 - ftSum) uses the solver's
+  own c->0 limit, a flat tail with min-cash on the last place, so the table is continuous
+  where the field crosses the boundary. The old linear tail moved 1st 6-23 % between
+  adjacent fields and flipped Mystery three times at 553-562. The underfull side (FT alone
+  overflows the pool) is reached only by Battle Royale tables above about 57 players, which
+  the editor never offers, and it deliberately keeps the linear tail. Changing it rewrites
+  those tables (1st 11 % -> 26 % at N=1000).
+- A session in the hot loop is one schedule pass (i % tournamentsPerPass), and the distance
+  field always sets scheduleRepeats 1, so session shock and drift collapse into a per-run
+  offset after any distance edit. Today this is only a sanity warning
+  ('session-noise-single-pass') plus honest preset copy. The engine decoupling is an open
+  owner decision, not something to 'fix' by changing what the distance field writes.
+- Slow tilt's upswing is profit - runningMin (from the all-time low), so a winning
+  steady-reg player enters 'up' and rarely leaves it (about +2 pp of ROI at $50 over 40 000
+  tournaments). It is documented in types.ts and the tagline, and the engine was
+  deliberately left alone pending an owner decision. tiltChannelsActive (modelPresets.ts)
+  mirrors simulateShard's tilt gates and drives the 'Expected profit before tilt' label.
+  Change both together.
+- RoiStdErr is capped at ROI_STD_ERR_MAX (0.5) in the field. persistence.ts repeats it as a
+  literal 0.5 in its clamp, and modelPresets.test.ts ties the two through decodeState.
+- Single-table PKO σ is overstated by the Poisson KO count plus the 0.4 head noise (1.32x
+  heads-up, 1.11x 6-max, 1.05x at 18 players, under 1 % from 500 up; the mean is exact).
+  Today it is only a sanity warning ('row-pko-single-table', smallest played field <= 18).
+  The exact Poisson-binomial fix is an open owner decision.
+
+### Streak statistics
+
+- "Avg flatline" (breakevenStreakMean) is the first return measured at EVERY tournament,
+  from the same 240-or-fewer checkpoint starts (scanFirstReturns in pathChords.ts, fed by a
+  per-shard profit trace written in the hot loop). The checkpoint grid can see a return only
+  from the second checkpoint on, so it read 1.4x long at 1 000 tournaments and 4.6x at 20
+  000. Runs of 240 or fewer tournaments keep the grid expression, which is exact there. The
+  furthest-chord statistic (longestBreakeven, the chord histogram) deliberately stays on the
+  grid; it is within a few % of the per-tournament value.
+- The first-return sweep needs no heap: every open level the path is below sits above the
+  path, and a new start opens at the path, so each of the two waiting stacks stays sorted. A
+  version that called a helper every tournament inside simulateShard cost about 40 ns per
+  tournament because V8 does not inline into that huge function. Keep per-tournament work in
+  the hot loop to a single store and do the rest in a separate sweep.
+- Integer-length histograms (histogramFromCounts, histogramOfLengths) start at the shortest
+  length that occurs and centre their bars on whole lengths (edges at len ± 0.5, times
+  scale), every bar holding the same number of lengths. Bars starting at 0 left the first
+  bar a length short (empty at width 1), and break-even chords cannot be 1 grid step long
+  except on an exactly flat step. Recovery lengths use the same layout, never histogramOf's
+  real-width bins. The chart hover for "tourneys" prints the lengths a bar holds via
+  integerBinLabel. cashEngine.ts histogramOfInt still has the old floor(v / w) layout.
+- A cent quote 'strictly above x' goes through centAbove (resultStats.ts):
+  (floor(x*100)+1)/100 equals x for about 6% of cent amounts (18.4*100 =
+  1839.9999999999998).
+- ComputeScalarStats takes the mean of a constant sample as that value (min === max).
+  Summing S copies of -232.2 is off by a few ulps, which used to give a stdDev of 1e-11 that
+  passed every stdDev > 0 guard: skew ±1, kurtosis -2, Sharpe -2e13, and '1 tournament to
+  ±5% ROI'.
+
+### Cash, explorer and ResultHub
+
+- The σ gap sentence under the cards has two decimals (`SIGMA_GAP_DECIMALS`). At the cards'
+  one decimal it read 0.2 BI under cards of 5.9 and 6.2 in 7 of the 12 states. Do not derive
+  it from the two rounded cards either: that prints 0.3 next to a 3.8% that belongs to 0.23.
+- The cash engine now stores -2 for a path with no drawdown too, as the hot loop does.
+  Before, it stored 0, which put such paths into the recovery median, p90 and histogram as
+  "recovered in 0 hands". A real cash recovery is always at least 1 hand, so a 0 can never
+  be a recovery. When every run is free of drawdown, the recovery chart shows
+  `cash.chart.recovery.noDrawdown`, not the "nobody climbed back" sentence.
+- ResultHub lookup rate limit: a click with several nicks is one route call (repeated
+  `username` params, at most `OBSERVED_USERNAMES_MAX_COUNT`), charged with
+  `TokenBucketLimiter.take(key, now, cost)` all or nothing. Do not go back to one request
+  per nick: a refused partial batch spent the tokens that had refilled, and the per-token
+  Retry-After (1-2 s) never let a 10-nick click (20 s from empty) through. A single nick
+  keeps the old request and the old response shape. A batch answers `{ results: [{ status,
+  body }] }`, where each entry is exactly the single-nick answer.
+
+### Second pass (late findings and review notes)
+
+- compileSingleEntry raises calibrationWarning kind "target-unreachable" on the alpha path
+  when an alpha-adjustable model misses withinTargetEv. It uses the same tolerance as
+  validateSchedule, so a validated row never gets it (0 of 10,206 validated rows in a
+  sweep). Do not replace it with "always take expectedProfit from the pmf": that moves
+  expectedProfit by 1e-13..1e-10 for every row and breaks byte-identity.
+- tiltChannelsActive and noiseChannelsActive both live in convergencePolicy.ts, and the
+  first calls the second's tilt half. They must mirror simulateShard's tiltFastOn /
+  tiltSlowOn, including the 500 default for an unset tiltSlowMinDuration. Do not put a
+  second copy back in modelPresets.ts.
+- ROI_STD_ERR_MAX = 0.5 does not and cannot stop a run from losing more than it paid in. The
+  hot loop applies the skill shift to the ticket price (bulletCost = single x (1 - delta)),
+  so any negative shift costs more than the nominal buy-in. At 0.25, 3-4% of 100-tournament
+  runs still do it. Lowering the bound would only refuse honest small-sample uncertainty
+  (30-40 pp after a few hundred large-field MTTs).
+- integerBinLabel treats a bar as [lo, hi): it serves both half-integer edges (seats,
+  streaks) and the breakeven-chord histogram, whose edges are scaled by N/K and are whole
+  numbers when N is a multiple of 240.
+- The bankroll box commits each complete keystroke, so its Escape must restore the value
+  from the start of the edit (useBankrollDraft keeps it in a ref), not just drop the draft.
+- Demo rows of a game type that carries its own ITM (Battle Royale) must set itmRate
+  explicitly when the scenario's global target is on. scenarios.test.ts now checks every BR
+  row is at or above 3/18 after applyItmTarget.
+- Tilt can move ROI either way. The slow channel adds +tiltSlowGain in its 'up' state
+  (steady-reg uses 0.05), and tiltFastGain may be positive. Any copy or comment about tilt
+  must not say it lowers the mean: say the figure is before tilt and the MC mean is what the
+  runs averaged.
+- The CSV thousands guard has a players + buy-in reading only when the suspicious value has
+  exactly one comma. With more groups, use row.importErr.thousandsCommaGroups, which advises
+  the joined number only.
+- In the FinishPMFPreview hero strip, the ROI chip's rounded figure decides the sign and
+  colour of both chips. A neutral net still prints signed money (moneyFmt keeps a minus),
+  because a 0.0% ROI on a big ticket can still be dollars.
+- The trajectory EV line carries simulatedMean only under a live tilt channel.
+  trajectoryEvLegend uses it to name the MC mean beside the pre-tilt EV, so don't drop the
+  field when you refactor the line metadata.
+
+## Speed Work Keeps The Bytes
+
+The run got faster in three places without moving a number; a later "simplification"
+back to the obvious code costs 2-4x. Do not undo these without re-measuring:
+
+- The per-sample chord scan is `scanPathChords` (`pathChords.ts`), O(K log K). The
+  two-scan O(K²) definition stays in the same file as `scanPathChordsReference`: it is
+  the NaN fallback and the oracle of `pathChords.test.ts`. Segments share endpoints, so
+  "some segment from j on covers this level" is a range test on the suffix minimum and
+  maximum, and it switches off only once as j grows; the first return is a next-lower or
+  next-higher lookup. A change to what a chord is goes into both functions.
+- Envelope percentiles are order statistics, found by selection (`selectSortedRanks`),
+  never by sorting each column. The typed-array sort orders -0 before +0 and puts NaN
+  last; the selection recounts the sign of a zero result and a column with a NaN takes
+  the sort. The Floyd-Rivest swap of the pivot must be a real swap (writing the pivot
+  value back loses a -0).
+- The top-3 swing catalog is one pass with strict `>` (equal values keep the lower
+  sample index first, as the stable descending sort did).
+- To prove "same bytes", run `scripts/result_digest.ts` on both builds and `cmp` the
+  outputs. It digests the whole `SimulationResult` (typed arrays by their bytes, numbers
+  with -0 kept) over a matrix of inputs: every scenario
+  through `buildSimulationInput`, each format, schedule lengths 1, 2, 5, 239, 240, 241
+  and past 4,000, sample counts 1, 2, 3 and above the 200,000 envelope cap, uneven shard
+  splits in reverse order. The test suite alone compares runs with each other and would
+  not notice a statistic that moved for every seed.
+- Wall-clock on a busy machine is noise: measure `process.cpuUsage()` and interleave the
+  two builds. One trial of inlining the generator into the hot loop could not be told
+  from noise and was dropped.
 
 ## Good Defaults For New Agents
 

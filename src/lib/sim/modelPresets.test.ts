@@ -2,13 +2,17 @@ import { describe, it, expect } from "vitest";
 import type { ControlsState } from "@/components/ControlsPanel";
 import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { SCENARIOS } from "@/lib/scenarios";
+import { DICT } from "@/lib/i18n/dict";
+import { decodeState, encodeState, PERSISTED_STATE_VERSION, type PersistedState } from "@/lib/persistence";
 import {
   BASIC_MODE_MAX_SAMPLES,
+  ROI_STD_ERR_MAX,
   STANDARD_PRESETS,
   applyModelPatch,
   sanitizeControlsForBasicMode,
   withSupportedAlpha,
 } from "./modelPresets";
+import { tiltChannelsActive } from "./convergencePolicy";
 
 const baseState: ControlsState = {
   scheduleRepeats: 100,
@@ -170,5 +174,70 @@ describe("withSupportedAlpha", () => {
 
   it("hands back the same object when there is nothing to drop", () => {
     expect(withSupportedAlpha(baseState)).toBe(baseState);
+  });
+});
+
+
+describe("ROI uncertainty bound", () => {
+  const roiStdErrAfterDecode = (roiStdErr: number) =>
+    decodeState(
+      encodeState({
+        v: PERSISTED_STATE_VERSION,
+        schedule: [{ id: "r", label: "r", players: 500, buyIn: 10, rake: 0.1, roi: 0.1, payoutStructure: "mtt-standard", count: 1 }],
+        controls: { roiStdErr },
+      } as unknown as PersistedState),
+    )?.controls.roiStdErr;
+
+  it("a saved state or link above the field's bound loads at the bound", () => {
+    expect(roiStdErrAfterDecode(5)).toBe(ROI_STD_ERR_MAX);
+    expect(roiStdErrAfterDecode(ROI_STD_ERR_MAX + 0.01)).toBe(ROI_STD_ERR_MAX);
+    expect(roiStdErrAfterDecode(0.05)).toBe(0.05);
+  });
+
+  it("every preset sits inside it", () => {
+    for (const preset of STANDARD_PRESETS) {
+      expect(preset.patch.roiStdErr, preset.id).toBeLessThanOrEqual(ROI_STD_ERR_MAX);
+    }
+  });
+});
+
+describe("tilt presets say what the hot loop does", () => {
+  const patch = (id: string) => STANDARD_PRESETS.find((p) => p.id === id)!.patch;
+  const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
+
+  it("realistic-solo names its fast-tilt size and dollar scale instead of calling it mild", () => {
+    const solo = patch("realistic-solo");
+    const tagline = DICT["preset.realisticSolo.tagline"];
+    expect(tagline.en).toContain(`${Math.round(-solo.tiltFastGain * 100)} pp`);
+    expect(tagline.en).toContain(usd(solo.tiltFastScale));
+    expect(tagline.en).not.toMatch(/mild/i);
+    expect(tagline.ru).not.toMatch(/мягк/i);
+  });
+
+  it("steady-reg says the slow tilt also lifts ROI on an upswing", () => {
+    const steady = patch("steady-reg");
+    const tagline = DICT["preset.steadyReg.tagline"].en;
+    expect(tagline).toContain(usd(steady.tiltSlowThreshold));
+    expect(tagline).toContain(`${steady.tiltSlowMinDuration} tournaments`);
+    expect(tagline).toContain(`rises by ${Math.round(steady.tiltSlowGain * 100)} pp`);
+    expect(tagline).not.toMatch(/only appears/);
+  });
+
+  it("both session-noise presets say a session is one pass", () => {
+    for (const key of ["preset.realisticSolo.tagline", "preset.steadyReg.tagline"] as const) {
+      expect(DICT[key].en).toContain("A session is one pass of the schedule");
+    }
+  });
+
+  it("tiltChannelsActive follows the hot loop's gates", () => {
+    const off = { tiltFastGain: 0, tiltSlowGain: 0, tiltSlowThreshold: 0, tiltSlowMinDuration: 500 };
+    expect(tiltChannelsActive(off)).toBe(false);
+    expect(tiltChannelsActive(patch("realistic-solo"))).toBe(true);
+    expect(tiltChannelsActive(patch("steady-reg"))).toBe(true);
+    expect(tiltChannelsActive(patch("naive"))).toBe(false);
+    expect(tiltChannelsActive({ ...off, tiltSlowGain: 0.05 })).toBe(false);
+    expect(tiltChannelsActive({ ...off, tiltSlowGain: 0.05, tiltSlowThreshold: 100, tiltSlowMinDuration: 0.5 })).toBe(false);
+    // An unset streak length is the engine's 500, as noiseChannelsActive reads it.
+    expect(tiltChannelsActive({ tiltSlowGain: 0.05, tiltSlowThreshold: 100 })).toBe(true);
   });
 });

@@ -178,7 +178,10 @@ export function BigStat({
         {value}
       </div>
       {riskSubline ? (
-        <RiskSubline {...riskSubline} accentColor={accentColor} />
+        <>
+          <RiskSubline {...riskSubline} accentColor={accentColor} />
+          {sub && <StatSubline text={sub} accentColor={accentColor} />}
+        </>
       ) : rangeSubline ? (
         <RangeSubline {...rangeSubline} accentColor={accentColor} />
       ) : outcomeSubline ? (

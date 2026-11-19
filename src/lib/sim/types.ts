@@ -551,6 +551,12 @@ export interface SimulationInput {
    * that pass. Models "today the field is fishier than usual" or "today
    * I'm in form / off form". Correlated within a session, independent
    * across sessions. Defaults to 0.
+   *
+   * A session is a pass, not a fixed number of tournaments: with
+   * `scheduleRepeats` 1 (what the distance field always writes) the whole
+   * sample is one session, so the shock becomes a second per-sample ROI
+   * offset next to `roiStdErr` (solo preset: 5.8 pp run-level sd at 10 000
+   * tournaments, against 3.1 pp as 200 passes). `checkInputSanity` warns.
    */
   roiShockPerSession?: number;
   /**
@@ -563,7 +569,8 @@ export interface SimulationInput {
    * at your configured ROI") and only reaches the stationary σ after
    * ≈1/(1−ρ) sessions: per-session sd is σ·√(1−ρ^{2t}), so short runs see
    * proportionally less drift variance than the stationary σ implies
-   * (e.g. at ρ=0.95 a 20-session run realizes ≈77 % of σ).
+   * (e.g. at ρ=0.95 a 20-session run realizes ≈77 % of σ). With one pass
+   * (`scheduleRepeats` 1) the drift takes a single cold-start step.
    */
   roiDriftSigma?: number;
   /** AR(1) persistence for roiDriftSigma. Defaults to 0.95 if unset. */
@@ -590,6 +597,10 @@ export interface SimulationInput {
    *    of ROI at a deep drawdown" (typical tilter); +0.2 = "plays sharper
    *    when down". Defaults to 0 (channel off).
    *  - tiltFastScale (in profit $): drawdown depth at which tanh ≈ 0.76.
+   *    An MTT player is below the running max in nearly every tournament, so
+   *    with a scale of a few dozen buy-ins the shift is close to the full
+   *    gain all the time (`realistic-solo`, −0.15 at $2 500: −13 pp of ROI at
+   *    $50 buy-ins, −3 pp at $5).
    *    Defaults to 0, which is only reachable together with a non-zero gain
    *    as a mis-configuration: the hot loop floors the divisor at $1 to avoid
    *    a division by zero, so the shift saturates from the first dollar of
@@ -610,6 +621,14 @@ export interface SimulationInput {
    * +0.1 is the tilter who bleeds 10 pp of ROI while stuck in a downswing.
    * State exits only after recovering `tiltSlowRecoveryFrac` of the original
    * swing.
+   *
+   * The upswing is `profit − runningMin`, the rise from the sample's all-time
+   * low, while the drawdown is measured from the running max. For a winning
+   * player the upswing only grows, so once it passes the threshold the `up`
+   * state is entered and rarely left (`steady-reg` at $50, ROI +10 %: about
+   * +2 pp of ROI over 40 000 tournaments instead of a penalty). The threshold
+   * is in dollars, so at small stakes the up side dominates and at large ones
+   * only the down side fires.
    *
    * Defaults when unset: gain=0, threshold=0, minDuration=500 tournaments,
    * recoveryFrac=0.5. The channel is gated on gain ≠ 0 AND threshold > 0 AND
@@ -796,7 +815,7 @@ export type BattleRoyaleLeaderboardPromoResult =
 
 export interface CalibrationWarning {
   rowId: string;
-  kind: "primedope-target-clamped";
+  kind: "primedope-target-clamped" | "target-unreachable";
   targetWinnings: number;
   actualWinnings: number;
 }

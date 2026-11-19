@@ -105,7 +105,7 @@ export interface FormatComparisonSummary {
    * these in the UI so that all formats share one grid that reaches the
    * deepest observation of any of them. */
   careerMaxima: { drawdownBI: Float64Array; evShortfallBI: Float64Array };
-  /** Existing engine definition: trough to first strictly higher profit peak. */
+  /** Engine definition: trough of the deepest drawdown to the first return to the old peak (reaching it counts). */
   recovery: {
     recoveredSamples: number;
     noDrawdownSamples: number;

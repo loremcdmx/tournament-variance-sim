@@ -20,6 +20,7 @@ import {
   roundToStep,
   ROI_DECIMALS,
   SIGMA_DECIMALS,
+  SIGMA_GAP_DECIMALS,
   sigmaRange,
   THETA_SIGMA_DECIMALS,
 } from "@/lib/calibration/explorerView";
@@ -141,7 +142,7 @@ export function EmpiricalOceanExplorer({ profile, bridge, locale }: {
         </div>
         {anchorModel && <p className={`${muted} mt-3`}>{interpolate(t("empiricalOcean.anchorError"), { months: n(anchorModel.uncertainty.months, 0) })}</p>}
         {sigmaGap && <p className={`${muted} mt-3`}>{interpolate(t("empiricalOcean.sigmaGap"), {
-          delta: fixed(sigmaGap.gap, SIGMA_DECIMALS), percent: n(sigmaGap.gap / sigmaGap.anchorSigma * 100, 1), share: n(sigmaGap.prizeShare * 100, 0),
+          delta: fixed(sigmaGap.gap, SIGMA_GAP_DECIMALS), percent: n(sigmaGap.gap / sigmaGap.anchorSigma * 100, 1), share: n(sigmaGap.prizeShare * 100, 0),
           ocean: n(sigmaGap.cashPoolTarget * 100, 0), space: n(sigmaGap.cashPoolSource * 100, 0), ratio: n(sigmaGap.cashMeanRatio),
         })}</p>}
         <p className={`${muted} mt-3`}>{t("empiricalOcean.roiNote")}</p>

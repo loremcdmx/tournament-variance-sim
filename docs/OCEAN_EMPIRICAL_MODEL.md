@@ -43,4 +43,4 @@ The anchor is a historical cohort over 17 months, and its σ is carried by a few
     npx tsx scripts/anchor_uncertainty.ts --csv <calibration-monthly.csv> --qa <calibration-qa.json>
     npx tsx scripts/anchor_uncertainty.ts --csv <calibration-monthly.csv> --qa <calibration-qa.json> --check
 
-Displayed precision: σ, its SE and the ROI to one decimal, the SD of the result over a distance to two significant digits (tens below 1,000 BI, hundreds above), the SD of the average ROI to 0.1 percentage point. Rounding is for display only; every figure comes from the same unrounded values.
+Displayed precision: σ, its SE and the ROI to one decimal, the σ gap between the Ocean and Space cards to two decimals (at one decimal it contradicted the two cards in 7 of the 12 threshold / ticket / θ states), the SD of the result over a distance to tens of BI (hundreds would print Space and Ocean as the same "≈ 1,000"), the SD of the average ROI to 0.1 percentage point. Rounding is for display only; every figure comes from the same unrounded values.

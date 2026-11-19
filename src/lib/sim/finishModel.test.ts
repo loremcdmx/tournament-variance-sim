@@ -15,7 +15,9 @@ import {
   cashTargetFloor,
   targetEvTolerance,
   withinTargetEv,
+  playsWholeFieldShape,
 } from "./finishModel";
+import { applyItmTarget } from "./itmTarget";
 import { getPayoutTable } from "./payouts";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
 import { compileSchedule, runSimulation } from "./engine";
@@ -608,5 +610,102 @@ describe("empirical finish model resampling", () => {
   it("returns the pasted histogram itself when the field is as long as the histogram", () => {
     const pmf = buildFinishPMF(10, { id: "empirical", empiricalBuckets: spike }, 0);
     for (let i = 0; i < 10; i++) expect(pmf[i]).toBeCloseTo(spike[i] / total, 12);
+  });
+});
+
+describe("an empirical history on the run path", () => {
+  // 30 paid places of 200; the history cashes 9 times in each of places 1..30
+  // and finishes 4 times in each of places 31..200, so it is in the money
+  // 270 / 950 = 28.42% of the time against the table's 15%.
+  const N = 200;
+  const payouts = getPayoutTable("mtt-standard", N);
+  const paid = payouts.filter((p) => p > 0).length;
+  const pool = N * 100;
+  const buckets = Array.from({ length: N }, (_, i) => (i < 30 ? 9 : 4));
+  const model: FinishModelConfig = { id: "empirical", empiricalBuckets: buckets };
+
+  it("plays the pasted whole-field history, not the history squeezed into the paid places", () => {
+    expect(paid).toBe(30);
+    const r = calibrateShelledItm(N, paid, payouts, pool, 121, paid / N, { first: 0.05 }, model, 1);
+    const whole = buildFinishPMF(N, model, 0);
+    expect(Array.from(r.pmf)).toEqual(Array.from(whole));
+    expect(itmProbability(r.pmf, paid)).toBeCloseTo(270 / 950, 12);
+    expect(r.feasible).toBe(true);
+    expect(r.supportsTargetRoi).toBe(false);
+  });
+
+  it("gives a history of only wins P(1st) = 1 at the row's pinned ITM", () => {
+    const wins: FinishModelConfig = { id: "empirical", empiricalBuckets: [50, ...new Array(N - 1).fill(0)] };
+    const r = calibrateShelledItm(N, paid, payouts, pool, 121, paid / N, undefined, wins);
+    expect(r.pmf[0]).toBeCloseTo(1, 12);
+  });
+
+  it("keeps the no-data fallback: uniform over the paid places at the row's ITM", () => {
+    for (const empiricalBuckets of [undefined, [], [0, 0, 0]]) {
+      const empty: FinishModelConfig = { id: "empirical", empiricalBuckets };
+      expect(playsWholeFieldShape(empty)).toBe(false);
+      const r = calibrateShelledItm(N, paid, payouts, pool, 121, 0.15, undefined, empty);
+      for (let i = 0; i < paid; i++) expect(r.pmf[i]).toBeCloseTo(0.15 / paid, 12);
+      expect(r.pmf[N - 1]).toBeCloseTo(0.85 / (N - paid), 12);
+    }
+  });
+
+  it("reaches the engine's mean through the ITM the app stamps on every row", () => {
+    const row: TournamentRow = {
+      id: "e", players: N, buyIn: 100, rake: 0.1, roi: 0.1,
+      payoutStructure: "mtt-standard", gameType: "freezeout", count: 1,
+    };
+    const schedule = applyItmTarget([row], { enabled: false, pct: 18.7 });
+    expect(schedule[0].itmRate).toBe(0.15);
+    const historyEv = buckets.reduce((ev, n, i) => ev + n * (payouts[i] ?? 0) * pool, 0) / 950;
+    const input: SimulationInput = {
+      schedule, scheduleRepeats: 50, samples: 4000, bankroll: 0, seed: 20261119, finishModel: model,
+    };
+    const res = runSimulation(input);
+    expect(res.stats.itmRate).toBeCloseTo(270 / 950, 2);
+    expect(res.expectedProfit / 50).toBeCloseTo(historyEv - 110, 9);
+    const se = res.stats.stdDev / Math.sqrt(res.samples);
+    expect(Math.abs(res.stats.mean - res.expectedProfit) / se).toBeLessThan(4);
+  });
+});
+
+describe("ITM top-heaviness reaches only the models where it has a labelled meaning", () => {
+  const N = 500;
+  const payouts = getPayoutTable("mtt-standard", N);
+  const paid = payouts.filter((p) => p > 0).length;
+  const pool = N * 100;
+  const target = 121;
+  const grid = Array.from({ length: 41 }, (_, k) => Math.round((-1 + k * 0.05) * 100) / 100);
+
+  it.each(["power-law", "powerlaw-realdata-influenced"] as const)(
+    "%s: right raises P(1st) at the same EV",
+    (id) => {
+      let prev = -Infinity;
+      for (const bias of grid) {
+        const r = calibrateShelledItm(N, paid, payouts, pool, target, paid / N, undefined, { id }, bias);
+        expect(withinTargetEv(r.currentWinnings, target)).toBe(true);
+        expect(r.pmf[0]).toBeGreaterThanOrEqual(prev - 1e-15);
+        prev = r.pmf[0];
+      }
+      const flat = calibrateShelledItm(N, paid, payouts, pool, target, paid / N, undefined, { id }, -1);
+      const heavy = calibrateShelledItm(N, paid, payouts, pool, target, paid / N, undefined, { id }, 1);
+      expect(heavy.pmf[0]).toBeGreaterThan(flat.pmf[0]);
+    },
+  );
+
+  it.each<FinishModelConfig>([
+    { id: "plackett-luce" },
+    { id: "stretched-exp", beta: 1 },
+    { id: "linear-skill" },
+    { id: "uniform" },
+    { id: "empirical" },
+    { id: "empirical", empiricalBuckets: [20, 10, 5, 3, 2, 1, 1, 1, 1, 1] },
+    { id: "freeze-realdata-linear" },
+  ])("$id plays the same pmf at every bias", (model) => {
+    const neutral = calibrateShelledItm(N, paid, payouts, pool, target, paid / N, undefined, model, 0);
+    for (const bias of [-1, -0.5, 0.5, 1]) {
+      const r = calibrateShelledItm(N, paid, payouts, pool, target, paid / N, undefined, model, bias);
+      expect(Array.from(r.pmf)).toEqual(Array.from(neutral.pmf));
+    }
   });
 });

@@ -4,7 +4,7 @@
  * Owns the "streaks" phase of the build progress.
  */
 import type { BuildProgressCb } from "./engineTypes";
-import { histogramOf } from "./simNumerics";
+import { histogramOfLengths } from "./simNumerics";
 import type { SimulationResult } from "./types";
 
 export function computeStreakStats(
@@ -83,12 +83,17 @@ export function computeStreakStats(
   const recoveryMedian = recoveryPct(0.5);
   const recoveryP90 = recoveryPct(0.9);
   const recoveryUnrecoveredShare = unrecoveredCount / S;
-  const recoveredF = new Float64Array(recoveredOnly.length);
-  for (let i = 0; i < recoveredOnly.length; i++) recoveredF[i] = recoveredOnly[i];
-  const recoveryHistogram =
-    recoveredF.length > 0
-      ? histogramOf(recoveredF, 40, true, true)
-      : { binEdges: [0, 1], counts: [0] };
+  let recoveryHistogram: { binEdges: number[]; counts: number[] } = { binEdges: [0, 1], counts: [0] };
+  if (recoveredCount > 0) {
+    const countsByLen = new Int32Array(recoveredOnly[recoveredCount - 1] + 1);
+    for (let i = 0; i < recoveredCount; i++) countsByLen[recoveredOnly[i]]++;
+    recoveryHistogram = histogramOfLengths(
+      countsByLen,
+      Math.min(1, recoveredOnly[0]),
+      recoveryPct(0.999),
+      40,
+    );
+  }
 
   return {
     ddMean,

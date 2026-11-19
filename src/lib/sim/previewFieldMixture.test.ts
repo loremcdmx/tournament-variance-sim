@@ -34,14 +34,22 @@ describe("a Field-size range reads every displayed place range from one field", 
     const rep = computeRowStats({ ...pko, players: repSize }, model);
     const mixed = computeRowStats(row, model);
 
+    // The mixed table carves the last paid place out of the top-27 cut at
+    // every size, so its "first min-cash" share is not diluted by the fields
+    // whose top-27 cut would have swallowed it; the rest is the fixed layout.
+    const paid = rep.paidCount;
     const shown = mixed.tiers.filter((t) => !t.placesVary);
-    expect(shown.map(span)).toEqual(
-      rep.tiers.filter((t) => shown.some((s) => s.key === t.key)).map(span),
-    );
-    expect(shown.map((t) => t.key)).toEqual(["winner", "top3", "ft", "top27", "bubble", "ootm"]);
+    expect(shown.map(span)).toEqual([
+      "winner[1-1]", "top3[2-3]", "ft[4-9]", `top27[10-${paid - 1}]`,
+      `firstMincash[${paid}-${paid}]`, `bubble[${paid + 1}-${paid + 1}]`, `ootm[${paid + 2}-${repSize}]`,
+    ]);
+    expect(rep.tiers.map(span)).toEqual([
+      "winner[1-1]", "top3[2-3]", "ft[4-9]", `top27[10-${paid}]`,
+      `bubble[${paid + 1}-${paid + 1}]`, `ootm[${paid + 2}-${repSize}]`,
+    ]);
 
     const unshown = mixed.tiers.filter((t) => t.placesVary).map((t) => t.key);
-    expect(unshown).toEqual(["restItm", "firstMincash"]);
+    expect(unshown).toEqual(["restItm"]);
     for (const key of unshown) {
       expect(rep.tiers.some((t) => t.key === key)).toBe(false);
     }
@@ -62,11 +70,12 @@ describe("a Field-size range reads every displayed place range from one field", 
     expect(stats.tiers.reduce((a, t) => a + t.field, 0)).toBeCloseTo(1, 9);
     expect(stats.tiers.reduce((a, t) => a + t.ev, 0)).toBeCloseTo(stats.evPerEntry, 9);
     expect(stats.tiers.reduce((a, t) => a + t.netDollars, 0)).toBeCloseTo(stats.evPerEntry - stats.cost, 9);
-    for (const key of ["restItm", "firstMincash"] as const) {
-      const tier = stats.tiers.find((t) => t.key === key)!;
-      expect(tier.field).toBeGreaterThan(0);
-      expect(tier.placesVary).toBe(true);
-    }
+    const restItm = stats.tiers.find((t) => t.key === "restItm")!;
+    expect(restItm.field).toBeGreaterThan(0);
+    expect(restItm.placesVary).toBe(true);
+    const firstMincash = stats.tiers.find((t) => t.key === "firstMincash")!;
+    expect(firstMincash.field).toBeCloseTo(stats.shellFirstCash, 12);
+    expect(firstMincash.placesVary).toBeUndefined();
   });
 
   it("flags nothing for a single field", () => {

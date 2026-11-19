@@ -124,6 +124,55 @@ describe("computeScalarStats higher moments", () => {
     expect(flat.kurtosis).toBe(0);
     expect(flat.sharpe).toBe(0);
   });
+
+  it("a constant loss that does not sum exactly in binary still has no spread", () => {
+    const S = 10_000;
+    const finals = new Float64Array(S).fill(-232.2);
+    const out = computeScalarStats(finals, finals, S, 1, 0, 232.2);
+    expect(out.mean).toBe(-232.2);
+    expect(out.stdDev).toBe(0);
+    expect(out.skewness).toBe(0);
+    expect(out.kurtosis).toBe(0);
+    expect(out.sharpe).toBe(0);
+    expect(out.tournamentsFor95ROI).toBe(0);
+    expect(out.mcSeMean).toBe(0);
+    expect(out.minBankrollRoR1pctGaussian).toBe(232.21);
+  });
+});
+
+describe("computeScalarStats bankroll quotes on cent boundaries", () => {
+  // Each of these losses times 100 lands just under its integer in binary
+  // (18.4 * 100 = 1839.9999999999998), except the control 11 and π.
+  const LOSSES = [0.29, 0.57, 1.15, 4.6, 18.4, 36.8, 75.6, 68.32, 2342.2, 11, Math.PI, 1000];
+
+  it("quotes a bankroll strictly above a tied loss at every risk level", () => {
+    for (const loss of LOSSES) {
+      const finals = Float64Array.from({ length: 100 }, (_, i) => (i < 54 ? -loss : 19));
+      const mins = finals.map((v) => Math.min(0, v));
+      const out = computeScalarStats(finals, mins, 100, 1, loss, loss);
+      const quotes: Array<[number, number]> = [
+        [out.minBankrollRoR1pct, 0.01],
+        [out.minBankrollRoR5pct, 0.05],
+        [out.minBankrollRoR15pct, 0.15],
+        [out.minBankrollRoR50pct, 0.5],
+      ];
+      for (const [quote, risk] of quotes) {
+        expect(quote).toBeGreaterThan(loss);
+        expect(quote).toBeLessThanOrEqual(Math.ceil(loss * 100 + 1e-6) / 100 + 0.01);
+        const ruined = mins.reduce((n, v) => n + (v <= -quote ? 1 : 0), 0) / 100;
+        expect(ruined).toBeLessThanOrEqual(risk);
+      }
+    }
+  });
+
+  it("quotes a constant loss one cent above it on the Gaussian side", () => {
+    for (const loss of [0.29, 18.4, 11]) {
+      const finals = new Float64Array(100).fill(-loss);
+      const out = computeScalarStats(finals, finals, 100, 1, loss, loss);
+      expect(out.minBankrollRoR1pctGaussian).toBeGreaterThan(loss);
+      expect(out.minBankrollRoR1pctGaussian).toBe(Math.round(loss * 100 + 1) / 100);
+    }
+  });
 });
 
 describe("computeScalarStats risk / reward ratios", () => {

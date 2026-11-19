@@ -10,11 +10,13 @@ import {
 } from "react";
 import {
   clampItmTopHeavyBias,
+  finishModelSupportsItmTopHeavy,
   ITM_TOP_HEAVY_BIAS_STEP,
   MAX_ITM_TOP_HEAVY_BIAS,
   MIN_ITM_TOP_HEAVY_BIAS,
 } from "@/lib/sim/itmTopHeavy";
 import { equilibriumItmRateForRow } from "@/lib/sim/itmTarget";
+import { isBattleRoyaleRow } from "@/lib/sim/bountySplit";
 import {
   computeRowStats,
   type RowStats,
@@ -41,6 +43,7 @@ import {
   EV_BREAKDOWN_NUM,
   evPct,
   evPctInputValue,
+  fmtSignedPct,
   PREVIEW_SLIDER_RESET_CHROME,
   PREVIEW_SLIDER_VALUE_CHROME,
   PREVIEW_SLIDER_VALUE_INPUT,
@@ -61,6 +64,9 @@ interface Props {
    *  / disable the shape editor so the user knows tweaks would be
    *  overridden on the next render. */
   itmLocked?: boolean;
+  /** Under the "Like PrimeDope" preset the PrimeDope pass plays its own table
+   *  and finishes; this card still shows the app's model, and says so. */
+  primeDopePreset?: boolean;
 }
 
 const MONEY_DISPLAY_EPS = 0.005;
@@ -72,6 +78,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   leaderboardPromoPerEntry = 0,
   onRowChange,
   itmLocked,
+  primeDopePreset = false,
 }: Props) {
   const t = useT();
   const { locale } = useLocale();
@@ -203,7 +210,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
   const evTotal = totalEvPerEntry || 1;
 
   const moneyFmt = (v: number) => {
-    if (v === 0) return "$0";
+    if (!(Math.abs(v) >= MONEY_DISPLAY_EPS)) return "$0";
     const sign = v < 0 ? "-" : "";
     const abs = Math.abs(v);
     if (abs < 1000) {
@@ -215,7 +222,23 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
 
   const netProfitPerEntry = totalEvPerEntry - stats.cost;
   const roiPerEntry = stats.cost > 1e-9 ? netProfitPerEntry / stats.cost : 0;
-  const quickRoi = `${roiPerEntry >= 0 ? "+" : ""}${(roiPerEntry * 100).toFixed(1)}%`;
+  // The ROI chip's rounded figure decides the sign and colour of both chips, so
+  // a sub-$1 ticket cannot print opposite signs side by side and a net that
+  // rounds to 0.0% is neutral; a sub-cent net keeps one significant digit.
+  // A neutral net on a big ticket can still be dollars, so it keeps its minus.
+  const quickRoi = fmtSignedPct(roiPerEntry);
+  const netSign = quickRoi === fmtSignedPct(0) ? 0 : Math.sign(netProfitPerEntry);
+  const netAbs = Math.abs(netProfitPerEntry);
+  const netText = netSign === 0
+    ? moneyFmt(netProfitPerEntry)
+    : (netSign > 0 ? "+" : "-") +
+      (netAbs >= MONEY_DISPLAY_EPS ? moneyFmt(netAbs) : `$${netAbs.toPrecision(1)}`);
+  const netTextClass =
+    netSign > 0
+      ? "text-[color:var(--color-accent)]"
+      : netSign < 0
+        ? "text-[color:var(--color-danger)]"
+        : "text-[color:var(--color-fg-dim)]";
   const rowTitle = getTournamentRowDisplayLabel(effectiveRow, t);
   const bountyTag = effectiveRow.gameType === "ocean-ko"
     ? t("row.gameType.oceanKo")
@@ -227,6 +250,11 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
 
   return (
     <div className="flex flex-col gap-3.5">
+      {primeDopePreset && (
+        <p className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+          {t("preview.primedopeNote")}
+        </p>
+      )}
       {/* Tournament identity */}
       <div className="text-sm font-semibold text-[color:var(--color-fg)]">
         {rowTitle}
@@ -262,13 +290,13 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                   <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg)] opacity-70">
                     {t("preview.statRoi")}
                   </span>
-                  <span className="font-mono text-[15px] font-bold leading-none text-[color:var(--color-accent)] tabular-nums">
+                  <span className={`font-mono text-[15px] font-bold leading-none tabular-nums ${netTextClass}`}>
                     {quickRoi}
                   </span>
                 </div>
                 <div
                   className={`inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 shadow-sm ${
-                    netProfitPerEntry >= 0
+                    netSign >= 0
                       ? "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/14"
                       : "border-[color:var(--color-danger)]/45 bg-[color:var(--color-danger)]/12"
                   }`}
@@ -276,15 +304,8 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
                   <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg)] opacity-70">
                     {t("preview.avgReturn")}
                   </span>
-                  <span
-                    className={`font-mono text-[15px] font-bold leading-none tabular-nums ${
-                      netProfitPerEntry >= 0
-                        ? "text-[color:var(--color-accent)]"
-                        : "text-[color:var(--color-danger)]"
-                    }`}
-                  >
-                    {netProfitPerEntry >= 0 ? "+" : ""}
-                    {moneyFmt(netProfitPerEntry)}
+                  <span className={`font-mono text-[15px] font-bold leading-none tabular-nums ${netTextClass}`}>
+                    {netText}
                   </span>
                 </div>
               </div>
@@ -406,6 +427,11 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             highLabel={t("preview.topHeavyBias.heavy")}
             tip={t("preview.topHeavyBias.tip")}
             resetLabel={t("preview.evBias.reset")}
+            disabledReason={
+              finishModelSupportsItmTopHeavy(model.id) || isBattleRoyaleRow(effectiveRow)
+                ? undefined
+                : t("preview.topHeavyBias.unsupported")
+            }
           />
         )}
       </div>
@@ -689,9 +715,9 @@ export function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
           <div className="flex flex-col divide-y divide-[color:var(--color-border)]/60">
             {(
               [
-                { key: "first", label: t("shape.rowFirst"), current: stats.shellP1, value: row.finishBuckets?.first },
-                { key: "top3", label: t("shape.rowTop3"), current: stats.shellTop3, value: row.finishBuckets?.top3 },
-                { key: "ft", label: t("shape.rowFt"), current: stats.shellFt, value: row.finishBuckets?.ft },
+                { key: "first", label: t("shape.rowFirst"), current: stats.shellP1, lockAt: stats.lockP1, value: row.finishBuckets?.first },
+                { key: "top3", label: t(stats.paidCount < 3 ? "shape.rowItm" : "shape.rowTop3"), current: stats.shellTop3, lockAt: stats.lockTop3, value: row.finishBuckets?.top3 },
+                { key: "ft", label: t(stats.paidCount < 9 ? "shape.rowItm" : "shape.rowFt"), current: stats.shellFt, lockAt: stats.lockFt, value: row.finishBuckets?.ft },
               ] as const
             ).map((bucket) => {
               const locked = bucket.value != null;
@@ -739,7 +765,7 @@ export function ShapeControls({ row, stats, onRowChange }: ShapeControlsProps) {
                       if (locked) {
                         patchBuckets({ [bucket.key]: undefined } as Record<string, undefined>);
                       } else {
-                        patchBuckets({ [bucket.key]: bucket.current } as Record<string, number>);
+                        patchBuckets({ [bucket.key]: bucket.lockAt } as Record<string, number>);
                       }
                     }}
                     className="w-12 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)] px-1 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--color-fg-dim)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[color:var(--color-border)] disabled:hover:text-[color:var(--color-fg-dim)]"
@@ -1164,6 +1190,7 @@ export function TopHeavyPlacementSlider({
   highLabel,
   tip,
   resetLabel,
+  disabledReason,
 }: {
   committedBias: number;
   onCommit: (v: number) => void;
@@ -1172,7 +1199,10 @@ export function TopHeavyPlacementSlider({
   highLabel: string;
   tip: string;
   resetLabel: string;
+  /** Set when the finish model ignores the bias; the engine plays 0. */
+  disabledReason?: string;
 }) {
+  const disabled = disabledReason !== undefined;
   const [draftBias, setDraftBias] = useState<number | null>(null);
   const [manualText, setManualText] = useState<string | null>(null);
   const inflightBiasRef = useRef<number[]>([]);
@@ -1278,7 +1308,7 @@ export function TopHeavyPlacementSlider({
   return (
     <div
       className="mt-3 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/70 p-2.5"
-      title={tip}
+      title={disabledReason ?? tip}
       aria-busy={pending}
     >
       <div className="flex items-center justify-between gap-2">
@@ -1313,6 +1343,7 @@ export function TopHeavyPlacementSlider({
               }}
               aria-label={title}
               aria-invalid={manualOutOfRange || undefined}
+              disabled={disabled}
               inputMode="decimal"
               className={`${PREVIEW_SLIDER_VALUE_INPUT} pmf-slider-value-input w-16 text-[17px]`}
             />
@@ -1337,7 +1368,7 @@ export function TopHeavyPlacementSlider({
           </button>
         </div>
       </div>
-      <div className="mt-3 flex flex-col gap-2">
+      <div className={`mt-3 flex flex-col gap-2${disabled ? " opacity-50" : ""}`}>
         <div className="pmf-slider">
           <div
             aria-hidden
@@ -1372,6 +1403,7 @@ export function TopHeavyPlacementSlider({
             onKeyUp={(e) => commitSliderDraft(Number(e.currentTarget.value))}
             onBlur={(e) => commitSliderDraft(Number(e.currentTarget.value))}
             aria-valuetext={`${topHeavyPctInputValue(biasToTopHeavyPercent(effectiveBias))}%`}
+            disabled={disabled}
             className="absolute inset-0 z-10 block h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
             aria-label={title}
           />
@@ -1389,6 +1421,9 @@ export function TopHeavyPlacementSlider({
         </span>
         <span className="text-right">{highLabel}</span>
       </div>
+      {disabledReason && (
+        <p className="mt-2 text-[11px] text-[color:var(--color-fg-dim)]">{disabledReason}</p>
+      )}
     </div>
   );
 }

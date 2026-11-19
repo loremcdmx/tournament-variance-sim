@@ -20,6 +20,7 @@ import {
 import { runtimeSigmaBandResid } from "./runtimeSigmaBands";
 import { SIGMA_ROI_MYSTERY_ROYALE, sigmaRoiForRow } from "./convergenceFit";
 import { applyGameType } from "./gameType";
+import { applyItmTarget } from "./itmTarget";
 
 const z95 = ciToZ(0.95);
 const targetRow = 3; // +/-10%
@@ -80,12 +81,37 @@ describe("convergence math", () => {
         buyIn: base.buyIn,
         rake,
       };
-      const direct = buildExactBreakdown([ocean])!;
+      const direct = buildExactBreakdown(applyItmTarget([ocean], { enabled: false, pct: 0 }))!;
       const synthetic = buildOceanKoSigmaBand({ afs: 200, roi: 0.1, rake, totalTicket });
       expect(synthetic.s).toBe(direct.sigmaEff);
       estimates.push(synthetic.s);
     }
     expect(estimates[0]).not.toBeCloseTo(estimates[1], 6);
+  });
+
+  it("the Ocean tab compiles the row Run plays: ITM pinned, global target included", () => {
+    const rake = 8 / 92;
+    const base: TournamentRow = {
+      id: "ocean",
+      players: 1000,
+      buyIn: 100 / (1 + rake),
+      rake,
+      roi: 0.1,
+      payoutStructure: "mtt-gg-bounty",
+      count: 1,
+    };
+    const ocean = { ...base, ...applyGameType(base, "ocean-ko"), buyIn: base.buyIn, rake };
+    const free = buildExactBreakdown([ocean])!.sigmaEff;
+    for (const itmTarget of [
+      { enabled: false, pct: 0 },
+      { enabled: true, pct: 18.7 },
+    ]) {
+      const schedule = buildExactBreakdown(applyItmTarget([ocean], itmTarget))!.sigmaEff;
+      const tab = buildOceanKoSigmaBand({ afs: 1000, roi: 0.1, rake, totalTicket: 100, itmTarget });
+      expect(tab.s).toBe(schedule);
+      // The unpinned row this tab used to compile is a different number.
+      expect(Math.abs(tab.s / free - 1)).toBeGreaterThan(0.03);
+    }
   });
 
   it("Ocean KO uses runtime variance in both its own tab and a mixed schedule", () => {
@@ -104,7 +130,7 @@ describe("convergence math", () => {
       buyIn: base.buyIn,
       rake: base.rake,
     };
-    const runtime = buildExactBreakdown([ocean])!;
+    const runtime = buildExactBreakdown(applyItmTarget([ocean], { enabled: false, pct: 0 }))!;
     expect(runtime.varianceEstimate).toBe("upper-bound");
     const rows = computeConvergenceRows({
       afs: 500,

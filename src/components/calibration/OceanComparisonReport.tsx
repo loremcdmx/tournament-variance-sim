@@ -103,6 +103,11 @@ function FragmentHeaders({ t, className }: { t: Translate; className: string }) 
   return <><th scope="col" className={`text-right ${className}`}>{t("oceanReport.p50Label")}</th><th scope="col" className={`text-right ${className}`}>{t("oceanReport.p95Label")}</th></>;
 }
 
+/** A value that rounds to zero prints 0, never -0. */
+export function oceanNumberFormat(locale: Locale, maximumFractionDigits: number): Intl.NumberFormat {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits, signDisplay: "negative" });
+}
+
 export function OceanComparisonReport({ profile, bridge, locale, active = true }: { profile: PublicSpaceProfile; bridge: EmpiricalBridgeData; locale: Locale; active?: boolean }) {
   const t = useT();
   const id = useId();
@@ -115,7 +120,7 @@ export function OceanComparisonReport({ profile, bridge, locale, active = true }
   useEffect(() => {
     if (!active && comparisonStatus === "running") cancelComparison();
   }, [active, comparisonStatus, cancelComparison]);
-  const numberFormats = useMemo(() => Array.from({ length: 5 }, (_, maximumFractionDigits) => new Intl.NumberFormat(locale, { maximumFractionDigits })), [locale]);
+  const numberFormats = useMemo(() => Array.from({ length: 5 }, (_, digits) => oceanNumberFormat(locale, digits)), [locale]);
   const n = useCallback((value: number, digits = 1) => numberFormats[digits].format(value), [numberFormats]);
   const pct = useCallback((value: number) => `${n(value * 100, 1)}%`, [n]);
   const bounds = (value: NumericBounds) => Math.abs(value.upper - value.lower) < 0.00001 ? n(value.lower, 2) : `${n(value.lower, 2)}–${n(value.upper, 2)}`;

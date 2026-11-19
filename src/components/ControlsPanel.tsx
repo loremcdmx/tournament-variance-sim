@@ -9,6 +9,7 @@ import {
   supportsManualAlpha,
 } from "@/lib/sim/finishModel";
 import {
+  ROI_STD_ERR_MAX,
   STANDARD_PRESETS,
   applyModelPatch,
 } from "@/lib/sim/modelPresets";
@@ -517,7 +518,7 @@ export const ControlsPanel = memo(function ControlsPanel({
             id={`${fieldId}-roi-error`}
             value={value.roiStdErr}
             min={0}
-            max={5}
+            max={ROI_STD_ERR_MAX}
             step={0.01}
             onChange={(v) => setModel("roiStdErr", v)}
           />

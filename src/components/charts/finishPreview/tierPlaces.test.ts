@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DICT, type DictKey } from "@/lib/i18n/dict";
+import { applyGameType } from "@/lib/sim/gameType";
 import { computeRowStats } from "@/lib/sim/previewRowStats";
 import type { TournamentRow } from "@/lib/sim/types";
 import { tierLabel, tierPlacesLabel } from "./tierPlaces";
@@ -60,5 +61,24 @@ describe("tierLabel", () => {
     expect(
       tierLabel({ key: "top27", labelKey: "preview.tierTop27", posLo: 10, posHi: 15, placesVary: true }, en),
     ).toBe("10th-27th");
+  });
+
+  it("names a Battle Royale row's tail by its places: the bubble and 5th-9th are split out before it", () => {
+    const seed = mtt(500);
+    const br = { ...seed, ...applyGameType(seed, "mystery-royale") };
+    const stats = computeRowStats(br, model);
+    const tail = stats.tiers.at(-1)!;
+    expect(tail.posLo).toBe(10);
+    expect(tail.posHi).toBe(18);
+    expect(tierLabel(tail, en)).toBe("Places 10-18");
+    expect(tierLabel(tail, (key: DictKey) => DICT[key].ru)).toBe("10-18 места");
+    const notItm = stats.tiers.filter((t) => t.posLo > stats.paidCount).reduce((a, t) => a + t.field, 0);
+    expect(notItm).toBeCloseTo(1 - stats.itm, 12);
+    expect(tail.field).toBeLessThan(notItm - 0.1);
+  });
+
+  it("keeps Not ITM on a freezeout's tail", () => {
+    const tail = computeRowStats(mtt(1000), model).tiers.at(-1)!;
+    expect(tierLabel(tail, en)).toBe("Not ITM");
   });
 });

@@ -82,22 +82,24 @@ export function countProfits(arr: Float64Array): number {
 /**
  * Build a linear histogram from a "counts per integer length" array.
  * The input is effectively a sparse distribution keyed by streak length;
- * we re-bin it into [0, maxLen] linearly with `bins` buckets so the chart
- * renders "how often do streaks of this length occur" with a shape that
- * matches histogramOf (same {binEdges, counts} contract).
+ * we re-bin it linearly with up to `bins` buckets so the chart renders "how
+ * often do streaks of this length occur" with a shape that matches
+ * histogramOf (same {binEdges, counts} contract).
  */
 export function histogramFromCounts(
   countsByLen: Int32Array,
   bins: number,
   scale = 1,
 ): { binEdges: number[]; counts: number[] } {
+  let firstLen = 0;
   let maxLen = 0;
   let total = 0;
   for (let i = 1; i < countsByLen.length; i++) {
     const c = countsByLen[i];
     if (c > 0) {
       total += c;
-      if (i > maxLen) maxLen = i;
+      if (firstLen === 0) firstLen = i;
+      maxLen = i;
     }
   }
   if (maxLen === 0 || total === 0) {
@@ -125,21 +127,35 @@ export function histogramFromCounts(
   };
   const medianLen = pctLen(0.5);
   const p999Len = pctLen(0.999);
-  let hi = Math.min(maxLen, p999Len, Math.max(medianLen * 10, 20));
-  if (hi < 1) hi = 1;
-  // Streak lengths are integers — bin WIDTH must itself be an integer,
-  // otherwise some bins cover 2 integer values and others cover 1, and
-  // the overlay line alternates high/low between bins (hedgehog).
-  const w = hi <= bins ? 1 : Math.ceil(hi / bins);
-  bins = Math.max(1, Math.ceil(hi / w));
-  hi = bins * w;
+  const hi = Math.min(maxLen, p999Len, Math.max(medianLen * 10, 20));
+  return histogramOfLengths(countsByLen, firstLen, hi, bins, scale);
+}
+
+/**
+ * Bars of whole lengths `firstLen ..= lastLen`, each holding the same number
+ * of lengths and centred on them (edges at `len ± 0.5`, times `scale`), as
+ * `integerHistogram` does for satellite seats. Lengths past `lastLen` fold
+ * into the last bar, lengths below `firstLen` into the first. A width that
+ * is not a whole number of lengths gives some bars one more length than
+ * others (a comb), and edges from 0 left the first bar a length short.
+ */
+export function histogramOfLengths(
+  countsByLen: ArrayLike<number>,
+  firstLen: number,
+  lastLen: number,
+  maxBins: number,
+  scale = 1,
+): { binEdges: number[]; counts: number[] } {
+  const span = Math.max(1, lastLen - firstLen + 1);
+  const w = span <= maxBins ? 1 : Math.ceil(span / maxBins);
+  const bins = Math.ceil(span / w);
   const binEdges: number[] = new Array(bins + 1);
-  for (let i = 0; i <= bins; i++) binEdges[i] = i * w * scale;
+  for (let i = 0; i <= bins; i++) binEdges[i] = (firstLen - 0.5 + i * w) * scale;
   const counts: number[] = new Array(bins).fill(0);
-  for (let len = 1; len <= maxLen; len++) {
+  for (let len = 0; len < countsByLen.length; len++) {
     const c = countsByLen[len];
     if (c === 0) continue;
-    let b = len >= hi ? bins - 1 : Math.floor(len / w);
+    let b = Math.floor((len - firstLen) / w);
     if (b < 0) b = 0;
     else if (b >= bins) b = bins - 1;
     counts[b] += c;

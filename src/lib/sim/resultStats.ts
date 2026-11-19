@@ -8,6 +8,17 @@
 import type { BuildProgressCb } from "./engineTypes";
 import { countProfits, normalCdf } from "./simNumerics";
 
+/** The smallest whole cent strictly above `value`: `x * 100` can land just
+ *  under its integer (18.4 * 100 = 1839.9999999999998), and the plain
+ *  `floor + 1` then quotes `x` itself. */
+function centAbove(value: number): number {
+  const cents = Math.floor(value * 100) + 1;
+  const rounded = cents / 100;
+  if (rounded > value) return rounded;
+  const nextCent = (cents + 1) / 100;
+  return nextCent > value ? nextCent : value + Math.max(0.01, Math.abs(value) * Number.EPSILON);
+}
+
 export function computeScalarStats(
   finalProfits: Float64Array,
   runningMins: Float64Array,
@@ -21,7 +32,6 @@ export function computeScalarStats(
   let expectedProfitAccum = 0;
   for (let s = 0; s < S; s++) expectedProfitAccum += finalProfits[s];
 
-  const mean = expectedProfitAccum / S;
   // Direct typed-array memcpy: .slice() on a Float64Array is a single
   // memcpy, .from() iterates and boxes. Same for other sorted copies below.
   const sorted = finalProfits.slice().sort();
@@ -31,6 +41,9 @@ export function computeScalarStats(
   const median = pct(0.5);
   const min = sorted[0];
   const max = sorted[S - 1];
+  // A sum of S copies of a decimal like -232.2 is off by a few ulps, which
+  // gave every deviation the same tiny non-zero value and a σ of 1e-11.
+  const mean = min === max ? min : expectedProfitAccum / S;
   const p01 = pct(0.01);
   const p05 = pct(0.05);
   const p95 = pct(0.95);
@@ -204,7 +217,7 @@ export function computeScalarStats(
     return Math.min(1, Math.max(0, p));
   };
   const solveGaussianBankroll = (alpha: number): number => {
-    if (sigmaPerTournRuin <= 0) return mean < 0 ? (Math.floor(-mean * 100) + 1) / 100 : 0;
+    if (sigmaPerTournRuin <= 0) return mean < 0 ? centAbove(-mean) : 0;
     // Bracket: 0 → ruin prob = 1. Upper bound: scale with σ√N × 10.
     let lo = 0;
     let hi = Math.max(100, stdDev * 10);
@@ -235,7 +248,7 @@ export function computeScalarStats(
     const threshold = worstLosses[index];
     // Ruin includes equality. Quote a cent amount strictly above the loss
     // threshold so tied samples cannot invalidate the advertised risk bound.
-    return threshold > 0 ? (Math.floor(threshold * 100) + 1) / 100 : 0;
+    return threshold > 0 ? centAbove(threshold) : 0;
   };
   const minBankrollRoR1pct = historicalBankroll(0.01);
   const minBankrollRoR5pct = historicalBankroll(0.05);

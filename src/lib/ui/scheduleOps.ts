@@ -20,14 +20,42 @@ export function newScheduleRow(id: string): TournamentRow {
   };
 }
 
+// The editor has no guarantee field, so a guarantee (an old save or link, a
+// programmatic row) describes the pool the row had when it arrived. Once the
+// visible pool changes it would turn into an overlay nobody typed and shrink
+// the row's σ.
+const POOL_FIELDS = [
+  "players",
+  "buyIn",
+  "fieldVariability",
+  "gameType",
+  "payoutStructure",
+] as const satisfies readonly (keyof TournamentRow)[];
+
+function changesPool(row: TournamentRow, patch: Partial<TournamentRow>): boolean {
+  return POOL_FIELDS.some(
+    (key) =>
+      key in patch && JSON.stringify(patch[key]) !== JSON.stringify(row[key]),
+  );
+}
+
 export function patchRow(
   prev: TournamentRow[],
   id: string,
   patch: Partial<TournamentRow>,
 ): TournamentRow[] {
-  return prev.map((r) =>
-    r.id === id ? normalizeGameTypeConsistency({ ...r, ...patch }) : r,
-  );
+  return prev.map((r) => {
+    if (r.id !== id) return r;
+    const merged = { ...r, ...patch };
+    if (
+      merged.guarantee !== undefined &&
+      !("guarantee" in patch) &&
+      changesPool(r, patch)
+    ) {
+      merged.guarantee = undefined;
+    }
+    return normalizeGameTypeConsistency(merged);
+  });
 }
 
 export function removeRow(prev: TournamentRow[], id: string): TournamentRow[] {

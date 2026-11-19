@@ -88,13 +88,17 @@ measured against the engine's Monte Carlo, see
 surfaces still do: `computeConvergenceRows` falls back to them when no
 override is passed, and the sweep scripts keep measuring them.
 
-The price is one compile per ROI candidate. A full prove-edge table (18
-candidates plus the anchor) measured 2026-10-08 on one node process: about
-10–20 ms on a 1 000 field, 40 ms on 5 000, 70–90 ms on 10 000, 0.4–0.8 s on
-50 000 (the slider cap) and 1–2.4 s on 100 000; a repeat with the same inputs
-is free (memoized by format, field, ROI, rake and finish model), and the card
-defers its input so a slider drag does not queue one table per tick. Ocean KO
-has always been runtime; it is a strict upper bound with no band.
+The price is one compile and one `validateSchedule` per ROI candidate: the
+validation runs the calibration again to tell whether the run would accept
+that ROI (`formatRuntimeRoiReached`), and at 50 000 players it costs about as
+much as the compile. A full prove-edge table (18 candidates plus the anchor),
+measured 2026-11-19 as CPU time of one node process on a busy machine: about
+20–60 ms on a 1 000 field, 60–150 ms on 5 000, 130–200 ms on 10 000,
+0.6–1.0 s on 50 000 (the slider cap) and 1.2–2.8 s on 100 000 (Mystery is the
+slowest); a repeat with the same inputs is free (memoized by format, field,
+ROI, rake, finish model and ITM target), and the card defers its input so a
+slider drag does not queue one table per tick. Ocean KO has always been
+runtime; it is a strict upper bound with no band.
 
 ## Runtime σ band: what the cards show
 

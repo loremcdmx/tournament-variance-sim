@@ -1,6 +1,6 @@
 export interface RateLimitDecision {
   allowed: boolean;
-  /** Whole seconds until the next token; only meaningful when `allowed` is false. */
+  /** Whole seconds until the bucket holds the requested cost; only meaningful when `allowed` is false. */
   retryAfterSec: number;
 }
 
@@ -26,7 +26,8 @@ export class TokenBucketLimiter {
     this.refillPerMs = refillPerMinute / 60_000;
   }
 
-  take(key: string, now: number): RateLimitDecision {
+  /** All or nothing: a refused take spends no tokens, so waiting `retryAfterSec` lets the same cost through. */
+  take(key: string, now: number, cost = 1): RateLimitDecision {
     const bucket = this.buckets.get(key) ?? {
       tokens: this.capacity,
       updatedAt: now,
@@ -39,11 +40,11 @@ export class TokenBucketLimiter {
     this.buckets.delete(key);
     this.buckets.set(key, bucket);
     this.pruneIfCrowded(now);
-    if (bucket.tokens >= 1) {
-      bucket.tokens -= 1;
+    if (bucket.tokens >= cost) {
+      bucket.tokens -= cost;
       return { allowed: true, retryAfterSec: 0 };
     }
-    const waitMs = (1 - bucket.tokens) / this.refillPerMs;
+    const waitMs = (cost - bucket.tokens) / this.refillPerMs;
     this.pruneIfCrowded(now);
     return { allowed: false, retryAfterSec: Math.max(1, Math.ceil(waitMs / 1000)) };
   }

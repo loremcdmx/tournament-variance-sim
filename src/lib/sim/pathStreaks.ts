@@ -149,18 +149,18 @@ export function computePathStreakStats(
     }
     if (chordLen > longestChordGrid) longestChordGrid = chordLen;
 
-    // Forward scan: first jj > ii where the stride-segment crosses Pi.
-    // Mirrors engine.ts so the RB-toggle view renders a coherent "any
-    // streak" average. Both loops share the same stride so the resolution
-    // matches the chord-count histogram's granularity.
+    // Forward scan: first jj > ii where a step of the stored path crosses
+    // Pi. Starts keep the stride, the scan reads every stored point, as the
+    // engine's "any streak" average reads every tournament from its
+    // checkpoints (a strided scan read it up to 4.6x too long).
     let firstLen = 0;
-    for (let jj = ii + stride; jj < n; jj += stride) {
-      const a = p[Math.max(0, jj - stride)];
+    for (let jj = ii + 1; jj < n; jj++) {
+      const a = p[jj - 1];
       const b = p[jj];
       const lo = a < b ? a : b;
       const hi = a < b ? b : a;
       if (lo <= Pi && Pi <= hi) {
-        if (jj === ii + stride && a === Pi && b !== Pi) continue;
+        if (jj === ii + 1 && b !== Pi) continue;
         firstLen = jj - ii;
         break;
       }

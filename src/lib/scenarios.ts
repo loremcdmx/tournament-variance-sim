@@ -157,7 +157,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.12,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 50_000,
         count: 40,
       },
       {
@@ -169,7 +168,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.06,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 50_000,
         count: 20,
       },
       {
@@ -181,7 +179,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.03,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 50_000,
         count: 10,
       },
       {
@@ -193,7 +190,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.09,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 100_000,
         count: 25,
       },
       {
@@ -205,7 +201,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.045,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 100_000,
         count: 12,
       },
       {
@@ -217,7 +212,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.0225,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 100_000,
         count: 6,
       },
       {
@@ -229,7 +223,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.1,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 40_000,
         count: 20,
       },
       {
@@ -241,7 +234,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.05,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 40_000,
         count: 10,
       },
       {
@@ -253,7 +245,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.025,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 40_000,
         count: 5,
       },
       // ---- Freezeout generics (40% of load, ~104 tourneys) ----
@@ -265,7 +256,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.1,
         roi: 0.1,
         payoutStructure: "mtt-gg-freeze",
-        guarantee: 25_000,
         count: 30,
       },
       {
@@ -276,7 +266,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.1,
         roi: 0.05,
         payoutStructure: "mtt-gg-freeze",
-        guarantee: 25_000,
         count: 15,
       },
       {
@@ -287,7 +276,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.1,
         roi: 0.025,
         payoutStructure: "mtt-gg-freeze",
-        guarantee: 25_000,
         count: 7,
       },
       {
@@ -298,7 +286,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.09,
         roi: 0.08,
         payoutStructure: "mtt-pokerstars",
-        guarantee: 75_000,
         count: 30,
       },
       {
@@ -309,7 +296,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.09,
         roi: 0.04,
         payoutStructure: "mtt-pokerstars",
-        guarantee: 75_000,
         count: 15,
       },
       {
@@ -320,7 +306,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.09,
         roi: 0.02,
         payoutStructure: "mtt-pokerstars",
-        guarantee: 75_000,
         count: 7,
       },
       // ---- Named events, 1 shot each ----
@@ -332,7 +317,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.09,
         roi: 0.07,
         payoutStructure: "mtt-pokerstars",
-        guarantee: 150_000,
         count: 1,
       },
       {
@@ -344,7 +328,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.05,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 400_000,
         count: 1,
       },
     ],
@@ -453,7 +436,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.1,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 25_000,
         count: 60,
       },
       {
@@ -465,7 +447,6 @@ export const SCENARIOS: DemoScenario[] = [
         roi: 0.08,
         payoutStructure: "mtt-gg-bounty",
         bountyFraction: 0.5,
-        guarantee: 60_000,
         count: 40,
       },
       {
@@ -476,7 +457,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.09,
         roi: 0.1,
         payoutStructure: "mtt-pokerstars",
-        guarantee: 25_000,
         count: 40,
       },
       {
@@ -487,7 +467,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.09,
         roi: 0.08,
         payoutStructure: "mtt-pokerstars",
-        guarantee: 75_000,
         count: 25,
       },
     ],
@@ -513,7 +492,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.1,
         roi: 0.11,
         payoutStructure: "mtt-gg-freeze",
-        guarantee: 20_000,
         count: 42,
       },
       {
@@ -526,7 +504,6 @@ export const SCENARIOS: DemoScenario[] = [
         payoutStructure: "mtt-gg-bounty",
         gameType: "pko",
         bountyFraction: 0.5,
-        guarantee: 30_000,
         count: 34,
       },
       {
@@ -550,7 +527,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.09,
         roi: 0.07,
         payoutStructure: "mtt-pokerstars",
-        guarantee: 60_000,
         count: 12,
       },
     ],
@@ -577,6 +553,7 @@ export const SCENARIOS: DemoScenario[] = [
         payoutStructure: "battle-royale",
         gameType: "mystery-royale",
         bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+        itmRate: 0.18,
         count: 120,
       },
       {
@@ -602,7 +579,6 @@ export const SCENARIOS: DemoScenario[] = [
         payoutStructure: "mtt-gg-bounty",
         gameType: "pko",
         bountyFraction: 0.5,
-        guarantee: 40_000,
         count: 24,
       },
     ],
@@ -641,7 +617,6 @@ export const SCENARIOS: DemoScenario[] = [
         rake: 0.09,
         roi: 0.06,
         payoutStructure: "mtt-pokerstars",
-        guarantee: 750_000,
         count: 18,
       },
       {
@@ -654,7 +629,6 @@ export const SCENARIOS: DemoScenario[] = [
         payoutStructure: "mtt-gg-bounty",
         gameType: "pko",
         bountyFraction: 0.5,
-        guarantee: 120_000,
         count: 26,
       },
       {

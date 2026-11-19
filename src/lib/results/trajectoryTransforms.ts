@@ -25,6 +25,18 @@ export function jackpotHiddenShare(
   return hidden / mask.length;
 }
 
+// The filter strips both panes, and in a PrimeDope comparison only one pass
+// keeps its bounties (the PD pass is stripped of them, and under the "Like
+// PrimeDope" preset that pass is the primary): the share to show and to decide
+// the default by is the larger of the two.
+export function jackpotHiddenShareAcross(
+  passes: ReadonlyArray<Pick<SimulationResult, "jackpotMask"> | null | undefined>,
+): number {
+  let share = 0;
+  for (const pass of passes) if (pass) share = Math.max(share, jackpotHiddenShare(pass));
+  return share;
+}
+
 export function hideJackpotsByDefault(hiddenShare: number): boolean {
   return hiddenShare <= JACKPOT_AUTO_HIDE_MAX_SHARE;
 }

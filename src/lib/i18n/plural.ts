@@ -73,6 +73,10 @@ export const WORDS = {
     en: { one: "run", other: "runs" },
     ru: { one: "ран", few: "рана", many: "ранов" },
   },
+  hand: {
+    en: { one: "hand", other: "hands" },
+    ru: { one: "раздача", few: "раздачи", many: "раздач" },
+  },
 } as const satisfies Record<string, PluralForms>;
 
 /** Fills the `{_word}` placeholder of a dict template with the form that agrees with `n`. */

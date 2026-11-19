@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   computeProveEdge,
   defaultProveEdgeFormat,
+  proveEdgeDetectionPct,
   proveEdgeRuntimeSigmaPoints,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
+  rowIsPointOnly,
 } from "./proveEdge";
 import {
   formatRuntimeSigma,
@@ -13,7 +15,10 @@ import {
 } from "./formatRuntimeSigma";
 import { applyGameType } from "./gameType";
 import type { TournamentRow } from "./types";
-import { buildOceanKoSigmaBand } from "./convergenceMath";
+import { buildOceanKoSigmaBand, ciToZ } from "./convergenceMath";
+import { compileSchedule } from "./compile";
+import { applyItmTarget } from "./itmTarget";
+import { validateSchedule } from "./validation";
 
 const computeProveEdgeRows = (input: Parameters<typeof computeProveEdge>[0]) =>
   computeProveEdge(input).rows;
@@ -51,6 +56,46 @@ describe("computeProveEdgeRows (single-format mode)", () => {
       expect(row.insideFitBox).toBe(false);
     }
   });
+  it("Ocean KO tab σ equals Schedule mode for the same one-row Ocean schedule", () => {
+    const rake = 8 / 92;
+    const base: TournamentRow = {
+      id: "ocean",
+      players: 1000,
+      buyIn: 100 / (1 + rake),
+      rake,
+      roi: 0.1,
+      payoutStructure: "mtt-gg-bounty",
+      count: 1,
+    };
+    const ocean = { ...base, ...applyGameType(base, "ocean-ko"), buyIn: base.buyIn, rake };
+    for (const itmTarget of [
+      { enabled: false, pct: 0 },
+      { enabled: true, pct: 18.7 },
+    ]) {
+      const tab = computeProveEdge({
+        format: "ocean-ko",
+        afs: 1000,
+        rake,
+        oceanKoTotalTicket: 100,
+        itmTarget,
+        z: Z95,
+        currentRoi: 0.1,
+        candidates: [0.1],
+      });
+      const schedule = computeProveEdge({
+        format: "exact",
+        schedule: applyItmTarget([ocean], itmTarget),
+        afs: 0,
+        rake: 0,
+        z: Z95,
+        currentRoi: 0,
+        candidates: [0.1],
+      });
+      expect(tab.anchor.sigma).toBe(schedule.anchor.sigma);
+      expect(tab.anchor.tourneys).toBe(schedule.anchor.tourneys);
+    }
+  });
+
   it("returns one row per candidate", () => {
     const rows = computeProveEdgeRows(baseFreeze);
     expect(rows).toHaveLength(PROVE_EDGE_POSITIVE_CANDIDATES.length);
@@ -92,6 +137,24 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     expect(r10.tourneys).toBe(powered);
     expect(r10.tourneys / naiveMedian).toBeGreaterThan(3.95);
     expect(r10.tourneys / naiveMedian).toBeLessThan(4.05);
+  });
+
+  it("the printed chance is the one the volume delivers: Φ(z) = (1 + C)/2, not C", () => {
+    // A player whose true ROI is `roi` has mean roi·√N/σ standard errors over
+    // zero; the bar sits at z, so the chance of clearing it is Φ(roi·√N/σ − z).
+    // ciToZ(c) = Φ⁻¹((1 + c)/2), so Φ(x) = p exactly when x = ciToZ(2p − 1).
+    for (const ciPct of [50, 75, 90, 95, 99.9]) {
+      const z = ciToZ(ciPct / 100);
+      const r10 = computeProveEdgeRows({ ...baseFreeze, z }).find((r) => r.roi === 0.10)!;
+      const margin = (0.10 * Math.sqrt(r10.tourneys)) / r10.sigma - z;
+      const printed = proveEdgeDetectionPct(ciPct) / 100;
+      expect(margin).toBeGreaterThanOrEqual(ciToZ(2 * printed - 1) - 1e-9);
+      expect(margin - ciToZ(2 * printed - 1)).toBeLessThan(1e-3);
+      // The old copy printed C itself; the volume overshoots that promise.
+      expect(margin - ciToZ(2 * (ciPct / 100) - 1)).toBeGreaterThan(0.05);
+    }
+    expect(proveEdgeDetectionPct(95)).toBe(97.5);
+    expect(proveEdgeDetectionPct(50)).toBe(75);
   });
 
   it("freeze σ grows with ROI across the candidate grid (the old fit was flat in ROI)", () => {
@@ -160,6 +223,130 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     });
     expect(rows).toHaveLength(4);
     rows.forEach((r) => expect(r.tourneys).toBeGreaterThan(0));
+  });
+});
+
+describe("the highlight keeps the sign of the tested ROI", () => {
+  it("a losing ROI on the winning-only grid highlights nothing", () => {
+    const hidden = computeProveEdge({ ...baseFreeze, currentRoi: -0.10 });
+    expect(hidden.rows.filter((r) => r.isCurrent)).toHaveLength(0);
+    expect(hidden.anchor.roi).toBe(-0.10);
+    const shown = computeProveEdge({
+      ...baseFreeze,
+      currentRoi: -0.10,
+      candidates: PROVE_EDGE_DEFAULT_CANDIDATES,
+    });
+    expect(shown.rows.filter((r) => r.isCurrent).map((r) => r.roi)).toEqual([-0.10]);
+  });
+
+  it("a losing schedule highlights nothing on the winning-only grid", () => {
+    const losing = applyItmTarget(
+      [{
+        id: "a",
+        label: "a",
+        players: 500,
+        buyIn: 10,
+        rake: 0.1,
+        roi: -0.08,
+        payoutStructure: "mtt-standard",
+        gameType: "freezeout",
+        count: 1,
+      }],
+      { enabled: false, pct: 0 },
+    );
+    const input = {
+      format: "exact" as const,
+      schedule: losing,
+      afs: 0,
+      rake: 0,
+      z: Z95,
+      currentRoi: 0,
+    };
+    const hidden = computeProveEdge({ ...input, candidates: PROVE_EDGE_POSITIVE_CANDIDATES });
+    expect(hidden.rows.some((r) => r.isCurrent)).toBe(false);
+    const shown = computeProveEdge({ ...input, candidates: PROVE_EDGE_DEFAULT_CANDIDATES });
+    expect(shown.rows.filter((r) => r.isCurrent).map((r) => r.roi)).toEqual([-0.10]);
+  });
+
+  it("same-sign snapping is unchanged", () => {
+    const up = computeProveEdge({ ...baseFreeze, currentRoi: 1.0 });
+    expect(up.rows.filter((r) => r.isCurrent).map((r) => r.roi)).toEqual([0.30]);
+  });
+});
+
+describe("an ROI the pinned-ITM row cannot pay is flagged, not printed as reached", () => {
+  // Field 50, fee 20 %: the paid share and the first prize cap a freezeout at
+  // about +84 %, so Run (validateSchedule) blocks a +100 % row.
+  const corner = { ...baseFreeze, afs: 50, rake: 0.2, currentRoi: 1.0 };
+
+  it("the anchor carries roiReached=false and no range; a reachable fee keeps both", () => {
+    const blocked = computeProveEdge(corner);
+    expect(blocked.anchor.roiReached).toBe(false);
+    expect(blocked.anchor.insideFitBox).toBe(false);
+    expect(blocked.bandPolicy).toBe("outside-fit-box");
+    expect(blocked.anchor.tourneysLo).toBe(blocked.anchor.tourneys);
+    const fine = computeProveEdge({ ...corner, rake: 0.1 });
+    expect(fine.anchor.roiReached).toBe(true);
+    expect(fine.bandPolicy).toBe("numeric");
+  });
+
+  it("candidate rows below what a 50 % global ITM forces are flagged, the rest keep their band", () => {
+    const result = computeProveEdge({
+      ...baseFreeze,
+      itmTarget: { enabled: true, pct: 50 },
+      currentRoi: 0.6,
+      candidates: [0.6, 0.45, 0.2, 0.1],
+    });
+    // At field 200 a 50 % ITM cannot pay less than about +38 %.
+    expect(result.rows.map((r) => r.roiReached)).toEqual([true, true, false, false]);
+    // Out of reach the row saturates: two labels, one σ, so it is neither label's.
+    expect(result.rows[2].sigma).toBe(result.rows[3].sigma);
+    for (const r of result.rows.filter((row) => !row.roiReached)) {
+      expect(r.tourneysLo).toBe(r.tourneys);
+      expect(r.tourneysHi).toBe(r.tourneys);
+      expect(rowIsPointOnly(result, r)).toBe(false);
+    }
+    expect(result.bandPolicy).toBe("numeric");
+    expect(result.rows[0].tourneysLo).toBeLessThan(result.rows[0].tourneys);
+  });
+
+  it("a model that ignores the row ROI is never flagged (Run accepts it)", () => {
+    const result = computeProveEdge({ ...corner, finishModel: { id: "uniform" } });
+    expect(result.anchor.roiReached).toBe(true);
+  });
+
+  it("the Ocean KO tab is gated on its pinned row as Run gates it", () => {
+    // Field 300 at a 50 % global ITM: an Ocean row cannot be tuned down to −30 %.
+    const ocean = {
+      format: "ocean-ko" as const,
+      afs: 300,
+      rake: 0.087,
+      oceanKoTotalTicket: 100,
+      itmTarget: { enabled: true, pct: 50 },
+      z: Z95,
+      currentRoi: -0.3,
+      candidates: [-0.3, 0.1],
+    };
+    const result = computeProveEdge(ocean);
+    const runGate = (roi: number) => {
+      const base: TournamentRow = {
+        id: "o",
+        players: 300,
+        buyIn: 100 / 1.087,
+        rake: 0.087,
+        roi,
+        payoutStructure: "mtt-gg-bounty",
+        count: 1,
+      };
+      const row = { ...base, ...applyGameType(base, "ocean-ko"), buyIn: base.buyIn, rake: base.rake };
+      const [pinned] = applyItmTarget([row], ocean.itmTarget);
+      return validateSchedule([pinned], { id: "power-law" }).ok;
+    };
+    expect(runGate(-0.3)).toBe(false);
+    expect(runGate(0.1)).toBe(true);
+    expect(result.anchor.roiReached).toBe(false);
+    expect(result.rows.map((r) => r.roiReached)).toEqual([false, true]);
+    expect(computeProveEdge({ ...ocean, itmTarget: { enabled: false, pct: 0 } }).anchor.roiReached).toBe(true);
   });
 });
 
@@ -325,6 +512,57 @@ describe("computeProveEdge — schedule mode", () => {
       candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
     });
     expect(res.anchor.roi).toBeCloseTo(0.0928, 3);
+  });
+
+  it("anchor follows the engine's compiled ROI when the finish model ignores the row ROI", () => {
+    const schedule = applyItmTarget(
+      [makeRow({ players: 500, buyIn: 10, roi: 0.10 })],
+      { enabled: false, pct: 0 },
+    );
+    const engineRoi = (id: "freeze-realdata-linear" | "uniform" | "power-law") => {
+      const c = compileSchedule({
+        schedule, scheduleRepeats: 1, samples: 1, bankroll: 1, seed: 1, finishModel: { id },
+      });
+      return c.expectedProfit / c.totalBuyIn;
+    };
+    const anchorFor = (id: "freeze-realdata-linear" | "uniform" | "power-law") =>
+      computeProveEdge({
+        format: "exact",
+        schedule,
+        finishModel: { id },
+        afs: 0,
+        rake: 0,
+        z: Z95,
+        currentRoi: 0,
+        candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
+      }).anchor;
+
+    const linear = anchorFor("freeze-realdata-linear");
+    expect(engineRoi("freeze-realdata-linear")).toBeGreaterThan(0.15);
+    expect(linear.roi).toBe(engineRoi("freeze-realdata-linear"));
+    expect(linear.tourneys).toBe(
+      Math.ceil(Math.pow((2 * Z95 * linear.sigma) / linear.roi, 2)),
+    );
+    expect(anchorFor("uniform").roi).toBeCloseTo(-1 / 11, 9);
+    // The calibrated model still reads the typed ROI.
+    expect(anchorFor("power-law").roi).toBe(0.10);
+  });
+
+  it("a bounty row on a fixed-shape model keeps its typed ROI (the bounty closes the gap)", () => {
+    const pko = makeRow({
+      id: "p", players: 500, gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5,
+    });
+    const res = computeProveEdge({
+      format: "exact",
+      schedule: applyItmTarget([pko], { enabled: false, pct: 0 }),
+      finishModel: { id: "pko-realdata-linear" },
+      afs: 0,
+      rake: 0,
+      z: Z95,
+      currentRoi: 0,
+      candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
+    });
+    expect(res.anchor.roi).toBeCloseTo(0.10, 9);
   });
 
   it("schedule with all rows in fit-box → numeric band", () => {

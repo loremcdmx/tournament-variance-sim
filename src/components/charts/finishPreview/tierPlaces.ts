@@ -23,6 +23,7 @@ export function tierLabel(
   t: (key: DictKey) => string,
 ): string {
   const printed = PRINTED_PLACES[tier.key];
+  if (tier.key === "brTail" && !tier.placesVary) return placesText(tier, t);
   if (
     !printed ||
     tier.placesVary ||
@@ -30,6 +31,13 @@ export function tierLabel(
   ) {
     return t(tier.labelKey);
   }
+  return placesText(tier, t);
+}
+
+function placesText(
+  tier: Pick<TierRow, "posLo" | "posHi">,
+  t: (key: DictKey) => string,
+): string {
   if (tier.posLo === tier.posHi) {
     return t("preview.tierPlaceOne").replace("{n}", String(tier.posLo));
   }

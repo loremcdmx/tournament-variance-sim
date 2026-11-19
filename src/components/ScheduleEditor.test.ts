@@ -435,6 +435,48 @@ describe("CSV import: delimiters and decimal commas", () => {
     expect(parseImportCSV("Row, 500, 50+5, -12,5, mtt-standard").errors).toHaveLength(1);
   });
 
+  it("refuses a thousands comma in the players cell of a spaced comma list instead of shifting the columns", () => {
+    for (const [text, pair] of [
+      ["Sunday, 2,500, 55, 10", "2,500"],
+      ["Sunday, 12,500, 55", "12,500"],
+      ["Sunday, 2,500, 215, 15, mtt-standard", "2,500"],
+      ["Sunday, 2,500, 55, 10, 3, mtt-standard", "2,500"],
+    ]) {
+      const parsed = parseImportCSV(text);
+      expect(parsed.rows).toEqual([]);
+      expect(parsed.errors).toEqual([
+        `line 1: "${pair}" can be read two ways: one number, ${pair.replace(",", "")}, with a thousands separator, or two cells (players ${pair.split(",")[0]}, buy-in ${pair.split(",")[1]}). Write ${pair.replace(",", "")} for the first, or put a space after the comma in "${pair}" for the second`,
+      ]);
+    }
+  });
+
+  it("joins every thousands group, not just the first pair", () => {
+    const [error] = parseImportCSV("Sunday, 1,234,567, 55, 10").errors;
+    expect(error).toBe(
+      'line 1: "1,234,567" reads as 1234567 with thousands separators, which would shift the columns; write 1234567',
+    );
+    const ru = parseImportCSV("Sunday, 1,234,567, 55, 10", importMessageFor((key) => DICT[key].ru)).errors[0];
+    expect(ru).toContain("читается как 1234567");
+    expect(ru).not.toContain("две ячейки");
+  });
+
+  it("offers both readings of a plausible field and buy-in, in both languages", () => {
+    const en = parseImportCSV("Name, 100,109, 12, 5").errors[0];
+    expect(en).toContain("one number, 100109,");
+    expect(en).toContain("two cells (players 100, buy-in 109)");
+    const ru = parseImportCSV("Name, 100,109, 12, 5", importMessageFor((key) => DICT[key].ru)).errors[0];
+    expect(ru).toContain("как одно число 100109");
+    expect(ru).toContain("две ячейки (игроки 100, бай-ин 109)");
+    expect(ru).toContain("пробел после запятой в «100,109»");
+    expect(one("Name, 100, 109, 12, 5")).toMatchObject({ players: 100, buyIn: 109, count: 5 });
+  });
+
+  it("keeps the players cell as typed when there is no thousands comma to suspect", () => {
+    expect(one("Sunday, 2500, 55, 10")).toMatchObject({ players: 2500, buyIn: 55, count: 1 });
+    expect(one("HU,2,500,55,10")).toMatchObject({ players: 2, buyIn: 500, count: 10 });
+    expect(one("Row, 500, 50+5, 10").players).toBe(500);
+  });
+
   it("keeps ROI and count as two cells when the commas are spaced alike", () => {
     const row = one("Row, 500, 50+5, 12, 5");
     expect(row.roi).toBeCloseTo(0.12, 12);
@@ -789,6 +831,9 @@ describe("the editor shows its own text in the UI language", () => {
       "строка 3: неизвестная сетка выплат «wta»",
     ]);
     expect(parseImportCSV("Row, 500, 50+5, 12,5", ru).errors[0]).toMatch(/^строка 1: .*12,5.*десятичная запятая/);
+    expect(parseImportCSV("Sunday, 2,500, 55, 10", ru).errors).toEqual([
+      "строка 1: «2,500» можно прочитать двояко: как одно число 2500 с разделителем тысяч или как две ячейки (игроки 2, бай-ин 500). Для первого напиши 2500, для второго поставь пробел после запятой в «2,500»",
+    ]);
   });
 
   it("names an imported row with no label in the UI language", () => {

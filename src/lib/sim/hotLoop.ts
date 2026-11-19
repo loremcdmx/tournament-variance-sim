@@ -36,7 +36,12 @@ import {
 } from "./rng";
 import { poissonPTRS } from "./simNumerics";
 import { createOceanKoScratch, sampleOceanKoBounty } from "./oceanKo";
-import { createPathChordScratch, scanPathChords } from "./pathChords";
+import {
+  createFirstReturnScratch,
+  createPathChordScratch,
+  scanFirstReturns,
+  scanPathChords,
+} from "./pathChords";
 import {
   createDownsideReportArrays,
   createDownsideReportState,
@@ -137,6 +142,10 @@ function simulateShardInternal(
   const finalProfits = new Float64Array(shardSize);
   const pathMatrix = new Float64Array(shardSize * K1);
   const chordScratch = collectDetails ? createPathChordScratch(K1) : null;
+  // With a checkpoint at every tournament the grid scan already reads every
+  // tournament, and runs of 240 or fewer keep their old bytes.
+  const firstReturns = collectDetails && K < N ? createFirstReturnScratch(K) : null;
+  const profitTrace = new Float64Array(firstReturns ? N + 1 : 0);
   const maxDrawdowns = new Float64Array(shardSize);
   const maxRunUps = new Float64Array(shardSize);
   const runningMins = new Float64Array(shardSize);
@@ -560,6 +569,7 @@ function simulateShardInternal(
 
       if (bankroll > 0 && !ruined && profit <= -bankroll) ruined = true;
 
+      if (firstReturns) profitTrace[i + 1] = profit;
       while (nextCp <= K && i + 1 === nextCpIdx) {
         pathMatrix[pathBase + nextCp] = profit;
         nextCp++;
@@ -607,15 +617,24 @@ function simulateShardInternal(
       // extreme-value distribution of per-sample max chords.
       //
       // The "any streak" metric is the FIRST return instead: for each
-      // starting point, the first later time the path is back at that level.
-      // That is the span the user means by "I went up to X, dropped, climbed
-      // back to X". Averaged over the starting points that return at all.
+      // starting checkpoint, the first later tournament the path is back at
+      // that level. That is the span the user means by "I went up to X,
+      // dropped, climbed back to X". Averaged over the starting points that
+      // return at all.
       scanPathChords(pathMatrix, pathBase, K1, breakevenStreakCounts, chordScratch);
       longestBreakeven = K > 0 ? (chordScratch.longestChord / K) * N : 0;
-      breakevenStreakAvg =
-        chordScratch.firstReturnCount > 0 && K > 0
-          ? (chordScratch.firstReturnSum / chordScratch.firstReturnCount / K) * N
-          : 0;
+      if (firstReturns) {
+        scanFirstReturns(profitTrace, N, checkpointIdx, K, firstReturns);
+        breakevenStreakAvg =
+          firstReturns.firstReturnCount > 0
+            ? firstReturns.firstReturnSum / firstReturns.firstReturnCount
+            : 0;
+      } else {
+        breakevenStreakAvg =
+          chordScratch.firstReturnCount > 0 && K > 0
+            ? (chordScratch.firstReturnSum / chordScratch.firstReturnCount / K) * N
+            : 0;
+      }
     }
 
     if (

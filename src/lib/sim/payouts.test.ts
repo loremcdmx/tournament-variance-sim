@@ -228,7 +228,7 @@ describe("mtt-gg-freeze (GG freezeouts, fitted to real prizes)", () => {
   it("keeps the flat top step, the FT ratio, the paid share and the min-cash", () => {
     const N = 2000;
     const t = getPayoutTable("mtt-gg-freeze", N);
-    expect(t).toHaveLength(Math.floor(N * 0.145));
+    expect(t).toHaveLength(290);
     expect(t[0] / t[1]).toBeCloseTo(1.22, 9);
     for (let i = 2; i < 9; i++) expect(t[i - 1] / t[i]).toBeCloseTo(1.31, 9);
     expect(t[t.length - 1] * N).toBeCloseTo(2.24, 9);
@@ -240,6 +240,75 @@ describe("mtt-gg-freeze (GG freezeouts, fitted to real prizes)", () => {
       expect(t.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
       for (let i = 1; i < t.length; i++) expect(t[i]).toBeLessThanOrEqual(t[i - 1] + 1e-12);
     }
+  });
+});
+
+describe("paid places", () => {
+  it("pays the documented share at round fields (0.145 and 0.143 are stored below their decimal value)", () => {
+    const freeze: [number, number][] = [[200, 29], [400, 58], [800, 116], [3000, 435]];
+    for (const [N, paid] of freeze) expect(getPayoutTable("mtt-gg-freeze", N), String(N)).toHaveLength(paid);
+    const stars: [number, number][] = [[3000, 429], [5000, 715], [10_000, 1430]];
+    for (const [N, paid] of stars) expect(getPayoutTable("mtt-pokerstars", N), String(N)).toHaveLength(paid);
+  });
+
+  it("matches integer arithmetic for every rate-based structure", () => {
+    const perMille: [PayoutStructureId, number][] = [
+      ["mtt-standard", 150], ["mtt-flat", 200], ["mtt-top-heavy", 120], ["mtt-pokerstars", 143],
+      ["mtt-gg", 158], ["mtt-gg-freeze", 145], ["mtt-gg-bounty", 115], ["mtt-gg-mystery", 130],
+      ["satellite-ticket", 100],
+    ];
+    for (const [id, rate] of perMille) {
+      for (let N = 100; N <= 20_000; N += 100) {
+        const expected = Math.max(id === "mtt-gg-bounty" || id === "mtt-gg-mystery" ? 9 : 1, Math.floor((N * rate) / 1000));
+        expect(getPayoutTable(id, N).length, `${id} ${N}`).toBe(expected);
+      }
+    }
+  });
+});
+
+describe("realistic-curve fallback", () => {
+  const REALISTIC: PayoutStructureId[] = [
+    "mtt-standard", "mtt-flat", "mtt-top-heavy", "mtt-pokerstars", "mtt-gg",
+    "mtt-gg-freeze", "mtt-sunday-million", "mtt-gg-bounty", "mtt-gg-mystery",
+  ];
+
+  it.each(REALISTIC)("%s: 1st share moves smoothly where the tail can no longer hold its mass", (id) => {
+    let prev = getPayoutTable(id, 120)[0];
+    for (let N = 121; N <= 1200; N++) {
+      const first = getPayoutTable(id, N)[0];
+      // One more paid place moves 1st by up to about 2.4 % here; the old
+      // regime switch moved it 6-23 %.
+      expect(Math.abs(first / prev - 1), `${id} ${N - 1} -> ${N}`).toBeLessThan(0.035);
+      prev = first;
+    }
+  });
+
+  it("no longer flips Mystery between two shapes at 553-562 runners", () => {
+    const firsts = [553, 557, 560, 561, 562].map((N) => getPayoutTable("mtt-gg-mystery", N)[0]);
+    for (const f of firsts) expect(f).toBeCloseTo(0.124, 2);
+    const [, , at560, at561, at562] = firsts;
+    expect(at561).toBeLessThan(at560);
+    expect(at561).toBeGreaterThan(at562);
+  });
+
+  // The option title quotes this range; the old fallback paid 15-29% to 1st on
+  // every field from 50 to 553 under a "9-12.5%" title.
+  it("pays Mystery's 1st what the payout title says", () => {
+    for (let N = 550; N <= 30_000; N += N < 2000 ? 1 : 50) {
+      const first = getPayoutTable("mtt-gg-mystery", N)[0];
+      expect(first, String(N)).toBeGreaterThanOrEqual(0.09 - 1e-12);
+      expect(first, String(N)).toBeLessThanOrEqual(0.125 + 1e-12);
+    }
+    expect(getPayoutTable("mtt-gg-mystery", 50)[0]).toBeCloseTo(0.29, 2);
+  });
+
+  it("takes the flat-tail limit at the boundary (mtt-standard 259 vs 260)", () => {
+    const below = getPayoutTable("mtt-standard", 259);
+    const at = getPayoutTable("mtt-standard", 260);
+    expect(below[0]).toBeCloseTo(0.1914, 4);
+    expect(at[0]).toBeCloseTo(0.19, 4);
+    for (let i = 9; i < below.length - 1; i++) expect(below[i]).toBe(below[9]);
+    expect(below[below.length - 1]).toBeLessThan(below[9]);
   });
 });
 

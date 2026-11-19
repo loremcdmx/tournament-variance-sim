@@ -10,6 +10,7 @@ export function summarizePdStats(r: SimulationResult | null | undefined) {
   const fix4 = (v: number | undefined) =>
     v == null ? undefined : Number(v.toFixed(4));
   return {
+    calibrationMode: r.calibrationMode,
     ...(s.sigmaPerTournamentAnalyticKind
       ? { sigmaPerTourneyMathKind: s.sigmaPerTournamentAnalyticKind }
       : {}),
@@ -44,6 +45,21 @@ export function summarizePdStats(r: SimulationResult | null | undefined) {
       num("max") != null && num("mean") != null
         ? Math.round((num("max") as number) - (num("mean") as number))
         : undefined,
+  };
+}
+
+// Under the "Like PrimeDope" preset the primary pass is the PrimeDope one and
+// the comparison is ours, so the passes are told apart by calibration, never
+// by position.
+export function pdDiagnosticPasses(
+  result: SimulationResult,
+  comparison: SimulationResult | null | undefined,
+): { pd: SimulationResult | null; ours: SimulationResult | null } {
+  const passes = comparison ? [result, comparison] : [result];
+  const isPd = (r: SimulationResult) => r.calibrationMode === "primedope-binary-itm";
+  return {
+    pd: passes.find(isPd) ?? null,
+    ours: passes.find((r) => !isPd(r)) ?? null,
   };
 }
 

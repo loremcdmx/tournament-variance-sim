@@ -11,17 +11,21 @@
  * handle or a misconfigured row before reading "honest but useless"
  * results.
  */
+import { fieldVariantSizes } from "./fieldVariants";
+import { inferGameType } from "./gameType";
 import type { TournamentRow } from "./types";
 
 export type SanityFindingId =
   | "tilt-fast-no-scale"
   | "tilt-slow-no-threshold"
   | "tilt-slow-no-min-duration"
+  | "session-noise-single-pass"
   | "zero-bankroll"
   | "empirical-too-few-buckets"
   | "row-bounty-format-no-bounty"
   | "row-mystery-no-variance"
   | "row-pko-heat-no-bounty"
+  | "row-pko-single-table"
   | "row-zero-count";
 
 export interface SanityFinding {
@@ -38,6 +42,9 @@ export interface SanityInputs {
   tiltSlowThreshold: number;
   /** Tournaments of streak before the slow-tilt state flips; unset means the engine's 500. */
   tiltSlowMinDuration?: number;
+  roiShockPerSession?: number;
+  roiDriftSigma?: number;
+  scheduleRepeats?: number;
   bankroll: number;
   /** Active finishModelId — only `"empirical"` participates in the buckets check. */
   finishModelId: string;
@@ -48,6 +55,15 @@ const DEFAULT_TILT_SLOW_MIN_DURATION = 500;
 
 /** Buckets shorter than this make resampling so coarse it's misleading. */
 export const MIN_EMPIRICAL_BUCKETS = 50;
+
+/**
+ * The hot loop draws a PKO row's KO count as Poisson and adds head-size
+ * noise; on one table the real count is far tighter (heads-up the bounty is
+ * fixed by the result), so σ comes out about 30 % high heads-up, 5 % at 18
+ * players, 3.6 % at 50, 1.4 % at 180 and under 1 % from 500 up. The warning
+ * stops at one table, where the excess is largest.
+ */
+export const PKO_SINGLE_TABLE_MAX_FIELD = 18;
 
 export function checkInputSanity(
   controls: SanityInputs,
@@ -70,6 +86,17 @@ export function checkInputSanity(
     !(Math.floor(controls.tiltSlowMinDuration ?? DEFAULT_TILT_SLOW_MIN_DURATION) > 0)
   ) {
     findings.push({ id: "tilt-slow-no-min-duration" });
+  }
+
+  // The hot loop redraws the session shock and steps the drift once per
+  // schedule pass; with one pass the shock is a second per-run ROI offset and
+  // the drift takes a single step. The distance field always sets one pass.
+  if (
+    ((controls.roiShockPerSession ?? 0) > 0 || (controls.roiDriftSigma ?? 0) > 0) &&
+    controls.scheduleRepeats !== undefined &&
+    Math.floor(controls.scheduleRepeats) <= 1
+  ) {
+    findings.push({ id: "session-noise-single-pass" });
   }
 
   if (controls.bankroll <= 0 && schedule.length > 0) {
@@ -115,6 +142,19 @@ export function checkInputSanity(
     if (heat > 0 && bounty === 0) {
       findings.push({
         id: "row-pko-heat-no-bounty",
+        rowIdx: idx,
+        rowLabel: label,
+      });
+    }
+
+    if (
+      inferGameType(row) === "pko" &&
+      bounty > 0 &&
+      Math.floor(Math.min(...fieldVariantSizes(row)) * Math.max(1, row.lateRegMultiplier ?? 1)) <=
+        PKO_SINGLE_TABLE_MAX_FIELD
+    ) {
+      findings.push({
+        id: "row-pko-single-table",
         rowIdx: idx,
         rowLabel: label,
       });

@@ -47,4 +47,13 @@ describe("TokenBucketLimiter", () => {
     const stored = (limiter as unknown as { buckets: Map<string, unknown> }).buckets;
     expect(stored.size).toBeLessThanOrEqual(2);
   });
+
+  it("takes a cost all or nothing and names the wait for the whole cost", () => {
+    const limiter = new TokenBucketLimiter(30, 30);
+    for (let click = 0; click < 3; click++) expect(limiter.take("a", 0, 10).allowed).toBe(true);
+    const refused = limiter.take("a", 0, 10);
+    expect(refused).toEqual({ allowed: false, retryAfterSec: 20 });
+    expect(limiter.take("a", 19_000, 10).allowed).toBe(false);
+    expect(limiter.take("a", 20_000, 10).allowed).toBe(true);
+  });
 });

@@ -13,10 +13,13 @@
  * Power matters here. A naive N = (z·σ/|ROI|)² is the point where the test
  * threshold sits exactly at the true ROI, so a player whose true edge is
  * exactly that big still only clears the bar ~50 % of the time — it's the
- * median, not "you will have proven it". To make the displayed volume match
- * the UI promise ("N tournaments at C % confidence") we size for detection
- * power too: significance and power both use the confidence z, so
+ * median, not "you will have proven it". We size for detection power too:
+ * significance and power both use the confidence z, so
  * N = ((z + z)·σ/|ROI|)². At C = 95 % that is ~4× the old median.
+ *
+ * z is the two-sided quantile of C, so a player whose true ROI is exactly
+ * that big clears the C bar with probability Φ(z) = (1 + C)/2, not C (97.5 %
+ * at 95 %). The card prints that chance (`proveEdgeDetectionPct`).
  *
  * Same σ source as ConvergenceChart:
  *   - Single format → per-candidate runtime σ of the format's default one-row
@@ -39,6 +42,7 @@
 import {
   buildExactBreakdown,
   buildOceanKoSigmaBand,
+  oceanKoRoiReached,
   scheduleEffectiveRoi,
   type ExactBreakdown,
 } from "./convergenceMath";
@@ -50,11 +54,13 @@ import {
   type FitBoxSample,
 } from "./convergencePolicy";
 import {
+  formatRuntimeRoiReached,
   formatRuntimeSigma,
   runtimeSigmaBandResid,
   type RuntimeSigmaFormat,
   type RuntimeSigmaPoint,
 } from "./formatRuntimeSigma";
+import { isAlphaAdjustable } from "./finishModel";
 import type { ItmTargetConfig } from "./itmTarget";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
@@ -113,13 +119,19 @@ export interface ProveEdgeRow {
   fields: number;
   /** Whether this candidate sits inside its format's validated fit-box. */
   insideFitBox: boolean;
-  /** Highlighted as the user's anchor row (closest candidate). */
+  /** False when the format's row cannot pay this ROI at its pinned ITM (Run
+   *  would block it): `sigma` then belongs to the ROI the row saturates at,
+   *  so the card withholds the volume. Always true in schedule mode. */
+  roiReached: boolean;
+  /** Highlighted as the user's anchor row: the closest candidate of the same
+   *  sign, none when the grid has no row of that sign. */
   isCurrent: boolean;
 }
 
 export interface ProveEdgeAnchor {
-  /** Anchor ROI used for `sigma` / `tourneys` (= user's exact input,
-   *  or schedule's cost-weighted mean ROI in schedule mode). */
+  /** Anchor ROI used for `sigma` / `tourneys` (= user's exact input; in
+   *  schedule mode the schedule's cost-weighted mean ROI, or the engine's
+   *  expected ROI for a model that ignores the row ROI). */
   roi: number;
   sigma: number;
   sigmaLo: number;
@@ -129,6 +141,8 @@ export interface ProveEdgeAnchor {
   tourneysHi: number;
   fields: number;
   insideFitBox: boolean;
+  /** See `ProveEdgeRow.roiReached`. */
+  roiReached: boolean;
 }
 
 export type BandPolicy = "numeric" | "outside-fit-box";
@@ -157,7 +171,8 @@ export interface ProveEdgeInput {
   rake: number;
   /** Full ticket cost matters for Ocean's dollar-denominated bounty tiers. */
   oceanKoTotalTicket?: number;
-  /** Global ITM target of the run path; ignored for Ocean KO and schedule mode. */
+  /** Global ITM target of the run path; ignored in schedule mode, whose rows
+   *  arrive already stamped. */
   itmTarget?: ItmTargetConfig;
   /** Two-tailed z-score from the chosen confidence level. */
   z: number;
@@ -203,6 +218,7 @@ interface SigmaTriple {
   sigmaLo: number;
   sigmaHi: number;
   insideBox: boolean;
+  roiReached: boolean;
 }
 
 function runtimeSigmaPoint(
@@ -253,33 +269,35 @@ function singleFormatSigma(
   itmTarget?: ItmTargetConfig,
 ): SigmaTriple {
   if (format === "ocean-ko") {
-    const runtime = buildOceanKoSigmaBand({
-      afs, rake, roi, finishModel, totalTicket: oceanKoTotalTicket,
-    });
+    const ocean = {
+      afs, rake, roi, finishModel, totalTicket: oceanKoTotalTicket, itmTarget,
+    };
+    const runtime = buildOceanKoSigmaBand(ocean);
     return {
       sigma: runtime.s,
       sigmaLo: runtime.s,
       sigmaHi: runtime.s,
       insideBox: false,
+      roiReached: oceanKoRoiReached(ocean),
     };
   }
   const safeAfs = Math.max(1, afs);
-  const sigma = formatRuntimeSigma(
-    format,
-    runtimeSigmaPoint(safeAfs, rake, roi, finishModel, itmTarget),
-  );
+  const point = runtimeSigmaPoint(safeAfs, rake, roi, finishModel, itmTarget);
+  const sigma = formatRuntimeSigma(format, point);
   // A one-row schedule with a positive buy-in always compiles; a null here
   // would be an engine regression, not a reason to fall back to a fit.
   if (sigma === null) {
     throw new Error(`proveEdge: no runtime σ for ${format} at AFS ${safeAfs}`);
   }
-  const insideBox = isInsideFitBox({ format, field: safeAfs, roi });
+  const roiReached = formatRuntimeRoiReached(format, point);
+  const insideBox = roiReached && isInsideFitBox({ format, field: safeAfs, roi });
   const resid = insideBox ? runtimeSigmaBandResid(format) : 0;
   return {
     sigma,
     sigmaLo: sigma * (1 - resid),
     sigmaHi: sigma * (1 + resid),
     insideBox,
+    roiReached,
   };
 }
 
@@ -291,18 +309,24 @@ function singleFormatSigma(
  */
 export function rowIsPointOnly(
   result: Pick<ProveEdgeResult, "bandPolicy">,
-  row: Pick<ProveEdgeRow, "insideFitBox">,
+  row: Pick<ProveEdgeRow, "insideFitBox" | "roiReached">,
 ): boolean {
-  return result.bandPolicy === "numeric" && !row.insideFitBox;
+  return result.bandPolicy === "numeric" && row.roiReached && !row.insideFitBox;
+}
+
+/** Chance, in percent, that a player whose true ROI is the tested one clears
+ *  the two-sided `ciPct` bar over zero at the volume this card prints. */
+export function proveEdgeDetectionPct(ciPct: number): number {
+  return (100 + ciPct) / 2;
 }
 
 function nFromSigma(z: number, sigma: number, roi: number): number {
   const absRoi = Math.abs(roi);
   if (absRoi <= 1e-9) return Number.POSITIVE_INFINITY;
   // Significance + detection power, both at the chosen confidence z. The old
-  // (z·σ/roi)² gave only 50 % power (the median); sizing for power too means a
-  // player whose true ROI is `roi` actually clears the bar `confidence`% of
-  // the time. See module header.
+  // (z·σ/roi)² gave only 50 % power (the median); with the power term a
+  // player whose true ROI is `roi` clears the bar (1 + C)/2 of the time. See
+  // module header.
   const zDetect = z + z;
   return Math.ceil(Math.pow((zDetect * sigma) / absRoi, 2));
 }
@@ -314,6 +338,9 @@ function pickAnchorIndex(
   let best = -1;
   let bestDist = Infinity;
   candidates.forEach((roi, i) => {
+    // A losing ROI on the winning-only grid has no row; snapping it to +0.1 %
+    // marked the largest volume in the table as the chosen ROI.
+    if (roi * currentRoi < 0) return;
     const d = Math.abs(roi - currentRoi);
     if (d < bestDist - 1e-12) {
       bestDist = d;
@@ -361,6 +388,7 @@ export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {
       tourneysHi,
       fields,
       insideFitBox: triple.insideBox,
+      roiReached: triple.roiReached,
       isCurrent: i === anchorIdx,
     };
   });
@@ -385,6 +413,7 @@ export function computeProveEdge(input: ProveEdgeInput): ProveEdgeResult {
     tourneysHi: nFromSigma(z, anchorTriple.sigmaHi, currentRoi),
     fields: 0, // filled below
     insideFitBox: anchorTriple.insideBox,
+    roiReached: anchorTriple.roiReached,
   };
   anchor.fields = Number.isFinite(anchor.tourneys)
     ? anchor.tourneys / safeAfs
@@ -427,7 +456,12 @@ function computeProveEdgeSchedule(input: ProveEdgeInput): ProveEdgeResult {
   const sigmaHi =
     bandPolicy === "numeric" ? (breakdown?.sigmaEffHi ?? sigmaPoint) : sigmaPoint;
   const effectiveAfs = breakdown ? Math.max(1, breakdown.avgField) : 1;
-  const effectiveRoi = scheduleEffectiveRoi(safeSchedule);
+  // A fixed-shape model never calibrates to the typed row ROI, so the ROI the
+  // schedule really has is the one the engine compiles from its pmf.
+  const effectiveRoi =
+    breakdown && !isAlphaAdjustable(finishModel ?? { id: "power-law" })
+      ? breakdown.expectedRoi
+      : scheduleEffectiveRoi(safeSchedule);
   const anchorIdx = pickAnchorIndex(candidates, effectiveRoi);
 
   const rows: ProveEdgeRow[] = candidates.map((roi, i) => {
@@ -446,6 +480,7 @@ function computeProveEdgeSchedule(input: ProveEdgeInput): ProveEdgeResult {
       fields,
       // For schedule mode, "in fit-box" is global — every row must pass.
       insideFitBox: bandPolicy === "numeric",
+      roiReached: true,
       isCurrent: i === anchorIdx,
     };
   });
@@ -463,6 +498,7 @@ function computeProveEdgeSchedule(input: ProveEdgeInput): ProveEdgeResult {
       ? anchorTourneys / effectiveAfs
       : Infinity,
     insideFitBox: bandPolicy === "numeric",
+    roiReached: true,
   };
 
   return {

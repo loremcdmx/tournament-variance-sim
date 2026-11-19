@@ -7,6 +7,7 @@ import {
   sanitizeUsernameForLookup,
 } from "@/lib/sim/resulthubLookup";
 import { TokenBucketLimiter } from "@/lib/rateLimit";
+import { OBSERVED_USERNAMES_MAX_COUNT } from "@/lib/sim/battleRoyaleLeaderboardUi";
 
 // Server-side proxy for the ResultHub GG Battle Royale per-stake aggregate.
 // Lives on our origin so the browser can call it without tripping resulthub's
@@ -18,11 +19,19 @@ import { TokenBucketLimiter } from "@/lib/rateLimit";
 // response from before a code change can outlive an instance and survive a
 // click). Resulthub answers in ~300 ms; just go upstream every time.
 //
-// The control fans out one call per nick (up to 10 per click), so the
-// per-IP budget is sized for a few honest clicks a minute, not one.
+// A click asks for every saved nick (up to 10) in one call, repeated
+// `username` params, and is charged one token per nick all at once: a refused
+// click spends nothing and its Retry-After lets the whole click through.
+// The per-IP budget is sized for a few honest clicks a minute, not one.
 
 const RATE_LIMIT_PER_MINUTE = 30;
 const limiter = new TokenBucketLimiter(RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE);
+const NO_STORE = {
+  // Browser / CDN caches must not stash this — every click should
+  // be a fresh roundtrip. `force-dynamic` already does this on the
+  // Vercel side, the explicit header covers intermediaries.
+  "cache-control": "no-store, max-age=0",
+};
 
 function clientKey(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -30,8 +39,16 @@ function clientKey(request: Request): string {
   return first || request.headers.get("x-real-ip") || "unknown";
 }
 
+interface LookupAnswer {
+  status: number;
+  body: unknown;
+}
+
 export async function GET(request: Request) {
-  const limit = limiter.take(clientKey(request), Date.now());
+  const { searchParams } = new URL(request.url);
+  const usernames = searchParams.getAll("username").map(sanitizeUsernameForLookup);
+  const cost = Math.min(Math.max(1, usernames.length), OBSERVED_USERNAMES_MAX_COUNT);
+  const limit = limiter.take(clientKey(request), Date.now(), cost);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: "rate-limited", retryAfterSec: limit.retryAfterSec },
@@ -42,16 +59,31 @@ export async function GET(request: Request) {
     );
   }
 
-  const { searchParams } = new URL(request.url);
-  const rawUsername = searchParams.get("username") ?? "";
-  const username = sanitizeUsernameForLookup(rawUsername);
-  if (!username) {
+  if (usernames.length === 0 || usernames.some((username) => !username)) {
     return NextResponse.json(
       { error: "username required" },
       { status: 400 },
     );
   }
+  if (usernames.length > OBSERVED_USERNAMES_MAX_COUNT) {
+    return NextResponse.json(
+      { error: "too many usernames" },
+      { status: 400 },
+    );
+  }
 
+  if (usernames.length === 1) {
+    const answer = await lookupUsername(usernames[0]);
+    return NextResponse.json(answer.body, {
+      status: answer.status,
+      headers: answer.status === 200 ? NO_STORE : undefined,
+    });
+  }
+  const results = await Promise.all(usernames.map(lookupUsername));
+  return NextResponse.json({ results }, { headers: NO_STORE });
+}
+
+async function lookupUsername(username: string): Promise<LookupAnswer> {
   const window = allTimeBrLeaderboardWindow();
   const upstream = new URL(
     `${RESULTHUB_GG_BR_BASE}/aggregate/result/player/game-type/stake`,
@@ -81,44 +113,25 @@ export async function GET(request: Request) {
       err instanceof Error && err.name === "TimeoutError"
         ? "timeout"
         : "network";
-    return NextResponse.json(
-      { error: "resulthub-unreachable", reason },
-      { status: 502 },
-    );
+    return { status: 502, body: { error: "resulthub-unreachable", reason } };
   }
 
   if (!response.ok) {
-    return NextResponse.json(
-      { error: "resulthub-bad-status", status: response.status },
-      { status: 502 },
-    );
+    return { status: 502, body: { error: "resulthub-bad-status", status: response.status } };
   }
 
   let json: unknown;
   try {
     json = await response.json();
   } catch {
-    return NextResponse.json(
-      { error: "resulthub-bad-json" },
-      { status: 502 },
-    );
+    return { status: 502, body: { error: "resulthub-bad-json" } };
   }
 
   const summary = parseGgBrStakeResponse(json, window);
   if (!summary) {
-    return NextResponse.json(
-      { error: "resulthub-bad-json" },
-      { status: 502 },
-    );
+    return { status: 502, body: { error: "resulthub-bad-json" } };
   }
-  return NextResponse.json(summary, {
-    headers: {
-      // Browser / CDN caches must not stash this — every click should
-      // be a fresh roundtrip. `force-dynamic` already does this on the
-      // Vercel side, the explicit header covers intermediaries.
-      "cache-control": "no-store, max-age=0",
-    },
-  });
+  return { status: 200, body: summary };
 }
 
 export const dynamic = "force-dynamic";

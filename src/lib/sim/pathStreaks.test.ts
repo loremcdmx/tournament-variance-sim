@@ -185,3 +185,16 @@ describe("aggregateStreaks", () => {
     expect(Number.isNaN(agg.stats.recoveryP90)).toBe(true);
   });
 });
+
+describe("computePathStreakStats — first return reads every stored point", () => {
+  it("averages the first return from the strided starts, found at every point", () => {
+    // 0, 1, 0, 1, ... : from every start the path is back one point later or
+    // crosses the level on the second step. A strided scan saw only every
+    // fourth point and read 4.
+    const n = 401;
+    const path = new Float64Array(n);
+    for (let i = 0; i < n; i++) path[i] = i % 2;
+    const out = computePathStreakStats(path, synthX(n), null, null, 4);
+    expect(out.breakevenStreak).toBe(2);
+  });
+});

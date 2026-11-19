@@ -1,5 +1,7 @@
 import {
   applyBountyBias,
+  bountyEvCeiling,
+  bountyResidualFits,
   buildFinishPMF,
   calibrateAlpha,
   calibrateShelledItm,
@@ -36,7 +38,8 @@ export type TierKey =
   | "restItm"
   | "firstMincash"
   | "bubble"
-  | "ootm";
+  | "ootm"
+  | "brTail";
 
 export type TierLabelKey =
   | "preview.tierWinner"
@@ -161,12 +164,25 @@ export interface RowStats {
   shellP1: number;
   shellTop3: number;
   shellFt: number;
+  /** The same three before the sit-through transform: what the solver pinned
+   *  and what a lock must stamp to keep the row as it plays. */
+  lockP1: number;
+  lockTop3: number;
+  lockFt: number;
   /** Equilibrium probability of busting exactly at the bubble (first OOTM place). */
   shellBubble: number;
   /** Equilibrium probability of the last paid place — first mincash after the bubble. */
   shellFirstCash: number;
   /** Number of paid places (= payouts that are > 0). */
   paidCount: number;
+}
+
+function shellSums(pmf: Float64Array, paidCount: number) {
+  let top3 = 0;
+  for (let i = 0; i < Math.min(3, paidCount); i++) top3 += pmf[i];
+  let ft = 0;
+  for (let i = 0; i < Math.min(9, paidCount); i++) ft += pmf[i];
+  return { first: pmf[0] ?? 0, top3, ft };
 }
 
 /** Minimum ratio (× mean bounty) that counts a per-KO draw as a "jackpot"
@@ -251,7 +267,7 @@ export function computeRowStats(
       computeRowStatsAtField(
         { ...row, players, fieldVariability: undefined },
         model,
-        { skipCompiledSigma: true },
+        { skipCompiledSigma: true, carveLastPaid: sizes.length > 1 },
       ),
     ),
     sizes,
@@ -266,10 +282,16 @@ export function computeRowStats(
   };
 }
 
+/**
+ * `carveLastPaid` keeps the last paid place in its own tier at every field
+ * size. A mixture averages tiers by key, and a fixed field that pays 27 or
+ * fewer lets the top-27 (or final-table) cut swallow that place, so the mixed
+ * "first min-cash" share came out diluted by those fields.
+ */
 function computeRowStatsAtField(
   row: TournamentRow,
   model: FinishModelConfig,
-  options: { skipCompiledSigma?: boolean },
+  options: { skipCompiledSigma?: boolean; carveLastPaid?: boolean },
 ): RowStats {
   const economics = derivePreviewRowEconomics(row);
   const N = economics.fieldSize;
@@ -439,6 +461,7 @@ function computeRowStatsAtField(
     );
     pmf = buildFinishPMF(N, model, alpha);
   }
+  const bountyCeiling = bountyEvCeiling(N, row.buyIn, bountyFraction, pmf);
 
   const prizeByPlace = new Float64Array(N);
   for (let i = 0; i < Math.min(payouts.length, N); i++) {
@@ -454,6 +477,9 @@ function computeRowStatsAtField(
     bountyMean = Math.max(0, totalWinningsEV - cashEVActual);
   }
 
+  // A lock pins the solver's pmf; sit-through then moves mass again, so a lock
+  // taken from the played pmf would ask for more than the row now plays.
+  const lockShells = shellSums(pmf, paidCount);
   if (row.sitThroughPayJumps) {
     applySitThroughPayJumps(pmf, prizeByPlace, paidCount, row.payJumpAggression);
   }
@@ -549,6 +575,12 @@ function computeRowStatsAtField(
     } else if (Z > 1e-12) {
       const scale = bountyMean / Z;
       for (let i = 0; i < N; i++) bountyByPlace[i] = raw[i] * scale;
+    } else if (pmf[0] > 1e-12) {
+      // Same fallback as compileEntry: with no bust inside the KO window (a
+      // Mystery field that pays one place) the winner collects the whole pool.
+      bountyByPlace[0] = bountyMean / pmf[0];
+    } else {
+      bountyByPlace.fill(bountyMean);
     }
   }
 
@@ -666,6 +698,8 @@ function computeRowStatsAtField(
     hi: number;
   }
   const cuts: TierCut[] = [];
+  const cumulativeCap =
+    options.carveLastPaid && paidCount >= 2 ? paidCount - 1 : paidCount;
   cuts.push({ key: "winner", labelKey: "preview.tierWinner", color: "#ffde51", hi: 1 });
   // Fixed tier ladder: 1 / 2–3 / 4–9 / 10–27 (only for 100+ fields) / rest ITM.
   // Zero-width cuts are dropped downstream by the monotonic enforcement.
@@ -673,7 +707,7 @@ function computeRowStatsAtField(
     key: "top3",
     labelKey: "preview.tierTop3",
     color: "#fb923c",
-    hi: Math.min(3, paidCount),
+    hi: Math.min(3, cumulativeCap),
   });
   if (isBattleRoyale) {
     if (paidCount < N) {
@@ -697,14 +731,14 @@ function computeRowStatsAtField(
       key: "ft",
       labelKey: "preview.tierFt",
       color: "#a855f7",
-      hi: Math.min(ftEnd, paidCount),
+      hi: Math.min(ftEnd, cumulativeCap),
     });
     if (N >= 100) {
       cuts.push({
         key: "top27",
         labelKey: "preview.tierTop27",
         color: "#c026d3",
-        hi: Math.min(27, paidCount),
+        hi: Math.min(27, cumulativeCap),
       });
     }
     // 5%–ITM: everything from the last cumulative cut above down to the
@@ -733,8 +767,10 @@ function computeRowStatsAtField(
       });
     }
   }
+  // Battle Royale splits the bubble and 5th-9th out of the unpaid places, so
+  // its tail is only the places after the final table, not "Not ITM".
   cuts.push({
-    key: "ootm",
+    key: isBattleRoyale ? "brTail" : "ootm",
     labelKey: "preview.tierOotm",
     color: "#1f2937",
     hi: N,
@@ -803,12 +839,7 @@ function computeRowStatsAtField(
       : 0;
 
   // Shell panel stats — probabilities from the final PMF, directly readable.
-  const ftEndShell = Math.min(9, paidCount);
-  const shellP1 = pmf[0] ?? 0;
-  let shellTop3Sum = 0;
-  for (let i = 0; i < Math.min(3, paidCount); i++) shellTop3Sum += pmf[i];
-  let shellFtSum = 0;
-  for (let i = 0; i < ftEndShell; i++) shellFtSum += pmf[i];
+  const playedShells = shellSums(pmf, paidCount);
   const shellBubble = paidCount < N ? (pmf[paidCount] ?? 0) : 0;
   const shellFirstCash = paidCount > 0 ? (pmf[paidCount - 1] ?? 0) : 0;
   // The engine closes a bounty row's ROI gap by shrinking the KO budget, so a
@@ -817,7 +848,8 @@ function computeRowStatsAtField(
   const residualCanCloseTotal =
     bountyFraction > 0 &&
     currentWinningsFromSolver !== null &&
-    currentWinningsFromSolver <= totalWinningsEV + targetEvTolerance(totalWinningsEV);
+    currentWinningsFromSolver <= totalWinningsEV + targetEvTolerance(totalWinningsEV) &&
+    bountyResidualFits(totalWinningsEV - currentWinningsFromSolver, bountyCeiling);
 
   return {
     alpha,
@@ -850,9 +882,12 @@ function computeRowStatsAtField(
       currentWinningsFromSolver != null
         ? currentWinningsFromSolver
         : totalEv - bountyShareOfPayout * totalEv,
-    shellP1,
-    shellTop3: shellTop3Sum,
-    shellFt: shellFtSum,
+    shellP1: playedShells.first,
+    shellTop3: playedShells.top3,
+    shellFt: playedShells.ft,
+    lockP1: lockShells.first,
+    lockTop3: lockShells.top3,
+    lockFt: lockShells.ft,
     shellBubble,
     shellFirstCash,
     paidCount,

@@ -21,7 +21,7 @@ export function getPayoutTable(
       return normalize([0.5, 0.3, 0.2].slice(0, Math.max(1, Math.floor(players))));
 
     case "mtt-flat": {
-      const paid = Math.max(1, Math.floor(players * 0.2));
+      const paid = Math.max(1, paidShare(players, 200));
       return buildRealisticCurve(paid, players, {
         firstShare: firstShareForField(0.095, 0.065, players),
         ftRatio: 1.25,
@@ -30,7 +30,7 @@ export function getPayoutTable(
     }
 
     case "mtt-top-heavy": {
-      const paid = Math.max(1, Math.floor(players * 0.12));
+      const paid = Math.max(1, paidShare(players, 120));
       return buildRealisticCurve(paid, players, {
         firstShare: firstShareForField(0.25, 0.17, players),
         ftRatio: 1.55,
@@ -81,7 +81,7 @@ export function getPayoutTable(
       // first and min-cash are identical outcomes). We default to the
       // top 10% of the field as seats; use the custom-payouts field to
       // override with an exact seat count.
-      const seats = Math.max(1, Math.floor(players * 0.1));
+      const seats = Math.max(1, paidShare(players, 100));
       return new Array(seats).fill(1 / seats);
     }
 
@@ -94,11 +94,11 @@ export function getPayoutTable(
         const paid = Math.max(1, Math.min(Math.floor(players), custom.length));
         return normalize(custom.slice(0, paid));
       }
-      return normalizedGeometric(Math.max(1, Math.floor(players * 0.15)), 1.35);
+      return normalizedGeometric(Math.max(1, paidShare(players, 150)), 1.35);
 
     case "mtt-standard":
     default: {
-      const paid = Math.max(1, Math.floor(players * 0.15));
+      const paid = Math.max(1, paidShare(players, 150));
       return buildRealisticCurve(paid, players, {
         firstShare: firstShareForField(0.19, 0.12, players),
         ftRatio: 1.40,
@@ -146,7 +146,7 @@ function primedopeTable(players: number, custom?: number[]): number[] {
   const paid =
     custom && custom.length > 0
       ? Math.min(Math.max(1, Math.floor(players)), custom.length)
-      : Math.max(1, Math.floor(players * 0.15));
+      : Math.max(1, paidShare(players, 150));
   if (paid > 700) {
     return buildRealisticCurve(paid, players, {
       firstShare: firstShareForField(0.22, 0.13, players),
@@ -162,7 +162,7 @@ function primedopeTable(players: number, custom?: number[]): number[] {
  * (16,883 entries, $109, 1st=10.75%, ftRatio=1.40, min=1.75×bi).
  */
 function pokerStarsTable(players: number): number[] {
-  const paid = Math.max(1, Math.floor(players * 0.143));
+  const paid = Math.max(1, paidShare(players, 143));
   return buildRealisticCurve(paid, players, {
     firstShare: firstShareForField(0.16, 0.1075, players),
     ftRatio: 1.40,
@@ -175,7 +175,7 @@ function pokerStarsTable(players: number): number[] {
  * (911 entries, ₹25, 1st=16.71%, ftRatio=1.41, min=1.84×bi).
  */
 function ggTable(players: number): number[] {
-  const paid = Math.max(1, Math.floor(players * 0.158));
+  const paid = Math.max(1, paidShare(players, 158));
   return buildRealisticCurve(paid, players, {
     firstShare: firstShareForField(0.178, 0.115, players),
     ftRatio: 1.41,
@@ -201,7 +201,7 @@ function ggTable(players: number): number[] {
  *   3. 14.5 % of the field is paid; min-cash is 2.24 buy-ins.
  */
 function ggFreezeTable(players: number): number[] {
-  const paid = Math.max(1, Math.floor(players * 0.145));
+  const paid = Math.max(1, paidShare(players, 145));
   const t = Math.max(
     0,
     Math.min(
@@ -224,7 +224,7 @@ function ggFreezeTable(players: number): number[] {
  * SCOOP Main-ish behaviour at 16k and richer ~16 % 1st at 500 runners.
  */
 function sundayMillionTable(players: number): number[] {
-  const paid = Math.min(Math.max(1, Math.floor(players)), Math.max(9, Math.floor(players * 0.138)));
+  const paid = Math.min(Math.max(1, Math.floor(players)), Math.max(9, paidShare(players, 138)));
   return buildRealisticCurve(paid, players, {
     firstShare: firstShareForField(0.165, 0.115, players),
     ftRatio: 1.42,
@@ -265,7 +265,7 @@ function sundayMillionTable(players: number): number[] {
  */
 function ggBountyTable(players: number): number[] {
   if (players < 50) return smallFieldBountyTable(players);
-  const paid = Math.max(9, Math.floor(players * 0.115));
+  const paid = Math.max(9, paidShare(players, 115));
   return buildRealisticCurve(paid, players, {
     firstShare: firstShareForField(0.139, 0.09, players),
     ftRatio: 1.35,
@@ -299,7 +299,7 @@ function smallFieldBountyTable(players: number): number[] {
   // 19..49: small MTT regular column, 3–4 paid, mid-steep cascade.
   // No flatTop2 — winner-edge isn't muted by deep-FT bounty cascade
   // at this scale.
-  const paid = Math.max(3, Math.min(4, Math.floor(players * 0.10)));
+  const paid = Math.max(3, Math.min(4, paidShare(players, 100)));
   return buildRealisticCurve(paid, players, {
     firstShare: 0.42,
     ftRatio: 1.45,
@@ -332,7 +332,7 @@ function smallFieldBountyTable(players: number): number[] {
 function ggMysteryTable(players: number): number[] {
   // Same small-field reasoning as ggBountyTable — see its comment.
   if (players < 50) return smallFieldBountyTable(players);
-  const paid = Math.max(9, Math.floor(players * 0.13));
+  const paid = Math.max(9, paidShare(players, 130));
   return buildRealisticCurve(paid, players, {
     firstShare: firstShareForField(0.125, 0.09, players),
     ftRatio: 1.38,
@@ -365,7 +365,9 @@ interface RealisticCurveParams {
 /**
  * Realistic MTT curve generator — exact-constraint solver.
  *
- * Constraints hit exactly:
+ * Constraints hit exactly while the tail can hold `1 − ftSum` (otherwise the
+ * tail takes the limit of its family and the table is renormalized, so 1st
+ * and min-cash move off their targets):
  *   - table[0] = firstShare               (post-normalization)
  *   - table[i]/table[i+1] = ftRatio       for i in 1..ftLen-1 (or i in 2..
  *     when `flatTop2` pins table[0] = table[1])
@@ -420,11 +422,25 @@ function buildRealisticCurve(
   const maxTailSum = (tailLen - 1) * tailStart + tailEnd;
   const minTailSum = tailStart + (tailLen - 1) * tailEnd;
 
-  if (targetTailSum >= maxTailSum || targetTailSum <= minTailSum) {
+  // A tail too short to hold its mass takes the solver's own limit there
+  // (c -> 0, a flat tail), so the table does not jump where the field crosses
+  // the boundary. The linear tail it had moved 1st from 19.0 % to 20.8 %
+  // between 260 and 259 runners (mtt-standard) and flipped Mystery three
+  // times at 553-562.
+  if (targetTailSum >= maxTailSum) {
+    const raw = ft.slice();
+    for (let j = 0; j < tailLen; j++) {
+      raw.push(j < tailLen - 1 ? tailStart : tailEnd);
+    }
+    return normalize(raw);
+  }
+  // Only reached when the final table alone overflows the pool (Battle Royale
+  // shape on fields the editor never offers), far from any boundary.
+  if (targetTailSum <= minTailSum) {
     const raw = ft.slice();
     for (let j = 0; j < tailLen; j++) {
       const t = tailLen === 1 ? 1 : j / (tailLen - 1);
-      raw.push(tailEnd + delta * Math.pow(1 - t, 1));
+      raw.push(tailEnd + delta * (1 - t));
     }
     return normalize(raw);
   }
@@ -460,6 +476,12 @@ function buildRealisticCurve(
   return Math.abs(result.reduce((a, b) => a + b, 0) - 1) > 1e-9
     ? normalize(result)
     : result;
+}
+
+// 0.145 and 0.143 are stored just below their decimal value, so a float
+// product such as 200 * 0.145 = 28.999999999999996 floors one place short.
+function paidShare(players: number, perMille: number): number {
+  return Math.floor((players * perMille) / 1000);
 }
 
 function normalize(arr: number[]): number[] {

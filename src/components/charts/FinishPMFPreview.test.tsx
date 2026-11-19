@@ -63,3 +63,36 @@ describe("ShapeControls: the Top-3 lock", () => {
     expect(disabledCount(top3)).toBe(0);
   });
 });
+
+describe("ShapeControls: the FT and top-3 rows on a row that pays fewer places", () => {
+  // The solver pins top min(9, paid) and top min(3, paid): on a short table
+  // that is the ITM, and the label says so instead of naming a final table.
+  const labelsOf = (row: TournamentRow) => {
+    const html = render(row);
+    return (["shape.rowFirst", "shape.rowTop3", "shape.rowFt", "shape.rowItm"] as const)
+      .filter((key) => html.includes(`>${DICT[key].ru}</span>`));
+  };
+
+  it("keeps P(FT) and P(top-3) where at least nine places are paid", () => {
+    expect(labelsOf(base)).toEqual(["shape.rowFirst", "shape.rowTop3", "shape.rowFt"]);
+  });
+
+  it("calls the FT row P(ITM) on a Battle Royale row, which pays three", () => {
+    const br: TournamentRow = {
+      ...base, players: 18, payoutStructure: "battle-royale", gameType: "mystery-royale",
+      bountyFraction: 0.45, mysteryBountyVariance: 1.8, itmRate: 0.18,
+    };
+    const stats = computeRowStats(br, { id: "power-law" });
+    expect(stats.paidCount).toBe(3);
+    expect(stats.shellFt).toBeCloseTo(stats.itm, 12);
+    expect(labelsOf(br)).toEqual(["shape.rowFirst", "shape.rowTop3", "shape.rowItm"]);
+  });
+
+  it("calls both rows P(ITM) when fewer than three are paid", () => {
+    const sng: TournamentRow = { ...base, players: 6, payoutStructure: "sng-65-35", itmRate: 0.3 };
+    const stats = computeRowStats(sng, { id: "power-law" });
+    expect(stats.paidCount).toBe(2);
+    const html = render(sng);
+    expect(html.split(`>${DICT["shape.rowItm"].ru}</span>`).length - 1).toBe(2);
+  });
+});

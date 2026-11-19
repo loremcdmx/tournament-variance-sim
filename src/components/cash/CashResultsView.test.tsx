@@ -50,6 +50,7 @@ describe("cash streaks card with nothing to chart", () => {
   it("says no run fell below a previous peak instead of an empty breakeven chart", () => {
     const text = render({ wrBb100: 5000, sdBb100: 1 });
     expect(text).toContain(escaped(ru("cash.chart.breakeven.empty")));
+    expect(text).toContain(escaped(ru("cash.chart.recovery.noDrawdown")));
     expect(text).not.toContain(escaped(ru("cash.chart.recovery.empty")));
   });
 });
@@ -66,6 +67,12 @@ describe("recovery readouts say they are over the recovered runs only", () => {
     expect(ru("cash.hero.breakeven.subRecovery")).toMatch(/восстановивш/);
     expect(DICT["cash.hero.breakeven.subRecovery"].en).toMatch(/recovered/);
     expect(DICT["cash.summary.recoveryMedian"].en).toMatch(/recovered/);
+    // Runs with no drawdown are neither recovered nor unrecovered, so the tip
+    // says which runs each number is taken over.
+    expect(DICT["cash.summary.recoveryMedian.tip"].en).toMatch(/share of all runs/);
+    expect(DICT["cash.summary.recoveryMedian.tip"].en).toMatch(/never fell below a peak are left out of the median and count for Unrecovered only among all runs/);
+    expect(ru("cash.summary.recoveryMedian.tip")).toMatch(/доля от всех траекторий/);
+    expect(ru("cash.summary.recoveryMedian.tip")).toMatch(/в медиану не входят, а для «Не отмазались» считаются только среди всех траекторий/);
   });
 });
 
@@ -120,6 +127,13 @@ describe("economics card when the rakeback toggle is off", () => {
     const text = render({ rake: noRake, hoursBlock: { handsPerHour: 500 } });
     expect(text).toContain("EV / час");
     expect(text).toContain(escaped(ru("cash.stats.rakeNotModelled")));
+  });
+
+  it("sizes to its rows instead of stretching to the odds chart beside it", () => {
+    const text = render({ rake: noRake });
+    const title = text.indexOf(escaped(ru("cash.section.economics.title")));
+    const card = text.lastIndexOf('<div class="surface-card', title);
+    expect(text.slice(card, text.indexOf(">", card))).toContain("xl:self-start");
   });
 
   it("drops the per-row rake bars of a mix without any rakeback", () => {

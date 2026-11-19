@@ -4,7 +4,7 @@ import { DEFAULT_EXTREME_STYLES, type ExtremeStyles } from "@/lib/lineStyles";
 import { DICT, type DictKey } from "@/lib/i18n/dict";
 import { DEFAULT_LINE_STYLE_PRESET, LINE_STYLE_PRESETS } from "@/lib/lineStyles";
 import { DEFAULT_REF_LINES } from "@/lib/results/refLines";
-import { trajectoryLineTitle } from "@/lib/results/trajectoryLabels";
+import { trajectoryEvLegend, trajectoryLineTitle } from "@/lib/results/trajectoryLabels";
 import { buildTrajectoryAssets, computeYRange } from "./TrajectoryPlot";
 
 vi.mock("@/components/charts/UplotChart", () => ({ UplotChart: () => null }));
@@ -138,5 +138,40 @@ describe("trajectory hover titles in the Russian UI", () => {
   it("numbers a run from its sample index", () => {
     const run = assets.mainLines.find((line) => line.kind === "path")!;
     expect(trajectoryLineTitle(run, ru)).toBe("Ран 1");
+  });
+});
+
+describe("trajectory EV line under a live tilt channel", () => {
+  const build = (evBeforeTilt: boolean) =>
+    buildTrajectoryAssets(
+      { ...result(), totalBuyIn: 30, stats: { mean: -1.25 } } as unknown as SimulationResult,
+      "felt",
+      { min: -1, max: 1 },
+      null,
+      undefined,
+      LINE_STYLE_PRESETS[DEFAULT_LINE_STYLE_PRESET],
+      1000,
+      DEFAULT_REF_LINES,
+      { ev: { enabled: true } },
+      "random",
+      hiddenExtremes,
+      "PrimeDope",
+      evBeforeTilt,
+    ).mainLines.find((line) => line.label === "EV")!;
+
+  it("is titled as the pre-tilt EV, in both languages", () => {
+    expect(trajectoryLineTitle(build(true), (key) => DICT[key].en)).toBe("EV before tilt");
+    expect(trajectoryLineTitle(build(true), (key) => DICT[key].ru)).toBe("EV без тильта");
+  });
+
+  it("names the simulated mean in its legend, in both languages", () => {
+    const money = (v: number) => `${v < 0 ? "-" : ""}$${Math.abs(v).toFixed(2)}`;
+    expect(trajectoryEvLegend(build(true), (key) => DICT[key].en, money)).toBe("EV before tilt · MC mean -$1.25");
+    expect(trajectoryEvLegend(build(true), (key) => DICT[key].ru, money)).toBe("EV без тильта · MC-среднее -$1.25");
+  });
+
+  it("stays plain EV with no tilt", () => {
+    expect(trajectoryLineTitle(build(false), (key) => DICT[key].en)).toBe("EV");
+    expect(trajectoryEvLegend(build(false), (key) => DICT[key].en, String)).toBe("EV");
   });
 });

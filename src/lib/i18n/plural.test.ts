@@ -77,13 +77,16 @@ describe("dict templates with a counted noun", () => {
     "chart.traj.legend.runs",
     "chart.brLeaderboardObserved.rowLine",
     "chart.brLeaderboardObserved.observedMixLine",
+    "chart.brLeaderboardManual.anchorNote",
+    "unit.tourneyCount",
+    "cash.handCount",
   ];
 
   it.each(COUNTED)("%s takes its noun from a placeholder, not a fixed form", (key) => {
     for (const locale of ["en", "ru"] as const) {
       const text = DICT[key][locale];
-      expect(text, `${key}.${locale}`).toMatch(/\{_(tournament|run)\}/);
-      expect(text, `${key}.${locale}`).not.toMatch(/\}\s+(турниров|ранов|tournaments|runs)\b/);
+      expect(text, `${key}.${locale}`).toMatch(/\{_(tournament|run|hand)\}/);
+      expect(text, `${key}.${locale}`).not.toMatch(/\}\s+(турниров|ранов|раздач[иа]?|tournaments|runs|hands)(?![\p{L}])/u);
     }
   });
 

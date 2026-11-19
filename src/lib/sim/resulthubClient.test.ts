@@ -11,24 +11,29 @@ const summary = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ResultHub client", () => {
-  it("keeps a batch atomic when one nickname is rate limited", async () => {
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(Response.json(summary))
-      .mockResolvedValueOnce(Response.json({ error: "rate-limited", retryAfterSec: 12 }, { status: 429 })));
+  it("asks for a batch in one call, so a refused click reports the route's wait for the whole batch", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      Response.json({ error: "rate-limited", retryAfterSec: 20 }, { status: 429, headers: { "retry-after": "20" } }));
+    vi.stubGlobal("fetch", fetchMock);
     await expect(fetchResulthubGgBrMany(["current", "previous"]))
-      .rejects.toMatchObject({ code: "rate-limited", retryAfterSec: 12 });
+      .rejects.toMatchObject({ code: "rate-limited", retryAfterSec: 20 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/resulthub/gg-br?username=current&username=previous");
   });
 
   it("does not write a successful subset when another nickname has no data", async () => {
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(Response.json(summary))
-      .mockResolvedValueOnce(Response.json({ ...summary, totalPrizes: 0, pointsByStake: {} })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json({ results: [
+      { status: 200, body: summary },
+      { status: 200, body: { ...summary, totalPrizes: 0, pointsByStake: {} } },
+    ] })));
     await expect(fetchResulthubGgBrMany(["current", "misspelled"]))
       .rejects.toMatchObject({ code: "incomplete" });
   });
 
   it("sums the complete batch and uses the proxy timeout reason", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json(summary))));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ results: [
+      { status: 200, body: summary }, { status: 200, body: summary },
+    ] }))));
     const result = await fetchResulthubGgBrMany(["current", "previous"]);
     expect(result.totalPrizes).toBe(200);
     expect(result.pointsByStake["3"]).toBe(4000);
@@ -36,10 +41,23 @@ describe("ResultHub client", () => {
     await expect(fetchResulthubGgBr("current")).rejects.toMatchObject({ code: "timeout" });
   });
 
+  it("looks up a single nick with the single-nick call", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json(summary)));
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await fetchResulthubGgBrMany(["current"])).totalPrizes).toBe(100);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/resulthub/gg-br?username=current");
+  });
+
   it("tells the user the API changed when the proxy reports a payload it cannot read", async () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(
       Response.json({ error: "resulthub-bad-json" }, { status: 502 }))));
     await expect(fetchResulthubGgBr("current")).rejects.toMatchObject({ code: "bad-json" });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ results: [
+      { status: 200, body: summary }, { status: 502, body: { error: "resulthub-bad-json" } },
+    ] }))));
+    await expect(fetchResulthubGgBrMany(["current", "previous"]))
+      .rejects.toMatchObject({ code: "bad-json" });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json(summary))));
     await expect(fetchResulthubGgBrMany(["current", "previous"]))
       .rejects.toMatchObject({ code: "bad-json" });
     vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(

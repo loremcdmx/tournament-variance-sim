@@ -26,6 +26,7 @@ import {
 import {
   computeProveEdge,
   defaultProveEdgeFormat,
+  proveEdgeDetectionPct,
   proveEdgeRuntimeSigmaPoints,
   PROVE_EDGE_DEFAULT_CANDIDATES,
   PROVE_EDGE_POSITIVE_CANDIDATES,
@@ -49,6 +50,7 @@ import type {
   TournamentRow,
 } from "@/lib/sim/types";
 import { RAKE_PCT_MAX, RAKE_PCT_MIN } from "./convergenceInputs";
+import { fmt } from "@/lib/results/formatters";
 
 interface Props {
   /** User's schedule — required for the Schedule tab to do anything useful. */
@@ -201,6 +203,7 @@ export function ProveEdgeTable({
 }) {
   const t = useT();
   const pointOnly = result.rows.map((r) => rowIsPointOnly(result, r));
+  const unreachable = result.rows.map((r) => !r.roiReached);
   return (
     <>
       <div
@@ -262,7 +265,16 @@ export function ProveEdgeTable({
                   <td
                     className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 text-right font-mono ${cellTone}`}
                   >
-                    {fmtRange(r.tourneys, r.tourneysLo, r.tourneysHi, numberLocale)}
+                    {unreachable[i] ? (
+                      <span
+                        className="cursor-help text-[color:var(--color-fg-dim)]"
+                        title={t("proveEdge.row.unreachable")}
+                      >
+                        —†
+                      </span>
+                    ) : (
+                      fmtRange(r.tourneys, r.tourneysLo, r.tourneysHi, numberLocale)
+                    )}
                     {pointOnly[i] && (
                       <span
                         className="ml-0.5 cursor-help text-[color:var(--color-fg-dim)]"
@@ -275,7 +287,7 @@ export function ProveEdgeTable({
                   <td
                     className={`border-b border-[color:var(--color-border)]/40 px-2 py-1.5 text-right font-mono ${cellTone}`}
                   >
-                    {fmtFields(r.fields)}
+                    {unreachable[i] ? "—" : fmtFields(r.fields)}
                   </td>
                 </tr>
               );
@@ -286,6 +298,11 @@ export function ProveEdgeTable({
       {pointOnly.some(Boolean) && (
         <p className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
           * {t("proveEdge.row.pointOnly")}
+        </p>
+      )}
+      {unreachable.some(Boolean) && (
+        <p className="text-[11px] leading-snug text-[color:var(--color-fg-dim)]">
+          † {t("proveEdge.row.unreachable")}
         </p>
       )}
     </>
@@ -367,7 +384,8 @@ export function ProveEdgeCard({
   const { result, pending } = useProveEdgeResult(deferredProveEdgeInput);
 
   const scheduleEmpty = isExact && (!schedule || schedule.length === 0);
-  const outOfBox = result.bandPolicy === "outside-fit-box";
+  const anchorUnreachable = !result.anchor.roiReached;
+  const outOfBox = result.bandPolicy === "outside-fit-box" && !anchorUnreachable;
   const hasOceanKo = format === "ocean-ko" || (
     isExact && schedule?.some((row) => inferRowFormat(row) === "ocean-ko")
   );
@@ -618,8 +636,14 @@ export function ProveEdgeCard({
         </div>
       )}
 
+      {!scheduleEmpty && anchorUnreachable && (
+        <div className={`rounded border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-[color:var(--c-warn-fg-soft)]/95 transition-opacity ${pending ? "opacity-50" : ""}`}>
+          {fmt(t("proveEdge.unreachable"), { roi: fmtRoi(result.anchor.roi) })}
+        </div>
+      )}
+
       {/* Anchor summary */}
-      {!scheduleEmpty && (
+      {!scheduleEmpty && !anchorUnreachable && (
         <div className={`rounded border-l-2 border-[color:var(--color-accent)]/60 bg-[color:var(--color-accent)]/5 px-3 py-2 text-[11px] leading-snug text-[color:var(--color-fg-muted)] transition-opacity ${pending ? "opacity-50" : ""}`}>
           <span className="text-[color:var(--color-accent)]">
             {t("proveEdge.anchor.prefix")}
@@ -635,6 +659,7 @@ export function ProveEdgeCard({
                 numberLocale,
               ),
             )
+            .replace("{power}", `${Number(proveEdgeDetectionPct(ciPct).toFixed(3))}`)
             .replace("{ci}", `${ciPct}`)
             .replace("{afs}", fmtAfs(result.effectiveAfs, numberLocale))
             .replace("{fields}", fmtFields(result.anchor.fields))}
