@@ -314,6 +314,46 @@ describe("computeRowStats on a Field-size range describes the fields the engine 
     expect(computeRowStats(row, model).payoutStd).toBeCloseTo(compiledStd, 8);
     expect(computeRowStats(row, model, { skipCompiledSigma: true }).payoutStd).toBeCloseTo(compiledStd, 6);
   });
+
+  it("previews a Battle Royale row that still carries a range as the 18-max the engine plays", () => {
+    // compileSchedule and validateSchedule drop the range from a BR row, so
+    // the preview must not average over the range's 10-26 entrants.
+    const editorRow: TournamentRow = { ...base, players: 18, buyIn: 10 };
+    const br: TournamentRow = {
+      ...editorRow,
+      ...applyGameType(editorRow, "mystery-royale"),
+      fieldVariability: range(10, 26, 3),
+    };
+    const stats = computeRowStats(br, model);
+    const { slot } = compiledVariants(br);
+    const m = compiledEntryMoments(slot);
+    let cashEv = 0;
+    for (let i = 0; i < slot.fieldSize; i++) cashEv += placeProbability(slot, i) * slot.prizeByPlace[i];
+
+    expect(slot.fieldSize).toBe(18);
+    expect(stats).toEqual(computeRowStats(normalizeGameTypeConsistency(br), model));
+    expect(stats.evPerEntry).toBeCloseTo(slot.analyticMeanSingle, 9);
+    expect(stats.cashEvPerEntry).toBeCloseTo(cashEv, 9);
+    expect(stats.payoutStd).toBeCloseTo(Math.sqrt(m.secondDollar - m.meanDollar ** 2), 9);
+    expect(stats.bountyShare).toBeCloseTo(br.bountyFraction!, 9);
+  });
+
+  it("previews a Mystery row left on the Battle Royale table as the Mystery row the engine plays", () => {
+    // An explicit gameType wins: compileSchedule moves the payout to
+    // mtt-gg-mystery, and the preview must use the same table.
+    const row: TournamentRow = {
+      ...base, players: 200, gameType: "mystery", payoutStructure: "battle-royale",
+      bountyFraction: 0.5, mysteryBountyVariance: 2, itmRate: 0.15,
+    };
+    const stats = computeRowStats(row, model);
+    const { slot } = compiledVariants(row);
+    const m = compiledEntryMoments(slot);
+
+    expect(stats).toEqual(computeRowStats(normalizeGameTypeConsistency(row), model));
+    expect(stats.paidCount).toBe(slot.paidCount);
+    expect(stats.evPerEntry).toBeCloseTo(slot.analyticMeanSingle, 9);
+    expect(stats.payoutStd).toBeCloseTo(Math.sqrt(m.secondDollar - m.meanDollar ** 2), 9);
+  });
 });
 
 describe("computeRowStats shell feasibility agrees with validateSchedule on bounty rows", () => {
