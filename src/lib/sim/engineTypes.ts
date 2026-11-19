@@ -66,10 +66,11 @@ export interface CompiledEntry {
    */
   mysteryBountyExpMinus1: number;
   /**
-   * Expected number of knockouts by finish place. Used by the hot loop to
-   * add within-place stochastic noise to the bounty haul: at a fixed place
-   * the realized KO count is Poisson around `bountyKmean[place]`, and the
-   * realized bounty payout equals `bountyByPlace[place] × K / kmean`. K is
+   * Expected number of knockouts by finish place. Mystery and Battle Royale
+   * rows use it in the hot loop to add within-place stochastic noise to the
+   * bounty haul: at a fixed place the realized KO count is Poisson around
+   * `bountyKmean[place]`, and the realized bounty payout equals
+   * `bountyByPlace[place] × K / kmean` (PKO rows read `pkoKoCash`). K is
    * drawn via inline Knuth multiplication for λ < 30 and PTRS (Hörmann 1993)
    * for λ ≥ 30 — see `poissonPTRS` in simNumerics and the hot-loop branch.
    * Mean is preserved exactly; the per-tournament within-place variance is
@@ -83,6 +84,27 @@ export interface CompiledEntry {
   /** Precomputed 1/bountyKmean[i] for the bounty normalization. Replaces the
    *  per-tourney divide with a multiply. Zero where bountyKmean is zero. */
   bountyKmeanInv: Float64Array | null;
+  /**
+   * Progressive-knockout elimination picture of a PKO row, in the unit of
+   * the raw place weights. `pkoKoCash[j]` is the expected cash of the
+   * knockout made when j + 1 players remain; a player still alive then makes
+   * it with probability 1/j. The player finishing at index `place` is alive
+   * for j = place + 1 .. N − 1, so the KO count is that exact Bernoulli sum:
+   * late in a tournament few players remain and a Poisson count is far too
+   * wide. Each knockout is multiplied by a mean-one log-normal factor with
+   * log-σ `pkoKoLogSigma[place]`, sized so that the haul's variance at that
+   * place, `pkoHaulVariance[place]`, is the tree's own (victim head sizes and
+   * the winner's head growing with the own knockouts included). The winner
+   * also keeps `pkoWinnerHead`, the expected own final head, as a fixed
+   * amount: it is not a knockout. The haul is paid as
+   * `bountyByPlace[place] × haul × pkoRawInv[place]`, so every place and
+   * every heat bin keeps its mean. Null / 0 for every other format.
+   */
+  pkoKoCash: Float64Array | null;
+  pkoRawInv: Float64Array | null;
+  pkoKoLogSigma: Float64Array | null;
+  pkoHaulVariance: Float64Array | null;
+  pkoWinnerHead: number;
   /**
    * Analytical per-bullet E[prize + bounty] from the calibrated pmf. Should
    * equal `singleCost · (1 + row.roi)` to within float tolerance for any

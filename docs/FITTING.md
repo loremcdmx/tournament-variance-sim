@@ -177,6 +177,15 @@ What the numbers say:
   point only. The old gate had no ROI limit for freezeout and stopped PKO and Mystery
   at −20..+80 %, with no measurement behind either.
 - `k ∝ σ²`: ±3 % on σ is about ±6 % on the volume the cards print.
+- The PKO knockout draw changed after this fit (exact Bernoulli knockouts, a fixed own head
+  for the winner and a per-place head-size factor sized to the elimination tree, in place of
+  a Poisson count with a flat 0.4 head noise). It moved the PKO analytic σ by -2.8 to -4.5 %
+  at field 50, -0.3 to -0.9 % at 1 000 and under 0.02 % at 50 000. The band is the gap
+  between that analytic and the engine's own Monte Carlo, so it was spot-checked, not
+  refitted: ten cells from field 50 to 50 000 and ROI -30 % to +100 % (20-40 M tournaments
+  each, two seeds) gave MC/analytic 0.998-1.005 with SE 0.05-0.87 %; every |gap| + 2 SE is
+  under 2 % except one 50 000-player cell at one seed (1.0047 ± 0.86 %, 2.19 %), whose other
+  seed read 1.0015 ± 0.87 % (pooled 1.003 ± 0.61 %, 1.5 %). The 2 % stands.
 
 Rake, finish-model and global-ITM probes (field 1 000 and ROI +10 %; Battle Royale at
 its 18-max field; a Battle Royale row carries its own ITM, so the target is not probed
@@ -379,7 +388,9 @@ fit to the UI.
 | Samples   | 120k                                                                | 120k                                            |
 
 Everything else (buy-in $50, rake 10 %, bountyFraction 0.5, and for PKO
-pkoHeadVar 0.4) is held fixed. A Mystery row carries no `pkoHeadVar`: the
+pkoHeadVar 0.4) is held fixed. The engine no longer reads `pkoHeadVar` on a PKO row
+(the head spread comes from the elimination tree), so the stored PKO grid predates the
+current engine: re-measure before refitting it. A Mystery row carries no `pkoHeadVar`: the
 engine ignores it on Mystery and Mystery-Royale rows, so a recipe that sets it
 would only declare a channel the run does not have. The fit is **about field-and-ROI**, not
 about format/rake sensitivity — those get separate sweeps if you need
@@ -524,7 +535,7 @@ sample of real players. Fit the surface directly:
    2D log-poly workflow from `scripts/refit_2d_logpoly.ts`.
 3. Compare your fitted coefficients to the engine's. Divergence tells
    you where the engine's defaults are wrong for your population —
-   usually in `pkoHeadVar`, `mysteryBountyVariance`, or the payout
+   usually in `mysteryBountyVariance`, `pkoHeat`, or the payout
    curve shape.
 
 ## Long-running data collection: `continuous_fit.ts`
@@ -576,7 +587,6 @@ required fields for a sweep:
   payoutStructure: "mtt-gg-bounty",   // see payouts.ts for the full list
   gameType: "pko",          // "freezeout" | "pko" | "mystery" | "mystery-royale"
   bountyFraction: 0.5,      // PKO / mystery only
-  pkoHeadVar: 0.4,          // PKO only — bounty-heat σ
   finishModel: { id: "pko-realdata-linear" },
 }
 ```

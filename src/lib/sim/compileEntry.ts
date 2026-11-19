@@ -37,6 +37,45 @@ import type {
   TournamentRow,
 } from "./types";
 
+// Variance of a player's bounty take at each place in the uniform-killer
+// progressive tree (unit starting head, the unit of the PKO raw weights).
+// Conditioned on the player still being alive, each bust removes a uniform
+// other player x and hands half of x's head to a uniform survivor; the
+// player's cash C, own head H, the others' head sum S and sum of squares Q
+// stay closed under ten first and second moments, so the per-place variance
+// costs O(N). The winner takes C + H, where H grows with the same half-heads
+// as C; a place below takes C.
+function pkoTreeVarianceByPlace(N: number): Float64Array {
+  const variance = new Float64Array(N);
+  let C = 0, H = 1, S = N - 1;
+  let C2 = 0, H2 = 1, CH = 0, CS = 0, HS = N - 1, S2 = (N - 1) * (N - 1), Q = N - 1;
+  for (let busts = 1; busts <= N - 1; busts++) {
+    const m = N - busts;
+    const a = 1 / m;
+    const keep = 1 - a * (a + (1 - a) / 2);
+    const ex = S / m;
+    const ex2 = Q / m;
+    const exy = m > 1 ? (S2 - Q) / (m * (m - 1)) : 0;
+    const pairGain = a * (S2 - Q) / (2 * m);
+    const nC2 = C2 + a * (CS / m + ex2 / 4);
+    const nH2 = H2 + a * (HS / m + ex2 / 4);
+    const nCH = CH + a * ((CS + HS) / (2 * m) + ex2 / 4);
+    const nCS = CS * keep + pairGain;
+    const nHS = HS * keep + pairGain;
+    const nS2 = a * (S2 - 2 * S2 / m + Q / m) + (1 - a) * (S2 - S2 / m + Q / (4 * m));
+    const nQ = a * (Q - Q / m) + (1 - a) * (Q - 0.75 * Q / m + exy);
+    C += a * ex / 2;
+    H += a * ex / 2;
+    S *= keep;
+    C2 = nC2; H2 = nH2; CH = nCH; CS = nCS; HS = nHS; S2 = nS2; Q = nQ;
+    const place = N - 1 - busts;
+    variance[place] = place === 0
+      ? Math.max(0, C2 + 2 * CH + H2 - (C + H) * (C + H))
+      : Math.max(0, C2 - C * C);
+  }
+  return variance;
+}
+
 function compileSingleEntry(
   row: TournamentRow,
   idx: number,
@@ -439,10 +478,15 @@ function compileSingleEntry(
   // Σ pmf[i] · bountyByPlace[i] === bountyMean. This preserves ROI
   // calibration while shifting all the bounty variance onto the shape of
   // the finish distribution. bountyKmean[i] holds the expected window KO
-  // count at place i and is used by the hot loop to add within-place
-  // Poisson-style stochastic noise around the mean.
+  // count at place i; Mystery and Battle Royale draw it as a Poisson count,
+  // PKO plays its knockouts one by one from pkoKoCash (see engineTypes).
   let bountyByPlace: Float64Array | null = null;
   let bountyKmean: Float64Array | null = null;
+  let pkoKoCash: Float64Array | null = null;
+  let pkoRawInv: Float64Array | null = null;
+  let pkoKoLogSigma: Float64Array | null = null;
+  let pkoHaulVariance: Float64Array | null = null;
+  let pkoWinnerHead = 0;
   // Raw (unnormalized) bounty weights. Captured so the latent-heat bank
   // below can re-normalize the same shape against its per-bin shifted pmf
   // without redoing the per-gametype math.
@@ -537,6 +581,11 @@ function compileSingleEntry(
         raw[i] = upto > 0 ? prefix[upto] : 0;
       }
       raw[0] += Tfinal; // winner's own final head
+      if (brSampler === null) {
+        pkoKoCash = new Float64Array(N);
+        for (let m = 1; m <= N - 1; m++) pkoKoCash[N - m] = cashAtBust[m - 1];
+        pkoWinnerHead = Tfinal;
+      }
     }
 
     // Normalize so Σ pmf[i]·bountyByPlace[i] = bountyMean (ROI intact).
@@ -556,6 +605,33 @@ function compileSingleEntry(
     } else if (Z > 1e-12) {
       const scale = bountyMean / Z;
       for (let i = 0; i < N; i++) bountyByPlace[i] = raw[i] * scale;
+      if (pkoKoCash !== null) {
+        pkoRawInv = new Float64Array(N);
+        for (let i = 0; i < N; i++) if (raw[i] > 0) pkoRawInv[i] = 1 / raw[i];
+        // Knockouts at their stage's mean cash already carry the Bernoulli
+        // count; a mean-one log-normal factor per knockout, sized per place,
+        // adds the rest of the tree's spread (victim head sizes and the
+        // winner's head growing with the own knockouts). Where the count
+        // alone already exceeds the tree (2nd place in fields of 4 to about 44,
+        // 3rd in fields of 5 to 10) the factor is off. A Mystery log-variance set
+        // on the row stacks on top as its own channel.
+        const treeVariance = pkoTreeVarianceByPlace(N);
+        const extraLogVar = Math.max(0, row.mysteryBountyVariance ?? 0);
+        pkoKoLogSigma = new Float64Array(N);
+        pkoHaulVariance = new Float64Array(N);
+        let countMoment = 0;
+        let meanSquare = 0;
+        for (let i = N - 2; i >= 0; i--) {
+          const j = i + 1;
+          const c2 = pkoKoCash[j] * pkoKoCash[j];
+          countMoment += c2 / j;
+          meanSquare += c2 / (j * j);
+          const spread = (treeVariance[i] + meanSquare) / countMoment;
+          const logVar = (spread > 1 + 1e-9 ? Math.log(spread) : 0) + extraLogVar;
+          pkoKoLogSigma[i] = Math.sqrt(logVar);
+          pkoHaulVariance[i] = countMoment * Math.exp(logVar) - meanSquare;
+        }
+      }
     } else if (pmf[0] > 1e-12) {
       // An empty KO window (a Mystery table that pays one place, heads-up
       // included) still has a last knockout, and the winner makes it. A lump
@@ -659,7 +735,9 @@ function compileSingleEntry(
   // Combined per-KO log-variance: mystery bounty noise + PKO head-size noise.
   // Both are independent log-normal sources, so variances add in log-space.
   // Default pkoHeadVar to 0.4 only for rows that structurally infer as PKO;
-  // Mystery / BR rows should not inherit the PKO head-size channel.
+  // Mystery / BR rows should not inherit the PKO head-size channel. A PKO row
+  // that plays the elimination tree takes its head spread from the tree
+  // (`pkoKoLogSigma`) and does not read this sum.
   const effectivePkoHeadVar =
     row.pkoHeadVar ?? (gameType === "pko" ? 0.4 : 0);
   const perKoLogVar = gameType === "ocean-ko" ? 0 :
@@ -711,6 +789,11 @@ function compileSingleEntry(
     bountyKmean,
     bountyKmeanExp,
     bountyKmeanInv,
+    pkoKoCash: pkoRawInv !== null ? pkoKoCash : null,
+    pkoRawInv,
+    pkoKoLogSigma,
+    pkoHaulVariance,
+    pkoWinnerHead: pkoRawInv !== null ? pkoWinnerHead : 0,
     mysteryBountyLogVar: perKoLogVar,
     mysteryBountyLogSigma: perKoLogVar > 0 ? Math.sqrt(perKoLogVar) : 0,
     mysteryBountyExpMinus1: perKoLogVar > 0 ? Math.exp(perKoLogVar) - 1 : 0,

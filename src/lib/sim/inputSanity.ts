@@ -11,8 +11,6 @@
  * handle or a misconfigured row before reading "honest but useless"
  * results.
  */
-import { fieldVariantSizes } from "./fieldVariants";
-import { inferGameType } from "./gameType";
 import { countScheduleTournaments } from "./scheduleTarget";
 import type { TournamentRow } from "./types";
 
@@ -26,7 +24,6 @@ export type SanityFindingId =
   | "row-bounty-format-no-bounty"
   | "row-mystery-no-variance"
   | "row-pko-heat-no-bounty"
-  | "row-pko-single-table"
   | "row-zero-count";
 
 export interface SanityFinding {
@@ -58,15 +55,6 @@ const DEFAULT_TILT_SLOW_MIN_DURATION = 500;
 
 /** Buckets shorter than this make resampling so coarse it's misleading. */
 export const MIN_EMPIRICAL_BUCKETS = 50;
-
-/**
- * The hot loop draws a PKO row's KO count as Poisson and adds head-size
- * noise; on one table the real count is far tighter (heads-up the bounty is
- * fixed by the result), so σ comes out about 30 % high heads-up, 5 % at 18
- * players, 3.6 % at 50, 1.4 % at 180 and under 1 % from 500 up. The warning
- * stops at one table, where the excess is largest.
- */
-export const PKO_SINGLE_TABLE_MAX_FIELD = 18;
 
 export function checkInputSanity(
   controls: SanityInputs,
@@ -149,19 +137,6 @@ export function checkInputSanity(
     if (heat > 0 && bounty === 0) {
       findings.push({
         id: "row-pko-heat-no-bounty",
-        rowIdx: idx,
-        rowLabel: label,
-      });
-    }
-
-    if (
-      inferGameType(row) === "pko" &&
-      bounty > 0 &&
-      Math.floor(Math.min(...fieldVariantSizes(row)) * Math.max(1, row.lateRegMultiplier ?? 1)) <=
-        PKO_SINGLE_TABLE_MAX_FIELD
-    ) {
-      findings.push({
-        id: "row-pko-single-table",
         rowIdx: idx,
         rowLabel: label,
       });

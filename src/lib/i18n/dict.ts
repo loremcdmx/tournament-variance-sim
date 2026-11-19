@@ -92,7 +92,7 @@ export const DICT = {
   "oceanReport.modelMechanicalDesc": {"en":"Build your own schedule and simulate results","ru":"Собери расписание и смоделируй результат"},
   "oceanReport.modelOceanDesc": {"en":"Compare downswing depth, duration and EV shortfalls","ru":"Сравни глубину стриков, их длину и отставание от EV"},
   "oceanReport.noDrawdown": {"en":"No drawdown","ru":"Без просадки"},
-  "oceanReport.methodParameters": {"en":"Finish model: power-law, calibrated separately for each format to the shared target ROI. PKO uses head-variance parameter 0.4 and heat 0. Mystery uses the log-variance in the calculated scenario. The exact payout profile and funded pool shares are listed below.","ru":"Модель финишей: power-law, отдельно калиброванная для каждого формата под общий целевой ROI. В PKO параметр разброса голов 0,4, heat 0. В Mystery используется лог-дисперсия из рассчитанного сценария. Точный профиль выплат и доли фондов указаны ниже."},
+  "oceanReport.methodParameters": {"en":"Finish model: power-law, calibrated separately for each format to the shared target ROI. PKO plays each knockout on the elimination tree, heat 0. Mystery uses the log-variance in the calculated scenario. The exact payout profile and funded pool shares are listed below.","ru":"Модель финишей: power-law, отдельно калиброванная для каждого формата под общий целевой ROI. PKO разыгрывает каждый нокаут по дереву выбываний, heat 0. В Mystery используется лог-дисперсия из рассчитанного сценария. Точный профиль выплат и доли фондов указаны ниже."},
   "oceanReport.payoutGG": {"en":"GG MTT · mtt-gg","ru":"GG MTT · mtt-gg"},
   "oceanReport.payoutGGFreeze": {"en":"GG freezeout · mtt-gg-freeze","ru":"GG фризаут · mtt-gg-freeze"},
   "oceanReport.payoutKO": {"en":"GG bounty · mtt-gg-bounty","ru":"GG bounty · mtt-gg-bounty"},
@@ -986,10 +986,6 @@ export const DICT = {
   "sanity.row-pko-heat-no-bounty": {
     en: "Row {row}: PKO heat is set but bountyFraction = 0 — heat reshapes the bounty distribution, so without a bounty channel it has no effect.",
     ru: "Ряд {row}: задан PKO heat, но bountyFraction = 0 — heat меняет форму распределения bounty, без bounty-канала эффект нулевой.",
-  },
-  "sanity.row-pko-single-table": {
-    en: "Row {row}: PKO with a field of 18 players or fewer. The model draws the knockout count as in a big field, so on a single table it overstates the spread: σ is about 5 % too high at 18 players and about 30 % heads-up (the expected result is right). Required volume and bankroll come out more cautious than they should.",
-    ru: "Ряд {row}: PKO с полем до 18 игроков. Модель разыгрывает число нокаутов как в большом поле, поэтому на одном столе разброс завышен: σ примерно на 5 % выше при 18 игроках и примерно на 30 % в хедз-апе (ожидаемый результат верный). Нужная дистанция и банкролл получаются осторожнее, чем должны.",
   },
   "sanity.row-zero-count": {
     en: "Row {row}: count = 0 — the engine plays every row at least once per pass, so this row still runs once.",

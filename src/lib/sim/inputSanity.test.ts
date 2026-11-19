@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   checkInputSanity,
   MIN_EMPIRICAL_BUCKETS,
-  PKO_SINGLE_TABLE_MAX_FIELD,
   type SanityInputs,
 } from "./inputSanity";
 import type { TournamentRow } from "./types";
@@ -294,33 +293,6 @@ describe("checkInputSanity", () => {
     it("reads an unset session length as the engine does, one session per schedule pass", () => {
       expect(flagged(withSession({ scheduleRepeats: 1 }), 10_000)).toBe(true);
       expect(flagged(withSession({ scheduleRepeats: 200 }), 50)).toBe(false);
-    });
-  });
-
-  describe("single-table PKO", () => {
-    const flagged = (row: Partial<TournamentRow>) =>
-      checkInputSanity(calmControls, [makeRow(row)]).some((f) => f.id === "row-pko-single-table");
-    const pko = { gameType: "pko" as const, payoutStructure: "mtt-gg-bounty" as const, bountyFraction: 0.5 };
-
-    it("flags a PKO row of 18 players or fewer", () => {
-      for (const players of [2, 6, 9, PKO_SINGLE_TABLE_MAX_FIELD]) {
-        expect(flagged({ ...pko, players }), String(players)).toBe(true);
-      }
-      expect(flagged({ ...pko, players: PKO_SINGLE_TABLE_MAX_FIELD + 1 })).toBe(false);
-    });
-
-    it("reads the smallest field the engine plays, not the nominal one", () => {
-      expect(
-        flagged({ ...pko, players: 100, fieldVariability: { kind: "uniform", min: 10, max: 30, buckets: 5 } }),
-      ).toBe(true);
-      expect(flagged({ ...pko, players: 9, lateRegMultiplier: 3 })).toBe(false);
-    });
-
-    it("flags a row the engine infers as PKO and skips other bounty formats", () => {
-      expect(flagged({ gameType: undefined, payoutStructure: "mtt-gg-bounty", bountyFraction: 0.5, players: 6 })).toBe(true);
-      expect(flagged({ ...pko, players: 6, bountyFraction: 0 })).toBe(false);
-      expect(flagged({ ...pko, gameType: "mystery", mysteryBountyVariance: 2, players: 6 })).toBe(false);
-      expect(flagged({ gameType: "freezeout", players: 6 })).toBe(false);
     });
   });
 });
