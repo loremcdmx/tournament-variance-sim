@@ -30,6 +30,7 @@ import { makeHiResGrid } from "./grids";
 import { mulberry32, mixSeed } from "./rng";
 import { poissonPTRS } from "./simNumerics";
 import { createOceanKoScratch, sampleOceanKoBounty } from "./oceanKo";
+import { createPathChordScratch, scanPathChords } from "./pathChords";
 import {
   createDownsideReportArrays,
   createDownsideReportState,
@@ -129,11 +130,7 @@ function simulateShardInternal(
 
   const finalProfits = new Float64Array(shardSize);
   const pathMatrix = new Float64Array(shardSize * K1);
-  // Per-sample reusable scratch for the breakeven/first-return post-loop:
-  // segLo[jj]/segHi[jj] cache the min/max of checkpoint segment (jj-1, jj) so
-  // the two O(K1²) chord scans don't recompute them on every starting point.
-  const segLo = new Float64Array(collectDetails ? K1 : 0);
-  const segHi = new Float64Array(collectDetails ? K1 : 0);
+  const chordScratch = collectDetails ? createPathChordScratch(K1) : null;
   const maxDrawdowns = new Float64Array(shardSize);
   const maxRunUps = new Float64Array(shardSize);
   const runningMins = new Float64Array(shardSize);
@@ -593,79 +590,25 @@ function simulateShardInternal(
 
     let longestBreakeven = 0;
     let breakevenStreakAvg = 0;
-    if (collectDetails) {
+    if (chordScratch) {
       // "Playing for nothing" = longest horizontal chord of the profit
       // trajectory starting at time i: max(j − i) such that the path,
       // interpolated between checkpoint samples, revisits level profit[i]
-      // at time j. Computed on the K=240 checkpoint grid; the inner loop
-      // breaks on the first (furthest) match, so per-i cost is the gap
-      // from i to the first enclosing segment. Each starting point's
-      // longest chord contributes to the histogram — that turns the shape
-      // into a decay-right distribution ("how common is each streak
+      // at time j. Computed on the K=240 checkpoint grid. Each starting
+      // point's longest chord contributes to the histogram — that turns the
+      // shape into a decay-right distribution ("how common is each streak
       // length across all time points in all runs") instead of the
       // extreme-value distribution of per-sample max chords.
-      let longestChordGrid = 0;
-      // Parallel forward-scan for the "any streak" metric: for each starting
-      // point ii, find the FIRST jj>ii where the path returns to Y[ii]. That
-      // first-return distance is the streak length the user would perceive
-      // when they say "I went up to X, dropped, climbed back to X — that
-      // span counts." Sum them per sample; divide by count to get the
-      // per-sample mean first-return chord.
-      let firstReturnSum = 0;
-      let firstReturnCount = 0;
-      // Precompute each segment's min/max once (O(K1)). The chord scans below
-      // are still O(K1²) but now just read segLo/segHi instead of recomputing
-      // `a < b ? …` on every starting point — the dominant cost in this
-      // post-loop. Same ternary form, so the straddle test is bit-identical.
-      for (let jj = 1; jj < K1; jj++) {
-        const a = pathMatrix[pathBase + jj - 1];
-        const b = pathMatrix[pathBase + jj];
-        segLo[jj] = a < b ? a : b;
-        segHi[jj] = a < b ? b : a;
-      }
-      for (let ii = 0; ii < K1 - 1; ii++) {
-        const Pi = pathMatrix[pathBase + ii];
-        let chordLen = 0;
-        for (let jj = K1 - 1; jj > ii; jj--) {
-          if (segLo[jj] <= Pi && Pi <= segHi[jj]) {
-            // Skip the trivial case where the segment only touches Pi at
-            // its left endpoint (which is time ii itself): that isn't a
-            // distinct second point.
-            if (jj === ii + 1) {
-              const a = pathMatrix[pathBase + jj - 1];
-              const b = pathMatrix[pathBase + jj];
-              if (a === Pi && b !== Pi) break;
-            }
-            chordLen = jj - ii;
-            break;
-          }
-        }
-        if (chordLen > 0 && chordLen <= K) {
-          breakevenStreakCounts[chordLen]++;
-        }
-        if (chordLen > longestChordGrid) longestChordGrid = chordLen;
-
-        let firstLen = 0;
-        for (let jj = ii + 1; jj < K1; jj++) {
-          if (segLo[jj] <= Pi && Pi <= segHi[jj]) {
-            if (jj === ii + 1) {
-              const a = pathMatrix[pathBase + jj - 1];
-              const b = pathMatrix[pathBase + jj];
-              if (a === Pi && b !== Pi) continue;
-            }
-            firstLen = jj - ii;
-            break;
-          }
-        }
-        if (firstLen > 0) {
-          firstReturnSum += firstLen;
-          firstReturnCount++;
-        }
-      }
-      longestBreakeven = K > 0 ? (longestChordGrid / K) * N : 0;
+      //
+      // The "any streak" metric is the FIRST return instead: for each
+      // starting point, the first later time the path is back at that level.
+      // That is the span the user means by "I went up to X, dropped, climbed
+      // back to X". Averaged over the starting points that return at all.
+      scanPathChords(pathMatrix, pathBase, K1, breakevenStreakCounts, chordScratch);
+      longestBreakeven = K > 0 ? (chordScratch.longestChord / K) * N : 0;
       breakevenStreakAvg =
-        firstReturnCount > 0 && K > 0
-          ? (firstReturnSum / firstReturnCount / K) * N
+        chordScratch.firstReturnCount > 0 && K > 0
+          ? (chordScratch.firstReturnSum / chordScratch.firstReturnCount / K) * N
           : 0;
     }
 
