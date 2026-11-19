@@ -7,9 +7,9 @@
  * Determinism contract: `SimulationInput + seed → byte-identical
  * SimulationResult` regardless of worker pool size or shard dispatch order.
  * Enforced by `engine.test.ts`. No `Math.random`, no `Date.now`, no wall
- * clock. Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` — each
- * stochastic channel uses its own XOR-offset of the seed — where
- * `sampleIdx` is the GLOBAL index in `[0, samples)`.
+ * clock. Only `sampleStream(seed, sampleIdx, channel)` — each stochastic
+ * channel has its own stream id — where `sampleIdx` is the GLOBAL index in
+ * `[0, samples)`.
  *
  * Hot loop allocation rule: no `new Float64Array(...)` inside the per-sample
  * inner loop. All scratch buffers are preallocated per shard and reused.

@@ -347,7 +347,7 @@ describe("longest cashless streak: paid-place boundary", () => {
 
 // Numerical-era pin. Share links and stored runs reproduce a simulation only
 // while `input + seed → bytes` holds across releases, so these four values are
-// hard-coded from the current seed era (post-`mixSeed` finalization, see
+// hard-coded from the current seed era (`sampleStream` on xoshiro128**, see
 // WISDOM.md "Seed Era And Reproducibility"). Any engine change that moves
 // them is a new era: update the numbers AND the WISDOM entry in the same
 // commit — never widen the tolerance.
@@ -361,9 +361,9 @@ describe("golden values pin the numerical era", () => {
       scheduleRepeats: 200, samples: 3000, bankroll: 500, seed: 42,
       finishModel: { id: "power-law" },
     });
-    expect(r.stats.mean).toBeCloseTo(470.5180062331724, 9);
-    expect(r.stats.stdDev).toBeCloseTo(1017.9236172839492, 9);
-    expect(r.stats.p05).toBeCloseTo(-1014.3421434467685, 9);
-    expect(r.stats.p95).toBeCloseTo(2320.9314345094153, 9);
+    expect(r.stats.mean).toBeCloseTo(442.92092571588853, 9);
+    expect(r.stats.stdDev).toBeCloseTo(1026.8330841232034, 9);
+    expect(r.stats.p05).toBeCloseTo(-1017.1777056253684, 9);
+    expect(r.stats.p95).toBeCloseTo(2344.874622811915, 9);
   });
 });

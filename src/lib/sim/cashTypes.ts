@@ -2,7 +2,7 @@
  * Canonical types for the cash-game variance simulator.
  *
  * Intentionally decoupled from MTT `SimulationInput` / `SimulationResult`.
- * The two engines share RNG primitives (`mulberry32`, `mixSeed`) and chart
+ * The two engines share the RNG (`sampleStream`) and chart
  * components, but speak different algebra: MTT lives in buy-in / place / payout,
  * cash lives in bb/100 / hands / bankroll random walk.
  *

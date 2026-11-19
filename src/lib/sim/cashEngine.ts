@@ -6,8 +6,8 @@
  * time in `CashResult.stats.*Usd` and never touches the random walk.
  *
  * Determinism: `CashInput` + `baseSeed` → byte-identical `CashResult`
- * regardless of shard layout. Per-path RNG seeds via
- * `mixSeed(baseSeed, sampleIdx)` on the GLOBAL sample index.
+ * regardless of shard layout. Per-path RNG is
+ * `sampleStream(baseSeed, sampleIdx, STREAM_CASH)` on the GLOBAL sample index.
  *
  * Hot-loop model:
  *   wrPerHand = wrBb100 / 100
@@ -22,7 +22,7 @@
  * the horizon is identical either way.
  */
 
-import { mulberry32, mixSeed } from "./rng";
+import { STREAM_CASH, sampleStream } from "./rng";
 import type {
   CashInput,
   CashResult,
@@ -390,7 +390,7 @@ export function simulateCashShard(
   // standard normals; cache the second one for the next hand.
   for (let s = sStart; s < sEnd; s++) {
     const localS = s - sStart;
-    const rng = mulberry32(mixSeed(input.baseSeed, s));
+    const rng = sampleStream(input.baseSeed, s, STREAM_CASH);
 
     let br = 0;
     let peak = 0;
@@ -433,8 +433,9 @@ export function simulateCashShard(
         z = cachedZ;
         haveCachedZ = false;
       } else {
-        // Avoid log(0) by clamping u1 off zero; mulberry32 can return exactly 0.
-        const u1 = Math.max(rng(), 1e-300);
+        // (0, 1]: a zero draw must not reach the log. Clamping it to a tiny
+        // value instead made that one draw a 37-sigma hand.
+        const u1 = 1 - rng();
         const u2 = rng();
         const r = Math.sqrt(-2 * Math.log(u1));
         const theta = 2 * Math.PI * u2;

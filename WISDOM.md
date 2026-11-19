@@ -420,15 +420,13 @@ string replacement reads `$$`, `$&`, `` $` `` and `$'` in the text, so a row nam
   number asked for. `scripts/cash_crosscheck.ts` used to print "NaN%" (a renamed field,
   `probBelowThresholdEver`) under a "20k paths" header; it now says how many paths ran and
   prints the z-score of the simulated mean against the analytic one.
-- Open, not fixed (changing the sampler is a new numerical era): the cash sampler's mean sits
-  about one standard error above the analytic mean. Twelve base seeds give a mean z of +1.2
-  (se 0.3) at 2 000 paths x 100 000 hands and +1.4 (se 0.3) at 200 paths x 1 M hands (11 and
-  12 of the 12 seeds positive). The same numbers come out of a bare replay of the engine's
-  per-path draw (`mulberry32(mixSeed(seed, path))` into Box-Muller, no cash code), so it is
-  the sampler, not the accounting. A pooled run of 1e9 draws in 10 000-draw paths showed no
-  mean (z 0.6) but a variance of 1.00023 (5 se high). Do not read the "+8 %" high-volume
-  mean as an RNG-period overlap: at the budgeted 200 paths it is z 2.3, and the budget is
-  what keeps the paths from overlapping.
+- Closed with the generator change (see "Seed Era And Reproducibility"): the cash sampler's
+  mean used to sit about one standard error above the analytic mean (z +1.2 to +1.4 over
+  twelve base seeds) and its deviate had variance 1.00023. Both were `mulberry32`'s output
+  distribution: over its cycle E[-ln u] is 1.00022, which is the Box-Muller variance. The
+  same change removed the clamp of a zero draw to 1e-300, which turned that draw into a
+  37-sigma hand (+370 BB at SD 100, in about 2% of full-budget runs); the radius now takes
+  `1 - u`, so a draw can never be zero under the log.
 - `normalizeCashInput` caps a stake's `handShare` at `MAX_HAND_SHARE` (two shares
   of 1e308 summed to Infinity and `compileStakeSchedule` threw) and folds a seed
   outside the 32-bit window (`-2^31 <= seed < 2^32` stays as typed) onto the seed
@@ -547,7 +545,22 @@ contract breaking, and the root cause is in `src/lib/sim/`.
 
 ## Seed Era And Reproducibility
 
-`mixSeed` (`src/lib/sim/rng.ts`) was changed in commit `3eb91fb` (2026-09-02, first
+Two changes of era so far; the pinned numbers in `engineMath.test.ts` ("golden values pin
+the numerical era") move with each one.
+
+The generator itself was replaced after v0.7.8. `mulberry32` keeps a 32-bit counter, so
+every sample, channel and seed read a window of the same 2^32-long cycle, and the output
+over that cycle is not uniform: 44% of the 32-bit values occur at all, small ones too
+often (`P(u < 2^-12)` is 1.0039 of nominal by full enumeration, mean 0.49997). The finish
+draw puts the winner at index 0, so every run at every seed drew first place about 0.3%
+too often: +0.10 to +0.23 points of ROI at +10% on fields of 180 to 50,000, and the
+convergence chart converged to that wrong value. The engine now draws from
+`sampleStream(seed, sampleIdx, channel)`: xoshiro128**, four state words each hashed from
+all three inputs. `mulberry32` remains in `rng.ts` for tests and scripts; do not put it back
+under a finish draw or a Box-Muller. A reviewer who measures "mean above EV by a fraction of
+a point, same sign at every seed" on an old build is looking at this, not at calibration.
+
+Before that, `mixSeed` (`src/lib/sim/rng.ts`) was changed in commit `3eb91fb` (2026-09-02, first
 released in v0.7.7; `CHANGELOG.md` carries the note) so the seed is
 finalized before it meets the sample index. The old construction XOR-ed them
 raw, which made seeds differing only in low bits the same simulation with
