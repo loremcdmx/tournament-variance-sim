@@ -496,10 +496,14 @@ export function evPct(v: number): string {
   return `${p.toFixed(3)}%`;
 }
 
+export function evPctInputPlaces(pct: number): number {
+  return pct >= 1 ? 1 : 3;
+}
+
 export function evPctInputValue(v: number): string {
   const p = clampUnit(v) * 100;
   if (!(p > 0)) return "0";
-  return p >= 1 ? p.toFixed(1) : p.toFixed(3);
+  return p.toFixed(evPctInputPlaces(p));
 }
 
 export const PREVIEW_SLIDER_CONTROL_CHROME =

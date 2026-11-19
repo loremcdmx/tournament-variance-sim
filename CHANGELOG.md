@@ -247,6 +247,19 @@ for the same inputs, the entry says for which rows.
   tournament.
 - The bounty-share box keeps what you type to one decimal (33% stays 33%, not
   35%), and Ocean KO / Battle Royale shares show as 54.3% / 45.7%.
+- The advanced row options keep what you type: Mystery σ² holds two decimals
+  (2.25 stays 2.25, not 2.3; 0.04 no longer becomes 0) and sit-through
+  pay-jump aggression whole percent (33 stays 33, not 35). The arrow keys
+  still step by 0.1 and 5.
+- In the row preview, the KO-share and top-heaviness boxes keep what you type
+  instead of jumping to the slider's grid. A typed KO share now lands exactly
+  on small fields, field ranges and ITM-pinned rows, where it could miss by
+  several points, and the KO-share readout shows the share the row will
+  really get while you drag. Moving either slider back to its stored value
+  while the previous change is still being applied now takes effect.
+- A reference line's ROI box on the results chart keeps hundredths of a
+  percent: a typed 7.5 is drawn, shown and labelled as 7.5 %, not shown as 8
+  and labelled 'ROI +8%'. Lines saved before relabel themselves on load.
 - The row preview of a heads-up Mystery row now shows its bounty EV and the
   ROI you typed, instead of a cash-only EV and about -55%.
 - On a Battle Royale row, the last line of the preview table is now called
@@ -285,9 +298,13 @@ for the same inputs, the entry says for which rows.
 
 ### Volume planning cards
 
-- Volume needed to verify a chosen ROI now states the real chance its volume
-  delivers: at 95 % confidence, a player with exactly the tested ROI clears
-  the bar 97.5 % of the time.
+- Volume needed to verify a chosen ROI is now sized for the confidence you
+  pick: at 95 %, a player with exactly the tested ROI clears the bar 95 % of
+  the time (it was sized for 97.5 %). Every volume on the prove-edge card, on
+  every tab and in Schedule mode, ranges included, is smaller: by about 15 %
+  at 95 %, 21 % at 90 %, 37 % at 75 % and 75 % at 50 % confidence. The
+  reading guide says how far the real chance can sit from this normal-curve
+  figure.
 - The Ocean KO tab of the Convergence and prove-edge cards now pins the row's
   ITM the way Run does (including the global ITM target), so its σ and volumes
   match Schedule mode for the same tournament.

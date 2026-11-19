@@ -79,7 +79,7 @@ describe("planning cards compile their row with the run's global ITM target", ()
         afs,
         rake: 0.1,
         itmTarget,
-        z: z95,
+        confidence: 0.95,
         currentRoi: 0.1,
         candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
       }).rows.find((r) => r.roi === 0.1)!;
@@ -123,7 +123,7 @@ describe("an ROI the pinned-ITM row cannot pay gets no distance on either card",
       afs: posToAfs(afsToPos(200)),
       rake: 0.1,
       itmTarget: HIGH,
-      z: z95,
+      confidence: 0.95,
       currentRoi: 0.1,
       candidates: [0.1],
     }).anchor.sigma;

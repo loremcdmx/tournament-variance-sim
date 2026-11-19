@@ -100,7 +100,7 @@ describe("planning cards share one σ with schedule mode", () => {
               format,
               afs,
               rake,
-              z: z95,
+              confidence: 0.95,
               currentRoi: roi,
               candidates: [roi],
             });
@@ -169,7 +169,7 @@ describe("runtime σ replaces the stale synthetic rows", () => {
       format: "freeze",
       afs: 1000,
       rake: 0.1,
-      z: z95,
+      confidence: 0.95,
       currentRoi: 0.1,
       candidates: [0.1],
     }).anchor;
@@ -177,14 +177,14 @@ describe("runtime σ replaces the stale synthetic rows", () => {
       format: "freeze",
       afs: 1000,
       rake: 0.1,
-      z: z95,
+      confidence: 0.95,
       currentRoi: 0.3,
       candidates: [0.3],
     }).anchor;
     expect(at30.sigma).toBeGreaterThan(at10.sigma * 1.1);
-    // The flat fit answered 12 097 here; the engine row needs about 16 000.
-    expect(at30.tourneys).toBeGreaterThan(15_500);
-    expect(at30.tourneys).toBeLessThan(16_500);
+    // Holding the +10 % σ flat would answer 10 464 here; the engine row needs about 13 560.
+    expect(at30.tourneys).toBeGreaterThan(13_100);
+    expect(at30.tourneys).toBeLessThan(14_000);
   });
 
   it("synthetic rows get the run path's ITM default, not a free finish shape", () => {
@@ -321,7 +321,7 @@ describe("one band for the chip, the prove-edge card and a one-row schedule", ()
         format,
         afs,
         rake,
-        z: z95,
+        confidence: 0.95,
         currentRoi: roi,
         candidates: [roi],
       });
@@ -348,11 +348,13 @@ describe("one band for the chip, the prove-edge card and a one-row schedule", ()
       }).find((r) => r.targetPct === 0.05)!;
       expect(chipRow.tourneysLo).toBe(Math.ceil(Math.pow((z95 * chip.lo) / 0.05, 2)));
       expect(chipRow.tourneysHi).toBe(Math.ceil(Math.pow((z95 * chip.hi) / 0.05, 2)));
+      // The prove-edge bar plus its one-sided Φ⁻¹(0.95) power term.
+      const detect = z95 + ciToZ(0.9);
       expect(proveEdge.anchor.tourneysLo).toBe(
-        Math.ceil(Math.pow((2 * z95 * proveEdge.anchor.sigmaLo) / roi, 2)),
+        Math.ceil(Math.pow((detect * proveEdge.anchor.sigmaLo) / roi, 2)),
       );
       expect(proveEdge.anchor.tourneysHi).toBe(
-        Math.ceil(Math.pow((2 * z95 * proveEdge.anchor.sigmaHi) / roi, 2)),
+        Math.ceil(Math.pow((detect * proveEdge.anchor.sigmaHi) / roi, 2)),
       );
     });
   }
@@ -381,7 +383,7 @@ describe("the global ITM target reaches the planning cards", () => {
         afs,
         rake,
         itmTarget: target,
-        z: z95,
+        confidence: 0.95,
         currentRoi: roi,
         candidates: [roi],
       });
@@ -418,7 +420,7 @@ describe("the global ITM target reaches the planning cards", () => {
       afs: 777,
       rake: 0.1,
       itmTarget: target,
-      z: z95,
+      confidence: 0.95,
       currentRoi: 0.1,
       candidates: [0.1, 0.2],
     };

@@ -9,6 +9,11 @@ describe("bias draft bookkeeping", () => {
     expect(isRepeatSubmission([], 0.2, 0)).toBe(false);
   });
 
+  it("sends a return to the stored value while another value is landing", () => {
+    expect(isRepeatSubmission([0.1], 0, 0)).toBe(false);
+    expect(isRepeatSubmission([0.1, 0], 0, 0)).toBe(true);
+  });
+
   it("keeps the draft while an earlier submission lands", () => {
     let inflight = submitBias(submitBias([], 0.1), 0.2);
     let step = settleCommitted(inflight, 0.1);

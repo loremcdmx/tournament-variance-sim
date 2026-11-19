@@ -1053,8 +1053,28 @@ a decision that was left open on purpose. Do not undo these without re-checking:
 - The row bounty-share box holds one decimal (BOUNTY_PCT_DECIMALS via `decimals`), like the
   ROI box: step 5 only drives the arrow keys. Snapping to the grid turned 33 into 35 and 2
   into 0 (which switches the bounty channel off), and showed Ocean's 54.35% as 54, which
-  became 55 when retyped. The advanced-only sigma^2 and aggression NumInputBoxes still snap
-  (owner decision pending).
+  became 55 when retyped. The advanced-only Mystery sigma^2 box (decimals 2) and the
+  sit-through aggression box (decimals 0; it edits payJumpAggression x 100) hold what was
+  typed the same way, on blur, Enter and the 140 ms live commit; snapping turned 2.25 into
+  2.3, 0.04 into 0, 33 into 35 and 2 into 0. A NumInputBox whose display carries more
+  places than its step needs `decimals`; without it the box snaps a typed value to the
+  step.
+- Row preview sliders (FinishPMFPreview.tsx): only the drag path snaps
+  (scheduleSliderDraft). A typed figure is held to the places its box prints
+  (evPctInputPlaces; 1 decimal for top-heaviness). commitSliderDraft commits only after a
+  real input event: without one the range input holds the stored bias snapped to the grid,
+  and Tab or blur would snap an off-grid typed value. Do not commit by re-parsing the
+  displayed figure: the box prints a rounded share derived from a stored bias, and that
+  writes the rounding error back into the row. biasDraft.isRepeatSubmission compares with
+  the last in-flight value, or the committed one when nothing is in flight.
+- KO-share box: the realised share is not linear in the bias wherever some field's cash
+  side saturates or empties (small fields, a range's small buckets, an ITM far from the
+  field's own; on 43 of 160 random rows the line missed a typed share by up to 4.9 pp).
+  shareToBias checks the line's guess and otherwise solves the row by Illinois false
+  position (about 2 solves per commit). No keystroke solves the row; realisedBountyShare
+  caches one computeRowStats per bias per row, so keep shareAtBias memoized.
+- Reference lines hold, show and label the ROI to hundredths of a percent, and
+  loadRefLines re-derives every label with roiLabel (a label is derived, never typed).
 - CSV import, comma route: in a line that spaces its other commas, an unspaced `d{1,3},ddd`
   between the players and buy-in cells is refused as a thousands separator
   (row.importErr.thousandsComma), the same trade-off as the `12,5` ROI guard. The message
@@ -1099,9 +1119,16 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   neutral about direction ('cannot be tuned to this ROI').
 - The Ocean KO planning row goes through applyItmTarget (buildOceanKoRuntimeRow) like every
   other tab. An unpinned row is one Run never plays.
-- A prove-edge volume at confidence C with the z + z sizing gives detection probability (1 +
-  C)/2, not C. The card prints that number; do not 'fix' the volume to match C without an
-  owner decision.
+- A prove-edge volume is N = ((z + zPow) x σ / |ROI|)^2, with z = ciToZ(C) (the two-sided
+  bar over zero) and zPow = Φ^-1(C) = ciToZ(2C - 1), held at 0 below C = 50 % (detectionZ
+  in proveEdge.ts). A player whose true ROI is the tested one clears the bar with
+  normal-theory probability C; proveEdgeDetectionPct = max(50, C) feeds the anchor. Do not
+  go back to z + z (it delivered (1 + C)/2), and do not let zPow go negative. The chance is
+  a normal approximation: freeze, PKO and Mystery stay within about 2 points from 90 % up;
+  near 50 % a winning ROI clears less often (27 % on PKO AFS 50 000 at +100 %). On Battle
+  Royale and Ocean KO the gap depends on the edge and goes either way (BR +1 %: 72 % at
+  C = 75 %; from +10 % up 95-100 %). The reading guide states this without row-specific
+  figures; keep it that way unless the figure holds on every row of every tab.
 
 ### Calibration and feasibility
 

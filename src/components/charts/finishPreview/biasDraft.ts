@@ -5,14 +5,15 @@ const MAX_IN_FLIGHT = 8;
 // value the row shows that was never sent is an outside change (a scenario
 // reload, "Apply reported ROI"), and the slider's draft has to give way to it.
 
+// While a submission is landing, the row will end on the last one sent, so a
+// return to the value it shows now is a new submission, not a repeat.
 export function isRepeatSubmission(
   inflight: readonly number[],
   next: number,
   committed: number,
 ): boolean {
-  if (Math.abs(next - committed) < SAME) return true;
-  const last = inflight[inflight.length - 1];
-  return last !== undefined && Math.abs(next - last) < SAME;
+  const landing = inflight[inflight.length - 1] ?? committed;
+  return Math.abs(next - landing) < SAME;
 }
 
 export function submitBias(inflight: readonly number[], next: number): number[] {

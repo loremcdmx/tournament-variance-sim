@@ -41,7 +41,7 @@ vi.mock("@/lib/ui/AdvancedModeProvider", () => ({
   useAdvancedMode: () => ({ advanced: false }),
 }));
 
-import { ScheduleEditor } from "./ScheduleEditor";
+import { AdvancedRowPanel, ScheduleEditor } from "./ScheduleEditor";
 import { applyGameType } from "@/lib/sim/gameType";
 import {
   BATTLE_ROYALE_MARKETED_RAKE_SHARE_OF_TOTAL,
@@ -180,6 +180,94 @@ describe("row bounty-share box keeps what was typed, one decimal", () => {
       expect(mountBox(start, "schedule-a-bounty").input().props.value).toBe(shown);
       expect(typed(start, shown)).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe("advanced row boxes keep what was typed, not the arrow-key grid", () => {
+  // Renders the advanced panel, the number box whose arrow step is `step`, and
+  // the <input> inside it, with the box's hook cells kept between renders.
+  const mountAdvancedBox = (r: TournamentRow, step: number) => {
+    store.cells = [];
+    store.at = 0;
+    const onChange = vi.fn();
+    const panel = unwrap(AdvancedRowPanel)({ row: r, onChange });
+    const boxEl = elements(panel).find((e) => e.props.step === step && typeof e.type === "function")!;
+    store.cells = [];
+    const input = () => {
+      store.at = 0;
+      return unwrap(boxEl.type)(boxEl.props) as { props: Record<string, unknown> };
+    };
+    return { onChange, input };
+  };
+  // The three ways a typed figure reaches the row: leaving the box, Enter, and
+  // the live commit 140 ms after the last keystroke.
+  type Path = "blur" | "Enter" | "pause";
+  const PATHS: Path[] = ["blur", "Enter", "pause"];
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const typed = (r: TournamentRow, step: number, text: string, path: Path = "blur") => {
+    const { onChange, input } = mountAdvancedBox(r, step);
+    (input().props.onChange as Fn)({ target: { value: text } });
+    if (path === "blur") (input().props.onBlur as Fn)();
+    else if (path === "Enter") (input().props.onKeyDown as Fn)({ key: "Enter", preventDefault: () => {} });
+    else vi.advanceTimersByTime(140);
+    return onChange;
+  };
+  const mystery = (mysteryBountyVariance: number): TournamentRow => ({
+    ...row(0.1),
+    ...applyGameType(row(0.1), "mystery"),
+    mysteryBountyVariance,
+  });
+  const sitThrough = (payJumpAggression: number): TournamentRow => ({
+    ...row(0.1),
+    sitThroughPayJumps: true,
+    payJumpAggression,
+  });
+
+  it.each(
+    PATHS.flatMap((path) =>
+      ([
+        ["2.25", 2.25],
+        ["1.85", 1.85],
+        ["0.04", 0.04],
+        ["2.257", 2.26],
+      ] as const).map(([text, variance]) => [path, text, variance] as const),
+    ),
+  )("Mystery sigma^2 on %s commits a typed %s as %s, two decimals, not the 0.1 grid", (path, text, variance) => {
+    const onChange = typed(mystery(2), 0.1, text, path);
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange.mock.calls[0][0].mysteryBountyVariance).toBeCloseTo(variance, 12);
+  });
+
+  it.each(PATHS)("Mystery sigma^2 on %s still clamps to 0..3, and retyping the shown figure is no change", (path) => {
+    expect(typed(mystery(2), 0.1, "4", path)).toHaveBeenCalledExactlyOnceWith({ mysteryBountyVariance: 3 });
+    expect(mountAdvancedBox(mystery(2.25), 0.1).input().props.value).toBe("2.25");
+    expect(typed(mystery(2.25), 0.1, "2.25", path)).not.toHaveBeenCalled();
+  });
+
+  it.each(
+    PATHS.flatMap((path) =>
+      ([
+        ["33", 0.33],
+        ["42", 0.42],
+        ["12.5", 0.13],
+        ["2", 0.02],
+      ] as const).map(([text, aggression]) => [path, text, aggression] as const),
+    ),
+  )("sit-through aggression on %s commits a typed %s as %s, not the nearest multiple of 5", (path, text, aggression) => {
+    const onChange = typed(sitThrough(0.5), 5, text, path);
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange.mock.calls[0][0].payJumpAggression).toBeCloseTo(aggression, 12);
+  });
+
+  it.each(PATHS)("sit-through aggression on %s still clamps to 0..100, and retyping the shown figure is no change", (path) => {
+    expect(typed(sitThrough(0.5), 5, "120", path)).toHaveBeenCalledExactlyOnceWith({ payJumpAggression: 1 });
+    expect(mountAdvancedBox(sitThrough(0.33), 5).input().props.value).toBe("33");
+    expect(typed(sitThrough(0.33), 5, "33", path)).not.toHaveBeenCalled();
   });
 });
 
