@@ -162,11 +162,11 @@ describe("bughunt: convergence and sharding", () => {
     expect(breakdown.perRow[0].afs).toBeGreaterThan(50);
     expect(breakdown.perRow[0].fieldMin).toBeLessThan(50);
     expect(breakdown.sigmaEffLo).toBe(breakdown.sigmaEff);
-    expect(computeProveEdge({ format: "exact", schedule, afs: 50, rake: .1, z: 1.96, currentRoi: .05, candidates: [.05] }).bandPolicy).toBe("outside-fit-box");
+    expect(computeProveEdge({ format: "exact", schedule, afs: 50, rake: .1, confidence: .95, currentRoi: .05, candidates: [.05] }).bandPolicy).toBe("outside-fit-box");
   });
 
   it("BR anchor remains in-box while candidate rows beyond the calibrated ROI range keep only points", () => {
-    const proof = computeProveEdge({ format: "mystery-royale", afs: 18, rake: .08, z: 1.96, currentRoi: .05, candidates: [...PROVE_EDGE_POSITIVE_CANDIDATES, 1.5] });
+    const proof = computeProveEdge({ format: "mystery-royale", afs: 18, rake: .08, confidence: .95, currentRoi: .05, candidates: [...PROVE_EDGE_POSITIVE_CANDIDATES, 1.5] });
     expect(proof.bandPolicy).toBe("numeric");
     expect(proof.anchor.sigmaLo).toBeLessThan(proof.anchor.sigma);
     const inside = proof.rows.find(r => r.roi === .3)!;

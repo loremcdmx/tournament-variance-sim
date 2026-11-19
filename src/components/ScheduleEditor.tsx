@@ -1561,6 +1561,7 @@ export function AdvancedRowPanel({
                 min={0}
                 max={100}
                 step={5}
+                decimals={0}
                 onChange={(v) => onChange({ payJumpAggression: v / 100 })}
               />
             </FieldSmall>
@@ -1581,6 +1582,7 @@ export function AdvancedRowPanel({
                 min={0}
                 max={3}
                 step={0.1}
+                decimals={2}
                 onChange={(v) => onChange({ mysteryBountyVariance: v })}
               />
             </FieldSmall>
@@ -1614,12 +1616,15 @@ function NumInputBox({
   step,
   min,
   max,
+  decimals,
 }: {
   value: number;
   onChange: (v: number) => void;
   step?: number;
   min?: number;
   max?: number;
+  /** Places the value is held to, for a field that is not on its step grid. */
+  decimals?: number;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1635,7 +1640,7 @@ function NumInputBox({
     }
   };
   const display =
-    draft !== null ? draft : Number.isFinite(value) ? formatStepDisplay(value, step) : "";
+    draft !== null ? draft : Number.isFinite(value) ? formatStepDisplay(value, step, decimals) : "";
   const invalid = computeInvalid(draft, min, max);
   return (
     <input
@@ -1650,7 +1655,7 @@ function NumInputBox({
         const raw = normalizeNumericDraft(e.target.value);
         setDraft(raw);
         clearCommitTimer();
-        const next = normalizeDraftValue(raw, min, max, step);
+        const next = normalizeDraftValue(raw, min, max, step, decimals);
         if (next === null) return;
         commitTimerRef.current = setTimeout(() => {
           startTransition(() => {
@@ -1668,6 +1673,7 @@ function NumInputBox({
           step,
           (next) => startTransition(() => onChange(next)),
           setDraft,
+          decimals,
         );
       }}
       onKeyDown={(e) => {
@@ -1682,6 +1688,7 @@ function NumInputBox({
             step,
             (next) => startTransition(() => onChange(next)),
             setDraft,
+            decimals,
           );
         } else if (e.key === "Escape") {
           e.preventDefault();

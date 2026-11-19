@@ -58,6 +58,22 @@ describe("reference-line ROI box", () => {
     expect(onChange).toHaveBeenCalledExactlyOnceWith({ roi: -0.2, label: roiLabel(-0.2) });
   });
 
+  it("draws, shows and labels a typed 7.5 % as 7.5 %, not as a whole 8 %", () => {
+    const { onChange, input } = mount(0.1);
+    input().onChange({ target: { value: "7.5" } });
+    input().onBlur();
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ roi: 0.075, label: "ROI +7.5%" });
+    expect(mount(0.075).input().value).toBe("7.5");
+  });
+
+  it("holds hundredths of a percent", () => {
+    const { onChange, input } = mount(0.1);
+    input().onChange({ target: { value: "-2.256" } });
+    input().onBlur();
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ roi: -0.0226, label: "ROI −2.26%" });
+    expect(mount(0.07).input().value).toBe("7");
+  });
+
   it("keeps the line inside the -99% .. 10000% the chart accepts", () => {
     const { onChange, input } = mount(0);
     input().onChange({ target: { value: "-500" } });

@@ -23,13 +23,16 @@ import { validateSchedule } from "./validation";
 const computeProveEdgeRows = (input: Parameters<typeof computeProveEdge>[0]) =>
   computeProveEdge(input).rows;
 
-const Z95 = 1.959964;
+// The two-sided 95 % bar over zero, and the one-sided Φ⁻¹(0.95) power term.
+const Z95 = ciToZ(0.95);
+const ZPOW95 = ciToZ(0.9);
+const DETECT95 = Z95 + ZPOW95;
 
 const baseFreeze = {
   format: "freeze" as const,
   afs: 200,
   rake: 0.10,
-  z: Z95,
+  confidence: 0.95,
   currentRoi: 0.10,
   candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
 };
@@ -50,7 +53,7 @@ describe("computeProveEdgeRows (single-format mode)", () => {
         totalTicket: 100,
       });
       expect(row.sigma).toBe(expected.s);
-      expect(row.tourneys).toBe(Math.ceil(Math.pow(2 * Z95 * expected.s / row.roi, 2)));
+      expect(row.tourneys).toBe(Math.ceil(Math.pow(DETECT95 * expected.s / row.roi, 2)));
       expect(row.tourneysLo).toBe(row.tourneys);
       expect(row.tourneysHi).toBe(row.tourneys);
       expect(row.insideFitBox).toBe(false);
@@ -78,7 +81,7 @@ describe("computeProveEdgeRows (single-format mode)", () => {
         rake,
         oceanKoTotalTicket: 100,
         itmTarget,
-        z: Z95,
+        confidence: 0.95,
         currentRoi: 0.1,
         candidates: [0.1],
       });
@@ -87,7 +90,7 @@ describe("computeProveEdgeRows (single-format mode)", () => {
         schedule: applyItmTarget([ocean], itmTarget),
         afs: 0,
         rake: 0,
-        z: Z95,
+        confidence: 0.95,
         currentRoi: 0,
         candidates: [0.1],
       });
@@ -127,34 +130,54 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     expect(r25.tourneys / r5.tourneys).toBeLessThan(4.0);
   });
 
-  it("sizes for detection power: N = ((2z)·σ/ROI)², ~4× the 50%-power median", () => {
-    const z = Z95;
-    const r10 = computeProveEdgeRows({ ...baseFreeze, z }).find(
-      (r) => r.roi === 0.10,
-    )!;
-    const powered = Math.ceil(Math.pow((2 * z * r10.sigma) / 0.10, 2));
-    const naiveMedian = Math.ceil(Math.pow((z * r10.sigma) / 0.10, 2));
+  it("sizes for detection power: N = ((z + Φ⁻¹(C))·σ/ROI)², 3.4× the 50%-power median at 95 %", () => {
+    const r10 = computeProveEdgeRows(baseFreeze).find((r) => r.roi === 0.10)!;
+    const powered = Math.ceil(Math.pow((DETECT95 * r10.sigma) / 0.10, 2));
+    const naiveMedian = Math.ceil(Math.pow((Z95 * r10.sigma) / 0.10, 2));
     expect(r10.tourneys).toBe(powered);
-    expect(r10.tourneys / naiveMedian).toBeGreaterThan(3.95);
-    expect(r10.tourneys / naiveMedian).toBeLessThan(4.05);
+    // ((1.959964 + 1.644854) / 1.959964)² = 3.383; the two ceilings move it by under 1e-4.
+    expect(r10.tourneys / naiveMedian).toBeGreaterThan(3.38);
+    expect(r10.tourneys / naiveMedian).toBeLessThan(3.39);
   });
 
-  it("the printed chance is the one the volume delivers: Φ(z) = (1 + C)/2, not C", () => {
-    // A player whose true ROI is `roi` has mean roi·√N/σ standard errors over
-    // zero; the bar sits at z, so the chance of clearing it is Φ(roi·√N/σ − z).
-    // ciToZ(c) = Φ⁻¹((1 + c)/2), so Φ(x) = p exactly when x = ciToZ(2p − 1).
-    for (const ciPct of [50, 75, 90, 95, 99.9]) {
-      const z = ciToZ(ciPct / 100);
-      const r10 = computeProveEdgeRows({ ...baseFreeze, z }).find((r) => r.roi === 0.10)!;
-      const margin = (0.10 * Math.sqrt(r10.tourneys)) / r10.sigma - z;
-      const printed = proveEdgeDetectionPct(ciPct) / 100;
-      expect(margin).toBeGreaterThanOrEqual(ciToZ(2 * printed - 1) - 1e-9);
-      expect(margin - ciToZ(2 * printed - 1)).toBeLessThan(1e-3);
-      // The old copy printed C itself; the volume overshoots that promise.
-      expect(margin - ciToZ(2 * (ciPct / 100) - 1)).toBeGreaterThan(0.05);
+  it("a player whose true ROI is the tested one clears the C bar with probability C", () => {
+    // That player's mean sits |roi|·√N/σ standard errors over zero and the bar
+    // at z = Φ⁻¹((1 + C)/2), so the chance of clearing it is Φ(|roi|·√N/σ − z).
+    // ciToZ(c) = Φ⁻¹((1 + c)/2), so Φ(x) = C exactly when x = ciToZ(2C − 1).
+    // N is a ceiling, which can only raise the margin, by less than one
+    // tournament's worth: |roi|·(√N − √(N − 1))/σ.
+    for (const ciPct of [50, 60, 75, 90, 95, 99, 99.9]) {
+      const c = ciPct / 100;
+      const z = ciToZ(c);
+      const rows = computeProveEdgeRows({
+        ...baseFreeze,
+        confidence: c,
+        candidates: [0.10, 0.01, -0.05],
+      });
+      for (const r of rows) {
+        const absRoi = Math.abs(r.roi);
+        const margin = (absRoi * Math.sqrt(r.tourneys)) / r.sigma - z;
+        const ceilSlack = (absRoi * (Math.sqrt(r.tourneys) - Math.sqrt(r.tourneys - 1))) / r.sigma;
+        expect(margin, `${ciPct} % at ${r.roi}`).toBeGreaterThanOrEqual(ciToZ(2 * c - 1) - 1e-9);
+        expect(margin - ciToZ(2 * c - 1), `${ciPct} % at ${r.roi}`).toBeLessThanOrEqual(ceilSlack + 1e-9);
+        // A margin of z itself would deliver (1 + C)/2, not C.
+        expect(margin, `${ciPct} % at ${r.roi}`).toBeLessThan(z - 0.2);
+      }
+      expect(proveEdgeDetectionPct(ciPct)).toBe(ciPct);
     }
-    expect(proveEdgeDetectionPct(95)).toBe(97.5);
-    expect(proveEdgeDetectionPct(50)).toBe(75);
+  });
+
+  it("below 50 % the power term stays at 0: the bar sits on the tested ROI, a 50 % chance", () => {
+    for (const ciPct of [30, 40, 49]) {
+      const c = ciPct / 100;
+      const r10 = computeProveEdgeRows({ ...baseFreeze, confidence: c }).find((r) => r.roi === 0.10)!;
+      expect(r10.tourneys).toBe(Math.ceil(Math.pow((ciToZ(c) * r10.sigma) / 0.10, 2)));
+      expect(proveEdgeDetectionPct(ciPct)).toBe(50);
+    }
+    const at50 = computeProveEdgeRows({ ...baseFreeze, confidence: 0.5 })[3];
+    const at49 = computeProveEdgeRows({ ...baseFreeze, confidence: 0.49 })[3];
+    expect(at49.tourneys).toBeLessThan(at50.tourneys);
+    expect(at49.tourneys / at50.tourneys).toBeGreaterThan(0.95);
   });
 
   it("freeze σ grows with ROI across the candidate grid (the old fit was flat in ROI)", () => {
@@ -197,12 +220,13 @@ describe("computeProveEdgeRows (single-format mode)", () => {
     expect(at5.sigma).toBeGreaterThan(at10.sigma);
   });
 
-  it("higher CI (bigger z) requires more tournaments quadratically", () => {
-    const at95 = computeProveEdgeRows({ ...baseFreeze, z: 1.96 })[3];
-    const at99 = computeProveEdgeRows({ ...baseFreeze, z: 2.576 })[3];
+  it("higher confidence requires more tournaments quadratically", () => {
+    const at95 = computeProveEdgeRows({ ...baseFreeze, confidence: 0.95 })[3];
+    const at99 = computeProveEdgeRows({ ...baseFreeze, confidence: 0.99 })[3];
+    // ((2.575829 + 2.326348) / (1.959964 + 1.644854))² = 1.8492.
     const ratio = at99.tourneys / at95.tourneys;
-    expect(ratio).toBeGreaterThan(1.70);
-    expect(ratio).toBeLessThan(1.75);
+    expect(ratio).toBeGreaterThan(1.84);
+    expect(ratio).toBeLessThan(1.86);
   });
 
   it("fields = tourneys / afs", () => {
@@ -259,7 +283,7 @@ describe("the highlight keeps the sign of the tested ROI", () => {
       schedule: losing,
       afs: 0,
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
     };
     const hidden = computeProveEdge({ ...input, candidates: PROVE_EDGE_POSITIVE_CANDIDATES });
@@ -323,7 +347,7 @@ describe("an ROI the pinned-ITM row cannot pay is flagged, not printed as reache
       rake: 0.087,
       oceanKoTotalTicket: 100,
       itmTarget: { enabled: true, pct: 50 },
-      z: Z95,
+      confidence: 0.95,
       currentRoi: -0.3,
       candidates: [-0.3, 0.1],
     };
@@ -482,7 +506,7 @@ describe("computeProveEdge — schedule mode", () => {
       schedule,
       afs: 0, // irrelevant
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
       candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
     });
@@ -507,7 +531,7 @@ describe("computeProveEdge — schedule mode", () => {
       schedule,
       afs: 0,
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
       candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
     });
@@ -532,7 +556,7 @@ describe("computeProveEdge — schedule mode", () => {
         finishModel: { id },
         afs: 0,
         rake: 0,
-        z: Z95,
+        confidence: 0.95,
         currentRoi: 0,
         candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
       }).anchor;
@@ -541,7 +565,7 @@ describe("computeProveEdge — schedule mode", () => {
     expect(engineRoi("freeze-realdata-linear")).toBeGreaterThan(0.15);
     expect(linear.roi).toBe(engineRoi("freeze-realdata-linear"));
     expect(linear.tourneys).toBe(
-      Math.ceil(Math.pow((2 * Z95 * linear.sigma) / linear.roi, 2)),
+      Math.ceil(Math.pow((DETECT95 * linear.sigma) / linear.roi, 2)),
     );
     expect(anchorFor("uniform").roi).toBeCloseTo(-1 / 11, 9);
     // The calibrated model still reads the typed ROI.
@@ -558,7 +582,7 @@ describe("computeProveEdge — schedule mode", () => {
       finishModel: { id: "pko-realdata-linear" },
       afs: 0,
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
       candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
     });
@@ -575,7 +599,7 @@ describe("computeProveEdge — schedule mode", () => {
       schedule,
       afs: 0,
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
       candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
     });
@@ -602,7 +626,7 @@ describe("computeProveEdge — schedule mode", () => {
       schedule,
       afs: 0,
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
       candidates: PROVE_EDGE_POSITIVE_CANDIDATES,
     });
@@ -619,7 +643,7 @@ describe("computeProveEdge — schedule mode", () => {
       schedule: [],
       afs: 0,
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
       candidates: [0.10],
     });
@@ -643,7 +667,7 @@ describe("computeProveEdge — schedule mode", () => {
       schedule: live,
       afs: 0,
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
       candidates: [0.10],
     });
@@ -652,7 +676,7 @@ describe("computeProveEdge — schedule mode", () => {
       schedule: withDeadRow,
       afs: 0,
       rake: 0,
-      z: Z95,
+      confidence: 0.95,
       currentRoi: 0,
       candidates: [0.10],
     });

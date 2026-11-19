@@ -1880,8 +1880,8 @@ export const DICT = {
     ru: "3. Ответ",
   },
   "proveEdge.guide.answer.body": {
-    en: "The table says how many tournaments are needed before that ROI reliably clears the confidence bar over 0% — not just half the time.",
-    ru: "Таблица показывает, сколько турниров нужно, чтобы этот ROI уверенно (а не в половине случаев) отрывался от 0%.",
+    en: "The table says how many tournaments are needed for a result at that ROI to clear the confidence bar over 0% with the chosen probability: at 95%, in 95 cases out of 100. That chance is a normal-curve estimate, and tournament results are skewed, so the real chance can differ from it. On Freeze, PKO and Mystery it holds to within about 2 points from 90% up; near 50% a winning ROI can clear much less often than chosen, and a losing one more often. On Battle Royale and Ocean KO, where rare jackpots carry most of σ, the gap depends on the edge and goes either way; below 90% it can reach tens of points.",
+    ru: "Таблица показывает, сколько турниров нужно, чтобы результат с этим ROI прошёл порог уверенности над нулём с выбранной вероятностью: при 95% — в 95 случаях из 100. Эта вероятность посчитана в нормальном приближении, а результаты турниров скошены, поэтому настоящая вероятность может от неё отличаться. На Фризе, ПКО и Мистери от 90% и выше она точна примерно в пределах 2 пунктов; около 50% плюсовой ROI может проходить порог заметно реже выбранного, а минусовой — чаще. В Battle Royale и Ocean KO, где основную часть σ дают редкие джекпоты, расхождение зависит от перевеса и бывает в обе стороны; ниже 90% оно может доходить до десятков пунктов.",
   },
   "proveEdge.format.label": { en: "Tournament type", ru: "Тип турнира" },
   "proveEdge.label.fieldSize": { en: "Field size", ru: "Размер поля" },

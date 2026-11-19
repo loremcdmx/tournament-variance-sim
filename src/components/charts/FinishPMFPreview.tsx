@@ -42,6 +42,7 @@ import {
   EV_BREAKDOWN_GRID,
   EV_BREAKDOWN_NUM,
   evPct,
+  evPctInputPlaces,
   evPctInputValue,
   fmtSignedPct,
   PREVIEW_SLIDER_RESET_CHROME,
@@ -203,6 +204,10 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
       maxBountyShare: clampUnit(highKoStats.bountyShare),
     };
   }, [shareProbeBaseRow, model]);
+  const shareAtBias = useMemo(
+    () => realisedBountyShare(effectiveRow, model),
+    [effectiveRow, model],
+  );
 
   const evTotal = totalEvPerEntry || 1;
 
@@ -407,6 +412,7 @@ export const FinishPMFPreview = memo(function FinishPMFPreview({
             defaultShare={defaultBountyShare}
             minShare={minBountyShare}
             maxShare={maxBountyShare}
+            shareAtBias={shareAtBias}
             onCommit={(v) => onRowChange({ bountyEvBias: v })}
             title={t("preview.evBias.label")}
             cashLabel={t("preview.evBias.cash")}
@@ -873,12 +879,34 @@ function snapBountyBias(v: number): number {
   return clampBountyBias(Number(snapped.toFixed(4)));
 }
 
+/** The KO share the row realises at a bias. Each bias is solved once: a drag
+ *  revisits the 41 grid biases, and a large or ranged field costs tens of
+ *  milliseconds a solve. */
+export function realisedBountyShare(
+  row: TournamentRow,
+  model: FinishModelConfig,
+): (bias: number) => number {
+  const realised = new Map<number, number>();
+  return (bias) => {
+    let share = realised.get(bias);
+    if (share === undefined) {
+      share = clampUnit(
+        computeRowStats({ ...row, bountyEvBias: bias }, model, { skipCompiledSigma: true })
+          .bountyShare,
+      );
+      realised.set(bias, share);
+    }
+    return share;
+  };
+}
+
 export function BountyShareSlider({
   committedBias,
   committedShare,
   defaultShare,
   minShare,
   maxShare,
+  shareAtBias,
   onCommit,
   title,
   cashLabel,
@@ -891,6 +919,8 @@ export function BountyShareSlider({
   defaultShare: number;
   minShare: number;
   maxShare: number;
+  /** The KO share the row realises at a bias; falls as the bias rises. */
+  shareAtBias: (bias: number) => number;
   onCommit: (v: number) => void;
   title: string;
   cashLabel: string;
@@ -910,9 +940,6 @@ export function BountyShareSlider({
   const hasActiveDraft =
     draftBias !== null && Math.abs(committedBias - draftBias) > 1e-9;
   const effectiveBias = locked ? 0 : hasActiveDraft ? draftBias! : committedBias;
-  const value = hasActiveDraft
-    ? bountyShareFromBias(defaultShare, minShare, maxShare, effectiveBias)
-    : committedShare;
   const pending = hasActiveDraft;
   const valuePct = locked
     ? 50
@@ -936,7 +963,6 @@ export function BountyShareSlider({
   const inputMaxShare = Math.max(lowShare, highShare);
   const inputMinPct = Number((inputMinShare * 100).toFixed(3));
   const inputMaxPct = Number((inputMaxShare * 100).toFixed(3));
-  const manualValue = manualText ?? evPctInputValue(value);
 
   useEffect(() => {
     return () => {
@@ -965,8 +991,8 @@ export function BountyShareSlider({
     });
   };
 
-  const commitBias = (rawBias: number) => {
-    const nextBias = locked ? 0 : snapBountyBias(rawBias);
+  const commitBias = (bias: number) => {
+    const nextBias = locked ? 0 : bias;
     if (isRepeatSubmission(inflightBiasRef.current, nextBias, committedBias)) {
       setDraftBias(nextBias);
       setManualText(null);
@@ -978,50 +1004,101 @@ export function BountyShareSlider({
     onCommit(nextBias);
   };
 
-  const commitSliderDraft = (fallbackBias: number) => {
+  const commitSliderDraft = () => {
     // React may restore the controlled DOM value before the draft's rAF.
-    // Commit the latest input event, then discard its pending paint.
-    const nextBias = pendingSliderBiasRef.current ?? fallbackBias;
+    // Commit the latest input event, then discard its pending paint. With no
+    // input event the slider did not move, and the value the browser holds is
+    // the stored bias snapped to the drag grid: committing it would snap a
+    // typed share on Tab or blur.
+    const nextBias = pendingSliderBiasRef.current;
     if (sliderFrameRef.current !== null) cancelAnimationFrame(sliderFrameRef.current);
     sliderFrameRef.current = null;
     pendingSliderBiasRef.current = null;
-    commitBias(nextBias);
+    if (nextBias !== null) commitBias(nextBias);
   };
 
+  // A typed share is held to the places the box prints, not to the drag grid
+  // (1/20 of each side of the axis, 0.6-1 pp of share on the default rows).
   const parseManualShare = (raw: string): number | null => {
     const normalized = raw.trim().replace(",", ".");
     if (normalized === "") return null;
     const parsed = Number(normalized);
     if (!Number.isFinite(parsed)) return null;
-    return parsed / 100;
+    const scale = 10 ** evPctInputPlaces(parsed);
+    return Math.round(parsed * scale) / scale / 100;
   };
 
   const clampManualShare = (share: number): number =>
     Math.max(inputMinShare, Math.min(inputMaxShare, share));
 
-  const shareToBias = (share: number): number =>
-    biasFromBountyShare(
-      clampManualShare(share),
-      defaultShare,
-      minShare,
-      maxShare,
-    );
+  const lineBias = (share: number): number =>
+    biasFromBountyShare(clampManualShare(share), defaultShare, minShare, maxShare);
+
+  // The realised share is not a straight line in the bias wherever some
+  // field's cash side saturates or empties (small fields, a range's small
+  // buckets, a field pinned to an ITM far from its own), and the line through
+  // the three probes then misses a typed share by up to 5 pp. The row is
+  // solved between the line's guess and the far end of the axis by false
+  // position (Illinois); the share falls as the bias rises.
+  const shareToBias = (share: number): number => {
+    const target = clampManualShare(share);
+    const guess = lineBias(target);
+    const gGuess = shareAtBias(guess) - target;
+    if (Math.abs(gGuess) < 1e-9) return guess;
+    const far = gGuess > 0 ? MAX_BOUNTY_BIAS : MIN_BOUNTY_BIAS;
+    const gFar = shareAtBias(far) - target;
+    if (Math.abs(gFar) < 1e-9 || Math.sign(gFar) === Math.sign(gGuess)) return far;
+    let [lo, gLo, hi, gHi] = gGuess > 0 ? [guess, gGuess, far, gFar] : [far, gFar, guess, gGuess];
+    let moved: "lo" | "hi" | null = null;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo * gHi - hi * gLo) / (gHi - gLo);
+      const g = shareAtBias(mid) - target;
+      if (Math.abs(g) < 1e-9) return mid;
+      if (g > 0) {
+        lo = mid;
+        gLo = g;
+        if (moved === "lo") gHi /= 2;
+        moved = "lo";
+      } else {
+        hi = mid;
+        gHi = g;
+        if (moved === "hi") gLo /= 2;
+        moved = "hi";
+      }
+    }
+    return Math.abs(gLo) < Math.abs(gHi) ? lo : hi;
+  };
 
   const manualParsedShare = manualText !== null ? parseManualShare(manualText) : null;
   const manualOutOfRange =
     manualParsedShare !== null &&
     (manualParsedShare < inputMinShare || manualParsedShare > inputMaxShare);
+  // A keystroke never solves the row: while a figure is typed the readout shows
+  // it as a commit will land it and the thumb rides the line; the commit solves.
+  const value =
+    manualParsedShare !== null && !locked
+      ? clampManualShare(manualParsedShare)
+      : hasActiveDraft
+        ? shareAtBias(effectiveBias)
+        : committedShare;
+  const manualValue = manualText ?? evPctInputValue(value);
 
   const updateManualShare = (raw: string) => {
     setManualText(raw);
     const nextShare = parseManualShare(raw);
     if (nextShare == null || locked) return;
-    setDraftBias(snapBountyBias(shareToBias(nextShare)));
+    setDraftBias(lineBias(nextShare));
   };
 
+  // Only a typed figure commits. The box prints the stored share rounded, so
+  // focus alone, or retyping the figure it shows, must keep the stored bias.
   const commitManualShare = () => {
-    const nextShare = parseManualShare(manualValue);
-    if (nextShare == null || locked) {
+    if (manualText === null) return;
+    const nextShare = parseManualShare(manualText);
+    const shown =
+      inflightBiasRef.current.length === 0 &&
+      nextShare === parseManualShare(evPctInputValue(committedShare));
+    if (nextShare == null || locked || shown) {
       setManualText(null);
       setDraftBias(null);
       return;
@@ -1123,9 +1200,9 @@ export function BountyShareSlider({
               setManualText(null);
               scheduleSliderDraft(-Number(e.target.value));
             }}
-            onPointerUp={(e) => commitSliderDraft(-Number(e.currentTarget.value))}
-            onKeyUp={(e) => commitSliderDraft(-Number(e.currentTarget.value))}
-            onBlur={(e) => commitSliderDraft(-Number(e.currentTarget.value))}
+            onPointerUp={commitSliderDraft}
+            onKeyUp={commitSliderDraft}
+            onBlur={commitSliderDraft}
             disabled={locked}
             aria-valuetext={evPct(value)}
             className="absolute inset-0 z-10 block h-full w-full cursor-pointer appearance-none bg-transparent opacity-0 disabled:cursor-default"
@@ -1248,8 +1325,7 @@ export function TopHeavyPlacementSlider({
     });
   };
 
-  const commitBias = (rawBias: number) => {
-    const nextBias = snapItmTopHeavyBias(rawBias);
+  const commitBias = (nextBias: number) => {
     if (isRepeatSubmission(inflightBiasRef.current, nextBias, committedBias)) {
       setDraftBias(nextBias);
       setManualText(null);
@@ -1261,22 +1337,27 @@ export function TopHeavyPlacementSlider({
     onCommit(nextBias);
   };
 
-  const commitSliderDraft = (fallbackBias: number) => {
+  const commitSliderDraft = () => {
     // React may restore the controlled DOM value before the draft's rAF.
-    // Commit the latest input event, then discard its pending paint.
-    const nextBias = pendingSliderBiasRef.current ?? fallbackBias;
+    // Commit the latest input event, then discard its pending paint. With no
+    // input event the slider did not move, and the value the browser holds is
+    // the stored bias snapped to the drag grid: committing it would snap a
+    // typed figure on Tab or blur.
+    const nextBias = pendingSliderBiasRef.current;
     if (sliderFrameRef.current !== null) cancelAnimationFrame(sliderFrameRef.current);
     sliderFrameRef.current = null;
     pendingSliderBiasRef.current = null;
-    commitBias(nextBias);
+    if (nextBias !== null) commitBias(nextBias);
   };
 
+  // A typed figure is held to the one decimal the box prints, not to the
+  // drag grid's 2.5 points.
   const parseManualPercent = (raw: string): number | null => {
     const normalized = raw.trim().replace(",", ".");
     if (normalized === "") return null;
     const parsed = Number(normalized);
     if (!Number.isFinite(parsed)) return null;
-    return parsed;
+    return Math.round(parsed * 10) / 10;
   };
 
   const manualParsedPercent =
@@ -1289,12 +1370,19 @@ export function TopHeavyPlacementSlider({
     setManualText(raw);
     const nextPercent = parseManualPercent(raw);
     if (nextPercent == null) return;
-    setDraftBias(snapItmTopHeavyBias(topHeavyPercentToBias(nextPercent)));
+    setDraftBias(topHeavyPercentToBias(nextPercent));
   };
 
+  // Only a typed figure commits, and not the one the box already shows: a
+  // stored bias off the box's 0.1 grid (a link, an older save) stays put.
   const commitManualPercent = () => {
-    const nextPercent = parseManualPercent(manualValue);
-    if (nextPercent == null) {
+    if (manualText === null) return;
+    const nextPercent = parseManualPercent(manualText);
+    const shown =
+      inflightBiasRef.current.length === 0 &&
+      nextPercent ===
+        parseManualPercent(topHeavyPctInputValue(biasToTopHeavyPercent(committedBias)));
+    if (nextPercent == null || shown) {
       setManualText(null);
       setDraftBias(null);
       return;
@@ -1396,9 +1484,9 @@ export function TopHeavyPlacementSlider({
               setManualText(null);
               scheduleSliderDraft(Number(e.target.value));
             }}
-            onPointerUp={(e) => commitSliderDraft(Number(e.currentTarget.value))}
-            onKeyUp={(e) => commitSliderDraft(Number(e.currentTarget.value))}
-            onBlur={(e) => commitSliderDraft(Number(e.currentTarget.value))}
+            onPointerUp={commitSliderDraft}
+            onKeyUp={commitSliderDraft}
+            onBlur={commitSliderDraft}
             aria-valuetext={`${topHeavyPctInputValue(biasToTopHeavyPercent(effectiveBias))}%`}
             disabled={disabled}
             className="absolute inset-0 z-10 block h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"

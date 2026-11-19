@@ -34,7 +34,10 @@ export function loadRefLines(): RefLineConfig[] {
           typeof r.color === "string" &&
           typeof r.enabled === "boolean",
       )
-      .slice(0, 16);
+      .slice(0, 16)
+      // A label is derived, never typed: deriving it again keeps a saved one
+      // in step with the ROI the line is drawn at.
+      .map((r) => ({ ...r, label: roiLabel(r.roi) }));
   } catch {
     return DEFAULT_REF_LINES;
   }
@@ -47,8 +50,14 @@ export function saveRefLines(value: RefLineConfig[]) {
   } catch {}
 }
 
+// The line is drawn at the ROI it holds, so its box and label carry the
+// hundredths of a percent a typed 7.5 or 2.25 has, not a whole percent.
+export function roiPct(roi: number): number {
+  return Math.round(roi * 10_000) / 100;
+}
+
 export function roiLabel(roi: number): string {
-  const pct = Math.round(roi * 100);
+  const pct = roiPct(roi);
   if (pct === 0) return "ROI 0%";
   const sign = pct > 0 ? "+" : "−";
   return `ROI ${sign}${Math.abs(pct)}%`;

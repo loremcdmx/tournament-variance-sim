@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DICT } from "@/lib/i18n/dict";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
-import { ciToZ, scheduleEffectiveRoi } from "@/lib/sim/convergenceMath";
+import { afsToPos, posToAfs, scheduleEffectiveRoi } from "@/lib/sim/convergenceMath";
 import type { ItmTargetConfig } from "@/lib/sim/itmTarget";
 import {
   computeProveEdge,
@@ -79,7 +79,7 @@ describe("the convergence card opens on the schedule's own ROI", () => {
       schedule,
       afs: 500,
       rake: 0.1,
-      z: ciToZ(0.95),
+      confidence: 0.95,
       currentRoi: 0,
       candidates: PROVE_EDGE_DEFAULT_CANDIDATES,
     });
@@ -88,10 +88,22 @@ describe("the convergence card opens on the schedule's own ROI", () => {
 });
 
 describe("the prove-edge answer states the chance its volume delivers", () => {
-  it("prints 97.5 % at the default 95 % confidence, next to the 95 % bar", () => {
+  it("prints 95 % at the default 95 % confidence, next to the 95 % bar, over the volume sized for it", () => {
     const markup = render(<ProveEdgeCard schedule={[freezeRow({})]} itmTarget={OFF} />);
-    expect(markup).toContain("с вероятностью 97.5%");
+    expect(markup).toContain("с вероятностью 95%");
     expect(markup).toContain("порог 95%-й уверенности");
+    // The card opens on freeze at field 200 (its log slider), +10 %, 10 % fee.
+    const anchor = computeProveEdge({
+      format: "freeze",
+      afs: posToAfs(afsToPos(200)),
+      rake: 0.1,
+      itmTarget: OFF,
+      confidence: 0.95,
+      currentRoi: 0.1,
+      candidates: [0.1],
+    }).anchor;
+    const k = (n: number) => `${(n / 1000).toFixed(0)} k`;
+    expect(markup).toContain(`${k(anchor.tourneysLo)} – ${k(anchor.tourneysHi)} турниров`);
   });
 });
 
@@ -128,7 +140,7 @@ describe("a candidate row outside the validated zone is marked while the anchor 
     format: "mystery-royale",
     afs: 18,
     rake: 0.08,
-    z: 1.96,
+    confidence: 0.95,
     currentRoi: 0.1,
     candidates: PROVE_EDGE_DEFAULT_CANDIDATES,
   });
@@ -153,7 +165,7 @@ describe("a candidate row outside the validated zone is marked while the anchor 
       format: "mystery-royale",
       afs: 18,
       rake: 0.08,
-      z: 1.96,
+      confidence: 0.95,
       currentRoi: 0.1,
       candidates: [0.3, 0.1, 0.05],
     });
@@ -166,7 +178,7 @@ describe("a candidate row outside the validated zone is marked while the anchor 
       format: "mystery-royale",
       afs: 18,
       rake: 0.08,
-      z: 1.96,
+      confidence: 0.95,
       currentRoi: 1.5,
       candidates: PROVE_EDGE_DEFAULT_CANDIDATES,
     });
