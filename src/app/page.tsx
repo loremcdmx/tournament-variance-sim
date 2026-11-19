@@ -68,6 +68,8 @@ import { SCENARIOS } from "@/lib/scenarios";
 import { ScheduleToolbarExtras } from "@/components/ScheduleToolbarExtras";
 import { manualAlphaFor } from "@/lib/sim/finishModel";
 import {
+  DEFAULT_TILT_FAST_WINDOW,
+  DEFAULT_TILT_SLOW_WINDOW,
   DEFAULT_TOURNAMENTS_PER_SESSION,
   sanitizeControlsForBasicMode,
   withSupportedAlpha,
@@ -166,10 +168,12 @@ const initialControls: ControlsState = {
   tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
   tiltFastGain: 0,
   tiltFastScale: 0,
+  tiltFastWindow: DEFAULT_TILT_FAST_WINDOW,
   tiltSlowGain: 0,
   tiltSlowThreshold: 0,
   tiltSlowMinDuration: 500,
   tiltSlowRecoveryFrac: 0.5,
+  tiltSlowWindow: DEFAULT_TILT_SLOW_WINDOW,
   modelPresetId: "naive",
   empiricalBuckets: undefined,
   itmGlobalEnabled: false,

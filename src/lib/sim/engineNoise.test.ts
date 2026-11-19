@@ -9,8 +9,13 @@
  * effects are checked, not bit-exact values.
  */
 import { describe, it, expect } from "vitest";
+import { DICT } from "@/lib/i18n/dict";
+import { SCENARIOS } from "@/lib/scenarios";
+import { buildSimulationInput } from "@/lib/ui/simulationInput";
 import { compileSchedule, makeCheckpointGrid, runSimulation, simulateShard } from "./engine";
-import { STREAM_FINISH, sampleStream } from "./rng";
+import { applyItmTarget } from "./itmTarget";
+import { STANDARD_PRESETS, applyModelPatch } from "./modelPresets";
+import { STREAM_FINISH, STREAM_SKILL, sampleStream } from "./rng";
 import type {
   SimulationInput,
   SimulationResult,
@@ -452,6 +457,359 @@ describe("engine — slow tilt on the drift-free path", () => {
       const shift = meanAndSe(Array.from(on, (p, i) => ((p - off[i]) / cost) * 100));
       expect(Math.abs(shift.mean), `ROI ${roi}`).toBeLessThan(Math.min(1, 4 * shift.se));
     }
+  });
+});
+
+// Independent replicas of the windowed tilts on a one-row freezeout: the slow
+// one keeps its window extremes in monotonic deques, the fast one scans the
+// stored path back W points; neither uses the hot loop's blocks.
+function scanExtremes(path: Float64Array, i: number, window: number): { hi: number; lo: number } {
+  let hi = -Infinity;
+  let lo = Infinity;
+  for (let j = Math.max(0, i - window); j <= i; j++) {
+    if (path[j] > hi) hi = path[j];
+    if (path[j] < lo) lo = path[j];
+  }
+  return { hi, lo };
+}
+
+interface SlowReplay {
+  finals: number[];
+  /** Share of each sample's first `checkpoint` tournaments spent in a tilt state. */
+  shares: number[][];
+  up: number;
+  down: number;
+  /** Exits the anchored all-time rule would also have taken, and the rest. */
+  anchoredExits: number;
+  forgottenExits: number;
+  /** Per finished state: tournaments played in it, and the share of its swing won back by the exit. */
+  lengths: number[];
+  wonBack: number[];
+}
+
+// The engine's per-sample ROI noise, drawn in its order from STREAM_SKILL by
+// a Marsaglia polar pair (u·m first, v·m cached for the next call).
+function polarGauss(rng: () => number): () => number {
+  let cached: number | null = null;
+  return () => {
+    if (cached !== null) {
+      const v = cached;
+      cached = null;
+      return v;
+    }
+    let u: number;
+    let v: number;
+    let s: number;
+    do {
+      u = rng() * 2 - 1;
+      v = rng() * 2 - 1;
+      s = u * u + v * v;
+    } while (s === 0 || s >= 1);
+    const m = Math.sqrt((-2 * Math.log(s)) / s);
+    cached = v * m;
+    return u * m;
+  };
+}
+
+function replaySlowWindow(input: SimulationInput, checkpoints: number[] = []): SlowReplay {
+  const compiled = compileSchedule(input, "alpha");
+  const e = compiled.flat[0];
+  const step = e.analyticMeanSingle - e.singleCost + e.rakebackBonusPerBullet;
+  const n = compiled.tournamentsPerSample;
+  const window = input.tiltSlowWindow!;
+  const threshold = input.tiltSlowThreshold!;
+  const minDuration = input.tiltSlowMinDuration!;
+  const gain = input.tiltSlowGain!;
+  const recovery = input.tiltSlowRecoveryFrac!;
+  const stdErr = input.roiStdErr ?? 0;
+  const perTourney = input.roiShockPerTourney ?? 0;
+  const perSession = input.roiShockPerSession ?? 0;
+  const driftSigma = input.roiDriftSigma ?? 0;
+  const rho = 0.95;
+  const innovation = driftSigma * Math.sqrt(1 - rho * rho);
+  const sessionLength = input.tournamentsPerSession ?? compiled.tournamentsPerPass;
+  const xs = new Float64Array(n + 1);
+  const maxQ = new Int32Array(n + 1);
+  const minQ = new Int32Array(n + 1);
+  const out: SlowReplay = {
+    finals: [],
+    shares: checkpoints.map(() => []),
+    up: 0,
+    down: 0,
+    anchoredExits: 0,
+    forgottenExits: 0,
+    lengths: [],
+    wonBack: [],
+  };
+  for (let s = 0; s < input.samples; s++) {
+    const rng = sampleStream(input.seed, s, STREAM_FINISH);
+    const gauss = polarGauss(sampleStream(input.seed, s, STREAM_SKILL));
+    const skill = stdErr > 0 ? gauss() * stdErr : 0;
+    let drift = 0;
+    let sessionShock = 0;
+    let profit = 0;
+    let expected = 0;
+    let state = 0;
+    let anchor = 0;
+    let swing = 0;
+    let enteredAt = 0;
+    let streak = 0;
+    let streakSide = 0;
+    let up = 0;
+    let down = 0;
+    let c = 0;
+    let maxHead = 0;
+    let maxTail = 0;
+    let minHead = 0;
+    let minTail = 0;
+    for (let i = 0; i < n; i++) {
+      const x = xs[i];
+      while (maxTail > maxHead && xs[maxQ[maxTail - 1]] <= x) maxTail--;
+      maxQ[maxTail++] = i;
+      while (minTail > minHead && xs[minQ[minTail - 1]] >= x) minTail--;
+      minQ[minTail++] = i;
+      while (maxQ[maxHead] < i - window) maxHead++;
+      while (minQ[minHead] < i - window) minHead++;
+      const hi = xs[maxQ[maxHead]];
+      const lo = xs[minQ[minHead]];
+      if (i % sessionLength === 0) {
+        if (perSession > 0) sessionShock = gauss() * perSession;
+        if (driftSigma > 0) drift = rho * drift + gauss() * innovation;
+      }
+      const tourneyShock = perTourney > 0 ? gauss() * perTourney : 0;
+      let shift = 0;
+      if (state === 0) {
+        const side = hi - x >= threshold ? -1 : x - lo >= threshold ? 1 : 0;
+        if (side !== streakSide) streak = 0;
+        streakSide = side;
+        if (side !== 0 && ++streak >= minDuration) {
+          state = side;
+          anchor = x;
+          swing = side === -1 ? hi - x : x - lo;
+          enteredAt = i;
+          streak = 0;
+          streakSide = 0;
+        }
+      } else {
+        shift = state * gain;
+        if (state === -1) down++;
+        else up++;
+        const remaining = state === -1 ? hi - x : x - lo;
+        if (remaining <= (1 - recovery) * swing) {
+          const won = (state * (anchor - x)) / swing;
+          if (won >= recovery) out.anchoredExits++;
+          else out.forgottenExits++;
+          out.lengths.push(i - enteredAt);
+          out.wonBack.push(won);
+          state = 0;
+        }
+      }
+      const delta = skill + drift + sessionShock + tourneyShock + shift;
+      const r = rng() * e.aliasProb.length;
+      const k = r | 0;
+      const place = r - k < e.aliasProb[k] ? k : e.aliasIdx[k];
+      profit += e.prizeByPlace[place] - (e.singleCost - delta * e.singleCost) + e.rakebackBonusPerBullet;
+      expected += step;
+      xs[i + 1] = profit - expected;
+      if (c < checkpoints.length && i + 1 === checkpoints[c]) out.shares[c++].push((up + down) / (i + 1));
+    }
+    out.up += up;
+    out.down += down;
+    out.finals.push(profit);
+  }
+  return out;
+}
+
+describe("engine — tilt over a trailing window", () => {
+  it("slow tilt: both swings and both exits are read over the last W tournaments", () => {
+    // A small window and threshold make it switch often in both directions;
+    // the exit fires both while the old extreme is remembered (where it is
+    // the anchored rule) and after it has left the window.
+    const input = baseInput({
+      scheduleRepeats: 2000,
+      samples: 40,
+      rakebackFracOfRake: 0.3,
+      tiltSlowGain: 0.08,
+      tiltSlowThreshold: 2500,
+      tiltSlowMinDuration: 25,
+      tiltSlowRecoveryFrac: 0.5,
+      tiltSlowWindow: 150,
+    });
+    const replay = replaySlowWindow(input);
+    expect(Array.from(shardFinals(input))).toEqual(replay.finals);
+    expect(replay.up).toBeGreaterThan(0);
+    expect(replay.down).toBeGreaterThan(0);
+    expect(replay.anchoredExits).toBeGreaterThan(0);
+    expect(replay.forgottenExits).toBeGreaterThan(0);
+  });
+
+  it("fast tilt: the drawdown is read from the best profit of the last W tournaments", () => {
+    const replay = (input: SimulationInput) => {
+      const compiled = compileSchedule(input, "alpha");
+      const e = compiled.flat[0];
+      const n = compiled.tournamentsPerSample;
+      const profits = new Float64Array(n + 1);
+      const finals: number[] = [];
+      for (let s = 0; s < input.samples; s++) {
+        const rng = sampleStream(input.seed, s, STREAM_FINISH);
+        for (let i = 0; i < n; i++) {
+          const { hi } = scanExtremes(profits, i, input.tiltFastWindow!);
+          const shift = input.tiltFastGain! * Math.tanh((hi - profits[i]) / input.tiltFastScale!);
+          const r = rng() * e.aliasProb.length;
+          const k = r | 0;
+          const place = r - k < e.aliasProb[k] ? k : e.aliasIdx[k];
+          profits[i + 1] = profits[i] + (e.prizeByPlace[place] - (e.singleCost - shift * e.singleCost) + e.rakebackBonusPerBullet);
+        }
+        finals.push(profits[n]);
+      }
+      return finals;
+    };
+    const input = baseInput({ scheduleRepeats: 2000, samples: 40, tiltFastGain: -0.3, tiltFastScale: 500, tiltFastWindow: 50 });
+    expect(Array.from(shardFinals(input))).toEqual(replay(input));
+    // Window edges: one point back, a window one short of the run, the run, and past it.
+    for (const window of [1, 2, 7, 299, 300, 305]) {
+      const edge = baseInput({ scheduleRepeats: 300, samples: 12, tiltFastGain: -0.3, tiltFastScale: 300, tiltFastWindow: window });
+      expect(Array.from(shardFinals(edge)), `window ${window}`).toEqual(replay(edge));
+    }
+  });
+
+  it("slow tilt: windows from one tournament to past the end of the run", () => {
+    for (const window of [1, 2, 7, 299, 300, 305]) {
+      const input = baseInput({
+        scheduleRepeats: 300,
+        samples: 12,
+        tiltSlowGain: 0.08,
+        tiltSlowThreshold: 60,
+        tiltSlowMinDuration: 2,
+        tiltSlowRecoveryFrac: 0.5,
+        tiltSlowWindow: window,
+      });
+      const replay = replaySlowWindow(input);
+      expect(Array.from(shardFinals(input)), `window ${window}`).toEqual(replay.finals);
+      expect(replay.up + replay.down, `window ${window}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("how often the slow tilt fires does not grow with the distance", () => {
+    // Shares counted by the replica, which the first assertion ties to the
+    // engine bit for bit. Over the window (W = 200) the run spends 17.4 % of
+    // its first 2,000 tournaments tilted and 17.8 % of 20,000; on all-time
+    // extremes the same threshold gives 74 % and 97 %. Per-sample shares of
+    // 40 samples have an SE of about 1.5 pp, so 4 pp is over 2.5 SE of the
+    // paired difference and the fixed seed cannot flake.
+    const input = baseInput({
+      scheduleRepeats: 20_000,
+      samples: 40,
+      tiltSlowGain: 0.08,
+      tiltSlowThreshold: 5000,
+      tiltSlowMinDuration: 50,
+      tiltSlowRecoveryFrac: 0.5,
+      tiltSlowWindow: 200,
+    });
+    const replay = replaySlowWindow(input, [2000, 20_000]);
+    expect(Array.from(shardFinals(input))).toEqual(replay.finals);
+    const short = meanAndSe(replay.shares[0]);
+    const long = meanAndSe(replay.shares[1]);
+    expect(Math.abs(long.mean - short.mean)).toBeLessThan(0.04);
+    expect(short.mean).toBeGreaterThan(0.1);
+    expect(short.mean).toBeLessThan(0.3);
+  });
+
+  it("steady-reg: the share, the length and the end of a tilt are what its tagline quotes", () => {
+    // The app's steady-reg run, preset noise included, replayed bit for bit,
+    // so the replica's counts are the engine's. A share "about q" passes when
+    // the mean lies within 3 SE of q ± half its last printed digit; the seed
+    // is fixed, so the counts are the same on every run.
+    const steady = STANDARD_PRESETS.find((preset) => preset.id === "steady-reg")!.patch;
+    const tagline = DICT["preset.steadyReg.tagline"];
+    const run = (players: number, samples: number, roi: number, n: number) => {
+      const schedule = applyItmTarget([{ ...freezeRow(), players, roi, count: n }], { enabled: false, pct: 18.7 });
+      const controls = applyModelPatch({ ...SCENARIOS[0].controls, scheduleRepeats: 1, samples, seed: 42, rakebackPct: 20 }, steady, "steady-reg");
+      const input = buildSimulationInput(schedule, controls, true);
+      const replay = replaySlowWindow(input, [10_000, n]);
+      expect(Array.from(shardFinals(input)), `${players} players, ROI ${roi}`).toEqual(replay.finals);
+      return replay;
+    };
+    const quotesShare = (shares: number[], low: number, high: number, digit: number) => {
+      const { mean, se } = meanAndSe(shares);
+      return mean > low - digit / 2 - 3 * se && mean < high + digit / 2 + 3 * se;
+    };
+
+    // Measured 1.02 % / 1.29 % at 10,000 / 50,000 tournaments (1,000 players)
+    // and 6.35 % / 7.25 % (3,000 players). On all-time extremes the same
+    // threshold gives 50 % / 89 % and 63 % / 91 %.
+    expect(tagline.en).toContain("a 1,000-player regular spends about 1% of a run tilted and a 3,000-player regular 6–7%, over 10,000 tournaments as over 100,000");
+    expect(tagline.ru).toContain("регуляр на полях в 1 000 игроков проводит в тильте около 1% дистанции, а регуляр на полях в 3 000 — 6–7%, и за 10 000 турниров, и за 100 000");
+    const regular = run(1000, 60, 0.1, 50_000);
+    const bigField = run(3000, 40, 0.1, 50_000);
+    for (const shares of regular.shares) expect(quotesShare(shares, 0.01, 0.01, 0.01)).toBe(true);
+    for (const shares of bigField.shares) expect(quotesShare(shares, 0.06, 0.07, 0.01)).toBe(true);
+
+    // Measured 3.87 % and 11.8 % over 20,000 tournaments; a losing regular is
+    // never in "down" here.
+    expect(tagline.en).toContain("at 3,000 players it is about 3.5% at −10% ROI and 12% at +30%");
+    expect(tagline.ru).toContain("на полях в 3 000 при ROI −10% это около 3,5%, а при +30% — около 12%");
+    const losing = run(3000, 40, -0.1, 20_000);
+    const strong = run(3000, 40, 0.3, 20_000);
+    expect(quotesShare(losing.shares[1], 0.035, 0.035, 0.001)).toBe(true);
+    expect(quotesShare(strong.shares[1], 0.12, 0.12, 0.01)).toBe(true);
+    expect(losing.down).toBe(0);
+
+    // The exit reads the gap to the window's extreme. The extreme a state
+    // started from was usually set before its entry streak and leaves the
+    // window first, so almost no state ends on winning half the swing back
+    // (6 of 529 here) and the median state won back 4-8 % of it. Median
+    // lengths 429 (1,000 players) and 501; quoted to the nearest hundred.
+    expect(tagline.en).toContain("a tilt usually ends when the one it started from drops out of them rather than because the swing turned back, typically after 400 to 500 tournaments");
+    expect(tagline.ru).toContain("тильт, как правило, заканчивается, когда точка, от которой он начался, выпадает из этого отрезка, а не потому, что качели развернулись, и длится 400–500 турниров");
+    for (const [label, replay] of Object.entries({ regular, bigField, losing, strong })) {
+      const exits = replay.lengths.length;
+      const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+      expect(exits, label).toBeGreaterThan(50);
+      expect(replay.anchoredExits, label).toBeLessThan(0.05 * exits);
+      expect(median(replay.wonBack), label).toBeLessThan(0.25);
+      expect(median(replay.lengths), label).toBeGreaterThanOrEqual(350);
+      expect(median(replay.lengths), label).toBeLessThan(550);
+    }
+  });
+
+  it("an unset, zero, fractional or NaN window keeps the all-time extremes bit for bit", () => {
+    const tilts = {
+      tiltFastGain: -0.3,
+      tiltFastScale: 500,
+      tiltSlowGain: 0.08,
+      tiltSlowThreshold: 2500,
+      tiltSlowMinDuration: 25,
+      tiltSlowRecoveryFrac: 0.5,
+    };
+    const input = baseInput({ scheduleRepeats: 2000, samples: 60, ...tilts });
+    const allTime = Array.from(shardFinals(input));
+    for (const window of [0, 0.5, Number.NaN, -3]) {
+      const finals = Array.from(shardFinals({ ...input, tiltFastWindow: window, tiltSlowWindow: window }));
+      expect(finals, String(window)).toEqual(allTime);
+    }
+    // A fast window at least as long as the run holds every point: the same peak.
+    expect(Array.from(shardFinals({ ...input, tiltSlowGain: 0, tiltFastWindow: 2000 }))).toEqual(
+      Array.from(shardFinals({ ...input, tiltSlowGain: 0 })),
+    );
+    expect(Array.from(shardFinals({ ...input, tiltFastWindow: 300, tiltSlowWindow: 300 }))).not.toEqual(allTime);
+  });
+
+  it("resets its memory per sample, so shard boundaries do not move a run", () => {
+    const input = baseInput({
+      scheduleRepeats: 1500,
+      samples: 50,
+      tiltFastGain: -0.3,
+      tiltFastScale: 500,
+      tiltFastWindow: 40,
+      tiltSlowGain: 0.08,
+      tiltSlowThreshold: 2500,
+      tiltSlowMinDuration: 25,
+      tiltSlowRecoveryFrac: 0.5,
+      tiltSlowWindow: 150,
+    });
+    const whole = Array.from(shardFinals(input));
+    expect([...shardFinals(input, 0, 1), ...shardFinals(input, 1, 23), ...shardFinals(input, 23, 50)]).toEqual(whole);
   });
 });
 

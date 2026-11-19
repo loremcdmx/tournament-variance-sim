@@ -5,6 +5,7 @@
  */
 
 import { runSimulation } from "../src/lib/sim/engine";
+import { DEFAULT_TILT_FAST_WINDOW, DEFAULT_TILT_SLOW_WINDOW } from "../src/lib/sim/modelPresets";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 
 interface Scenario {
@@ -70,7 +71,9 @@ function buildInput(sc: Scenario): SimulationInput {
       roiShockPerTourney: 0.02,
       tiltFastGain: 0.03,
       tiltFastScale: 500,
+      tiltFastWindow: DEFAULT_TILT_FAST_WINDOW,
       tiltSlowGain: 0.02,
+      tiltSlowWindow: DEFAULT_TILT_SLOW_WINDOW,
     };
   }
   return base;

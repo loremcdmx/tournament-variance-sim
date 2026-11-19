@@ -60,15 +60,16 @@ function isTournamentRowLike(v: unknown): v is TournamentRow {
  * 50% to 45%; a v1 row at exactly 0.5 is that stale default, not a user
  * choice, and is migrated. v2 rows are taken verbatim. v1 and v2 controls
  * carry the tilt depths in dollars and no session length (see
- * `V2_DOLLAR_TILT`).
+ * `V2_DOLLAR_TILT`); v1 to v3 controls carry no tilt windows (see
+ * `V3_ALL_TIME_TILT`).
  */
-type LegacyPersistedState = Omit<PersistedState, "v"> & { v: 1 | 2 };
+type LegacyPersistedState = Omit<PersistedState, "v"> & { v: 1 | 2 | 3 };
 
 function isPersistedState(
   v: unknown,
 ): v is PersistedState | LegacyPersistedState {
   if (!isRecord(v)) return false;
-  if (v.v !== 1 && v.v !== 2 && v.v !== PERSISTED_STATE_VERSION) return false;
+  if (v.v !== 1 && v.v !== 2 && v.v !== 3 && v.v !== PERSISTED_STATE_VERSION) return false;
   // Rows past the editor cap are dropped on read, so one malformed row out
   // there must not reject the payload (the autosave would then overwrite it).
   // The editor never lets the last row go, so a state with none is damage:
@@ -101,7 +102,7 @@ function warnOnBrMrDrift(schedule: readonly TournamentRow[] | undefined, source:
   }
 }
 
-export const PERSISTED_STATE_VERSION = 3;
+export const PERSISTED_STATE_VERSION = 4;
 export const MAX_SCHEDULE_ROWS = 300;
 // Over-cap saves predate the editor cap, so they are truncated on read rather
 // than refused (a refusal let the autosave overwrite the whole schedule). This
@@ -406,9 +407,22 @@ const V2_DOLLAR_TILT: Partial<Record<string, Partial<ControlsState>>> = {
   "steady-reg": { tiltSlowThreshold: 5000 },
 };
 
+/**
+ * What the two built-in tilt profiles stored at v3, when both tilts measured
+ * from the extremes of the whole run and the profiles had no window. Their
+ * depths changed with the window, so a v3 "custom" state is recognised by
+ * these values, as `V2_DOLLAR_TILT` does for v1/v2.
+ */
+const V3_ALL_TIME_TILT: Partial<Record<string, Partial<ControlsState>>> = {
+  "realistic-solo": { tiltFastScale: 200 },
+  "steady-reg": { tiltSlowThreshold: 2000 },
+};
+
+const TILT_WINDOW_KEYS = ["tiltFastWindow", "tiltSlowWindow"] as const satisfies readonly (keyof ControlsState)[];
+
 function normalizePersistedControls(
   controls: ControlsState,
-  tiltInDollars: boolean,
+  version: LegacyPersistedState["v"] | typeof PERSISTED_STATE_VERSION,
 ): ControlsState {
   let changed = false;
   const next: Record<string, unknown> = { ...controls };
@@ -468,20 +482,22 @@ function normalizePersistedControls(
     "tiltSlowThreshold",
     "tiltSlowMinDuration",
     "tiltSlowRecoveryFrac",
+    ...TILT_WINDOW_KEYS,
   ] as const satisfies readonly (keyof ControlsState)[];
   // The visible built-in profiles own these otherwise hidden knobs. Restore
   // their canonical settings (also repairs older saves with missing fields).
   // Hand-tuning a visible field changes the id to custom but retains its
   // profile; recognize that complete signature without accepting arbitrary
   // hidden legacy parameters.
-  const signatureKeys = tiltInDollars
-    ? profileKeys.filter((key) => key !== "tournamentsPerSession")
-    : profileKeys;
+  const unstoredKeys: readonly string[] =
+    version <= 2 ? ["tournamentsPerSession", ...TILT_WINDOW_KEYS]
+      : version === 3 ? TILT_WINDOW_KEYS
+        : [];
+  const signatureKeys = profileKeys.filter((key) => !unstoredKeys.includes(key));
+  const legacySignature = version <= 2 ? V2_DOLLAR_TILT : version === 3 ? V3_ALL_TIME_TILT : {};
   const profile = STANDARD_PRESETS.find((preset) => preset.id === next.modelPresetId)
     ?? (next.modelPresetId === "custom" ? STANDARD_PRESETS.find((preset) => {
-      const signature = tiltInDollars
-        ? { ...preset.patch, ...V2_DOLLAR_TILT[preset.id] }
-        : preset.patch;
+      const signature = { ...preset.patch, ...legacySignature[preset.id] };
       return signatureKeys.every((key) => next[key] === signature[key]);
     }) : undefined);
   for (const key of profileKeys) {
@@ -758,7 +774,7 @@ function normalizePersistedState(
       count: nextCount,
     };
   });
-  const controls = normalizePersistedControls(state.controls, state.v !== PERSISTED_STATE_VERSION);
+  const controls = normalizePersistedControls(state.controls, state.v);
   if (controls !== state.controls) changed = true;
   if (!changed) return state as PersistedState;
   return { ...state, v: PERSISTED_STATE_VERSION, schedule, controls };
