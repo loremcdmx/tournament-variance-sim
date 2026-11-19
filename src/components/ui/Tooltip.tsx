@@ -242,7 +242,7 @@ export function Tooltip({ content, children, label }: Props) {
             ref={tooltipRef}
             id={tooltipId}
             role="tooltip"
-            className="pointer-events-none fixed z-50 max-h-[min(60vh,28rem)] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto whitespace-normal break-words border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3.5 py-3 text-left text-[11.5px] font-normal normal-case leading-relaxed tracking-normal text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] [overflow-wrap:anywhere]"
+            className="pointer-events-none fixed z-50 max-h-[min(60vh,28rem)] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto whitespace-normal break-words rounded-lg border-t-2 border-x border-b border-t-[color:var(--color-accent)] border-x-[color:var(--color-border-strong)] border-b-[color:var(--color-border-strong)] bg-[color:var(--color-bg-elev-2)] px-3.5 py-3 text-left text-[11.5px] font-normal normal-case leading-relaxed tracking-normal text-[color:var(--color-fg-muted)] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.85)] [overflow-wrap:anywhere]"
             style={{
               left: coords?.left ?? 0,
               top: coords?.top ?? 0,

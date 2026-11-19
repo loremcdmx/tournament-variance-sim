@@ -130,7 +130,7 @@ export function Card({
   return (
     <div
       className={
-        "relative min-w-0 border-t-[2px] border-x border-b border-t-[color:var(--color-fg)]/70 border-x-[color:var(--color-border)] border-b-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/60 " +
+        "surface-card relative min-w-0 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]/60 " +
         className
       }
     >
