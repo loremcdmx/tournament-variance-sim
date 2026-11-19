@@ -487,6 +487,8 @@ function compileSingleEntry(
   let pkoRawInv: Float64Array | null = null;
   let pkoKoLogSigma: Float64Array | null = null;
   let pkoHaulVariance: Float64Array | null = null;
+  let pkoHaulShrink: Float64Array | null = null;
+  let pkoHaulShift: Float64Array | null = null;
   let pkoWinnerHead = 0;
   // Raw (unnormalized) bounty weights. Captured so the latent-heat bank
   // below can re-normalize the same shape against its per-bin shifted pmf
@@ -610,16 +612,25 @@ function compileSingleEntry(
         pkoRawInv = new Float64Array(N);
         for (let i = 0; i < N; i++) if (raw[i] > 0) pkoRawInv[i] = 1 / raw[i];
         // Knockouts at their stage's mean cash already carry the Bernoulli
-        // count; a mean-one log-normal factor per knockout, sized per place,
-        // adds the rest of the tree's spread (victim head sizes and the
-        // winner's head growing with the own knockouts). Where the count
-        // alone already exceeds the tree (2nd place in fields of 4 to about 44,
-        // 3rd in fields of 5 to 10) the factor is off. A Mystery log-variance set
-        // on the row stacks on top as its own channel.
+        // count, which is the tree's own; a mean-one log-normal factor per
+        // knockout, sized per place, adds the rest of the tree's spread
+        // (victim head sizes and the winner's head growing with the own
+        // knockouts). A Mystery log-variance set on the row stacks on top as
+        // its own channel. Where the count alone already spreads more than the
+        // tree (2nd place in fields of 4 to 44, 3rd in fields of 5 to 10: a
+        // player who knocks out more meets smaller heads) no factor can narrow
+        // it, so the hauls that hold a knockout are pulled toward their own
+        // mean instead. The place keeps its mean and the tree's chance of no
+        // knockout, i / (N − 1); the variance that chance alone carries,
+        // m² i / (N − 1 − i), is the floor of the shrink, and the tree's sits
+        // above it because the tree has the same chance and mean. The 1e-9 on
+        // both sides keeps rounding off the factor and the shrink.
         const treeVariance = pkoTreeVarianceByPlace(N);
         const extraLogVar = Math.max(0, row.mysteryBountyVariance ?? 0);
         pkoKoLogSigma = new Float64Array(N);
         pkoHaulVariance = new Float64Array(N);
+        pkoHaulShrink = new Float64Array(N).fill(1);
+        pkoHaulShift = new Float64Array(N);
         let countMoment = 0;
         let meanSquare = 0;
         for (let i = N - 2; i >= 0; i--) {
@@ -631,6 +642,16 @@ function compileSingleEntry(
           const logVar = (spread > 1 + 1e-9 ? Math.log(spread) : 0) + extraLogVar;
           pkoKoLogSigma[i] = Math.sqrt(logVar);
           pkoHaulVariance[i] = countMoment * Math.exp(logVar) - meanSquare;
+          if (spread < 1 - 1e-9) {
+            const noKnockout = i / (N - 1);
+            const knockoutMean = raw[i] / (1 - noKnockout);
+            const floor = noKnockout * knockoutMean * raw[i];
+            const target = (treeVariance[i] + meanSquare) * Math.exp(extraLogVar) - meanSquare;
+            const shrink = Math.sqrt((target - floor) / (pkoHaulVariance[i] - floor));
+            pkoHaulShrink[i] = shrink;
+            pkoHaulShift[i] = (1 - shrink) * knockoutMean;
+            pkoHaulVariance[i] = target;
+          }
         }
       }
     } else if (pmf[0] > 1e-12) {
@@ -829,6 +850,8 @@ function compileSingleEntry(
     pkoRawInv,
     pkoKoLogSigma,
     pkoHaulVariance,
+    pkoHaulShrink,
+    pkoHaulShift,
     pkoWinnerHead: pkoRawInv !== null ? pkoWinnerHead : 0,
     mysteryBountyLogVar: perKoLogVar,
     mysteryBountyLogSigma: perKoLogVar > 0 ? Math.sqrt(perKoLogVar) : 0,

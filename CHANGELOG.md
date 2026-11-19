@@ -116,8 +116,12 @@ for the same inputs, the entry says for which rows.
   instead of drawing a Poisson knockout count with a flat head-size noise. A
   tournament winner always collects at least their own final head; before, a
   heads-up winner got no bounty in 37 % of wins and a 6-max winner in 10 %.
-- PKO standard deviation per tournament is now within 0.1 % of the exact
-  elimination tree at every field size, bounty share and ROI. Before, it was
+- PKO standard deviation per tournament now equals the exact elimination tree
+  at every field size, bounty share and ROI, place by place: the runner-up in
+  fields of 4 to 44 players and 3rd place in fields of 5 to 10, which kept up
+  to 3.8 % too much bounty spread, now have their knockout hauls pulled toward
+  their average, while the chance of finishing there without a knockout stays
+  as it is. Before, it was
   overstated by about 39 % heads-up, 13 % at 6-max, 10 % at 9-max, 5 % at 18
   players and 4 % at 50 players, and by more at a high ROI or a high bounty
   share. Required volume, bankroll and risk figures for single-table and

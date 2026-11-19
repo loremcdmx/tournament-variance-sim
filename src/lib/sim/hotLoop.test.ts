@@ -22,6 +22,51 @@ function run(input: SimulationInput, from = 0, to = input.samples) {
   return { compiled, shard: simulateShard(input, compiled, from, to, makeCheckpointGrid(compiled.tournamentsPerSample)) };
 }
 
+/**
+ * The bounty take at every finishing place of the uniform-killer progressive tree, with
+ * every killer assignment enumerated: each bust pays half the victim's head to a killer
+ * uniform among the players still in, the other half joins the killer's head, and the
+ * winner also cashes the own final head. Unit starting head.
+ */
+function enumeratedTree(players: number) {
+  const sum = new Float64Array(players);
+  const sumSquares = new Float64Array(players);
+  const none = new Float64Array(players);
+  const killer = new Int32Array(players + 1);
+  const head = new Float64Array(players + 1);
+  const cash = new Float64Array(players + 1);
+  let leaves = 0;
+  const walk = (rank: number): void => {
+    if (rank > 1) {
+      for (let k = 1; k < rank; k++) {
+        killer[rank] = k;
+        walk(rank - 1);
+      }
+      return;
+    }
+    head.fill(1);
+    cash.fill(0);
+    for (let r = players; r >= 2; r--) {
+      const half = head[r] / 2;
+      cash[killer[r]] += half;
+      head[killer[r]] += half;
+    }
+    cash[1] += head[1];
+    for (let r = 1; r <= players; r++) {
+      sum[r - 1] += cash[r];
+      sumSquares[r - 1] += cash[r] * cash[r];
+      if (cash[r] === 0) none[r - 1]++;
+    }
+    leaves++;
+  };
+  walk(players);
+  return Array.from({ length: players }, (_, i) => ({
+    mean: sum[i] / leaves,
+    variance: sumSquares[i] / leaves - (sum[i] / leaves) ** 2,
+    none: none[i] / leaves,
+  }));
+}
+
 describe("PKO knockouts in the hot loop", () => {
   it("sample sigma and mean agree with compiledEntryMoments at every field, heat, bounty share and ROI", () => {
     // 20 000 samples of 10 tournaments per case. z of the variance uses the sample's own
@@ -61,6 +106,59 @@ describe("PKO knockouts in the hot loop", () => {
       expect(Math.abs(zVariance), JSON.stringify(row)).toBeLessThan(4);
       expect(Math.abs(zMean), JSON.stringify(row)).toBeLessThan(4);
     });
+  });
+
+  it("plays the enumerated tree at every finishing place: mean, spread and the chance of no bounty", () => {
+    // Unlike the test above, this one does not read the engine's own moments. Each place of
+    // fields of 4 to 9 is played alone (the finish draw pinned to it), 50 000 tournaments, and
+    // its bounty is compared with the exact tree in dollars. z of the variance uses the
+    // sample's own kurtosis, SE(var) = var * sqrt((kurtosis - 1) / S), which needs a kurtosis
+    // above 1: both places of a 3-player field are a fair coin, so that field is left out. z of
+    // the no-bounty share is binomial. The seeds are fixed, so the test cannot flake; at them
+    // the largest |z| over the 26 places is 2.54. Measured on altered engines: leaving the
+    // count's excess at 2nd and 3rd place unshrunk reads z 12.9, a Poisson count with a flat
+    // head noise 103 (and 16 % of 4-player winners without a bounty), the per-place
+    // log-variance 20 % too wide or too narrow +10.4 / -13.4, a shrink toward the whole place
+    // mean -224 (no-bounty share).
+    const samples = 50_000;
+    for (const players of [4, 5, 6, 7, 9]) {
+      const tree = enumeratedTree(players);
+      for (let place = 0; place < players - 1; place++) {
+        const input = pkoInput({ players }, samples, 600 + 10 * players + place);
+        const compiled = compileSchedule(input, "alpha");
+        const entry = compiled.flat[0];
+        entry.aliasProb.fill(0);
+        entry.aliasIdx.fill(place);
+        const shard = simulateShard(input, compiled, 0, samples, makeCheckpointGrid(compiled.tournamentsPerSample));
+        const scale = entry.bountyByPlace![0] / tree[0].mean;
+        const mean = tree[place].mean * scale;
+        const variance = tree[place].variance * scale * scale;
+        let sum = 0;
+        let none = 0;
+        for (const bounty of shard.rowBountyProfits) {
+          sum += bounty;
+          if (bounty === 0) none++;
+        }
+        const sampleMean = sum / samples;
+        let m2 = 0;
+        let m4 = 0;
+        for (const bounty of shard.rowBountyProfits) {
+          const d = bounty - sampleMean;
+          m2 += d * d;
+          m4 += d ** 4;
+        }
+        const sampleVariance = m2 / (samples - 1);
+        const kurtosis = (samples * m4) / (m2 * m2);
+        const noBounty = tree[place].none;
+        const z = [
+          (sampleMean - mean) / Math.sqrt(sampleVariance / samples),
+          (sampleVariance - variance) / (sampleVariance * Math.sqrt((kurtosis - 1) / samples)),
+        ];
+        if (noBounty > 0) z.push((none / samples - noBounty) / Math.sqrt((noBounty * (1 - noBounty)) / samples));
+        else expect(none, `N=${players} winners without a bounty`).toBe(0);
+        expect(Math.max(...z.map(Math.abs)), `N=${players} place ${place + 1}: z ${z.map(v => v.toFixed(2))}`).toBeLessThan(4);
+      }
+    }
   });
 
   it("a winner always collects at least the own head and makes the last knockout", () => {

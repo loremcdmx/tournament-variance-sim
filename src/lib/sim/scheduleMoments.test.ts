@@ -228,10 +228,10 @@ describe("PKO bounty against the exact elimination tree", () => {
     }
   });
 
-  it("matches the tree's spread at every place; the knockout count alone runs over at a few", () => {
-    // Where the Bernoulli knockouts at their stage's mean cash already spread more than the
-    // tree (2nd place in fields of 4 to about 44, 3rd in fields of 5 to 10), no factor is added. Measured
-    // on this engine for N = 2..7: sd engine / sd tree there is at most 1.038 (2nd at 7 players).
+  it("matches the tree's spread at every place, also where the knockout count alone runs over", () => {
+    // The Bernoulli knockouts at their stage's mean cash spread more than the tree at 2nd place
+    // in fields of 4 to 44 and 3rd in fields of 5 to 10 (sd 1.038x at 2nd of 7 players), and
+    // those places are shrunk onto the tree; everywhere else a log-normal factor widens them.
     for (let players = 2; players <= 7; players++) {
       const tree = eliminationTree(players);
       for (const pkoHeadVar of [0, 0.4]) {
@@ -245,18 +245,33 @@ describe("PKO bounty against the exact elimination tree", () => {
             expect(sd).toBeLessThan(1e-6 * scale);
             continue;
           }
-          const ratio = sd / treeSd;
-          expect(ratio, `N=${players} place ${i + 1}`).toBeGreaterThan(1 - 1e-9);
-          expect(ratio, `N=${players} place ${i + 1}`).toBeLessThan(1.04);
-          if (i === 0) expect(ratio).toBeCloseTo(1, 9);
+          expect(sd / treeSd, `N=${players} place ${i + 1}`).toBeCloseTo(1, 9);
         }
       }
     }
   });
 
-  it("puts sigma per tournament within 0.2% of the tree at every field, bounty share and ROI", () => {
-    // Largest gap on this engine over this grid: +0.10% (7 players, bounty share 0.9, ROI
-    // -30%); it comes only from the places where the count alone runs over. A target the
+  it("shrinks only the places where the count over-spreads, and meets the factor where they end", () => {
+    for (let players = 2; players <= 60; players++) {
+      const entry = compileOne(pko(players), REALDATA);
+      const shrunk: number[] = [];
+      for (let i = 0; i < players - 1; i++) {
+        if (entry.pkoHaulShrink![i] < 1) {
+          shrunk.push(i + 1);
+          expect(entry.pkoKoLogSigma![i]).toBe(0);
+        } else {
+          expect(entry.pkoHaulShift![i]).toBe(0);
+        }
+      }
+      const expected = [...(players >= 4 && players <= 44 ? [2] : []), ...(players >= 5 && players <= 10 ? [3] : [])];
+      expect(shrunk, `N=${players}`).toEqual(expected);
+    }
+    expect(compileOne(pko(44), REALDATA).pkoHaulShrink![1] ** 2).toBeGreaterThan(0.999);
+    expect(compileOne(pko(45), REALDATA).pkoKoLogSigma![1] ** 2).toBeLessThan(0.001);
+  });
+
+  it("puts sigma per tournament on the tree's at every field, bounty share and ROI", () => {
+    // Every place has the tree's mean and variance, so only rounding is left. A target the
     // finish model cannot reach (calibration warning) is skipped: its pmf is not the row's.
     let checked = 0;
     for (const players of [2, 3, 4, 5, 6, 7, 9, 13, 18, 27, 50, 180, 1000, 5000]) {
@@ -267,7 +282,7 @@ describe("PKO bounty against the exact elimination tree", () => {
           if (entry.calibrationWarning) continue;
           checked++;
           const ratio = sigmaOf(compiledEntryMoments(entry)) / treeSigma(entry, tree);
-          expect(Math.abs(ratio - 1), `N=${players} share=${bountyFraction} roi=${roi}`).toBeLessThan(0.002);
+          expect(Math.abs(ratio - 1), `N=${players} share=${bountyFraction} roi=${roi}`).toBeLessThan(1e-9);
         }
       }
     }

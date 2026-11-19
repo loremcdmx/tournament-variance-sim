@@ -1178,8 +1178,9 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   whose log-sigma depends on the finishing place (`pkoKoLogSigma`), sized by an O(N)
   ten-moment recursion of the tree (`pkoTreeVarianceByPlace`), so every place's bounty
   variance is the tree's, the winner included. compiledEntryMoments reads the same
-  `pkoHaulVariance`. Per-tournament σ is within 0.1 % of the tree from 2 players up (bounty
-  share 0.2-0.9, ROI -50 % to +200 %). The old Poisson count with a flat 0.4 head noise
+  `pkoHaulVariance`. Per-tournament σ equals the tree's to rounding (under 1e-9 relative,
+  pinned by scheduleMoments.test.ts) from 2 players up (bounty share 0.2-0.9, ROI -50 % to
+  +200 %). The old Poisson count with a flat 0.4 head noise
   read 1.39x heads-up, 1.13x 6-max, 1.05x at 18 players, and paid a heads-up winner no
   bounty in 37 % of wins. Do not switch models at a field size: the log-variance is smooth
   in N and the place and tends to about 0.43 in big fields (why 0.4 used to work there).
@@ -1191,9 +1192,34 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   the preview. A mysteryBountyVariance on an explicit PKO row still stacks as its own
   channel.
 - Where the Bernoulli count at mean cash already spreads more than the tree (2nd place in
-  fields of 4 to about 44, 3rd in fields of 5 to 10; at most +3.8 % in sd at that place, at
-  7 players) the PKO factor is off and the place keeps the small excess; its effect on
-  per-tournament σ is at most 0.10 %.
+  fields of 4 to 44, 3rd in fields of 5 to 10; up to +3.8 % in sd, at 2nd of 7), no
+  per-knockout factor can narrow it: in the tree a player who knocks out more meets smaller
+  heads. compileEntry instead shrinks only the hauls that hold a knockout toward their own
+  mean m' = m / (1 - p0): H' = shrink x H + (1 - shrink) x m' (`pkoHaulShrink`,
+  `pkoHaulShift`; the hot loop applies it when the haul is above 0). p0 = i / (N - 1) is the
+  exact chance of no knockout, the same in the count and in the tree, so the shrink always
+  lands exactly on the tree's variance. With a mysteryBountyVariance x the target is
+  (treeVar + meanSquare) e^x - meanSquare, the same stacking as on the factor side. Shrink
+  and factor are both the identity where the count meets the tree (shrink^2 0.9996 at 2nd
+  of 44, factor log-variance 4.3e-4 at 2nd of 45), so nothing switches at a field size. Do
+  not shrink toward the whole place mean (it pays every non-scoring runner-up a bounty: P(no
+  bounty) 0 where the tree has up to 33 %), do not mix with the mean, and do not switch the
+  factor off again.
+- The PKO construction matches each place's first two moments, not the third (skew at 9
+  players, engine vs tree: winner 0.54 vs -0.12, 3rd 0.52 vs 0.39). Do not report the skew
+  gap as a variance bug.
+- PKO sampler tests: 'sample sigma and mean agree with compiledEntryMoments' compares the
+  sampler with the engine's own analytic, so a model change that moves both passes it (the
+  old Poisson model did). The independent check is hotLoop.test.ts 'plays the enumerated
+  tree at every finishing place' (fields 4 to 9, every killer assignment enumerated; the
+  3-player field stays out because a fair coin's kurtosis of 1 makes the kurtosis-based SE
+  of the variance zero).
+- scripts/result_digest.ts has no PKO row under 45 players, so it cannot see changes that
+  only touch small PKO fields. Check 4, 6, 9, 18, 44 and 45 players and a range that
+  straddles 44, in both calibration modes, before calling a PKO change byte-neutral.
+- Benchmark two builds in separate processes: in one process the first-loaded copy of the
+  engine ran 10-15 % faster than a byte-identical second copy, so interleaving inside one
+  process shows a fake regression.
 - All bounty formats share the per-sample STREAM_BOUNTY stream, so on a schedule that mixes
   PKO with Mystery or Battle Royale rows the PKO change moved the Mystery / BR draws too.
   Byte-identity with the old engine holds only for schedules with no PKO row.

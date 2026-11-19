@@ -94,9 +94,13 @@ export interface CompiledEntry {
    * wide. Each knockout is multiplied by a mean-one log-normal factor with
    * log-σ `pkoKoLogSigma[place]`, sized so that the haul's variance at that
    * place, `pkoHaulVariance[place]`, is the tree's own (victim head sizes and
-   * the winner's head growing with the own knockouts included). The winner
-   * also keeps `pkoWinnerHead`, the expected own final head, as a fixed
-   * amount: it is not a knockout. The haul is paid as
+   * the winner's head growing with the own knockouts included). Where the
+   * count at mean cash already spreads more than the tree, a haul that holds
+   * a knockout becomes `pkoHaulShrink[place] × haul + pkoHaulShift[place]`
+   * instead (1 and 0 everywhere else): it moves toward the mean of such
+   * hauls, so the place keeps its mean and the tree's chance of no bounty.
+   * The winner also keeps `pkoWinnerHead`, the expected own final head, as a
+   * fixed amount: it is not a knockout. The haul is paid as
    * `bountyByPlace[place] × haul × pkoRawInv[place]`, so every place and
    * every heat bin keeps its mean. Null / 0 for every other format.
    */
@@ -104,6 +108,8 @@ export interface CompiledEntry {
   pkoRawInv: Float64Array | null;
   pkoKoLogSigma: Float64Array | null;
   pkoHaulVariance: Float64Array | null;
+  pkoHaulShrink: Float64Array | null;
+  pkoHaulShift: Float64Array | null;
   pkoWinnerHead: number;
   /**
    * Analytical per-bullet E[prize + bounty] from the calibrated pmf. Should

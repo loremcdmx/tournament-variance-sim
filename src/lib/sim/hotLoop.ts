@@ -478,6 +478,8 @@ function simulateShardInternal(
                 }
                 j = Math.floor(j / bRng()) + 1;
               }
+              const shrink = t.pkoHaulShrink![place];
+              if (shrink < 1 && haul > 0) haul = shrink * haul + t.pkoHaulShift![place];
               bountyDraw = mean * t.pkoRawInv![place] * haul;
               if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
             }
