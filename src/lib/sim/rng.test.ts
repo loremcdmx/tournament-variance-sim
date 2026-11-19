@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { mulberry32, mixSeed } from "./rng";
+import {
+  STREAM_BOUNTY,
+  STREAM_CASH,
+  STREAM_FINISH,
+  STREAM_LEADERBOARD,
+  STREAM_OCEAN,
+  STREAM_SKILL,
+  mixSeed,
+  mulberry32,
+  sampleStream,
+  xoshiro128ss,
+} from "./rng";
 
 describe("mulberry32", () => {
   it("is deterministic given the same seed", () => {
@@ -145,5 +156,106 @@ describe("mixSeed seed sensitivity", () => {
       const b = meanFirstDraw((base + 1) >>> 0);
       expect(a).not.toBe(b);
     }
+  });
+});
+
+describe("xoshiro128ss", () => {
+  it("reproduces the reference sequence for state {1, 2, 3, 4}", () => {
+    const next = xoshiro128ss(1, 2, 3, 4);
+    const got = Array.from({ length: 10 }, () => next());
+    expect(got).toEqual([
+      11520, 0, 5927040, 70819200, 2031721883, 1637235492, 1287239034,
+      3734860849, 3729100597, 4258142804,
+    ]);
+  });
+});
+
+describe("sampleStream", () => {
+  const SEED = 0xc0ffee;
+  const CHANNELS = [
+    STREAM_FINISH,
+    STREAM_SKILL,
+    STREAM_BOUNTY,
+    STREAM_OCEAN,
+    STREAM_LEADERBOARD,
+    STREAM_CASH,
+  ];
+
+  it("is a function of seed, sample index and channel only", () => {
+    const a = sampleStream(42, 7, STREAM_BOUNTY);
+    const b = sampleStream(42, 7, STREAM_BOUNTY);
+    for (let i = 0; i < 200; i++) expect(a()).toBe(b());
+  });
+
+  it("stays in [0, 1)", () => {
+    const r = sampleStream(1, 0, STREAM_FINISH);
+    for (let i = 0; i < 20_000; i++) {
+      const v = r();
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(1);
+    }
+  });
+
+  it("gives every seed, sample and channel its own stream from the first draw", () => {
+    const firstDraws = new Set<number>();
+    let streams = 0;
+    for (const seed of [0, 1, 2, 3, 0xffffffff, -5]) {
+      for (let s = 0; s < 200; s++) {
+        for (const channel of CHANNELS) {
+          firstDraws.add(sampleStream(seed, s, channel)());
+          streams++;
+        }
+      }
+    }
+    // 7 200 draws out of 2^32 values: a repeat has a chance of about 0.6%.
+    expect(firstDraws.size).toBe(streams);
+  });
+
+  it("first draws are uncorrelated across channels, samples and seeds", () => {
+    const N = 20_000;
+    const column = (seed: number, channel: number, shift: number): number[] => {
+      const out = new Array<number>(N);
+      for (let s = 0; s < N; s++) out[s] = sampleStream(seed, s + shift, channel)();
+      return out;
+    };
+    const base = column(SEED, STREAM_FINISH, 0);
+    for (const channel of CHANNELS.slice(1)) {
+      expect(Math.abs(pearson(base, column(SEED, channel, 0)))).toBeLessThan(0.03);
+    }
+    expect(Math.abs(pearson(base, column(SEED, STREAM_FINISH, 1)))).toBeLessThan(0.03);
+    expect(Math.abs(pearson(base, column(SEED + 1, STREAM_FINISH, 0)))).toBeLessThan(0.03);
+  });
+
+  it("has no lag-1 autocorrelation inside a stream", () => {
+    const N = 50_000;
+    const r = sampleStream(SEED, 7, STREAM_FINISH);
+    const stream = new Array<number>(N);
+    for (let i = 0; i < N; i++) stream[i] = r();
+    expect(Math.abs(pearson(stream.slice(0, -1), stream.slice(1)))).toBeLessThan(0.02);
+  });
+
+  // The finish draw maps a uniform straight onto places with the winner at
+  // index 0, so the low end of the range is where a skew turns into ROI.
+  it("is uniform across streams, low tail included", () => {
+    const STREAMS = 4000;
+    const DRAWS = 500;
+    const n = STREAMS * DRAWS;
+    const bins = new Array<number>(256).fill(0);
+    let sum = 0;
+    for (let s = 0; s < STREAMS; s++) {
+      const r = sampleStream(SEED, s, STREAM_FINISH);
+      for (let i = 0; i < DRAWS; i++) {
+        const u = r();
+        sum += u;
+        bins[(u * 256) | 0]++;
+      }
+    }
+    const expected = n / 256;
+    let chi2 = 0;
+    for (const c of bins) chi2 += ((c - expected) * (c - expected)) / expected;
+    // df = 255: mean 255, sd 22.6. The seed is fixed, so the value is too.
+    expect(chi2).toBeLessThan(255 + 4 * 22.6);
+    expect(Math.abs(sum / n - 0.5)).toBeLessThan(4 * Math.sqrt(1 / 12 / n));
+    expect(Math.abs(bins[0] - expected)).toBeLessThan(4 * Math.sqrt(expected));
   });
 });

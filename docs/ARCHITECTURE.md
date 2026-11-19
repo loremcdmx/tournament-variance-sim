@@ -145,7 +145,7 @@ Per tournament entry:
 
 ```text
 for sample s in [sStart, sEnd):
-  rng = mulberry32(mixSeed(seed, s))   // separate XOR-offset streams per channel
+  rng = sampleStream(seed, s, STREAM_FINISH)   // one stream id per channel
   ...for each row...
     draw finish place from alias table
     look up payoutByPlace[place]   (+ bountyByPlace if PKO)
@@ -201,20 +201,37 @@ preserves this distinction in diagnostic exports. See [Ocean KO](OCEAN_KO.md).
 
 This is enforced by `engine.test.ts` and is non-negotiable. Concretely:
 
-- The engine **does not** call `Math.random()`. Only `mulberry32`, seeded via `mixSeed(seed, sampleIdx)`.
+- The engine **does not** call `Math.random()`. Only `sampleStream(seed, sampleIdx, channel)` from `rng.ts`: xoshiro128** with all four state words hashed from the seed, the sample index and the channel id.
 - `sampleIdx` is the **global** sample index, not a shard-local index. Two workers can run samples 0..4999 and 5000..9999 in parallel and still produce the exact same aggregate as a single-worker 0..9999 run.
 - Iteration order inside the hot loop is fixed — no `Set`, no `Object.keys` on anything that matters.
 - No `Date.now()` / `performance.now()` inside the engine. Timing is measured outside, in `useSimulation`.
 
 If you add a new stochastic mechanism:
-1. Allocate a fresh `mixSeed` slot for it so it doesn't collide with existing channels.
+1. Give it the next `STREAM_*` id in `rng.ts` so it has a stream of its own.
 2. Write a determinism test: run with the same input twice, assert identical `finalProfits`.
 3. Write a pool-invariance test if practical: 1-worker vs N-worker runs should agree.
 
 ### Seed eras
 
-Determinism is `input + seed → bytes` *within one construction of `mixSeed`*.
-`mixSeed` (`rng.ts`) was changed in commit `3eb91fb` (2026-09-02, first shipped in
+Determinism is `input + seed → bytes` *within one construction of the sample
+streams*. There have been two changes of era.
+
+The second, after v0.7.8, replaced the generator itself. `mulberry32` has a 32-bit
+counter for a state, so every stream of every sample, channel and seed was a
+window of one cycle of 2^32 outputs, and over that cycle the output is not
+uniform: only 44% of the 32-bit values occur and small ones are too frequent
+(`P(u < 2^-12)` is 0.39% above nominal, the mean is 0.49997). The finish draw
+maps a uniform onto places with the winner at index 0, so first place came up
+about 0.3% too often in every run at every seed: +0.10 to +0.23 points of ROI
+on fields of 180 to 50,000 at +10% ROI, which no sample count removes. The cash
+deviate had variance 1.00022 for the same reason (the "+1 SE mean" note that
+used to sit in WISDOM.md), and at 10^9 draws about a third of the samples
+replayed part of another one. `sampleStream` is xoshiro128** (period 2^128 - 1,
+every 32-bit output equally frequent), seeded per sample and channel by four
+independent hashes. Every simulation output changed again; distributions moved
+only by the removed bias.
+
+The first: `mixSeed` (`rng.ts`) was changed in commit `3eb91fb` (2026-09-02, first shipped in
 v0.7.7) to finalize the seed before it meets the sample index: the old raw XOR made seeds that differ only in low bits the
 same simulation with samples permuted (seeds 1, 2, 3, 7 had byte-identical
 `stats.mean/stdDev`). Every simulation output changed with that commit — a new

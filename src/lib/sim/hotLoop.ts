@@ -5,9 +5,8 @@
  *
  * Determinism contract: `SimulationInput + seed` → byte-identical `RawShard`
  * regardless of how samples are sharded. No `Math.random`, no `Date.now` —
- * only `mulberry32` seeded via `mixSeed(seed, sampleIdx)`, each stochastic
- * channel an XOR-offset of the seed, `sampleIdx` the GLOBAL index in
- * `[0, samples)`. No allocations inside the per-sample inner loop — all
+ * only `sampleStream(seed, sampleIdx, channel)`, each stochastic channel its
+ * own stream id, `sampleIdx` the GLOBAL index in `[0, samples)`. No allocations inside the per-sample inner loop — all
  * scratch is preallocated per shard and reused.
  */
 import {
@@ -27,7 +26,14 @@ import type {
   RawShard,
 } from "./engineTypes";
 import { makeHiResGrid } from "./grids";
-import { mulberry32, mixSeed } from "./rng";
+import {
+  STREAM_BOUNTY,
+  STREAM_FINISH,
+  STREAM_LEADERBOARD,
+  STREAM_OCEAN,
+  STREAM_SKILL,
+  sampleStream,
+} from "./rng";
 import { poissonPTRS } from "./simNumerics";
 import { createOceanKoScratch, sampleOceanKoBounty } from "./oceanKo";
 import { createPathChordScratch, scanPathChords } from "./pathChords";
@@ -255,19 +261,19 @@ function simulateShardInternal(
   for (let s = sStart; s < sEnd; s++) {
     const localS = s - sStart;
     if (downsideState) resetDownsideReportState(downsideState);
-    const rng = mulberry32(mixSeed(input.seed, s));
+    const rng = sampleStream(input.seed, s, STREAM_FINISH);
     // Per-sample shock RNG — decoupled from finish draws and
     // independent of shard boundaries.
-    const skillRng = mulberry32(mixSeed((input.seed ^ 0xbeef) >>> 0, s));
+    const skillRng = sampleStream(input.seed, s, STREAM_SKILL);
     // Dedicated RNG for within-place bounty noise — kept separate so adding
     // a bounty flag doesn't perturb the finish-sampling stream (otherwise
     // same-seed comparison tests between bounty and non-bounty runs drift).
-    const bRng = mulberry32(mixSeed((input.seed ^ 0xb01dface) >>> 0, s));
+    const bRng = sampleStream(input.seed, s, STREAM_BOUNTY);
     const oceanRng = oceanScratch
-      ? mulberry32(mixSeed((input.seed ^ 0x0cea4b07) >>> 0, s))
+      ? sampleStream(input.seed, s, STREAM_OCEAN)
       : null;
     const leaderboardRng = leaderboardActive
-      ? mulberry32(mixSeed((input.seed ^ 0x1eadeb0b) >>> 0, s))
+      ? sampleStream(input.seed, s, STREAM_LEADERBOARD)
       : null;
     // Cached-pair gaussians bound to each stream — halves log/sqrt cost
     // relative to the discarding boxMuller.

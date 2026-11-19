@@ -55,7 +55,7 @@ Monte Carlo симулятор дисперсии для покерных MTT. �
 - **Compare mode** — тумблер «посчитать как PrimeDope» прогоняет обе калибровки на том же сиде, рисует две колонки + диф-строку.
 - **Tilt/skill-noise модели** — три канала ROI-шума (per-tourney, per-session, slow AR(1) drift) + fast tanh tilt + slow state-machine tilt с hysteresis.
 
-Всё это без потери детерминированности (seeded `mulberry32 + mixSeed`) — тот же сид всегда даёт тот же результат.
+Всё это без потери детерминированности (сидированный `sampleStream`, xoshiro128**) — тот же сид всегда даёт тот же результат.
 
 ## Стек
 
@@ -118,7 +118,7 @@ src/
 │   │   ├── validation.ts     # проверка schedule перед прогоном
 │   │   ├── freezeShape.ts     # freeze-out shape fitting (real-data calibration)
 │   │   ├── realPayouts.ts     # real-world payout table samples + comparison
-│   │   ├── rng.ts            # mulberry32 + mixSeed
+│   │   ├── rng.ts            # sampleStream (xoshiro128**), потоки по каналам
 │   │   ├── worker.ts         # Web Worker: принимает ShardRequest → возвращает RawShard
 │   │   ├── useSimulation.ts  # React-хук: пул воркеров, shard dispatch, progress
 │   │   ├── progress*.ts      # pure progress math / constants shared with UI
@@ -219,8 +219,8 @@ SimulationResult → ResultsView
 Это **не best-effort**, это **инвариант**. Один и тот же `SimulationInput` с одинаковым `seed` ДОЛЖЕН давать побитово одинаковый `SimulationResult`, независимо от размера пула воркеров, порядка возврата shard-ов, или пересборки UI. В `engine.test.ts` есть тест, который явно сверяет это.
 
 Что это означает на практике:
-- **Не использовать `Math.random()`** нигде в движке. Только `mulberry32` с сидом.
-- **Seeding per-sample** через `mixSeed(seed, sampleIdx)` (отдельные XOR-смещённые потоки на каждый стохастический канал). sampleIdx — глобальный (0..samples), а не per-shard. Это даёт одинаковые дравы независимо от shard-разбиения.
+- **Не использовать `Math.random()`** нигде в движке. Только `sampleStream` из `rng.ts`.
+- **Seeding per-sample** через `sampleStream(seed, sampleIdx, channel)` (свой `STREAM_*` на каждый стохастический канал). sampleIdx — глобальный (0..samples), а не per-shard. Это даёт одинаковые дравы независимо от shard-разбиения.
 - **Итеративные циклы — фиксированный порядок**. Object.keys(), Set итерация и т.д. могут быть нестабильны в разных движках.
 - **Time-зависимые API запрещены**. `Date.now()`, `performance.now()` только для профилирования снаружи воркера.
 
@@ -230,7 +230,7 @@ SimulationResult → ResultsView
 
 **Next.js версия.** Этот репо на Next 16 + React 19. API может отличаться от того, что помнит большинство туториалов. При затруднениях — читай `node_modules/next/dist/docs/` для текущей версии, а не чьи-то блог-посты. См. `AGENTS.md`.
 
-**Seed dispatch.** `seed = 42` не значит, что сэмпл 0 получит 42. Он получит `mixSeed(42, 0)`. Если пишешь тест, который сверяет конкретное число — помни про это.
+**Seed dispatch.** `seed = 42` не значит, что сэмпл 0 получит 42. Он получит поток `sampleStream(42, 0, канал)`. Если пишешь тест, который сверяет конкретное число — помни про это.
 
 **`samplePaths.paths.length`** — не равен samples. Хранятся только первые 1000 глобальных индексов сэмплов, независимо от разбиения на шарды (см. `HI_RES_GLOBAL_CAP` в `hotLoop.ts`; потолки `Math.min(1000, …)` в `ResultsView.tsx` меняются вместе с ним), остальные агрегируются в envelopes + best/worst. Слайдер "runs" в ResultsView показывает максимум `paths.length`, не `samples`.
 
@@ -284,7 +284,7 @@ You feed it a schedule (field, buy-in, rake, ROI, payout structure) and get the 
 - **Compare mode**: toggle runs both calibrations on the same seed and shows side-by-side results.
 - **Tilt / ROI-noise channels**: per-tournament, per-session, and slow AR(1) drift, plus fast tanh tilt and slow state-machine tilt with hysteresis.
 
-All deterministic — seeded `mulberry32 + mixSeed`, same seed always reproduces.
+All deterministic — seeded `sampleStream` (xoshiro128**), same seed always reproduces.
 
 ## Stack
 

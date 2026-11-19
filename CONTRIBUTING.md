@@ -86,10 +86,10 @@ Described in detail in `docs/ARCHITECTURE.md`. Summary:
 
 - Same `SimulationInput` + same `seed` → byte-identical `SimulationResult`, regardless of worker pool size or shard order.
 - `engine.test.ts` enforces this with a direct comparison. Do not regress it.
-- Consequence: never use `Math.random()`, `Date.now()`, `new Date()` or any time/env-dependent API in the engine modules (everything in `src/lib/sim/` except the browser-side `useSimulation.ts`, `useResulthubLookup.ts` and `resulthubLookup.ts`; `engineSourcePurity.test.ts` enforces it). Only `mulberry32` seeded via `mixSeed(seed, sampleIdx)` (separate XOR-offset streams per stochastic channel).
+- Consequence: never use `Math.random()`, `Date.now()`, `new Date()` or any time/env-dependent API in the engine modules (everything in `src/lib/sim/` except the browser-side `useSimulation.ts`, `useResulthubLookup.ts` and `resulthubLookup.ts`; `engineSourcePurity.test.ts` enforces it). Only `sampleStream(seed, sampleIdx, channel)` from `rng.ts` (one `STREAM_*` id per stochastic channel).
 - `sampleIdx` is the **global** index in `[0, samples)`, not shard-local. This is what makes parallel runs reproducible.
 
-Adding a new stochastic channel? Pick a `mixSeed` slot that doesn't collide with existing ones, and add a 3-line test that runs the same input twice and asserts equality.
+Adding a new stochastic channel? Give it the next `STREAM_*` id in `rng.ts`, and add a 3-line test that runs the same input twice and asserts equality.
 
 ### The suite is CPU-bound, and that changes how you read a red run
 
@@ -154,7 +154,7 @@ Keep docs accurate. Stale docs that contradict the code are worse than no docs.
 - **Next.js 16 / React 19.** APIs may differ from what most tutorials show. If something doesn't work the way you remember, check `node_modules/next/dist/docs/` for the current version before googling. See `AGENTS.md`.
 - **PrimeDope compare mode** (`calibrationMode: "primedope-binary-itm"`) uses a second calibration path: `buildBinaryItmAssets` in `finishModel.ts` builds the binary-ITM pmf with no α search (`compileEntry.ts` falls back to `calibrateShelledItm` / `calibrateAlpha` only when the PD finish-model flag is off; `pdCurves.ts` is PD's payout tables). Changes to the main calibration don't automatically propagate — check the compare run's test coverage when you touch `finishModel.ts`.
 - **`samplePaths.paths.length` ≠ `samples`** — only the first 1000 global sample indices have stored trajectory paths. The slider cap in `ResultsView` reflects this. The prefix length is `HI_RES_GLOBAL_CAP` in `simulateShard` (`hotLoop.ts`); changing it means also changing the `Math.min(1000, …)` caps in `ResultsView.tsx`.
-- **Seed slot collisions.** If two stochastic channels both call `mulberry32(mixSeed(seed, s))` with the same seed, they'll be correlated in ways you probably didn't intend. Give each channel its own XOR-offset of the seed (e.g. `seed ^ 0xbeef`).
+- **Stream collisions.** Two stochastic channels that open `sampleStream(seed, s, channel)` with the same channel id draw the same numbers. Give each channel its own `STREAM_*` id. Do not reach for `mulberry32` in the engine: it is kept for tests and scripts, and its output is not uniform (see "Seed eras" in `docs/ARCHITECTURE.md`).
 
 ## Questions?
 

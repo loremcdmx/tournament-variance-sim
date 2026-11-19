@@ -32,8 +32,13 @@ describe("rendered PrimeDope results", () => {
     expect(primary.stats.p05).toBeGreaterThan(0);
     const markup = renderToStaticMarkup(<LocaleProvider><PrimedopeDiff primary={primary} other={other} /></LocaleProvider>);
     const rows = [...markup.matchAll(/<tr[\s\S]*?<\/tr>/g)].map((m) => m[0].replace(/<[^>]+>/g, " "));
+    expect(other.stats.p05).toBeGreaterThan(0);
     const lowerTail = rows.find((row) => row.includes("Нижний хвост"))!;
-    expect(lowerTail).not.toContain("−$");
+    // Both quantiles are gains here and print as such; the difference column
+    // keeps its own sign.
+    const [, oursCell, theirsCell] = lowerTail.trim().split(/\s{2,}/);
+    expect(oursCell).toMatch(/^\$/);
+    expect(theirsCell).toMatch(/^\$/);
     expect(rows.find((row) => row.includes("худших 5%"))).not.toMatch(/\d{8,}/);
     const ruin = rows.find((row) => row.includes("Риск слить банкролл"))!;
     expect(ruin).not.toContain("0.0%");
