@@ -125,19 +125,6 @@ function simulateShardInternal(
 
   const downsideReport = input.collectDownsideReport ? createDownsideReportArrays(shardSize) : undefined;
   const downsideState = downsideReport ? createDownsideReportState() : null;
-  const expectedProfitPrefix = downsideReport ? new Float64Array(N) : null;
-  if (expectedProfitPrefix) {
-    let expectedProfit = 0;
-    for (let i = 0; i < N; i++) {
-      const entry = compiled.flat[i];
-      const variants = entry.variants;
-      const mean = variants?.length
-        ? variants.reduce((sum, variant) => sum + variant.analyticMeanSingle - variant.singleCost + variant.rakebackBonusPerBullet, 0) / variants.length
-        : entry.analyticMeanSingle - entry.singleCost + entry.rakebackBonusPerBullet;
-      expectedProfit += mean;
-      expectedProfitPrefix[i] = expectedProfit;
-    }
-  }
 
   const finalProfits = new Float64Array(shardSize);
   const pathMatrix = new Float64Array(shardSize * K1);
@@ -243,6 +230,21 @@ function simulateShardInternal(
   );
   const tiltSlowOn =
     tiltSlowGain !== 0 && tiltSlowThreshold > 0 && tiltSlowMinDur > 0;
+  // Slow tilt reads its swings off profit minus this prefix: on raw profit a
+  // winner's rise from the all-time low only grows and "up" would never end.
+  const expectedProfitPrefix = downsideReport || tiltSlowOn ? new Float64Array(N) : null;
+  if (expectedProfitPrefix) {
+    let expectedProfit = 0;
+    for (let i = 0; i < N; i++) {
+      const entry = compiled.flat[i];
+      const variants = entry.variants;
+      const mean = variants?.length
+        ? variants.reduce((sum, variant) => sum + variant.analyticMeanSingle - variant.singleCost + variant.rakebackBonusPerBullet, 0) / variants.length
+        : entry.analyticMeanSingle - entry.singleCost + entry.rakebackBonusPerBullet;
+      expectedProfit += mean;
+      expectedProfitPrefix[i] = expectedProfit;
+    }
+  }
   // Hot-loop fast path: when every shock/tilt source is off, effectiveDelta
   // is provably 0 every iteration, so we can skip the whole block and the
   // session/drift modulo check per tournament.
@@ -254,7 +256,13 @@ function simulateShardInternal(
     tiltFastOn ||
     tiltSlowOn;
 
-  const perPass = compiled.tournamentsPerPass;
+  // Counted on the index within the sample, so neither the count x repeats
+  // split nor a shard boundary moves a session.
+  const requestedSessionLen = input.tournamentsPerSession;
+  const sessionLen =
+    requestedSessionLen === undefined || Number.isNaN(requestedSessionLen)
+      ? compiled.tournamentsPerPass
+      : Math.max(1, Math.floor(requestedSessionLen));
   const flat = compiled.flat;
 
   // Adaptive progress ticks: tiny shards feel laggy with < 20 ticks, huge
@@ -297,6 +305,9 @@ function simulateShardInternal(
     let tiltStreakLen = 0;
     let tiltStreakSide: -1 | 0 | 1 = 0;
     let tiltSwingMag = 0;
+    let tiltExpected = 0;
+    let tiltXMax = 0;
+    let tiltXMin = 0;
     let profit = 0;
     let runningMax = 0;
     let runningMin = 0;
@@ -335,7 +346,7 @@ function simulateShardInternal(
     for (let i = 0; i < N; i++) {
       let effectiveDelta = 0;
       if (hasShocks) {
-      if ((sigSession > 0 || sigDrift > 0) && i % perPass === 0) {
+      if ((sigSession > 0 || sigDrift > 0) && i % sessionLen === 0) {
         if (sigSession > 0) sessionShock = gaussSkill() * sigSession;
         if (sigDrift > 0)
           drift = driftRho * drift + gaussSkill() * driftInnovScale;
@@ -349,9 +360,10 @@ function simulateShardInternal(
           tiltFastGain * Math.tanh((runningMax - profit) / tiltFastScale);
       }
       if (tiltSlowOn) {
+        const x = profit - tiltExpected;
         if (tiltState === 0) {
-          const dd = runningMax - profit;
-          const up = profit - runningMin;
+          const dd = tiltXMax - x;
+          const up = x - tiltXMin;
           const side: -1 | 0 | 1 =
             dd >= tiltSlowThreshold ? -1 : up >= tiltSlowThreshold ? 1 : 0;
           if (side === 0) {
@@ -365,7 +377,7 @@ function simulateShardInternal(
             tiltStreakLen++;
             if (tiltStreakLen >= tiltSlowMinDur) {
               tiltState = side;
-              tiltAnchor = profit;
+              tiltAnchor = x;
               tiltSwingMag = side === -1 ? dd : up;
               tiltStreakLen = 0;
               tiltStreakSide = 0;
@@ -373,14 +385,14 @@ function simulateShardInternal(
           }
         } else if (tiltState === -1) {
           tiltShift -= tiltSlowGain;
-          if (profit - tiltAnchor >= tiltSlowRecFrac * tiltSwingMag) {
+          if (x - tiltAnchor >= tiltSlowRecFrac * tiltSwingMag) {
             tiltState = 0;
             tiltStreakLen = 0;
             tiltStreakSide = 0;
           }
         } else {
           tiltShift += tiltSlowGain;
-          if (tiltAnchor - profit >= tiltSlowRecFrac * tiltSwingMag) {
+          if (tiltAnchor - x >= tiltSlowRecFrac * tiltSwingMag) {
             tiltState = 0;
             tiltStreakLen = 0;
             tiltStreakSide = 0;
@@ -503,6 +515,12 @@ function simulateShardInternal(
       }
       profit += delta;
       if (downsideState && expectedProfitPrefix) observeDownsideReport(downsideState, profit, expectedProfitPrefix[i], delta, single);
+      if (tiltSlowOn) {
+        tiltExpected = expectedProfitPrefix![i];
+        const x = profit - tiltExpected;
+        if (x > tiltXMax) tiltXMax = x;
+        else if (x < tiltXMin) tiltXMin = x;
+      }
       rowProfits[rowBase + t.rowIdx] += delta;
       if (satelliteSeatsWon && t.isSatellite && t.prizeByPlace[leaderboardPlace] > 0) {
         satelliteSeatsWon[rowBase + t.rowIdx]++;

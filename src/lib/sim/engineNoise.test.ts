@@ -9,7 +9,8 @@
  * effects are checked, not bit-exact values.
  */
 import { describe, it, expect } from "vitest";
-import { runSimulation } from "./engine";
+import { compileSchedule, makeCheckpointGrid, runSimulation, simulateShard } from "./engine";
+import { STREAM_FINISH, sampleStream } from "./rng";
 import type {
   SimulationInput,
   SimulationResult,
@@ -340,5 +341,201 @@ describe("engine — tilt slow (state machine)", () => {
     const slow = runSimulation(slowTilt(0.20, 300));
     expect(quick.stats.mean).toBeLessThan(slow.stats.mean);
     expect(slow.stats.mean).toBeLessThan(baseline.stats.mean);
+  });
+});
+
+function shardFinals(input: SimulationInput, from = 0, to = input.samples): Float64Array {
+  const compiled = compileSchedule(input, "alpha");
+  const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+  return simulateShard(input, compiled, from, to, grid).finalProfits;
+}
+
+function meanAndSe(xs: ArrayLike<number>): { mean: number; se: number } {
+  let mean = 0;
+  for (let i = 0; i < xs.length; i++) mean += xs[i];
+  mean /= xs.length;
+  let m2 = 0;
+  for (let i = 0; i < xs.length; i++) m2 += (xs[i] - mean) ** 2;
+  return { mean, se: Math.sqrt(m2 / (xs.length - 1) / xs.length) };
+}
+
+describe("engine — slow tilt on the drift-free path", () => {
+  it("follows the documented state machine on profit minus the expected-profit line", () => {
+    // An independent replica written from the types.ts description: both
+    // swings and both exits are read on x = profit − Σ E[profit] of the
+    // entries played so far. A small threshold makes it switch often.
+    const input = baseInput({
+      scheduleRepeats: 2000,
+      samples: 40,
+      rakebackFracOfRake: 0.3,
+      tiltSlowGain: 0.08,
+      tiltSlowThreshold: 400,
+      tiltSlowMinDuration: 25,
+      tiltSlowRecoveryFrac: 0.5,
+    });
+    const compiled = compileSchedule(input, "alpha");
+    const engine = shardFinals(input);
+    const e = compiled.flat[0];
+    const step = e.analyticMeanSingle - e.singleCost + e.rakebackBonusPerBullet;
+    let up = 0;
+    let down = 0;
+    for (let s = 0; s < input.samples; s++) {
+      const rng = sampleStream(input.seed, s, STREAM_FINISH);
+      let profit = 0;
+      let expected = 0;
+      let xMax = 0;
+      let xMin = 0;
+      let state = 0;
+      let anchor = 0;
+      let swing = 0;
+      let streak = 0;
+      let streakSide = 0;
+      for (let i = 0; i < compiled.tournamentsPerSample; i++) {
+        const x = profit - expected;
+        let shift = 0;
+        if (state === 0) {
+          const side = xMax - x >= 400 ? -1 : x - xMin >= 400 ? 1 : 0;
+          if (side !== streakSide) streak = 0;
+          streakSide = side;
+          if (side !== 0 && ++streak >= 25) {
+            state = side;
+            anchor = x;
+            swing = side === -1 ? xMax - x : x - xMin;
+            streak = 0;
+            streakSide = 0;
+          }
+        } else if (state === -1) {
+          shift = -0.08;
+          down++;
+          if (x - anchor >= 0.5 * swing) state = 0;
+        } else {
+          shift = 0.08;
+          up++;
+          if (anchor - x >= 0.5 * swing) state = 0;
+        }
+        const r = rng() * e.aliasProb.length;
+        const k = r | 0;
+        const place = r - k < e.aliasProb[k] ? k : e.aliasIdx[k];
+        profit += e.prizeByPlace[place] - (e.singleCost - shift * e.singleCost) + e.rakebackBonusPerBullet;
+        expected += step;
+        const xAfter = profit - expected;
+        if (xAfter > xMax) xMax = xAfter;
+        if (xAfter < xMin) xMin = xAfter;
+      }
+      expect(engine[s], `sample ${s}`).toBe(profit);
+    }
+    expect(up).toBeGreaterThan(0);
+    expect(down).toBeGreaterThan(0);
+  });
+
+  it("treats a winner and a loser alike: the ROI shift stays near zero for both", () => {
+    // On the raw path a winner's rise from the all-time low only grows, so
+    // the old reference kept a +20 % player in "up" (+4.6 pp of ROI here) and
+    // a −20 % player in "down" (−4.6 pp). The bound is 4 SE (SE ≈ 0.19 pp at
+    // 400 samples) and 1 pp; the seed is fixed, so it cannot flake.
+    for (const roi of [0.2, -0.2]) {
+      const clean = baseInput({
+        schedule: [{ ...freezeRow(), roi }],
+        scheduleRepeats: 10_000,
+        samples: 400,
+      });
+      const tilted = {
+        ...clean,
+        tiltSlowGain: 0.05,
+        tiltSlowThreshold: 5500,
+        tiltSlowMinDuration: 200,
+        tiltSlowRecoveryFrac: 0.5,
+      };
+      const cost = compileSchedule(clean, "alpha").totalBuyIn;
+      const on = shardFinals(tilted);
+      const off = shardFinals(clean);
+      const shift = meanAndSe(Array.from(on, (p, i) => ((p - off[i]) / cost) * 100));
+      expect(Math.abs(shift.mean), `ROI ${roi}`).toBeLessThan(Math.min(1, 4 * shift.se));
+    }
+  });
+});
+
+describe("engine — session length", () => {
+  const sessionNoise = { roiShockPerSession: 0.2, roiDriftSigma: 0.05 };
+
+  it("an unset length keeps one session per schedule pass, bit for bit", () => {
+    const passes = baseInput({
+      schedule: [freezeRow(), { ...freezeRow(), id: "b", buyIn: 20, count: 3 }],
+      scheduleRepeats: 50,
+      samples: 300,
+      ...sessionNoise,
+    });
+    const unset = shardFinals(passes);
+    const perPass = shardFinals({ ...passes, tournamentsPerSession: 4 });
+    expect(Array.from(perPass)).toEqual(Array.from(unset));
+    expect(Array.from(shardFinals({ ...passes, tournamentsPerSession: 7 }))).not.toEqual(Array.from(unset));
+  });
+
+  it("does not depend on how the same distance is stored: one pass of 4,000 = 80 passes of 50", () => {
+    const noisy = (count: number, scheduleRepeats: number) =>
+      baseInput({
+        schedule: [{ ...freezeRow(), count }],
+        scheduleRepeats,
+        samples: 500,
+        tournamentsPerSession: 50,
+        ...sessionNoise,
+      });
+    expect(Array.from(shardFinals(noisy(4000, 1)))).toEqual(Array.from(shardFinals(noisy(50, 80))));
+  });
+
+  it("gives the same spread when the row order differs too", () => {
+    // Two rows, stored as [a, b] × 1 and as [b, a] × 80: different pass
+    // order, so not the same bytes, but the same distribution. Without the
+    // session length the first run would be one session (shock σ 0.2 on the
+    // whole run) and the second 80. The bound is 4 SE of the difference of
+    // two sd estimates (4th-moment SE); fixed seed, so it cannot flake.
+    const a = freezeRow();
+    const b = { ...freezeRow(), id: "b", buyIn: 20 };
+    const run = (schedule: TournamentRow[], scheduleRepeats: number) =>
+      shardFinals(baseInput({ schedule, scheduleRepeats, samples: 3000, tournamentsPerSession: 50, ...sessionNoise }));
+    const sdAndSe = (xs: Float64Array) => {
+      const { mean } = meanAndSe(xs);
+      let m2 = 0;
+      let m4 = 0;
+      for (const x of xs) {
+        m2 += (x - mean) ** 2;
+        m4 += (x - mean) ** 4;
+      }
+      m2 /= xs.length;
+      m4 /= xs.length;
+      const sd = Math.sqrt(m2);
+      return { sd, se: Math.sqrt((m4 - m2 * m2) / xs.length) / (2 * sd) };
+    };
+    const one = sdAndSe(run([{ ...a, count: 2000 }, { ...b, count: 2000 }], 1));
+    const many = sdAndSe(run([{ ...b, count: 25 }, { ...a, count: 25 }], 80));
+    expect(Math.abs(one.sd - many.sd)).toBeLessThan(4 * Math.hypot(one.se, many.se));
+  });
+
+  it("redraws the session shock every that many tournaments: the variance closed form", () => {
+    // Session shock alone, L = 50 tournaments, N = 2000: each sample gains
+    // D = single · σ · Σ_sessions L · z, Var(D) = single² σ² L N. The finish
+    // stream is shared with the clean run, so (as in the drift test)
+    // SE² ≈ (2 Var(D)² + 4 Var_base Var(D)) / n. A length read as one pass
+    // (one tournament here) would give 1/50 of the excess.
+    const samples = 4000;
+    const sigma = 0.2;
+    const L = 50;
+    const clean = baseInput({ scheduleRepeats: 2000, samples });
+    const shocked = { ...clean, roiShockPerSession: sigma, tournamentsPerSession: L };
+    const single = 50 * 1.1;
+    const theory = single * single * sigma * sigma * L * 2000;
+    const off = shardFinals(clean);
+    const varBase = variance(off);
+    const se = Math.sqrt((2 * theory * theory + 4 * varBase * theory) / samples);
+    expect(theory / se).toBeGreaterThan(8);
+    const measured = variance(shardFinals(shocked)) - varBase;
+    expect(Math.abs(measured - theory)).toBeLessThan(4 * se);
+  });
+
+  it("counts sessions within the sample, so shard boundaries do not move them", () => {
+    const input = baseInput({ scheduleRepeats: 300, samples: 90, tournamentsPerSession: 37, ...sessionNoise });
+    const whole = shardFinals(input);
+    const split = [...shardFinals(input, 0, 31), ...shardFinals(input, 31, 90)];
+    expect(split).toEqual(Array.from(whole));
   });
 });

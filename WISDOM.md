@@ -1094,17 +1094,40 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   overflows the pool) is reached only by Battle Royale tables above about 57 players, which
   the editor never offers, and it deliberately keeps the linear tail. Changing it rewrites
   those tables (1st 11 % -> 26 % at N=1000).
-- A session in the hot loop is one schedule pass (i % tournamentsPerPass), and the distance
-  field always sets scheduleRepeats 1, so session shock and drift collapse into a per-run
-  offset after any distance edit. Today this is only a sanity warning
-  ('session-noise-single-pass') plus honest preset copy. The engine decoupling is an open
-  owner decision, not something to 'fix' by changing what the distance field writes.
-- Slow tilt's upswing is profit - runningMin (from the all-time low), so a winning
-  steady-reg player enters 'up' and rarely leaves it (about +2 pp of ROI at $50 over 40 000
-  tournaments). It is documented in types.ts and the tagline, and the engine was
-  deliberately left alone pending an owner decision. tiltChannelsActive (modelPresets.ts)
+- A session is counted on the tournament's index within the sample:
+  SimulationInput.tournamentsPerSession, `i % L`. Unset keeps one session per schedule pass
+  (byte-identical for engine API callers). The app always sends
+  ControlsState.tournamentsPerSession (default 50, presets may set it, basic mode resets it
+  to 50), so the count x repeats storage and shard boundaries never move a session. Before,
+  a session was one pass and the distance field always writes scheduleRepeats 1, so session
+  shock and drift collapsed into a per-run offset (solo ROI spread 5.9 pp instead of 3 pp at
+  10 000 tournaments). The guard is 'session-noise-whole-run' (L >= tournaments per sample).
+- Slow tilt reads both swings, its anchor and both exits on x = profit -
+  expectedProfitPrefix, the downside report's prefix, built whenever slow tilt or the
+  downside report is on. Do not go back to raw profit: there a winner's rise from the
+  all-time low only grows, and 'up' held about 80 % of a 50 000-tournament run (the mirror
+  for a loser). Fast tilt keeps the raw running max. tiltChannelsActive (modelPresets.ts)
   mirrors simulateShard's tilt gates and drives the 'Expected profit before tilt' label.
   Change both together.
+- Slow tilt on x still measures from ALL-TIME extremes, so the swing grows like sigma_entry
+  x sqrt(distance): any fixed depth is rare on small fields and short runs and common on big
+  fields and long runs. 'Steady regular' at 2 000 ABI spends at most 7 % of the run tilted
+  for fields 500-3 000 up to 10 000 tournaments, and about 40 % for a 1 000-player field at
+  50 000. The tagline says so. Do not 'fix' this by moving the ABI number; making it rare
+  everywhere means a different reference (a rolling window, or a depth in sigma x sqrt(n)).
+- The slow tilt's small positive mean (about +0.13 to +0.15 pp) is gain x (up share - down
+  share): an MTT path reaches a deep upswing through one score sooner than an equally deep
+  drawdown builds up. At gain 0.005 the state shares are the same and the shift is 10x
+  smaller, so it is not the tilt feeding itself. Do not chase it as a reference bug.
+- Tilt depths (tiltFastScale, tiltSlowThreshold) are in average buy-ins in ControlsState and
+  the presets, and in dollars in SimulationInput: buildSimulationInput multiplies by the
+  count-weighted mean ticket buyIn x (1 + rake). Payloads at schema v1 / v2 are matched
+  against V2_DOLLAR_TILT, the old dollar signatures, because hidden knobs survive a load
+  only as a preset signature; a plain dollars / ABI conversion would be dropped by that
+  rule.
+- Tilt state shares are not part of SimulationResult. The preset tests pin the tilt through
+  paired mean shifts (the preset against the same run with its gains at 0, same seed). The
+  quoted shares came from a temporary hot-loop counter that must never be committed.
 - RoiStdErr is capped at ROI_STD_ERR_MAX (0.5) in the field. persistence.ts repeats it as a
   literal 0.5 in its clamp, and modelPresets.test.ts ties the two through decodeState.
 - Single-table PKO σ is overstated by the Poisson KO count plus the 0.4 head noise (1.32x

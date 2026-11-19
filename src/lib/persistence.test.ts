@@ -94,7 +94,7 @@ describe("persistence validation", () => {
     expect(decodeState(encoded({ v: 1, schedule: null, controls: {} }))).toBeNull();
     expect(decodeState(encoded({ v: 1, schedule: [null], controls: {} }))).toBeNull();
     expect(decodeState(encoded({ v: 1, schedule: [row], controls: null }))).toBeNull();
-    expect(decodeState(encoded({ v: 3, schedule: [row], controls: {} }))).toBeNull();
+    expect(decodeState(encoded({ v: 4, schedule: [row], controls: {} }))).toBeNull();
   });
 
   it("rejects rows whose label or tags are not strings so the editor cannot crash on render", () => {
@@ -166,7 +166,7 @@ describe("persistence validation", () => {
     });
     try {
       expect(loadUserPresets().map((p) => p.id)).toEqual(["history", "small"]);
-      addUserPreset("new", { v: 2, schedule: [row], controls });
+      addUserPreset("new", { v: PERSISTED_STATE_VERSION, schedule: [row], controls });
       const after = JSON.parse(store.get("tvs:user-presets")!) as UserPreset[];
       expect(after.map((p) => p.name)).toEqual(["History", "Small", "new"]);
       expect(after[0]?.state.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
@@ -194,11 +194,12 @@ describe("persistence validation", () => {
   });
 
   it("writes the current schema version and upgrades legacy payloads on read", () => {
-    expect(PERSISTED_STATE_VERSION).toBe(2);
+    expect(PERSISTED_STATE_VERSION).toBe(3);
     const state: PersistedState = { v: PERSISTED_STATE_VERSION, schedule: [row], controls };
-    expect(JSON.parse(JSON.stringify(state)).v).toBe(2);
+    expect(JSON.parse(JSON.stringify(state)).v).toBe(3);
     expect(decodeState(encodeState(state))).toEqual(state);
-    expect(decodeState(encoded({ v: 1, schedule: [row], controls }))?.v).toBe(2);
+    expect(decodeState(encoded({ v: 1, schedule: [row], controls }))?.v).toBe(3);
+    expect(decodeState(encoded({ v: 2, schedule: [row], controls }))?.v).toBe(3);
   });
 
   it("clamps unsafe persisted row counts without imposing the direct-entry cap", () => {
@@ -250,7 +251,83 @@ describe("persistence validation", () => {
     const loaded = loadLocalFromPayload({ v: 2, schedule: [row], controls: { modelPresetId: preset.id } });
     expect(loaded?.controls).toMatchObject({
       roiShockPerTourney: 0.3, roiShockPerSession: 0.05, roiDriftSigma: 0.01,
-      tiltFastGain: -0.15, tiltFastScale: 2500,
+      tournamentsPerSession: preset.patch.tournamentsPerSession,
+      tiltFastGain: preset.patch.tiltFastGain, tiltFastScale: preset.patch.tiltFastScale,
+    });
+  });
+
+  describe("v2 tilt depths in dollars", () => {
+    // What the two tilt profiles stored before v3: dollars, no session length.
+    const v2Profiles: Record<string, Record<string, number>> = {
+      "realistic-solo": {
+        roiShockPerTourney: 0.3, roiShockPerSession: 0.05, roiDriftSigma: 0.01,
+        tiltFastGain: -0.15, tiltFastScale: 2500, tiltSlowGain: 0, tiltSlowThreshold: 0,
+        tiltSlowMinDuration: 500, tiltSlowRecoveryFrac: 0.5,
+      },
+      "steady-reg": {
+        roiShockPerTourney: 0.25, roiShockPerSession: 0.04, roiDriftSigma: 0.015,
+        tiltFastGain: 0, tiltFastScale: 0, tiltSlowGain: 0.05, tiltSlowThreshold: 5000,
+        tiltSlowMinDuration: 500, tiltSlowRecoveryFrac: 0.5,
+      },
+      naive: {
+        roiShockPerTourney: 0, roiShockPerSession: 0, roiDriftSigma: 0,
+        tiltFastGain: 0, tiltFastScale: 0, tiltSlowGain: 0, tiltSlowThreshold: 0,
+        tiltSlowMinDuration: 500, tiltSlowRecoveryFrac: 0.5,
+      },
+    };
+    const profileOf = (controls: ControlsState | undefined) => {
+      const c = controls as unknown as Record<string, unknown>;
+      return Object.fromEntries(
+        Object.keys(v2Profiles.naive).concat("tournamentsPerSession").map((key) => [key, c[key]]),
+      );
+    };
+    const currentProfile = (id: string) =>
+      profileOf(STANDARD_PRESETS.find((preset) => preset.id === id)!.patch as ControlsState);
+
+    it.each(Object.keys(v2Profiles))("a named %s save or link loads the preset's current profile", (id) => {
+      for (const load of [
+        (payload: unknown) => decodeState(encoded(payload)),
+        loadLocalFromPayload,
+      ]) {
+        const loaded = load({ v: 2, schedule: [row], controls: { modelPresetId: id, ...v2Profiles[id] } });
+        expect(loaded?.v).toBe(PERSISTED_STATE_VERSION);
+        expect(profileOf(loaded?.controls)).toEqual(currentProfile(id));
+      }
+    });
+
+    it.each(Object.keys(v2Profiles))("a hand-tuned v2 descendant of %s keeps that profile in today's units", (id) => {
+      const loaded = decodeState(encoded({
+        v: 2, schedule: [row], controls: { modelPresetId: "custom", roiStdErr: 0.07, ...v2Profiles[id] },
+      }));
+      expect(loaded?.controls.modelPresetId).toBe("custom");
+      expect(loaded?.controls.roiStdErr).toBe(0.07);
+      expect(profileOf(loaded?.controls)).toEqual(currentProfile(id));
+    });
+
+    it("reads the dollar signature only from a v1/v2 payload", () => {
+      const solo = { modelPresetId: "custom", ...v2Profiles["realistic-solo"], tournamentsPerSession: 50 };
+      const loaded = decodeState(encoded({ v: PERSISTED_STATE_VERSION, schedule: [row], controls: solo }));
+      expect(loaded?.controls.tiltFastScale).toBeUndefined();
+      expect(loaded?.controls.tournamentsPerSession).toBeUndefined();
+    });
+
+    it("still drops a v2 custom profile that matches no preset", () => {
+      const loaded = decodeState(encoded({
+        v: 2, schedule: [row],
+        controls: { modelPresetId: "custom", ...v2Profiles["realistic-solo"], tiltFastScale: 1234 },
+      }));
+      const c = loaded?.controls as unknown as Record<string, unknown>;
+      expect(c.tiltFastScale).toBeUndefined();
+      expect(c.tiltFastGain).toBeUndefined();
+      expect(c.tournamentsPerSession).toBeUndefined();
+    });
+
+    it("keeps a current custom profile, session length included, through a v3 round trip", () => {
+      for (const preset of STANDARD_PRESETS) {
+        const selected = applyModelPatch(controls, preset.patch, "custom");
+        const loaded = decodeState(encoded({ v: PERSISTED_STATE_VERSION, schedule: [row], controls: selected }));
+        expect(loaded?.controls.tournamentsPerSession, preset.id).toBe(preset.patch.tournamentsPerSession);
+      }
     });
   });
 
@@ -970,6 +1047,7 @@ describe("persistence validation", () => {
         roiShockPerTourney: 0.25,
         roiShockPerSession: 0.5,
         roiDriftSigma: 0.1,
+        tournamentsPerSession: 7,
         tiltFastGain: 0.8,
         tiltFastScale: 100,
         tiltSlowGain: 0.5,
@@ -983,6 +1061,7 @@ describe("persistence validation", () => {
     expect(loaded.roiShockPerTourney).toBeUndefined();
     expect(loaded.roiShockPerSession).toBeUndefined();
     expect(loaded.roiDriftSigma).toBeUndefined();
+    expect(loaded.tournamentsPerSession).toBeUndefined();
     expect(loaded.tiltFastGain).toBeUndefined();
     expect(loaded.tiltFastScale).toBeUndefined();
     expect(loaded.tiltSlowGain).toBeUndefined();
@@ -1325,7 +1404,7 @@ describe("over-cap saves keep their original in a backup key", () => {
       expect(store.has(presetOvercapBackupKey("small"))).toBe(false);
       expect(JSON.parse(store.get(presetOvercapBackupKey("history"))!)).toEqual(big);
 
-      addUserPreset("new", { v: 2, schedule: [row], controls });
+      addUserPreset("new", { v: PERSISTED_STATE_VERSION, schedule: [row], controls });
       const after = JSON.parse(store.get("tvs:user-presets")!) as UserPreset[];
       expect(after[0]?.state.schedule).toHaveLength(MAX_SCHEDULE_ROWS);
       const backup = JSON.parse(store.get(presetOvercapBackupKey("history"))!) as UserPreset;
@@ -1486,7 +1565,7 @@ describe("reading the share hash", () => {
   });
 
   it("reports a link from a newer or hand-broken version as unreadable", () => {
-    expect(readShareHash(`#s=${encoded({ ...valid, v: 3 })}`).kind).toBe("invalid");
+    expect(readShareHash(`#s=${encoded({ ...valid, v: PERSISTED_STATE_VERSION + 1 })}`).kind).toBe("invalid");
     expect(readShareHash(`#s=${encoded({ ...valid, schedule: [] })}`).kind).toBe("invalid");
   });
 

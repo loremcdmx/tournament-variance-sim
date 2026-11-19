@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PersistedState } from "@/lib/persistence";
+import { PERSISTED_STATE_VERSION, type PersistedState } from "@/lib/persistence";
 import type { ControlsState } from "@/components/ControlsPanel";
 import type { SimulationInput, SimulationResult } from "@/lib/sim/types";
 import { cacheSimulationRun, replacePrimeDopeResult } from "./simulationSnapshot";
@@ -15,7 +15,7 @@ const input: SimulationInput = {
 const result = { samples: 100, tournamentsPerSample: 10 } as SimulationResult;
 const comparison = { ...result, expectedProfit: 123 };
 const source: PersistedState = {
-  v: 2,
+  v: PERSISTED_STATE_VERSION,
   schedule: [{ ...input.schedule[0], itmRate: undefined }],
   controls: { seed: 42, bankroll: 0, itmGlobalEnabled: true, itmGlobalPct: 15,
     usePrimedopePayouts: true, usePrimedopeFinishModel: true,

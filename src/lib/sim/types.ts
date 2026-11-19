@@ -546,22 +546,16 @@ export interface SimulationInput {
    */
   roiShockPerTourney?: number;
   /**
-   * Per-session ROI shock σ. One Normal(0, σ) draw per *schedule pass* (one
-   * pass = one play of the full schedule), added to every tournament in
-   * that pass. Models "today the field is fishier than usual" or "today
-   * I'm in form / off form". Correlated within a session, independent
-   * across sessions. Defaults to 0.
-   *
-   * A session is a pass, not a fixed number of tournaments: with
-   * `scheduleRepeats` 1 (what the distance field always writes) the whole
-   * sample is one session, so the shock becomes a second per-sample ROI
-   * offset next to `roiStdErr` (solo preset: 5.8 pp run-level sd at 10 000
-   * tournaments, against 3.1 pp as 200 passes). `checkInputSanity` warns.
+   * Per-session ROI shock σ. One Normal(0, σ) draw per session, added to
+   * every tournament of that session. Models "today the field is fishier
+   * than usual" or "today I'm in form / off form". Correlated within a
+   * session, independent across sessions. Defaults to 0. See
+   * `tournamentsPerSession` for what a session is.
    */
   roiShockPerSession?: number;
   /**
    * Slow ROI drift σ (long-run). An AR(1) process advanced once per
-   * schedule pass: drift_t = ρ · drift_{t−1} + Normal(0, σ · √(1−ρ²)),
+   * session: drift_t = ρ · drift_{t−1} + Normal(0, σ · √(1−ρ²)),
    * with ρ defaulting to 0.95 (≈20-session memory). Models meta shifts,
    * roster turnover, seasonality. Defaults to 0.
    *
@@ -569,12 +563,22 @@ export interface SimulationInput {
    * at your configured ROI") and only reaches the stationary σ after
    * ≈1/(1−ρ) sessions: per-session sd is σ·√(1−ρ^{2t}), so short runs see
    * proportionally less drift variance than the stationary σ implies
-   * (e.g. at ρ=0.95 a 20-session run realizes ≈77 % of σ). With one pass
-   * (`scheduleRepeats` 1) the drift takes a single cold-start step.
+   * (e.g. at ρ=0.95 a 20-session run realizes ≈77 % of σ).
    */
   roiDriftSigma?: number;
   /** AR(1) persistence for roiDriftSigma. Defaults to 0.95 if unset. */
   roiDriftRho?: number;
+  /**
+   * Session length for `roiShockPerSession` and `roiDriftSigma`: both are
+   * redrawn at tournament 0, n, 2n, … of each sample, counted on the index
+   * within the sample, so the result does not depend on how the same
+   * distance is stored (count × `scheduleRepeats`) or on shard boundaries.
+   * Unset means one session per schedule pass (engine API callers keep
+   * their bytes); the app always sends it (50 by default), because under
+   * the pass rule a run stored as one pass is one session, the shock turns
+   * into a second per-sample ROI offset and the drift takes a single step.
+   */
+  tournamentsPerSession?: number;
 
   // -------- TILT mechanics — two flavors, can be used together ----------
   //
@@ -599,8 +603,10 @@ export interface SimulationInput {
    *  - tiltFastScale (in profit $): drawdown depth at which tanh ≈ 0.76.
    *    An MTT player is below the running max in nearly every tournament, so
    *    with a scale of a few dozen buy-ins the shift is close to the full
-   *    gain all the time (`realistic-solo`, −0.15 at $2 500: −13 pp of ROI at
-   *    $50 buy-ins, −3 pp at $5).
+   *    gain all the time. The app stores it in average buy-ins and converts
+   *    (`buildSimulationInput`), so a profile means the same player at every
+   *    stake: `realistic-solo` is −0.02 at 200 ABI, about −0.8 pp of ROI over
+   *    1 000 tournaments of a 1000-player field and −1.2 pp over 10 000.
    *    Defaults to 0, which is only reachable together with a non-zero gain
    *    as a mis-configuration: the hot loop floors the divisor at $1 to avoid
    *    a division by zero, so the shift saturates from the first dollar of
@@ -622,13 +628,21 @@ export interface SimulationInput {
    * State exits only after recovering `tiltSlowRecoveryFrac` of the original
    * swing.
    *
-   * The upswing is `profit − runningMin`, the rise from the sample's all-time
-   * low, while the drawdown is measured from the running max. For a winning
-   * player the upswing only grows, so once it passes the threshold the `up`
-   * state is entered and rarely left (`steady-reg` at $50, ROI +10 %: about
-   * +2 pp of ROI over 40 000 tournaments instead of a penalty). The threshold
-   * is in dollars, so at small stakes the up side dominates and at large ones
-   * only the down side fires.
+   * Both swings and both exits are read on the drift-free path
+   * x = profit − (expected profit of the entries played so far): the
+   * drawdown is runningMax(x) − x and the upswing x − runningMin(x). On raw
+   * profit a winner's rise from the all-time low only grows, so `up` became
+   * near-permanent for a winner and `down` for a loser. On x a +10 % and a
+   * −10 % player spend about the same share of a long run in each state. An
+   * MTT path reaches a deep upswing (a score) sooner than an equally deep
+   * drawdown (a bleed), so `up` holds a little more of the run than `down`
+   * and the mean shift is gain × (up share − down share), slightly positive
+   * (`steady-reg`: about +0.15 pp of ROI over 10 000 tournaments of a
+   * 3000-player field). The swings are read from all-time extremes, so they
+   * grow like √(distance) × the field's per-entry spread and the share of
+   * the run spent tilted grows with both: no fixed depth is rare at every
+   * field and distance. The threshold is dollars here; the app stores it in
+   * average buy-ins.
    *
    * Defaults when unset: gain=0, threshold=0, minDuration=500 tournaments,
    * recoveryFrac=0.5. The channel is gated on gain ≠ 0 AND threshold > 0 AND
