@@ -456,7 +456,32 @@ function simulateShardInternal(
           if (oceanScratch.jackpot) jackpotMask[localS] = 1;
         } else if (bp !== null) {
           const mean = bp[place];
-          if (mean > 0 && bkm !== null) {
+          const koCash = t.pkoKoCash;
+          if (koCash !== null) {
+            if (mean > 0) {
+              // The knockout at j is a Bernoulli(1/j); the gap to the next
+              // one is drawn directly (P(none in j+1..k) = j / k), so a
+              // tournament costs one uniform per knockout plus one.
+              const lastJ = koCash.length - 1;
+              const koSig = t.pkoKoLogSigma![place];
+              const koHalfVar = 0.5 * koSig * koSig;
+              let haul = place === 0 ? t.pkoWinnerHead : 0;
+              let sumRatio = 0;
+              let j = place === 0 ? 1 : Math.floor(place / bRng()) + 1;
+              while (j <= lastJ) {
+                if (koSig > 0) {
+                  const ratio = Math.exp(koSig * gaussB() - koHalfVar);
+                  sumRatio += ratio;
+                  haul += koCash[j] * ratio;
+                } else {
+                  haul += koCash[j];
+                }
+                j = Math.floor(j / bRng()) + 1;
+              }
+              bountyDraw = mean * t.pkoRawInv![place] * haul;
+              if (sumRatio >= JACKPOT_THRESHOLD) jackpotMask[localS] = 1;
+            }
+          } else if (mean > 0 && bkm !== null) {
             const lam = bkm[place];
             if (lam > 0) {
               let k: number;

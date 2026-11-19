@@ -735,14 +735,15 @@ presentation misleading. Do not undo these without re-measuring:
   is wrong for it; the card shows the median, and tables print "≈ full distance" from 97% of
   the distance. The spell below the previous peak is different: at 1k entries its P95 is
   also about the whole distance (0.99-1.00 in all four formats), but its share of the
-  distance falls to about 0.87-0.95 at 5k and 0.49-0.66 at 20k (freezeout highest, PKO
+  distance falls to about 0.86-0.95 at 5k and 0.48-0.66 at 20k (freezeout highest, PKO
   lowest), so a longer horizon does show more there.
 - Ratios between formats carry Monte Carlo noise in the second digit and change with the
-  distance (Ocean / PKO drawdown P95 about 1.1 / 1.2 / 1.3x at 1k / 5k / 20k; 1.14 / 1.18 /
-  1.35 at the default seed, 1.13 ± 0.03 over twelve seeds at 1k). Show one digit. Only
-  Ocean's below-EV median stands apart (402 at the default seed, 438 ± 13 over twelve seeds,
-  against 347-370 for the other three); the order of freezeout, PKO and Mystery is seed
-  noise.
+  distance (Ocean / PKO drawdown P95 about 1.1 / 1.2 / 1.4x at 1k / 5k / 20k; 1.14 / 1.20 /
+  1.37 at the default seed, 1.12 ± 0.02 over twelve seeds at 1k). Show one digit. Only
+  Ocean's below-EV median stands apart (402 at the default seed, 427 ± 18 over twelve seeds,
+  against twelve-seed means of 358-362 for the other three); the order of freezeout, PKO
+  and Mystery is seed noise. docs/OCEAN_DOWNSIDE_REPORT.md holds the current figures;
+  re-measure there after any engine change instead of trusting this bullet.
 - Risk curves use one dynamic grid per metric, shared by every format in a chart and ending
   at a round number strictly above the deepest career. A fixed 0-1000 BI grid would cut 8%
   of the freezeout careers (drawdown) and 31% (EV shortfall) at 20k.
@@ -1130,10 +1131,37 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   quoted shares came from a temporary hot-loop counter that must never be committed.
 - RoiStdErr is capped at ROI_STD_ERR_MAX (0.5) in the field. persistence.ts repeats it as a
   literal 0.5 in its clamp, and modelPresets.test.ts ties the two through decodeState.
-- Single-table PKO σ is overstated by the Poisson KO count plus the 0.4 head noise (1.32x
-  heads-up, 1.11x 6-max, 1.05x at 18 players, under 1 % from 500 up; the mean is exact).
-  Today it is only a sanity warning ('row-pko-single-table', smallest played field <= 18).
-  The exact Poisson-binomial fix is an open owner decision.
+- PKO knockouts follow the uniform-killer progressive tree (compileEntry `pkoKoCash`, the
+  PKO branch of the hot loop): the knockout made when j + 1 players remain is a
+  Bernoulli(1/j), the winner's last knockout is certain, the gap to the next knockout is
+  drawn as floor(j/U) + 1, and the winner keeps the expected own final head
+  (`pkoWinnerHead`) as a fixed amount. Each knockout is multiplied by a mean-one log-normal
+  whose log-sigma depends on the finishing place (`pkoKoLogSigma`), sized by an O(N)
+  ten-moment recursion of the tree (`pkoTreeVarianceByPlace`), so every place's bounty
+  variance is the tree's, the winner included. compiledEntryMoments reads the same
+  `pkoHaulVariance`. Per-tournament σ is within 0.1 % of the tree from 2 players up (bounty
+  share 0.2-0.9, ROI -50 % to +200 %). The old Poisson count with a flat 0.4 head noise
+  read 1.39x heads-up, 1.13x 6-max, 1.05x at 18 players, and paid a heads-up winner no
+  bounty in 37 % of wins. Do not switch models at a field size: the log-variance is smooth
+  in N and the place and tends to about 0.43 in big fields (why 0.4 used to work there).
+- Do not put a flat per-KO head noise back on PKO: on top of exact knockouts it
+  double-counts the head spread the tree already has (2-7 % too much σ at small fields
+  with a high ROI or bounty share 0.9). pkoHeadVar is therefore not read on PKO rows
+  (types.ts says so, a test pins it). The field is still stamped by applyGameType and
+  formatComparison; removing it means touching persistence, gameType, the editor import and
+  the preview. A mysteryBountyVariance on an explicit PKO row still stacks as its own
+  channel.
+- Where the Bernoulli count at mean cash already spreads more than the tree (2nd place in
+  fields of 4 to about 44, 3rd in fields of 5 to 10; at most +3.8 % in sd at that place, at
+  7 players) the PKO factor is off and the place keeps the small excess; its effect on
+  per-tournament σ is at most 0.10 %.
+- All bounty formats share the per-sample STREAM_BOUNTY stream, so on a schedule that mixes
+  PKO with Mystery or Battle Royale rows the PKO change moved the Mystery / BR draws too.
+  Byte-identity with the old engine holds only for schedules with no PKO row.
+- The PKO tree walk costs about 5 % per tournament on a 3 000-player row against the old
+  Poisson draw; single tables got faster. The PKO runtime band (2 %) was spot-checked on
+  ten cells and two seeds after the change, not refitted. The stored SIGMA_ROI_PKO grid
+  predates it (measured with the flat 0.4 noise): re-measure before any refit.
 
 ### Streak statistics
 

@@ -238,6 +238,9 @@ export interface TournamentRow {
    * (same mechanism as mystery bounty). Adds to `mysteryBountyVariance`
    * when both are present. Typical range 0.2–0.6. Defaults to 0.4 for
    * PKO game types (CV ≈ 0.68), 0 for non-bounty formats.
+   * A PKO row whose knockouts the engine plays on the elimination tree
+   * (`pkoKoCash` in engineTypes) takes the head spread from the tree and
+   * does not read this field.
    */
   pkoHeadVar?: number;
 

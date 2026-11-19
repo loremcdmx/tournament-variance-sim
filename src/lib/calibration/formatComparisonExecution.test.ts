@@ -100,7 +100,7 @@ describe("default report readouts quoted in docs/OCEAN_DOWNSIDE_REPORT.md", () =
       const raw = simulateDownsideShard(scenario.input, compiled, 0, FORMAT_COMPARISON_DEFAULTS.samples, grid);
       return [scenario.format, summarizeFormatComparisonScenario(scenario, compiled, raw, grid, moments)];
     }));
-    expect([rows["ocean-ko"], rows.freezeout, rows.pko, rows.mystery].map(row => row.longestBelowEv.median)).toEqual([402, 350, 347, 353]);
+    expect([rows["ocean-ko"], rows.freezeout, rows.pko, rows.mystery].map(row => row.longestBelowEv.median)).toEqual([402, 350, 346, 353]);
     expect((rows["ocean-ko"].maxDrawdownBI.p95 / rows.pko.maxDrawdownBI.p95).toFixed(1)).toBe("1.1");
   });
 });

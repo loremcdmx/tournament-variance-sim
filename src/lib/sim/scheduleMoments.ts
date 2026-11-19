@@ -142,6 +142,8 @@ export function compiledEntryMoments(entry: CompiledEntry): {
       ? heatBinProbabilities(entry.heatBountyByPlace.length)
       : Float64Array.of(1);
 
+  const pkoHaulVariance = entry.pkoHaulVariance;
+
   let meanDollar = 0;
   let secondDollar = 0;
   for (let h = 0; h < heatBanks.length; h++) {
@@ -155,12 +157,14 @@ export function compiledEntryMoments(entry: CompiledEntry): {
       if (!(p > 0)) continue;
       const prize = entry.prizeByPlace[i] ?? 0;
       const bountyMean = bountyByPlace?.[i] ?? 0;
-      const lambda = entry.bountyKmean?.[i] ?? 0;
-      const bounty2 = bountySecondMoment(
-        bountyMean,
-        lambda,
-        perKoSecondMoment,
-      );
+      let bounty2: number;
+      if (pkoHaulVariance !== null) {
+        const unit = bountyMean * entry.pkoRawInv![i];
+        bounty2 = bountyMean * bountyMean + unit * unit * pkoHaulVariance[i];
+      } else {
+        const lambda = entry.bountyKmean?.[i] ?? 0;
+        bounty2 = bountySecondMoment(bountyMean, lambda, perKoSecondMoment);
+      }
       meanH += p * (prize + bountyMean);
       secondH += p * (prize * prize + 2 * prize * bountyMean + bounty2);
     }
