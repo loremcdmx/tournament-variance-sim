@@ -1,6 +1,6 @@
 import type { TournamentRow } from "./types";
 
-export function countScheduleTournaments(schedule: TournamentRow[]): number {
+export function countScheduleTournaments(schedule: readonly TournamentRow[]): number {
   return schedule.reduce((a, r) => a + Math.max(1, Math.floor(r.count)), 0);
 }
 

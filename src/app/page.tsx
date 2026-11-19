@@ -67,7 +67,11 @@ import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
 import { SCENARIOS } from "@/lib/scenarios";
 import { ScheduleToolbarExtras } from "@/components/ScheduleToolbarExtras";
 import { manualAlphaFor } from "@/lib/sim/finishModel";
-import { sanitizeControlsForBasicMode, withSupportedAlpha } from "@/lib/sim/modelPresets";
+import {
+  DEFAULT_TOURNAMENTS_PER_SESSION,
+  sanitizeControlsForBasicMode,
+  withSupportedAlpha,
+} from "@/lib/sim/modelPresets";
 import { buildSimulationInput } from "@/lib/ui/simulationInput";
 import { doneSummaryProfitStats } from "@/lib/results/headlineStats";
 import {
@@ -159,6 +163,7 @@ const initialControls: ControlsState = {
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
   roiDriftSigma: 0,
+  tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
   tiltFastGain: 0,
   tiltFastScale: 0,
   tiltSlowGain: 0,
@@ -461,6 +466,7 @@ export default function Home() {
           tiltSlowMinDuration: deferredResultsControls.tiltSlowMinDuration,
           roiShockPerSession: deferredResultsControls.roiShockPerSession,
           roiDriftSigma: deferredResultsControls.roiDriftSigma,
+          tournamentsPerSession: deferredResultsControls.tournamentsPerSession,
           scheduleRepeats: deferredResultsControls.scheduleRepeats,
           bankroll: deferredResultsControls.bankroll,
           finishModelId: deferredResultsControls.finishModelId,
@@ -476,6 +482,7 @@ export default function Home() {
       deferredResultsControls.tiltSlowMinDuration,
       deferredResultsControls.roiShockPerSession,
       deferredResultsControls.roiDriftSigma,
+      deferredResultsControls.tournamentsPerSession,
       deferredResultsControls.scheduleRepeats,
       deferredResultsControls.bankroll,
       deferredResultsControls.finishModelId,
@@ -674,7 +681,7 @@ export default function Home() {
     () => countScheduleTournaments(schedule),
     [schedule],
   );
-  const tournamentsPerSession = useMemo(
+  const tournamentsPerSample = useMemo(
     () =>
       tournamentsPerSchedule * Math.max(1, controls.scheduleRepeats),
     [tournamentsPerSchedule, controls.scheduleRepeats],
@@ -702,14 +709,14 @@ export default function Home() {
       memoryHintGb(
         projectedBuildBytes({
           samples: effectiveResultsControls.samples,
-          tournamentsPerSample: tournamentsPerSession,
+          tournamentsPerSample,
           rowCount: schedule.length,
           passCount: effectiveResultsControls.compareEnabled ? 2 : 1,
         }),
       ),
     [
       effectiveResultsControls.samples,
-      tournamentsPerSession,
+      tournamentsPerSample,
       schedule.length,
       effectiveResultsControls.compareEnabled,
     ],
@@ -1384,7 +1391,7 @@ export default function Home() {
               estimatedMs={estimatedMs}
               memoryHintGb={buildMemoryHintGb}
               tournamentsPerSchedule={tournamentsPerSchedule}
-              tournamentsPerSession={tournamentsPerSession}
+              tournamentsPerSample={tournamentsPerSample}
               activeSeed={activeSeed}
               doneSummary={doneSummary}
               runBlockedReason={

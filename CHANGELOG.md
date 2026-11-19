@@ -68,13 +68,28 @@ for the same inputs, the entry says for which rows.
   before.
 - The 'Uncertainty about your true ROI' field now stops at 0.5 (±50 pp);
   larger values from older saves or links load as 0.5.
-- The 'Solo player, real life' and 'Steady regular' profiles now describe
-  their tilt honestly (the solo tilt is a near-constant cut from about $20
-  buy-ins; the steady tilt also lifts ROI on long upswings), and the Expected
-  profit card says 'before tilt' while a tilt is on.
-- A new warning appears when session shock or drift is on but the whole run is
-  one schedule pass (which is what setting the distance does), since a session
-  is one pass.
+- In the advanced 'Solo player, real life' and 'Steady regular' models, the
+  session shock and the slow ROI drift are now redrawn every 50 tournaments of
+  the run. Before, a session was one pass of the schedule, so after any
+  distance edit the whole run was one session and the ROI spread was
+  overstated (about 5.9 pp instead of 3 pp for the solo model over 10 000
+  tournaments). A warning appears only when the whole run fits into one
+  session.
+- The tilt depths in both advanced models are now measured in average buy-ins,
+  so a model means the same player at every stake. 'Solo player, real life'
+  now has a mild fast tilt: about 0.8 to 1.2 pp of ROI below the expected
+  profit for a typical regular, at any stake. Before, it took up to 15 pp off
+  from about $20 buy-ins.
+- 'Steady regular' now measures its slow tilt against your expected-profit
+  line, so a winning player no longer sits in the upswing state for most of a
+  long run, and a losing player no longer sits in the downswing state. It
+  fires only on swings deeper than 2 000 buy-ins held for 500 tournaments.
+  That is rare for regulars in fields of up to 3 000 players over 10 000
+  tournaments, and it grows with field size and distance; its description
+  says so. The Expected profit card says 'before tilt' while a tilt is on.
+- Saved setups, share links and user presets from before this change keep
+  their model: the old dollar tilt values are recognised and loaded in the
+  new units.
 - A new warning on PKO rows of 18 players or fewer: the model overstates
   single-table knockout variance (σ about 5 % too high at 18 players, about 30
   % heads-up).

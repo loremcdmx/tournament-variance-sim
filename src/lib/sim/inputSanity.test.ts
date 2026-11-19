@@ -263,26 +263,37 @@ describe("checkInputSanity", () => {
     expect(findings.some((f) => f.id === "row-pko-heat-no-bounty")).toBe(false);
   });
 
-  describe("session noise with one schedule pass", () => {
+  describe("session noise when one session is the whole run", () => {
     const withSession = (patch: Partial<SanityInputs>): SanityInputs => ({
       ...calmControls,
       roiShockPerSession: 0.05,
       roiDriftSigma: 0.01,
       ...patch,
     });
-    const flagged = (controls: SanityInputs) =>
-      checkInputSanity(controls, [makeRow()]).some((f) => f.id === "session-noise-single-pass");
+    const flagged = (controls: SanityInputs, count = 1) =>
+      checkInputSanity(controls, [makeRow({ count })]).some((f) => f.id === "session-noise-whole-run");
 
-    it("flags session shock or drift when the whole run is one pass (what the distance field writes)", () => {
-      expect(flagged(withSession({ scheduleRepeats: 1 }))).toBe(true);
-      expect(flagged(withSession({ scheduleRepeats: 1, roiDriftSigma: 0 }))).toBe(true);
-      expect(flagged(withSession({ scheduleRepeats: 1, roiShockPerSession: 0 }))).toBe(true);
+    it("flags session shock or drift when a session covers the whole run", () => {
+      expect(flagged(withSession({ scheduleRepeats: 1, tournamentsPerSession: 50 }), 50)).toBe(true);
+      expect(flagged(withSession({ scheduleRepeats: 2, tournamentsPerSession: 50 }), 20)).toBe(true);
+      expect(flagged(withSession({ scheduleRepeats: 1, tournamentsPerSession: 50, roiDriftSigma: 0 }), 30)).toBe(true);
+      expect(flagged(withSession({ scheduleRepeats: 1, tournamentsPerSession: 50, roiShockPerSession: 0 }), 30)).toBe(true);
     });
 
-    it("stays quiet with several passes, with both channels off, or with no repeat count given", () => {
-      expect(flagged(withSession({ scheduleRepeats: 200 }))).toBe(false);
-      expect(flagged(withSession({ scheduleRepeats: 1, roiShockPerSession: 0, roiDriftSigma: 0 }))).toBe(false);
-      expect(flagged(withSession({}))).toBe(false);
+    it("stays quiet once the run spans several sessions, however the distance is stored", () => {
+      expect(flagged(withSession({ scheduleRepeats: 1, tournamentsPerSession: 50 }), 10_000)).toBe(false);
+      expect(flagged(withSession({ scheduleRepeats: 200, tournamentsPerSession: 50 }), 1)).toBe(false);
+      expect(flagged(withSession({ scheduleRepeats: 1, tournamentsPerSession: 50 }), 51)).toBe(false);
+    });
+
+    it("stays quiet with both channels off or with no repeat count given", () => {
+      expect(flagged(withSession({ scheduleRepeats: 1, tournamentsPerSession: 50, roiShockPerSession: 0, roiDriftSigma: 0 }), 30)).toBe(false);
+      expect(flagged(withSession({ tournamentsPerSession: 50 }), 30)).toBe(false);
+    });
+
+    it("reads an unset session length as the engine does, one session per schedule pass", () => {
+      expect(flagged(withSession({ scheduleRepeats: 1 }), 10_000)).toBe(true);
+      expect(flagged(withSession({ scheduleRepeats: 200 }), 50)).toBe(false);
     });
   });
 

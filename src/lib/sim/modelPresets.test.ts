@@ -6,6 +6,7 @@ import { DICT } from "@/lib/i18n/dict";
 import { decodeState, encodeState, PERSISTED_STATE_VERSION, type PersistedState } from "@/lib/persistence";
 import {
   BASIC_MODE_MAX_SAMPLES,
+  DEFAULT_TOURNAMENTS_PER_SESSION,
   ROI_STD_ERR_MAX,
   STANDARD_PRESETS,
   applyModelPatch,
@@ -13,6 +14,9 @@ import {
   withSupportedAlpha,
 } from "./modelPresets";
 import { tiltChannelsActive } from "./convergencePolicy";
+import { compileSchedule, makeCheckpointGrid, simulateShard } from "./engine";
+import { applyItmTarget } from "./itmTarget";
+import { buildSimulationInput } from "@/lib/ui/simulationInput";
 
 const baseState: ControlsState = {
   scheduleRepeats: 100,
@@ -30,6 +34,7 @@ const baseState: ControlsState = {
   roiShockPerTourney: 0.01,
   roiShockPerSession: 0,
   roiDriftSigma: 0,
+  tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
   tiltFastGain: 0,
   tiltFastScale: 0,
   tiltSlowGain: 0,
@@ -83,6 +88,7 @@ describe("sanitizeControlsForBasicMode", () => {
       roiShockPerTourney: 0.11,
       roiShockPerSession: 0.09,
       roiDriftSigma: 0.03,
+      tournamentsPerSession: 7,
       tiltFastGain: -0.25,
       tiltFastScale: 1400,
       tiltSlowGain: 0.05,
@@ -92,6 +98,7 @@ describe("sanitizeControlsForBasicMode", () => {
     expect(next.roiShockPerTourney).toBe(0);
     expect(next.roiShockPerSession).toBe(0);
     expect(next.roiDriftSigma).toBe(0);
+    expect(next.tournamentsPerSession).toBe(DEFAULT_TOURNAMENTS_PER_SESSION);
     expect(next.tiltFastGain).toBe(0);
     expect(next.tiltFastScale).toBe(0);
     expect(next.tiltSlowGain).toBe(0);
@@ -203,29 +210,81 @@ describe("ROI uncertainty bound", () => {
 
 describe("tilt presets say what the hot loop does", () => {
   const patch = (id: string) => STANDARD_PRESETS.find((p) => p.id === id)!.patch;
-  const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
 
-  it("realistic-solo names its fast-tilt size and dollar scale instead of calling it mild", () => {
+  // The ROI shift a preset's tilt causes on one freezeout row at +10 % ROI, in
+  // pp of the schedule's cost: the preset against itself with both tilt gains
+  // at 0, same seed, so the finishes and the noise draws are shared and only
+  // the tilt differs.
+  function tiltShiftPp(id: string, ticket: number, tournaments: number, samples: number, players = 1000) {
+    const schedule = applyItmTarget(
+      [{ id: "r", players, buyIn: ticket / 1.1, rake: 0.1, roi: 0.1, payoutStructure: "mtt-standard", gameType: "freezeout", count: tournaments }],
+      { enabled: false, pct: 18.7 },
+    );
+    const controls = applyModelPatch({ ...baseState, scheduleRepeats: 1, samples, seed: 42, rakebackPct: 20 }, patch(id), id);
+    const finals = (c: ControlsState) => {
+      const input = buildSimulationInput(schedule, c, true);
+      const compiled = compileSchedule(input, "alpha");
+      const grid = makeCheckpointGrid(compiled.tournamentsPerSample);
+      return { profits: simulateShard(input, compiled, 0, samples, grid).finalProfits, cost: compiled.totalBuyIn };
+    };
+    const on = finals(controls);
+    const off = finals({ ...controls, tiltFastGain: 0, tiltSlowGain: 0 });
+    const d = Array.from(on.profits, (p, i) => ((p - off.profits[i]) / on.cost) * 100);
+    const mean = d.reduce((a, b) => a + b, 0) / d.length;
+    const sd = Math.sqrt(d.reduce((a, b) => a + (b - mean) ** 2, 0) / (d.length - 1));
+    return { mean, se: sd / Math.sqrt(d.length) };
+  }
+  // A quoted figure is "about" the measurement: within half a unit of its last
+  // printed digit plus 3 standard errors. The seed is fixed, so the run is the
+  // same every time and cannot flake; the SE term only says the quote is not
+  // tuned to this seed's noise.
+  const quotes = (measured: { mean: number; se: number }, quoted: number) =>
+    Math.abs(measured.mean - quoted) < 0.05 + 3 * measured.se;
+
+  it("realistic-solo: a mild fast tilt whose quoted drag the engine produces at every stake", () => {
     const solo = patch("realistic-solo");
     const tagline = DICT["preset.realisticSolo.tagline"];
-    expect(tagline.en).toContain(`${Math.round(-solo.tiltFastGain * 100)} pp`);
-    expect(tagline.en).toContain(usd(solo.tiltFastScale));
-    expect(tagline.en).not.toMatch(/mild/i);
-    expect(tagline.ru).not.toMatch(/мягк/i);
+    expect(tagline.en).toContain(`up to ${Math.round(-solo.tiltFastGain * 100)} pp`);
+    const halfDepth = Math.round((solo.tiltFastScale * Math.atanh(0.5)) / 10) * 10;
+    expect(tagline.en).toContain(`about ${halfDepth} buy-ins down`);
+    expect(tagline.ru).toContain(`${halfDepth} бай-инов`);
+    expect(tagline.en).toContain(`session of ${solo.tournamentsPerSession} tournaments`);
+
+    const short = tiltShiftPp("realistic-solo", 55, 1000, 2000);
+    const long = tiltShiftPp("realistic-solo", 55, 10_000, 200);
+    expect(tagline.en).toContain("about 0.8 pp of ROI below the expected profit over 1,000 tournaments and 1.2 pp over 10,000");
+    expect(tagline.ru).toContain("примерно на 0,8 пп ROI за 1 000 турниров и на 1,2 пп за 10 000");
+    expect(quotes(short, -0.8)).toBe(true);
+    expect(quotes(long, -1.2)).toBe(true);
+    // Mild: the drag stays well short of the gain's ceiling.
+    expect(-long.mean).toBeLessThan(-solo.tiltFastGain * 100 * 0.8);
+
+    // The depths are in average buy-ins, so the same player at $5 and $530
+    // loses the same share of ROI (the $55 run differs by under 0.01 pp).
+    for (const ticket of [5, 530]) {
+      expect(Math.abs(tiltShiftPp("realistic-solo", ticket, 1000, 2000).mean - short.mean), `$${ticket}`).toBeLessThan(0.01);
+    }
   });
 
-  it("steady-reg says the slow tilt also lifts ROI on an upswing", () => {
+  it("steady-reg: a slow tilt that fires only on long deep swings, with the field dependence it states", () => {
     const steady = patch("steady-reg");
-    const tagline = DICT["preset.steadyReg.tagline"].en;
-    expect(tagline).toContain(usd(steady.tiltSlowThreshold));
-    expect(tagline).toContain(`${steady.tiltSlowMinDuration} tournaments`);
-    expect(tagline).toContain(`rises by ${Math.round(steady.tiltSlowGain * 100)} pp`);
-    expect(tagline).not.toMatch(/only appears/);
-  });
+    const tagline = DICT["preset.steadyReg.tagline"];
+    expect(tagline.en).toContain(`After ${steady.tiltSlowMinDuration} tournaments straight more than ${steady.tiltSlowThreshold.toLocaleString("en-US")} buy-ins below`);
+    expect(tagline.ru).toContain(`глубже ${steady.tiltSlowThreshold.toLocaleString("ru-RU").replace(/\s/g, " ")} бай-инов`);
+    expect(tagline.en).toContain(`drops by ${Math.round(steady.tiltSlowGain * 100)} pp until you win back half`);
+    expect(steady.tiltSlowRecoveryFrac).toBe(0.5);
+    expect(tagline.en).toContain(`session of ${steady.tournamentsPerSession} tournaments`);
 
-  it("both session-noise presets say a session is one pass", () => {
-    for (const key of ["preset.realisticSolo.tagline", "preset.steadyReg.tagline"] as const) {
-      expect(DICT[key].en).toContain("A session is one pass of the schedule");
+    expect(tagline.en).toContain("a 1,000-player regular almost never tilts within 10,000 tournaments");
+    expect(tagline.en).toContain("about 0.15 pp of ROI for the 3,000-player regular");
+    expect(tagline.ru).toContain("примерно на 0,15 пп ROI у регуляра на полях в 3 000");
+    // Measured 0.023 +- 0.008 pp at this seed; 0.05 is over 3 SE above it.
+    expect(Math.abs(tiltShiftPp("steady-reg", 55, 10_000, 1000).mean)).toBeLessThan(0.05);
+    const bigField = tiltShiftPp("steady-reg", 55, 10_000, 1000, 3000);
+    expect(quotes(bigField, 0.15)).toBe(true);
+    // The depth is in average buy-ins, so the stake does not move the state machine.
+    for (const ticket of [5, 530]) {
+      expect(Math.abs(tiltShiftPp("steady-reg", ticket, 10_000, 1000, 3000).mean - bigField.mean), `$${ticket}`).toBeLessThan(0.01);
     }
   });
 

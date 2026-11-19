@@ -72,7 +72,13 @@ export interface ControlsState {
   roiShockPerTourney: number;
   roiShockPerSession: number;
   roiDriftSigma: number;
-  /** Tilt mechanics — see types.ts. */
+  /** Tournaments per session for the session shock and the drift. */
+  tournamentsPerSession: number;
+  /**
+   * Tilt mechanics — see types.ts. `tiltFastScale` and `tiltSlowThreshold`
+   * are in average buy-ins of the schedule here (dollars in the engine), so a
+   * profile means the same player at every stake.
+   */
   tiltFastGain: number;
   tiltFastScale: number;
   tiltSlowGain: number;
@@ -141,7 +147,7 @@ interface Props {
   /** Tournaments in one schedule pass before repeat expansion. */
   tournamentsPerSchedule: number;
   /** Actual tournaments per sample after rounding to full schedule repeats. */
-  tournamentsPerSession: number;
+  tournamentsPerSample: number;
   /** Actual seed for the currently displayed cached run. */
   activeSeed?: number | null;
   /** When a run has just finished, a compact snapshot to display under the
@@ -229,7 +235,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   estimatedMs,
   memoryHintGb,
   tournamentsPerSchedule,
-  tournamentsPerSession,
+  tournamentsPerSample,
   // activeSeed prop intentionally not destructured — kept on Props for
   // call-site contract, but the seed display below the run button was
   // removed (it's still shown in the result card + export-state copy).
@@ -290,7 +296,7 @@ export const ControlsPanel = memo(function ControlsPanel({
   }, [running]);
   const remainingMs = useRemainingMs({ running, runElapsedMs, progress, estimatedMs });
   const scheduleTournaments = Math.max(1, Math.round(tournamentsPerSchedule));
-  const totalTournaments = Math.max(0, Math.round(tournamentsPerSession));
+  const totalTournaments = Math.max(0, Math.round(tournamentsPerSample));
   const maxTournamentsPerSample = Math.min(Number.MAX_SAFE_INTEGER, scheduleTournaments * 100_000);
   const manualAlpha = supportsManualAlpha(value.finishModelId);
   const set = <K extends keyof ControlsState>(k: K, v: ControlsState[K]) =>

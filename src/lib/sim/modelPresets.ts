@@ -23,6 +23,7 @@ export type ModelFieldKey =
   | "roiShockPerTourney"
   | "roiShockPerSession"
   | "roiDriftSigma"
+  | "tournamentsPerSession"
   | "tiltFastGain"
   | "tiltFastScale"
   | "tiltSlowGain"
@@ -39,6 +40,9 @@ export interface ModelPreset {
   patch: ModelPatch;
 }
 
+/** A day of multi-tabling: the session shock and the drift step are redrawn this often. */
+export const DEFAULT_TOURNAMENTS_PER_SESSION = 50;
+
 // Canonical "all-zero shocks" baseline. Individual presets override only
 // the fields they care about, so we keep new fields backwards-compat by
 // extending here.
@@ -52,6 +56,7 @@ const ZERO_SHOCKS: ModelPatch = {
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
   roiDriftSigma: 0,
+  tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
   tiltFastGain: 0,
   tiltFastScale: 0,
   tiltSlowGain: 0,
@@ -93,13 +98,10 @@ export const STANDARD_PRESETS: ModelPreset[] = [
       roiShockPerTourney: 0.3,
       roiShockPerSession: 0.05,
       roiDriftSigma: 0.01,
-      tiltFastGain: -0.15,
-      // The engine reads the scale in dollars of drawdown (the old raw "50"
-      // was ABI-like). $2500 is about 45 entries at $55, and a player sits
-      // below the running peak in nearly every tournament, so from about $20
-      // buy-ins this is close to the full -15 pp all the time; the tagline
-      // says so.
-      tiltFastScale: 2500,
+      // Mild by construction: the gain caps the drag at 2 pp, and a scale of
+      // 200 average buy-ins keeps tanh off its plateau for typical drawdowns.
+      tiltFastGain: -0.02,
+      tiltFastScale: 200,
     },
   },
   {
@@ -115,7 +117,12 @@ export const STANDARD_PRESETS: ModelPreset[] = [
       tiltFastGain: 0,
       tiltFastScale: 0,
       tiltSlowGain: 0.05,
-      tiltSlowThreshold: 5000,
+      // Average buy-ins on the drift-free path. Swings are read from all-time
+      // extremes, so they grow like the square root of distance x field
+      // variance and no fixed depth is rare everywhere: 2000 keeps a
+      // 500-3000-player regular under about 7 % of a 10 000-tournament run,
+      // while a 1000-player run of 50 000 sits about 40 % in a tilt state.
+      tiltSlowThreshold: 2000,
       tiltSlowMinDuration: 500,
       tiltSlowRecoveryFrac: 0.5,
     },
@@ -180,6 +187,7 @@ export function sanitizeControlsForBasicMode(
     roiShockPerTourney: 0,
     roiShockPerSession: 0,
     roiDriftSigma: 0,
+    tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
     tiltFastGain: 0,
     tiltFastScale: 0,
     tiltSlowGain: 0,

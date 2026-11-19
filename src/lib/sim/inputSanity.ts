@@ -13,13 +13,14 @@
  */
 import { fieldVariantSizes } from "./fieldVariants";
 import { inferGameType } from "./gameType";
+import { countScheduleTournaments } from "./scheduleTarget";
 import type { TournamentRow } from "./types";
 
 export type SanityFindingId =
   | "tilt-fast-no-scale"
   | "tilt-slow-no-threshold"
   | "tilt-slow-no-min-duration"
-  | "session-noise-single-pass"
+  | "session-noise-whole-run"
   | "zero-bankroll"
   | "empirical-too-few-buckets"
   | "row-bounty-format-no-bounty"
@@ -44,6 +45,8 @@ export interface SanityInputs {
   tiltSlowMinDuration?: number;
   roiShockPerSession?: number;
   roiDriftSigma?: number;
+  /** Unset means the engine's fallback, one session per schedule pass. */
+  tournamentsPerSession?: number;
   scheduleRepeats?: number;
   bankroll: number;
   /** Active finishModelId — only `"empirical"` participates in the buckets check. */
@@ -88,15 +91,19 @@ export function checkInputSanity(
     findings.push({ id: "tilt-slow-no-min-duration" });
   }
 
-  // The hot loop redraws the session shock and steps the drift once per
-  // schedule pass; with one pass the shock is a second per-run ROI offset and
-  // the drift takes a single step. The distance field always sets one pass.
+  // With one session for the whole run the shock is drawn once, so it acts as
+  // a second per-run ROI offset next to roiStdErr, and the drift takes one step.
   if (
     ((controls.roiShockPerSession ?? 0) > 0 || (controls.roiDriftSigma ?? 0) > 0) &&
-    controls.scheduleRepeats !== undefined &&
-    Math.floor(controls.scheduleRepeats) <= 1
+    controls.scheduleRepeats !== undefined
   ) {
-    findings.push({ id: "session-noise-single-pass" });
+    const perPass = countScheduleTournaments(schedule);
+    const perSample = perPass * Math.max(1, Math.floor(controls.scheduleRepeats));
+    const sessionLength =
+      controls.tournamentsPerSession === undefined || Number.isNaN(controls.tournamentsPerSession)
+        ? perPass
+        : Math.max(1, Math.floor(controls.tournamentsPerSession));
+    if (sessionLength >= perSample) findings.push({ id: "session-noise-whole-run" });
   }
 
   if (controls.bankroll <= 0 && schedule.length > 0) {

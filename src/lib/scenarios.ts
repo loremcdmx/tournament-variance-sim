@@ -8,6 +8,7 @@ import type { ControlsState } from "@/components/ControlsPanel";
 import { DEFAULT_BATTLE_ROYALE_LEADERBOARD_CONTROLS } from "@/lib/sim/battleRoyaleLeaderboardUi";
 import { battleRoyaleRowFromTotalTicket } from "@/lib/sim/battleRoyaleTicket";
 import { DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION } from "@/lib/sim/gameType";
+import { DEFAULT_TOURNAMENTS_PER_SESSION } from "@/lib/sim/modelPresets";
 import type { TournamentRow } from "./sim/types";
 import type { DictKey } from "./i18n/dict";
 
@@ -36,6 +37,7 @@ const BASE_CONTROLS: ControlsState = {
   roiShockPerTourney: 0,
   roiShockPerSession: 0,
   roiDriftSigma: 0,
+  tournamentsPerSession: DEFAULT_TOURNAMENTS_PER_SESSION,
   tiltFastGain: 0,
   tiltFastScale: 0,
   tiltSlowGain: 0,
