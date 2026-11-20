@@ -79,12 +79,11 @@ This area produced the most false confidence. Remember:
   baseline: centre cash = total - clampBountyMean(defaultBountyMean, total),
   about 54 % cash at the default share. `compileEntry.ts`, `previewRowStats.ts`
   and `validation.ts` compute it identically; change all three together and
-  do not resurrect a 50/50 centre in any of them (validation kept 0.5 x total
-  until 19 November 2026 and passed late-registration BR rows the engine
-  overpaid). On the 18-max table (3 paid, no locks) the BR verdict does not
-  depend on the centre (feasible iff total >= ITM x 3rd prize); off it (21+
-  entrants after late registration, any finish lock, a custom table) the
-  shelled solve aims at the centre.
+  do not resurrect a 50/50 centre in any of them. Since the fixed-ITM floor
+  yields to the ROI, the centre sets only the cash/KO split, never the verdict
+  (a 0.5 x total gate and the engine agreed on all 221 760 scanned BR rows),
+  but a different centre still splits cash and KO differently in validation
+  than in the engine.
 - The closed-form surfaces (`SIGMA_ROI_*`) are only the fallback of
   `computeConvergenceRows` when no runtime override is passed; their `resid` is
   their own error against their own grid, not a card's band.
@@ -247,18 +246,36 @@ free-band mass the model could not place, runs AFTER the equilibrium first-place
 Before it, the retry reads a different `shells.first` and inputs that pass today change
 bit-wise: the engine compile, the preview and `validateSchedule` all call it.
 
-The first-place floor is continuous in the cash target. At and above the no-skill cash
-winnings (`eqW`), where the natural P(1st) is under 1/N, the code makes the old call (first
-locked at 1/N, same arguments) and returns it: that is the byte-identity guarantee for
-untilted rows at or above break-even, and `finishModel.test.ts` pins it. Short of that full
-lock it MIXES the natural pmf with the 1/N-locked one. The old one-step switch moved σ by
+The first-place floor is continuous in the cash target and gives way to it. At and above
+the no-skill cash winnings (`eqW`), where the natural P(1st) is under 1/N, the code solves
+with first locked at 1/N and returns that solve unchanged only when it pays inside
+[min(Wn, T), max(Wn, T, maxCashWinnings)] x (1 -/+ FIRST_PLACE_EV_SLACK) (Wn the natural
+cash winnings after the unplacedFreeMass repair, T the cash target): the byte-identity
+guarantee for untilted rows at or above break-even without a top-3 lock, pinned in
+`finishModel.test.ts`. Otherwise it MIXES the natural pmf with a first-place-locked one. The old one-step switch moved σ by
 4-56 % at ROI = -rake/(1+rake) on rows pinned above the paid share (516 of 936 scanned
 configurations; 0 after). Rules that keep it working:
 
 - The share without a top-heavy tilt is the least that lifts P(1st) to the floor,
-  `(floor - P1nat) / (1/N - P1nat)`, with `firstPlaceFloor` ramping from 0 at 0.9 x eqW
-  (`FIRST_PLACE_FLOOR_BAND`) to 1/N at eqW. At bias 0 the locked solution equals the natural
-  one where P1nat = 1/N, so nothing more is needed above break-even.
+  `(floor - P1nat) / (q - P1nat)`, with q the locked solution's P(1st) (1/N unless it
+  slid) and `firstPlaceFloor` ramping from 0 at 0.9 x eqW (`FIRST_PLACE_FLOOR_BAND`) to 1/N
+  at eqW, so P(1st) = max(P1nat, min(floor, q)). This needs no fade only because, at bias
+  0, the locked solution equals the natural one wherever their P(1st) meet. Under a top-3
+  lock that holds only because the floor's own solves pass `floorSolve`: their 2nd and 3rd
+  stay free (shaped by α) inside the top-3 lock, where a typed first-place lock splits the
+  rest evenly (the even split jumped 0.43/N where P1nat crossed 1/N, and up to 2.8/N where a
+  slid lock crossed P1nat). Do not drop the flag, and do not pass it from compileEntry,
+  validation or the preview: a typed lock keeps its even split. While the locked and natural
+  solutions differ at equal P(1st), no share rule is continuous, monotone and keeps the
+  whole floor: make the two solutions meet instead of fading between them.
+- A 1/N solution that pays outside the window sits at an end of its α range, where the
+  solution is affine in the first-place lock. One extra solve gives the line (the lock at
+  the other end of its range: 0 when it overpays, min(ITM, top-3 lock, FT lock) when it
+  underpays, with a target of 0 or Infinity pinning α at the same end); the lock slides to
+  the window edge exactly and replaces the 1/N solution in the mixture. Under a tilt its
+  share is ramp x fade times min(r, 1/r), r = (q - P1nat) / (1/N - P1nat), and 0 once q
+  passes P1nat. Do not cap the mixture at the target instead: the share then falls to 0
+  where the overpayment starts (the old 0.40/N cliff).
 - With `itmTopHeavyBias` != 0 the two solutions differ below first place even at equal
   P(1st): locking first moves the tilt's top onto 2nd (`applyItmTopHeavyToFreeBand` ranks
   inside `freeIndices`). So the tilted share is ramp x fade: the floor's ramp (floor x N)
@@ -271,20 +288,26 @@ configurations; 0 after). Rules that keep it working:
 - A top-3 or final-table lock typed below 1/N switches the floor off (`floorFitsLocks`):
   the floor used to lift P(top 3) to 1/N and leave 2nd and 3rd with nothing, above
   break-even too.
-- The share is capped where the mixture's cash winnings would leave the target's own
-  tolerance or, on a bounty row, pass `totalWinningsEV`. compileEntry, validation and
-  previewRowStats pass that total as the last argument (`maxCashWinnings`) whenever
-  `bountyFraction > 0`; all three must pass the same value or the preview, Run's gate and
-  the engine disagree (a previewRowStats test pins the preview's P(1st) to the engine's).
-  The Battle Royale neutral solves deliberately pass nothing.
+- The mixture's cash winnings stay inside the window above: a validated non-bounty row
+  whose natural solution is on target pays its target to 1e-9 (the typed ROI is the
+  contract, the floor a preference), a natural solution already off target keeps its own
+  winnings, and a bounty row's cash side may rise to `totalWinningsEV` with the KO residual
+  closing the total. compileEntry, validation and previewRowStats pass that total as
+  `maxCashWinnings` whenever `bountyFraction > 0`; all three must pass the same value
+  (previewRowStats.test.ts and validation.cashCap.test.ts pin it). The Battle Royale
+  neutral solves deliberately pass nothing. Keep FIRST_PLACE_EV_SLACK at 1e-9: at 0,
+  bisection noise slides on-target 1/N solutions and changes their bytes.
 - The gate and the share read the natural P(1st) BEFORE the unplacedFreeMass repair; the
   mixture runs AFTER it. That keeps both the order above and continuity at eqW.
-- "Continuous" means wherever the row stays on target. A 1/N solution that misses its
-  target at eqW is the old blocked row; the mixture stops at the tolerance edge just below
-  it, and the pmf does jump there, between a runnable row and a blocked one.
-- Known trade-off: where the cap binds, the row pays up to +0.1 % of its cash target (the
-  engine's on-target tolerance), as floored rows above break-even always could; the printed
-  expected profit stays cost x ROI.
+- The pmf is continuous in the target everywhere, into blocked rows too (480 + 1 008 +
+  1 080 swept configurations and 5 308 random hunter configurations, every spot over
+  0.005/N bisected to a slope); the only step left is `firstPlaceFloor`'s 1e-9 snap at
+  break-even (<= 1.6e-8/N).
+- The floor yields to the ROI, never the other way round. Rows above break-even whose 1/N
+  solution missed the target at every α used to be blocked; they now run with P(1st) at
+  the most the target allows (8 906 of 346 150 scan points). Rows whose natural solution
+  itself misses by more than the tolerance stay blocked. Do not turn the floor into an EV
+  fixer.
 
 ## Three Validation Layers
 

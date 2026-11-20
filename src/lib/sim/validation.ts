@@ -46,15 +46,15 @@ export interface ScheduleFeasibility {
 /**
  * Replicates compileEntry.ts compileSingleEntry's calibration pre-step
  * closely enough to decide whether the engine can play each row at its ROI.
- * Fixed-ITM rows can be infeasible when explicit shell locks, the solver's
- * first-place floor or the payout table leave no alpha room to hit the cash
- * target; free-ITM rows when the α solver saturates short of it. A row with
- * a Field-size range is checked at every field size the engine plays, on
- * both branches, and reports the size that misses its target the most. A
- * model with no α to move (uniform, empirical, realdata-*) is held to its
- * shell locks only: its shape, not the typed ROI, decides what the row pays.
- * On a bounty row the KO EV closes its ROI instead, so it is blocked when the
- * bounty pool cannot pay that KO EV.
+ * Fixed-ITM rows can be infeasible when explicit shell locks or the payout
+ * table leave no alpha room to hit the cash target (the first-place floor
+ * gives way to it); free-ITM rows when the α solver saturates short of it. A
+ * row with a Field-size range is checked at every field size the engine
+ * plays, on both branches, and reports the size that misses its target the
+ * most. A model with no α to move (uniform, empirical, realdata-*) is held to
+ * its shell locks only: its shape, not the typed ROI, decides what the row
+ * pays. On a bounty row the KO EV closes its ROI instead, so it is blocked
+ * when the bounty pool cannot pay that KO EV.
  *
  * This mirrors compileEntry's targetRegular, its Battle Royale cash/KO
  * centre, its bounty lift and the bounty pool's cap on the KO EV

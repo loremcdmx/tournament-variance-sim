@@ -137,10 +137,10 @@ describe("a row with a Field-size range raises one calibration notice", () => {
   });
 
   it("in the PrimeDope pass, where the sizes' mean lands on target", () => {
-    // Sizes 13 / 28 / 43 at ROI +100 % play $18.00 / $25.05 / $22.95 against
-    // $22.00; their mixture is $22.001.
+    // Sizes 13 / 28 / 43 at a pinned 69 % ITM and ROI +138 % play $18.00 /
+    // $31.88 / $28.66 against $26.18; their mixture is $26.180.
     const r: TournamentRow = {
-      ...row("pd", 1), players: 28, roi: 1, itmRate: 0.5,
+      ...row("pd", 1), players: 28, roi: 1.38, itmRate: 0.69,
       fieldVariability: { kind: "uniform", min: 5, max: 50, buckets: 3 },
     };
     const compiled = once(
@@ -149,7 +149,7 @@ describe("a row with a Field-size range raises one calibration notice", () => {
     );
     const variants = compiled.flat[0].variants!;
     expect(variants.map((v) => v.fieldSize)).toEqual([13, 28, 43]);
-    expect(withinTargetEv(variants.reduce((a, v) => a + v.analyticMeanSingle, 0) / 3, 22)).toBe(true);
+    expect(withinTargetEv(variants.reduce((a, v) => a + v.analyticMeanSingle, 0) / 3, 26.18)).toBe(true);
     const [warning] = compiled.calibrationWarnings!;
     expect(warning).toMatchObject({ kind: "primedope-free-itm-unreachable", fieldSize: 13 });
     expect(warning.actualWinnings).toBeCloseTo(18, 6);
