@@ -190,12 +190,14 @@ search on the ask settles below the ceiling there (a 4-player pinned row's KO
 end would play 14.4 % of its winnings in KOs where one drag step short of it
 plays 26.2 %). A cash side that
 cannot deliver the rest leaves the row short of its total: `validateSchedule`
-blocks it, and the engine raises `target-unreachable` (the PrimeDope pass its
-own two kinds) so the expected profit reads the pmf. A model that does not aim
-at the ROI (uniform, empirical, the realdata shapes, a hand-set α) plays its
-own cash side and closes the rest with the KO EV, so it misses only where the
-pool cuts that KO EV (`poolCut`); such a row is blocked and flagged like any
-other, while one whose shape alone overpays the total stays held to its shape.
+blocks it with the cause `bounty-pool`, and the engine raises
+`target-unreachable` (the PrimeDope pass its own two kinds) so the expected
+profit reads the pmf. A model that does not aim at the ROI (uniform,
+empirical, the realdata shapes, a hand-set α) plays its own cash side and
+closes the rest with the KO EV, so it misses only where the pool cuts that KO
+EV (`poolCut`); such a row is blocked (cause `fixed-shape`) and flagged like
+any other, while one whose shape alone overpays the total stays held to its
+shape.
 
 Battle Royale has one extra invariant: the GG-style tier table fixes the
 average dollars per envelope. The engine therefore scales `bountyKmean`

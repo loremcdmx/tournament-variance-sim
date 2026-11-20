@@ -373,13 +373,29 @@ residual coefficient before being band-eligible.
   shares and EV but carries `placesVary`, and the tooltip says the places depend
   on the field size; before, `restItm[28]` of a 258-entry field was printed next
   to a bubble at 19.
-- "Fit closest inputs" on a ranged row searches for the one ROI every size can
-  reach (a size that falls short caps the target, one that overshoots floors it)
-  and returns `kind: "none"` with the row untouched when the bounds cross. In a
-  600-row grid of ranged SNG and small-MTT rows 510 were blocked and a ROI fixes
-  only 90 of them (a pinned ITM against the small sizes), so the handlers say so
-  in an alert instead of rewriting the ROI back and forth. Anything but a ranged
-  ROI-gap row keeps the old fallback.
+- "Fit closest inputs" (`chooseClosestFeasibilityFix`) tries the blocked row as it
+  is, without its finish locks (and on bounty rows its ITM), without ITM and locks,
+  and at the 16 % grinder ITM (not on bounty rows). A variant that fails at the
+  typed ROI takes the ROI its walk reaches, moved to the edge of its window nearest
+  the typed ROI. On a ranged row the walk looks for the one ROI every size can
+  reach (a size that falls short caps the target, one that overshoots floors it);
+  bounds that cross rule out that variant, not the row. It returns `kind: "none"`
+  with the row untouched only when no variant passes, and the handlers say so in
+  an alert. Since the first-place floor gives way to the target, no window ends
+  just under break-even, so the walk needs no probe there (none passed on 597 906
+  blocked rows). page.tsx fits only the clicked row and reuses that fit inside the
+  setSchedule updater; Fit all caches its fits per row object (a fit can take
+  seconds on a big range).
+- RowFeasibilityIssue.cause is set by the validateSchedule branch that blocks the
+  row (locks that contradict each other, an ITM no shape pays the ROI at, locks
+  that leave no shape paying it, a bounty pool too small, a model that cannot be
+  tuned to it). pinned-shells is reported only when the worst size, the one the
+  issue names, passes without its locks; do not run that recheck at row.players,
+  the range midpoint. fieldSize is an attribute of a ranged issue, not a cause. Do
+  not go back to one 'locked shells' sentence for every blocked row.
+  CompiledEntry.bountyPoolCut is settled.poolCut; validateSchedule's free-ITM
+  branch reads it to tell bounty-pool from model saturation, and it must not steer
+  what a run samples.
 
 ## Calibration Targets, Tolerances And The Worker Cache
 

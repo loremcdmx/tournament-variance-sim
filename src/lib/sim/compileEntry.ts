@@ -794,6 +794,7 @@ function compileSingleEntry(
         : targetUnreachable
           ? { rowId: row.id, kind: "target-unreachable", targetWinnings: totalWinningsEV, actualWinnings: eX }
           : undefined,
+    bountyPoolCut: settled.poolCut,
     rowIdx: idx,
     fieldSize: N,
     singleCost: entryCostSingle,

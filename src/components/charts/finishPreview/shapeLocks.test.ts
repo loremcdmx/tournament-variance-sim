@@ -114,7 +114,7 @@ describe("patchFinishLocks", () => {
         const locks = effective.finishBuckets;
         expect(locks?.top3 != null && locks.first == null && locks.ft == null).toBe(false);
         expect(
-          validateSchedule([effective], { id: "power-law" }).issues.map((i) => i.reason),
+          validateSchedule([effective], { id: "power-law" }).issues.map((i) => i.cause),
         ).not.toContain("inconsistent-finish-locks");
       }
     });

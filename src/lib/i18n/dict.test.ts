@@ -52,6 +52,12 @@ describe("i18n dict", () => {
     expect(hits).toEqual([]);
   });
 
+  it("counts the blocked rows in the run's blocked title instead of assuming more than one", () => {
+    // The Run button shows it for a single blocked row too.
+    expect(DICT["shape.blockedTitle"].en).toBe("Can't run — blocked rows: {n}");
+    expect(DICT["shape.blockedTitle"].ru).toBe("Нельзя запустить — заблокировано строк: {n}");
+  });
+
   it("ends the infeasible-shape hint without a dangling percent sign", () => {
     expect(DICT["shape.infeasible"].en).not.toMatch(/%/);
     expect(DICT["shape.infeasible"].ru).not.toMatch(/%/);
