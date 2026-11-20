@@ -4,16 +4,26 @@
  * effect of optimizations without clicking through the UI.
  */
 
+import { SCENARIOS as DEMOS } from "../src/lib/scenarios";
 import { runSimulation } from "../src/lib/sim/engine";
-import { DEFAULT_TILT_FAST_WINDOW, DEFAULT_TILT_SLOW_WINDOW } from "../src/lib/sim/modelPresets";
+import { STANDARD_PRESETS, applyModelPatch } from "../src/lib/sim/modelPresets";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
+import { buildSimulationInput } from "../src/lib/ui/simulationInput";
 
 interface Scenario {
   name: string;
   row: Partial<TournamentRow>;
   samples: number;
   N: number;
+  /** A built-in model preset, sent the way Run sends it: tilt depths in dollars, windows set. */
+  preset?: "realistic-solo" | "steady-reg";
+  /** Unsets the tilt windows: the all-time extremes an engine API caller gets. */
+  allTime?: boolean;
 }
+
+// 3000 tournaments, so both windows (250 and 1000) roll over several times: a
+// run no longer than its window is a single block of the window code.
+const TILT_ROW: Partial<TournamentRow> = { players: 500, buyIn: 22, rake: 0.1, roi: 0.05 };
 
 const SCENARIOS: Scenario[] = [
   {
@@ -35,12 +45,10 @@ const SCENARIOS: Scenario[] = [
     samples: 10_000,
     N: 300,
   },
-  {
-    name: "tilt+shocks",
-    row: { players: 500, buyIn: 22, rake: 0.1, roi: 0.05 },
-    samples: 20_000,
-    N: 500,
-  },
+  { name: "solo-tilt", row: TILT_ROW, samples: 4_000, N: 3_000, preset: "realistic-solo" },
+  { name: "solo-tilt-all-time", row: TILT_ROW, samples: 4_000, N: 3_000, preset: "realistic-solo", allTime: true },
+  { name: "steady-tilt", row: TILT_ROW, samples: 4_000, N: 3_000, preset: "steady-reg" },
+  { name: "steady-tilt-all-time", row: TILT_ROW, samples: 4_000, N: 3_000, preset: "steady-reg", allTime: true },
 ];
 
 function buildInput(sc: Scenario): SimulationInput {
@@ -55,7 +63,17 @@ function buildInput(sc: Scenario): SimulationInput {
     count: sc.N,
     ...sc.row,
   } as TournamentRow;
-  const base: SimulationInput = {
+  if (sc.preset) {
+    const preset = STANDARD_PRESETS.find((p) => p.id === sc.preset)!;
+    const controls = applyModelPatch(
+      { ...DEMOS[0].controls, scheduleRepeats: 1, samples: sc.samples, seed: 42 },
+      preset.patch,
+      preset.id,
+    );
+    const input = buildSimulationInput([row], controls, true);
+    return sc.allTime ? { ...input, tiltFastWindow: undefined, tiltSlowWindow: undefined } : input;
+  }
+  return {
     schedule: [row],
     scheduleRepeats: 1,
     samples: sc.samples,
@@ -64,19 +82,6 @@ function buildInput(sc: Scenario): SimulationInput {
     finishModel: { id: "power-law" },
     calibrationMode: "alpha",
   };
-  if (sc.name === "tilt+shocks") {
-    return {
-      ...base,
-      roiStdErr: 0.05,
-      roiShockPerTourney: 0.02,
-      tiltFastGain: 0.03,
-      tiltFastScale: 500,
-      tiltFastWindow: DEFAULT_TILT_FAST_WINDOW,
-      tiltSlowGain: 0.02,
-      tiltSlowWindow: DEFAULT_TILT_SLOW_WINDOW,
-    };
-  }
-  return base;
 }
 
 async function main() {

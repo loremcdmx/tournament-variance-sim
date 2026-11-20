@@ -23,6 +23,8 @@ import {
   runSimulation,
   simulateShard,
 } from "../src/lib/sim/engine";
+import { battleRoyaleRowFromTotalTicket } from "../src/lib/sim/battleRoyaleTicket";
+import { DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION } from "../src/lib/sim/gameType";
 import { applyItmTarget } from "../src/lib/sim/itmTarget";
 import type {
   CalibrationMode,
@@ -264,3 +266,65 @@ report(
     [3000, 9000, 15_000],
   ),
 );
+
+// PKO fields under 45 play the elimination tree with their over-spread places
+// shrunk (2nd in fields of 4 to 44, 3rd in 5 to 10), which no PKO row above
+// (1,200 to 3,000 players) reaches; the range crosses that edge (33 to 57 entrants).
+// Ranged Mystery and Battle Royale rows go through the engine's own
+// normalization, which drops the Battle Royale range.
+const PKO: Partial<TournamentRow> = {
+  payoutStructure: "mtt-gg-bounty",
+  bountyFraction: 0.5,
+  gameType: "pko",
+};
+const SMALL_FIELD_BOUNTY: Record<string, Partial<TournamentRow>> = {
+  ...Object.fromEntries([4, 6, 9, 18, 44, 45].map((players) => [`pko${players}`, { ...PKO, players }])),
+  pkoRange: {
+    ...PKO,
+    players: 45,
+    fieldVariability: { kind: "uniform", min: 30, max: 60, buckets: 5 },
+  },
+  mysteryRange: {
+    players: 300,
+    payoutStructure: "mtt-gg-mystery",
+    bountyFraction: 0.5,
+    mysteryBountyVariance: 2.0,
+    gameType: "mystery",
+    fieldVariability: { kind: "uniform", min: 100, max: 500, buckets: 4 },
+  },
+  battleRoyaleRange: {
+    ...battleRoyaleRowFromTotalTicket(10),
+    players: 18,
+    payoutStructure: "battle-royale",
+    bountyFraction: DEFAULT_BATTLE_ROYALE_BOUNTY_FRACTION,
+    mysteryBountyVariance: 1.8,
+    gameType: "mystery-royale",
+    roi: 0.03,
+    itmRate: 0.18,
+    fieldVariability: { kind: "uniform", min: 12, max: 24, buckets: 3 },
+  },
+};
+for (const [name, extra] of Object.entries(SMALL_FIELD_BOUNTY)) {
+  for (const calibrationMode of ["alpha", "primedope-binary-itm"] as const) {
+    const label = `bounty:${name}:${calibrationMode}`;
+    try {
+      report(
+        label,
+        runSharded(
+          {
+            schedule: applyItmTarget([row(name, extra)], NO_ITM_TARGET),
+            scheduleRepeats: 300,
+            samples: 1500,
+            bankroll: 300,
+            seed: 11,
+            finishModel: { id: "power-law" },
+            calibrationMode,
+          },
+          [1, 500, 751],
+        ),
+      );
+    } catch (error) {
+      console.log(`${label}\tERROR ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}

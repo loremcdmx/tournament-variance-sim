@@ -368,7 +368,8 @@ describe("engine — slow tilt on the drift-free path", () => {
   it("follows the documented state machine on profit minus the expected-profit line", () => {
     // An independent replica written from the types.ts description: both
     // swings and both exits are read on x = profit − Σ E[profit] of the
-    // entries played so far. A small threshold makes it switch often.
+    // entries played so far. A small threshold makes it switch often, and a
+    // recovery share of 0.25 tells r from 1 - r.
     const input = baseInput({
       scheduleRepeats: 2000,
       samples: 40,
@@ -376,7 +377,7 @@ describe("engine — slow tilt on the drift-free path", () => {
       tiltSlowGain: 0.08,
       tiltSlowThreshold: 400,
       tiltSlowMinDuration: 25,
-      tiltSlowRecoveryFrac: 0.5,
+      tiltSlowRecoveryFrac: 0.25,
     });
     const compiled = compileSchedule(input, "alpha");
     const engine = shardFinals(input);
@@ -412,11 +413,11 @@ describe("engine — slow tilt on the drift-free path", () => {
         } else if (state === -1) {
           shift = -0.08;
           down++;
-          if (x - anchor >= 0.5 * swing) state = 0;
+          if (x - anchor >= 0.25 * swing) state = 0;
         } else {
           shift = 0.08;
           up++;
-          if (anchor - x >= 0.5 * swing) state = 0;
+          if (anchor - x >= 0.25 * swing) state = 0;
         }
         const r = rng() * e.aliasProb.length;
         const k = r | 0;
@@ -688,6 +689,64 @@ describe("engine — tilt over a trailing window", () => {
       expect(Array.from(shardFinals(input)), `window ${window}`).toEqual(replay.finals);
       expect(replay.up + replay.down, `window ${window}`).toBeGreaterThan(0);
     }
+  });
+
+  it("slow tilt: a state ends once the gap to the window's extreme is down to 1 - r of its swing", () => {
+    // r = tiltSlowRecoveryFrac. At the 0.5 of the other windowed cases r and 1 - r are the
+    // same number; at 0.25 they are not. At 1 the gap must close to exactly 0, a new extreme
+    // of the window, which "<=" accepts and "<" never does.
+    for (const recovery of [0.25, 1]) {
+      const input = baseInput({
+        scheduleRepeats: 2000,
+        samples: 40,
+        tiltSlowGain: 0.08,
+        tiltSlowThreshold: 2500,
+        tiltSlowMinDuration: 25,
+        tiltSlowRecoveryFrac: recovery,
+        tiltSlowWindow: 150,
+      });
+      const replay = replaySlowWindow(input);
+      expect(Array.from(shardFinals(input)), `r = ${recovery}`).toEqual(replay.finals);
+      expect(replay.lengths.length, `r = ${recovery}`).toBeGreaterThan(20);
+    }
+  });
+
+  it("slow tilt: the first window holds the point before the first tournament", () => {
+    // Heads-up, winner takes all: a win moves x up by 39.5 and a loss down by 60.5. A
+    // sample that wins its first two tournaments stays above 0 and sits 79 above point 0
+    // but only 39.5 above its lowest point since, so a threshold of 60 puts it in "up"
+    // before its third tournament only if point 0 is in the window's minimum. A sample that
+    // loses its first one is below 0 from the start, and only point 0 is 60 above it. At
+    // this seed 12 of the 40 samples start with two wins and 18 with a loss.
+    const input = baseInput({
+      schedule: [{ ...freezeRow(), players: 2, payoutStructure: "winner-takes-all" }],
+      scheduleRepeats: 300,
+      samples: 40,
+      tiltSlowGain: 0.08,
+      tiltSlowThreshold: 60,
+      tiltSlowMinDuration: 1,
+      tiltSlowRecoveryFrac: 0.5,
+      tiltSlowWindow: 20,
+    });
+    const replay = replaySlowWindow(input);
+    expect(Array.from(shardFinals(input))).toEqual(replay.finals);
+    const e = compileSchedule(input, "alpha").flat[0];
+    expect(e.analyticMeanSingle).toBeCloseTo(60.5, 9);
+    let startsAbove = 0;
+    let startsBelow = 0;
+    for (let s = 0; s < input.samples; s++) {
+      const rng = sampleStream(input.seed, s, STREAM_FINISH);
+      const won = () => {
+        const r = rng() * e.aliasProb.length;
+        const k = r | 0;
+        return (r - k < e.aliasProb[k] ? k : e.aliasIdx[k]) === 0;
+      };
+      const first = won();
+      if (!first) startsBelow++;
+      else if (won()) startsAbove++;
+    }
+    expect(startsAbove).toBeGreaterThan(5);
+    expect(startsBelow).toBeGreaterThan(5);
   });
 
   it("how often the slow tilt fires does not grow with the distance", () => {
