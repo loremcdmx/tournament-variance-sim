@@ -120,8 +120,9 @@ The current split is:
      target and then closes constrained rows (`itmRate`, shells, fixed-shape
      models) by setting the actual bounty budget to `targetTotal - cashEV`.
      This keeps total ROI pinned even when α hits a boundary. The KO EV never
-     passes what the bounty pool can pay one entry (`bountyEvCeiling`, see
-     "KO EV share"). Battle Royale keeps its published average envelope size
+     passes what the bounty pool can pay one entry (`bountyEvCeiling`) and
+     never falls below what its finishing places guarantee (`knockoutFloor`,
+     see "KO EV share"). Battle Royale keeps its published average envelope size
      fixed and scales expected KO counts instead.
    - Builds alias tables for fast weighted sampling.
    - Returns `CompiledEntry[]` — flat, shard-independent, serializable.
@@ -175,7 +176,8 @@ Either way the KO EV is capped by the bounty pool: one entry collects at most
 N x buyIn x bountyFraction x (1 - P(last)) (`bountyEvCeiling`), read on the
 pmf the row plays, after sit-through. `settleBountyAgainstPool`
 (`bountySplit.ts`) does it for `compileEntry`, `previewRowStats` and
-`validation` alike. A row whose KO EV fits is solved once. A plan
+`validation` alike. A row whose KO EV fits between the floor below and the
+ceiling plays the one solve of its plan. A plan
 past the ceiling is cut to the largest KO EV the pmf solved for it can pay,
 the fixed point b = ceiling(solve(total - b)), and the cash side is asked for
 the rest: more cash lowers P(last) and lifts the ceiling, so a bracketed
@@ -192,12 +194,38 @@ plays 26.2 %). A cash side that
 cannot deliver the rest leaves the row short of its total: `validateSchedule`
 blocks it with the cause `bounty-pool`, and the engine raises
 `target-unreachable` (the PrimeDope pass its own two kinds) so the expected
-profit reads the pmf. A model that does not aim at the ROI (uniform,
-empirical, the realdata shapes, a hand-set α) plays its own cash side and
-closes the rest with the KO EV, so it misses only where the pool cuts that KO
-EV (`poolCut`); such a row is blocked (cause `fixed-shape`) and flagged like
-any other, while one whose shape alone overpays the total stays held to its
-shape.
+profit reads the pmf. A model that does not aim
+at the ROI (uniform, empirical, the realdata shapes, a hand-set α) plays its
+own cash side and closes the rest with the KO EV, so it misses only where the
+pool cuts that KO EV (`poolCut`) or the KO EV cannot fall to what the cash side
+leaves (`floorLift`, below); such a row is blocked (cause `fixed-shape`) and
+flagged like any other.
+
+The KO EV is also held above a floor, `knockoutFloor` of the pmf played. The
+engine spreads a row's KO EV over the finishing places in one fixed shape (the
+elimination tree's hauls, the envelope window's knockout counts, Ocean's
+collected heads) times one knockout edge, and winning always takes the last
+knockout: a PKO or Ocean winner keeps the own starting head and takes the
+runner-up's, at least a second one, a Mystery winner opens one envelope of the
+row's pool (the whole pool where no bust drops one), and a Battle Royale winner
+one envelope of the published table, the mean the engine draws (no more than
+the pool). The edge cannot fall below the one that pays the winner that, so
+the KO EV is at least winnerTake x Σ pmf·w / w[0] (`knockoutFloorShape`),
+never above the ceiling. Where the cash side leaves less (the first-place floor lifting it
+toward the total, an α at the end of its range, a fixed shape) or a free plan
+asks for less, `settleBountyAgainstPool` caps the cash side at the total less
+the KO EV asked for (`maxCashWinnings` of `calibrateShelledItm`) and lowers its
+target with it, and settles on the fixed point where the KO EV meets the floor
+of its own solve, by the same Illinois search. A row whose cash side cannot come
+that far down even at the cash target floor plays that least cash with the KO
+EV at the floor, over its total. A pinned ITM or a fixed shape whose KO EV the
+floor holds above what the cash side leaves of the total, or whose cash side
+overpays the total alone, carries `floorLift`, and it is blocked and flagged
+whatever the model, as a pool-cut row is: a fixed shape closes its ROI only with
+a KO EV between the floor and the ceiling. The floor is checked after the
+ceiling's search too: heads-up the floor is the ceiling, and a cash side the
+first-place floor lifts at the ceiling's fixed point leaves a residual under
+both.
 
 Battle Royale has one extra invariant: the GG-style tier table fixes the
 average dollars per envelope. The engine therefore scales `bountyKmean`

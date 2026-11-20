@@ -951,14 +951,16 @@ describe("calibrateShelledItm: the first-place floor around break-even", () => {
 
   it("lets a bounty row's cash side overpay only what its KO budget hands back", () => {
     // Two PKO 30 rows whose 1/N solution's cash side overpays even the row's
-    // total winnings. At ITM 30% and ROI 0% first place slides down until the
-    // cash side pays the total; at ITM 25%, tilt -0.5 and ROI -11% every lock
-    // that lifts first place pays more than the total, so the floor gives way.
-    // Either way the bounty residual closes the total.
+    // total winnings. Capped at the total, ITM 30% at ROI +10% leaves $6.85 of
+    // KO EV and ITM 25%, tilt -0.5 at ROI 0% $1.32, both at P(1st)·N 1 and
+    // under the KO EV those places guarantee ($11.92 and $11.67: a winner keeps
+    // two $50 heads), so first place slides down until the cash side leaves
+    // what the places of its own solve guarantee ($10.99 and $10.08). Either
+    // way the bounty residual closes the total.
     const model: FinishModelConfig = { id: "powerlaw-realdata-influenced" };
     for (const [itm, bias, roi, firstN, slack] of [
-      [0.3, 0, 0, 0.646, 2e-9],
-      [0.25, -0.5, -0.11, 0.073, 1e-12],
+      [0.3, 0, 0.1, 0.6468, 1e-12],
+      [0.25, -0.5, 0, 0.4383, 1e-12],
     ] as const) {
       let row: TournamentRow = { id: "r", players: 30, buyIn: 100, rake: 0.1, roi, payoutStructure: "mtt-standard", count: 1 };
       row = { ...row, ...applyGameType(row, "pko"), players: 30, itmRate: itm, itmTopHeavyBias: bias };
@@ -973,6 +975,7 @@ describe("calibrateShelledItm: the first-place floor around break-even", () => {
         if (e.aliasIdx[i] === 0) first += (1 - e.aliasProb[i]) / e.fieldSize;
       }
       expect(first * e.fieldSize).toBeCloseTo(firstN, 3);
+      expect(e.bountyByPlace![0]).toBeCloseTo(100, 6);
     }
   });
 

@@ -1,9 +1,9 @@
 import type { FinishModelConfig, TournamentRow } from "./types";
 import { isFieldRangeActive } from "./fieldVariants";
+import { knockoutFloorFits } from "./bountySplit";
 import {
   bountyResidualFits,
   isAlphaAdjustable,
-  targetEvTolerance,
   withinTargetEv,
 } from "./finishModel";
 import { normalizeGameTypeConsistency } from "./gameType";
@@ -129,9 +129,11 @@ function oneLevelItmForRow(
   const target = row.buyIn * (1 + row.rake) * (1 + row.roi);
   if (!(prize > 0)) return fallback;
   const cash = fallback * prize;
+  // A heads-up KO EV is the pool's share of a win to the last bit: the
+  // ceiling and the floor meet there.
   const reached = bountyPool > 0
-    ? cash <= target + targetEvTolerance(target) &&
-      bountyResidualFits(target - cash, fallback * bountyPool)
+    ? bountyResidualFits(target - cash, fallback * bountyPool) &&
+      knockoutFloorFits(target - cash, fallback * bountyPool)
     : withinTargetEv(cash, target);
   if (reached) return fallback;
   const implied = target / (prize + bountyPool);

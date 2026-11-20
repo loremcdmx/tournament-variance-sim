@@ -527,13 +527,15 @@ describe("validateSchedule: a model that cannot move its finish shape", () => {
     expect(validateSchedule([hard], model).ok).toBe(true);
   });
 
-  it.each([uniform, empirical])("does not block a bounty row on $id", (model) => {
+  it.each([uniform, empirical])("does not block a bounty row whose KO EV closes its ROI on $id", (model) => {
+    // At ROI +100 % uniform cashes $25 of the $110 and empirical $93.10, and
+    // both close the rest with a KO EV between their floor and the pool.
     const r = row({
       players: 300,
       payoutStructure: "mtt-gg-bounty",
       gameType: "pko",
       bountyFraction: 0.5,
-      roi: 0.3,
+      roi: 1,
     });
     expect(validateSchedule(effective(r), model).ok).toBe(true);
   });
@@ -571,11 +573,20 @@ describe("validateSchedule: a model that cannot move its finish shape", () => {
     expect(validateSchedule([smallPko(-0.2)], realdata).ok).toBe(true);
   });
 
-  it("keeps a bounty row whose shape alone pays past its ROI held to that shape", () => {
+  it("blocks a bounty row whose shape alone pays past its ROI: its places still guarantee a KO EV", () => {
     // Uniform pays $69.30 at ITM 0.66 and $70 with a free ITM, both over the
-    // $55 of ROI -50 %: no KO EV is asked for, so the pool cuts nothing.
-    expect(validateSchedule([smallPko(-0.5, 0.66)], uniform).ok).toBe(true);
-    expect(validateSchedule([smallPko(-0.5)], uniform).ok).toBe(true);
+    // $55 of ROI -50 %, and wins a third of the time, so it still collects
+    // $21.60 and $21.82 of KOs: no split pays the $55.
+    for (const [r, plays] of [[smallPko(-0.5, 0.66), 90.9], [smallPko(-0.5), 91.8181818182]] as const) {
+      const res = validateSchedule([r], uniform);
+      expect(res.ok).toBe(false);
+      expect(res.issues[0].currentEv).toBeCloseTo(plays, 9);
+      // "Fit closest inputs" raises the ROI to the one the shape plays.
+      const fix = chooseClosestFeasibilityFix(r, res.issues[0], uniform, itmCfg);
+      expect(fix.kind).toBe("match-roi");
+      expect(fix.row.roi).toBeCloseTo(plays / 110 - 1, 9);
+      expect(validateSchedule(effective(fix.row), uniform).ok).toBe(true);
+    }
   });
 
   it("blocks exactly the bounty rows the engine flags", () => {
@@ -597,8 +608,10 @@ describe("validateSchedule: a model that cannot move its finish shape", () => {
             expect(res.issues[0].currentEv).toBeCloseTo(warnings![0].actualWinnings, 9);
           }
         }
-    // 84 of the 128 rows ask the pool for more than it holds, on both ITM branches.
-    expect(blocked).toBe(84);
+    // 84 of the 128 rows ask the pool for more than it holds, on both ITM
+    // branches, and 36 cash more than their total leaves room for next to the
+    // KO EV their places guarantee.
+    expect(blocked).toBe(120);
   });
 
   it("still refuses locks that contradict each other", () => {
@@ -798,6 +811,26 @@ describe("validateSchedule: an empirical history plays its own shape", () => {
     expect(validateSchedule([r], history).ok).toBe(true);
     // With no data the model falls back to the row's ITM and locks, so they are checked.
     expect(validateSchedule([r], { id: "empirical" }).ok).toBe(false);
+  });
+});
+
+describe("validateSchedule names a row the bounty its wins guarantee pushes over its ROI", () => {
+  const bountyRow = (gameType: "pko" | "mystery-royale", players: number, roi: number, itmRate?: number): TournamentRow => {
+    const base: TournamentRow = { id: "r", label: "r", players, buyIn: 10, rake: 0.1, roi, payoutStructure: "mtt-standard", count: 1 };
+    return { ...base, ...applyGameType(base, gameType), players, ...(itmRate ? { itmRate } : {}) };
+  };
+
+  it("a fixed shape whose wins alone pay more than a losing ROI", () => {
+    // Heads-up uniform PKO at -50 %: winning half the time already takes $10 of KO EV against a $5.50 target.
+    const [issue] = validateSchedule([bountyRow("pko", 2, -0.5)], { id: "uniform" }).issues;
+    expect(issue.cause).toBe("fixed-shape-over");
+    expect(issue.currentEv).toBeGreaterThan(issue.targetEv);
+  });
+
+  it("a pinned ITM whose least cash and guaranteed bounty pay more than the ROI", () => {
+    const [issue] = validateSchedule([bountyRow("mystery-royale", 18, -0.5, 0.54)], { id: "uniform" }).issues;
+    expect(issue.cause).toBe("knockout-floor");
+    expect(issue.currentEv).toBeGreaterThan(issue.targetEv);
   });
 });
 

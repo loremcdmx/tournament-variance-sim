@@ -406,7 +406,7 @@ describe("computeRowStats shell feasibility agrees with validateSchedule on boun
     }
   });
 
-  it("shows a fixed-shape row the pool leaves short as infeasible, as Run does", () => {
+  it("shows a fixed-shape row whose KO EV cannot close its ROI as infeasible, as Run does", () => {
     // Uniform at ITM 0.66 reaches $69.51 + $59.40 of the $220 that +100 % asks
     // for; at +10 % the $51.70 residual fits the pool and the row runs.
     const uniform = { id: "uniform" as const };
@@ -421,6 +421,13 @@ describe("computeRowStats shell feasibility agrees with validateSchedule on boun
     expect(validateSchedule([at(1)], uniform).ok).toBe(false);
     expect(computeRowStats(at(0.1), uniform).shellFeasible).toBe(true);
     expect(validateSchedule([at(0.1)], uniform).ok).toBe(true);
+    // At -50 % the $69.30 of cash overpays the $55 alone, and a winner a third
+    // of the time still collects $21.60 of KOs: over its ROI, as Run reads it.
+    const over = computeRowStats(at(-0.5), uniform);
+    expect(over.shellFeasible).toBe(false);
+    expect(over.bountyEvPerEntry).toBeCloseTo(21.6, 9);
+    expect(over.evPerEntry).toBeCloseTo(90.9, 9);
+    expect(validateSchedule([at(-0.5)], uniform).ok).toBe(false);
   });
 
   it("reads the pool's ceiling on the pmf after sit-through, as the engine plays it", () => {

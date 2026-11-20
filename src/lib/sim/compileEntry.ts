@@ -349,6 +349,7 @@ function compileSingleEntry(
     paidCount,
     buyIn: row.buyIn,
     bountyFraction,
+    gameType: inferGameType(row),
     totalWinningsEV,
     cashFloor: cashTargetFloor(entryCostSingle),
     plannedBountyMean: bountyMean,
@@ -356,12 +357,12 @@ function compileSingleEntry(
     // hit an α boundary before its cash target is reached. The slider still
     // changes the requested split and therefore the solved finish shape, but
     // the actual KO budget must be the residual after that shape's cash EV,
-    // as far as the bounty pool can pay it. Otherwise total ROI drifts at the
-    // slider edges.
+    // as far as the bounty pool can pay it and no lower than the finishing
+    // places guarantee. Otherwise total ROI drifts at the slider edges.
     residualCloses: (row.itmRate != null && row.itmRate > 0) || !isAlphaAdjustable(model),
     sitThrough: row.sitThroughPayJumps === true && calibrationMode !== "primedope-binary-itm",
     payJumpAggression: row.payJumpAggression,
-    solve: (targetRegular) => {
+    solve: (targetRegular, maxCashWinnings) => {
       // entryCostSingle has already dropped rake when pdDisplayMode is on, so
       // the binary-ITM target is naturally PrimeDope-style.
       if (
@@ -402,7 +403,7 @@ function compileSingleEntry(
         row.finishBuckets,
         model,
         row.itmTopHeavyBias ?? 0,
-        bountyFraction > 0 ? totalWinningsEV : targetRegular,
+        bountyFraction > 0 ? maxCashWinnings : targetRegular,
       );
       return { alpha: fi.alpha, pmf: fi.pmf, prizeByPlace: buildPrizeByPlace(null) };
     },
@@ -733,8 +734,9 @@ function compileSingleEntry(
   // solution when it lands closer to the ROI, so the pane plays the ROI it
   // prints; a row that hits keeps its ITM and its bytes. Fixed-shape models
   // never aim at the ROI, so a gap there is not a missed target
-  // (`rowIgnoresRoi`), unless the bounty pool cut the KO EV that closes it.
-  const aimsAtRoi = isAlphaAdjustable(model) || settled.poolCut;
+  // (`rowIgnoresRoi`), unless the bounty pool cut the KO EV that closes it or
+  // that KO EV cannot come down as far as closing it needs.
+  const aimsAtRoi = isAlphaAdjustable(model) || settled.poolCut || settled.floorLift;
   if (
     calibrationMode === "primedope-binary-itm" &&
     !pdFlags.usePdFinishModel &&

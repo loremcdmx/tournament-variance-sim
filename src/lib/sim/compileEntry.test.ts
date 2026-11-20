@@ -7,6 +7,8 @@ import { applyItmTarget } from "./itmTarget";
 import { compiledEntryMoments } from "./scheduleMoments";
 import { applyGameType } from "./gameType";
 import { applySitThroughPayJumps } from "./sitThroughPayJumps";
+import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
+import { makeBrTierSampler } from "./brBountyTiers";
 import type { CompiledEntry } from "./engineTypes";
 import type { FinishModelConfig, SimulationInput, TournamentRow } from "./types";
 import { validateSchedule } from "./validation";
@@ -475,10 +477,242 @@ describe("the engine never pays more KO EV than the bounty pool holds", () => {
     );
     expect(pdOff.calibrationWarnings?.[0].kind).toBe("primedope-free-itm-unreachable");
     expect(pdOff.calibrationWarnings?.[0].actualWinnings).toBeCloseTo(199.44, 9);
-    // Inside the pool, and where the shape alone overpays, nothing is raised.
-    for (const roi of [0.1, -0.5]) {
-      expect(compileSchedule(input(at(roi), { samples: 1, finishModel: uniform })).calibrationWarnings)
-        .toBeUndefined();
+    // Inside the pool nothing is raised.
+    expect(compileSchedule(input(at(0.1), { samples: 1, finishModel: uniform })).calibrationWarnings)
+      .toBeUndefined();
+  });
+});
+
+describe("a bounty row's KO EV never falls below what its finishing places guarantee", () => {
+  const split = (entry: CompiledEntry) => {
+    const n = entry.aliasProb.length;
+    const pmf = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      pmf[i] += entry.aliasProb[i] / n;
+      pmf[entry.aliasIdx[i]] += (1 - entry.aliasProb[i]) / n;
     }
+    let cash = 0;
+    for (let i = 0; i < n; i++) cash += pmf[i] * entry.prizeByPlace[i];
+    return { cash, ko: entry.analyticMeanSingle - cash, first: pmf[0] };
+  };
+  const formatRow = (gameType: "pko" | "mystery" | "mystery-royale" | "ocean-ko", over: Partial<TournamentRow>) => {
+    const base: TournamentRow = { id: "r", label: "r", players: 30, buyIn: 10, rake: 0.1, roi: 0, payoutStructure: "mtt-standard", count: 1 };
+    return { ...base, ...applyGameType(base, gameType), ...over } as TournamentRow;
+  };
+  const agrees = (r: TournamentRow, m: FinishModelConfig, entry: CompiledEntry) => {
+    const stats = computeRowStats(r, m, { skipCompiledSigma: true });
+    const { cash, ko } = split(entry);
+    expect(Math.abs(stats.bountyEvPerEntry - ko)).toBeLessThan(1e-9 * Math.max(1, ko));
+    expect(Math.abs(stats.cashEvPerEntry - cash)).toBeLessThan(1e-9 * Math.max(1, cash));
+  };
+
+  it("pays the winner of a Battle Royale row at the KO slider's cash end one envelope", () => {
+    // ITM 18 %, ROI -17.2 %, the slider at +25 %: a cash side left free to rise
+    // to the total puts all of the ITM on first place and pays the winner 0.50
+    // of an envelope. A $10 ticket draws GG's $10 table, $9.45 an envelope.
+    const r = formatRow("mystery-royale", { roi: -0.172, bountyEvBias: 0.25 });
+    expect(r.itmRate).toBe(0.18);
+    const entry = compileOne(r);
+    const { ko, first } = split(entry);
+    expect(entry.bountyKmean![0]).toBeCloseTo(1, 12);
+    expect(entry.bountyByPlace![0]).toBeCloseTo(9.45, 9);
+    expect(ko).toBeCloseTo(1.8851574722, 9);
+    expect(first * 18).toBeCloseTo(1.97823, 5);
+    expect(entry.analyticMeanSingle).toBeCloseTo(8.28, 9);
+    expect(validateSchedule([r], model).ok).toBe(true);
+    agrees(r, model, entry);
+  });
+
+  it("lets the cash side give way on Mystery 30 at ITM 25 %, tilt +1, ROI -17.2 %", () => {
+    // Free to rise to the total, the first-place floor lifts the cash side to
+    // $8.87 of the $9.108 and leaves $0.24 of KO EV, a winner's share of 0.18 of
+    // the one envelope the last knockout drops ($150 over the 2 busts of a
+    // 3-place window). The cash side gives way until the winner collects it.
+    const r = formatRow("mystery", { bountyFraction: 0.5, itmRate: 0.25, itmTopHeavyBias: 1, roi: -0.172, bountyEvBias: 0.25 });
+    const entry = compileOne(r);
+    const { ko, first } = split(entry);
+    expect(entry.paidCount).toBe(3);
+    expect(entry.bountyByPlace![0]).toBeCloseTo(75, 6);
+    expect(ko).toBeCloseTo(0.5840721576, 9);
+    expect(first).toBeCloseTo(0.0073216, 7);
+    expect(entry.analyticMeanSingle).toBeCloseTo(9.108, 9);
+    expect(validateSchedule([r], model).ok).toBe(true);
+    agrees(r, model, entry);
+  });
+
+  it("keeps a PKO winner's own starting head and the runner-up's", () => {
+    // PKO 30, half of $10 bounty, ITM 25 %, ROI -10 %, slider at +25 %: free to
+    // rise to the total, the cash side takes $9.71 of the $9.90 and pays the
+    // winner $1.74 of KOs, $0.94 of it as the own head. A winner keeps the own
+    // $5 head and takes the runner-up's, never under $5.
+    const r = formatRow("pko", { bountyFraction: 0.5, itmRate: 0.25, roi: -0.1, bountyEvBias: 0.25 });
+    const entry = compileOne(r);
+    const winner = entry.bountyByPlace![0];
+    expect(winner).toBeGreaterThanOrEqual(10 * (1 - 1e-9));
+    expect(winner * entry.pkoRawInv![0] * entry.pkoWinnerHead).toBeGreaterThanOrEqual(5);
+    expect(split(entry).ko).toBeCloseTo(0.9412525284, 9);
+    expect(entry.analyticMeanSingle).toBeCloseTo(9.9, 9);
+    expect(validateSchedule([r], model).ok).toBe(true);
+    agrees(r, model, entry);
+  });
+
+  it("pays a heads-up PKO winner two heads where the plan passes the pool's ceiling", () => {
+    // $35 heads, ITM 40 %, sit-through at 0.5: the plan asks for more KO EV than
+    // the pool holds. At ROI -20 % the ceiling's fixed point asks $26.19 of KOs,
+    // and the first-place floor lifts the cash side to $14.06 against the $13.81
+    // that leaves, so the residual sits 0.9 % under the ceiling, which heads-up
+    // is also the floor. Held to the floor, the winner takes the own head and
+    // the runner-up's.
+    const r: TournamentRow = {
+      id: "r", label: "r", players: 2, buyIn: 50, rake: 0, roi: 0, payoutStructure: "sng-50-30-20", gameType: "pko",
+      bountyFraction: 0.7, itmRate: 0.4, itmTopHeavyBias: 1, bountyEvBias: 0, sitThroughPayJumps: true,
+      payJumpAggression: 0.5, count: 1,
+    };
+    for (const [roi, ko] of [[-0.2, 25.9677419355], [-0.1, 30.4838709677]] as const) {
+      const at = { ...r, roi };
+      const compiled = compileSchedule(input(at, { samples: 1 }));
+      const entry = compiled.flat[0];
+      expect(entry.bountyByPlace![0]).toBeGreaterThanOrEqual(70 * (1 - 1e-9));
+      expect(entry.bountyByPlace![0]).toBeCloseTo(70, 6);
+      expect(split(entry).ko).toBeCloseTo(ko, 9);
+      expect(compiled.calibrationWarnings).toBeUndefined();
+      expect(validateSchedule([at], model).ok).toBe(true);
+      agrees(at, model, entry);
+    }
+  });
+
+  it("blocks the reported Battle Royale row in every layer: no split pays its ROI", () => {
+    // 21 entrants (18 x 1.17), ITM 54 %, ROI -5 %: the first-place floor paid the
+    // whole $9.50 in cash at P(1st) 0.038 and no KO EV. Even with all of its ITM
+    // on the last paid place the row cashes $8.56, and its places still
+    // guarantee $1.91 of KOs (a winner opens one envelope of the $9.45 table
+    // the engine draws), so it plays $10.47.
+    const realdata: FinishModelConfig = { id: "powerlaw-realdata-influenced" };
+    const r = formatRow("mystery-royale", { players: 18, lateRegMultiplier: 1.17, itmRate: 0.54, roi: -0.05 });
+    const compiled = compileSchedule(input(r, { samples: 1, finishModel: realdata }));
+    const entry = compiled.flat[0];
+    expect(entry.fieldSize).toBe(21);
+    expect(entry.bountyByPlace![0]).toBeCloseTo(9.45, 9);
+    expect(entry.bountyKmean![0]).toBeCloseTo(1, 12);
+    expect(split(entry).cash).toBeCloseTo(8.5604945283, 9);
+    expect(split(entry).ko).toBeCloseTo(1.9127925672, 9);
+    expect(entry.analyticMeanSingle).toBeCloseTo(10.4732870955, 9);
+    expect(compiled.calibrationWarnings?.[0]).toMatchObject({ kind: "target-unreachable", actualWinnings: entry.analyticMeanSingle });
+    const gate = validateSchedule([r], realdata);
+    expect(gate.ok).toBe(false);
+    expect(gate.issues[0].currentEv).toBeCloseTo(entry.analyticMeanSingle, 12);
+    agrees(r, realdata, entry);
+  });
+
+  it("flags a fixed shape whose KO EV cannot come down to what its cash side leaves, in every layer", () => {
+    // Each shape fixes its cash side, and its finishing places the least KO EV
+    // it can play. Uniform Mystery 27 at ITM 54 % cashes $9.72 and wins 18 % of
+    // the time, so it collects at least $25.92 of KOs where the $14.30 of ROI
+    // +30 % leaves $4.58; uniform PKO 18 at ITM 90 % cashes $23.76 and its places
+    // guarantee $15.32 where ROI 0 leaves $0.44. The 3-player PKO's uniform cash
+    // side ($69.30) overpays the $55 of ROI -50 % alone, and the Battle Royale
+    // cash solver on uniform at ITM 30 % pays $6 against the $5 of ROI -50 %.
+    // Closing the target would put the first two under their floors and the
+    // last two at a KO EV of 0.
+    const uniform: FinishModelConfig = { id: "uniform" };
+    const rows: [TournamentRow, number][] = [
+      [formatRow("mystery", { players: 27, payoutStructure: "mtt-gg-mystery", bountyFraction: 0.8, itmRate: 0.54, roi: 0.3, bountyEvBias: 0.1 }), 35.64],
+      [formatRow("pko", { players: 18, buyIn: 22, bountyFraction: 0.8, itmRate: 0.9, roi: 0, bountyEvBias: 0.25 }), 39.0780145335],
+      [{
+        id: "r", label: "r", players: 3, buyIn: 100, rake: 0.1, roi: -0.5, gameType: "pko",
+        payoutStructure: "sng-65-35", bountyFraction: 0.3, bountyEvBias: -0.25, itmRate: 0.66, count: 1,
+      }, 90.9],
+      [formatRow("mystery-royale", { itmRate: 0.3, roi: -0.5 }), 7.6510801577],
+    ];
+    for (const [r, plays] of rows) {
+      const compiled = compileSchedule(input(r, { samples: 1, finishModel: uniform }));
+      const entry = compiled.flat[0];
+      expect(entry.analyticMeanSingle).toBeCloseTo(plays, 9);
+      expect(compiled.calibrationWarnings?.[0]).toMatchObject({ kind: "target-unreachable", actualWinnings: entry.analyticMeanSingle });
+      const gate = validateSchedule([r], uniform);
+      expect(gate.ok).toBe(false);
+      expect(gate.issues[0].currentEv).toBeCloseTo(entry.analyticMeanSingle, 9);
+      agrees(r, uniform, entry);
+      // A ROI the KO EV can close runs on the same shape.
+      const reachable = { ...r, roi: plays / entry.singleCost - 1 + 0.01 };
+      expect(compileSchedule(input(reachable, { samples: 1, finishModel: uniform })).calibrationWarnings).toBeUndefined();
+      expect(validateSchedule([reachable], uniform).ok).toBe(true);
+    }
+  });
+
+  it("guarantees a Battle Royale winner one envelope of the table the engine draws, whatever the ticket", () => {
+    // A typed $6 ticket draws GG's $10 table ($9.45 an envelope); at the
+    // slider's cash end a cash side free to rise to the total leaves its winner
+    // 0.30 of one. A $5 ticket draws the $3 table ($2.835), so a row whose
+    // winner already opens 1.24 envelopes keeps its bytes and runs.
+    const realdata: FinishModelConfig = { id: "powerlaw-realdata-influenced" };
+    for (const ticket of [5, 6, 50]) {
+      const r = formatRow("mystery-royale", { ...battleRoyaleRowFromTotalTicket(ticket), roi: -0.172, bountyEvBias: 0.25 });
+      const compiled = compileSchedule(input(r, { samples: 1, finishModel: realdata }));
+      const entry = compiled.flat[0];
+      expect(entry.bountyKmean![0]).toBeGreaterThanOrEqual(1 - 1e-9);
+      expect(entry.bountyByPlace![0] / entry.bountyKmean![0]).toBeCloseTo(makeBrTierSampler(r.buyIn).meanValue, 9);
+      expect(compiled.calibrationWarnings).toBeUndefined();
+      expect(validateSchedule([r], realdata).ok).toBe(true);
+      agrees(r, realdata, entry);
+    }
+    const six = compileSchedule(input(
+      formatRow("mystery-royale", { ...battleRoyaleRowFromTotalTicket(6), roi: -0.172, bountyEvBias: 0.25 }),
+      { samples: 1, finishModel: realdata },
+    )).flat[0];
+    expect(six.bountyKmean![0]).toBeCloseTo(1, 12);
+    expect(split(six).ko).toBeCloseTo(1.6567110938, 9);
+    const five = formatRow("mystery-royale", { ...battleRoyaleRowFromTotalTicket(5), itmRate: 0.4, roi: -0.05, bountyEvBias: -0.25 });
+    const fiveEntry = compileOne({ ...five, count: 1 });
+    expect(split(fiveEntry).ko).toBeCloseTo(0.75, 9);
+    expect(fiveEntry.bountyKmean![0]).toBeCloseTo(1.2375384, 6);
+    expect(validateSchedule([five], model).ok).toBe(true);
+  });
+
+  it("agrees in every layer and pays every winner what winning guarantees on small bounty fields", () => {
+    // On the played pmf, after sit-through, and on models that aim at the ROI
+    // and fixed shapes alike: engine, preview and validation agree on the KO EV
+    // and on the verdict, and no winner is paid less than winning takes.
+    const off = { enabled: false, pct: 18.7 };
+    const models: FinishModelConfig[] = [
+      { id: "powerlaw-realdata-influenced" }, { id: "uniform" }, { id: "pko-realdata-tilt" },
+    ];
+    let entries = 0;
+    let atFloor = 0;
+    let blocked = 0;
+    for (const m of models) for (const sitThrough of [false, true])
+      for (const gameType of ["pko", "mystery", "ocean-ko", "mystery-royale"] as const) {
+        const fields = gameType === "mystery-royale" ? [18] : [2, 3, 6, 9, 30];
+        for (const players of fields) for (const itm of [undefined, 0.25, 0.54]) for (const bias of [-0.25, 0.25])
+          for (const roi of [-0.3, 0, 0.3]) for (const lateReg of [1, 1.17]) {
+            const raw = formatRow(gameType, {
+              players, roi, bountyEvBias: bias, lateRegMultiplier: lateReg, itmRate: undefined,
+              ...(sitThrough ? { sitThroughPayJumps: true, payJumpAggression: 1 } : {}),
+            });
+            const r = applyItmTarget([itm === undefined ? raw : { ...raw, itmRate: itm }], off, m)[0];
+            const compiled = compileSchedule(input(r, { samples: 1, finishModel: m }));
+            const entry = compiled.flat[0];
+            const ok = validateSchedule([r], m).ok;
+            expect(ok).toBe(compiled.calibrationWarnings === undefined);
+            if (!ok) blocked++;
+            agrees(r, m, entry);
+            const N = entry.fieldSize;
+            const pool = N * r.buyIn * (r.bountyFraction ?? 0);
+            const window = gameType === "mystery-royale" ? Math.min(9, N) : entry.paidCount;
+            const take = gameType === "pko" || gameType === "ocean-ko"
+              ? 2 * r.buyIn * (r.bountyFraction ?? 0)
+              : gameType === "mystery-royale"
+                ? Math.min(makeBrTierSampler(r.buyIn).meanValue, pool)
+                : window < 2 ? pool : pool / (window - 1);
+            entries++;
+            if (Math.abs(entry.bountyByPlace![0] / take - 1) < 1e-6) atFloor++;
+            expect(entry.bountyByPlace![0]).toBeGreaterThanOrEqual(take * (1 - 1e-9));
+          }
+      }
+    // 1 344 of the 3 456 entries sit on the floor and 1 356 are blocked, so the
+    // sweep exercises the floor and both verdicts, not only rows far above it.
+    expect(entries).toBe(3456);
+    expect(atFloor).toBeGreaterThan(entries / 3);
+    expect(blocked).toBeGreaterThan(entries / 10);
   });
 });

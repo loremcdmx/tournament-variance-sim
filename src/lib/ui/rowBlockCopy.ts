@@ -7,6 +7,8 @@ const CAUSE_KEY: Record<RowBlockCause, DictKey> = {
   "pinned-shells": "shape.rowBlocked.pinned-shells",
   "bounty-pool": "shape.rowBlocked.bounty-pool",
   "fixed-shape": "shape.rowBlocked.fixed-shape",
+  "fixed-shape-over": "shape.rowBlocked.fixed-shape-over",
+  "knockout-floor": "shape.rowBlocked.knockout-floor",
   "model-saturation": "shape.rowBlocked.model-saturation",
 };
 

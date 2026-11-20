@@ -428,13 +428,14 @@ function computeRowStatsAtField(
     paidCount,
     buyIn: row.buyIn,
     bountyFraction,
+    gameType: inferGameType(row),
     totalWinningsEV,
     cashFloor: cashTargetFloor(entryCostSingle),
     plannedBountyMean: bountyMean,
     residualCloses: (row.itmRate != null && row.itmRate > 0) || !isAlphaAdjustable(model),
     sitThrough: row.sitThroughPayJumps === true,
     payJumpAggression: row.payJumpAggression,
-    solve: (targetRegular) => {
+    solve: (targetRegular, maxCashWinnings) => {
       if (row.itmRate == null || !(row.itmRate > 0)) {
         const alpha = calibrateAlpha(
           N,
@@ -480,7 +481,7 @@ function computeRowStatsAtField(
         row.finishBuckets,
         model,
         row.itmTopHeavyBias ?? 0,
-        bountyFraction > 0 ? totalWinningsEV : targetRegular,
+        bountyFraction > 0 ? maxCashWinnings : targetRegular,
       );
       return {
         alpha: fi.alpha, pmf: fi.pmf, prizeByPlace,
@@ -859,11 +860,11 @@ function computeRowStatsAtField(
   const shellBubble = paidCount < N ? (pmf[paidCount] ?? 0) : 0;
   const shellFirstCash = paidCount > 0 ? (pmf[paidCount - 1] ?? 0) : 0;
   // The engine closes a bounty row's ROI gap with the KO EV, as far as the
-  // bounty pool allows, so a cash side off its own target still hits the total
-  // (the rule validateSchedule applies).
+  // bounty pool and the finishing places allow, so a cash side off its own
+  // target still hits the total (the rule validateSchedule applies).
   const shellFeasible = bountyFraction > 0 && currentWinningsFromSolver !== null
     ? withinTargetEv(settled.cashEV + bountyMean, totalWinningsEV) ||
-      (feasible && !settled.solved.aimsAtTarget && !settled.poolCut)
+      (feasible && !settled.solved.aimsAtTarget && !settled.poolCut && !settled.floorLift)
     : feasible;
 
   return {

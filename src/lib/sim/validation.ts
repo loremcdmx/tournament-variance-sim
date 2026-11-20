@@ -25,7 +25,7 @@ import {
   resolveBattleRoyaleCashTarget,
 } from "./battleRoyaleWinnerFirst";
 import { fieldVariantSizes } from "./fieldVariants";
-import { normalizeGameTypeConsistency } from "./gameType";
+import { inferGameType, normalizeGameTypeConsistency } from "./gameType";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
@@ -54,6 +54,8 @@ export type RowBlockCause =
   | "pinned-shells"
   | "bounty-pool"
   | "fixed-shape"
+  | "fixed-shape-over"
+  | "knockout-floor"
   | "model-saturation";
 
 export interface RowFeasibilityIssue {
@@ -87,7 +89,8 @@ export interface ScheduleFeasibility {
  * most. A model with no α to move (uniform, empirical, realdata-*) is held to
  * its shell locks only: its shape, not the typed ROI, decides what the row
  * pays. On a bounty row the KO EV closes its ROI instead, so it is blocked
- * when the bounty pool cannot pay that KO EV.
+ * when that KO EV is more than the bounty pool can pay or less than its
+ * finishing places guarantee.
  *
  * This mirrors compileEntry's targetRegular, its Battle Royale cash/KO
  * centre, its bounty lift and the bounty pool's cap on the KO EV
@@ -103,8 +106,9 @@ export function validateSchedule(
     const row = normalizeGameTypeConsistency(rawRow);
     if (row.itmRate == null || row.itmRate <= 0) {
       // A model that does not aim at the ROI plays its own shape, and on a
-      // bounty row the KO EV closes the rest of the total, so it falls short
-      // only where the bounty pool cuts that KO EV (`poolCut` in the engine).
+      // bounty row the KO EV closes the rest of the total, so it misses only
+      // where the bounty pool cuts that KO EV or the finishing places hold it
+      // above what closes the total (`poolCut`, `floorLift` in the engine).
       const aimsAtRoi = isAlphaAdjustable(model);
       if (!aimsAtRoi && !((row.bountyFraction ?? 0) > 0)) return;
       // Per field size, as the engine warns per size: a size that cannot reach
@@ -130,13 +134,12 @@ export function validateSchedule(
         const meanSingle = compiledEntryMoments(entry).meanDollar;
         if (!Number.isFinite(meanSingle)) continue;
         if (withinTargetEv(meanSingle, targetEv)) continue;
-        if (!aimsAtRoi && meanSingle > targetEv) continue;
         const issue: RowFeasibilityIssue = {
           // A fixed shape falls short only where the pool cut the KO EV that
           // closes its total. An α row the pool cut can still overshoot, at a
           // low ROI, which is the α's limit and not the pool's.
           cause: !aimsAtRoi
-            ? "fixed-shape"
+            ? meanSingle > targetEv ? "fixed-shape-over" : "fixed-shape"
             : entry.bountyPoolCut && meanSingle < targetEv ? "bounty-pool" : "model-saturation",
           ...(sizes.length > 1 ? { fieldSize: playedField(row, players) } : {}),
           rowId: row.id,
@@ -342,13 +345,14 @@ function fixedItmIssueAtField(
     paidCount,
     buyIn: row.buyIn,
     bountyFraction,
+    gameType: inferGameType(row),
     totalWinningsEV,
     cashFloor: cashTargetFloor(entryCost),
     plannedBountyMean: bountyMean,
     residualCloses: true,
     sitThrough: row.sitThroughPayJumps === true,
     payJumpAggression: row.payJumpAggression,
-    solve: (targetRegular) => {
+    solve: (targetRegular, maxCashWinnings) => {
       const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleCenter
         ? buildBattleRoyaleCashTargetPmf({
             N,
@@ -374,7 +378,7 @@ function fixedItmIssueAtField(
         row.finishBuckets,
         model,
         row.itmTopHeavyBias ?? 0,
-        bountyFraction > 0 ? totalWinningsEV : targetRegular,
+        bountyFraction > 0 ? maxCashWinnings : targetRegular,
       );
       return { ...r, prizeByPlace, aimsAtTarget: r.supportsTargetRoi };
     },
@@ -382,12 +386,13 @@ function fixedItmIssueAtField(
   const r = settled.solved;
   const targetRegular = settled.targetRegular;
   // A bounty row hits its total when the KO EV it plays closes what the cash
-  // side leaves, the bounty pool permitting; a model that does not aim at
-  // the ROI is held to its locks only, unless the pool cut that KO EV.
+  // side leaves, the bounty pool and the finishing places permitting; a model
+  // that does not aim at the ROI is held to its locks only, unless the pool
+  // cut that KO EV or the places lifted it.
   const playedEv = settled.cashEV + settled.bountyMean;
   const feasible = bountyFraction > 0
     ? withinTargetEv(playedEv, totalWinningsEV) ||
-      (r.feasible && !r.aimsAtTarget && !settled.poolCut)
+      (r.feasible && !r.aimsAtTarget && !settled.poolCut && !settled.floorLift)
     : r.feasible;
   if (!feasible) {
     const targetEv = bountyFraction > 0 ? totalWinningsEV : targetRegular;
@@ -397,6 +402,8 @@ function fixedItmIssueAtField(
     let cause: RowBlockCause;
     if (bountyFraction > 0 && settled.poolCut && playedEv < totalWinningsEV) {
       cause = r.aimsAtTarget ? "bounty-pool" : "fixed-shape";
+    } else if (bountyFraction > 0 && settled.floorLift && playedEv > totalWinningsEV) {
+      cause = r.aimsAtTarget ? "knockout-floor" : "fixed-shape-over";
     } else {
       cause = hasFinishLocks(row, model) ? "pinned-shells" : "pinned-itm";
     }
