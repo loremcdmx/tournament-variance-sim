@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "scripts/**/*.test.ts"],
     environment: "node",
     // The Monte Carlo tests are CPU-bound: the slowest sits ~1.1-1.4s idle but takes
     // 7-10x longer on a contended machine (shared CI runner, parallel build).

@@ -55,7 +55,7 @@ interface Props {
   /** User's schedule — required for the Schedule tab to do anything useful. */
   schedule?: readonly TournamentRow[] | null;
   finishModel?: FinishModelConfig;
-  /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
+  /** True when skill-uncertainty / shock / tilt channels are on — the σ
    *  excludes them, so the displayed volume is an optimistic floor. */
   noiseActive?: boolean;
   /** The run's global ITM target; single-format tabs compile their row with it,
@@ -147,7 +147,10 @@ function useProveEdgeResult(input: ProveEdgeInput): {
   return { result: fresh ?? (shown as ProveEdgeResult), pending: !ready };
 }
 
+// NaN is a σ the card does not have (a schedule that does not compile); ∞ is a
+// zero edge, which no volume proves.
 function fmtTourneys(n: number, locale: Intl.LocalesArgument): string {
+  if (Number.isNaN(n)) return "—";
   if (!Number.isFinite(n)) return "∞";
   if (n >= 10_000_000) return `${(n / 1_000_000).toFixed(0)} M`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M`;
@@ -157,6 +160,7 @@ function fmtTourneys(n: number, locale: Intl.LocalesArgument): string {
 }
 
 function fmtFields(n: number): string {
+  if (Number.isNaN(n)) return "—";
   if (!Number.isFinite(n)) return "∞";
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   if (n >= 100) return n.toFixed(0);
@@ -178,7 +182,7 @@ function fmtRange(
   hi: number,
   locale: Intl.LocalesArgument,
 ): string {
-  if (!Number.isFinite(point)) return "∞";
+  if (!Number.isFinite(point)) return fmtTourneys(point, locale);
   if (lo === hi || (lo === point && hi === point)) {
     return fmtTourneys(point, locale);
   }
@@ -384,7 +388,12 @@ export function ProveEdgeCard({
 
   const scheduleEmpty = isExact && (!schedule || schedule.length === 0);
   const anchorUnreachable = !result.anchor.roiReached;
-  const outOfBox = result.bandPolicy === "outside-fit-box" && !anchorUnreachable;
+  // A schedule that does not compile has a NaN σ: no estimate for the answer
+  // line to state, or for the zone warning, the noise readout or the band
+  // footnote to qualify.
+  const hasSigma = !Number.isNaN(result.anchor.sigma);
+  const outOfBox =
+    result.bandPolicy === "outside-fit-box" && !anchorUnreachable && hasSigma;
   const hasOceanKo = format === "ocean-ko" || (
     isExact && schedule?.some((row) => inferRowFormat(row) === "ocean-ko")
   );
@@ -586,7 +595,8 @@ export function ProveEdgeCard({
                 {t("proveEdge.schedule.field")}{" "}
                 {fmtAfs(result.effectiveAfs, numberLocale)} ·{" "}
                 {t("proveEdge.schedule.roi")} {fmtRoi(result.anchor.roi)} ·{" "}
-                {t("proveEdge.schedule.noise")} {result.anchor.sigma.toFixed(2)}
+                {t("proveEdge.schedule.noise")}{" "}
+                {hasSigma ? result.anchor.sigma.toFixed(2) : "—"}
               </span>
             </div>
           )}
@@ -628,7 +638,7 @@ export function ProveEdgeCard({
         </div>
       )}
 
-      {/* Noise/tilt channels active — σ fit excludes them */}
+      {/* Noise/tilt channels active — the σ excludes them */}
       {!scheduleEmpty && noiseActive && (
         <div className="rounded border border-amber-400/40 bg-amber-400/5 px-3 py-2 text-[11px] leading-snug text-[color:var(--c-warn-fg-soft)]/95">
           {t("proveEdge.noiseCaveat")}
@@ -642,7 +652,7 @@ export function ProveEdgeCard({
       )}
 
       {/* Anchor summary */}
-      {!scheduleEmpty && !anchorUnreachable && (
+      {!scheduleEmpty && !anchorUnreachable && hasSigma && (
         <div className={`rounded border-l-2 border-[color:var(--color-accent)]/60 bg-[color:var(--color-accent)]/5 px-3 py-2 text-[11px] leading-snug text-[color:var(--color-fg-muted)] transition-opacity ${pending ? "opacity-50" : ""}`}>
           <span className="text-[color:var(--color-accent)]">
             {t("proveEdge.anchor.prefix")}
@@ -702,13 +712,15 @@ export function ProveEdgeCard({
               </div>
             ))}
           </div>
-          <p>
-            {hasOceanKo
-              ? t("proveEdge.footnote.oceanKo")
-              : result.bandPolicy === "numeric"
-                ? t("proveEdge.footnote.banded")
-                : t("proveEdge.footnote.point")}
-          </p>
+          {hasSigma && (
+            <p>
+              {hasOceanKo
+                ? t("proveEdge.footnote.oceanKo")
+                : result.bandPolicy === "numeric"
+                  ? t("proveEdge.footnote.banded")
+                  : t("proveEdge.footnote.point")}
+            </p>
+          )}
           {isMbr && result.bandPolicy === "numeric" && (
             <p>{fillRuntimeSigmaBrTicket(t("chart.convergence.brTicket.band"))}</p>
           )}

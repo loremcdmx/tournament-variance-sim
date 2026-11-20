@@ -1,5 +1,5 @@
 /**
- * Cross-validate the shipped BR helper band on independent ROI points.
+ * Cross-validate the BR helper line on independent ROI points.
  *
  * The BR widget centers on `formatRuntimeSigma("mystery-royale")`, the compile of
  * the editor's default BR row, and `SIGMA_ROI_MYSTERY_ROYALE` is the line
@@ -13,7 +13,7 @@
 import {
   SIGMA_ROI_MYSTERY_ROYALE,
   evalSigma,
-} from "../src/lib/sim/convergenceFit";
+} from "./lib/sigmaSurfaces";
 import { runSimulation } from "../src/lib/sim/engine";
 import {
   buildFormatRuntimeRow,
@@ -76,7 +76,7 @@ async function main() {
     `  helper: σ = ${helper.C0.toFixed(5)} + ${helper.C1.toFixed(5)} × roi`,
   );
   console.log(
-    `  advertised residual band: ±${(SIGMA_ROI_MYSTERY_ROYALE.resid * 100).toFixed(1)}%`,
+    `  helper line resid: ±${(SIGMA_ROI_MYSTERY_ROYALE.resid * 100).toFixed(1)}%`,
   );
   console.log("");
   console.log(
@@ -122,10 +122,10 @@ async function main() {
   console.log(`    mean |resid/SE|  = ${meanAbsResidSE.toFixed(2)}  (SE-normalized; <2 = noise-indistinguishable)`);
   console.log(`    max |resid/σ|    = ${maxAbsResidPct.toFixed(2)}%`);
   console.log(
-    `    band limit       = ${(SIGMA_ROI_MYSTERY_ROYALE.resid * 100).toFixed(2)}%`,
+    `    resid limit      = ${(SIGMA_ROI_MYSTERY_ROYALE.resid * 100).toFixed(2)}%`,
   );
 
-  // Show whether a hidden curvature term is material even inside the UI box.
+  // Show whether a hidden curvature term is material even inside the slider box.
   const xs = rows.map((r) => r.roi);
   const ys = rows.map((r) => r.sigma);
   const { a, b, c, r2 } = quadFit(xs, ys);
@@ -136,14 +136,14 @@ async function main() {
   console.log(`    curvature term |c·(roi_max)²| = ${Math.abs(c * 0.07 * 0.07).toFixed(4)} at roi=7%`);
   console.log("");
   // A point the Monte Carlo cannot resolve passes on its noise: |Δ| up to the
-  // band plus two standard errors.
+  // resid plus two standard errors.
   const insideBand = rows.every(
     (r) => Math.abs(r.resid) <= SIGMA_ROI_MYSTERY_ROYALE.resid * r.sigma + 2 * r.sigmaSE + 1e-9,
   );
   if (insideBand) {
-    console.log("  → VERDICT: inside the BR UI box the shipped helper stays within the advertised band (plus 2 SE).");
+    console.log("  → VERDICT: inside the BR slider box the helper line stays within its resid (plus 2 SE).");
   } else {
-    console.log("  → VERDICT: helper drift exceeds the advertised BR band; do not ship without widening or re-fitting.");
+    console.log("  → VERDICT: the helper line drifts past its resid; re-run fit_br_fixed18.ts or widen the resid.");
   }
 
   console.log("");

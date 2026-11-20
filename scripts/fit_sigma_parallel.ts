@@ -2,8 +2,8 @@
  * DIAGNOSTIC σ_ROI sweep runner — spawns N tsx child processes, each handling
  * a slice of the job list, then aggregates results. Writes *_200k_probe.json
  * artifacts for diagnostic analysis. Does NOT write canonical fit_beta_*.json —
- * canonical UI coefficients are promoted manually after a drift-report review
- * (scripts/fit_drift_report.ts).
+ * the surface coefficients in scripts/lib/sigmaSurfaces.ts are promoted
+ * manually after a drift-report review (scripts/fit_drift_report.ts).
  *
  * Three sweeps in one run:
  *

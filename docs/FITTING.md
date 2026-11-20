@@ -1,10 +1,12 @@
 # Fitting & parameter sweeps
 
-How to empirically measure the simulator's variance surface and plug the
-resulting coefficients back into the UI. Written so a new engineer — or
-a fresh Claude session with the whole repo dumped in — can go from
-"I have some MTT results" to "my fit is live in ConvergenceChart"
-without reading the whole codebase first.
+How to empirically measure the simulator's variance surface, summarise it in
+closed-form coefficients for the research scripts, and measure the band the
+planning cards print. Written so a new engineer — or a fresh Claude session
+with the whole repo dumped in — can go from "I have some MTT results" to a
+fitted surface without reading the whole codebase first. A surface never
+reaches a number the app prints: the cards compile their row (see
+[Why a fit and not a formula?](#why-a-fit-and-not-a-formula)).
 
 If you are here to run a sweep right now, skip to [Quickstart](#quickstart).
 If you want to fit your own data, skip to [Fit your own data](#fit-your-own-data).
@@ -12,8 +14,8 @@ If you want to fit your own data, skip to [Fit your own data](#fit-your-own-data
 ## What we're fitting
 
 The headline surface is σ\_ROI — the per-tournament standard deviation of
-ROI — as a function of **field size** and **true ROI edge**. The UI uses
-two runtime forms:
+ROI — as a function of **field size** and **true ROI edge**. The surfaces
+take two forms:
 
 Single-β power law for formats where the residuals stay small enough:
 
@@ -31,11 +33,11 @@ log σ_ROI(field, roi) =
 where L = log(field), R = roi
 ```
 
-Current production fits (raw grid data in `scripts/fit_beta_*.json`,
-runtime constants in `SIGMA_ROI_{FREEZE,PKO,MYSTERY,MYSTERY_ROYALE}`
-near the top of `src/lib/sim/convergenceFit.ts`):
+Current fits (raw grid data in `scripts/fit_beta_*.json`, constants in
+`SIGMA_ROI_{FREEZE,PKO,MYSTERY,MYSTERY_ROYALE}` near the top of
+`scripts/lib/sigmaSurfaces.ts`):
 
-| Format                      | Runtime form  | Coefficients | resid of the surface |
+| Format                      | Form          | Coefficients | resid of the surface |
 | --------------------------- | ------------- | ------------ | -------------------- |
 | freezeout (realdata-linear) | single-β      | C0=0.6459, C1=0, β=0.3715 | 15% |
 | PKO                         | 2D log-poly   | a0=0.28406, a1=0.07573, a2=0.01632, b1=1.22695, b2=-0.10408, c=-0.09765 | 5% |
@@ -45,28 +47,43 @@ near the top of `src/lib/sim/convergenceFit.ts`):
 
 All four were refitted on 19 November 2026 from grids read off the compile of
 that day (see [Quickstart](#quickstart)); the held-out and off-grid errors of
-each are below and in the comments of `convergenceFit.ts`.
+each are below and in the comments of `sigmaSurfaces.ts`.
 
-These are the constants in `src/lib/sim/convergenceFit.ts` (the code wins if the
-two ever disagree). **They are no longer what the planning cards show.** The
-chips and the prove-edge card take their point from the engine's own analytic
-compile and their band from the Monte-Carlo calibration below; the surfaces
-above are only the fallback path of `computeConvergenceRows` when no runtime
-override is passed, and the `resid` column is that surface's error against its
-own grid, not a card's band.
+These are the constants in `scripts/lib/sigmaSurfaces.ts` (the code wins if the
+two ever disagree). **No number the app prints reads them.** The chips and the
+prove-edge card take their point from the engine's own analytic compile and
+their band from the Monte-Carlo calibration below; `computeConvergenceRows`
+takes the σ of every tab as a required input and prints no volume (a dash) for
+a tab whose σ it was not given. The `resid` column is each surface's error
+against its own grid, not a card's band. The surfaces live under `scripts/`
+because they are far from the cards' rows. `scripts/surface_vs_card_gap.ts`
+compares each with the runtime σ the card of its format prints at the same
+point (default finish model `powerlaw-realdata-influenced`; rake 10 %, Battle
+Royale 8 %, its tab's default; every even field 50–600 and 80 log-spaced
+fields to 50 000, at 10-point ROI steps over each tab's box; Battle Royale at
+its 18 seats, in 1-point steps over its ±10 % box). On the
+19 November 2026 engine the freeze line is off by up to 71.4 % (field 260,
+ROI −30 %; p95 47.3 %), PKO by up to 30.5 % (field 50 000, ROI +80 %; p95
+19.0 %) and Mystery by up to 107.4 % (field 50, ROI +80 %; p95 29.2 %), where
+the surface's σ is 2.07× the card's and its volume 4.3×. Only the BR line,
+fitted to the card's own row, stays within 0.1 %. Re-run the script after a
+refit or an engine change before quoting these figures.
+`scripts/lib/sigmaSurfaces.test.ts` fails if a file under `src/` imports,
+defines or evaluates a surface.
 
 The mix row is effective-only: σ²\_mix = p·σ²\_PKO + (1−p)·σ²\_freeze
-is a composition of two runtime surfaces, so no single `{C,β}` fits
-cleanly. `scripts/mix_effective_fit.ts` reports an approximate effective
-`{C,β}` for common mix ratios × ROIs — useful for reporting, not for live
-UI math.
+is a composition of two surfaces, so no single `{C,β}` fits cleanly.
+`scripts/mix_effective_fit.ts` reports an approximate effective `{C,β}` for
+common mix ratios × ROIs of the two surfaces — a research summary. The app's
+Mix tab blends the runtime σ of freeze, PKO and Mystery instead,
+σ²\_mix = Σ wᵢ·σᵢ² over the components that carry weight.
 
 Reading of coefficients: in the single-β form, `β` is the field-size
 exponent, `C0` is the edge-free intercept, and `C1` is how much a +1.0
 ROI edge inflates σ. In the 2D log-poly form, inspect the residual report
 instead of trying to interpret one coefficient in isolation. Mystery
 Royale's β is 0 by construction since the AFS slider is locked at 18 in
-the UI. The shipped BR tab centers on `formatRuntimeSigma("mystery-royale")`,
+the UI. The BR tab centers on `formatRuntimeSigma("mystery-royale")`,
 the compile of the editor's default BR row on the $10 ticket; the stored
 `{C0, C1}` line is a compact helper through that same σ inside the BR slider
 box (ROI ±10%), and `xval_br.ts` runs the engine's Monte Carlo on that row as a
@@ -91,8 +108,8 @@ settings switch it on) and returns the engine's own
 rounding. The band around that point is not a fit residual either: it is
 measured against the engine's Monte Carlo, see
 [Runtime σ band](#runtime-σ-band-what-the-cards-show). What the closed-form
-surfaces still do: `computeConvergenceRows` falls back to them when no
-override is passed, and the sweep scripts keep measuring them.
+surfaces still do: the sweep and probe scripts read and measure them; nothing
+in `src/` does.
 
 The price is one compile and one `validateSchedule` per ROI candidate: the
 validation runs the calibration again to tell whether the run would accept
@@ -306,7 +323,7 @@ cell, is in `scripts/fit_runtime_sigma_bands.json`.
 
 Two producers — pick the right one for what you're doing:
 
-### Canonical (promoted to UI coefficients)
+### Canonical grids and surfaces
 
 - **`scripts/fit_br_fixed18.ts`** — rebuilds the BR runtime helper line at
   fixed AFS=18 inside the BR slider box (ROI ±10%), from
@@ -321,11 +338,11 @@ Two producers — pick the right one for what you're doing:
   6 %, so it catches a wrong row or a broken line, not a 1 % gap;
   `fit_runtime_sigma_bands.ts` (4 G per BR cell) is the precise check of the
   analytic σ against the hot loop.
-- **Freeze / PKO / Mystery canonical fits** — production artifacts
+- **Freeze / PKO / Mystery canonical fits** — the artifacts
   `scripts/fit_beta_freeze_realdata.json` (18 fields × 7 ROIs),
   `scripts/fit_beta_pko.json` and `scripts/fit_beta_mystery.json` (18 fields × 11
   ROIs), all written by `resweep_sigma.ts`. These back the `SIGMA_ROI_*` constants
-  in `src/lib/sim/convergenceFit.ts`.
+  in `scripts/lib/sigmaSurfaces.ts`.
 - **`scripts/resweep_sigma.ts`** — regenerates a canonical freeze, PKO or
   Mystery grid on the **current** engine, with the row recipe of
   `fit_sigma_parallel.ts`. Each cell is the exact per-tournament σ of the
@@ -362,7 +379,7 @@ Two producers — pick the right one for what you're doing:
   engine: the October `mtt-gg-bounty` curve raised σ by 2–49 % (most at fields
   750–3 000) and the elimination-tree knockouts lowered it by up to 7 % at field
   50, so `SIGMA_ROI_PKO` read 0.73–1.22× the engine until it was refitted
-  (`convergenceFit.test.ts` now compares the stored PKO grid with the compile in
+  (`scripts/lib/sigmaSurfaces.test.ts` now compares the stored PKO grid with the compile in
   all 198 cells and fails past 1 %). **Re-measure before refitting** whenever the
   compile/hot-loop path or a payout table has changed; refitting a stale grid
   just re-learns the old engine. Validate the promoted coefficients on
@@ -399,23 +416,22 @@ Two producers — pick the right one for what you're doing:
   The freeze line passes over a plateau: σ stays at 4.40–4.51 buy-ins from 200 to
   260 players and then climbs (4.84 at 300, 6.28 at 500), which no single power of
   the field can follow. The 2D log-poly form follows it better (leave one field
-  out: p95 = max 9.9 %), but freeze keeps the single-β form: the surface is only a
-  fallback no card reads, and `fit_drift_report.ts` consumes it as a line.
-  `convergenceFit.test.ts` compares every stored cell of all three grids, and the
+  out: p95 = max 9.9 %), but freeze keeps the single-β form: no card reads the
+  surface, and `fit_drift_report.ts` consumes it as a line.
+  `scripts/lib/sigmaSurfaces.test.ts` compares every stored cell of all three grids, and the
   BR line's five points, with today's compile (1 %), holds the freeze line to the
   least-squares fit of its grid, and holds every held-out freeze field within
   `resid`.
-- **`scripts/fit_beta_pko_core.json`** — *not* an independent UI
-  canonical. It's a 7-ROI PKO baseline subset (same ROIs as the
+- **`scripts/fit_beta_pko_core.json`** — *not* an independent
+  canonical grid. It's a 7-ROI PKO baseline subset (same ROIs as the
   200k-AFS probe) retained purely so `fit_drift_report.ts` can
   compare the probe against a matched-shape reference. It has no
-  current producer script and is not promoted to the widget; revisit
-  together with the PKO runtime-fit overhaul.
+  current producer script and backs no surface.
 
 ### Diagnostic 200k-AFS probe (NOT promoted automatically)
 
-For the narrow "can we raise the convergence widget AFS ceiling from 50k
-to 200k?" gate, run the mini-sweep first:
+To see how the surfaces extrapolate from 50k to 200k players, run the
+mini-sweep:
 
 ```bash
 npx tsx scripts/probe_afs_ceiling.ts
@@ -423,9 +439,14 @@ npx tsx scripts/probe_afs_ceiling.ts
 
 It measures only fields 75k/100k/150k/200k × five ROIs across
 Freeze/PKO/Mystery and writes `scripts/afs_ceiling_probe.json`. The pass
-criterion is per-format `max |Δ/σ| <= runtime resid`. Last 2026-04-20 run:
-PKO passed, Freeze and Mystery failed, so `AFS_LOG_MAX` must stay at 50k
-until those fits are extended or the UI gains per-format ceilings.
+criterion is per-format `max |Δ/σ| <= resid` of the surface. Last 2026-04-20 run:
+PKO passed, Freeze and Mystery failed. That verdict is about the surfaces
+only: the cards no longer read them, so it does not decide the slider ceiling.
+What does is the runtime band (`runtimeSigmaBands.ts` holds only on the grid
+`fit_runtime_sigma_bands.ts` measured, up to field 50 000) and the compile
+cost (0.6–1.0 s per prove-edge table at 50 000, 1.2–2.8 s at 100 000; see
+[Why a fit and not a formula?](#why-a-fit-and-not-a-formula)). Raising
+`AFS_LOG_MAX` past 50k means measuring band cells out there first.
 
 `scripts/fit_sigma_parallel.ts` runs freeze/PKO/mystery out to AFS 200k
 and emits `*_200k_probe.json` files. It exists to **diagnose** how the
@@ -470,7 +491,7 @@ the measured grids across the full range, the wide user zone
 (field ∈ [100, 50k], roi ∈ [−20 %, +40 %]), and the narrow user zone
 (field ∈ [500, 10k], roi ∈ [−10 %, +30 %]). Writes
 `scripts/fit_drift_report.json`. Inspect it before promoting any probe
-fit to the UI.
+fit into `scripts/lib/sigmaSurfaces.ts`.
 
 ## The sweep space
 
@@ -519,7 +540,7 @@ vary, so an R² of the `C(roi)` line would be 0/0. Mystery's per-ROI R² falls f
 why PKO and Mystery promote the 2D log-poly form and not a power law. For the
 canonical grids the checks are the in-sample R² and the held-out errors
 `refit_2d_logpoly.ts` prints for both forms, plus a dense off-grid scan against
-the compile (see [Canonical](#canonical-promoted-to-ui-coefficients)).
+the compile (see [Canonical](#canonical-grids-and-surfaces)).
 
 `logPolyPooled` is a **diagnostic-only** pooled quadratic fit of
 `log σ` against `log field`, with both inputs per-ROI mean-centered
@@ -530,27 +551,27 @@ constants, which aren't stored in the artifact. Use it only to compare
 curvature: `b2 ≈ 0` with `logPolyPooled.r2 ≈ globalR2` means single-β
 captures the shape; a materially nonzero `b2` with higher `r2` says
 single-β is leaving structure on the table past ~10k AFS. Promoting a
-log-poly form to the UI requires a second, runtime-usable fit (not
+log-poly form to a surface requires a second, evaluable fit (not
 centered) — this artifact doesn't provide that.
 
-For a single-β promotion, the tuple you paste into the UI is
+For a single-β promotion, the tuple you paste into the surface is
 `{ C0: cRoiLinear.C0, C1: cRoiLinear.C1, beta: globalBeta }`.
 `perRoiFits[i].C` are the per-ROI intercepts that `cRoiLinear` then
 regresses through — the joint fit freezes β across all ROIs and lets
 only `C(roi)` vary.
 
 For PKO / Mystery, do not paste the artifact's single-β summary into
-the UI. Run `scripts/refit_2d_logpoly.ts` and promote the reported
+the surface. Run `scripts/refit_2d_logpoly.ts` and promote the reported
 `a0/a1/a2/b1/b2/c` coefficients only after `fit_drift_report.ts` confirms
 user-zone residuals are acceptable.
 
 Pitfalls of the `fit_sigma_parallel.ts` artifacts, for a single-β promotion (the
 canonical grids carry only `perRoiFits[i].r2`):
 
-- **`cRoiLinear.r2`** should be ≥ 0.99. This is the fit that powers the
-  UI's ROI slider; if it drops, the linear `C(roi) = C0 + C1·roi`
+- **`cRoiLinear.r2`** should be ≥ 0.99. This is the fit behind a
+  single-β surface's ROI term; if it drops, the linear `C(roi) = C0 + C1·roi`
   assumption is the problem — try `C0 + C1·roi + C2·roi²` and upgrade
-  the evaluator, `evalSigma` in `convergenceFit.ts` (the `SigmaCoef` types live there).
+  the evaluator, `evalSigma` in `scripts/lib/sigmaSurfaces.ts` (the `SigmaCoef` types live there).
 - **`perRoiFits[i].r2`** in the ~0.94 range is normal, not a red flag.
   The engine's σ(field) isn't a pure power law — there's curvature at
   tiny fields (≤75) and at the mega-field tail. R² ≈ 0.94 is what a
@@ -558,26 +579,29 @@ canonical grids carry only `perRoiFits[i].r2`):
 - **`globalR2`** reflects the single-β constraint across all 11 ROIs.
   Expect similar ~0.94; much below that means one format's σ(field)
   slope shifts with ROI enough to warrant per-ROI β (not currently
-  supported by the UI formula).
+  supported by `evalSigma`).
 - If any `perRoiFits[i].r2 < 0.80` or you see a clear break in σ(field)
   on a log-log plot, the power-law assumption is failing at that ROI —
   likely the engine saturates (see "edge-case behavior" in
   `notes/review_dossier.md`). Drop the outlier ROI before refitting or
   narrow the field range.
 
-## Wiring a fit into the UI
+## Updating a surface
 
-This wires the closed-form fallback surfaces only. What the planning cards
-print comes from the engine's compile and from `runtimeSigmaBands.ts`; to change
-a card's band, re-run `fit_runtime_sigma_bands.ts` (see
-[Runtime σ band](#runtime-σ-band-what-the-cards-show)).
+This updates the closed-form surfaces the research scripts read, nothing the
+app prints. What the planning cards print comes from the engine's compile and
+from `runtimeSigmaBands.ts`; to change a card's band, re-run
+`fit_runtime_sigma_bands.ts` (see
+[Runtime σ band](#runtime-σ-band-what-the-cards-show)). Do not import a surface
+into `src/`, not even as a fallback: `scripts/lib/sigmaSurfaces.test.ts` fails
+if a file there imports, defines or evaluates one.
 
 Never promote a probe fit without first running `fit_drift_report.ts`
 and confirming that user-zone residuals don't regress. A fit with better
 global R² but worse residuals inside `field ∈ [500, 10k], roi ∈ [−10 %, +30 %]`
-is a net loss for the UI.
+is a net loss for the scripts that read it.
 
-1. Open `src/lib/sim/convergenceFit.ts`.
+1. Open `scripts/lib/sigmaSurfaces.ts`.
 2. Find the coefficient constants near the top of the file:
    `SIGMA_ROI_FREEZE`, `SIGMA_ROI_PKO`, `SIGMA_ROI_MYSTERY`,
    `SIGMA_ROI_MYSTERY_ROYALE`. Each is a `SigmaCoef` literal with
@@ -591,15 +615,12 @@ is a net loss for the UI.
    `fit_beta_mystery_royale.json` (produced by
    `scripts/fit_br_fixed18.ts`); its β is 0 by construction and its
    `resid` is the line's largest miss of the card's σ over the BR slider
-   box, rounded up (`convergenceFit.test.ts` walks the box);
+   box, rounded up (`scripts/lib/sigmaSurfaces.test.ts` walks the box);
    `scripts/xval_br.ts` is the Monte-Carlo sanity check of the same row.
-4. Verify: `npx tsc --noEmit && npm test && npm run build`. The widget
-   recomputes σ on every ROI/field scrub, so a broken constant shows up
-   instantly as `NaN` or a visually flat curve.
-5. Browser-test: load the widget, toggle the format tab, scrub the ROI
-   slider, confirm σ responds smoothly and the "σ for 1000 MTTs" number
-   is in the right ballpark (~3–5 % at mid-field mid-ROI for a typical
-   tournament).
+4. Verify: `npx vitest run scripts/lib/sigmaSurfaces.test.ts && npx tsc -p
+   tsconfig.scripts.json`. The test holds each surface to its grid and pins
+   its value at one box centre (5 %), so a broken or pasted-over constant fails
+   there.
 
 ## Fit your own data
 

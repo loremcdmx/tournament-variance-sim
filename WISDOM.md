@@ -84,9 +84,11 @@ This area produced the most false confidence. Remember:
   (a 0.5 x total gate and the engine agreed on all 221 760 scanned BR rows),
   but a different centre still splits cash and KO differently in validation
   than in the engine.
-- The closed-form surfaces (`SIGMA_ROI_*`) are only the fallback of
-  `computeConvergenceRows` when no runtime override is passed; their `resid` is
-  their own error against their own grid, not a card's band.
+- The closed-form surfaces (`SIGMA_ROI_*`, `evalSigma`, `SIGMA_COEF_BY_FORMAT`) live in
+  `scripts/lib/sigmaSurfaces.ts` and nothing under `src/` reads them
+  (`scripts/lib/sigmaSurfaces.test.ts` scans `src/` and fails on an import, a definition or
+  an `evalSigma` call); their `resid` is their own error against their own grid, not a
+  card's band.
 - `SIGMA_ROI_MYSTERY` and `scripts/fit_beta_mystery.json` were refitted on 19 November 2026
   from a grid read off the compile (`resweep_sigma.ts FORMAT=mystery`, per-KO log-variance
   2.0). The grid before that had been sampled at 2.4, because the old Monte-Carlo recipe
@@ -97,15 +99,15 @@ This area produced the most false confidence. Remember:
   runtime band, and it reads up to 35 % high at fields 50-64, ROI +80 %. It has no
   bounty-share input, so it is 1.098x at field 300 / ROI +10 % / share 0.3 and 0.924x at
   1000 / -10 % / share 0.7.
-  It reaches no number a user sees: the chips, the prove-edge card and schedule
-  mode read `formatRuntimeSigma`, `computeConvergenceRows` falls back to the
-  surface only for a format with no override, and `buildRuntimeSigmaOverrides`
-  always supplies one for a format that carries weight (a test in
-  `formatRuntimeSigma.test.ts` pins it). The only other reader is
-  `scripts/probe_afs_ceiling.ts` (through `SIGMA_COEF_BY_FORMAT`), plus tests;
+  It reaches no number a user sees: the chips, the prove-edge card and schedule mode read
+  `formatRuntimeSigma`, and `computeConvergenceRows` takes `sigmaBands` as a required input
+  (from `buildRuntimeSigmaBands`, `buildOceanKoSigmaBand` or the schedule's breakdown) and
+  prints a dash for a tab or weighted Mix component without one; it never estimates a σ
+  itself. Its readers are `scripts/probe_afs_ceiling.ts` and `scripts/surface_vs_card_gap.ts` (both
+  through `SIGMA_COEF_BY_FORMAT`), plus `scripts/lib/sigmaSurfaces.test.ts`;
   `scripts/xval_mystery.ts` keeps its own copy of the old coefficients. Do not wire it to a card: it is fitted to another finish model than the card's row and
-  misses its own grid by 13 % at p95. convergenceFit.test.ts compares every stored grid
-  cell with the compile (1 %), so the grid cannot go stale silently again.
+  misses its own grid by 13 % at p95. scripts/lib/sigmaSurfaces.test.ts (run by the main suite) compares every stored grid cell
+  with the compile (1 %), so the grid cannot go stale silently again.
 - A card's σ is only as honest as the ITM it assumes. The run path pins every
   row's ITM (`applyItmTarget`: the payout table's paid share unless the row or
   the global target says otherwise); a free-α row gives 3-5% lower σ (Mystery
@@ -1381,7 +1383,7 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   (about a second per format); `fit_runtime_sigma_bands.ts` is where the hot loop is
   checked against that σ. The July 2026 PKO grid had drifted to 0.67-1.05x the engine (the
   October `mtt-gg-bounty` curve raised σ by 2-49 %, the elimination tree lowered it by up
-  to 7 % at field 50) and nothing failed. convergenceFit.test.ts compares every stored cell of the freeze, PKO and Mystery grids,
+  to 7 % at field 50) and nothing failed. scripts/lib/sigmaSurfaces.test.ts compares every stored cell of the freeze, PKO and Mystery grids,
   and the five points of the Battle Royale line, with the compile (1 %), and
   runtimeSigmaBands.test.ts ties every band cell of all four formats (175) to today's
   formatRuntimeSigma (1 %). The same drift had hit the other surfaces: the Mystery grid
@@ -1399,10 +1401,22 @@ a decision that was left open on purpose. Do not undo these without re-checking:
 - SIGMA_ROI_MYSTERY_ROYALE and scripts/fit_br_fixed18.ts / xval_br.ts take the BR card's own
   row (`buildFormatRuntimeRow`, the $10 ticket); a hand-built $50 row draws the $25
   envelope table and read 27 % under the card.
-- Check a fallback surface off the grid densely, every field up to a few thousand players,
+- Check a surface off its grid densely, every field up to a few thousand players,
   not just midpoints: the freeze line misses by up to 13.3 % at field 260 (σ stays at
   4.40-4.51 BI from 200 to 260 players and then climbs), the PKO surface by 9.7 % around
   fields 260-300.
+- A planning card's σ is compiled at the point it shows (`buildRuntimeSigmaBands`,
+  `buildOceanKoSigmaBand`, or the schedule's `buildExactBreakdown`). `computeConvergenceRows`
+  takes it as the required `sigmaBands` input and prints a dash without one. Do not give
+  that path, or `computeProveEdge`, a default or fallback σ: a forgotten argument must print
+  nothing, never a plausible number (the closed-form surfaces were up to 107 % off the card,
+  Mystery field 50 at ROI +80 %; `scripts/surface_vs_card_gap.ts` measures them). NaN means
+  'no σ' and Infinity a zero edge; formatters check `Number.isNaN` first, and a σ-less
+  prove-edge card hides its answer line, zone warning and band footnote. Mix weights that
+  are not shares give a NaN Mix σ.
+- Card-level σ tests must not use the default finish model: `powerlaw-realdata-influenced`
+  gives exactly power-law's σ at the planning rows, so a band built without the card's
+  finish model would pass. `PlanningCardsSigma.test.tsx` uses plackett-luce for that reason.
 - `scripts/fit_runtime_sigma_bands.ts` with `BANDS_FILTER` writes only the filtered cells
   to `scripts/fit_runtime_sigma_bands.json`, overwriting the other formats. Save the file
   first and merge in node so the `JSON.stringify(..., null, 1)` formatting stays identical.

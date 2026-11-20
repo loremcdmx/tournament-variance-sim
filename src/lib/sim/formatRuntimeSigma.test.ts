@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { battleRoyaleRowFromTotalTicket } from "./battleRoyaleTicket";
-import { evalSigma, SIGMA_ROI_MYSTERY } from "./convergenceFit";
 import {
   buildExactBreakdown,
   ciToZ,
@@ -9,7 +8,7 @@ import {
 } from "./convergenceMath";
 import {
   buildFormatRuntimeRow,
-  buildRuntimeSigmaOverrides,
+  buildRuntimeSigmaBands,
   formatRuntimeRoiReached,
   formatRuntimeSigma,
   formatRuntimeSigmaBand,
@@ -89,12 +88,12 @@ describe("planning cards share one σ with schedule mode", () => {
             const schedule = buildExactBreakdown([editorRow(format, afs, roi, rake)])!
               .sigmaEff;
 
-            const overrides = buildRuntimeSigmaOverrides({
+            const bands = buildRuntimeSigmaBands({
               format,
               mix: mixFor(format),
               point: { afs, roi, rake },
             })!;
-            const chip = overrides[format]!.s;
+            const chip = bands[format]!.s;
 
             const proveEdge = computeProveEdge({
               format,
@@ -119,11 +118,9 @@ describe("planning cards share one σ with schedule mode", () => {
             const row = computeConvergenceRows({
               afs,
               z: z95,
-              roi,
               mix: mixFor(format),
               format,
-              rakePct: rake * 100,
-              sigmaOverrides: overrides,
+              sigmaBands: bands,
             }).find((r) => r.targetPct === 0.05)!;
             expect(row.tourneys, label).toBe(
               Math.ceil(Math.pow((z95 * schedule) / 0.05, 2)),
@@ -213,26 +210,26 @@ describe("runtime σ replaces the stale synthetic rows", () => {
   });
 });
 
-describe("buildRuntimeSigmaOverrides", () => {
+describe("buildRuntimeSigmaBands", () => {
   const point = { afs: 1000, roi: 0.1, rake: 0.1 };
 
-  it("single formats override only themselves", () => {
+  it("single formats carry only their own band", () => {
     for (const format of FORMATS) {
-      const overrides = buildRuntimeSigmaOverrides({ format, mix: [1, 0, 0], point })!;
-      expect(Object.keys(overrides)).toEqual([format]);
+      const bands = buildRuntimeSigmaBands({ format, mix: [1, 0, 0], point })!;
+      expect(Object.keys(bands)).toEqual([format]);
     }
   });
 
-  it("mix overrides exactly the components that carry weight", () => {
-    const all = buildRuntimeSigmaOverrides({ format: "mix", mix: [0.2, 0.3, 0.5], point })!;
+  it("mix carries a band for exactly the components that carry weight", () => {
+    const all = buildRuntimeSigmaBands({ format: "mix", mix: [0.2, 0.3, 0.5], point })!;
     expect(Object.keys(all).sort()).toEqual(["freeze", "mystery", "pko"]);
-    const two = buildRuntimeSigmaOverrides({ format: "mix", mix: [0.5, 0, 0.5], point })!;
+    const two = buildRuntimeSigmaBands({ format: "mix", mix: [0.5, 0, 0.5], point })!;
     expect(Object.keys(two).sort()).toEqual(["freeze", "mystery"]);
   });
 
-  it("exact and Ocean tabs get no runtime override from this helper", () => {
-    expect(buildRuntimeSigmaOverrides({ format: "exact", mix: [1, 0, 0], point })).toBeUndefined();
-    expect(buildRuntimeSigmaOverrides({ format: "ocean-ko", mix: [1, 0, 0], point })).toBeUndefined();
+  it("exact and Ocean tabs get no runtime band from this helper", () => {
+    expect(buildRuntimeSigmaBands({ format: "exact", mix: [1, 0, 0], point })).toBeUndefined();
+    expect(buildRuntimeSigmaBands({ format: "ocean-ko", mix: [1, 0, 0], point })).toBeUndefined();
   });
 
   it("bands are the calibrated residual around the runtime point", () => {
@@ -240,7 +237,7 @@ describe("buildRuntimeSigmaOverrides", () => {
       expect(runtimeSigmaBandResid(format)).toBe(RUNTIME_SIGMA_BANDS[format].resid);
       const formatPoint =
         format === "mystery-royale" ? { afs: 18, roi: 0.1, rake: 0.08 } : point;
-      const band = buildRuntimeSigmaOverrides({
+      const band = buildRuntimeSigmaBands({
         format,
         mix: mixFor(format),
         point: formatPoint,
@@ -259,28 +256,17 @@ describe("buildRuntimeSigmaOverrides", () => {
   });
 });
 
-describe("the closed-form Mystery surface does not reach the planning chips", () => {
-  // SIGMA_ROI_MYSTERY is fitted to another row (mystery-realdata-linear) and
-  // misses even that grid by 13 % at p95 (leave-one-out). It only stays
-  // harmless while every chip that carries Mystery weight is built from the
-  // runtime override.
+describe("the Mystery chip and a Mix with Mystery weight print the runtime σ", () => {
   const point = { afs: 1000, roi: 0.2, rake: 0.1 };
   const sigmaOf = (format: RuntimeSigmaFormat) => formatRuntimeSigma(format, point)!;
   const rowsFor = (format: "mystery" | "mix", mix: MixTuple) =>
     computeConvergenceRows({
       afs: point.afs,
       z: z95,
-      roi: point.roi,
       mix,
       format,
-      rakePct: point.rake * 100,
-      sigmaOverrides: buildRuntimeSigmaOverrides({ format, mix, point }),
+      sigmaBands: buildRuntimeSigmaBands({ format, mix, point }),
     });
-
-  it("the surface and the engine's Mystery σ differ at this point, so the test can see a leak", () => {
-    const surface = evalSigma(SIGMA_ROI_MYSTERY, point.afs, point.roi);
-    expect(Math.abs(surface / sigmaOf("mystery") - 1)).toBeGreaterThan(0.005);
-  });
 
   it("the Mystery tab and a Mix with Mystery weight take k from the runtime σ", () => {
     const fMix: MixTuple = [0.2, 0.3, 0.5];
@@ -313,7 +299,7 @@ describe("one band for the chip, the prove-edge card and a one-row schedule", ()
       const roi = 0.1;
       const resid = RUNTIME_SIGMA_BANDS[format].resid;
 
-      const chip = buildRuntimeSigmaOverrides({
+      const chip = buildRuntimeSigmaBands({
         format,
         mix: mixFor(format),
         point: { afs, roi, rake },
@@ -341,11 +327,9 @@ describe("one band for the chip, the prove-edge card and a one-row schedule", ()
       const chipRow = computeConvergenceRows({
         afs,
         z: z95,
-        roi,
         mix: mixFor(format),
         format,
-        rakePct: rake * 100,
-        sigmaOverrides: { [format]: chip },
+        sigmaBands: { [format]: chip },
       }).find((r) => r.targetPct === 0.05)!;
       expect(chipRow.tourneysLo).toBe(Math.ceil(Math.pow((z95 * chip.lo) / 0.05, 2)));
       expect(chipRow.tourneysHi).toBe(Math.ceil(Math.pow((z95 * chip.hi) / 0.05, 2)));
@@ -374,7 +358,7 @@ describe("the global ITM target reaches the planning cards", () => {
     it(`${format}: chip σ = prove-edge σ = schedule σ of the equivalent row, target on`, () => {
       const { afs, roi, rake } = pointFor(format);
       const schedule = buildExactBreakdown([editorRow(format, afs, roi, rake, target)])!.sigmaEff;
-      const chip = buildRuntimeSigmaOverrides({
+      const chip = buildRuntimeSigmaBands({
         format,
         mix: mixFor(format),
         point: { afs, roi, rake, itmTarget: target },

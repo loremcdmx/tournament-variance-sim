@@ -143,8 +143,8 @@ export interface NoiseChannelSettings {
  * tilt channel is switched on (matching the engine's own activation gates in
  * `simulateShard`).
  *
- * The closed-form σ surface behind the convergence and prove-edge widgets is
- * fit on a clean engine — every one of these channels held at 0. When a user
+ * The σ behind the convergence and prove-edge widgets is compiled from a clean
+ * row — every one of these channels held at 0. When a user
  * turns one on, the real per-run σ is strictly larger, so the widget's
  * tournaments-to-converge / tournaments-to-prove numbers become an optimistic
  * lower bound. The UI surfaces this as a caveat rather than silently showing a

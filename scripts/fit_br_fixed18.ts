@@ -4,9 +4,10 @@
  * The BR convergence tab centers on `formatRuntimeSigma("mystery-royale")`, the
  * compile of the editor's default BR row on the $10 ticket. This script reads
  * that same σ at a few ROIs inside the BR slider box (AFS fixed at 18, ROI in
- * [-10%, +10%]) and fits the compact line `SIGMA_ROI_MYSTERY_ROYALE` that the
- * fallback path of `computeConvergenceRows` evaluates. A row of another ticket
- * draws another envelope table, so it is not this line's to describe.
+ * [-10%, +10%]) and fits the compact line `SIGMA_ROI_MYSTERY_ROYALE`
+ * (`scripts/lib/sigmaSurfaces.ts`) that `xval_br.ts` checks. No card reads the
+ * line. A row of another ticket draws another envelope table, so it is not this
+ * line's to describe.
  *
  * β stays 0 by construction because the BR widget never varies field size.
  * `xval_br.ts` checks the line against the engine's Monte Carlo of that row.

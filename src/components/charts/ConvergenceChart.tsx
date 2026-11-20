@@ -37,7 +37,7 @@ import {
   type SigmaBand,
 } from "@/lib/sim/convergenceMath";
 import {
-  buildRuntimeSigmaOverrides,
+  buildRuntimeSigmaBands,
   fillRuntimeSigmaBrTicket,
   runtimeRoiReached,
 } from "@/lib/sim/formatRuntimeSigma";
@@ -55,7 +55,7 @@ import { FORMAT_TAB_ACCENTS } from "./formatTabAccents";
 interface Props {
   schedule?: TournamentRow[];
   finishModel?: SimulationInput["finishModel"];
-  /** True when skill-uncertainty / shock / tilt channels are on — the σ fit
+  /** True when skill-uncertainty / shock / tilt channels are on — the σ
    *  excludes them, so the displayed volume is an optimistic floor. */
   noiseActive?: boolean;
   /** The run's global ITM target (checkbox + % in the run settings). The
@@ -195,7 +195,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   const [afsPosOverride, setAfsPosOverride] = useState<number | null>(null);
   const baselinePos = afsToPos(baseline.avgField);
   // Battle Royale is a fixed 18-max SNG — lobby size never changes between
-  // buy-in tiers, and the σ_ROI fit was produced at N=18. Lock AFS so the
+  // buy-in tiers, and the row its σ is compiled from is 18-max. Lock AFS so the
   // slider doesn't lie about a knob the user can't turn.
   const BR_FIXED_AFS = 18;
   // Confidence level for the CI bands — user-configurable in (75, 99.9).
@@ -340,7 +340,6 @@ export const ConvergenceChart = memo(function ConvergenceChart({
     if (n !== null) setRakeOverridePct(n);
   };
 
-  const gameRoi = effectiveRoi;
   const [oceanTicketOverride, setOceanTicketOverride] = useState<number | null>(null);
   const [oceanTicketDraft, setOceanTicketDraft] = useState<string | null>(null);
   const oceanKoTotalTicket = oceanTicketOverride ?? defaultOceanKoTicket(schedule);
@@ -364,9 +363,9 @@ export const ConvergenceChart = memo(function ConvergenceChart({
   // Chips take their point σ from the same runtime compile as schedule mode
   // and the prove-edge card (see formatRuntimeSigma); the band half-width
   // comes from the Monte Carlo calibration table in runtimeSigmaBands.
-  const runtimeSigmaOverrides = useMemo(() => {
+  const runtimeSigmaBands = useMemo(() => {
     if (effectiveMode === "exact") return undefined;
-    return buildRuntimeSigmaOverrides({
+    return buildRuntimeSigmaBands({
       format,
       mix,
       point: {
@@ -424,7 +423,7 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       itmTarget,
     ],
   );
-  const oceanKoSigmaOverride = useMemo<SigmaBand | null>(() => {
+  const oceanKoSigmaBand = useMemo<SigmaBand | null>(() => {
     if (format !== "ocean-ko") return null;
     return buildOceanKoSigmaBand({
       afs: effectiveAfs,
@@ -435,40 +434,32 @@ export const ConvergenceChart = memo(function ConvergenceChart({
       itmTarget,
     });
   }, [format, effectiveAfs, effectiveRoi, rakePct, finishModel, oceanKoTotalTicket, itmTarget]);
-  const sigmaOverrides = useMemo<
+  const sigmaBands = useMemo<
     Partial<Record<ConvergenceRowFormat, SigmaBand>> | undefined
   >(
     () =>
-      oceanKoSigmaOverride
-        ? { ...runtimeSigmaOverrides, "ocean-ko": oceanKoSigmaOverride }
-        : runtimeSigmaOverrides,
-    [runtimeSigmaOverrides, oceanKoSigmaOverride],
+      oceanKoSigmaBand
+        ? { ...runtimeSigmaBands, "ocean-ko": oceanKoSigmaBand }
+        : runtimeSigmaBands,
+    [runtimeSigmaBands, oceanKoSigmaBand],
   );
 
   const rows = useMemo(() => {
     return computeConvergenceRows({
       afs: effectiveAfs,
       z,
-      roi: gameRoi,
       mix,
       format,
-      rakePct,
-      oceanKoTotalTicket,
-      finishModel,
       exactBreakdown,
-      sigmaOverrides,
+      sigmaBands,
     });
   }, [
     effectiveAfs,
     z,
-    gameRoi,
     mix,
     format,
-    rakePct,
-    oceanKoTotalTicket,
-    finishModel,
     exactBreakdown,
-    sigmaOverrides,
+    sigmaBands,
   ]);
 
   const fitBoxSamples = useMemo<readonly FitBoxSample[]>(() => {
