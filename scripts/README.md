@@ -14,7 +14,8 @@ field or export; it cannot tell whether a script's output is still meaningful.
 
 ### Canonical fitting and promotion
 
-Use these when changing coefficients that feed the shipped UI:
+Use these when changing the band the planning cards show or the surfaces the
+research scripts read:
 
 - `fit_runtime_sigma_bands.ts`
 - `fit_br_fixed18.ts`
@@ -22,6 +23,7 @@ Use these when changing coefficients that feed the shipped UI:
 - `resweep_sigma.ts` (regenerates the freeze / PKO / Mystery grids from the compile)
 - `refit_2d_logpoly.ts` (fits the freeze line and the 2D log-poly surfaces from those grids)
 - `fit_drift_report.ts`
+- `surface_vs_card_gap.ts` (how far each surface sits from the σ its planning card prints)
 - `fit_runtime_sigma_bands.json`
 - `fit_beta_freeze_realdata.json`
 - `fit_beta_pko.json`
@@ -34,9 +36,11 @@ field x ROI) grid and compares the Monte-Carlo sigma with the analytic one.
 Its table feeds `src/lib/sim/runtimeSigmaBands.ts`. It is a heavy run (tens of
 billions of tournaments); take a lock slot first.
 
-The `fit_br_fixed18.ts` / `xval_br.ts` pair and the `fit_beta_*` artifacts now
-back only the closed-form fallback surfaces in `convergenceFit.ts` (used by
-`computeConvergenceRows` when no runtime override is passed).
+The `fit_br_fixed18.ts` / `xval_br.ts` pair and the `fit_beta_*` artifacts
+back only the closed-form surfaces in `lib/sigmaSurfaces.ts`, which the
+research scripts read and nothing in `src/` does (`lib/sigmaSurfaces.test.ts`
+fails if a file under `src/` imports, defines or evaluates one;
+`surface_vs_card_gap.ts` measures how far they sit from the cards' σ).
 
 `fit_beta_pko.ts` is not on this list: it is the old 7-ROI recipe and would
 replace the canonical 18 x 11 `fit_beta_pko.json`, so it refuses to run against

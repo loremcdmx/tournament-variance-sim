@@ -119,13 +119,14 @@ export interface ProveEdgeRow {
   /** Candidate true ROI as a fraction (0.10 = +10 %). */
   roi: number;
   /** σ_ROI at this candidate ROI; an upper bound for Ocean KO. In schedule mode
-   *  every row carries the schedule's own σ, not one re-evaluated per ROI. */
+   *  every row carries the schedule's own σ, not one re-evaluated per ROI, and
+   *  NaN when the schedule does not compile. */
   sigma: number;
   /** σ × (1 - residual). Equal to `sigma` when out-of-box. */
   sigmaLo: number;
   /** σ × (1 + residual). Equal to `sigma` when out-of-box. */
   sigmaHi: number;
-  /** Tournaments needed (point); `Infinity` when ROI === 0. */
+  /** Tournaments needed (point); `Infinity` when ROI === 0, NaN when σ is. */
   tourneys: number;
   /** Optimistic bound (uses sigmaLo). Equals `tourneys` when out-of-box. */
   tourneysLo: number;
@@ -166,7 +167,8 @@ export type BandPolicy = "numeric" | "outside-fit-box";
 export interface ProveEdgeResult {
   rows: ProveEdgeRow[];
   /** Effective AFS used for `fields` conversion (= explicit AFS in
-   *  single-format mode, schedule's avgField in schedule mode). */
+   *  single-format mode, schedule's avgField in schedule mode; NaN when the
+   *  schedule does not compile). */
   effectiveAfs: number;
   /** Mode-aware band gate matching the convergence widget. */
   bandPolicy: BandPolicy;
@@ -344,6 +346,7 @@ function detectionZ(confidence: number): number {
 }
 
 function nFromSigma(zDetect: number, sigma: number, roi: number): number {
+  if (Number.isNaN(sigma)) return NaN;
   const absRoi = Math.abs(roi);
   if (absRoi <= 1e-9) return Number.POSITIVE_INFINITY;
   return Math.ceil(Math.pow((zDetect * sigma) / absRoi, 2));
@@ -470,12 +473,15 @@ function computeProveEdgeSchedule(input: ProveEdgeInput): ProveEdgeResult {
   const bandPolicy: BandPolicy =
     breakdown && policy?.kind === "numeric" ? "numeric" : "outside-fit-box";
 
-  const sigmaPoint = breakdown?.sigmaEff ?? 0;
+  // A schedule the engine compiles nothing for (empty, or no buy-in to measure
+  // ROI against) has no σ: NaN, which the card prints as a dash, never 0
+  // tournaments.
+  const sigmaPoint = breakdown ? breakdown.sigmaEff : NaN;
   const sigmaLo =
     bandPolicy === "numeric" ? (breakdown?.sigmaEffLo ?? sigmaPoint) : sigmaPoint;
   const sigmaHi =
     bandPolicy === "numeric" ? (breakdown?.sigmaEffHi ?? sigmaPoint) : sigmaPoint;
-  const effectiveAfs = breakdown ? Math.max(1, breakdown.avgField) : 1;
+  const effectiveAfs = breakdown ? Math.max(1, breakdown.avgField) : NaN;
   // A fixed-shape model never calibrates to the typed row ROI, so the ROI the
   // schedule really has is the one the engine compiles from its pmf.
   const effectiveRoi =
@@ -488,7 +494,7 @@ function computeProveEdgeSchedule(input: ProveEdgeInput): ProveEdgeResult {
     const tourneys = nFromSigma(zDetect, sigmaPoint, roi);
     const tourneysLo = nFromSigma(zDetect, sigmaLo, roi);
     const tourneysHi = nFromSigma(zDetect, sigmaHi, roi);
-    const fields = Number.isFinite(tourneys) ? tourneys / effectiveAfs : Infinity;
+    const fields = tourneys / effectiveAfs;
     return {
       roi,
       sigma: sigmaPoint,
@@ -514,9 +520,7 @@ function computeProveEdgeSchedule(input: ProveEdgeInput): ProveEdgeResult {
     tourneys: anchorTourneys,
     tourneysLo: nFromSigma(zDetect, sigmaLo, effectiveRoi),
     tourneysHi: nFromSigma(zDetect, sigmaHi, effectiveRoi),
-    fields: Number.isFinite(anchorTourneys)
-      ? anchorTourneys / effectiveAfs
-      : Infinity,
+    fields: anchorTourneys / effectiveAfs,
     insideFitBox: bandPolicy === "numeric",
     roiReached: true,
   };

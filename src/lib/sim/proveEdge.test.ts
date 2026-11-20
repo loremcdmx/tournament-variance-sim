@@ -15,7 +15,12 @@ import {
 } from "./formatRuntimeSigma";
 import { applyGameType } from "./gameType";
 import type { TournamentRow } from "./types";
-import { buildOceanKoSigmaBand, ciToZ } from "./convergenceMath";
+import {
+  buildExactBreakdown,
+  buildOceanKoSigmaBand,
+  ciToZ,
+  computeConvergenceRows,
+} from "./convergenceMath";
 import { compileSchedule } from "./compile";
 import { applyItmTarget } from "./itmTarget";
 import { validateSchedule } from "./validation";
@@ -637,21 +642,38 @@ describe("computeProveEdge — schedule mode", () => {
     });
   });
 
-  it("empty / null schedule degrades gracefully", () => {
-    const res = computeProveEdge({
+  it("a schedule that does not compile has no σ and no volume, empty or not", () => {
+    // No buy-in leaves nothing to measure ROI against, so the engine compiles
+    // nothing for this row. A σ of 0 would print a table of zeros (and ∞ at the
+    // anchor, whose cost-weighted ROI is 0); the convergence card prints a dash.
+    const free = [makeRow({ players: 1000, buyIn: 0, rake: 0.1, roi: 0.1, count: 10 })];
+    for (const schedule of [[], null, free]) {
+      const res = computeProveEdge({
+        format: "exact",
+        schedule,
+        afs: 0,
+        rake: 0,
+        confidence: 0.95,
+        currentRoi: 0,
+        candidates: PROVE_EDGE_DEFAULT_CANDIDATES,
+      });
+      expect(res.bandPolicy).toBe("outside-fit-box");
+      expect(res.effectiveAfs).toBeNaN();
+      for (const r of [res.anchor, ...res.rows]) {
+        for (const value of [r.sigma, r.sigmaLo, r.sigmaHi, r.tourneys, r.tourneysLo, r.tourneysHi, r.fields]) {
+          expect(value, `${schedule?.length} rows, ROI ${r.roi}`).toBeNaN();
+        }
+      }
+    }
+    const scheduleTab = computeConvergenceRows({
+      afs: 1000,
+      z: Z95,
+      mix: [1, 0, 0],
       format: "exact",
-      schedule: [],
-      afs: 0,
-      rake: 0,
-      confidence: 0.95,
-      currentRoi: 0,
-      candidates: [0.10],
+      exactBreakdown: buildExactBreakdown(free),
+      sigmaBands: undefined,
     });
-    expect(res.bandPolicy).toBe("outside-fit-box");
-    expect(res.anchor.sigma).toBe(0);
-    // sigma = 0 → tourneys = 0 (formally; user shouldn't see this since
-    // the UI hides schedule mode when no schedule is loaded)
-    expect(res.rows[0].tourneys).toBe(0);
+    expect(scheduleTab.every((r) => Number.isNaN(r.tourneys))).toBe(true);
   });
 
   it("schedule respects per-row count weighting (zero-count rows ignored)", () => {

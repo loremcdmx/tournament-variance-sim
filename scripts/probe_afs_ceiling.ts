@@ -2,13 +2,14 @@
  * Mini-sweep for #109b (AFS ceiling 50k -> 200k).
  *
  * This is intentionally narrower than scripts/fit_sigma_parallel.ts: it only
- * checks the extrapolation band the UI would expose if the convergence widget
- * slider moved from 50k to 200k. The gate is conservative:
+ * checks how the closed-form surfaces (`lib/sigmaSurfaces.ts`) extrapolate
+ * from 50k to 200k players. The gate is conservative:
  *
- *   max |(sigma_fit - sigma_measured) / sigma_measured| <= runtime resid
+ *   max |(sigma_fit - sigma_measured) / sigma_measured| <= surface resid
  *
- * per format. That maps directly to the uncertainty budget already displayed
- * (or hidden, for Mystery) by the convergence widget.
+ * per format. It judges the surfaces, not the cards: the convergence widget
+ * prints the compile's σ and the band of `runtimeSigmaBands.ts`, which is
+ * measured only up to field 50 000 (see docs/FITTING.md).
  */
 
 import { spawn } from "node:child_process";
@@ -19,7 +20,7 @@ import { runSimulation } from "../src/lib/sim/engine";
 import {
   evalSigma,
   SIGMA_COEF_BY_FORMAT,
-} from "../src/lib/sim/convergenceFit";
+} from "./lib/sigmaSurfaces";
 import type { ConvergenceRowFormat } from "../src/lib/sim/convergencePolicy";
 import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
 

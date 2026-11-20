@@ -1,35 +1,62 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   evalSigma,
-  FIT_RAKE_BY_FORMAT,
   SIGMA_COEF_BY_FORMAT,
   SIGMA_ROI_FREEZE,
   SIGMA_ROI_MYSTERY,
   SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
-  sigmaRoiForRow,
   type SigmaCoef,
-} from "./convergenceFit";
-import type { FinishModelId, SimulationInput, TournamentRow } from "./types";
-import { applyGameType } from "./gameType";
-import { buildScheduleAnalyticBreakdown, compileSchedule } from "./compile";
-import { compiledEntryMoments } from "./scheduleMoments";
-import { formatRuntimeSigma, RUNTIME_SIGMA_BR_TICKET } from "./formatRuntimeSigma";
-import pkoGrid from "../../../scripts/fit_beta_pko.json";
-import mysteryGrid from "../../../scripts/fit_beta_mystery.json";
-import freezeGrid from "../../../scripts/fit_beta_freeze_realdata.json";
-import brLine from "../../../scripts/fit_beta_mystery_royale.json";
+} from "./sigmaSurfaces";
+import type { FinishModelId, SimulationInput, TournamentRow } from "../../src/lib/sim/types";
+import { compileSchedule } from "../../src/lib/sim/compile";
+import { compiledEntryMoments } from "../../src/lib/sim/scheduleMoments";
+import { formatRuntimeSigma, RUNTIME_SIGMA_BR_TICKET } from "../../src/lib/sim/formatRuntimeSigma";
+import pkoGrid from "../fit_beta_pko.json";
+import mysteryGrid from "../fit_beta_mystery.json";
+import freezeGrid from "../fit_beta_freeze_realdata.json";
+import brLine from "../fit_beta_mystery_royale.json";
 
 /**
- * Critical canary tests on the σ-fit coefficients. These fits drive every
- * convergence number and the prove-edge widget; if a refit silently changes
- * a coefficient, the UI shifts under users without warning. Tests here pin
- * known values + sanity-check the functional shape (monotonicity, sign of
- * ROI dependence, residual bands).
+ * Canaries on the closed-form surfaces and the grids behind them. No number
+ * the app prints reads a surface; the scripts that do (probe_afs_ceiling,
+ * mix_effective_fit, xval_br) need each surface to stay close to its grid and
+ * each grid to stay the engine's. Tests here pin known values and sanity-check
+ * the functional shape (monotonicity, sign of ROI dependence, residual bands).
  */
 
+describe("the surfaces stay out of the app", () => {
+  const SRC = join(__dirname, "../../src");
+  const sourceFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory()
+        ? sourceFiles(join(dir, entry.name))
+        : /\.tsx?$/.test(entry.name)
+          ? [join(dir, entry.name)]
+          : [],
+    );
+  const code = (file: string) =>
+    readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|\s)\/\/.*$/gm, "$1");
+
+  it("no file under src/ imports, defines or evaluates a closed-form σ surface", () => {
+    // A surface misses its own grid by up to 35 % (Mystery, fields 50-64) and
+    // the card's own row by up to 2.1x in σ: inside src/ it is one forgotten
+    // argument away from a planning card.
+    const files = sourceFiles(SRC);
+    expect(files.length).toBeGreaterThan(100);
+    const offenders = files
+      .filter((file) => /sigmaSurfaces|convergenceFit|\bSIGMA_ROI_|\bSIGMA_COEF_BY_FORMAT\b|\bevalSigma\b/.test(code(file)))
+      .map((file) => file.slice(SRC.length + 1));
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("evalSigma — coefficient shape", () => {
-  it("freeze is ROI-invariant (C1 must stay 0 — UI policy depends on it)", () => {
+  it("freeze is ROI-invariant (C1 must stay 0: its row plays one shape whatever the ROI)", () => {
     expect(SIGMA_ROI_FREEZE.kind).toBe("single-beta");
     if (SIGMA_ROI_FREEZE.kind !== "single-beta") return;
     expect(SIGMA_ROI_FREEZE.C1).toBe(0);
@@ -310,113 +337,10 @@ describe("SIGMA_ROI_MYSTERY_ROYALE follows the BR card's own row", () => {
   });
 });
 
-describe("sigmaRoiForRow", () => {
-  function makeRow(overrides: Partial<TournamentRow> = {}): TournamentRow {
-    return {
-      id: "r",
-      label: "r",
-      players: 500,
-      buyIn: 50,
-      rake: 0.10,
-      roi: 0.10,
-      payoutStructure: "mtt-standard",
-      gameType: "freezeout",
-      count: 1,
-      ...overrides,
-    };
-  }
-
-  it("infers freeze format and uses freeze fit", () => {
-    const r = sigmaRoiForRow(makeRow({ gameType: "freezeout" }));
-    expect(r.format).toBe("freeze");
-    const direct = evalSigma(SIGMA_ROI_FREEZE, 500, 0.10);
-    // rakeScale = (1+0.10)/(1+0.10) = 1
-    expect(r.sigma).toBeCloseTo(direct, 9);
-  });
-
-  it("Ocean KO evaluates its runtime row and exposes no invented residual fit", () => {
-    const base = makeRow();
-    const ocean = { ...base, ...applyGameType(base, "ocean-ko") };
-    const result = sigmaRoiForRow(ocean);
-    const runtime = buildScheduleAnalyticBreakdown({
-      schedule: [ocean],
-      finishModel: { id: "power-law" },
-    });
-    expect(runtime).not.toBeNull();
-    expect(result.format).toBe("ocean-ko");
-    expect(result.sigma).toBeGreaterThan(0);
-    expect(result.sigma).toBe(runtime!.sigmaRoiPerTourney);
-    expect(result.sigmaLo).toBe(result.sigma);
-    expect(result.sigmaHi).toBe(result.sigma);
-    expect(Object.hasOwn(SIGMA_COEF_BY_FORMAT, "ocean-ko")).toBe(false);
-  });
-
-  it("returns lo/hi via residual band", () => {
-    const r = sigmaRoiForRow(makeRow());
-    expect(r.sigmaLo).toBeCloseTo(r.sigma * (1 - SIGMA_ROI_FREEZE.resid), 9);
-    expect(r.sigmaHi).toBeCloseTo(r.sigma * (1 + SIGMA_ROI_FREEZE.resid), 9);
-  });
-
-  it("rakeScale rescales σ when row rake differs from fit's training rake", () => {
-    const fitRake = FIT_RAKE_BY_FORMAT.freeze;
-    const at_match = sigmaRoiForRow(makeRow({ rake: fitRake }));
-    const at_lower = sigmaRoiForRow(makeRow({ rake: fitRake / 2 }));
-    // Lower user rake → higher rakeScale → higher σ
-    expect(at_lower.sigma).toBeGreaterThan(at_match.sigma);
-  });
-
-  it("identifies PKO row by gameType", () => {
-    const r = sigmaRoiForRow(
-      makeRow({
-        gameType: "pko",
-        payoutStructure: "mtt-gg-bounty",
-        bountyFraction: 0.5,
-      }),
-    );
-    expect(r.format).toBe("pko");
-  });
-
-  it("identifies Mystery row by gameType", () => {
-    const r = sigmaRoiForRow(
-      makeRow({
-        gameType: "mystery",
-        payoutStructure: "mtt-gg-mystery",
-        bountyFraction: 0.5,
-        mysteryBountyVariance: 2.0,
-      }),
-    );
-    expect(r.format).toBe("mystery");
-  });
-
-  it("identifies MBR row by gameType + uses fit's training rake (8 %)", () => {
-    const r = sigmaRoiForRow(
-      makeRow({
-        gameType: "mystery-royale",
-        payoutStructure: "battle-royale",
-        players: 18,
-        bountyFraction: 0.5,
-        mysteryBountyVariance: 1.8,
-      }),
-    );
-    expect(r.format).toBe("mystery-royale");
-    // FIT_RAKE_BY_FORMAT["mystery-royale"] = 0.08, but row rake = 0.10
-    // → rakeScale = 1.08 / 1.10 < 1 → σ shrinks vs. raw evalSigma
-    const raw = evalSigma(SIGMA_ROI_MYSTERY_ROYALE, 18, 0.10);
-    expect(r.sigma).toBeLessThan(raw);
-  });
-
-  it("override rakeScale wins over computed", () => {
-    const r = sigmaRoiForRow(makeRow(), 1);
-    const raw = evalSigma(SIGMA_ROI_FREEZE, 500, 0.10);
-    expect(r.sigma).toBeCloseTo(raw, 9);
-  });
-});
-
 /**
  * Reference-value canaries — pin the σ at a known box-center for every fit.
  * If a future refit shifts these by more than 5 %, the canary fails and the
- * dev must consciously update the snapshot. Prevents silent UX drift after
- * a fit is regenerated without UI/policy review.
+ * dev must consciously update the snapshot, and with it the scripts' reports.
  */
 describe("σ reference canaries (5% tolerance)", () => {
   it("freeze @ AFS=500 ROI=0% lands near the engine's 6.28", () => {

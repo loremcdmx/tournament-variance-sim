@@ -18,28 +18,31 @@ import {
   type MixTuple,
 } from "./convergenceMath";
 import { runtimeSigmaBandResid } from "./runtimeSigmaBands";
-import { SIGMA_ROI_MYSTERY_ROYALE, sigmaRoiForRow } from "./convergenceFit";
-import { buildFormatRuntimeRow } from "./formatRuntimeSigma";
+import { buildFormatRuntimeRow, buildRuntimeSigmaBands } from "./formatRuntimeSigma";
 import { applyGameType } from "./gameType";
 import { applyItmTarget } from "./itmTarget";
 
 const z95 = ciToZ(0.95);
 const targetRow = 3; // +/-10%
 
+/** k of the ±10 % row the chart prints: the tab's runtime bands at field 1000, ROI +10 %, rake 10 %. */
 function kFor(input: {
   format: Parameters<typeof computeConvergenceRows>[0]["format"];
-  roi: number;
   mix?: MixTuple;
   exactBreakdown?: ReturnType<typeof buildExactBreakdown>;
 }): number {
+  const mix = input.mix ?? [1, 0, 0];
   return computeConvergenceRows({
     afs: 1000,
     z: z95,
-    roi: input.roi,
-    mix: input.mix ?? [1, 0, 0],
+    mix,
     format: input.format,
-    rakePct: 10,
     exactBreakdown: input.exactBreakdown,
+    sigmaBands: buildRuntimeSigmaBands({
+      format: input.format,
+      mix,
+      point: { afs: 1000, roi: 0.1, rake: 0.1 },
+    }),
   })[targetRow].tourneys;
 }
 
@@ -136,11 +139,16 @@ describe("convergence math", () => {
     const rows = computeConvergenceRows({
       afs: 500,
       z: z95,
-      roi: 0.1,
       mix: [0, 1, 0],
       format: "ocean-ko",
-      rakePct: 10,
-      oceanKoTotalTicket: ocean.buyIn * (1 + ocean.rake),
+      sigmaBands: {
+        "ocean-ko": buildOceanKoSigmaBand({
+          afs: 500,
+          roi: 0.1,
+          rake: 0.1,
+          totalTicket: ocean.buyIn * (1 + ocean.rake),
+        }),
+      },
     });
     const point = rows[targetRow];
     expect(point.tourneys).toBe(Math.ceil(Math.pow(z95 * runtime.sigmaEff / 0.1, 2)));
@@ -187,34 +195,88 @@ describe("convergence math", () => {
     expect(isRoiControlActive("avg")).toBe(true);
   });
 
-  it("keeps freeze rows invariant to ROI and bounty rows sensitive to ROI", () => {
-    expect(kFor({ format: "freeze", roi: -0.3 })).toBe(
-      kFor({ format: "freeze", roi: 1.0 }),
-    );
-    expect(kFor({ format: "pko", roi: 1.0 })).toBeGreaterThan(
-      kFor({ format: "pko", roi: -0.3 }),
-    );
-    expect(kFor({ format: "mystery", roi: 1.0 })).toBeGreaterThan(
-      kFor({ format: "mystery", roi: -0.3 }),
-    );
-    expect(kFor({ format: "mystery-royale", roi: 0.1 })).toBeGreaterThan(
-      kFor({ format: "mystery-royale", roi: -0.1 }),
-    );
+  it("sizes every row of a single-format tab from the band it is given", () => {
+    const kAt = (sigma: number, target: number) => Math.ceil(Math.pow((z95 * sigma) / target, 2));
+    for (const format of ["freeze", "pko", "mystery", "mystery-royale", "ocean-ko"] as const) {
+      const band = { s: 5, lo: 4, hi: 7 };
+      const rows = computeConvergenceRows({
+        afs: 400,
+        z: z95,
+        mix: [1, 0, 0],
+        format,
+        sigmaBands: { [format]: band },
+      });
+      for (const row of rows) {
+        expect(row.tourneys, format).toBe(kAt(band.s, row.targetPct));
+        expect(row.tourneysLo, format).toBe(kAt(band.lo, row.targetPct));
+        expect(row.tourneysHi, format).toBe(kAt(band.hi, row.targetPct));
+        expect(row.fields, format).toBeCloseTo(row.tourneys / 400, 9);
+      }
+    }
   });
 
-  it("makes mix ROI-sensitive only when mix contains bounty formats", () => {
-    expect(kFor({ format: "mix", mix: [1, 0, 0], roi: -0.3 })).toBe(
-      kFor({ format: "mix", mix: [1, 0, 0], roi: 1.0 }),
-    );
-    expect(kFor({ format: "mix", mix: [0.7, 0.3, 0], roi: 1.0 })).toBeGreaterThan(
-      kFor({ format: "mix", mix: [0.7, 0.3, 0], roi: -0.3 }),
-    );
-    expect(kFor({ format: "mix", mix: [0.7, 0, 0.3], roi: 1.0 })).toBeGreaterThan(
-      kFor({ format: "mix", mix: [0.7, 0, 0.3], roi: -0.3 }),
-    );
+  it("blends a Mix from its weighted components only", () => {
+    const mix: MixTuple = [0.7, 0, 0.3];
+    const f = { s: 4, lo: 3.9, hi: 4.1 };
+    const m = { s: 6, lo: 5.8, hi: 6.2 };
+    // No PKO band: a component with no weight is never compiled.
+    const row = computeConvergenceRows({
+      afs: 1000,
+      z: z95,
+      mix,
+      format: "mix",
+      sigmaBands: { freeze: f, mystery: m },
+    })[targetRow];
+    const blend = (key: "s" | "lo" | "hi") =>
+      Math.sqrt(mix[0] * f[key] * f[key] + mix[2] * m[key] * m[key]);
+    expect(row.tourneys).toBe(Math.ceil(Math.pow((z95 * blend("s")) / 0.1, 2)));
+    expect(row.tourneysLo).toBe(Math.ceil(Math.pow((z95 * blend("lo")) / 0.1, 2)));
+    expect(row.tourneysHi).toBe(Math.ceil(Math.pow((z95 * blend("hi")) / 0.1, 2)));
+    // The chart's own bands for the same Mix carry exactly those two formats.
+    expect(Object.keys(buildRuntimeSigmaBands({ format: "mix", mix, point: { afs: 1000, roi: 0.1, rake: 0.1 } })!).sort())
+      .toEqual(["freeze", "mystery"]);
+    expect(Number.isFinite(kFor({ format: "mix", mix }))).toBe(true);
   });
 
-  it("uses row data in exact mode instead of the widget ROI", () => {
+  it("prints no volume for a σ it was not given, never a closed-form estimate", () => {
+    const absent = (rows: ReturnType<typeof computeConvergenceRows>) =>
+      rows.every((r) =>
+        [r.tourneys, r.tourneysLo, r.tourneysHi, r.fields, r.fieldsLo, r.fieldsHi].every(Number.isNaN),
+      );
+    // Everything a closed-form surface would need (field, ROI, rake) is there;
+    // only the σ is not. At field 50, ROI +80 % the Mystery surface reads 2.07x
+    // the card's σ.
+    const point = { afs: 50, z: z95, roi: 0.8, rakePct: 10 };
+    const call = (format: Parameters<typeof computeConvergenceRows>[0]["format"], mix: MixTuple = [1, 0, 0]) =>
+      computeConvergenceRows({ ...point, mix, format, sigmaBands: {} });
+    for (const format of ["freeze", "pko", "mystery", "mystery-royale", "ocean-ko", "mix", "exact"] as const) {
+      expect(absent(call(format)), format).toBe(true);
+    }
+    // A weighted Mix component with no band leaves the blend undefined too.
+    expect(absent(computeConvergenceRows({
+      ...point, mix: [0.5, 0, 0.5], format: "mix", sigmaBands: { freeze: { s: 4, lo: 4, hi: 4 } },
+    }))).toBe(true);
+    // So do weights that are not shares, with every band present: none of them
+    // is "no weight", and an all-zero Mix is not 0 tournaments.
+    const every = { freeze: { s: 4, lo: 3, hi: 5 }, pko: { s: 6, lo: 5, hi: 7 }, mystery: { s: 8, lo: 7, hi: 9 } };
+    const notShares: MixTuple[] = [
+      [NaN, NaN, NaN], [NaN, 0, 1], [0, 0, 0], [1.2, -0.2, 0], [Infinity, 0, 0],
+    ];
+    for (const mix of notShares) {
+      expect(absent(computeConvergenceRows({ ...point, mix, format: "mix", sigmaBands: every })), String(mix)).toBe(true);
+    }
+    expect(computeConvergenceRows({ ...point, mix: [0.2, 0.3, 0.5], format: "mix", sigmaBands: every })
+      .every((r) => Number.isFinite(r.tourneys))).toBe(true);
+    // The Schedule tab with no breakdown does not fall back to the Mix.
+    expect(absent(computeConvergenceRows({
+      ...point, mix: [1 / 3, 1 / 3, 1 / 3], format: "exact", exactBreakdown: null,
+      sigmaBands: { freeze: { s: 4, lo: 4, hi: 4 }, pko: { s: 4, lo: 4, hi: 4 }, mystery: { s: 4, lo: 4, hi: 4 } },
+    }))).toBe(true);
+    // @ts-expect-error the σ is a required input: a caller cannot forget it
+    expect(absent(computeConvergenceRows({ ...point, mix: [0, 0, 1], format: "mystery" }))).toBe(true);
+  });
+
+  it("uses row data in exact mode, not the tab's bands", () => {
     const schedule: TournamentRow[] = [
       {
         id: "freeze",
@@ -242,9 +304,16 @@ describe("convergence math", () => {
     ];
     const exactBreakdown = buildExactBreakdown(schedule);
     expect(exactBreakdown).not.toBeNull();
-    expect(kFor({ format: "exact", roi: -0.3, exactBreakdown })).toBe(
-      kFor({ format: "exact", roi: 1.0, exactBreakdown }),
-    );
+    const withBands = computeConvergenceRows({
+      afs: 1000,
+      z: z95,
+      mix: [0.5, 0.5, 0],
+      format: "exact",
+      exactBreakdown,
+      sigmaBands: { freeze: { s: 99, lo: 99, hi: 99 }, pko: { s: 99, lo: 99, hi: 99 } },
+    })[targetRow].tourneys;
+    expect(withBands).toBe(kFor({ format: "exact", exactBreakdown }));
+    expect(withBands).toBe(Math.ceil(Math.pow((z95 * exactBreakdown!.sigmaEff) / 0.1, 2)));
   });
 
   it("freeze averaged mode can use runtime sigma that reacts to ROI", () => {
@@ -270,11 +339,9 @@ describe("convergence math", () => {
     const lowRows = computeConvergenceRows({
       afs: 1000,
       z: z95,
-      roi: -0.2,
       mix: [1, 0, 0],
       format: "freeze",
-      rakePct: 10,
-      sigmaOverrides: {
+      sigmaBands: {
         freeze: {
           s: low!.sigmaEff,
           lo: low!.sigmaEff * 0.5,
@@ -285,11 +352,9 @@ describe("convergence math", () => {
     const highRows = computeConvergenceRows({
       afs: 1000,
       z: z95,
-      roi: 0.5,
       mix: [1, 0, 0],
       format: "freeze",
-      rakePct: 10,
-      sigmaOverrides: {
+      sigmaBands: {
         freeze: {
           s: high!.sigmaEff,
           lo: high!.sigmaEff * 0.5,
@@ -321,20 +386,13 @@ describe("convergence math", () => {
     const runtime = buildExactBreakdown([row]);
     expect(runtime).not.toBeNull();
 
-    const fitSigma = sigmaRoiForRow(row).sigma;
-    expect(
-      Math.abs(fitSigma - runtime!.sigmaEff) / runtime!.sigmaEff,
-    ).toBeLessThanOrEqual(SIGMA_ROI_MYSTERY_ROYALE.resid);
-
     const resid = runtimeSigmaBandResid("mystery-royale");
     const runtimeRows = computeConvergenceRows({
       afs: 18,
       z: z95,
-      roi: 0.05,
       mix: [1, 0, 0],
       format: "mystery-royale",
-      rakePct: 8,
-      sigmaOverrides: {
+      sigmaBands: {
         "mystery-royale": {
           s: runtime!.sigmaEff,
           lo: runtime!.sigmaEff * (1 - resid),
@@ -376,11 +434,9 @@ describe("convergence math", () => {
     const runtimeRows = computeConvergenceRows({
       afs: row.players,
       z: z95,
-      roi: row.roi,
       mix: [0, 0, 1],
       format: "mystery",
-      rakePct: 10,
-      sigmaOverrides: {
+      sigmaBands: {
         mystery: {
           s: runtime!.sigmaEff,
           lo: runtime!.sigmaEff * (1 - resid),
@@ -427,7 +483,7 @@ describe("convergence math", () => {
     const totalCount = schedule.reduce((acc, row) => acc + row.count, 0);
     const naiveCountShare = Math.sqrt(
       schedule.reduce((acc, row) => {
-        const sigma = sigmaRoiForRow(row).sigma;
+        const sigma = buildExactBreakdown([{ ...row, count: 1 }])!.sigmaEff;
         return acc + (row.count / totalCount) * sigma * sigma;
       }, 0),
     );
@@ -511,20 +567,18 @@ describe("convergence math", () => {
     const rowAt50 = computeConvergenceRows({
       afs: 50,
       z: z95,
-      roi: 0.1,
       mix: [1, 0, 0],
       format: "exact",
-      rakePct: 10,
       exactBreakdown: exact,
+      sigmaBands: undefined,
     })[targetRow];
     const rowAt50k = computeConvergenceRows({
       afs: 50_000,
       z: z95,
-      roi: 0.1,
       mix: [1, 0, 0],
       format: "exact",
-      rakePct: 10,
       exactBreakdown: exact,
+      sigmaBands: undefined,
     })[targetRow];
 
     expect(rowAt50.fields).toBe(rowAt50k.fields);

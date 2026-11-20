@@ -1,12 +1,13 @@
 /**
- * In-sample drift report for σ_ROI runtime fits.
+ * In-sample drift report for the closed-form σ_ROI surfaces
+ * (`lib/sigmaSurfaces.ts`, research summaries the app does not read).
  *
  * Reads canonical scripts/fit_beta_*.json + optional matching
- * *_200k_probe.json artifacts and evaluates how well the runtime surface
+ * *_200k_probe.json artifacts and evaluates how well the surface
  * reproduces the measured σ grid in each artifact. No simulation runs —
  * pure re-evaluation.
  *
- * Runtime forms:
+ * Surface forms:
  *   - Freeze: single-β, σ = (C0 + C1·roi) · field^β
  *   - PKO / Mystery: 2D log-poly,
  *       log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L
@@ -23,10 +24,11 @@
  * meanSignedResid, rmsResid, p95AbsResid, maxAbsResid, worstCell.
  *
  * Combos per format (only when a probe artifact is on disk):
- *   canonical fit × canonical grid   — baseline (how well the live UI
- *                                       matches the data it was fit to)
+ *   canonical fit × canonical grid   — baseline (how well the stored
+ *                                       surface matches the data it was
+ *                                       fit to)
  *   probe fit    × canonical grid   — regression check: would promoting
- *                                       the probe fit make the UI zone
+ *                                       the probe fit make the user zones
  *                                       worse?
  *   probe fit    × probe grid       — probe's in-sample quality
  *

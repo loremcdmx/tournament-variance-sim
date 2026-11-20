@@ -1,17 +1,13 @@
-import {
-  inferRowFormat,
-  type ConvergenceRowFormat,
-} from "./convergencePolicy";
-import type { TournamentRow } from "./types";
-import { buildScheduleAnalyticBreakdown } from "./compile";
+import type { ConvergenceRowFormat } from "../../src/lib/sim/convergencePolicy";
 
 /**
- * Closed-form σ_ROI surfaces. The planning cards no longer read them for their
- * point (`formatRuntimeSigma` compiles the format's default row) nor for their
- * band (`runtimeSigmaBands.ts`, measured against the engine's Monte Carlo).
- * They are the fallback path of `computeConvergenceRows` when no runtime
- * override is passed, and the `resid` of each is the error of THAT surface
- * against its own grid, not the band a card shows.
+ * Closed-form σ_ROI surfaces through the canonical grids, for the sweep and
+ * probe scripts. They stay out of src/: every σ the app prints is the engine's
+ * compile (`formatRuntimeSigma`, `buildExactBreakdown`, `buildOceanKoSigmaBand`),
+ * and a surface that misses its own grid by up to 35 % must not be one
+ * forgotten argument away from a planning card (`surface_vs_card_gap.ts`
+ * measures how far each sits from its card's σ). The `resid` of each is the
+ * error of THAT surface against its own grid, not the band a card shows.
  */
 
 export type SigmaCoefSingleBeta = {
@@ -124,16 +120,6 @@ export const SIGMA_COEF_BY_FORMAT: Record<
   "mystery-royale": SIGMA_ROI_MYSTERY_ROYALE,
 };
 
-export const FIT_RAKE_BY_FORMAT: Record<
-  Exclude<ConvergenceRowFormat, "ocean-ko">,
-  number
-> = {
-  freeze: 0.10,
-  pko: 0.10,
-  mystery: 0.10,
-  "mystery-royale": 0.08,
-};
-
 export function evalSigma(coef: SigmaCoef, field: number, roi: number): number {
   const f = Math.max(1, field);
   if (coef.kind === "single-beta") {
@@ -148,38 +134,4 @@ export function evalSigma(coef: SigmaCoef, field: number, roi: number): number {
       coef.b2 * roi * roi +
       coef.c * roi * L,
   );
-}
-
-export function sigmaRoiForRow(
-  row: TournamentRow,
-  rakeScaleOverride?: number,
-): {
-  sigma: number;
-  sigmaLo: number;
-  sigmaHi: number;
-  format: ConvergenceRowFormat;
-} {
-  const fmt = inferRowFormat(row);
-  if (fmt === "ocean-ko") {
-    const breakdown = buildScheduleAnalyticBreakdown({
-      schedule: [{ ...row, count: 1 }],
-      finishModel: { id: "power-law" },
-    });
-    if (!breakdown) throw new Error("Ocean KO runtime moments unavailable");
-    const sigma = breakdown.sigmaRoiPerTourney * (rakeScaleOverride ?? 1);
-    return { sigma, sigmaLo: sigma, sigmaHi: sigma, format: fmt };
-  }
-  const coef = SIGMA_COEF_BY_FORMAT[fmt];
-  const afs = Math.max(1, row.players);
-  const roi = row.roi;
-  const rakeScale =
-    rakeScaleOverride ??
-    (1 + FIT_RAKE_BY_FORMAT[fmt]) / (1 + (row.rake ?? 0));
-  const sigma = evalSigma(coef, afs, roi) * rakeScale;
-  return {
-    sigma,
-    sigmaLo: sigma * (1 - coef.resid),
-    sigmaHi: sigma * (1 + coef.resid),
-    format: fmt,
-  };
 }

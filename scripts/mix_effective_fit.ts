@@ -1,7 +1,8 @@
 /**
  * Mix σ_ROI = sqrt(p·σ²_pko + (1−p)·σ²_freeze) is NOT a clean power law.
  * Freeze is single-β, while the PKO surface is a 2D log-polynomial; both come
- * from `convergenceFit.ts`, so this report follows the shipped fallback fits.
+ * from `scripts/lib/sigmaSurfaces.ts`, so this report follows those closed-form
+ * fits, not the runtime σ the planning cards print.
  * Fit an effective C·field^β over [50, 50k] for common mix ratios × ROIs
  * to report.
  *
@@ -12,7 +13,7 @@ import {
   SIGMA_ROI_FREEZE,
   SIGMA_ROI_PKO,
   evalSigma,
-} from "../src/lib/sim/convergenceFit";
+} from "./lib/sigmaSurfaces";
 
 const FIELDS = [
   50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500,

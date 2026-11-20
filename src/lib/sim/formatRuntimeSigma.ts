@@ -204,22 +204,22 @@ export function formatRuntimeSigmaBand(
 }
 
 /**
- * `sigmaOverrides` for `computeConvergenceRows` in single-format and mix
- * modes: one runtime band per format the selection actually uses. Mix keeps
- * its quadratic blend of the three per-format σ; only the inputs change.
+ * `sigmaBands` for `computeConvergenceRows` in single-format and mix modes:
+ * one runtime band per format the selection actually uses. Mix keeps its
+ * quadratic blend of the three per-format σ.
  */
-export function buildRuntimeSigmaOverrides(input: {
+export function buildRuntimeSigmaBands(input: {
   format: ConvergenceFormat;
   mix: MixTuple;
   point: RuntimeSigmaPoint;
 }): Partial<Record<ConvergenceRowFormat, SigmaBand>> | undefined {
   const { format, mix, point } = input;
-  const overrides: Partial<Record<ConvergenceRowFormat, SigmaBand>> = {};
+  const bands: Partial<Record<ConvergenceRowFormat, SigmaBand>> = {};
   for (const f of runtimeSigmaFormats(format, mix)) {
     const band = formatRuntimeSigmaBand(f, point);
-    if (band) overrides[f] = band;
+    if (band) bands[f] = band;
   }
-  return Object.keys(overrides).length > 0 ? overrides : undefined;
+  return Object.keys(bands).length > 0 ? bands : undefined;
 }
 
 /** Whether every format the selection uses can pay the chosen ROI (see

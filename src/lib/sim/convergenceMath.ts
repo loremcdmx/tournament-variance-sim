@@ -1,12 +1,3 @@
-import {
-  evalSigma,
-  FIT_RAKE_BY_FORMAT,
-  SIGMA_ROI_FREEZE,
-  SIGMA_ROI_MYSTERY,
-  SIGMA_ROI_MYSTERY_ROYALE,
-  SIGMA_ROI_PKO,
-  type SigmaCoef,
-} from "./convergenceFit";
 import { runtimeSigmaBandResid } from "./runtimeSigmaBands";
 import { buildScheduleAnalyticBreakdown } from "./compile";
 import { applyGameType } from "./gameType";
@@ -25,14 +16,6 @@ import {
 } from "./convergencePolicy";
 import type { CalibrationMode, SimulationInput, TournamentRow } from "./types";
 
-export {
-  FIT_RAKE_BY_FORMAT,
-  SIGMA_ROI_FREEZE,
-  SIGMA_ROI_MYSTERY,
-  SIGMA_ROI_MYSTERY_ROYALE,
-  SIGMA_ROI_PKO,
-};
-
 export interface ConvergenceTableRow {
   targetPct: number;
   tourneys: number;
@@ -42,8 +25,6 @@ export interface ConvergenceTableRow {
   fieldsLo: number;
   fieldsHi: number;
 }
-
-export type SigmaRoiFit = SigmaCoef;
 
 export type MixTuple = [number, number, number];
 
@@ -125,15 +106,6 @@ export function normalizeMix(m: MixTuple): MixTuple {
   const s = m[0] + m[1] + m[2];
   if (s <= 1e-9) return [1 / 3, 1 / 3, 1 / 3];
   return [m[0] / s, m[1] / s, m[2] / s];
-}
-
-export function sigmaForFit(
-  coef: SigmaRoiFit,
-  afs: number,
-  roi: number,
-  rakeScale: number,
-): number {
-  return evalSigma(coef, afs, roi) * rakeScale;
 }
 
 export function posToAfs(pos: number): number {
@@ -396,70 +368,54 @@ export function oceanKoRoiReached(input: OceanKoRuntimeInput): boolean {
   ).ok;
 }
 
+const NO_SIGMA: SigmaBand = { s: NaN, lo: NaN, hi: NaN };
+
+/**
+ * The volumes of the convergence table, from σ the caller compiled: the
+ * schedule's breakdown on the Schedule tab, otherwise one band per format the
+ * tab uses (`buildRuntimeSigmaBands`, `buildOceanKoSigmaBand`). `sigmaBands`
+ * is required and nothing stands in for a missing band: a format without one
+ * prints no volume (NaN, shown as a dash), never a closed-form estimate.
+ */
 export function computeConvergenceRows(input: {
   afs: number;
   z: number;
-  roi: number;
   mix: MixTuple;
   format: ConvergenceFormat;
-  rakePct: number;
-  oceanKoTotalTicket?: number;
-  finishModel?: SimulationInput["finishModel"];
-  itmTarget?: ItmTargetConfig;
   exactBreakdown?: ExactBreakdown | null;
-  sigmaOverrides?: Partial<Record<RowFormat, SigmaBand>>;
+  sigmaBands: Partial<Record<RowFormat, SigmaBand>> | undefined;
 }): ConvergenceTableRow[] {
-  const { afs, z, roi, mix, format, rakePct, exactBreakdown, sigmaOverrides } =
-    input;
-  const fitRake =
-    format === "mystery-royale" ? FIT_RAKE_BY_FORMAT["mystery-royale"] : 0.10;
-  const rakeScale = (1 + fitRake) / (1 + rakePct / 100);
-  const sigmaForFitBand = (
-    coef: SigmaRoiFit,
-  ): SigmaBand => {
-    const s = sigmaForFit(coef, afs, roi, rakeScale);
-    return { s, lo: s * (1 - coef.resid), hi: s * (1 + coef.resid) };
-  };
-  const sigmaFor = (rowFormat: RowFormat, coef: SigmaRoiFit): SigmaBand =>
-    sigmaOverrides?.[rowFormat] ?? sigmaForFitBand(coef);
-
-  const f = sigmaFor("freeze", SIGMA_ROI_FREEZE);
-  const p = sigmaFor("pko", SIGMA_ROI_PKO);
-  const m = sigmaFor("mystery", SIGMA_ROI_MYSTERY);
-  const mr = sigmaFor("mystery-royale", SIGMA_ROI_MYSTERY_ROYALE);
-  const ocean = format === "ocean-ko"
-    ? sigmaOverrides?.["ocean-ko"] ?? buildOceanKoSigmaBand({
-        afs,
-        roi,
-        rake: rakePct / 100,
-        totalTicket: input.oceanKoTotalTicket ?? 100,
-        finishModel: input.finishModel,
-        itmTarget: input.itmTarget,
-      })
-    : null;
+  const { afs, z, mix, format, exactBreakdown, sigmaBands } = input;
+  const band = (rowFormat: RowFormat): SigmaBand =>
+    sigmaBands?.[rowFormat] ?? NO_SIGMA;
+  // A Mix component with no weight is not compiled, so it has no band.
+  const mixTerm = (share: number, rowFormat: RowFormat, key: "s" | "lo" | "hi") =>
+    share > 0 ? share * band(rowFormat)[key] * band(rowFormat)[key] : 0;
   const [fFreeze, fPko, fMystery] = mix;
+  // Weights that are not shares (NaN, negative, infinite, all zero) describe no
+  // blend, so the Mix has no σ: reading such a weight as "no weight" would
+  // print the σ of the other components, or 0 tournaments.
+  const mixIsShares =
+    mix.every((share) => Number.isFinite(share) && share >= 0) &&
+    fFreeze + fPko + fMystery > 0;
   const pick = (key: "s" | "lo" | "hi"): number =>
-    format === "exact" && exactBreakdown
-      ? key === "s"
-        ? exactBreakdown.sigmaEff
-        : key === "lo"
-          ? exactBreakdown.sigmaEffLo
-          : exactBreakdown.sigmaEffHi
-      : format === "ocean-ko" && ocean
-        ? ocean[key]
-        : format === "mystery-royale"
-          ? mr[key]
-          : format === "mystery"
-            ? m[key]
-            : format === "pko"
-              ? p[key]
-              : format === "freeze"
-                ? f[key]
-                : Math.sqrt(
-                    fFreeze * f[key] * f[key] +
-                      fPko * p[key] * p[key] +
-                      fMystery * m[key] * m[key],
-                  );
+    format === "exact"
+      ? exactBreakdown
+        ? key === "s"
+          ? exactBreakdown.sigmaEff
+          : key === "lo"
+            ? exactBreakdown.sigmaEffLo
+            : exactBreakdown.sigmaEffHi
+        : NaN
+      : format === "mix"
+        ? mixIsShares
+          ? Math.sqrt(
+              mixTerm(fFreeze, "freeze", key) +
+                mixTerm(fPko, "pko", key) +
+                mixTerm(fMystery, "mystery", key),
+            )
+          : NaN
+        : band(format)[key];
 
   const sigmaRoi = pick("s");
   const sigmaRoiLo = pick("lo");
