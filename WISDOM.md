@@ -248,8 +248,14 @@ free-band mass the model could not place, runs AFTER the equilibrium first-place
 Before it, the retry reads a different `shells.first` and inputs that pass today change
 bit-wise: the engine compile, the preview and `validateSchedule` all call it.
 
-The first-place floor is continuous in the cash target and gives way to it. At and above
-the no-skill cash winnings (`eqW`), where the natural P(1st) is under 1/N, the code solves
+The first-place floor gives way to the cash target and never decides what a row can
+reach. It runs only when the natural solution hits its cash target: T - tol(T) <= Wn <=
+max(T, maxCashWinnings) + tol (tol = targetEvTolerance). A natural solution that misses
+already pays the most (the least) its model can at this ITM and these locks, and is
+returned untouched, pmf and all; the floor lifting it made Run accept ROIs the model
+cannot pay and broke the verdict into several stretches along ROI. Uniform and no-data
+Empirical (`ignoresTarget`) never get the floor. Where the floor runs, at and above the
+no-skill cash winnings (`eqW`), where the natural P(1st) is under 1/N, the code solves
 with first locked at 1/N and returns that solve unchanged only when it pays inside
 [min(Wn, T), max(Wn, T, maxCashWinnings)] x (1 -/+ FIRST_PLACE_EV_SLACK) (Wn the natural
 cash winnings after the unplacedFreeMass repair, T the cash target): the byte-identity
@@ -292,8 +298,7 @@ configurations; 0 after). Rules that keep it working:
   break-even too.
 - The mixture's cash winnings stay inside the window above: a validated non-bounty row
   whose natural solution is on target pays its target to 1e-9 (the typed ROI is the
-  contract, the floor a preference), a natural solution already off target keeps its own
-  winnings, and a bounty row's cash side may rise to the total less the KO EV asked for, with the KO
+  contract, the floor a preference), a natural solution off target keeps its whole pmf because the floor does not run on it, and a bounty row's cash side may rise to the total less the KO EV asked for, with the KO
   residual closing the total: settleBountyAgainstPool hands every solve its cap
   (`solve(target, maxCashWinnings)`), `totalWinningsEV` for the plan's solve and the
   ceiling's search and less inside the KO floor's search. compileEntry, validation and
@@ -303,10 +308,19 @@ configurations; 0 after). Rules that keep it working:
   bisection noise slides on-target 1/N solutions and changes their bytes.
 - The gate and the share read the natural P(1st) BEFORE the unplacedFreeMass repair; the
   mixture runs AFTER it. That keeps both the order above and continuity at eqW.
-- The pmf is continuous in the target everywhere, into blocked rows too (480 + 1 008 +
-  1 080 swept configurations and 5 308 random hunter configurations, every spot over
-  0.005/N bisected to a slope); the only step left is `firstPlaceFloor`'s 1e-9 snap at
-  break-even (<= 1.6e-8/N).
+- While the natural solution hits its cash target, the pmf is continuous in the target
+  (every swept spot over 0.005/N bisected to a slope), apart from `firstPlaceFloor`'s
+  1e-9 snap at break-even. It steps where the natural solution's miss crosses the
+  tolerance, because the floor stops there; every such step sat on the overpaying side,
+  where the row turns blocked, so no runnable pmf jumps. Do not smooth it with a fade: a
+  fade changes the bytes of on-target rows within tolerance of an α end.
+- Run's verdict along ROI is one runnable interval: on 20 000 random Run-path
+  configurations (72 M points) and four structured grids (322 M points) it equals the
+  verdict with the floor switched off at every point. A row whose verdict breaks into
+  stretches means the floor is lifting a natural solution that misses again.
+- Byte grids must give Battle Royale rows a bounty share: validation.ts and compileEntry.ts
+  run the BR neutral solve only when bountyFraction > 0, so a BR row without one is a
+  freezeout on the BR table, and a 'no BR row changed' claim on such a grid is empty.
 - The floor yields to the ROI, never the other way round. Rows above break-even whose 1/N
   solution missed the target at every α used to be blocked; they now run with P(1st) at
   the most the target allows (8 906 of 346 150 scan points). Rows whose natural solution

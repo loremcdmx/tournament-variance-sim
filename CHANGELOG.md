@@ -92,6 +92,15 @@ for the same inputs, the entry says for which rows.
   that needs no more KO EV than the pool holds.
 - 'Fit closest inputs' no longer writes an ROI that is still blocked; when
   nothing fits it leaves the row as it is and says so.
+- Fixed-ITM rows no longer run at an ROI their finish model cannot pay at
+  that ITM, and Run's verdict along the ROI is one unbroken range. Where the
+  model's own shape could not reach the cash target, the no-skill
+  first-place share still lifted it there (a 10-player linear-skill PKO at a
+  10 % ITM reaches -6.9 % at most but also ran from -2.6 % to -0.7 %). Rows
+  on the uniform model, or the empirical model with no pasted history, at a
+  fixed ITM below what their table pays no longer change their finish shape
+  with the ROI you type: their σ and cash/knockout split stay the model's
+  own (σ moves by up to 46 % on such bounty rows).
 - Bounty rows no longer play less knockout EV than their own finishes
   guarantee: a PKO or Ocean KO winner always keeps their own starting head
   and takes the runner-up's, a Mystery winner always opens at least one

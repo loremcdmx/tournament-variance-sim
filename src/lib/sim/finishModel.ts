@@ -605,9 +605,8 @@ export function calibrateShelledItm(
     prevCum = cum;
   };
   pushBoundary(1, cumFirst);
-  // A floor solve keeps 2nd and 3rd free under a top-3 lock. A model with no
-  // α would land the same even split there, only rounded otherwise.
-  pushBoundary(Math.min(3, paid), cumTop3, floorSolve && !ignoresTarget);
+  // A floor solve keeps 2nd and 3rd free under a top-3 lock.
+  pushBoundary(Math.min(3, paid), cumTop3, floorSolve);
   pushBoundary(ftEnd, cumFt);
   pushBoundary(paid, clampedItm); // outermost = itmRate
 
@@ -746,7 +745,13 @@ export function calibrateShelledItm(
     (cumTop3 == null || cumTop3 >= equilibriumFirst) &&
     (cumFt == null || cumFt >= equilibriumFirst);
   let floored: ShelledCalibrationResult | null = null;
+  // The floor reads skill off the cash target, which a model with no α does
+  // not aim at: its shape is the same at every ROI (Uniform keeps every paid
+  // place alike). Lifted with the target, such a row's cash side would grow
+  // with the ROI, and a bounty row whose KO EV the pool caps would be blocked,
+  // runnable and blocked again along it.
   if (
+    !ignoresTarget &&
     locks.first == null &&
     paid > 1 &&
     clampedItm >= equilibriumFirst &&
@@ -783,17 +788,25 @@ export function calibrateShelledItm(
 
   // The typed ROI is the contract and the floor only a preference, so the
   // floor yields wherever it cannot be met at the target. The row's cash
-  // winnings stay between the target and the natural solution's own (a
-  // natural solution already off target keeps its winnings as the bound); a
+  // winnings stay between the target and the natural solution's own; a
   // bounty row may go up to what the caller plays, its KO budget hands the
-  // excess back. A model that ignores the target has no such contract.
-  if (floored) {
-    const high = ignoresTarget
-      ? Infinity
-      : Math.max(currentWinnings, targetWinnings, maxCashWinnings) * (1 + FIRST_PLACE_EV_SLACK);
-    const low = ignoresTarget
-      ? -Infinity
-      : Math.min(currentWinnings, targetWinnings) * (1 - FIRST_PLACE_EV_SLACK);
+  // excess back. A natural solution short of the target, or paying more than
+  // the caller plays, already pays the most (the least) its model can at this
+  // ITM and these locks, and the floor leaves it as it is: the floor must not
+  // decide what a row can reach. Under a tilt the 1/N lock pays less than a
+  // natural P(1st) just above 1/N and would pull an overpaying row inside the
+  // tolerance; a short bounty row's cash side, lifted toward the 1/N lock,
+  // would leave a KO residual the pool covers at totals no pmf of the model
+  // reaches. Reshaped at its own winnings, it would still move the P(last)
+  // that sit-through leaves, and so the pool's cap.
+  const playable = Math.max(targetWinnings, maxCashWinnings);
+  if (
+    floored &&
+    currentWinnings - playable <= targetEvTolerance(playable) &&
+    targetWinnings - currentWinnings <= targetEvTolerance(targetWinnings)
+  ) {
+    const high = Math.max(currentWinnings, playable) * (1 + FIRST_PLACE_EV_SLACK);
+    const low = Math.min(currentWinnings, targetWinnings) * (1 - FIRST_PLACE_EV_SLACK);
     let locked = floored.pmf;
     let lockedFirst = equilibriumFirst;
     let lockedWinnings = floored.currentWinnings;
@@ -871,7 +884,7 @@ export function calibrateShelledItm(
       for (let i = 0; i < N; i++) pmf[i] += share * (locked[i] - pmf[i]);
       alpha += share * (floored.alpha - alpha);
       currentWinnings = winningsOf();
-      feasible = ignoresTarget || withinTargetEv(currentWinnings, targetWinnings);
+      feasible = withinTargetEv(currentWinnings, targetWinnings);
       shells = shellsOf();
     }
   }

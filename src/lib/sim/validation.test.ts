@@ -550,13 +550,13 @@ describe("validateSchedule: a model that cannot move its finish shape", () => {
   const realdata: FinishModelConfig = { id: "pko-realdata-linear" };
 
   it("blocks a bounty row whose ROI only a KO EV past the pool could close", () => {
-    // Uniform at ITM 0.66 pays $69.51 of cash and the pool $59.40: $128.91, ROI
-    // +17.2 %, against the $220 of +100 %. The engine used to pay the $150.49
-    // residual out of that pool; then it paid $59.40 and Run stayed open.
+    // Uniform at ITM 0.66 pays $69.30 of cash and the pool $59.40: $128.70, ROI
+    // +17.0 %, against the $220 of +100 %. The pool cannot pay the $150.70 the
+    // cash side leaves.
     const pinned = validateSchedule([smallPko(1, 0.66)], uniform);
     expect(pinned.ok).toBe(false);
     expect(pinned.issues[0].targetEv).toBeCloseTo(220, 9);
-    expect(pinned.issues[0].currentEv).toBeCloseTo(128.91, 9);
+    expect(pinned.issues[0].currentEv).toBeCloseTo(128.7, 9);
     // The realdata shape with a free ITM: $49.13 of cash and $45.74 of KOs.
     const free = validateSchedule([smallPko(0.1)], realdata);
     expect(free.ok).toBe(false);
@@ -586,6 +586,26 @@ describe("validateSchedule: a model that cannot move its finish shape", () => {
       expect(fix.kind).toBe("match-roi");
       expect(fix.row.roi).toBeCloseTo(plays / 110 - 1, 9);
       expect(validateSchedule(effective(fix.row), uniform).ok).toBe(true);
+    }
+  });
+
+  it("decides a bounty row once along ROI, its cash side the same at every ROI", () => {
+    // 4-player PKO on a 50/30/20 table, $10 with no rake, bounty share 0.2, ITM
+    // 50 % against the 75 % the table pays: Uniform pays $5.33 of cash and the
+    // pool at most $4.00, so $9.33 is the most the row reaches (ROI -6.7 %).
+    // The floor's 1/4 lock pays $6.00 of cash; lifting the cash side toward it
+    // as the cash target nears the no-skill $8 would run ROIs past that most.
+    const fourMax = (roi: number) => row({
+      players: 4, buyIn: 10, rake: 0, roi, gameType: "pko", payoutStructure: "sng-50-30-20",
+      bountyFraction: 0.2, itmRate: 0.5,
+    });
+    for (const model of [uniform, { id: "empirical" } as const]) {
+      let verdicts = "";
+      for (let k = -200; k <= 50; k++) verdicts += validateSchedule([fourMax(k / 1000)], model).ok ? "o" : "x";
+      expect(verdicts).toBe("o".repeat(135) + "x".repeat(116));
+      const issue = validateSchedule([fourMax(0)], model).issues[0];
+      expect(issue.currentEv).toBeCloseTo(28 / 3, 9);
+      expect(issue.currentEv).toBeCloseTo(validateSchedule([fourMax(1)], model).issues[0].currentEv, 9);
     }
   });
 
@@ -801,6 +821,75 @@ describe("validateSchedule: the bounty residual cannot exceed the bounty pool", 
       bountyFraction: 0.5,
     });
     expect(validateSchedule(applyItmTarget([r], { enabled: false, pct: 18.7 }), model).ok).toBe(true);
+  });
+});
+
+describe("validateSchedule decides a small pinned-ITM row once along ROI", () => {
+  // Every 0.1 pp from ROI -60 % to +300 %, no sampling: each row runs on one
+  // stretch of ROIs, and the test pins its ends. Each sits where the
+  // first-place floor is in play near the edge of what its model pays.
+  const runnable = (r: TournamentRow, model: FinishModelConfig = baseModel) => {
+    let v = "";
+    for (let k = -600; k <= 3000; k++) v += validateSchedule([{ ...r, roi: k / 1000 }], model).ok ? "o" : "x";
+    expect(v).toMatch(/^x*o+x*$/);
+    return [v.indexOf("o") - 600, v.lastIndexOf("o") - 600].map((k) => k / 10);
+  };
+
+  // These three are pinned above their table's paid share, where the floor's
+  // 1/N solution cannot pay the cash target over part of the range.
+  it("on a freezeout", () => {
+    expect(runnable(row({ players: 15, buyIn: 10, rake: 0, itmRate: 0.15 }))).toEqual([-5.7, 31.3]);
+  });
+
+  it("on PKO and Ocean KO rows", () => {
+    const pko = row({
+      players: 6, buyIn: 10, rake: 0.1, itmRate: 0.66, gameType: "pko", payoutStructure: "mtt-gg-bounty",
+      bountyFraction: 0.5, bountyEvBias: 0.25,
+    });
+    // The least cash at ITM 66 % plus the KO EV its wins guarantee is $8.458 an
+    // entry, so the row starts at ROI -23.1 %; below it the cause is knockout-floor.
+    expect(runnable(pko)).toEqual([-23.1, 266.9]);
+    const ocean = row({
+      players: 5, buyIn: 10, rake: 0, itmRate: 0.9, gameType: "ocean-ko", payoutStructure: "mtt-gg-bounty",
+      bountyFraction: 50 / 92, bountyEvBias: 0.25,
+    });
+    // Ocean's floor: the least cash at ITM 90 % and the guaranteed KO EV pay $9.049.
+    expect(runnable(ocean)).toEqual([-9.5, 296.6]);
+  });
+
+  it("on linear-skill bounty rows whose steepest shape leaves first place under 1/N", () => {
+    // Pinned under paid / 2N, linear skill puts at most 2 x ITM / paid on first
+    // place. The most a row reaches is that shape's cash side plus the pool,
+    // N x buyIn x bounty share x (1 - P(last)), and the tolerance admits a
+    // total up to 1/0.999 of it. Lifting the cash side toward the floor's 1/N
+    // lock would run ROIs past it.
+    const linear: FinishModelConfig = { id: "linear-skill" };
+    const bounty = (over: Partial<TournamentRow>) => row({ buyIn: 10, rake: 0, gameType: "pko", ...over });
+    // 10-max, ITM 10 %, bounty share 6 %: $4.0733 of cash and $5.2286 of KOs,
+    // ROI -6.89 %.
+    expect(runnable(bounty({
+      players: 10, payoutStructure: "mtt-gg-bounty", itmRate: 0.1, bountyFraction: 0.06, bountyEvBias: 0.25,
+    }), linear)).toEqual([-60, -6.9]);
+    // 5-max on 50/30/20, ITM 20 %, bounty share 0.2: $3.4667 and $6.00, ROI
+    // -5.24 %.
+    expect(runnable(bounty({
+      players: 5, payoutStructure: "sng-50-30-20", itmRate: 0.2, bountyFraction: 0.2,
+    }), linear)).toEqual([-60, -5.3]);
+    // 7-max Ocean KO on 50/30/20, $10 + 10 %, ITM 15 %, bounty share 0.2:
+    // $3.64 and $11.025, ROI +33.45 %.
+    expect(runnable(bounty({
+      players: 7, rake: 0.1, gameType: "ocean-ko", payoutStructure: "sng-50-30-20", itmRate: 0.15,
+      bountyFraction: 0.2, bountyEvBias: 0.25,
+    }), linear)).toEqual([-60, 33.4]);
+    // 10-max Ocean KO on the Sunday Million table (9 paid), $100, ITM 30 %,
+    // bounty share 0.3, sit-through at 0.5: $35.1138 of cash, and sit-through
+    // leaves P(last) 0.731721, so the pool covers $80.4836, ROI +15.71 %.
+    // Reshaping it at $35.1138 would raise the P(last) sit-through leaves and
+    // lower the pool's cap with it, blocking ROIs the model pays.
+    expect(runnable(bounty({
+      players: 10, buyIn: 100, gameType: "ocean-ko", payoutStructure: "mtt-sunday-million", itmRate: 0.3,
+      bountyFraction: 0.3, sitThroughPayJumps: true, payJumpAggression: 0.5,
+    }), linear)).toEqual([-60, 15.7]);
   });
 });
 

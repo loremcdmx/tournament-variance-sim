@@ -455,9 +455,10 @@ describe("the engine never pays more KO EV than the bounty pool holds", () => {
   });
 
   it("flags a fixed-shape row the pool leaves short of its ROI, in every pass", () => {
-    // Uniform at ITM 0.66 pays $69.51 of cash; the pool holds $59.40 for one
-    // entry, so ROI +100 % ($220) is out of reach. The KO EV used to close the
-    // whole $150.49 gap, and a model that does not aim at the ROI raised nothing.
+    // Uniform at ITM 0.66 pays $69.30 of cash; the pool holds $59.40 for one
+    // entry, so ROI +100 % ($220) is out of reach: the KO EV cannot close the
+    // $150.70 the cash side leaves, and a model that does not aim at the ROI
+    // raises nothing.
     const uniform: FinishModelConfig = { id: "uniform" };
     const at = (roi: number) => ({ ...reported, roi });
     const compiled = compileSchedule(input(at(1), { samples: 1, finishModel: uniform }));
@@ -468,8 +469,8 @@ describe("the engine never pays more KO EV than the bounty pool holds", () => {
     expect(warning.kind).toBe("target-unreachable");
     expect(warning.targetWinnings).toBeCloseTo(220, 9);
     expect(warning.actualWinnings).toBe(entry.analyticMeanSingle);
-    expect(entry.analyticMeanSingle).toBeCloseTo(128.91, 9);
-    expect(compiled.expectedProfit).toBeCloseTo(18.91, 9);
+    expect(entry.analyticMeanSingle).toBeCloseTo(128.7, 9);
+    expect(compiled.expectedProfit).toBeCloseTo(18.7, 9);
     // PrimeDope's pass with our finish model frees the ITM and still falls short.
     const pdOff = compileSchedule(
       input(at(1), { samples: 1, finishModel: uniform, usePrimedopeFinishModel: false }),

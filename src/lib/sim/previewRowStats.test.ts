@@ -407,7 +407,7 @@ describe("computeRowStats shell feasibility agrees with validateSchedule on boun
   });
 
   it("shows a fixed-shape row whose KO EV cannot close its ROI as infeasible, as Run does", () => {
-    // Uniform at ITM 0.66 reaches $69.51 + $59.40 of the $220 that +100 % asks
+    // Uniform at ITM 0.66 reaches $69.30 + $59.40 of the $220 that +100 % asks
     // for; at +10 % the $51.70 residual fits the pool and the row runs.
     const uniform = { id: "uniform" as const };
     const at = (roi: number) => pko({
@@ -417,7 +417,7 @@ describe("computeRowStats shell feasibility agrees with validateSchedule on boun
     const short = computeRowStats(at(1), uniform);
     expect(short.shellFeasible).toBe(false);
     expect(short.bountyEvPerEntry).toBeCloseTo(59.4, 9);
-    expect(short.evPerEntry).toBeCloseTo(128.91, 9);
+    expect(short.evPerEntry).toBeCloseTo(128.7, 9);
     expect(validateSchedule([at(1)], uniform).ok).toBe(false);
     expect(computeRowStats(at(0.1), uniform).shellFeasible).toBe(true);
     expect(validateSchedule([at(0.1)], uniform).ok).toBe(true);
