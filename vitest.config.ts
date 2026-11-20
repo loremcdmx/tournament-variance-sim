@@ -11,6 +11,13 @@ export default defineConfig({
     // it far enough out that only a genuine hang trips it.
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    // V8 compiles hot code on a background thread by default, so which code a
+    // call runs depends on when that compile lands, i.e. on the machine's load.
+    // Compiling on the spot runs the same code on every run: a V8 miscompile
+    // that gave the format comparison's rows one another's variance failed only
+    // under load before, and fails formatComparisonRows.test.ts every time if
+    // momentRow takes its loop back.
+    execArgv: ["--no-concurrent-recompilation"],
   },
   resolve: {
     alias: {

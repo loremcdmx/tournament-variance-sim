@@ -182,11 +182,8 @@ function scaledBounds(bounds: NumericBounds, scale: number): NumericBounds {
   return { lower: bounds.lower * scale, upper: bounds.upper * scale };
 }
 
-function momentRow(scenario: FormatComparisonScenario, entry: CompiledEntry): FormatComparisonMomentRow {
-  const row = scenario.input.schedule[0];
-  const ticket = entry.singleCost;
+function cashBountySums(entry: CompiledEntry) {
   const pmf = aliasPmf(entry);
-  const moments = compiledEntryMoments(entry);
   let cashMean = 0, cashSecond = 0, bountyMean = 0, cross = 0;
   for (let i = 0; i < pmf.length; i++) {
     const cash = entry.prizeByPlace[i];
@@ -196,6 +193,20 @@ function momentRow(scenario: FormatComparisonScenario, entry: CompiledEntry): Fo
     bountyMean += pmf[i] * bounty;
     cross += pmf[i] * cash * bounty;
   }
+  return { cashMean, cashSecond, bountyMean, cross };
+}
+
+// Keep the loop over places out of this function. With it here, Node 24's V8
+// (13.6) compiled momentRow mid-loop on a large field (Maglev on-stack
+// replacement), and that code gave the bound objects of the next, smaller
+// comparison's rows one shared set of numbers: earlier rows read the Ocean
+// row's variance. Whether the compile landed in time depended on machine load;
+// `--no-concurrent-recompilation` makes it land on every run.
+function momentRow(scenario: FormatComparisonScenario, entry: CompiledEntry): FormatComparisonMomentRow {
+  const row = scenario.input.schedule[0];
+  const ticket = entry.singleCost;
+  const moments = compiledEntryMoments(entry);
+  const { cashMean, cashSecond, bountyMean, cross } = cashBountySums(entry);
   const square = ticket * ticket;
   const varianceBI2 = {
     lower: Math.max(0, (moments.secondDollarLower ?? moments.secondDollar) - moments.meanDollar ** 2) / square,

@@ -613,7 +613,12 @@ that there are zero `AssertionError` / numeric mismatches.
 This was actually investigated once: 17 failures under artificial CPU contention
 were 100% timeouts, and the `bountyEvBias` scenario produced byte-identical
 17-significant-digit output across three quiet runs and three runs under 36 CPU
-hogs. CPU load cannot move a seeded number.
+hogs. CPU load cannot move a seeded number through our code. It did once through V8:
+on 19 November 2026 a Maglev on-stack-replacement compile of formatComparison's
+momentRow (Node 24, V8 13.6) gave the next comparison's rows one shared set of bound
+objects, and whether that compile landed in time depended on load. vitest.config.ts now
+runs V8 with `--no-concurrent-recompilation`, so the same optimised code runs every time
+and such a miscompile fails on every run instead of under load only.
 
 The real defect was config, not code: ~20 Monte Carlo tests sat at 0.5-1.4s
 against Vitest's unconfigured 5s default `testTimeout`, and contention costs
@@ -623,7 +628,10 @@ genuine hangs and cost the most time under exactly the load that triggers this.
 
 Corollary for the other direction: if an engine test ever fails with a real
 numeric mismatch, do **not** widen the tolerance. That is the determinism
-contract breaking, and the root cause is in `src/lib/sim/`.
+contract breaking. The root cause is almost always in `src/lib/sim/` or a module it
+feeds; if the same test passes alone and fails only in a loaded parallel run, also
+suspect the JIT (rerun with `--no-concurrent-recompilation`, then `--no-maglev-osr`), as
+in formatComparisonRows.test.ts.
 
 ## Seed Era And Reproducibility
 
