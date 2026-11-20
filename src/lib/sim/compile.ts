@@ -22,6 +22,7 @@ import type {
 } from "./engineTypes";
 import type {
   CalibrationMode,
+  CalibrationWarning,
   SimulationInput,
   TournamentRow,
 } from "./types";
@@ -111,11 +112,19 @@ export function compileSchedule(
   const rowExpectedWinnings = variants.map((row) =>
     row.reduce((sum, { entry, share }) => sum + share * entry.analyticMeanSingle, 0),
   );
-  // One notice per row: a Field-size range compiles one entry per size, and the
-  // run plays their mixture, which is also what the expected profit reads.
-  const calibrationWarnings = variants.flatMap((row, r) => {
-    const warning = row.find(({ entry }) => entry.calibrationWarning)?.entry.calibrationWarning;
-    return warning ? [{ ...warning, actualWinnings: rowExpectedWinnings[r] }] : [];
+  // One notice per row. A Field-size range compiles one entry per size, and
+  // sizes that miss in opposite directions can average out to the target, so
+  // the notice quotes the size that misses the most, as validateSchedule does.
+  const calibrationWarnings = variants.flatMap((row) => {
+    let worst: { warning: CalibrationWarning; fieldSize: number } | null = null;
+    for (const { entry } of row) {
+      const warning = entry.calibrationWarning;
+      if (warning && (worst === null || relativeMiss(warning) > relativeMiss(worst.warning))) {
+        worst = { warning, fieldSize: entry.fieldSize };
+      }
+    }
+    if (worst === null) return [];
+    return [row.length > 1 ? { ...worst.warning, fieldSize: worst.fieldSize } : worst.warning];
   });
   const rowTargetClamped = variants.map((row) => row.some(({ entry }) => entry.calibrationWarning));
   // Fixed-shape models (uniform, empirical, *-realdata-*) and a pinned α never
@@ -198,6 +207,11 @@ export function compileSchedule(
       (row): row is BattleRoyaleLeaderboardMixRow => row != null,
     ),
   };
+}
+
+function relativeMiss(warning: CalibrationWarning): number {
+  return Math.abs(warning.actualWinnings - warning.targetWinnings) /
+    Math.max(1e-9, Math.abs(warning.targetWinnings));
 }
 
 export function buildScheduleAnalyticBreakdown(input: {

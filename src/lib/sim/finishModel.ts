@@ -71,8 +71,14 @@ export function bountyEvCeiling(
   return N * buyIn * bountyFraction * (1 - (pmf[N - 1] ?? 0));
 }
 
+/**
+ * True when the bounty pool can pay `residual` of KO EV to one entry. The
+ * slack is rounding only (a heads-up row at the ITM its ROI implies lands on
+ * the ceiling to the last bit): past the ceiling the engine would pay money
+ * the table does not hold, so the on-target tolerance does not apply.
+ */
 export function bountyResidualFits(residual: number, ceiling: number): boolean {
-  return residual <= ceiling + targetEvTolerance(ceiling);
+  return residual <= ceiling * (1 + 1e-9);
 }
 
 /**

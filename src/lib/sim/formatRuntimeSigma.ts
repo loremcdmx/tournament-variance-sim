@@ -161,7 +161,8 @@ export function formatRuntimeSigma(
  * Whether the format's row can pay `point.roi` at its pinned ITM, decided by
  * `validateSchedule`, the gate Run uses. Out of reach, the compiled row
  * saturates at another ROI and its σ belongs to that ROI, not the label.
- * Fixed-shape models never calibrate to the ROI and always pass.
+ * Fixed-shape models never calibrate to the ROI and pass, unless the bounty
+ * pool cuts the KO EV that closes a bounty row's ROI.
  */
 export function formatRuntimeRoiReached(
   format: RuntimeSigmaFormat,

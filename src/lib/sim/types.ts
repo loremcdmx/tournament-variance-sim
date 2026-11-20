@@ -874,6 +874,12 @@ export interface CalibrationWarning {
   kind: "primedope-target-clamped" | "primedope-free-itm-unreachable" | "target-unreachable";
   targetWinnings: number;
   actualWinnings: number;
+  /**
+   * Set only for a row with a Field-size range: the field the two winnings
+   * belong to, the size that misses the most. The row's own mean can sit on
+   * target when its sizes miss in opposite directions.
+   */
+  fieldSize?: number;
 }
 
 export interface SimulationResult {

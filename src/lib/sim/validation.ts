@@ -7,19 +7,17 @@
  */
 import {
   applyBountyBias,
-  bountyEvCeiling,
-  bountyResidualFits,
   calibrateShelledItm,
   cashTargetFloor,
   isAlphaAdjustable,
   playsWholeFieldShape,
-  targetEvTolerance,
   withinTargetEv,
 } from "./finishModel";
 import { buildScheduleAnalyticBreakdown } from "./compile";
 import {
   clampBountyMean,
   isBattleRoyaleRow,
+  settleBountyAgainstPool,
 } from "./bountySplit";
 import {
   buildBattleRoyaleCashTargetPmf,
@@ -55,9 +53,12 @@ export interface ScheduleFeasibility {
  * both branches, and reports the size that misses its target the most. A
  * model with no α to move (uniform, empirical, realdata-*) is held to its
  * shell locks only: its shape, not the typed ROI, decides what the row pays.
+ * On a bounty row the KO EV closes its ROI instead, so it is blocked when the
+ * bounty pool cannot pay that KO EV.
  *
  * This mirrors compileEntry's targetRegular, its Battle Royale cash/KO
- * centre and its bounty lift; change them together, or the run-blocking
+ * centre, its bounty lift and the bounty pool's cap on the KO EV
+ * (`settleBountyAgainstPool`); change them together, or the run-blocking
  * banner will disagree with what the engine plays.
  */
 export function validateSchedule(
@@ -68,7 +69,11 @@ export function validateSchedule(
   schedule.forEach((rawRow, idx) => {
     const row = normalizeGameTypeConsistency(rawRow);
     if (row.itmRate == null || row.itmRate <= 0) {
-      if (!isAlphaAdjustable(model)) return;
+      // A model that does not aim at the ROI plays its own shape, and on a
+      // bounty row the KO EV closes the rest of the total, so it falls short
+      // only where the bounty pool cuts that KO EV (`poolCut` in the engine).
+      const aimsAtRoi = isAlphaAdjustable(model);
+      if (!aimsAtRoi && !((row.bountyFraction ?? 0) > 0)) return;
       // Per field size, as the engine warns per size: a size that cannot reach
       // the ROI blocks even when the other sizes dilute the mixture's gap to
       // within the tolerance.
@@ -82,6 +87,7 @@ export function validateSchedule(
         const meanSingle = analytic?.perRow[0]?.meanSingle;
         if (meanSingle == null || !Number.isFinite(meanSingle)) continue;
         if (withinTargetEv(meanSingle, targetEv)) continue;
+        if (!aimsAtRoi && meanSingle > targetEv) continue;
         const issue: RowFeasibilityIssue = {
           rowId: row.id,
           rowIdx: idx,
@@ -248,47 +254,64 @@ function fixedItmIssueAtField(
       : centerCashTarget;
     bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
   }
-  const targetRegular = Math.max(cashTargetFloor(entryCost), totalWinningsEV - bountyMean);
 
-  const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleCenter
-    ? buildBattleRoyaleCashTargetPmf({
-        N,
-        payouts,
-        prizePool,
-        itmRate: row.itmRate,
-        targetWinnings: targetRegular,
-        anchorPmf: battleRoyaleCenter.pmf,
-        anchorWinnings: battleRoyaleCenter.cashEV,
-        finishBuckets: row.finishBuckets,
-        preferTopHeavy: row.roi > 0,
-        topHeavyBias: row.itmTopHeavyBias ?? 0,
-      })
-    : null;
-  const r = winnerFirst ?? calibrateShelledItm(
+  const prizeByPlace = new Float64Array(N);
+  for (let i = 0; i < Math.min(payouts.length, N); i++) prizeByPlace[i] = payouts[i] * prizePool;
+  const settled = settleBountyAgainstPool({
     N,
     paidCount,
-    payouts,
-    prizePool,
-    targetRegular,
-    row.itmRate,
-    row.finishBuckets,
-    model,
-    row.itmTopHeavyBias ?? 0,
-    bountyFraction > 0 ? totalWinningsEV : targetRegular,
-  );
-  const bountyCeiling = bountyEvCeiling(N, row.buyIn, bountyFraction, r.pmf);
-  const residualCanCloseTotal =
-    bountyFraction > 0 &&
-    r.currentWinnings <= totalWinningsEV + targetEvTolerance(totalWinningsEV) &&
-    bountyResidualFits(totalWinningsEV - r.currentWinnings, bountyCeiling);
-  const feasible = r.feasible || residualCanCloseTotal;
+    buyIn: row.buyIn,
+    bountyFraction,
+    totalWinningsEV,
+    cashFloor: cashTargetFloor(entryCost),
+    plannedBountyMean: bountyMean,
+    residualCloses: true,
+    sitThrough: row.sitThroughPayJumps === true,
+    payJumpAggression: row.payJumpAggression,
+    solve: (targetRegular) => {
+      const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleCenter
+        ? buildBattleRoyaleCashTargetPmf({
+            N,
+            payouts,
+            prizePool,
+            itmRate: row.itmRate,
+            targetWinnings: targetRegular,
+            anchorPmf: battleRoyaleCenter.pmf,
+            anchorWinnings: battleRoyaleCenter.cashEV,
+            finishBuckets: row.finishBuckets,
+            preferTopHeavy: row.roi > 0,
+            topHeavyBias: row.itmTopHeavyBias ?? 0,
+          })
+        : null;
+      if (winnerFirst) return { ...winnerFirst, prizeByPlace, aimsAtTarget: true };
+      const r = calibrateShelledItm(
+        N,
+        paidCount,
+        payouts,
+        prizePool,
+        targetRegular,
+        row.itmRate,
+        row.finishBuckets,
+        model,
+        row.itmTopHeavyBias ?? 0,
+        bountyFraction > 0 ? totalWinningsEV : targetRegular,
+      );
+      return { ...r, prizeByPlace, aimsAtTarget: r.supportsTargetRoi };
+    },
+  });
+  const r = settled.solved;
+  const targetRegular = settled.targetRegular;
+  // A bounty row hits its total when the KO EV it plays closes what the cash
+  // side leaves, the bounty pool permitting; a model that does not aim at
+  // the ROI is held to its locks only, unless the pool cut that KO EV.
+  const playedEv = settled.cashEV + settled.bountyMean;
+  const feasible = bountyFraction > 0
+    ? withinTargetEv(playedEv, totalWinningsEV) ||
+      (r.feasible && !r.aimsAtTarget && !settled.poolCut)
+    : r.feasible;
   if (!feasible) {
     const targetEv = bountyFraction > 0 ? totalWinningsEV : targetRegular;
-    const currentEv =
-      bountyFraction > 0
-        ? r.currentWinnings +
-          Math.min(bountyCeiling, Math.max(0, totalWinningsEV - r.currentWinnings))
-        : r.currentWinnings;
+    const currentEv = bountyFraction > 0 ? playedEv : r.currentWinnings;
     return {
       rowId: row.id,
       rowIdx: idx,

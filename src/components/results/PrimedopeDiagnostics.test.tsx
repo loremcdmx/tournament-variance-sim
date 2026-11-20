@@ -86,6 +86,29 @@ describe("PrimeDope clamp notice", () => {
     expect(markup).toContain("запрошено $10,82, смоделировано $10,00");
   });
 
+  it("names the field size a ranged row misses at, not the mean of its sizes", () => {
+    // The sizes of a 5-50 range at ROI +30 % play $15.60 / $12.98 / $14.30
+    // against $14.30; their mean, $14.29, would read as on target.
+    const result = runSimulation(input);
+    const ranged = (kind: "target-unreachable" | "primedope-target-clamped" | "primedope-free-itm-unreachable") => ({
+      ...result,
+      calibrationWarnings: [{ rowId: "test", kind, targetWinnings: 14.3, actualWinnings: 12.978, fieldSize: 28 }],
+    });
+    const ours = renderToStaticMarkup(<LocaleProvider><CalibrationNotices result={ranged("target-unreachable")} /></LocaleProvider>);
+    expect(ours).toContain("Модель финишей не смогла выйти на заданный ROI");
+    expect(ours).toContain("Наибольший промах — при размере поля 28: запрошено $14,30, смоделировано $12,98");
+    expect(ours).toContain("по смоделированным выплатам всех размеров поля");
+    const clamped = renderToStaticMarkup(<LocaleProvider><CalibrationNotices result={ranged("primedope-target-clamped")} /></LocaleProvider>);
+    expect(clamped).toContain("PrimeDope не достиг");
+    expect(clamped).toContain("при размере поля 28");
+    const free = renderToStaticMarkup(<LocaleProvider><CalibrationNotices result={ranged("primedope-free-itm-unreachable")} /></LocaleProvider>);
+    expect(free).toContain("даже без фиксации ITM");
+    expect(free).toContain("при размере поля 28");
+    for (const key of ["calibration.targetUnreachable.range", "pd.calibrationClamped.range", "pd.freeItmUnreachable.range"] as const) {
+      expect(DICT[key].en).toContain("The biggest miss is at a field of {field}");
+    }
+  });
+
   it("says our model missed in the PrimeDope pass when the free-ITM retry still falls short", () => {
     const result = runSimulation(input);
     const missed = { ...result, calibrationWarnings: [{ rowId: "test",
