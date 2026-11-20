@@ -1112,8 +1112,20 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   side saturates or empties (small fields, a range's small buckets, an ITM far from the
   field's own; on 43 of 160 random rows the line missed a typed share by up to 4.9 pp).
   shareToBias checks the line's guess and otherwise solves the row by Illinois false
-  position (about 2 solves per commit). No keystroke solves the row; realisedBountyShare
-  caches one computeRowStats per bias per row, so keep shareAtBias memoized.
+  position (about 2 solves per commit). No keystroke and no render solves the row. realisedBountyShare caches one
+  computeRowStats per bias per row; FinishPMFPreview builds it, its probes and its pool flag
+  on the engine's whole row with only the bias taken out (withoutBountyBias), so late
+  registration and every other field compile reads are in it (a hand-picked field list
+  dropped lateRegMultiplier: Battle Royale at 18 x 1.2 offered 30-65 % where the engine plays
+  45.65 %). The drag table of 41 grid biases fills in 8 ms slices on setTimeout, only once
+  the pointer or focus reaches the slider on a heavy row; a bias not yet solved shows a
+  straight-line estimate marked '≈', and the release is solved in the event. A typed share
+  commits the bias whose realised share it is; past an end it commits that end and the
+  note names the pool's cap (RowStats.bountyAtPoolCeiling within 1e-6 at bias -0.25, never
+  poolCut) or the row's range; a share the row jumps over commits the nearer side (picked by
+  |share - target|, not by Illinois-halved residuals). Ends and notes compare shares at the
+  precision the box prints (half a printed unit), because solved ends sit an ulp inside a
+  typed end figure and the box prints 3 places under 1 % and 1 above.
 - Reference lines hold, show and label the ROI to hundredths of a percent, and
   loadRefLines re-derives every label with roiLabel (a label is derived, never typed).
 - CSV import, comma route: in a line that spaces its other commas, an unspaced `d{1,3},ddd`
@@ -1189,9 +1201,13 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   (`bountyEvCeiling`) of the pmf it plays, after sit-through, by `settleBountyAgainstPool`
   (bountySplit.ts); compileEntry, validateSchedule and computeRowStats all call it with their
   own solve. It returns at once when the plan fits (the byte-identity guarantee; do not
-  pre-clamp the plan: 1 225 grid rows fit only because their cash side overshoots), and
-  otherwise finds the fixed point b = ceiling(solve(total - b)) by a bracketed Illinois
-  search (3-23 solves), because the solve moves P(last). bountyResidualFits is
+  pre-clamp the plan: 1 225 grid rows fit only because their cash side overshoots), and otherwise finds the fixed point b = ceiling(solve(total - b)) by a bracketed Illinois
+  search (3-23 solves), because the solve moves P(last). Where a pinned ITM or a fixed shape
+  overshoots its cash target past the on-target tolerance, the search holds what the row
+  plays, total - cash(solve(total - b)), to the ceiling instead of the ask b (searched on
+  the ask, a 4-max pinned GG row's KO end played 14.4 % in KOs against 26.2 % one drag step
+  short of it). Only an overshoot reads the residual: reading it on every solve moved 361
+  on-target rows by about 1e-10. bountyResidualFits is
   rounding-only (ceiling x (1 + 1e-9)); do not put the 0.1 % on-target slack back. A
   fixed-shape model aims at the ROI on a bounty row exactly when the pool cut its KO EV
   (`poolCut`): do not drop `!poolCut` from validation's or the preview's 'locks only' pass

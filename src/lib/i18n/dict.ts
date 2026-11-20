@@ -2321,6 +2321,18 @@ export const DICT = {
   "preview.evBias.cash": { en: "cash", ru: "кэш" },
   "preview.evBias.bounty": { en: "KOs", ru: "ноки" },
   "preview.evBias.reset": { en: "reset", ru: "сброс" },
+  "preview.evBias.poolCap": {
+    en: "The bounty pool caps KOs at {x} of the winnings on this row.",
+    ru: "KO-пул этого турнира не даёт нокам больше {x} выигрыша.",
+  },
+  "preview.evBias.range": {
+    en: "On this row KOs make {lo} to {hi} of the winnings.",
+    ru: "В этом турнире ноки дают от {lo} до {hi} выигрыша.",
+  },
+  "preview.evBias.gap": {
+    en: "KOs cannot make exactly {x} of the winnings on this row; the nearest it plays is {y}.",
+    ru: "Ровно {x} выигрыша ноки в этом турнире не дают; ближе всего — {y}.",
+  },
   "preview.topHeavyBias.label": {
     en: "ITM top-heaviness",
     ru: "% топ-хеви ITM",
