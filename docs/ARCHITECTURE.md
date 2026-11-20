@@ -106,8 +106,11 @@ The current split is:
      The sizes come from `fieldVariants.ts` (`fieldVariantSizes`), the one place
      that decides them: validation checks every size (pinned or free ITM), the
      preview averages over them, a calibration warning is raised once per row
-     and quotes the mixture's mean (what the expected profit reads), and under
-     a range `players` is read as the range midpoint
+     and quotes the size that misses the most with its `fieldSize` (the size
+     validation reports; sizes that miss in opposite directions can average
+     out to the target, so the mixture's mean, which the expected profit
+     reads, is not quoted), and under a range `players` is read as the range
+     midpoint
      (`normalizeGameTypeConsistency`), never as a field of its own. A Battle
      Royale row carries no range; `compileSchedule`, `validateSchedule` and
      `computeRowStats` all normalize the row first, so none of them plays one.
@@ -116,9 +119,10 @@ The current split is:
    - For bounty rows, applies the requested KO EV share as a finish-shape
      target and then closes constrained rows (`itmRate`, shells, fixed-shape
      models) by setting the actual bounty budget to `targetTotal - cashEV`.
-     This keeps total ROI pinned even when α hits a boundary. Battle Royale
-     keeps its published average envelope size fixed and scales expected KO
-     counts instead.
+     This keeps total ROI pinned even when α hits a boundary. The KO EV never
+     passes what the bounty pool can pay one entry (`bountyEvCeiling`, see
+     "KO EV share"). Battle Royale keeps its published average envelope size
+     fixed and scales expected KO counts instead.
    - Builds alias tables for fast weighted sampling.
    - Returns `CompiledEntry[]` — flat, shard-independent, serializable.
 
@@ -166,6 +170,25 @@ usually hit the requested cash target directly. Fixed-ITM/shelled rows and
 fixed-shape models may hit an α boundary first, so `compileSchedule()` treats
 the requested split as a shape request and then reconciles the actual bounty
 budget as `targetTotal - cashEV`.
+
+Either way the KO EV is capped by the bounty pool: one entry collects at most
+N x buyIn x bountyFraction x (1 - P(last)) (`bountyEvCeiling`), read on the
+pmf the row plays, after sit-through. `settleBountyAgainstPool`
+(`bountySplit.ts`) does it for `compileEntry`, `previewRowStats` and
+`validation` alike. A row whose KO EV fits is solved once. A plan
+past the ceiling is cut to the largest KO EV the pmf solved for it can pay,
+the fixed point b = ceiling(solve(total - b)), and the cash side is asked for
+the rest: more cash lowers P(last) and lifts the ceiling, so a bracketed
+regula falsi (Illinois) between the first ceiling and the plan finds it in a
+few solves, and a pinned ITM with unpaid places (P(last) fixed by the pin)
+lands on it in one solve. A cash side that
+cannot deliver the rest leaves the row short of its total: `validateSchedule`
+blocks it, and the engine raises `target-unreachable` (the PrimeDope pass its
+own two kinds) so the expected profit reads the pmf. A model that does not aim
+at the ROI (uniform, empirical, the realdata shapes, a hand-set α) plays its
+own cash side and closes the rest with the KO EV, so it misses only where the
+pool cuts that KO EV (`poolCut`); such a row is blocked and flagged like any
+other, while one whose shape alone overpays the total stays held to its shape.
 
 Battle Royale has one extra invariant: the GG-style tier table fixes the
 average dollars per envelope. The engine therefore scales `bountyKmean`

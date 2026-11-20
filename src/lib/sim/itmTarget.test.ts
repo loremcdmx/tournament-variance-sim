@@ -6,6 +6,7 @@ import {
   resolveItmTarget,
 } from "./itmTarget";
 import { validateSchedule } from "./validation";
+import { compileSchedule } from "./compile";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
 const baseRow: TournamentRow = {
@@ -165,6 +166,27 @@ describe("applyItmTarget on a table whose paid places all pay the same", () => {
     const live = applyItmTarget([{ ...breakEven, roi: 1 }], off, model);
     expect(live[0].itmRate).toBe(0.5);
     expect(validateSchedule(live, model).ok).toBe(false);
+  });
+
+  it("stamps the ROI's own ITM where the zero-skill one leaves the pool a little short", () => {
+    // Heads-up winner-takes-all, $100+$10, half of it bounty, ROI -9.05 %: the
+    // $100.045 target leaves $50.045 of KO EV at ITM 0.5, where a winner
+    // collects $50. The 0.09 % excess is inside the on-target tolerance, which
+    // let the engine pay it out of a pool that does not hold it. ITM 0.500225
+    // reaches the target with the KO EV exactly at the pool's share.
+    const hu: TournamentRow = { ...oneLevel("winner-takes-all", 2, -0.0905), gameType: "pko", bountyFraction: 0.5 };
+    const live = applyItmTarget([hu], off, model);
+    expect(live[0].itmRate).toBeCloseTo(0.500225, 12);
+    const entry = compileSchedule({
+      schedule: live, scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model,
+    }).flat[0];
+    let won = entry.aliasProb[0] / 2;
+    for (let i = 0; i < 2; i++) if (entry.aliasIdx[i] === 0) won += (1 - entry.aliasProb[i]) / 2;
+    const ko = entry.analyticMeanSingle - won * entry.prizeByPlace[0];
+    const ceiling = 2 * 100 * 0.5 * won;
+    expect(ko).toBeLessThanOrEqual(ceiling * (1 + 1e-9));
+    expect(entry.analyticMeanSingle).toBeCloseTo(100.045, 9);
+    expect(validateSchedule(live, model).ok).toBe(true);
   });
 
   it("keeps the table's own ITM for a model that does not aim at the ROI", () => {

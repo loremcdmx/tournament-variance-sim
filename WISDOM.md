@@ -317,9 +317,11 @@ residual coefficient before being band-eligible.
   `validateSchedule` checks every size on both the pinned-ITM and the free-ITM
   branch (a small bucket can miss the ROI target while the nominal field, or
   the mixture's mean, is fine), and `computeRowStats` averages over them
-  (`previewFieldMixture.ts`). compileSchedule emits at most one calibration
-  warning per row; for a range its actualWinnings is the row's mixture mean,
-  the figure expectedProfit reads. Do not go back to flattening the variants'
+  (`previewFieldMixture.ts`). compileSchedule emits at most one calibration warning per row; for a range it is the
+  warning of the size that misses the most (validateSchedule's relativeGap rule, first size
+  on ties) and carries that size in `fieldSize`. Do not quote the mixture's mean: sizes
+  that miss in opposite directions average onto the target. expectedProfit still reads
+  the mixture. Do not go back to flattening the variants'
   warnings (the PrimeDope pane listed a ranged row 3-5 times).
 - computeRowStats normalizes its own row (normalizeGameTypeConsistency), as
   compileSchedule and validateSchedule do. A raw BR row with a range was
@@ -830,9 +832,11 @@ statistically misleading. Do not undo these without re-measuring:
   when the excess kurtosis is above 6 (`sigmaReliability.ts`, i.e. σ at least
   twice as uncertain as the normal formula says). The path-based risk of ruin and
   minimum bankroll are the stable ones and stay unmarked.
-- Models that ignore the row ROI (uniform, empirical, `*-realdata-*`, a pinned α)
-  report `expectedProfit` from their own finish pmf; a bounty row on such a model
-  still reads cost × ROI because the bounty channel closes the gap. A test that
+- Models that ignore the row ROI (uniform, empirical, `*-realdata-*`, a pinned α) report
+  `expectedProfit` from their own finish pmf. A bounty row on such a model reads cost × ROI
+  where the bounty channel closes the gap, which it does only up to what the bounty pool
+  can pay; a row the pool cuts short (`poolCut`) reads less, gets target-unreachable and is
+  blocked by validateSchedule. A test that
   expects cost × ROI for a fixed-shape model without a bounty is wrong.
 - The diagnostic σ (the preview's `payoutStd` and `stats.sigmaPerTournamentAnalytic`)
   is `compiledEntryMoments`; do not write a second σ formula next to it. The old
@@ -1148,9 +1152,18 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   the Fit closest callbacks, feasibilityFix, ScheduleEditor's displayItmPct,
   formatRuntimeSigma); otherwise the display, validation and run disagree for uniform /
   empirical rows.
-- The bounty residual that closes a short cash side is capped at N x buyIn x bountyFraction
-  x (1 - P(last)) (`bountyEvCeiling`); validation and computeRowStats.shellFeasible use the
-  same predicate. A heads-up bounty row at a typed ITM of 0.5 is blocked at every ROI above
+- The KO EV a row plays is capped at N x buyIn x bountyFraction x (1 - P(last))
+  (`bountyEvCeiling`) of the pmf it plays, after sit-through, by `settleBountyAgainstPool`
+  (bountySplit.ts); compileEntry, validateSchedule and computeRowStats all call it with their
+  own solve. It returns at once when the plan fits (the byte-identity guarantee; do not
+  pre-clamp the plan: 1 225 grid rows fit only because their cash side overshoots), and
+  otherwise finds the fixed point b = ceiling(solve(total - b)) by a bracketed Illinois
+  search (3-23 solves), because the solve moves P(last). bountyResidualFits is
+  rounding-only (ceiling x (1 + 1e-9)); do not put the 0.1 % on-target slack back. A
+  fixed-shape model aims at the ROI on a bounty row exactly when the pool cut its KO EV
+  (`poolCut`): do not drop `!poolCut` from validation's or the preview's 'locks only' pass
+  (37 748 grid lines then played far below the typed ROI with Run open). The PrimeDope pass
+  never plays sit-through, so its ceiling is read on its own pmf. A heads-up bounty row at a typed ITM of 0.5 is blocked at every ROI above
   -rake/(1+rake). That is correct, and the blank-ITM default above is what keeps default
   heads-up rows runnable. Do not remove one without the other.
 - An empty KO window (a Mystery table paying one place, heads-up included) pays the whole
@@ -1424,12 +1437,13 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   primedope-free-itm-unreachable (finish model off, still missing after the retry),
   target-unreachable (alpha pass).
 - compileSingleEntry raises calibrationWarning kind "target-unreachable" on the alpha path
-  when an alpha-adjustable model misses withinTargetEv. It uses the same tolerance as
+  when an alpha-adjustable model, or any model whose KO EV the bounty pool cut
+  (`settled.poolCut`), misses withinTargetEv. It uses the same tolerance as
   validateSchedule, and validateSchedule checks every field size on both ITM branches
   with the engine's own Battle Royale centre, so a validated row never gets it (0 over a
-  75,600-row grid, 80,000 fuzz rows and 43,560 free-ITM ranged rows). Auditing the three
-  layers: 'blocked while the engine hits' rows (3,300 of the 75,600) all need more bounty
-  EV than N x buyIn x bountyFraction x (1 - P(last)); that block is deliberate. Do not replace it with "always take expectedProfit from the pmf": that moves
+  75,600-row grid, 80,000 fuzz rows and 43,560 free-ITM ranged rows). The engine no longer pays rows more bounty EV than the pool holds, so a row whose cash side
+  cannot carry the rest falls short in the engine too, gets target-unreachable and is
+  blocked; validation, preview and engine agree on every line of a 1.59 M-line grid. Do not replace it with "always take expectedProfit from the pmf": that moves
   expectedProfit by 1e-13..1e-10 for every row and breaks byte-identity.
 - tiltChannelsActive and noiseChannelsActive both live in convergencePolicy.ts, and the
   first calls the second's tilt half. They must mirror simulateShard's tiltFastOn /

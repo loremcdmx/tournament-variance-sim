@@ -8,7 +8,7 @@ import type {
 } from "@/lib/sim/types";
 import { useT, useLocale } from "@/lib/i18n/LocaleProvider";
 import type { DictKey } from "@/lib/i18n/dict";
-import { fmt, formatMinimumBankroll, formatPerUnitAmount, pct } from "@/lib/results/formatters";
+import { fmt, formatMinimumBankroll, formatPerUnitAmount, intFmt, pct } from "@/lib/results/formatters";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { withPlural } from "@/lib/i18n/plural";
 import { pdDiagnosticPasses, relativeDifferencePct, summarizePdStats } from "@/lib/results/primedopeDiagnostics";
@@ -29,6 +29,12 @@ const CALIBRATION_NOTICE_KEY = {
   "target-unreachable": "calibration.targetUnreachable",
 } as const satisfies Record<CalibrationWarning["kind"], string>;
 
+const RANGE_CALIBRATION_NOTICE_KEY = {
+  "primedope-target-clamped": "pd.calibrationClamped.range",
+  "primedope-free-itm-unreachable": "pd.freeItmUnreachable.range",
+  "target-unreachable": "calibration.targetUnreachable.range",
+} as const satisfies Record<CalibrationWarning["kind"], string>;
+
 export function CalibrationNotices({ result, schedule }: {
   result: SimulationResult;
   schedule?: TournamentRow[];
@@ -41,8 +47,11 @@ export function CalibrationNotices({ result, schedule }: {
     <ul role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-[color:var(--c-warn-fg-soft)]">
       {warnings.map((warning, index) => (
         <li key={`${warning.rowId}-${index}`}>
-          {fmt(t(CALIBRATION_NOTICE_KEY[warning.kind]), {
+          {fmt(t(warning.fieldSize == null
+            ? CALIBRATION_NOTICE_KEY[warning.kind]
+            : RANGE_CALIBRATION_NOTICE_KEY[warning.kind]), {
             row: schedule?.find((row) => row.id === warning.rowId)?.label || warning.rowId,
+            field: warning.fieldSize == null ? "" : intFmt(warning.fieldSize, numberLocaleTag(locale)),
             target: formatPerUnitAmount(warning.targetWinnings, "money", 1, numberLocaleTag(locale)),
             actual: formatPerUnitAmount(warning.actualWinnings, "money", 1, numberLocaleTag(locale)),
           })}

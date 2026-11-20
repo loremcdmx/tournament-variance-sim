@@ -387,6 +387,66 @@ describe("computeRowStats shell feasibility agrees with validateSchedule on boun
     expect(computeRowStats(fair, model).shellFeasible).toBe(true);
   });
 
+  it("previews the KO EV the bounty pool lets the engine play, and the engine's verdict", () => {
+    // The bias asks for 62.70 of KO EV at +20 %; 3 x $30 x (1 - P(last) 0.34)
+    // is 59.40.
+    const reported = (roiPct: number): TournamentRow => ({
+      id: "r", label: "r", players: 3, buyIn: 100, rake: 0.1, roi: roiPct / 100, gameType: "pko",
+      payoutStructure: "sng-65-35", bountyFraction: 0.3, bountyEvBias: -0.25, itmRate: 0.66, count: 1,
+    });
+    const stats = computeRowStats(reported(20), model);
+    const entry = compileSchedule({
+      schedule: [reported(20)], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model,
+    }).flat[0];
+    expect(stats.bountyEvPerEntry).toBeCloseTo(59.4, 9);
+    expect(stats.evPerEntry).toBeCloseTo(entry.analyticMeanSingle, 9);
+    for (let roiPct = 30; roiPct <= 40; roiPct++) {
+      const r = reported(roiPct);
+      expect(computeRowStats(r, model).shellFeasible).toBe(validateSchedule([r], model).ok);
+    }
+  });
+
+  it("shows a fixed-shape row the pool leaves short as infeasible, as Run does", () => {
+    // Uniform at ITM 0.66 reaches $69.51 + $59.40 of the $220 that +100 % asks
+    // for; at +10 % the $51.70 residual fits the pool and the row runs.
+    const uniform = { id: "uniform" as const };
+    const at = (roi: number) => pko({
+      players: 3, buyIn: 100, roi, payoutStructure: "sng-65-35", bountyFraction: 0.3,
+      bountyEvBias: -0.25, itmRate: 0.66,
+    });
+    const short = computeRowStats(at(1), uniform);
+    expect(short.shellFeasible).toBe(false);
+    expect(short.bountyEvPerEntry).toBeCloseTo(59.4, 9);
+    expect(short.evPerEntry).toBeCloseTo(128.91, 9);
+    expect(validateSchedule([at(1)], uniform).ok).toBe(false);
+    expect(computeRowStats(at(0.1), uniform).shellFeasible).toBe(true);
+    expect(validateSchedule([at(0.1)], uniform).ok).toBe(true);
+  });
+
+  it("reads the pool's ceiling on the pmf after sit-through, as the engine plays it", () => {
+    // Sit-through moves mass onto the unpaid places, last included, so the
+    // pool's share of one entry is lower than on the solver's pmf.
+    const row = pko({
+      players: 30, buyIn: 100, roi: 2, payoutStructure: "mtt-standard", bountyFraction: 0.02,
+      bountyEvBias: -0.25, itmRate: 0.5, sitThroughPayJumps: true, payJumpAggression: 1,
+    });
+    const stats = computeRowStats(row, model);
+    const entry = compileSchedule({
+      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model,
+    }).flat[0];
+    expect(stats.evPerEntry).toBeCloseTo(entry.analyticMeanSingle, 9);
+    expect(stats.shellFeasible).toBe(validateSchedule([row], model).ok);
+    expect(stats.shellFeasible).toBe(true);
+    let lastPlace = 0;
+    for (let i = 0; i < 30; i++) {
+      if (i === 29) lastPlace += entry.aliasProb[i] / 30;
+      if (entry.aliasIdx[i] === 29) lastPlace += (1 - entry.aliasProb[i]) / 30;
+    }
+    const ceiling = 30 * 100 * 0.02 * (1 - lastPlace);
+    expect(stats.bountyEvPerEntry).toBeLessThanOrEqual(ceiling * (1 + 1e-9));
+    expect(stats.bountyEvPerEntry / ceiling).toBeGreaterThan(1 - 3e-9);
+  });
+
   it("keeps a freezeout row's own feasibility rule", () => {
     const row: TournamentRow = {
       id: "f", label: "f", players: 100, buyIn: 50, rake: 0.1, roi: 1,

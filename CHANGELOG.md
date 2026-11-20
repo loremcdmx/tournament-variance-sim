@@ -68,8 +68,16 @@ for the same inputs, the entry says for which rows.
 - The ITM top-heaviness slider now affects only the power-law models (and
   Battle Royale rows); for other finish models it is disabled with a short
   reason, and the engine ignores it.
-- Bounty rows can no longer ask for more bounty EV than the table's bounty
-  pool holds; such rows are blocked with the reachable EV shown.
+- Bounty rows can no longer pay more knockout EV than the table's bounty pool
+  holds for one entry (field x buy-in x bounty share x the chance of not
+  finishing last), on any game type, field size or finish model, and in the
+  PrimeDope comparison too. A KO share past that limit stops at it and the
+  cash side is asked for the rest; a row whose cash side cannot pay the rest
+  is blocked with the reachable EV shown. This includes rows on the uniform,
+  empirical and real-data finish models, which used to reach any ROI through
+  knockouts the pool could not pay (mostly on two- to six-player tables). A
+  heads-up bounty row with a blank ITM keeps the zero-skill ITM only where
+  that needs no more KO EV than the pool holds.
 - 'Fit closest inputs' no longer writes an ROI that is still blocked; when
   nothing fits it leaves the row as it is and says so.
 - Winner-takes-all, ticket satellites, small-field tables that pay one place,
@@ -169,9 +177,10 @@ for the same inputs, the entry says for which rows.
   warning without blaming PrimeDope.
 
 - A row with a field-size range now raises one calibration notice instead of
-  one per field size, quoting the row's average payout over its sizes (the
-  figure its expected profit uses); the PrimeDope comparison listed such a
-  row three to five times. Nothing simulated changes.
+  one per field size. It names the field size that misses the ROI the most,
+  with that size's requested and modelled payout (the size Run's check
+  reports); the PrimeDope comparison listed such a row three to five times.
+  Nothing simulated changes.
 - Run's feasibility check now aims at the same Battle Royale cash/KO split as
   the simulation. A Battle Royale row with a first-place, top-3 or final-table
   lock (or, in scripts, late registration) whose cash prizes alone would pay

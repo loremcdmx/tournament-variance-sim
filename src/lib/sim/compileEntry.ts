@@ -21,7 +21,7 @@ import {
   itmProbability,
   withinTargetEv,
 } from "./finishModel";
-import { clampBountyMean, isBattleRoyaleRow } from "./bountySplit";
+import { clampBountyMean, isBattleRoyaleRow, settleBountyAgainstPool } from "./bountySplit";
 import {
   buildBattleRoyaleCashTargetPmf,
   resolveBattleRoyaleCashTarget,
@@ -344,49 +344,54 @@ function compileSingleEntry(
   // For overall ROI = row.roi on money spent (= singleCost):
   //   E[prize] + E[bounty] − singleCost = singleCost × ROI
   //   → E[prize] = singleCost × (1 + ROI) − bountyMean
-  const targetRegular = Math.max(
-    cashTargetFloor(entryCostSingle),
-    entryCostSingle * (1 + row.roi) - bountyMean,
-  );
-  let pmf: Float64Array;
-  let alpha = 0;
-  let binaryItmPrizeOverride: Float64Array | null = null;
-  const effectiveROI = targetRegular / entryCostSingle - 1;
-  if (calibrationMode === "primedope-binary-itm" && pdFlags.usePdFinishModel) {
-    // entryCostSingle has already dropped rake when pdDisplayMode is on, so
-    // targetRegular is naturally PrimeDope-style. Otherwise we calibrate
-    // against our normal cost-with-rake basis.
-    const assets = buildBinaryItmAssets(
-      N,
-      paidCount,
-      payouts,
-      prizePool,
-      targetRegular,
-    );
-    pmf = assets.pmf;
-    binaryItmPrizeOverride = assets.prizeByPlace;
-  } else if (row.itmRate != null && row.itmRate > 0) {
-    // Fixed-ITM (shelled) calibration: user pins the ITM rate and optionally
-    // pins top-shell masses (P(1st), P(top-3), P(FT)). Skill concentrates
-    // only within the cashed band; locked shells stay fixed, free band
-    // α-calibrates so total E[W] still hits target.
-    const winnerFirst = isBattleRoyale && battleRoyaleCenter
-      ? buildBattleRoyaleCashTargetPmf({
-          N,
-          payouts,
-          prizePool,
-          itmRate: row.itmRate,
-          targetWinnings: targetRegular,
-          anchorPmf: battleRoyaleCenter.pmf,
-          anchorWinnings: battleRoyaleCenter.cashEV,
-          finishBuckets: row.finishBuckets,
-          preferTopHeavy: row.roi > 0,
-          topHeavyBias: row.itmTopHeavyBias ?? 0,
-        })
-      : null;
-    if (winnerFirst) {
-      pmf = winnerFirst.pmf;
-    } else {
+  const settled = settleBountyAgainstPool({
+    N,
+    paidCount,
+    buyIn: row.buyIn,
+    bountyFraction,
+    totalWinningsEV,
+    cashFloor: cashTargetFloor(entryCostSingle),
+    plannedBountyMean: bountyMean,
+    // With fixed ITM/shells or reference-shape models the finish solver can
+    // hit an α boundary before its cash target is reached. The slider still
+    // changes the requested split and therefore the solved finish shape, but
+    // the actual KO budget must be the residual after that shape's cash EV,
+    // as far as the bounty pool can pay it. Otherwise total ROI drifts at the
+    // slider edges.
+    residualCloses: (row.itmRate != null && row.itmRate > 0) || !isAlphaAdjustable(model),
+    sitThrough: row.sitThroughPayJumps === true && calibrationMode !== "primedope-binary-itm",
+    payJumpAggression: row.payJumpAggression,
+    solve: (targetRegular) => {
+      // entryCostSingle has already dropped rake when pdDisplayMode is on, so
+      // the binary-ITM target is naturally PrimeDope-style.
+      if (
+        row.itmRate == null ||
+        !(row.itmRate > 0) ||
+        (calibrationMode === "primedope-binary-itm" && pdFlags.usePdFinishModel)
+      ) {
+        return solveFinish(targetRegular);
+      }
+      // Fixed-ITM (shelled) calibration: user pins the ITM rate and optionally
+      // pins top-shell masses (P(1st), P(top-3), P(FT)). Skill concentrates
+      // only within the cashed band; locked shells stay fixed, free band
+      // α-calibrates so total E[W] still hits target.
+      const winnerFirst = isBattleRoyale && battleRoyaleCenter
+        ? buildBattleRoyaleCashTargetPmf({
+            N,
+            payouts,
+            prizePool,
+            itmRate: row.itmRate,
+            targetWinnings: targetRegular,
+            anchorPmf: battleRoyaleCenter.pmf,
+            anchorWinnings: battleRoyaleCenter.cashEV,
+            finishBuckets: row.finishBuckets,
+            preferTopHeavy: row.roi > 0,
+            topHeavyBias: row.itmTopHeavyBias ?? 0,
+          })
+        : null;
+      if (winnerFirst) {
+        return { alpha: 0, pmf: winnerFirst.pmf, prizeByPlace: buildPrizeByPlace(null) };
+      }
       const fi = calibrateShelledItm(
         N,
         paidCount,
@@ -399,43 +404,11 @@ function compileSingleEntry(
         row.itmTopHeavyBias ?? 0,
         bountyFraction > 0 ? totalWinningsEV : targetRegular,
       );
-      alpha = fi.alpha;
-      pmf = fi.pmf;
-    }
-  } else {
-    alpha = calibrateAlpha(
-      N,
-      payouts,
-      prizePool,
-      entryCostSingle,
-      effectiveROI,
-      model,
-    );
-    pmf = buildFinishPMF(N, model, alpha);
-  }
-  const prizeByPlace = new Float64Array(N);
-  if (binaryItmPrizeOverride) {
-    prizeByPlace.set(binaryItmPrizeOverride);
-  } else {
-    for (let i = 0; i < Math.min(payouts.length, N); i++) {
-      prizeByPlace[i] = payouts[i] * prizePool;
-    }
-  }
-
-  // ---- bounty reconcile (constrained finish models) ----------------------
-  // With fixed ITM/shells or reference-shape models the finish solver can hit
-  // an α boundary before `targetRegular` is reached. The slider still changes
-  // the requested split and therefore the solved finish shape, but the actual
-  // KO budget must be the residual after that shape's cash EV. Otherwise total
-  // ROI drifts at the slider edges.
-  if (
-    bountyFraction > 0 &&
-    ((row.itmRate != null && row.itmRate > 0) || !isAlphaAdjustable(model))
-  ) {
-    let cashEV = 0;
-    for (let i = 0; i < N; i++) cashEV += pmf[i] * prizeByPlace[i];
-    bountyMean = Math.max(0, totalWinningsEV - cashEV);
-  }
+      return { alpha: fi.alpha, pmf: fi.pmf, prizeByPlace: buildPrizeByPlace(null) };
+    },
+  });
+  const { alpha, pmf, prizeByPlace } = settled.solved;
+  bountyMean = settled.bountyMean;
 
   if (row.sitThroughPayJumps && calibrationMode !== "primedope-binary-itm") {
     applySitThroughPayJumps(pmf, prizeByPlace, paidCount, row.payJumpAggression);
@@ -760,13 +733,14 @@ function compileSingleEntry(
   // solution when it lands closer to the ROI, so the pane plays the ROI it
   // prints; a row that hits keeps its ITM and its bytes. Fixed-shape models
   // never aim at the ROI, so a gap there is not a missed target
-  // (`rowIgnoresRoi`).
+  // (`rowIgnoresRoi`), unless the bounty pool cut the KO EV that closes it.
+  const aimsAtRoi = isAlphaAdjustable(model) || settled.poolCut;
   if (
     calibrationMode === "primedope-binary-itm" &&
     !pdFlags.usePdFinishModel &&
     row.itmRate != null &&
     row.itmRate > 0 &&
-    isAlphaAdjustable(model) &&
+    aimsAtRoi &&
     !withinTargetEv(eX, totalWinningsEV)
   ) {
     const freeItm = compileSingleEntry(
@@ -794,14 +768,14 @@ function compileSingleEntry(
   const primedopeFreeItmMissed =
     calibrationMode === "primedope-binary-itm" &&
     !pdFlags.usePdFinishModel &&
-    isAlphaAdjustable(model) &&
+    aimsAtRoi &&
     !withinTargetEv(eX, totalWinningsEV);
   // `validateSchedule` blocks this in the app. The warning makes `compile` take
   // the expected profit from the pmf for a caller that skips it (scripts,
   // fits); cost x ROI would sit the whole gap away from the samples.
   const targetUnreachable =
     calibrationMode !== "primedope-binary-itm" &&
-    isAlphaAdjustable(model) &&
+    aimsAtRoi &&
     !withinTargetEv(eX, totalWinningsEV);
 
   // Attach discrete envelope tiers only for GG Mystery Battle Royale.

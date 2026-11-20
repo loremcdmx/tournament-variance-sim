@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { compileSchedule } from "./compile";
+import { withinTargetEv } from "./finishModel";
 import { countScheduleTournaments } from "./scheduleTarget";
 import { validateSchedule } from "./validation";
+import type { CompiledEntry } from "./engineTypes";
 import type { FinishModelConfig, SimulationInput, TournamentRow } from "./types";
 
 const model: FinishModelConfig = { id: "power-law" };
@@ -56,9 +58,10 @@ describe("how many times compile plays a row per pass", () => {
 });
 
 describe("a row with a Field-size range raises one calibration notice", () => {
-  // The run plays the mixture of the sizes, and the notice quotes what the
-  // expected profit reads: the row's mean over them. One notice per size
-  // would repeat the row in the results' list.
+  // One notice per size would repeat the row in the results' list. It names
+  // the size that misses the most, the one validateSchedule reports: the run
+  // plays the mixture of the sizes, but sizes that miss in opposite directions
+  // can average out to the target.
   const ranged = (over: Partial<TournamentRow>): TournamentRow => ({
     ...row("ranged", 1),
     ...over,
@@ -66,20 +69,52 @@ describe("a row with a Field-size range raises one calibration notice", () => {
   });
   const once = (input: Omit<SimulationInput, "scheduleRepeats" | "samples" | "bankroll" | "seed">, mode: "alpha" | "primedope-binary-itm") =>
     compileSchedule({ scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, ...input }, mode);
+  const worstOf = (entries: CompiledEntry[], target: number) =>
+    entries.reduce((a, b) =>
+      Math.abs(b.analyticMeanSingle - target) > Math.abs(a.analyticMeanSingle - target) ? b : a);
 
   it("in the main pass, where every size misses its pinned ITM's target", () => {
     const r = ranged({ players: 9, roi: -0.3, itmRate: 0.12 });
     const compiled = once({ schedule: [r], finishModel: model }, "alpha");
-    const means = compiled.flat[0].variants!.map((v) => v.analyticMeanSingle);
-    expect(means).toHaveLength(3);
-    for (const m of means) expect(Math.abs(m / 7.7 - 1)).toBeGreaterThan(0.05);
+    const variants = compiled.flat[0].variants!;
+    expect(variants).toHaveLength(3);
+    for (const v of variants) expect(Math.abs(v.analyticMeanSingle / 7.7 - 1)).toBeGreaterThan(0.05);
 
     expect(compiled.calibrationWarnings).toHaveLength(1);
     const [warning] = compiled.calibrationWarnings!;
-    expect(warning).toMatchObject({ rowId: "ranged", kind: "target-unreachable" });
+    const worst = worstOf(variants, 7.7);
+    expect(warning).toMatchObject({ rowId: "ranged", kind: "target-unreachable", fieldSize: worst.fieldSize });
     expect(warning.targetWinnings).toBeCloseTo(7.7, 12);
-    expect(warning.actualWinnings).toBeCloseTo(means.reduce((a, b) => a + b, 0) / 3, 12);
-    expect(warning.actualWinnings).toBeCloseTo(compiled.expectedProfit + compiled.totalBuyIn, 12);
+    expect(warning.actualWinnings).toBe(worst.analyticMeanSingle);
+    const issue = validateSchedule([r], model).issues[0];
+    expect(issue.targetEv).toBeCloseTo(warning.targetWinnings, 9);
+    expect(issue.currentEv).toBeCloseTo(warning.actualWinnings, 9);
+    // The expected profit still reads the mixture the run plays.
+    const mixture = variants.reduce((a, v) => a + v.analyticMeanSingle, 0) / 3;
+    expect(compiled.expectedProfit + compiled.totalBuyIn).toBeCloseTo(mixture, 12);
+  });
+
+  it("names the size that misses when the sizes miss in opposite directions", () => {
+    // Sizes 13 / 28 / 43 at a pinned 12 % ITM and ROI +30 % play $15.60 /
+    // $12.98 / $14.30 against $14.30, so their mixture, $14.29, is inside the
+    // 0.1 % on-target tolerance: quoting it said the model could not reach
+    // $14.30 next to $14.29.
+    const r: TournamentRow = {
+      ...row("opposite", 1), players: 28, roi: 0.3, itmRate: 0.12,
+      fieldVariability: { kind: "uniform", min: 5, max: 50, buckets: 3 },
+    };
+    const compiled = once({ schedule: [r], finishModel: model }, "alpha");
+    const variants = compiled.flat[0].variants!;
+    expect(variants.map((v) => v.fieldSize)).toEqual([13, 28, 43]);
+    const mixture = variants.reduce((a, v) => a + v.analyticMeanSingle, 0) / 3;
+    expect(withinTargetEv(mixture, 14.3)).toBe(true);
+    expect(compiled.calibrationWarnings).toHaveLength(1);
+    const [warning] = compiled.calibrationWarnings!;
+    expect(warning).toMatchObject({ rowId: "opposite", kind: "target-unreachable", fieldSize: 28 });
+    expect(warning.targetWinnings).toBeCloseTo(14.3, 12);
+    expect(warning.actualWinnings).toBeCloseTo(12.978, 3);
+    const issue = validateSchedule([r], model).issues[0];
+    expect(issue.currentEv).toBeCloseTo(warning.actualWinnings, 9);
   });
 
   it("in the PrimeDope pass of a row Run accepts", () => {
@@ -90,16 +125,40 @@ describe("a row with a Field-size range raises one calibration notice", () => {
       { schedule: [r], finishModel: linear, usePrimedopeFinishModel: false },
       "primedope-binary-itm",
     );
-    expect(compiled.flat[0].variants).toHaveLength(3);
+    const variants = compiled.flat[0].variants!;
+    expect(variants).toHaveLength(3);
     expect(compiled.calibrationWarnings).toHaveLength(1);
     const [warning] = compiled.calibrationWarnings!;
-    expect(warning).toMatchObject({ rowId: "ranged", kind: "primedope-free-itm-unreachable" });
-    expect(warning.actualWinnings).toBeCloseTo(compiled.expectedProfit + compiled.totalBuyIn, 12);
+    const worst = worstOf(variants, warning.targetWinnings);
+    expect(warning).toMatchObject({
+      rowId: "ranged", kind: "primedope-free-itm-unreachable", fieldSize: worst.fieldSize,
+    });
+    expect(warning.actualWinnings).toBe(worst.analyticMeanSingle);
+  });
+
+  it("in the PrimeDope pass, where the sizes' mean lands on target", () => {
+    // Sizes 13 / 28 / 43 at ROI +100 % play $18.00 / $25.05 / $22.95 against
+    // $22.00; their mixture is $22.001.
+    const r: TournamentRow = {
+      ...row("pd", 1), players: 28, roi: 1, itmRate: 0.5,
+      fieldVariability: { kind: "uniform", min: 5, max: 50, buckets: 3 },
+    };
+    const compiled = once(
+      { schedule: [r], finishModel: { id: "linear-skill" }, usePrimedopeFinishModel: false },
+      "primedope-binary-itm",
+    );
+    const variants = compiled.flat[0].variants!;
+    expect(variants.map((v) => v.fieldSize)).toEqual([13, 28, 43]);
+    expect(withinTargetEv(variants.reduce((a, v) => a + v.analyticMeanSingle, 0) / 3, 22)).toBe(true);
+    const [warning] = compiled.calibrationWarnings!;
+    expect(warning).toMatchObject({ kind: "primedope-free-itm-unreachable", fieldSize: 13 });
+    expect(warning.actualWinnings).toBeCloseTo(18, 6);
   });
 
   it("leaves a fixed-field row's notice as the entry raised it", () => {
     const r = { ...row("fixed", 1), players: 9, roi: -0.3, itmRate: 0.12 };
     const compiled = once({ schedule: [r], finishModel: model }, "alpha");
     expect(compiled.calibrationWarnings).toEqual([compiled.flat[0].calibrationWarning]);
+    expect(compiled.calibrationWarnings![0].fieldSize).toBeUndefined();
   });
 });

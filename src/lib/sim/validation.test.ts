@@ -536,6 +536,69 @@ describe("validateSchedule: a model that cannot move its finish shape", () => {
     expect(validateSchedule(effective(r), model).ok).toBe(true);
   });
 
+  // 3-player PKO on a 65/35 table, $100 + 10 %, bounty share 0.3, the KO-heavy
+  // end of the bias slider. A fixed shape pays its own cash and closes the ROI
+  // with the KO EV, which the pool holds to 3 x $30 x (1 - P(last)).
+  const smallPko = (roi: number, itmRate?: number) => row({
+    players: 3, buyIn: 100, roi, gameType: "pko", payoutStructure: "sng-65-35",
+    bountyFraction: 0.3, bountyEvBias: -0.25, itmRate,
+  });
+  const realdata: FinishModelConfig = { id: "pko-realdata-linear" };
+
+  it("blocks a bounty row whose ROI only a KO EV past the pool could close", () => {
+    // Uniform at ITM 0.66 pays $69.51 of cash and the pool $59.40: $128.91, ROI
+    // +17.2 %, against the $220 of +100 %. The engine used to pay the $150.49
+    // residual out of that pool; then it paid $59.40 and Run stayed open.
+    const pinned = validateSchedule([smallPko(1, 0.66)], uniform);
+    expect(pinned.ok).toBe(false);
+    expect(pinned.issues[0].targetEv).toBeCloseTo(220, 9);
+    expect(pinned.issues[0].currentEv).toBeCloseTo(128.91, 9);
+    // The realdata shape with a free ITM: $49.13 of cash and $45.74 of KOs.
+    const free = validateSchedule([smallPko(0.1)], realdata);
+    expect(free.ok).toBe(false);
+    expect(free.issues[0].targetEv).toBeCloseTo(121, 9);
+    expect(free.issues[0].currentEv).toBeCloseTo(94.8678, 4);
+    // "Fit closest inputs" lowers the ROI to one the pool can close.
+    for (const [r, model, res] of [[smallPko(1, 0.66), uniform, pinned], [smallPko(0.1), realdata, free]] as const) {
+      const fix = chooseClosestFeasibilityFix(r, res.issues[0], model, itmCfg);
+      expect(fix.kind).toBe("match-roi");
+      expect(fix.row.roi).toBeLessThan(res.issues[0].currentEv / 110 - 1 + 1e-3);
+      expect(validateSchedule(effective(fix.row), model).ok).toBe(true);
+    }
+    expect(validateSchedule([smallPko(0.1, 0.66)], uniform).ok).toBe(true);
+    expect(validateSchedule([smallPko(-0.2)], realdata).ok).toBe(true);
+  });
+
+  it("keeps a bounty row whose shape alone pays past its ROI held to that shape", () => {
+    // Uniform pays $69.30 at ITM 0.66 and $70 with a free ITM, both over the
+    // $55 of ROI -50 %: no KO EV is asked for, so the pool cuts nothing.
+    expect(validateSchedule([smallPko(-0.5, 0.66)], uniform).ok).toBe(true);
+    expect(validateSchedule([smallPko(-0.5)], uniform).ok).toBe(true);
+  });
+
+  it("blocks exactly the bounty rows the engine flags", () => {
+    let blocked = 0;
+    for (const model of [uniform, empirical, realdata, { id: "mystery-realdata-linear" } as const])
+      for (const players of [2, 3]) for (const payoutStructure of ["sng-65-35", "mtt-gg-bounty"] as const)
+        for (const roi of [-0.5, 0, 0.5, 1]) for (const free of [true, false]) {
+          const live = applyItmTarget([row({
+            players, buyIn: 100, roi, gameType: "pko", payoutStructure, bountyFraction: 0.3, bountyEvBias: -0.25,
+          })], itmCfg, model)[0];
+          const r = free ? { ...live, itmRate: undefined } : live;
+          const res = validateSchedule([r], model);
+          const warnings = compileSchedule({
+            schedule: [r], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model,
+          }).calibrationWarnings;
+          expect(res.ok).toBe(warnings === undefined);
+          if (!res.ok) {
+            blocked++;
+            expect(res.issues[0].currentEv).toBeCloseTo(warnings![0].actualWinnings, 9);
+          }
+        }
+    // 84 of the 128 rows ask the pool for more than it holds, on both ITM branches.
+    expect(blocked).toBe(84);
+  });
+
   it("still refuses locks that contradict each other", () => {
     const r = row({ players: 300, itmRate: 0.2, finishBuckets: { first: 0.1, top3: 0.05 } });
     const res = validateSchedule([r], uniform);
@@ -643,6 +706,77 @@ describe("validateSchedule: the bounty residual cannot exceed the bounty pool", 
       bountyFraction: 0.5,
     });
     expect(validateSchedule(applyItmTarget([r], { enabled: false, pct: 18.7 }), model).ok).toBe(false);
+  });
+
+  // 3-player PKO on a 65/35 table, $100 + 10 %, bounty share 0.3, the KO-heavy
+  // end of the bias slider: the bias asks for more KO EV than 3 x $30 holds.
+  const reported = (roiPct: number, itmRate: number) =>
+    row({
+      players: 3, buyIn: 100, roi: roiPct / 100, gameType: "pko", payoutStructure: "sng-65-35",
+      bountyFraction: 0.3, bountyEvBias: -0.25, itmRate,
+    });
+  const verdicts = (itmRate: number, fromPct: number, toPct: number) => {
+    let out = "";
+    for (let roiPct = fromPct; roiPct <= toPct; roiPct++) {
+      out += validateSchedule([reported(roiPct, itmRate)], baseModel).ok ? "o" : "x";
+    }
+    return out;
+  };
+
+  it("runs a KO-heavy bias while the cash side can carry what the pool cannot", () => {
+    // KO EV is held to 90 x 0.66 = 59.40 and the cash side pays at most
+    // 0.66 x $136.50 = $90.09, so the row reaches $149.49: ROI +35.9 %, and +36 %
+    // is inside the 0.1 % tolerance. Before, every ROI here ran and the engine
+    // paid the bias's KO EV (62.70 at +20 %, 73.15 at +40 %) out of a 59.40 pool.
+    expect(verdicts(0.66, 10, 50)).toBe("o".repeat(27) + "x".repeat(14));
+    const issue = validateSchedule([reported(40, 0.66)], baseModel).issues[0];
+    expect(issue.targetEv).toBeCloseTo(154, 9);
+    expect(issue.currentEv).toBeCloseTo(90.09 + 59.4, 5);
+  });
+
+  it("decides the row once along ROI", () => {
+    // ITM 0.70: 63 of KO EV and up to $95.55 of cash reach ROI +44.1 %. The old
+    // rule blocked only +24 % and +25 %, where the cash solve missed its own
+    // target and the residual then passed the pool, and let +45 % to +50 % run.
+    expect(verdicts(0.7, 10, 50)).toBe("o".repeat(35) + "x".repeat(6));
+  });
+
+  it("blocks a free-ITM heads-up row whose bias asked the pool for the ROI", () => {
+    // Heads-up winner-takes-all, $160 of cash and a $40 pool: $200 at most,
+    // against the $220 that ROI +100 % needs. Bias 0 was already blocked; the
+    // KO-heavy bias passed because the engine paid $88 of KO EV at a pmf whose
+    // share of the pool was $33.
+    const hu = row({
+      players: 2, buyIn: 100, roi: 1, gameType: "pko", payoutStructure: "mtt-gg-bounty",
+      bountyFraction: 0.2, bountyEvBias: -0.25,
+    });
+    const res = validateSchedule([hu], baseModel);
+    expect(res.ok).toBe(false);
+    expect(res.issues[0].currentEv).toBeCloseTo(200, 4);
+    expect(validateSchedule([{ ...hu, bountyEvBias: 0 }], baseModel).ok).toBe(false);
+  });
+
+  it("reads the pool's ceiling after sit-through, as the engine plays the row", () => {
+    // 100-player PKO, $100 + 10 %, bounty share 5 %, ITM 20 % with 5 % locked
+    // on the final table: the cash side tops out with mass left in the bottom
+    // half of the paid places, which sit-through moves partly onto the unpaid
+    // ones, last place included. The engine then plays $583.51 against
+    // $584.54; read before the transform, the ceiling would pass the row.
+    const locked = (sitThrough: boolean) => row({
+      players: 100, buyIn: 100, roi: 4.314, gameType: "pko", payoutStructure: "mtt-gg-bounty",
+      bountyFraction: 0.05, bountyEvBias: -0.25, itmRate: 0.2, finishBuckets: { top3: 0.05 / 3, ft: 0.05 },
+      ...(sitThrough ? { sitThroughPayJumps: true, payJumpAggression: 1 } : {}),
+    });
+    const res = validateSchedule([locked(true)], baseModel);
+    expect(res.ok).toBe(false);
+    const compiled = compileSchedule({
+      schedule: [locked(true)], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: baseModel,
+    });
+    expect(compiled.calibrationWarnings).toHaveLength(1);
+    expect(res.issues[0].targetEv).toBeCloseTo(584.54, 9);
+    expect(res.issues[0].currentEv).toBeCloseTo(compiled.flat[0].analyticMeanSingle, 9);
+    expect(res.issues[0].currentEv).toBeCloseTo(583.5137, 4);
+    expect(validateSchedule([locked(false)], baseModel).ok).toBe(true);
   });
 
   it("keeps ordinary fixed-ITM bounty rows that the residual closes", () => {

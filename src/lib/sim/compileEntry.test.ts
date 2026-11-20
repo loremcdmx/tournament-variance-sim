@@ -5,6 +5,9 @@ import { runSimulation } from "./engine";
 import { computeRowStats } from "./previewRowStats";
 import { applyItmTarget } from "./itmTarget";
 import { compiledEntryMoments } from "./scheduleMoments";
+import { applyGameType } from "./gameType";
+import { applySitThroughPayJumps } from "./sitThroughPayJumps";
+import type { CompiledEntry } from "./engineTypes";
 import type { FinishModelConfig, SimulationInput, TournamentRow } from "./types";
 import { validateSchedule } from "./validation";
 
@@ -309,5 +312,173 @@ describe("a Mystery table that pays one place", () => {
     const three = compileOne({ ...hu, players: 3, itmRate: 2 / 3 });
     expect(three.bountyKmean![0]).toBe(1);
     expect(three.bountyByPlace![1]).toBe(0);
+  });
+});
+
+describe("the engine never pays more KO EV than the bounty pool holds", () => {
+  const pmfOf = (entry: CompiledEntry): Float64Array => {
+    const n = entry.aliasProb.length;
+    const pmf = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      pmf[i] += entry.aliasProb[i] / n;
+      pmf[entry.aliasIdx[i]] += (1 - entry.aliasProb[i]) / n;
+    }
+    return pmf;
+  };
+  /** The KO EV an entry plays and N x buyIn x share x (1 - P(last)) of the pmf it plays. */
+  const koAndCeiling = (entry: CompiledEntry, r: TournamentRow) => {
+    const pmf = pmfOf(entry);
+    let cash = 0;
+    for (let i = 0; i < pmf.length; i++) cash += pmf[i] * entry.prizeByPlace[i];
+    const share = Math.max(0, Math.min(0.9, r.bountyFraction ?? 0));
+    return {
+      ko: entry.analyticMeanSingle - cash,
+      ceiling: entry.fieldSize * r.buyIn * share * (1 - pmf[entry.fieldSize - 1]),
+    };
+  };
+  const reported: TournamentRow = {
+    id: "r", label: "r", players: 3, buyIn: 100, rake: 0.1, roi: 0.2, gameType: "pko",
+    payoutStructure: "sng-65-35", bountyFraction: 0.3, bountyEvBias: -0.25, itmRate: 0.66, count: 1,
+  };
+
+  it("pays the reported 3-player PKO row the 59.40 its pool holds, not the 62.70 its bias asks for", () => {
+    // The bias asks for 39.60 + 0.25 x (132 - 39.60) = 62.70 of KO EV; the pool
+    // is 3 x $30 and a last place collects nothing, 90 x 0.66 = 59.40.
+    const entry = compileOne(reported);
+    const { ko, ceiling } = koAndCeiling(entry, reported);
+    expect(ceiling).toBeCloseTo(59.4, 9);
+    expect(ko).toBeCloseTo(59.4, 9);
+    expect(entry.analyticMeanSingle).toBeCloseTo(132, 9);
+    expect(entry.calibrationWarning).toBeUndefined();
+  });
+
+  it("caps a residual the pool misses by less than the on-target tolerance", () => {
+    // Heads-up winner-takes-all at a typed ITM 0.5, ROI -9.05 %: the cash side
+    // pays $50 and leaves $50.045 of the $100.045 target to KOs, 0.09 % past
+    // the $50 a winner collects. The row plays $100.00, inside the tolerance.
+    const hu: TournamentRow = {
+      id: "hu", label: "hu", players: 2, buyIn: 100, rake: 0.1, roi: -0.0905, gameType: "pko",
+      payoutStructure: "winner-takes-all", bountyFraction: 0.5, itmRate: 0.5, count: 1,
+    };
+    const entry = compileOne(hu);
+    const { ko, ceiling } = koAndCeiling(entry, hu);
+    expect(ceiling).toBeCloseTo(50, 9);
+    expect(ko).toBeLessThanOrEqual(ceiling * (1 + 1e-9));
+    expect(entry.analyticMeanSingle).toBeCloseTo(100, 9);
+    expect(entry.calibrationWarning).toBeUndefined();
+    expect(validateSchedule([hu], model).ok).toBe(true);
+  });
+
+  it("settles a free-ITM heads-up row on the KO EV its own pmf can pay, whatever the bias past it", () => {
+    const hu = (bias: number): TournamentRow => ({
+      id: "hu", label: "hu", players: 2, buyIn: 100, rake: 0.1, roi: -0.3, gameType: "pko",
+      payoutStructure: "mtt-gg-bounty", bountyFraction: 0.2, bountyEvBias: bias, count: 1,
+    });
+    const settled = [-0.25, -0.1].map((bias) => {
+      const entry = compileOne(hu(bias));
+      return { entry, ...koAndCeiling(entry, hu(bias)) };
+    });
+    for (const { entry, ko, ceiling } of settled) {
+      expect(ko).toBeLessThanOrEqual(ceiling * (1 + 1e-9));
+      expect(ko / ceiling).toBeGreaterThan(1 - 3e-9);
+      expect(entry.analyticMeanSingle).toBeCloseTo(77, 6);
+    }
+    expect(settled[0].ko).toBeCloseTo(settled[1].ko, 6);
+  });
+
+  it("holds on every bounty format, small field, ITM branch, bias, pass and sit-through", () => {
+    const formats: TournamentRow[] = [
+      { ...reported, itmRate: undefined, bountyEvBias: undefined },
+      { ...reported, payoutStructure: "mtt-gg-bounty", itmRate: undefined, bountyEvBias: undefined },
+      { ...reported, gameType: "mystery", payoutStructure: "mtt-gg-mystery", mysteryBountyVariance: 2,
+        itmRate: undefined, bountyEvBias: undefined },
+    ];
+    const ocean = { ...reported, itmRate: undefined, bountyEvBias: undefined };
+    formats.push({ ...ocean, ...applyGameType(ocean, "ocean-ko") } as TournamentRow);
+    const br = { ...reported, ...applyGameType(reported, "mystery-royale") } as TournamentRow;
+    let entries = 0;
+    let atCeiling = 0;
+    const check = (r: TournamentRow, mode: "alpha" | "primedope-binary-itm", pdFinish: boolean) => {
+      const compiled = compileSchedule(
+        input(r, { samples: 1, usePrimedopeFinishModel: pdFinish }),
+        mode,
+      );
+      for (const entry of compiled.flat[0].variants ?? [compiled.flat[0]]) {
+        const { ko, ceiling } = koAndCeiling(entry, r);
+        entries++;
+        if (ko > ceiling * (1 - 1e-6)) atCeiling++;
+        expect(ko).toBeLessThanOrEqual(ceiling * (1 + 1e-9));
+      }
+    };
+    for (const roi of [-0.3, 0.3, 1]) for (const bias of [-0.25, 0.25]) for (const free of [true, false]) {
+      const rows: TournamentRow[] = [{ ...br, players: 2 }, { ...br, lateRegMultiplier: 1.5 }];
+      for (const f of formats) for (const players of [2, 3, 6]) rows.push({ ...f, players });
+      rows.push({ ...formats[1], players: 6, fieldVariability: { kind: "uniform", min: 2, max: 10, buckets: 3 } });
+      for (const raw of rows) {
+        const live = applyItmTarget([{ ...raw, roi, bountyEvBias: bias }], { enabled: false, pct: 18.7 }, model)[0];
+        const r = free ? { ...live, itmRate: undefined } : live;
+        check(r, "alpha", true);
+        check({ ...r, sitThroughPayJumps: true, payJumpAggression: 1 }, "alpha", true);
+        check(r, "primedope-binary-itm", true);
+        check(r, "primedope-binary-itm", false);
+      }
+    }
+    // Over a quarter of the entries settle on the ceiling, so the sweep
+    // exercises the cap and not only rows far inside it.
+    expect(entries).toBe(816);
+    expect(atCeiling).toBeGreaterThan(entries / 4);
+  });
+
+  it("reads the PrimeDope pass's ceiling on its own pmf, since that pass plays no sit-through", () => {
+    // 30 players, ITM 0.5, a 2 % bounty share at ROI +200 %: the KO-heavy bias
+    // asks for more than the $60 pool, and sit-through would move mass onto
+    // last place (58.41 on PrimeDope's binary ITM instead of 58.64).
+    const r: TournamentRow = {
+      id: "r", label: "r", players: 30, buyIn: 100, rake: 0.1, roi: 2, gameType: "pko",
+      payoutStructure: "mtt-standard", bountyFraction: 0.02, bountyEvBias: -0.25, itmRate: 0.5,
+      sitThroughPayJumps: true, payJumpAggression: 1, count: 1,
+    };
+    for (const pdFinish of [true, false]) {
+      const entry = compileSchedule(
+        input(r, { samples: 1, usePrimedopeFinishModel: pdFinish }),
+        "primedope-binary-itm",
+      ).flat[0];
+      const { ko, ceiling } = koAndCeiling(entry, r);
+      expect(Math.abs(ko / ceiling - 1)).toBeLessThan(1e-9);
+      const sitThrough = pmfOf(entry);
+      applySitThroughPayJumps(sitThrough, entry.prizeByPlace, entry.paidCount, 1);
+      expect(ko).toBeGreaterThan(30 * 100 * 0.02 * (1 - sitThrough[29]) + 0.1);
+      expect(entry.calibrationWarning).toBeUndefined();
+    }
+  });
+
+  it("flags a fixed-shape row the pool leaves short of its ROI, in every pass", () => {
+    // Uniform at ITM 0.66 pays $69.51 of cash; the pool holds $59.40 for one
+    // entry, so ROI +100 % ($220) is out of reach. The KO EV used to close the
+    // whole $150.49 gap, and a model that does not aim at the ROI raised nothing.
+    const uniform: FinishModelConfig = { id: "uniform" };
+    const at = (roi: number) => ({ ...reported, roi });
+    const compiled = compileSchedule(input(at(1), { samples: 1, finishModel: uniform }));
+    const entry = compiled.flat[0];
+    expect(koAndCeiling(entry, at(1)).ko).toBeCloseTo(59.4, 9);
+    expect(compiled.calibrationWarnings).toHaveLength(1);
+    const warning = compiled.calibrationWarnings![0];
+    expect(warning.kind).toBe("target-unreachable");
+    expect(warning.targetWinnings).toBeCloseTo(220, 9);
+    expect(warning.actualWinnings).toBe(entry.analyticMeanSingle);
+    expect(entry.analyticMeanSingle).toBeCloseTo(128.91, 9);
+    expect(compiled.expectedProfit).toBeCloseTo(18.91, 9);
+    // PrimeDope's pass with our finish model frees the ITM and still falls short.
+    const pdOff = compileSchedule(
+      input(at(1), { samples: 1, finishModel: uniform, usePrimedopeFinishModel: false }),
+      "primedope-binary-itm",
+    );
+    expect(pdOff.calibrationWarnings?.[0].kind).toBe("primedope-free-itm-unreachable");
+    expect(pdOff.calibrationWarnings?.[0].actualWinnings).toBeCloseTo(199.44, 9);
+    // Inside the pool, and where the shape alone overpays, nothing is raised.
+    for (const roi of [0.1, -0.5]) {
+      expect(compileSchedule(input(at(roi), { samples: 1, finishModel: uniform })).calibrationWarnings)
+        .toBeUndefined();
+    }
   });
 });

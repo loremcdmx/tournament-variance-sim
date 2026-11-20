@@ -1,17 +1,16 @@
 import {
   applyBountyBias,
-  bountyEvCeiling,
-  bountyResidualFits,
   buildFinishPMF,
   calibrateAlpha,
   calibrateShelledItm,
   cashTargetFloor,
   isAlphaAdjustable,
-  targetEvTolerance,
+  withinTargetEv,
 } from "@/lib/sim/finishModel";
 import {
   clampBountyMean,
   isBattleRoyaleRow,
+  settleBountyAgainstPool,
 } from "@/lib/sim/bountySplit";
 import {
   buildBattleRoyaleCashTargetPmf,
@@ -408,36 +407,57 @@ function computeRowStatsAtField(
     bountyMean = clampBountyMean(totalWinningsEV - desiredCashEV, totalWinningsEV);
   }
 
-  const targetRegular = Math.max(
-    cashTargetFloor(entryCostSingle),
-    entryCostSingle * (1 + row.roi) - bountyMean,
-  );
-  const effectiveROI = targetRegular / entryCostSingle - 1;
-  let alpha: number;
-  let pmf: Float64Array;
-  let feasible = true;
-  let currentWinningsFromSolver: number | null = null;
-  if (row.itmRate != null && row.itmRate > 0) {
-    const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleCenter
-      ? buildBattleRoyaleCashTargetPmf({
+  const prizeByPlace = new Float64Array(N);
+  for (let i = 0; i < Math.min(payouts.length, N); i++) {
+    prizeByPlace[i] = payouts[i] * prizePool;
+  }
+  const settled = settleBountyAgainstPool({
+    N,
+    paidCount,
+    buyIn: row.buyIn,
+    bountyFraction,
+    totalWinningsEV,
+    cashFloor: cashTargetFloor(entryCostSingle),
+    plannedBountyMean: bountyMean,
+    residualCloses: (row.itmRate != null && row.itmRate > 0) || !isAlphaAdjustable(model),
+    sitThrough: row.sitThroughPayJumps === true,
+    payJumpAggression: row.payJumpAggression,
+    solve: (targetRegular) => {
+      if (row.itmRate == null || !(row.itmRate > 0)) {
+        const alpha = calibrateAlpha(
           N,
           payouts,
           prizePool,
-          itmRate: row.itmRate,
-          targetWinnings: targetRegular,
-          anchorPmf: battleRoyaleCenter.pmf,
-          anchorWinnings: battleRoyaleCenter.cashEV,
-          finishBuckets: row.finishBuckets,
-          preferTopHeavy: row.roi > 0,
-          topHeavyBias: row.itmTopHeavyBias ?? 0,
-        })
-      : null;
-    if (winnerFirst) {
-      alpha = 0;
-      pmf = winnerFirst.pmf;
-      feasible = winnerFirst.feasible;
-      currentWinningsFromSolver = winnerFirst.currentWinnings;
-    } else {
+          entryCostSingle,
+          targetRegular / entryCostSingle - 1,
+          model,
+        );
+        return {
+          alpha, pmf: buildFinishPMF(N, model, alpha), prizeByPlace,
+          feasible: true, currentWinnings: null, aimsAtTarget: true,
+        };
+      }
+      const winnerFirst = isBattleRoyaleRow(row) && battleRoyaleCenter
+        ? buildBattleRoyaleCashTargetPmf({
+            N,
+            payouts,
+            prizePool,
+            itmRate: row.itmRate,
+            targetWinnings: targetRegular,
+            anchorPmf: battleRoyaleCenter.pmf,
+            anchorWinnings: battleRoyaleCenter.cashEV,
+            finishBuckets: row.finishBuckets,
+            preferTopHeavy: row.roi > 0,
+            topHeavyBias: row.itmTopHeavyBias ?? 0,
+          })
+        : null;
+      if (winnerFirst) {
+        return {
+          alpha: 0, pmf: winnerFirst.pmf, prizeByPlace,
+          feasible: winnerFirst.feasible, currentWinnings: winnerFirst.currentWinnings,
+          aimsAtTarget: true,
+        };
+      }
       const fi = calibrateShelledItm(
         N,
         paidCount,
@@ -450,37 +470,16 @@ function computeRowStatsAtField(
         row.itmTopHeavyBias ?? 0,
         bountyFraction > 0 ? totalWinningsEV : targetRegular,
       );
-      alpha = fi.alpha;
-      pmf = fi.pmf;
-      feasible = fi.feasible;
-      currentWinningsFromSolver = fi.currentWinnings;
-    }
-  } else {
-    alpha = calibrateAlpha(
-      N,
-      payouts,
-      prizePool,
-      entryCostSingle,
-      effectiveROI,
-      model,
-    );
-    pmf = buildFinishPMF(N, model, alpha);
-  }
-  const bountyCeiling = bountyEvCeiling(N, row.buyIn, bountyFraction, pmf);
-
-  const prizeByPlace = new Float64Array(N);
-  for (let i = 0; i < Math.min(payouts.length, N); i++) {
-    prizeByPlace[i] = payouts[i] * prizePool;
-  }
-
-  if (
-    bountyFraction > 0 &&
-    ((row.itmRate != null && row.itmRate > 0) || !isAlphaAdjustable(model))
-  ) {
-    let cashEVActual = 0;
-    for (let i = 0; i < N; i++) cashEVActual += pmf[i] * prizeByPlace[i];
-    bountyMean = Math.max(0, totalWinningsEV - cashEVActual);
-  }
+      return {
+        alpha: fi.alpha, pmf: fi.pmf, prizeByPlace,
+        feasible: fi.feasible, currentWinnings: fi.currentWinnings,
+        aimsAtTarget: fi.supportsTargetRoi,
+      };
+    },
+  });
+  const { alpha, pmf, feasible, currentWinnings: currentWinningsFromSolver } = settled.solved;
+  const targetRegular = settled.targetRegular;
+  bountyMean = settled.bountyMean;
 
   // A lock pins the solver's pmf; sit-through then moves mass again, so a lock
   // taken from the played pmf would ask for more than the row now plays.
@@ -847,14 +846,13 @@ function computeRowStatsAtField(
   const playedShells = shellSums(pmf, paidCount);
   const shellBubble = paidCount < N ? (pmf[paidCount] ?? 0) : 0;
   const shellFirstCash = paidCount > 0 ? (pmf[paidCount - 1] ?? 0) : 0;
-  // The engine closes a bounty row's ROI gap by shrinking the KO budget, so a
-  // cash side that overshoots its own target still hits the total as long as it
-  // stays under it (the rule validateSchedule applies).
-  const residualCanCloseTotal =
-    bountyFraction > 0 &&
-    currentWinningsFromSolver !== null &&
-    currentWinningsFromSolver <= totalWinningsEV + targetEvTolerance(totalWinningsEV) &&
-    bountyResidualFits(totalWinningsEV - currentWinningsFromSolver, bountyCeiling);
+  // The engine closes a bounty row's ROI gap with the KO EV, as far as the
+  // bounty pool allows, so a cash side off its own target still hits the total
+  // (the rule validateSchedule applies).
+  const shellFeasible = bountyFraction > 0 && currentWinningsFromSolver !== null
+    ? withinTargetEv(settled.cashEV + bountyMean, totalWinningsEV) ||
+      (feasible && !settled.solved.aimsAtTarget && !settled.poolCut)
+    : feasible;
 
   return {
     alpha,
@@ -881,7 +879,7 @@ function computeRowStatsAtField(
     ftField,
     ftEvShare,
     shellMode: row.itmRate != null && row.itmRate > 0,
-    shellFeasible: feasible || residualCanCloseTotal,
+    shellFeasible,
     shellTargetEv: targetRegular,
     shellCurrentEv:
       currentWinningsFromSolver != null
