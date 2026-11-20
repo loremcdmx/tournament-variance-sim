@@ -19,6 +19,7 @@ import {
 } from "./convergenceMath";
 import { runtimeSigmaBandResid } from "./runtimeSigmaBands";
 import { SIGMA_ROI_MYSTERY_ROYALE, sigmaRoiForRow } from "./convergenceFit";
+import { buildFormatRuntimeRow } from "./formatRuntimeSigma";
 import { applyGameType } from "./gameType";
 import { applyItmTarget } from "./itmTarget";
 
@@ -315,20 +316,8 @@ describe("convergence math", () => {
   });
 
   it("battle royale averaged mode keeps the runtime point and can show a validated runtime-centered band", () => {
-    const row: TournamentRow = {
-      id: "br",
-      label: "BR",
-      players: 18,
-      buyIn: 50,
-      rake: 0.08,
-      roi: 0.05,
-      payoutStructure: "battle-royale",
-      gameType: "mystery-royale",
-      bountyFraction: 0.5,
-      mysteryBountyVariance: 1.8,
-      itmRate: 0.18,
-      count: 1,
-    };
+    // The card's own row: a hand-built $50 row draws the $25 envelope table.
+    const row = buildFormatRuntimeRow("mystery-royale", { afs: 18, roi: 0.05, rake: 0.08 });
     const runtime = buildExactBreakdown([row]);
     expect(runtime).not.toBeNull();
 

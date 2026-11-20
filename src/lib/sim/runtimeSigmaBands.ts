@@ -32,12 +32,14 @@ export interface RuntimeSigmaBandSpec {
 }
 
 export const RUNTIME_SIGMA_BANDS: Record<RuntimeSigmaFormat, RuntimeSigmaBandSpec> = {
-  freeze: { resid: 0.03, afsMin: 50, afsMax: 50_000, roiMin: -0.3, roiMax: 1.0 },
+  freeze: { resid: 0.02, afsMin: 50, afsMax: 50_000, roiMin: -0.3, roiMax: 1.0 },
   pko: { resid: 0.02, afsMin: 50, afsMax: 50_000, roiMin: -0.3, roiMax: 1.0 },
   mystery: { resid: 0.02, afsMin: 50, afsMax: 50_000, roiMin: -0.3, roiMax: 1.0 },
   // Noise-limited: the Monte Carlo of the 10 000x envelope cannot resolve a
-  // gap under ~1-2 %, so 6 % is mostly two standard errors, not a measured error.
-  "mystery-royale": { resid: 0.06, afsMin: 18, afsMax: 18, roiMin: -0.2, roiMax: 1.0 },
+  // gap under ~1-2 %. 7 % is the band rule (|gap| + 2 SE, rounded up) applied
+  // to a 3.4-SE dip in one cell (ROI -20 %: -3.9 % ± 1.2 %), not a measured
+  // error; docs/FITTING.md has the replicate run of that cell.
+  "mystery-royale": { resid: 0.07, afsMin: 18, afsMax: 18, roiMin: -0.2, roiMax: 1.0 },
 };
 
 /**

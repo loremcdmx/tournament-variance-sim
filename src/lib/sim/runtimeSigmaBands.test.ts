@@ -77,29 +77,41 @@ describe("runtime σ band table = the Monte-Carlo calibration artifact", () => {
   });
 });
 
-describe("the PKO cells were measured on the current knockout model", () => {
-  const pko = calibration.cells.filter((c) => c.format === "pko");
+describe("every cell was measured on today's engine", () => {
+  for (const format of FORMATS) {
+    it(`${format}: the cells' analytic σ is the cards' σ today, within 1 %`, () => {
+      // A cell measured on another engine (the Poisson PKO count, an older payout
+      // curve, the old Battle Royale centre) says nothing about today's gap. 1 %
+      // lets a sub-percent engine tweak through; anything larger means
+      // re-measuring the format with `BANDS_FILTER="<format>|"`.
+      const cells = calibration.cells.filter((c) => c.format === format);
+      expect(cells).toHaveLength(format === "mystery-royale" ? 10 : 55);
+      for (const c of cells) {
+        const sigma = formatRuntimeSigma(format, {
+          afs: c.afs,
+          roi: c.roi,
+          rake: c.rake,
+          finishModel: { id: c.finishModelId as FinishModelId },
+          itmTarget: "itmPct" in c && typeof c.itmPct === "number" ? { enabled: true, pct: c.itmPct } : undefined,
+        });
+        expect(Math.abs(sigma! / c.sigmaAnalytic - 1), c.id).toBeLessThan(0.01);
+      }
+    });
+  }
 
-  it("their analytic σ is the cards' σ today, within 1 %", () => {
-    // A cell measured on another PKO model (the Poisson count with flat head
-    // noise, an older payout curve) says nothing about today's gap. 1 % lets a
-    // sub-percent engine tweak through; anything larger means re-measuring
-    // with `BANDS_FILTER="pko|"`.
-    expect(pko).toHaveLength(55);
-    for (const c of pko) {
-      const sigma = formatRuntimeSigma("pko", {
-        afs: c.afs,
-        roi: c.roi,
-        rake: c.rake,
-        finishModel: { id: c.finishModelId as FinishModelId },
-        itmTarget: "itmPct" in c && typeof c.itmPct === "number" ? { enabled: true, pct: c.itmPct } : undefined,
-      });
-      expect(Math.abs(sigma! / c.sigmaAnalytic - 1), c.id).toBeLessThan(0.01);
+  it("every freeze, PKO and Mystery cell's σ has a standard error of at most 0.5 %", () => {
+    for (const c of calibration.cells.filter((x) => x.format !== "mystery-royale")) {
+      expect(c.se, c.id).toBeLessThanOrEqual(0.005);
     }
   });
 
-  it("every cell's σ has a standard error of at most 0.5 %", () => {
-    for (const c of pko) expect(c.se, c.id).toBeLessThanOrEqual(0.005);
+  it("Battle Royale holds at least its full budget: 4 G tournaments per grid cell, 1 G per probe", () => {
+    // Its SE cannot reach 0.5 % (the 10 000x envelope), so the budget is the
+    // guarantee that the band was not set from a smoke run or a partial merge;
+    // a top-up with BANDS_RESUME only adds to it.
+    for (const c of calibration.cells.filter((x) => x.format === "mystery-royale")) {
+      expect(c.tournaments, c.id).toBeGreaterThanOrEqual(c.tag === "core" ? 4e9 : 1e9);
+    }
   });
 });
 

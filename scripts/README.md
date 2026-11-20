@@ -19,9 +19,8 @@ Use these when changing coefficients that feed the shipped UI:
 - `fit_runtime_sigma_bands.ts`
 - `fit_br_fixed18.ts`
 - `xval_br.ts`
-- `resweep_sigma.ts` (regenerates the PKO / Mystery grids)
-- `refit_2d_logpoly.ts` (fits the 2D log-poly surfaces from those grids)
-- `fit_beta_freeze_realdata.ts` (the freeze grid)
+- `resweep_sigma.ts` (regenerates the freeze / PKO / Mystery grids from the compile)
+- `refit_2d_logpoly.ts` (fits the freeze line and the 2D log-poly surfaces from those grids)
 - `fit_drift_report.ts`
 - `fit_runtime_sigma_bands.json`
 - `fit_beta_freeze_realdata.json`

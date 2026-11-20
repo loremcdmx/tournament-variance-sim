@@ -37,11 +37,15 @@ near the top of `src/lib/sim/convergenceFit.ts`):
 
 | Format                      | Runtime form  | Coefficients | resid of the surface |
 | --------------------------- | ------------- | ------------ | -------------------- |
-| freezeout (realdata-linear) | single-β      | C0=0.6564, C1=0, β=0.3694 | 6% |
+| freezeout (realdata-linear) | single-β      | C0=0.6459, C1=0, β=0.3715 | 15% |
 | PKO                         | 2D log-poly   | a0=0.28406, a1=0.07573, a2=0.01632, b1=1.22695, b2=-0.10408, c=-0.09765 | 5% |
-| Mystery Bounty              | 2D log-poly   | a0=2.18541, a1=-0.27892, a2=0.03057, b1=2.29124, b2=-0.35711, c=-0.16149 | 13% |
-| Mystery Battle Royale       | fixed-AFS runtime-helper line | C0=5.48538, C1=3.11864, β=0 | 10% |
+| Mystery Bounty              | 2D log-poly   | a0=2.08379, a1=-0.28581, a2=0.03218, b1=2.18546, b2=-0.30473, c=-0.16109 | 14% |
+| Mystery Battle Royale       | fixed-AFS runtime-helper line | C0=7.50416, C1=4.03121, β=0 | 1% |
 | mix freeze/PKO              | exact σ² composition | no promoted `{C,β}` | — |
+
+All four were refitted on 19 November 2026 from grids read off the compile of
+that day (see [Quickstart](#quickstart)); the held-out and off-grid errors of
+each are below and in the comments of `convergenceFit.ts`.
 
 These are the constants in `src/lib/sim/convergenceFit.ts` (the code wins if the
 two ever disagree). **They are no longer what the planning cards show.** The
@@ -62,10 +66,12 @@ exponent, `C0` is the edge-free intercept, and `C1` is how much a +1.0
 ROI edge inflates σ. In the 2D log-poly form, inspect the residual report
 instead of trying to interpret one coefficient in isolation. Mystery
 Royale's β is 0 by construction since the AFS slider is locked at 18 in
-the UI. The shipped BR tab now centers on a runtime single-row compile;
-the stored `{C0, C1}` line is just a compact helper for that runtime
-center inside the validated BR box (ROI ±10%), and `xval_br.ts` is the
-independent sim check for the advertised residual band.
+the UI. The shipped BR tab centers on `formatRuntimeSigma("mystery-royale")`,
+the compile of the editor's default BR row on the $10 ticket; the stored
+`{C0, C1}` line is a compact helper through that same σ inside the BR slider
+box (ROI ±10%), and `xval_br.ts` runs the engine's Monte Carlo on that row as a
+sanity check. The freeze line has C1 = 0 because its finish model
+(`freeze-realdata-linear`) plays one shape whatever the ROI.
 
 ## Why a fit and not a formula?
 
@@ -144,20 +150,32 @@ format's `table` and `summary` entries from its 55 cells. `BANDS_RESUME=1` with 
 larger `BANDS_BATCHES` adds batches to the cells already in the tmp dir (the seed is
 per cell and a batch is a fixed slice of samples, so the first batches are reused).
 
-### Result (47.9 G tournaments: the other formats at `12e7d5f`, the PKO cells re-measured at `b2faf2e` with 6.7 G)
+### Result (51.4 G tournaments: freezeout, Mystery and Battle Royale at `06a6bb2`, the PKO cells at `b2faf2e`)
 
 | format | cells | box: field, ROI | largest gap | largest SE | `resid` |
 | --- | ---: | --- | ---: | ---: | ---: |
-| freezeout | 55 | 50–50000, -30..+100% | 0.98% | 0.72% | **3%** |
+| freezeout | 55 | 50–50000, -30..+100% | 0.44% | 0.40% | **2%** |
 | PKO | 55 | 50–50000, -30..+100% | 0.59% | 0.45% | **2%** |
-| Mystery | 55 | 50–50000, -30..+100% | 0.59% | 0.66% | **2%** |
-| Battle Royale | 10 | 18, -20..+100% | 1.82% | 2.15% | **6%** |
+| Mystery | 55 | 50–50000, -30..+100% | 0.85% | 0.47% | **2%** |
+| Battle Royale | 10 | 18, -20..+100% | 3.93% | 1.92% | **7%** |
+
+Every cell's stored analytic σ is today's `formatRuntimeSigma` to within 1 %
+(`runtimeSigmaBands.test.ts` checks all 175). Freezeout, Mystery and Battle Royale
+were re-measured on 19 November 2026 because their cells came from the run at
+`12e7d5f`: before the xoshiro128** generator, the GG freezeout and bounty curves and
+the Battle Royale cash/KO centre. Their analytic σ had moved by up to 0.05 %
+(freezeout), 2.1 % (Mystery, the seven cells at field 300) and 0.67 % (Battle Royale).
+Each cell ran at the script's own seed: 24 batches (120 M tournaments), 72 at field
+50 000 for freezeout and Mystery and 48 at Mystery field 100 / ROI −20 %, which brings
+every SE to 0.5 % or less; Battle Royale kept 800 batches (4 G) per grid cell and 200
+(1 G) per probe, about 1.5 h of CPU in all. On those numbers the freezeout band
+narrows from 3 % to 2 %, Mystery stays at 2 % and Battle Royale widens from 6 % to 7 %.
 
 The band before this calibration, for the record: freezeout ±50 % on the chips and
 ±6 % on the prove-edge card, PKO ±11 %, Mystery ±3 % on the chips and ±13 % on the
 prove-edge card, Battle Royale ±10 %, and schedule mode used the 6/11/13/10 % of the
 closed-form surfaces. The 6, 11, 13 and 10 % were those surfaces' own errors against
-their own grids (the PKO surface's is 5 % since its refit of 19 November 2026); they
+their own grids (all four surfaces were refitted on 19 November 2026); they
 stopped describing anything once the point moved to the engine's compile.
 
 What the numbers say:
@@ -165,19 +183,32 @@ What the numbers say:
 - The analytic σ and the engine agree to within 1.0 % in every cell of freezeout,
   PKO and Mystery, and to a few tenths of a percent below 10 000 players. The band is
   therefore mostly Monte-Carlo noise (2 SE). For freezeout and PKO the SE grows with
-  the field (0.0–0.1 % at 50 players; at 50 000, 0.4–0.7 % for freezeout and 0.3–0.45 %
-  for PKO); Mystery's SE is not monotone in the field (up to 0.4 % at 50 players). The
-  freezeout 3 % comes from one noisy cell (AFS 50 000, ROI −30 %); an independent re-run
-  of single cells put the real gap at about 0.1 % for freezeout, MC slightly above the
-  analytic σ. The 55 PKO cells pool to a gap of −0.008 % ± 0.006 % (inverse-variance;
-  χ² 52 on 55 cells, largest |z| 2.06).
+  the field (0.0–0.1 % at 50 players; at 50 000, 0.2–0.4 % for freezeout on 360 M
+  tournaments and 0.3–0.45 % for PKO); Mystery's SE is not monotone in the field
+  (0.2–0.4 % at 50 players, up to 0.47 % at field 300). The 55 freezeout cells pool to
+  a gap of −0.002 % ± 0.006 % (inverse-variance; χ² 66 on 55 cells, largest |z| 2.9);
+  the run at `12e7d5f` pooled to +0.045 % ± 0.006 % (χ² 118), the first-place excess
+  of the old generator. The 55 PKO cells pool to −0.008 % ± 0.006 % (χ² 52, largest
+  |z| 2.06). Mystery pools to −0.06 % ± 0.03 % (χ² 75, largest |z| 3.2: −0.46 % ±
+  0.15 % at field 100, ROI +60 %); its unweighted mean gap is −0.04 %, a fiftieth of
+  its band. Its worst cell for the band is +0.85 % ± 0.47 % (field 300, ROI −20 %).
 - Battle Royale is noise-limited. One 10 000x envelope is hit about once per 2.5 M
-  tournaments and carries most of the variance, so even 4 G tournaments per cell leave
-  SE at 0.6–1.1 % (1 G on the probes: 1.8–2.2 %). The cells cannot separate a gap
-  under about 1–2 % from zero; pooled over the six grid cells the gap is
-  +0.73% ± 0.33 % (inverse-variance). The 6 % is a noise-limited constant, not a
-  measured error: it is the same rule (gap + 2 SE, worst cell, rounded up) applied to
-  data that cannot resolve more.
+  tournaments and carries most of the variance (85–88 % of it by the compile's own
+  moments), so even 4 G tournaments per cell leave SE at 0.6–1.2 % (1 G on the probes:
+  1.8–1.9 %). The cells cannot separate a gap under about 1–2 % from zero. The worst
+  cell, ROI −20 %, read −3.93 % ± 1.17 % (z −3.4); its next 4 G tournaments (batches
+  800–1599 of the same seed, not part of the published cell) read +0.02 % ± 1.12 %
+  (both halves pooled: −1.94 % ± 0.81 %), and the compile's σ equals the exact
+  moments of what the hot loop draws there (the alias tables, the Poisson KO count
+  and the envelope tiers, summed by hand). To repeat the replicate, run that one cell
+  with `BANDS_FILTER="mystery-royale|afs18|roi-0.2|rake0.08|powerlaw"
+  BANDS_BR_BATCHES=1600` and its own `BANDS_TMP`, then pool the records with
+  `batch` ≥ 800 in the tmp dir's `w*.jsonl` (about 15 minutes of CPU for the two
+  halves; restore the JSON afterwards). So the 7 % is the same rule (gap + 2 SE,
+  worst cell, rounded up) applied to a 3.4-SE dip in data that cannot resolve more,
+  not a measured error. Pooled over the six grid cells
+  the gap is −0.67 % ± 0.33 % (inverse-variance; −0.38 % ± 0.35 % without the ROI −20 %
+  cell); the run at `12e7d5f` pooled to +0.73 % ± 0.33 % on the old generator.
 - Rake, finish model and the global ITM target do not move the gap beyond noise
   (probes below), so none of them is gated. The ITM probes cover field 1 000 at
   ROI +10 % only; an independent check at targets 5–40 % stayed within the bands. The box is the extent of the grid: the
@@ -185,7 +216,7 @@ What the numbers say:
   candidates; outside it (a row with 200 000 players, ROI +150 %) the cards show the
   point only. The old gate had no ROI limit for freezeout and stopped PKO and Mystery
   at −20..+80 %, with no measurement behind either.
-- `k ∝ σ²`: ±3 % on σ is about ±6 % on the volume the cards print.
+- `k ∝ σ²`: ±2 % on σ is about ±4 % on the volume the cards print.
 - The PKO cells were re-measured after the knockouts moved to the elimination tree
   (exact Bernoulli knockouts, a fixed own head for the winner and a per-place head-size
   factor, in place of a Poisson count with a flat 0.4 head noise): all 55 cells at the
@@ -201,28 +232,28 @@ there), in the same units:
 
 | format | rake | finish model | global ITM | MC/analytic − 1 | SE |
 | --- | ---: | --- | ---: | ---: | ---: |
-| freezeout | 0 | default | off | +0.03% | 0.09% |
-| freezeout | 0.2 | default | off | +0.01% | 0.07% |
-| freezeout | 0.1 | power-law | off | +0.10% | 0.07% |
-| freezeout | 0.1 | linear-skill | off | +0.06% | 0.08% |
-| freezeout | 0.1 | default | 12 % | +0.12% | 0.07% |
-| freezeout | 0.1 | default | 25 % | +0.11% | 0.08% |
+| freezeout | 0 | default | off | -0.06% | 0.09% |
+| freezeout | 0.2 | default | off | +0.07% | 0.07% |
+| freezeout | 0.1 | power-law | off | -0.04% | 0.07% |
+| freezeout | 0.1 | linear-skill | off | +0.01% | 0.07% |
+| freezeout | 0.1 | default | 12 % | +0.17% | 0.08% |
+| freezeout | 0.1 | default | 25 % | -0.15% | 0.09% |
 | PKO | 0 | default | off | +0.07% | 0.07% |
 | PKO | 0.2 | default | off | +0.01% | 0.06% |
 | PKO | 0.1 | power-law | off | +0.02% | 0.07% |
 | PKO | 0.1 | linear-skill | off | -0.02% | 0.07% |
 | PKO | 0.1 | default | 12 % | -0.07% | 0.07% |
 | PKO | 0.1 | default | 25 % | -0.05% | 0.10% |
-| Mystery | 0 | default | off | -0.19% | 0.19% |
-| Mystery | 0.2 | default | off | +0.02% | 0.16% |
-| Mystery | 0.1 | power-law | off | +0.22% | 0.25% |
-| Mystery | 0.1 | linear-skill | off | +0.49% | 0.28% |
-| Mystery | 0.1 | default | 12 % | -0.08% | 0.18% |
-| Mystery | 0.1 | default | 25 % | +0.44% | 0.31% |
-| Battle Royale | 0 | default | off | -0.44% | 2.15% |
-| Battle Royale | 0.2 | default | off | +0.24% | 1.77% |
-| Battle Royale | 0.08 | power-law | off | +0.60% | 1.91% |
-| Battle Royale | 0.08 | linear-skill | off | -1.78% | 1.91% |
+| Mystery | 0 | default | off | +0.13% | 0.24% |
+| Mystery | 0.2 | default | off | -0.01% | 0.19% |
+| Mystery | 0.1 | power-law | off | -0.21% | 0.20% |
+| Mystery | 0.1 | linear-skill | off | -0.10% | 0.15% |
+| Mystery | 0.1 | default | 12 % | -0.03% | 0.17% |
+| Mystery | 0.1 | default | 25 % | -0.12% | 0.24% |
+| Battle Royale | 0 | default | off | +1.64% | 1.92% |
+| Battle Royale | 0.2 | default | off | +0.02% | 1.76% |
+| Battle Royale | 0.08 | power-law | off | +0.65% | 1.88% |
+| Battle Royale | 0.08 | linear-skill | off | -0.31% | 1.89% |
 
 Per-cell tables, MC/analytic − 1 in percent with the SE in brackets (field down, ROI across):
 
@@ -230,13 +261,13 @@ Per-cell tables, MC/analytic − 1 in percent with the SE in brackets (field dow
 
 | AFS ↓ ROI → | -30% | -20% | 0% | 10% | 30% | 60% | 100% |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 50 | +0.1% (0.0) | +0.0% (0.0) | +0.1% (0.0) | +0.0% (0.0) | +0.0% (0.0) | +0.0% (0.0) | -0.0% (0.0) |
-| 100 | +0.0% (0.0) | +0.0% (0.0) | +0.1% (0.0) | +0.0% (0.0) | +0.0% (0.0) | +0.1% (0.0) | +0.0% (0.0) |
-| 300 | +0.1% (0.1) | +0.1% (0.1) | -0.0% (0.0) | +0.1% (0.0) | +0.1% (0.0) | +0.0% (0.0) | +0.0% (0.0) |
-| 1000 | +0.2% (0.1) | +0.1% (0.1) | +0.1% (0.1) | +0.0% (0.1) | -0.0% (0.1) | +0.0% (0.1) | +0.1% (0.1) |
-| 3000 | +0.4% (0.2) | +0.1% (0.2) | +0.4% (0.1) | +0.2% (0.1) | +0.0% (0.1) | -0.1% (0.1) | +0.1% (0.1) |
-| 10000 | +0.2% (0.3) | +0.8% (0.3) | +0.3% (0.3) | -0.1% (0.2) | -0.1% (0.2) | +0.0% (0.2) | -0.0% (0.2) |
-| 50000 | +1.0% (0.7) | -0.0% (0.7) | -0.1% (0.5) | +0.4% (0.5) | +0.1% (0.4) | -0.2% (0.5) | +0.8% (0.4) |
+| 50 | +0.1% (0.0) | -0.0% (0.0) | +0.0% (0.0) | +0.0% (0.0) | +0.0% (0.0) | +0.0% (0.0) | -0.0% (0.0) |
+| 100 | +0.0% (0.0) | -0.0% (0.0) | -0.0% (0.0) | -0.0% (0.0) | -0.0% (0.0) | +0.1% (0.0) | -0.0% (0.0) |
+| 300 | +0.1% (0.1) | -0.1% (0.1) | -0.1% (0.0) | +0.0% (0.0) | -0.0% (0.0) | -0.0% (0.0) | +0.0% (0.0) |
+| 1000 | -0.1% (0.1) | +0.1% (0.1) | -0.1% (0.1) | +0.1% (0.1) | -0.0% (0.1) | -0.0% (0.1) | -0.1% (0.1) |
+| 3000 | -0.2% (0.2) | +0.1% (0.2) | +0.0% (0.1) | +0.1% (0.1) | +0.1% (0.1) | +0.1% (0.1) | +0.0% (0.1) |
+| 10000 | +0.1% (0.3) | -0.0% (0.3) | +0.0% (0.2) | -0.4% (0.2) | -0.1% (0.2) | -0.1% (0.2) | +0.1% (0.1) |
+| 50000 | +0.2% (0.4) | -0.3% (0.4) | +0.1% (0.3) | -0.4% (0.3) | -0.1% (0.2) | +0.1% (0.2) | -0.3% (0.2) |
 
 **PKO, rake 0.1: MC/analytic − 1 in % (SE in %)**
 
@@ -254,19 +285,19 @@ Per-cell tables, MC/analytic − 1 in percent with the SE in brackets (field dow
 
 | AFS ↓ ROI → | -30% | -20% | 0% | 10% | 30% | 60% | 100% |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 50 | +0.2% (0.4) | +0.4% (0.3) | +0.1% (0.2) | +0.3% (0.3) | +0.0% (0.2) | -0.1% (0.1) | +0.1% (0.2) |
-| 100 | +0.3% (0.3) | -0.3% (0.3) | +0.0% (0.3) | -0.1% (0.2) | +0.1% (0.2) | -0.1% (0.2) | -0.3% (0.1) |
-| 300 | +0.5% (0.4) | +0.3% (0.3) | +0.3% (0.4) | +0.1% (0.2) | -0.0% (0.2) | +0.1% (0.2) | -0.2% (0.1) |
-| 1000 | +0.0% (0.3) | -0.1% (0.2) | -0.2% (0.2) | +0.2% (0.2) | -0.2% (0.2) | +0.1% (0.1) | +0.1% (0.2) |
-| 3000 | -0.3% (0.2) | +0.4% (0.2) | +0.1% (0.2) | +0.0% (0.1) | +0.1% (0.2) | +0.0% (0.3) | +0.1% (0.1) |
-| 10000 | -0.2% (0.2) | -0.1% (0.2) | +0.1% (0.2) | +0.0% (0.2) | +0.3% (0.2) | +0.0% (0.2) | +0.1% (0.1) |
-| 50000 | +0.4% (0.7) | +0.2% (0.5) | -0.1% (0.5) | +0.6% (0.4) | +0.2% (0.4) | +0.4% (0.3) | +0.2% (0.3) |
+| 50 | -0.1% (0.4) | -0.0% (0.3) | -0.5% (0.2) | +0.5% (0.3) | +0.1% (0.2) | +0.0% (0.2) | -0.0% (0.2) |
+| 100 | -0.5% (0.3) | +0.2% (0.3) | +0.1% (0.2) | -0.2% (0.3) | -0.3% (0.2) | -0.5% (0.1) | -0.2% (0.2) |
+| 300 | -0.1% (0.4) | +0.9% (0.5) | +0.1% (0.4) | -0.3% (0.2) | -0.2% (0.2) | -0.2% (0.1) | -0.3% (0.1) |
+| 1000 | +0.4% (0.4) | +0.0% (0.3) | +0.1% (0.2) | -0.1% (0.2) | -0.3% (0.1) | +0.1% (0.2) | -0.1% (0.1) |
+| 3000 | +0.1% (0.3) | +0.0% (0.2) | -0.1% (0.1) | +0.2% (0.1) | -0.2% (0.1) | +0.0% (0.2) | -0.1% (0.1) |
+| 10000 | -0.0% (0.2) | +0.4% (0.2) | +0.1% (0.2) | -0.1% (0.2) | +0.1% (0.2) | +0.2% (0.1) | +0.2% (0.1) |
+| 50000 | -0.6% (0.4) | -0.2% (0.3) | -0.2% (0.3) | -0.2% (0.2) | +0.4% (0.2) | -0.2% (0.2) | +0.2% (0.2) |
 
 **Battle Royale, rake 0.08: MC/analytic − 1 in % (SE in %)**
 
 | AFS ↓ ROI → | -20% | 0% | 10% | 30% | 60% | 100% |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 18 | +1.8% (1.1) | -0.0% (1.0) | -0.5% (1.0) | +0.9% (0.8) | +0.3% (0.7) | +1.3% (0.6) |
+| 18 | -3.9% (1.2) | -0.7% (1.0) | -0.5% (0.9) | -0.2% (0.9) | -0.3% (0.7) | -0.4% (0.6) |
 
 Every raw number, including kurtosis, both SE estimators and the realized ROI of each
 cell, is in `scripts/fit_runtime_sigma_bands.json`.
@@ -278,30 +309,40 @@ Two producers — pick the right one for what you're doing:
 ### Canonical (promoted to UI coefficients)
 
 - **`scripts/fit_br_fixed18.ts`** — rebuilds the BR runtime helper line at
-  fixed AFS=18 inside the actual UI ROI box (±10%). Writes
-  `scripts/fit_beta_mystery_royale.json`.
-- **`scripts/xval_br.ts`** — independent sim validation for the shipped BR
-  helper band. Run this together with the fit script before promoting BR
-  changes; `fit_drift_report.ts` only tells you whether the helper reproduces
-  its own artifact, not whether the runtime-centered BR band is honest against
-  simulation.
+  fixed AFS=18 inside the BR slider box (ROI ±10%), from
+  `formatRuntimeSigma("mystery-royale")`: the card's own row, the editor's
+  default BR row on the $10 ticket. Writes `scripts/fit_beta_mystery_royale.json`.
+  Until 19 November 2026 it fitted a hand-built $50 row, which draws the $25
+  envelope table and read 27 % under the card; the line now reaches the card's σ
+  within 0.08 % over the whole box.
+- **`scripts/xval_br.ts`** — runs the engine's Monte Carlo on that same row at
+  four ROIs between the fit points (100 M tournaments each) and checks the line
+  against it within its `resid` plus 2 SE. At 100 M tournaments the SE is about
+  6 %, so it catches a wrong row or a broken line, not a 1 % gap;
+  `fit_runtime_sigma_bands.ts` (4 G per BR cell) is the precise check of the
+  analytic σ against the hot loop.
 - **Freeze / PKO / Mystery canonical fits** — production artifacts
-  `scripts/fit_beta_freeze_realdata.json` (written by
-  `fit_beta_freeze_realdata.ts`, 18 fields × 7 ROIs), `scripts/fit_beta_pko.json`
-  and `scripts/fit_beta_mystery.json` (written by `resweep_sigma.ts`, 18 fields
-  × 11 ROIs). These back the `SIGMA_ROI_*` constants in
-  `src/lib/sim/convergenceFit.ts`.
-- **`scripts/resweep_sigma.ts`** — regenerates a canonical PKO/Mystery grid
-  on the **current** engine, with the row recipe of `fit_sigma_parallel.ts`.
-  Each cell is the exact per-tournament σ of the compiled row in buy-ins
-  (`compiledEntryMoments`): the value a Monte-Carlo sweep of the cell converges
-  to, without its noise, in about a second per format:
+  `scripts/fit_beta_freeze_realdata.json` (18 fields × 7 ROIs),
+  `scripts/fit_beta_pko.json` and `scripts/fit_beta_mystery.json` (18 fields × 11
+  ROIs), all written by `resweep_sigma.ts`. These back the `SIGMA_ROI_*` constants
+  in `src/lib/sim/convergenceFit.ts`.
+- **`scripts/resweep_sigma.ts`** — regenerates a canonical freeze, PKO or
+  Mystery grid on the **current** engine, with the row recipe of
+  `fit_sigma_parallel.ts`. Each cell is the exact per-tournament σ of the
+  compiled row in buy-ins (`compiledEntryMoments`): the value a Monte-Carlo sweep
+  of the cell converges to, without its noise, in about a second per format:
 
   ```bash
+  FORMAT=freeze  npx tsx scripts/resweep_sigma.ts
   FORMAT=pko     npx tsx scripts/resweep_sigma.ts
   FORMAT=mystery npx tsx scripts/resweep_sigma.ts
   npx tsx scripts/refit_2d_logpoly.ts              # new coefficients
   ```
+
+  `refit_2d_logpoly.ts` prints both forms for each format; PKO and Mystery
+  promote the 2D log-poly (Model B), freeze the single-β line (Model A). The
+  freeze row (`mtt-standard`, `freeze-realdata-linear`) plays one shape whatever
+  the ROI, so its seven columns are the same σ and its C1 is 0.
 
   It used to run the engine (120 000 samples × 500 tournaments per cell, about
   8 minutes on 16 workers). The two agree: the compiled σ of the engine just
@@ -325,20 +366,45 @@ Two producers — pick the right one for what you're doing:
   all 198 cells and fails past 1 %). **Re-measure before refitting** whenever the
   compile/hot-loop path or a payout table has changed; refitting a stale grid
   just re-learns the old engine. Validate the promoted coefficients on
-  *off-grid* points (the LOO xval in `refit_2d_logpoly.ts` only covers the
+  *off-grid* points (the held-out errors in `refit_2d_logpoly.ts` only cover the
   fitted grid): the PKO surface misses 170 geometric midpoints between the
   grid points by 3.9 % at p95, and misses by up to 9.7 % around fields
   260-300 at ROI −20 %, where steps in the `mtt-gg-bounty` curve put a narrow
-  feature into σ that no grid field samples.
+  feature into σ that no grid field samples. Midpoints alone do not see such a
+  step: check every field up to a few thousand players.
 
-  **The stored Mystery grid and `SIGMA_ROI_MYSTERY` were measured at a per-KO
-  log-variance of 2.4** (`mysteryBountyVariance` 2.0 plus a 0.4 PKO head-size
-  term the recipe used to add, a channel the engine no longer has), by the old
-  Monte-Carlo sweep. The engine compiles Mystery at 2.0, so a fresh
-  `FORMAT=mystery` sweep comes out lower than the stored grid (-6 to -10 % at
-  three corner cells of fields 100-5000, ROI 0 to +30 %, bounty share 0.5). The surface feeds no
-  planning card (see WISDOM.md), so it was left as it is; refit it from a
-  fresh sweep before using it for anything.
+  **Freeze and Mystery, refitted 19 November 2026.** The Mystery grid had been
+  measured by the old Monte-Carlo sweep at a per-KO log-variance of 2.4
+  (`mysteryBountyVariance` 2.0 plus a 0.4 PKO head-size term the recipe used to
+  add, a channel the engine no longer has) and read 1.00–1.16× today's compile;
+  the freeze grid (Monte Carlo, April) read 0.99–1.01× except at field 200, 1.04×.
+  Both were re-read from the compile and refitted. Their errors, held out on the
+  grid and on a dense off-grid scan (170 geometric midpoints; every field
+  50–2 000 at ROI −20/0/+10/+30/+80 %; 401 log-spaced fields 2 000–50 000 at the 11
+  grid ROIs):
+
+  | surface | leave one cell out: mean / p95 / max | leave one field out: mean / p95 / max | midpoints p95 / max | dense p95 / max | `resid` |
+  | --- | --- | --- | --- | --- | ---: |
+  | Mystery | **4.5 / 13.05 / 43.0 %** (field 50, ROI +80 %) | 5.6 / 22.5 / 52.0 % | 7.0 / 10.3 % | 8.1 / 35.4 % (fields 50–64, ROI +80 %; from field 100: 7.9 / 13.1 %) | 14 % |
+  | freeze | 4.0 / 11.5 / 11.8 % (in effect in-sample) | **4.5 / 14.2 / 14.2 %** (field 50 000; 12.0 % at field 300) | 10.0 / 10.0 % | 9.4 / 13.3 % (fields 255–280) | 15 % |
+
+  `resid` is the bold held-out p95, rounded up. The held-out unit is a distinct
+  cell. The freeze columns are copies of one another, so leaving out one cell keeps
+  six exact copies of it in the fit and returns the in-sample miss (11.1 % at
+  most); the freeze grid holds 18 distinct cells, one per field, and with 18 the p95
+  is the max. Leaving out a whole field is an extrapolation at fields 50 and
+  50 000, which is where the Mystery and PKO field-out p95 come from (PKO: 6.3 /
+  11.0 % against 4.9 / 9.2 % cell by cell). `refit_2d_logpoly.ts` prints both.
+
+  The freeze line passes over a plateau: σ stays at 4.40–4.51 buy-ins from 200 to
+  260 players and then climbs (4.84 at 300, 6.28 at 500), which no single power of
+  the field can follow. The 2D log-poly form follows it better (leave one field
+  out: p95 = max 9.9 %), but freeze keeps the single-β form: the surface is only a
+  fallback no card reads, and `fit_drift_report.ts` consumes it as a line.
+  `convergenceFit.test.ts` compares every stored cell of all three grids, and the
+  BR line's five points, with today's compile (1 %), holds the freeze line to the
+  least-squares fit of its grid, and holds every held-out freeze field within
+  `resid`.
 - **`scripts/fit_beta_pko_core.json`** — *not* an independent UI
   canonical. It's a 7-ROI PKO baseline subset (same ROIs as the
   200k-AFS probe) retained purely so `fit_drift_report.ts` can
@@ -408,13 +474,13 @@ fit to the UI.
 
 ## The sweep space
 
-| Dimension | Canonical grid (`resweep_sigma.ts`, `fit_beta_freeze_realdata.ts`) | 200k diagnostic sweep (`fit_sigma_parallel.ts`) |
+| Dimension | Canonical grid (`resweep_sigma.ts`)                                 | 200k diagnostic sweep (`fit_sigma_parallel.ts`) |
 | --------- | ------------------------------------------------------------------- | ----------------------------------------------- |
 | Field     | 18 log-spaced sizes 50…50 000                                       | 22 sizes 50…200 000                             |
 | ROI       | PKO / Mystery: 11 = {−20, −10, 0, +5, +10, +15, +20, +25, +30, +40, +80}% | 7 main {−20, −10, 0, +10, +20, +40, +80}% + 4 dense {+5, +15, +25, +30}% |
 |           | freeze: 7 = {−20, −10, 0, +10, +20, +40, +80}%                      | the same for freeze                              |
-| Tourneys  | PKO / Mystery: none, σ read from the compile; freeze: 500 per sample | 500                                             |
-| Samples   | PKO / Mystery: none; freeze: 120k                                   | 120k                                            |
+| Tourneys  | none, σ read from the compile                                       | 500                                             |
+| Samples   | none                                                                | 120k                                            |
 
 Everything else (buy-in $50, rake 10 %, bountyFraction 0.5) is held fixed. The
 fit is **about field-and-ROI**, not about format/rake sensitivity — those get
@@ -443,6 +509,18 @@ separate sweeps if you need them.
 }
 ```
 
+That is the shape of the Monte-Carlo artifacts `fit_sigma_parallel.ts` writes.
+The canonical grids `resweep_sigma.ts` writes carry `meta`, `fields`, `rois`,
+`table`, `perRoiFits` (with each ROI's power-law R²), `globalBeta` and
+`cRoiLinear: { C0, C1 }`, with no `globalR2`, no `cRoiLinear.r2` and no
+`logPolyPooled`. On the freeze grid, whose columns are copies, `C(roi)` does not
+vary, so an R² of the `C(roi)` line would be 0/0. Mystery's per-ROI R² falls from
+0.91 at ROI −20 % to 0.73 at +80 %: its σ(field) bends on a log-log plot, which is
+why PKO and Mystery promote the 2D log-poly form and not a power law. For the
+canonical grids the checks are the in-sample R² and the held-out errors
+`refit_2d_logpoly.ts` prints for both forms, plus a dense off-grid scan against
+the compile (see [Canonical](#canonical-promoted-to-ui-coefficients)).
+
 `logPolyPooled` is a **diagnostic-only** pooled quadratic fit of
 `log σ` against `log field`, with both inputs per-ROI mean-centered
 before pooling (`xs = log f − mx(roi)`, `ys = log σ − my(roi)`). That
@@ -466,7 +544,8 @@ the UI. Run `scripts/refit_2d_logpoly.ts` and promote the reported
 `a0/a1/a2/b1/b2/c` coefficients only after `fit_drift_report.ts` confirms
 user-zone residuals are acceptable.
 
-Pitfalls:
+Pitfalls of the `fit_sigma_parallel.ts` artifacts, for a single-β promotion (the
+canonical grids carry only `perRoiFits[i].r2`):
 
 - **`cRoiLinear.r2`** should be ≥ 0.99. This is the fit that powers the
   UI's ROI slider; if it drops, the linear `C(roi) = C0 + C1·roi`
@@ -503,13 +582,17 @@ is a net loss for the UI.
    `SIGMA_ROI_FREEZE`, `SIGMA_ROI_PKO`, `SIGMA_ROI_MYSTERY`,
    `SIGMA_ROI_MYSTERY_ROYALE`. Each is a `SigmaCoef` literal with
    `kind: "single-beta"` or `kind: "log-poly-2d"`.
-3. For single-β fits, paste `C0`/`C1` from `cRoiLinear` and `beta` from
-   `globalBeta`. For PKO / Mystery, paste the 2D coefficients from
-   `scripts/refit_2d_logpoly.ts`. For MBR, use
+3. For freeze, PKO and Mystery, paste the block `scripts/refit_2d_logpoly.ts`
+   prints under "Production-ready constants": the single-β line for freeze
+   (`C0`/`β` equal the artifact's `cRoiLinear` / `globalBeta`), the 2D
+   coefficients for PKO and Mystery, and `resid` = the held-out p95 rounded up
+   (one field held out where the ROI columns are copies, as for freeze; one cell
+   otherwise). For MBR, use
    `fit_beta_mystery_royale.json` (produced by
    `scripts/fit_br_fixed18.ts`); its β is 0 by construction and its
-   `resid` must be backed by `scripts/xval_br.ts`, not only by
-   `fit_drift_report.ts`.
+   `resid` is the line's largest miss of the card's σ over the BR slider
+   box, rounded up (`convergenceFit.test.ts` walks the box);
+   `scripts/xval_br.ts` is the Monte-Carlo sanity check of the same row.
 4. Verify: `npx tsc --noEmit && npm test && npm run build`. The widget
    recomputes σ on every ROI/field scrub, so a broken constant shows up
    instantly as `NaN` or a visually flat curve.

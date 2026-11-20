@@ -1,10 +1,11 @@
 /**
  * Cross-validate the shipped BR helper band on independent ROI points.
  *
- * The BR widget now centers on a runtime single-row compile and uses a small
- * symmetric helper band around that point. This script checks whether the
- * shipped helper stays inside its advertised residual band against independent
- * simulation data inside the actual BR UI box (AFS=18, ROI ±10%).
+ * The BR widget centers on `formatRuntimeSigma("mystery-royale")`, the compile of
+ * the editor's default BR row, and `SIGMA_ROI_MYSTERY_ROYALE` is the line
+ * `fit_br_fixed18.ts` fits through it. This script runs the engine's Monte Carlo
+ * on that same row at ROIs between the fit points, inside the BR slider box
+ * (AFS=18, ROI ±10%), and checks the line against it.
  *
  *   npx tsx scripts/xval_br.ts
  */
@@ -14,33 +15,31 @@ import {
   evalSigma,
 } from "../src/lib/sim/convergenceFit";
 import { runSimulation } from "../src/lib/sim/engine";
-import type { SimulationInput, TournamentRow } from "../src/lib/sim/types";
+import {
+  buildFormatRuntimeRow,
+  RUNTIME_SIGMA_BR_FIELD,
+} from "../src/lib/sim/formatRuntimeSigma";
+import type { SimulationInput } from "../src/lib/sim/types";
 
 const N_TOURNEYS = 500;
 const SAMPLES = 200_000;
-const BUY_IN = 50;
 const RAKE = 0.08;
-const AFS = 18;
-// Different seed from training run (20260417) — independence of samples.
+const AFS = RUNTIME_SIGMA_BR_FIELD;
 const SEED = 20260418;
+const FINISH_MODEL = "powerlaw-realdata-influenced";
 
 // Held-out ROI points inside the actual BR widget box, but not on the helper's
 // fit points.
 const HELD_OUT = [-0.08, -0.03, 0.02, 0.07];
 
 function buildInput(roi: number): SimulationInput {
-  const row: TournamentRow = {
-    id: "br-xval",
-    label: `br-xval-${roi}`,
-    players: AFS,
-    buyIn: BUY_IN,
-    rake: RAKE,
-    roi,
-    payoutStructure: "battle-royale",
-    gameType: "mystery-royale",
-    bountyFraction: 0.5,
-    mysteryBountyVariance: 1.8,
-    itmRate: 0.18,
+  const row = {
+    ...buildFormatRuntimeRow("mystery-royale", {
+      afs: AFS,
+      roi,
+      rake: RAKE,
+      finishModel: { id: FINISH_MODEL },
+    }),
     count: N_TOURNEYS,
   };
   return {
@@ -49,7 +48,7 @@ function buildInput(roi: number): SimulationInput {
     samples: SAMPLES,
     bankroll: 0,
     seed: SEED,
-    finishModel: { id: "mystery-realdata-linear" },
+    finishModel: { id: FINISH_MODEL },
   };
 }
 
@@ -58,8 +57,9 @@ function measure(roi: number): { sigma: number; sigmaSE: number } {
   const N = r.tournamentsPerSample;
   const abi = r.totalBuyIn / N;
   const sigma = (r.stats.stdDev / Math.sqrt(N)) / abi;
-  // Standard error of σ estimate ≈ σ / sqrt(2(samples-1)) for normal data.
-  const sigmaSE = sigma / Math.sqrt(2 * (SAMPLES - 1));
+  // The kurtosis-based SE: the 10 000x envelope makes the normal-theory
+  // σ/sqrt(2(S-1)) several times too small.
+  const sigmaSE = sigma * (r.stats.mcSeStdDev / r.stats.stdDev);
   return { sigma, sigmaSE };
 }
 
@@ -135,8 +135,13 @@ async function main() {
   console.log(`    R² = ${r2.toFixed(6)}`);
   console.log(`    curvature term |c·(roi_max)²| = ${Math.abs(c * 0.07 * 0.07).toFixed(4)} at roi=7%`);
   console.log("");
-  if (maxAbsResidPct <= SIGMA_ROI_MYSTERY_ROYALE.resid * 100 + 1e-9) {
-    console.log("  → VERDICT: inside the BR UI box the shipped helper stays within the advertised band.");
+  // A point the Monte Carlo cannot resolve passes on its noise: |Δ| up to the
+  // band plus two standard errors.
+  const insideBand = rows.every(
+    (r) => Math.abs(r.resid) <= SIGMA_ROI_MYSTERY_ROYALE.resid * r.sigma + 2 * r.sigmaSE + 1e-9,
+  );
+  if (insideBand) {
+    console.log("  → VERDICT: inside the BR UI box the shipped helper stays within the advertised band (plus 2 SE).");
   } else {
     console.log("  → VERDICT: helper drift exceeds the advertised BR band; do not ship without widening or re-fitting.");
   }

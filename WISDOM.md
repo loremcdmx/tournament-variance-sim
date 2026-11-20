@@ -65,10 +65,15 @@ This area produced the most false confidence. Remember:
   to `scripts/fit_runtime_sigma_bands.json`). The chips, the prove-edge card and
   schedule mode all read that one number. The earlier constants (freeze ±50 % /
   ±6 %, PKO ±11 %, Mystery ±3 % / ±13 %, BR ±10 %) belonged to closed-form
-  surfaces that no longer feed the cards; do not bring them back. The gap
-  itself is small (under 1 % for freeze, PKO and Mystery over the whole slider
-  range), so the band is mostly 2 SE of Monte-Carlo noise, and BR's 6 % is
-  noise-limited (the 10 000x envelope), not a measured error. The band does not
+  surfaces that no longer feed the cards; do not bring them back. The gap itself is small (under 1 % for freeze, PKO and Mystery over the whole slider
+  range; all four formats were re-measured on the current engine on 19 November 2026, every
+  freeze, PKO and Mystery cell at an SE of 0.5 % or less), so the band is mostly 2 SE of
+  Monte-Carlo noise: 2 % for each of the three. BR's 7 % is noise-limited (the 10 000x
+  envelope leaves an SE of 0.6-1.2 % at 4 G tournaments per cell, and about 6 h of CPU would
+  be needed for 0.5 %). It is the band rule applied to a 3.4-SE dip in one cell (ROI -20 %:
+  -3.93 % ± 1.17 %, a Poisson shortfall of jackpot envelopes; the next 4 G tournaments of
+  the same seed read +0.02 % ± 1.12 %), not a measured error. Do not top up only the cell
+  that sets the band: choosing cells by their gap biases the maximum low. The band does not
   cover the gap between the model and real play, and the footnotes say so.
 - Battle Royale KO EV split centres on the row's configured `bountyFraction`
   baseline: centre cash = total - clampBountyMean(defaultBountyMean, total),
@@ -83,26 +88,25 @@ This area produced the most false confidence. Remember:
 - The closed-form surfaces (`SIGMA_ROI_*`) are only the fallback of
   `computeConvergenceRows` when no runtime override is passed; their `resid` is
   their own error against their own grid, not a card's band.
-- `SIGMA_ROI_MYSTERY` and `scripts/fit_beta_mystery.json` were trained at a per-KO
-  log-variance of 2.4: the old Monte-Carlo recipe added a 0.4 PKO head-size term
-  (`pkoHeadVar`, a row field that no longer exists) to `mysteryBountyVariance` 2.0 (the
-  stored grid cells at field 1000 / ROI +20 % and 5000 / +30 % match a 2.4 run within
-  0.3 %). Mystery compiles at 2.0. On the current engine (20k samples,
-  `mystery-realdata-linear`, bounty share 0.5) the surface reads 1.04x, 1.11x
-  and 1.12x the engine at field 100 / ROI 0, 1000 / +20 % and 5000 / +30 %,
-  inside its own 13 % but well over the 2 % of the runtime band. It has no
-  bounty-share input, so it is 1.17x at field 300 / ROI +10 % / share 0.3 and
-  0.99x at 1000 / -10 % / share 0.7.
+- `SIGMA_ROI_MYSTERY` and `scripts/fit_beta_mystery.json` were refitted on 19 November 2026
+  from a grid read off the compile (`resweep_sigma.ts FORMAT=mystery`, per-KO log-variance
+  2.0). The grid before that had been sampled at 2.4, because the old Monte-Carlo recipe
+  added a 0.4 PKO head-size term (`pkoHeadVar`, a row field that no longer exists), and it
+  read 1.00-1.16x the compile. On its own row (`mystery-realdata-linear`, bounty share 0.5) the refitted surface
+  reads 0.944x, 1.007x and 1.032x the compile at field 100 / ROI 0, 1000 / +20 % and
+  5000 / +30 %. Its resid is 14 % (leave-one-cell-out p95 13.05 %), well over the 2 % of the
+  runtime band, and it reads up to 35 % high at fields 50-64, ROI +80 %. It has no
+  bounty-share input, so it is 1.098x at field 300 / ROI +10 % / share 0.3 and 0.924x at
+  1000 / -10 % / share 0.7.
   It reaches no number a user sees: the chips, the prove-edge card and schedule
   mode read `formatRuntimeSigma`, `computeConvergenceRows` falls back to the
   surface only for a format with no override, and `buildRuntimeSigmaOverrides`
   always supplies one for a format that carries weight (a test in
   `formatRuntimeSigma.test.ts` pins it). The only other reader is
   `scripts/probe_afs_ceiling.ts` (through `SIGMA_COEF_BY_FORMAT`), plus tests;
-  `scripts/xval_mystery.ts` keeps its own copy of the old coefficients. It was
-  deliberately not refitted: do that from a fresh
-  `resweep_sigma.ts FORMAT=mystery` sweep before wiring it to any card, and do
-  not use the old grid to judge the current engine.
+  `scripts/xval_mystery.ts` keeps its own copy of the old coefficients. Do not wire it to a card: it is fitted to another finish model than the card's row and
+  misses its own grid by 13 % at p95. convergenceFit.test.ts compares every stored grid
+  cell with the compile (1 %), so the grid cannot go stale silently again.
 - A card's σ is only as honest as the ITM it assumes. The run path pins every
   row's ITM (`applyItmTarget`: the payout table's paid share unless the row or
   the global target says otherwise); a free-α row gives 3-5% lower σ (Mystery
@@ -1333,11 +1337,28 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   (about a second per format); `fit_runtime_sigma_bands.ts` is where the hot loop is
   checked against that σ. The July 2026 PKO grid had drifted to 0.67-1.05x the engine (the
   October `mtt-gg-bounty` curve raised σ by 2-49 %, the elimination tree lowered it by up
-  to 7 % at field 50) and nothing failed. convergenceFit.test.ts now compares every stored
-  PKO grid cell with the compile (1 %), and runtimeSigmaBands.test.ts ties every PKO band
-  cell's stored analytic σ to today's formatRuntimeSigma. When the compile, a payout table
+  to 7 % at field 50) and nothing failed. convergenceFit.test.ts compares every stored cell of the freeze, PKO and Mystery grids,
+  and the five points of the Battle Royale line, with the compile (1 %), and
+  runtimeSigmaBands.test.ts ties every band cell of all four formats (175) to today's
+  formatRuntimeSigma (1 %). The same drift had hit the other surfaces: the Mystery grid
+  read 1.00-1.16x the compile, the freeze grid 1.04x at field 200, and the BR line, fitted
+  to a hand-built $50 row, 27 % under the card. When the compile, a payout table
   or a finish model changes, re-run `FORMAT=<format> npx tsx scripts/resweep_sigma.ts` and
   `refit_2d_logpoly.ts` together; do not go back to a Monte-Carlo resweep for the grid.
+- The freeze grid's seven ROI columns are copies of one another (freeze-realdata-linear
+  plays one shape whatever the ROI), so leave-one-cell-out there is in effect in-sample.
+  The held-out unit for freeze is the field: its leave-one-field-out max is 14.24 % at
+  field 50 000, hence resid 15 %. The canonical freeze grid comes from `resweep_sigma.ts
+  FORMAT=freeze`; the Monte-Carlo producer fit_beta_freeze_realdata.ts was deleted because
+  a run of it would overwrite the exact grid with a noisy one. The compile-read artifacts
+  carry no globalR2 or cRoiLinear.r2 (on the freeze grid that R² is 0/0).
+- SIGMA_ROI_MYSTERY_ROYALE and scripts/fit_br_fixed18.ts / xval_br.ts take the BR card's own
+  row (`buildFormatRuntimeRow`, the $10 ticket); a hand-built $50 row draws the $25
+  envelope table and read 27 % under the card.
+- Check a fallback surface off the grid densely, every field up to a few thousand players,
+  not just midpoints: the freeze line misses by up to 13.3 % at field 260 (σ stays at
+  4.40-4.51 BI from 200 to 260 players and then climbs), the PKO surface by 9.7 % around
+  fields 260-300.
 - `scripts/fit_runtime_sigma_bands.ts` with `BANDS_FILTER` writes only the filtered cells
   to `scripts/fit_runtime_sigma_bands.json`, overwriting the other formats. Save the file
   first and merge in node so the `JSON.stringify(..., null, 1)` formatting stays identical.
