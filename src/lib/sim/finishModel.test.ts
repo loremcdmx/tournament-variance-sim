@@ -1152,4 +1152,75 @@ describe("calibrateShelledItm: the first-place floor around break-even", () => {
       expect(worst).toBeLessThan(0.05);
     }
   });
+
+  it("leaves a model with no α its own shape at every target", () => {
+    // 4 runners on a 50/30/20 table, ITM 50% against the 75% the table pays:
+    // Uniform puts 1/6 on each paid place, under the floor's 1/4 at and above
+    // the no-skill winnings ($8 of a $32 pool). The floor's 1/4 lock pays
+    // $6.00 of cash against the model's $5.33, and a model that never aims at
+    // the target must not move with it.
+    const table = getPayoutTable("sng-50-30-20", 4);
+    for (const model of [{ id: "uniform" }, { id: "empirical" }] as FinishModelConfig[]) {
+      const shape = calibrateShelledItm(4, 3, table, 32, 4, 0.5, undefined, model).pmf;
+      expect(Array.from(shape)).toEqual([1 / 6, 1 / 6, 1 / 6, 0.5]);
+      for (const target of [7.2, 7.6, 8, 9, 12, 20]) {
+        const r = calibrateShelledItm(4, 3, table, 32, target, 0.5, undefined, model, 0, 2 * target);
+        expect(Array.from(r.pmf)).toEqual(Array.from(shape));
+        expect(r.currentWinnings).toBeCloseTo(32 / 6, 12);
+        expect(r.feasible).toBe(true);
+      }
+      // Just under the table's 75 %, Uniform pays $7.9957, within the
+      // tolerance of the no-skill $8 that asks for P(1st) = 1/4: the floor
+      // would put 0.25 on first place where the model puts 0.2499.
+      const nearPaid = calibrateShelledItm(4, 3, table, 32, 8, 0.7496, undefined, model);
+      expect(nearPaid.pmf[0]).toBeCloseTo(0.7496 / 3, 15);
+      expect(nearPaid.currentWinnings).toBeCloseTo(0.7496 / 3 * 32, 12);
+    }
+  });
+
+  it("does not carry a row onto a target its model misses", () => {
+    // 12 runners on mtt-flat (2 paid), ITM 15 %, tilt -1: at the bottom of its
+    // α range the model pays $9.119978 with P(1st)·N 1.008, the least it can
+    // pay. ROI -8.9 % asks $9.11, 1.1e-3 under it. The 1/N lock pays $9.1111,
+    // and mixing it in would pull the row inside the tolerance and run a ROI
+    // no pmf of the model pays.
+    const n = 12;
+    const table = getPayoutTable("mtt-flat", n);
+    const cut = table.filter((x) => x > 0).length;
+    const model: FinishModelConfig = { id: "power-law" };
+    const least = calibrateShelledItm(n, cut, table, 120, 0, 0.15, undefined, model, -1);
+    expect(least.currentWinnings).toBeCloseTo(9.119978, 6);
+    const r = calibrateShelledItm(n, cut, table, 120, 9.11, 0.15, undefined, model, -1);
+    expect(r.feasible).toBe(false);
+    expect(Array.from(r.pmf)).toEqual(Array.from(least.pmf));
+    const row = (roi: number): TournamentRow => ({
+      id: "r", players: n, buyIn: 10, rake: 0, roi, payoutStructure: "mtt-flat", gameType: "freezeout",
+      count: 1, itmRate: 0.15, itmTopHeavyBias: -1,
+    });
+    expect(validateSchedule([row(-0.089)], model).ok).toBe(false);
+    expect(validateSchedule([row(-0.088)], model).ok).toBe(true);
+  });
+
+  it("leaves a cash side short of its target as the model shapes it, on a bounty row too", () => {
+    // Linear skill at ITM 10 % on a 10-runner table paying 3 puts at most
+    // 2 x 10 % / 3 on first place, under the floor's 1/10, and pays at most
+    // $4.0733 of a $94 pool. A $12 target, past the no-skill $9.40 where the
+    // floor asks for 1/10, is out of its reach, and the 1/N lock pays more
+    // cash than any α. Lifted toward it, a bounty row's cash side would leave
+    // a KO residual the pool covers at totals the model cannot reach; reshaped
+    // at $4.0733, it would move the P(last) that sit-through leaves and with it
+    // the pool's cap.
+    const n = 10;
+    const table = getPayoutTable("mtt-gg-bounty", n);
+    const cut = table.filter((x) => x > 0).length;
+    const model: FinishModelConfig = { id: "linear-skill" };
+    const most = calibrateShelledItm(n, cut, table, 94, 5, 0.1, undefined, model);
+    expect(most.pmf[0]).toBeCloseTo(0.2 / 3, 6);
+    expect(most.currentWinnings).toBeCloseTo(4.0733, 4);
+    for (const maxCash of [12, 13, 24]) {
+      const r = calibrateShelledItm(n, cut, table, 94, 12, 0.1, undefined, model, 0, maxCash);
+      expect(r.feasible).toBe(false);
+      expect(Array.from(r.pmf)).toEqual(Array.from(most.pmf));
+    }
+  });
 });
