@@ -87,12 +87,13 @@ describe("exact moments of a freezeout entry", () => {
  * The model's own elimination picture, played exactly: ranks N..2 bust in turn, each
  * killer is uniform among the ranks still alive, a knockout pays half the victim's head
  * in cash and moves the other half onto the killer's head, and the winner also cashes
- * the own final head. Every killer assignment is enumerated, so for N <= 7 the moments
- * of each rank's bounty take are exact. Unit starting head.
+ * the own final head. Every killer assignment is enumerated, so the moments of each
+ * rank's bounty take and its chance of no bounty are exact. Unit starting head.
  */
 function eliminationTree(players: number) {
   const mean = new Float64Array(players);
   const second = new Float64Array(players);
+  const none = new Float64Array(players);
   const killer = new Int32Array(players + 1);
   const head = new Float64Array(players + 1);
   const cash = new Float64Array(players + 1);
@@ -110,6 +111,7 @@ function eliminationTree(players: number) {
       for (let r = 1; r <= players; r++) {
         mean[r - 1] += cash[r];
         second[r - 1] += cash[r] * cash[r];
+        if (cash[r] === 0) none[r - 1]++;
       }
       leaves++;
       return;
@@ -124,8 +126,9 @@ function eliminationTree(players: number) {
   for (let i = 0; i < players; i++) {
     mean[i] /= leaves;
     variance[i] = second[i] / leaves - mean[i] * mean[i];
+    none[i] /= leaves;
   }
-  return { mean, variance };
+  return { mean, variance, none };
 }
 
 /**
@@ -200,6 +203,32 @@ function treeSigma(entry: ReturnType<typeof compileOne>, tree: { mean: Float64Ar
   return Math.sqrt(second - mean * mean);
 }
 
+/**
+ * The bounty the hot loop pays at one place, worked out from the law it samples instead of
+ * from `pkoHaulVariance`: the knockout made when j + 1 players remain is an independent
+ * Bernoulli(1/j) for every j above the place (the winner's j = 1 is certain), worth
+ * koCash[j] times a mean-one log-normal with E[factor²] = exp(logSigma²); the winner adds
+ * the own final head; a haul above 0 becomes shrink × haul + shift, and 0 stays 0.
+ */
+function sampledBounty(entry: ReturnType<typeof compileOne>, place: number) {
+  const koCash = entry.pkoKoCash!;
+  const factorSecond = Math.exp(entry.pkoKoLogSigma![place] ** 2);
+  let mean = place === 0 ? entry.pkoWinnerHead : 0;
+  let second = mean * mean;
+  let none = 1;
+  for (let j = place + 1; j < koCash.length; j++) {
+    second += (2 * mean * koCash[j] + koCash[j] ** 2 * factorSecond) / j;
+    mean += koCash[j] / j;
+    none *= 1 - 1 / j;
+  }
+  const shrink = entry.pkoHaulShrink![place];
+  const shift = entry.pkoHaulShift![place];
+  const shrunkMean = shrink * mean + shift * (1 - none);
+  const shrunkSecond = shrink ** 2 * second + 2 * shrink * shift * mean + shift ** 2 * (1 - none);
+  const unit = entry.bountyByPlace![place] * entry.pkoRawInv![place];
+  return { mean: unit * shrunkMean, variance: unit ** 2 * (shrunkSecond - shrunkMean ** 2), none };
+}
+
 const sigmaOf = (m: { meanDollar: number; secondDollar: number }) => Math.sqrt(m.secondDollar - m.meanDollar ** 2);
 const REALDATA = { id: "powerlaw-realdata-influenced" } as const;
 
@@ -264,6 +293,36 @@ describe("PKO bounty against the exact elimination tree", () => {
     }
     expect(compileOne(pko(44), REALDATA).pkoHaulShrink![1] ** 2).toBeGreaterThan(0.999);
     expect(compileOne(pko(45), REALDATA).pkoKoLogSigma![1] ** 2).toBeLessThan(0.001);
+  });
+
+  it("samples the tree's mean, variance and chance of no bounty at every place, the shrunk ones included", () => {
+    // No sampling: sampledBounty is the exact law of the hot loop's draw. Up to 10 players the
+    // tree is enumerated (its 3rd-place shrink ends at 10); past that the recursion, with the
+    // tree's chance of no knockout i / (N - 1). A Mystery log-variance x on the row stacks on
+    // the tree: (treeVar + Σ (koCash[j] / j)²) e^x - Σ (koCash[j] / j)².
+    for (const x of [0, 0.5]) {
+      let shrunk = 0;
+      for (let players = 2; players <= 44; players++) {
+        const tree = players <= 10
+          ? eliminationTree(players)
+          : { ...eliminationTreeRecursion(players), none: Float64Array.from({ length: players }, (_, i) => i / (players - 1)) };
+        const entry = compileOne(pko(players, { mysteryBountyVariance: x }), REALDATA);
+        const scale = entry.bountyByPlace![0] / tree.mean[0];
+        let meanSquare = 0;
+        for (let i = players - 1; i >= 0; i--) {
+          if (i + 1 < players) meanSquare += (entry.pkoKoCash![i + 1] / (i + 1)) ** 2;
+          const law = sampledBounty(entry, i);
+          const variance = ((tree.variance[i] + meanSquare) * Math.exp(x) - meanSquare) * scale ** 2;
+          const label = `x=${x} N=${players} place ${i + 1}`;
+          expect(Math.abs(law.mean - tree.mean[i] * scale), label).toBeLessThanOrEqual(1e-9 * Math.max(tree.mean[i], 1) * scale);
+          expect(Math.abs(law.variance - variance), label).toBeLessThanOrEqual(1e-9 * Math.max(variance, scale ** 2));
+          expect(Math.abs(law.none - tree.none[i]), label).toBeLessThanOrEqual(1e-9);
+          if (entry.pkoHaulShrink![i] < 1) shrunk++;
+        }
+      }
+      // 2nd place in fields of 4 to 44, 3rd in fields of 5 to 10.
+      expect(shrunk).toBe(41 + 6);
+    }
   });
 
   it("puts sigma per tournament on the tree's at every field, bounty share and ROI", () => {

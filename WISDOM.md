@@ -1247,6 +1247,15 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   the engine's finalProfits bit for bit. When the hot loop's noise draws or their order
   change, change the replica with them. Other quoted figures came from a temporary
   instrumented hot loop that must never be committed.
+- Slow-tilt tests must not all run at tiltSlowRecoveryFrac 0.5: there r equals 1 - r, so
+  swapping the recovery and hold fractions passes. The anchored replica runs at 0.25 and
+  the windowed exit is pinned at 0.25 and at 1 (where only `<=` ever ends a state). The
+  first block of each tilt window includes point 0 (x = 0 before the first tournament);
+  engineNoise.test.ts pins slowBlockMin with a heads-up path that stays above 0.
+- scripts/profile_hot_loop.ts profiles what Run sends: its tilt cases build the input from
+  the realistic-solo and steady-reg presets through buildSimulationInput (windows 250 /
+  1000, 3 000 tournaments); the *-all-time twins unset the windows. A hand-written tilt
+  input there once left tiltSlowThreshold unset, so its slow tilt never ran.
 - scripts/result_digest.ts digests both tilt paths: scenario:*:noise carries the app's
   windows, scenario:*:noise-all-time leaves them unset (the engine API default). A speed
   change to the window code must keep both lines.
@@ -1295,13 +1304,19 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   gap as a variance bug.
 - PKO sampler tests: 'sample sigma and mean agree with compiledEntryMoments' compares the
   sampler with the engine's own analytic, so a model change that moves both passes it (the
-  old Poisson model did). The independent check is hotLoop.test.ts 'plays the enumerated
-  tree at every finishing place' (fields 4 to 9, every killer assignment enumerated; the
-  3-player field stays out because a fair coin's kurtosis of 1 makes the kurtosis-based SE
-  of the variance zero).
-- scripts/result_digest.ts has no PKO row under 45 players, so it cannot see changes that
-  only touch small PKO fields. Check 4, 6, 9, 18, 44 and 45 players and a range that
-  straddles 44, in both calibration modes, before calling a PKO change byte-neutral.
+  old Poisson model did). Two checks are independent of it. scheduleMoments.test.ts 'samples the tree's mean,
+  variance and chance of no bounty at every place, the shrunk ones included' works out the
+  exact law of the sampled haul from the knockout law and pkoHaulShrink / pkoHaulShift, with
+  no sampling, and holds it to the tree to 1e-9 at every place of fields 2 to 44. hotLoop.test.ts
+  'plays the enumerated tree at every finishing place' is the only check of the hot loop's
+  draw itself (fields 4 to 9, every killer assignment enumerated; the 3-player field stays
+  out because a fair coin's kurtosis of 1 makes the kurtosis-based SE of the variance zero).
+- scripts/result_digest.ts ends with a bounty:* block: PKO at 4, 6, 9, 18, 44 and 45
+  players, a PKO range of 30-60 (plays 33 to 57 entrants), and ranged Mystery and Battle
+  Royale rows, each in both calibration modes. The PKO rows above it play 1 200 to 3 000
+  players and never reach the shrunk places, so a PKO change is byte-neutral only if the
+  bounty:* lines are unchanged too. Add new digest cases at the end of the script, so an
+  older digest still compares with `cmp` on its head.
 - Benchmark two builds in separate processes: in one process the first-loaded copy of the
   engine ran 10-15 % faster than a byte-identical second copy, so interleaving inside one
   process shows a fake regression.
