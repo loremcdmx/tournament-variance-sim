@@ -38,8 +38,8 @@ describe("bughunt: distribution integrity", () => {
     const r: TournamentRow = { ...row, players: 50, gameType: "pko", payoutStructure: "mtt-gg-bounty", bountyFraction: .5, itmRate: .18, finishBuckets: { top3: .04, ft: .08 } };
     const validation = validateSchedule([r], model);
     expect(validation.ok).toBe(false);
-    expect(validation.issues[0].reason).toBe("inconsistent-finish-locks");
-    expect(validateSchedule([r], { id: "powerlaw-realdata-influenced" }).issues[0]?.reason).toBe("inconsistent-finish-locks");
+    expect(validation.issues[0].cause).toBe("inconsistent-finish-locks");
+    expect(validateSchedule([r], { id: "powerlaw-realdata-influenced" }).issues[0]?.cause).toBe("inconsistent-finish-locks");
     const fix = chooseClosestFeasibilityFix(r, validation.issues[0], model, { enabled: false, pct: 18.7 });
     expect(fix.kind).toBe("clear-locks");
     expect(validateSchedule(applyItmTarget([fix.row], { enabled: false, pct: 18.7 }), model).ok).toBe(true);
@@ -58,9 +58,9 @@ describe("bughunt: distribution integrity", () => {
 
   it("impossible nested or coincident pinned shells are blocked", () => {
     for (const finishBuckets of [{ first: .1, top3: .05 }, { top3: .2 }, { ft: .08 }]) {
-      expect(validateSchedule([{ ...row, players: 50, itmRate: .18, finishBuckets }], model).issues[0]?.reason).toBe("inconsistent-finish-locks");
+      expect(validateSchedule([{ ...row, players: 50, itmRate: .18, finishBuckets }], model).issues[0]?.cause).toBe("inconsistent-finish-locks");
     }
-    expect(validateSchedule([{ ...row, players: 2, payoutStructure: "sng-65-35", itmRate: 1, finishBuckets: { top3: .99 } }], model).issues[0]?.reason).toBe("inconsistent-finish-locks");
+    expect(validateSchedule([{ ...row, players: 2, payoutStructure: "sng-65-35", itmRate: 1, finishBuckets: { top3: .99 } }], model).issues[0]?.cause).toBe("inconsistent-finish-locks");
   });
 
   it.each([

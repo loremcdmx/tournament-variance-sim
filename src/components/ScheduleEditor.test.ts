@@ -26,6 +26,7 @@ import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 import { AdvancedModeProvider } from "@/lib/ui/AdvancedModeProvider";
 import { DICT } from "@/lib/i18n/dict";
 import type { PayoutStructureId, TournamentRow } from "@/lib/sim/types";
+import type { RowFeasibilityIssue } from "@/lib/sim/validation";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -64,7 +65,7 @@ describe("inconsistent finish locks notice", () => {
           onFixRowAuto: vi.fn(),
           onFixRowPreset: vi.fn(),
           feasibilityIssues: [{ rowId: schedule[0].id, rowIdx: 0, label: "Locked",
-            targetEv: 10, currentEv: 10, gap: 0, reason: "inconsistent-finish-locks" }],
+            targetEv: 10, currentEv: 10, gap: 0, cause: "inconsistent-finish-locks" }],
         }),
       ),
     ));
@@ -72,6 +73,39 @@ describe("inconsistent finish locks notice", () => {
     expect(html).toContain(DICT["shape.clearFinishLocks"].ru);
     expect(html).not.toContain(DICT["shape.fixClosest"].ru);
     expect(html).not.toContain("EW $10.00");
+    expect(html).toContain(DICT["shape.rowBlocked.inconsistent-finish-locks"].ru);
+  });
+});
+
+describe("blocked row notice", () => {
+  const render = (issue: Omit<RowFeasibilityIssue, "rowId" | "rowIdx" | "label">) => {
+    vi.stubGlobal("React", React);
+    const schedule = parseImportCSV("Pool, 9, 10+1, 50, 1, mtt-standard").rows;
+    return renderToStaticMarkup(React.createElement(LocaleProvider, null,
+      React.createElement(AdvancedModeProvider, null,
+        React.createElement(ScheduleEditor, {
+          schedule,
+          onChange: vi.fn(),
+          onFixRowClosest: vi.fn(),
+          feasibilityIssues: [{ rowId: schedule[0].id, rowIdx: 0, label: "Pool", ...issue }],
+        }),
+      ),
+    ));
+  };
+
+  it.each([
+    "pinned-itm", "pinned-shells", "bounty-pool", "fixed-shape", "model-saturation",
+  ] as const)("names the cause %s and offers the fit", (cause) => {
+    const html = render({ cause, targetEv: 16.5, currentEv: 12.25, gap: -4.25 });
+    expect(html).toContain(DICT[`shape.rowBlocked.${cause}`].ru);
+    expect(html).toContain("EW $12.25 / $16.50");
+    expect(html).toContain(DICT["shape.fixClosest"].ru);
+    expect(html).not.toContain(DICT["shape.rowBlocked.atField"].ru.replace(" {n}", ""));
+  });
+
+  it("names the field size of a range that blocks the row", () => {
+    const html = render({ cause: "bounty-pool", fieldSize: 23, targetEv: 16.5, currentEv: 12.25, gap: -4.25 });
+    expect(html).toContain(DICT["shape.rowBlocked.atField"].ru.replace("{n}", "23"));
   });
 });
 

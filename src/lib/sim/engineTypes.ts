@@ -9,6 +9,8 @@ export interface CompiledEntry {
   oceanKo?: import("./oceanKo").OceanKoModel | null;
   isSatellite?: boolean;
   calibrationWarning?: import("./types").CalibrationWarning;
+  /** The bounty pool held the KO EV below what the row asked for (`poolCut`). */
+  bountyPoolCut: boolean;
   rowIdx: number;
   /** Real field size seen by the compiled payout/pmf path after late reg. */
   fieldSize: number;

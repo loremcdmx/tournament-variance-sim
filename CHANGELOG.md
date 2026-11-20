@@ -92,6 +92,17 @@ for the same inputs, the entry says for which rows.
   that needs no more KO EV than the pool holds.
 - 'Fit closest inputs' no longer writes an ROI that is still blocked; when
   nothing fits it leaves the row as it is and says so.
+- A blocked row now says why it is blocked instead of always blaming locked
+  shell probabilities: finish locks that contradict each other, an ITM at
+  which no finish shape pays the ROI, finish locks that leave no shape paying
+  it, a bounty pool too small for the bounty EV the ROI needs, or a finish
+  model that cannot be tuned to the ROI; a ranged row also names the field
+  size that blocks it. The blocked Run button counts the blocked rows.
+- 'Fit closest inputs' fixes more blocked rows and lands nearer the ROI you
+  typed: it can clear the finish locks or the ITM and change the ROI in one
+  click, and keeps the highest ROI a blank ITM still reaches (a heads-up PKO
+  $100+10 at +100 % now fits to +80 % instead of break-even). On a large
+  field-size range it is about 9x faster.
 - Winner-takes-all, ticket satellites, small-field tables that pay one place,
   and heads-up bounty rows now default to the ITM your ROI implies, so a
   winning ROI runs instead of being blocked (finish models that ignore the ROI

@@ -890,8 +890,8 @@ export const DICT = {
   "shape.current": { en: "Current EW:", ru: "Сейчас EW:" },
   "shape.autoFit": { en: "Auto-fit", ru: "Подогнать" },
   "shape.infeasible": {
-    en: "Locked constraints can't hit the ROI target. Either unlock a shell or relax the locked values.",
-    ru: "Зафиксированные корзины не позволяют попасть в целевой ROI. Разблокируй одну из них или ослабь зафиксированные значения.",
+    en: "This ROI is out of reach with these inputs. The row's notice in the schedule says why and how to fix it.",
+    ru: "С такими вводными этот ROI недостижим. В строке расписания написано, почему и как это исправить.",
   },
   "shape.infeasibleHint": {
     en: "Gap between target and current expected winnings",
@@ -903,23 +903,39 @@ export const DICT = {
   "shape.presetCrusher": { en: "Crusher (18% ITM)", ru: "Крашер (18% ITM)" },
   "shape.presetCustom": { en: "Custom", ru: "Кастом" },
   "shape.blockedTitle": {
-    en: "Can't run — finish shape is infeasible",
-    ru: "Нельзя запустить — форма распределения невозможна",
+    en: "Can't run — blocked rows: {n}",
+    ru: "Нельзя запустить — заблокировано строк: {n}",
   },
-  "shape.blockedHint": {
-    en: "One or more rows have locked shell probabilities that don't leave enough room to hit the ROI target. Fix them below, or auto-fix all at once.",
-    ru: "В одной или нескольких строках зафиксированные вероятности корзин не позволяют попасть в целевой ROI. Поправь ниже или авто-фикс всех сразу.",
+  "shape.rowBlocked.inconsistent-finish-locks": {
+    en: "The finish locks don't fit together",
+    ru: "Фиксации финишей несовместимы",
   },
-  "shape.blockedRow": { en: "Row", ru: "Строка" },
-  "shape.rowBlocked": {
-    en: "Pinned shells leave no room for ROI",
-    ru: "Зафиксированные вероятности не дают попасть в ROI",
+  "shape.rowBlocked.pinned-itm": {
+    en: "No finish shape at this ITM pays this ROI",
+    ru: "При таком ITM ни одна форма финишей не даёт этот ROI",
   },
+  "shape.rowBlocked.pinned-shells": {
+    en: "These finish locks leave no finish shape that pays this ROI",
+    ru: "С такими фиксациями финишей ни одна форма не даёт этот ROI",
+  },
+  "shape.rowBlocked.bounty-pool": {
+    en: "The bounty pool can't pay the bounty EV this ROI needs, and the cash prizes can't make up the rest",
+    ru: "Баунти-пула не хватает на EV баунти, нужный для этого ROI, а кеш не добирает остаток",
+  },
+  "shape.rowBlocked.fixed-shape": {
+    en: "This finish model has a fixed shape, and the bounty pool can't pay the bounty EV the rest of this ROI needs",
+    ru: "У этой модели финишей фиксированная форма распределения, а баунти-пула не хватает, чтобы добрать остаток ROI",
+  },
+  "shape.rowBlocked.model-saturation": {
+    en: "The finish model can't be tuned to this ROI on this field and payout table",
+    ru: "Модель финишей не выходит на этот ROI при таком поле и таблице выплат",
+  },
+  "shape.rowBlocked.atField": { en: "at a field of {n}", ru: "при размере поля {n}" },
   "shape.blockedGap": { en: "gap", ru: "разрыв" },
   "shape.fixClosest": { en: "Fit closest inputs", ru: "Подогнать вводные" },
   "shape.fixClosestStuck": {
-    en: "No ROI this row can reach passes the check (for a Field-size range, at every size at once), and relaxing its locks does not help, so nothing was changed. Change the payout, set the ITM by hand, or narrow the range.",
-    ru: "Ни один ROI, достижимый для этой строки, не проходит проверку (для диапазона размеров поля — сразу на всех размерах), и снятие фиксаций не помогает, поэтому ничего не изменено. Смени выплаты, задай ITM вручную или сузь диапазон.",
+    en: "No ROI passes the check for this row (for a Field-size range, at every size at once), with or without its finish locks and ITM, so nothing was changed. Change the payout, set the ITM by hand, or narrow the range.",
+    ru: "Для этой строки ни один ROI не проходит проверку (для диапазона размеров поля — сразу на всех размерах) ни с её фиксациями финишей и ITM, ни без них, поэтому ничего не изменено. Смени выплаты, задай ITM вручную или сузь диапазон.",
   },
   "shape.fixAuto": { en: "Clear locks", ru: "Снять фиксации" },
   "shape.fixPreset": { en: "Grinder preset", ru: "Пресет «гриндер»" },

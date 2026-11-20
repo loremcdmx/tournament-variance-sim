@@ -13,7 +13,8 @@ import {
   playsWholeFieldShape,
   withinTargetEv,
 } from "./finishModel";
-import { buildScheduleAnalyticBreakdown } from "./compile";
+import { compileSchedule } from "./compile";
+import { compiledEntryMoments } from "./scheduleMoments";
 import {
   clampBountyMean,
   isBattleRoyaleRow,
@@ -28,8 +29,40 @@ import { normalizeGameTypeConsistency } from "./gameType";
 import { getPayoutTable } from "./payouts";
 import type { FinishModelConfig, TournamentRow } from "./types";
 
+/**
+ * Why a row cannot be played as set.
+ *
+ * - `inconsistent-finish-locks`: the pinned finish probabilities contradict
+ *   each other or the row's ITM, at any ROI.
+ * - `pinned-itm`: at the ITM the row plays (typed, the global target or the
+ *   payout table's default) no finish shape pays the ROI, with or without
+ *   the row's finish locks.
+ * - `pinned-shells`: the row's finish locks: without them the field the
+ *   issue names would pass at the same ITM.
+ * - `bounty-pool`: the KO EV this ROI needs is more than the bounty pool can
+ *   pay one entry, and the cash side cannot make up the rest (the row falls
+ *   short).
+ * - `fixed-shape`: a model that plays its own shape (uniform, empirical,
+ *   realdata, a hand-set α) leaves the rest of a bounty row's ROI to the KO
+ *   EV, and the bounty pool cannot pay it.
+ * - `model-saturation`: with a free ITM the model's α runs out before the
+ *   ROI, in either direction.
+ */
+export type RowBlockCause =
+  | "inconsistent-finish-locks"
+  | "pinned-itm"
+  | "pinned-shells"
+  | "bounty-pool"
+  | "fixed-shape"
+  | "model-saturation";
+
 export interface RowFeasibilityIssue {
-  reason?: "inconsistent-finish-locks";
+  cause: RowBlockCause;
+  /**
+   * Set only for a row with a Field-size range: the field the issue belongs
+   * to, after late registration. The other sizes may be fine.
+   */
+  fieldSize?: number;
   rowId: string;
   rowIdx: number;
   label: string;
@@ -78,17 +111,34 @@ export function validateSchedule(
       // the ROI blocks even when the other sizes dilute the mixture's gap to
       // within the tolerance.
       const targetEv = row.buyIn * (1 + row.rake) * (1 + row.roi);
+      const sizes = fieldVariantSizes(row);
       let worst: RowFeasibilityIssue | null = null;
-      for (const players of fieldVariantSizes(row)) {
-        const analytic = buildScheduleAnalyticBreakdown({
-          schedule: [{ ...row, players, fieldVariability: undefined, count: 1 }],
-          finishModel: model,
-        });
-        const meanSingle = analytic?.perRow[0]?.meanSingle;
-        if (meanSingle == null || !Number.isFinite(meanSingle)) continue;
+      for (const players of sizes) {
+        const compiled = compileSchedule(
+          {
+            schedule: [{ ...row, players, fieldVariability: undefined, count: 1 }],
+            scheduleRepeats: 1,
+            samples: 1,
+            bankroll: 1,
+            seed: 1,
+            finishModel: model,
+          },
+          "alpha",
+        );
+        const entry = compiled.flat[0];
+        if (entry === undefined || !(compiled.totalBuyIn > 0)) continue;
+        const meanSingle = compiledEntryMoments(entry).meanDollar;
+        if (!Number.isFinite(meanSingle)) continue;
         if (withinTargetEv(meanSingle, targetEv)) continue;
         if (!aimsAtRoi && meanSingle > targetEv) continue;
         const issue: RowFeasibilityIssue = {
+          // A fixed shape falls short only where the pool cut the KO EV that
+          // closes its total. An α row the pool cut can still overshoot, at a
+          // low ROI, which is the α's limit and not the pool's.
+          cause: !aimsAtRoi
+            ? "fixed-shape"
+            : entry.bountyPoolCut && meanSingle < targetEv ? "bounty-pool" : "model-saturation",
+          ...(sizes.length > 1 ? { fieldSize: playedField(row, players) } : {}),
           rowId: row.id,
           rowIdx: idx,
           label: row.label || `#${idx + 1}`,
@@ -105,19 +155,39 @@ export function validateSchedule(
     // The engine compiles one entry per field-size bucket and pins the same
     // ITM and locks on each, so a small bucket can be unreachable while the
     // nominal field is fine. Report the bucket that misses the most.
+    const sizes = fieldVariantSizes(row);
     let worst: RowFeasibilityIssue | null = null;
-    for (const players of fieldVariantSizes(row)) {
-      const issue = fixedItmIssueAtField(
+    let worstPlayers = row.players;
+    for (const players of sizes) {
+      const atField = fixedItmIssueAtField(
         { ...row, itmRate: row.itmRate, players, fieldVariability: undefined },
         idx,
         model,
       );
-      if (issue === null) continue;
-      if (issue.reason) {
+      if (atField === null) continue;
+      const issue = sizes.length > 1
+        ? { ...atField, fieldSize: playedField(row, players) }
+        : atField;
+      if (issue.cause === "inconsistent-finish-locks") {
         worst = issue;
         break;
       }
-      if (worst === null || relativeGap(issue) > relativeGap(worst)) worst = issue;
+      if (worst === null || relativeGap(issue) > relativeGap(worst)) {
+        worst = issue;
+        worstPlayers = players;
+      }
+    }
+    // The locks are the cause only when that size passes without them; most
+    // locked rows that miss would miss at their ITM anyway.
+    if (
+      worst?.cause === "pinned-shells" &&
+      fixedItmIssueAtField(
+        { ...row, itmRate: row.itmRate, players: worstPlayers, fieldVariability: undefined, finishBuckets: undefined },
+        idx,
+        model,
+      ) !== null
+    ) {
+      worst = { ...worst, cause: "pinned-itm" };
     }
     if (worst !== null) issues.push(worst);
   });
@@ -126,6 +196,16 @@ export function validateSchedule(
 
 function relativeGap(issue: RowFeasibilityIssue): number {
   return Math.abs(issue.gap) / Math.max(1e-9, Math.abs(issue.targetEv));
+}
+
+function playedField(row: TournamentRow, players: number): number {
+  return Math.max(2, Math.floor(players * Math.max(1, row.lateRegMultiplier ?? 1)));
+}
+
+function hasFinishLocks(row: TournamentRow, model: FinishModelConfig): boolean {
+  const locks = row.finishBuckets;
+  return !playsWholeFieldShape(model) && locks != null &&
+    (locks.first != null || locks.top3 != null || locks.ft != null);
 }
 
 /** The fixed-ITM feasibility check for one row at the field size in `row.players`. */
@@ -172,9 +252,9 @@ function fixedItmIssueAtField(
     if (inconsistent) {
       const targetEv = row.buyIn * (1 + row.rake) * (1 + row.roi);
       return {
+        cause: "inconsistent-finish-locks",
         rowId: row.id, rowIdx: idx, label: row.label || `#${idx + 1}`,
         targetEv, currentEv: targetEv, gap: 0,
-        reason: "inconsistent-finish-locks",
       };
     }
   }
@@ -312,7 +392,16 @@ function fixedItmIssueAtField(
   if (!feasible) {
     const targetEv = bountyFraction > 0 ? totalWinningsEV : targetRegular;
     const currentEv = bountyFraction > 0 ? playedEv : r.currentWinnings;
+    // `pinned-shells` only says the model applies the row's locks here;
+    // validateSchedule keeps it when the row passes without them.
+    let cause: RowBlockCause;
+    if (bountyFraction > 0 && settled.poolCut && playedEv < totalWinningsEV) {
+      cause = r.aimsAtTarget ? "bounty-pool" : "fixed-shape";
+    } else {
+      cause = hasFinishLocks(row, model) ? "pinned-shells" : "pinned-itm";
+    }
     return {
+      cause,
       rowId: row.id,
       rowIdx: idx,
       label: row.label || `#${idx + 1}`,

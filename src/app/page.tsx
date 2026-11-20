@@ -27,8 +27,8 @@ import { reconcileLockItmStamp } from "@/components/charts/finishPreview/shapeLo
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { validateSchedule } from "@/lib/sim/validation";
 import {
-  chooseClosestFeasibilityFix,
-  rowsFitCannotUnblock,
+  closestFixForRow,
+  type FeasibilityFixChoice,
 } from "@/lib/sim/feasibilityFix";
 import { checkInputSanity } from "@/lib/sim/inputSanity";
 import { noiseChannelsActive } from "@/lib/sim/convergencePolicy";
@@ -57,6 +57,7 @@ import { blurFocusedField, restoreFocusedField } from "@/lib/ui/blurFocusedField
 import { canStartRun } from "@/lib/ui/runGate";
 import { controlsForLoadedState } from "@/lib/ui/loadedControls";
 import { focusRunBlocker, runBlockedScrollTarget } from "@/lib/ui/runBlockedTarget";
+import { blockedCauseKeys } from "@/lib/ui/rowBlockCopy";
 import { presetCardSummary } from "@/lib/ui/presetCardSummary";
 import { replacingNeedsConfirm } from "@/lib/ui/replaceStateGuard";
 import { sanityMessage } from "@/lib/ui/sanityMessage";
@@ -823,25 +824,28 @@ export default function Home() {
   useEffect(() => {
     scheduleRef.current = schedule;
   }, [schedule]);
+  // A fit runs on the main thread and can take half a second on a big ranged
+  // row, so a click fits each row once: the updater reuses that fit for the
+  // same row object and fits again only a row a blur commit has replaced since.
   const fitRowClosest = useCallback(
     (rowId: string) => {
-      if (rowsFitCannotUnblock(scheduleRef.current, previewModel, itmTargetCfg).includes(rowId)) {
+      const row = scheduleRef.current.find((r) => r.id === rowId);
+      const fix = row ? closestFixForRow(row, previewModel, itmTargetCfg) : null;
+      if (!row || !fix) return;
+      if (fix.kind === "none") {
         window.alert(t("shape.fixClosestStuck"));
         return;
       }
       queueInterruptBackground();
       setSchedule((prev) => {
-        const liveSchedule = applyItmTarget(prev, itmTargetCfg, previewModel);
-        const issue = validateSchedule(liveSchedule, previewModel).issues.find(
-          (i) => i.rowId === rowId,
+        const next = prev.map((r) =>
+          r.id !== rowId
+            ? r
+            : r === row
+              ? fix.row
+              : (closestFixForRow(r, previewModel, itmTargetCfg)?.row ?? r),
         );
-        if (!issue) return prev;
-        return prev.map((r) =>
-          r.id === rowId
-            ? chooseClosestFeasibilityFix(r, issue, previewModel, itmTargetCfg)
-                .row
-            : r,
-        );
+        return next.some((r, i) => r !== prev[i]) ? next : prev;
       });
       setActiveScenarioId(null);
     },
@@ -849,27 +853,21 @@ export default function Home() {
   );
 
   const fitAllClosest = useCallback(() => {
-    const live = scheduleRef.current;
-    const stuck = rowsFitCannotUnblock(live, previewModel, itmTargetCfg);
-    if (stuck.length > 0) window.alert(t("shape.fixClosestStuck"));
-    const blocked = validateSchedule(applyItmTarget(live, itmTargetCfg, previewModel), previewModel).issues;
-    if (stuck.length >= blocked.length) return;
+    const fits = new Map<TournamentRow, FeasibilityFixChoice | null>();
+    const fitOf = (r: TournamentRow) => {
+      if (!fits.has(r)) fits.set(r, closestFixForRow(r, previewModel, itmTargetCfg));
+      return fits.get(r) ?? null;
+    };
+    const blocked = scheduleRef.current
+      .map(fitOf)
+      .filter((fix): fix is FeasibilityFixChoice => fix !== null);
+    if (blocked.some((fix) => fix.kind === "none")) window.alert(t("shape.fixClosestStuck"));
+    if (blocked.every((fix) => fix.kind === "none")) return;
     queueInterruptBackground();
-    setSchedule((prev) =>
-      (() => {
-        const liveSchedule = applyItmTarget(prev, itmTargetCfg, previewModel);
-        const issues = validateSchedule(liveSchedule, previewModel).issues;
-        if (issues.length === 0) return prev;
-        const issueByRow = new Map(issues.map((i) => [i.rowId, i]));
-        return prev.map((r) => {
-          const issue = issueByRow.get(r.id);
-          return issue
-            ? chooseClosestFeasibilityFix(r, issue, previewModel, itmTargetCfg)
-                .row
-            : r;
-        });
-      })(),
-    );
+    setSchedule((prev) => {
+      const next = prev.map((r) => fitOf(r)?.row ?? r);
+      return next.some((r, i) => r !== prev[i]) ? next : prev;
+    });
     setActiveScenarioId(null);
   }, [itmTargetCfg, previewModel, queueInterruptBackground, t]);
 
@@ -1289,9 +1287,9 @@ export default function Home() {
       <>
       {/* Schedule infeasibility — sticky-top banner only when MULTIPLE rows
           are broken (single-row issues live inline inside the row card; see
-          ScheduleRow). The condensed banner just summarizes the count and
-          offers a one-click bulk fix; the run-button block in ControlsPanel
-          carries the precise reason for any single broken row. */}
+          ScheduleRow). The condensed banner names each cause once with the
+          count and offers a one-click bulk fix; the row banners carry the
+          gap and the field size of each broken row. */}
       {feasibility.issues.length > 1 && (
         <div
           id="feasibility-banner"
@@ -1304,13 +1302,10 @@ export default function Home() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="font-display text-sm font-bold uppercase tracking-wider text-[color:var(--c-bad-panel-fg)]">
-              {t("shape.blockedTitle")}
+              {t("shape.blockedTitle").replace("{n}", String(feasibility.issues.length))}
             </div>
             <div className="text-[12px] leading-snug text-[color:var(--c-bad-panel-fg-2)]/85">
-              {t("shape.blockedHint")} ·{" "}
-              <span className="font-mono text-[color:var(--c-bad-panel-fg-3)]/90">
-                {feasibility.issues.length} {t("shape.blockedRow").toLowerCase()}
-              </span>
+              {blockedCauseKeys(feasibility.issues).map((key) => t(key)).join(" · ")}
             </div>
           </div>
           <button
@@ -1399,7 +1394,9 @@ export default function Home() {
               activeSeed={activeSeed}
               doneSummary={doneSummary}
               runBlockedReason={
-                feasibility.ok ? null : t("shape.blockedTitle")
+                feasibility.ok
+                  ? null
+                  : t("shape.blockedTitle").replace("{n}", String(feasibility.issues.length))
               }
               runBlockedScrollTarget={
                 feasibility.ok ? null : runBlockedScrollTarget(feasibility.issues)

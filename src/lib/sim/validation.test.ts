@@ -279,12 +279,12 @@ describe("validateSchedule: a Top-3 lock with no First or FT lock beside it", ()
     const res = validateSchedule([row({ players, itmRate: 0.2, finishBuckets: { top3: 0.05 } })], baseModel);
     expect(res.ok).toBe(false);
     expect(res.issues).toHaveLength(1);
-    expect(res.issues[0].reason).toBe("inconsistent-finish-locks");
+    expect(res.issues[0].cause).toBe("inconsistent-finish-locks");
   });
 
   it("is no longer reported once First or FT is pinned beside it", () => {
     const reasons = (players: number, finishBuckets: { first?: number; top3?: number; ft?: number }) =>
-      validateSchedule([row({ players, itmRate: 0.2, finishBuckets })], baseModel).issues.map((i) => i.reason);
+      validateSchedule([row({ players, itmRate: 0.2, finishBuckets })], baseModel).issues.map((i) => i.cause);
     for (const finishBuckets of [
       { first: 0.002, top3: 0.05 },
       { top3: 0.05, ft: 0.1 },
@@ -301,13 +301,13 @@ describe("validateSchedule: a Top-3 lock with no First or FT lock beside it", ()
   it("leaves a lone First or a lone FT lock alone", () => {
     for (const finishBuckets of [{ first: 0.002 }, { ft: 0.1 }]) {
       const res = validateSchedule([row({ itmRate: 0.2, finishBuckets })], baseModel);
-      expect(res.issues.map((i) => i.reason)).not.toContain("inconsistent-finish-locks");
+      expect(res.issues.map((i) => i.cause)).not.toContain("inconsistent-finish-locks");
     }
   });
 
   it("does not apply to formats that pay three places or fewer, where Top-3 is the whole ITM band", () => {
     const sng = row({ players: 9, payoutStructure: "sng-50-30-20", itmRate: 1 / 3, finishBuckets: { top3: 1 / 3 } });
-    expect(validateSchedule([sng], baseModel).issues.map((i) => i.reason)).not.toContain("inconsistent-finish-locks");
+    expect(validateSchedule([sng], baseModel).issues.map((i) => i.cause)).not.toContain("inconsistent-finish-locks");
   });
 
   it("the one-click fix clears the lock and the row validates", () => {
@@ -404,7 +404,7 @@ describe("validateSchedule plays every field of a Field-size range", () => {
     expect(atField(r, 25).ok).toBe(true);
     const res = validateSchedule([r], baseModel);
     expect(res.ok).toBe(false);
-    expect(res.issues[0].reason).toBe("inconsistent-finish-locks");
+    expect(res.issues[0].cause).toBe("inconsistent-finish-locks");
   });
 
   it("lets the one-click fix pick an edit that makes every bucket feasible", () => {
@@ -497,7 +497,7 @@ describe("validateSchedule gates the Battle Royale solve the engine plays", () =
             for (const finishBuckets of [undefined, { first: itmRate * 0.3 }]) {
               const r = br({ itmRate, roi, bountyEvBias, lateRegMultiplier, finishBuckets });
               const res = validateSchedule([r], baseModel);
-              if (res.issues[0]?.reason) continue;
+              if (res.issues[0]?.cause === "inconsistent-finish-locks") continue;
               expect(res.ok, JSON.stringify({ lateRegMultiplier, itmRate, roi, bountyEvBias, finishBuckets })).toBe(engineHits(r));
               compared++;
             }
@@ -605,7 +605,7 @@ describe("validateSchedule: a model that cannot move its finish shape", () => {
     const r = row({ players: 300, itmRate: 0.2, finishBuckets: { first: 0.1, top3: 0.05 } });
     const res = validateSchedule([r], uniform);
     expect(res.ok).toBe(false);
-    expect(res.issues[0].reason).toBe("inconsistent-finish-locks");
+    expect(res.issues[0].cause).toBe("inconsistent-finish-locks");
   });
 
   it("agrees with the engine: the row compiles and pays what its shape pays", () => {
@@ -798,5 +798,101 @@ describe("validateSchedule: an empirical history plays its own shape", () => {
     expect(validateSchedule([r], history).ok).toBe(true);
     // With no data the model falls back to the row's ITM and locks, so they are checked.
     expect(validateSchedule([r], { id: "empirical" }).ok).toBe(false);
+  });
+});
+
+describe("validateSchedule names why a row is blocked", () => {
+  const issueOf = (r: TournamentRow, model: FinishModelConfig = baseModel) => validateSchedule([r], model).issues[0];
+  const poolCut = (r: TournamentRow, model: FinishModelConfig = baseModel) =>
+    compileSchedule({ schedule: [r], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model })
+      .flat[0].bountyPoolCut;
+  const hu = (over: Partial<TournamentRow>) =>
+    row({ players: 2, buyIn: 100, payoutStructure: "mtt-gg-bounty", gameType: "pko", bountyFraction: 0.5, ...over });
+
+  it("blames the finish locks only when the row passes without them", () => {
+    const locked = row({ itmRate: 0.16, finishBuckets: { first: 0.05 } });
+    expect(issueOf(locked)?.cause).toBe("pinned-shells");
+    expect(issueOf({ ...locked, finishBuckets: undefined })).toBeUndefined();
+
+    // 2 % ITM caps the row near $27 of the $110 it needs, locks or not.
+    const short = row({ players: 100, itmRate: 0.02, roi: 1 });
+    expect(issueOf(short)?.cause).toBe("pinned-itm");
+    expect(issueOf({ ...short, finishBuckets: { first: 0.001 } })?.cause).toBe("pinned-itm");
+  });
+
+  it("asks whether the locks are the cause at the size that blocks a range, not at its midpoint", () => {
+    // 20-60 players in three sizes, 27, 40 and 53, at ITM 40 % with P(1st)
+    // pinned at 10 %. At ROI +2 % the worst size, 53, passes without the lock
+    // and the midpoint does not: with 40 % in the money, 40 players pay at
+    // least $11.50 against the $11.22 asked. At ROI +300 % the worst size,
+    // 27, fails without the lock and the midpoint passes.
+    const ranged = (roi: number) => row({
+      players: 40, buyIn: 10, roi, itmRate: 0.4, finishBuckets: { first: 0.1 },
+      fieldVariability: { kind: "uniform", min: 20, max: 60, buckets: 3 },
+    });
+    const unlockedAt = (roi: number, players: number) =>
+      issueOf({ ...ranged(roi), players, fieldVariability: undefined, finishBuckets: undefined });
+    expect(fieldVariantSizes(ranged(0.02))).toEqual([27, 40, 53]);
+
+    expect(issueOf(ranged(0.02))).toMatchObject({ cause: "pinned-shells", fieldSize: 53 });
+    expect(unlockedAt(0.02, 53)).toBeUndefined();
+    expect(unlockedAt(0.02, 40)).toMatchObject({ cause: "pinned-itm" });
+    expect(unlockedAt(0.02, 40)!.currentEv).toBeCloseTo(11.5, 3);
+
+    expect(issueOf(ranged(3))).toMatchObject({ cause: "pinned-itm", fieldSize: 27 });
+    expect(unlockedAt(3, 27)).toBeDefined();
+    expect(unlockedAt(3, 40)).toBeUndefined();
+  });
+
+  it("blames the bounty pool on a pinned or a free ITM when the row falls short of it", () => {
+    for (const r of [hu({ roi: 1, itmRate: 0.5 }), hu({ roi: 1 })]) {
+      const issue = issueOf(r);
+      expect(issue?.cause).toBe("bounty-pool");
+      expect(issue!.currentEv).toBeLessThan(issue!.targetEv);
+      expect(poolCut(r)).toBe(true);
+    }
+  });
+
+  it("blames the model on a free ITM when the pool cut nothing, or the row overshoots", () => {
+    const saturated = row({ players: 6, buyIn: 10, payoutStructure: "mtt-gg-bounty", gameType: "pko", bountyFraction: 0.5, roi: 5 });
+    expect(issueOf(saturated)?.cause).toBe("model-saturation");
+    expect(poolCut(saturated)).toBe(false);
+    // The pool cut this one's KO EV too, but it pays $5.06 against $4.40.
+    const over = hu({ buyIn: 10, payoutStructure: "sng-65-35", bountyFraction: 0.3, roi: -0.6 });
+    const issue = issueOf(over);
+    expect(issue?.cause).toBe("model-saturation");
+    expect(issue!.currentEv).toBeGreaterThan(issue!.targetEv);
+    expect(poolCut(over)).toBe(true);
+  });
+
+  it("blames the fixed shape on a model that does not aim at the ROI, at a pinned or a free ITM", () => {
+    const uniform: FinishModelConfig = { id: "uniform" };
+    const mystery = row({
+      players: 3, buyIn: 100, roi: 0.7, gameType: "mystery", payoutStructure: "mtt-standard",
+      bountyFraction: 0.25, mysteryBountyVariance: 2,
+    });
+    for (const r of [mystery, { ...mystery, itmRate: 1 / 3 }]) {
+      const issue = issueOf(r, uniform);
+      expect(issue?.cause).toBe("fixed-shape");
+      expect(issue!.currentEv).toBeCloseTo(125, 9);
+    }
+  });
+
+  it("names the field, after late registration, of the size that blocks a range", () => {
+    const ranged = row({
+      players: 30, buyIn: 10, roi: 2, itmRate: 0.2, lateRegMultiplier: 1.5,
+      fieldVariability: { kind: "uniform", min: 15, max: 45, buckets: 3 },
+    });
+    for (const r of [ranged, { ...ranged, itmRate: undefined, roi: 30 }]) {
+      const sizes = fieldVariantSizes(r);
+      const atSize = sizes.map((players) => issueOf({ ...r, players, fieldVariability: undefined }));
+      const gap = (i: (typeof atSize)[number]) => (i ? Math.abs(i.gap) / i.targetEv : -1);
+      const worst = atSize.reduce((w, i, k) => (gap(i) > gap(atSize[w]) ? k : w), 0);
+      const issue = issueOf(r);
+      expect(atSize[worst]?.fieldSize).toBeUndefined();
+      expect(issue?.currentEv).toBe(atSize[worst]?.currentEv);
+      expect(issue?.fieldSize).toBe(Math.floor(sizes[worst] * 1.5));
+      expect(issue?.fieldSize).not.toBe(sizes[worst]);
+    }
   });
 });

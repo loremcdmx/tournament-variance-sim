@@ -50,6 +50,7 @@ import {
   removeRow,
 } from "@/lib/ui/scheduleOps";
 import { getTournamentRowDisplayLabel } from "@/lib/ui/tournamentRowLabel";
+import { rowBlockedKey } from "@/lib/ui/rowBlockCopy";
 import { DICT, type DictKey } from "@/lib/i18n/dict";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { fmt } from "@/lib/results/formatters";
@@ -1355,22 +1356,23 @@ const ScheduleRow = memo(function ScheduleRow({
           "Grinder" preset is hidden on bounty-envelope rows (PKO / Mystery
           / BR), where ITM is structural and a fixed 16% number doesn't
           belong. */}
-      {issue && (onFixClosest || onFixAuto || onFixPreset || issue.reason === "inconsistent-finish-locks") && (
+      {issue && (onFixClosest || onFixAuto || onFixPreset || issue.cause === "inconsistent-finish-locks") && (
         <div className="border-t-2 border-rose-500/60 bg-[color:var(--c-bad-panel-bg)]/40 px-5 py-2.5">
           <div className="flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-[color:var(--c-bad-panel-fg)]">
               <span aria-hidden className="text-[color:var(--c-bad-fg)]">!</span>
-              {t("shape.rowBlocked")}
+              {t(rowBlockedKey(issue.cause))}
             </span>
             <span className="font-mono text-[11px] text-[color:var(--c-bad-panel-fg-3)]/80">
-              {issue.reason === "inconsistent-finish-locks" ? t("shape.inconsistentFinishLocks") : <>
+              {issue.cause === "inconsistent-finish-locks" ? t("shape.inconsistentFinishLocks") : <>
               EW ${issue.currentEv.toFixed(2)} / ${issue.targetEv.toFixed(2)} (
               {t("shape.blockedGap")} {issue.gap >= 0 ? "+" : ""}
               {issue.gap.toFixed(2)})
               </>}
+              {issue.fieldSize != null && <> · {t("shape.rowBlocked.atField").replace("{n}", String(issue.fieldSize))}</>}
             </span>
             <div className="ml-auto flex flex-wrap gap-1.5">
-              {issue.reason === "inconsistent-finish-locks" ? (
+              {issue.cause === "inconsistent-finish-locks" ? (
                 <button
                   type="button"
                   onClick={() => update(r.id, { finishBuckets: undefined })}
@@ -1395,7 +1397,7 @@ const ScheduleRow = memo(function ScheduleRow({
                   {t("shape.fixAuto")}
                 </button>
               ) : null}
-              {issue.reason !== "inconsistent-finish-locks" && !onFixClosest && onFixPreset && !showBounty && (
+              {issue.cause !== "inconsistent-finish-locks" && !onFixClosest && onFixPreset && !showBounty && (
                 <button
                   type="button"
                   onClick={() => onFixPreset(r.id)}
