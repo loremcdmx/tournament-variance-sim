@@ -8,12 +8,17 @@ import {
   SIGMA_ROI_MYSTERY_ROYALE,
   SIGMA_ROI_PKO,
   sigmaRoiForRow,
+  type SigmaCoef,
 } from "./convergenceFit";
-import type { SimulationInput, TournamentRow } from "./types";
+import type { FinishModelId, SimulationInput, TournamentRow } from "./types";
 import { applyGameType } from "./gameType";
 import { buildScheduleAnalyticBreakdown, compileSchedule } from "./compile";
 import { compiledEntryMoments } from "./scheduleMoments";
+import { formatRuntimeSigma, RUNTIME_SIGMA_BR_TICKET } from "./formatRuntimeSigma";
 import pkoGrid from "../../../scripts/fit_beta_pko.json";
+import mysteryGrid from "../../../scripts/fit_beta_mystery.json";
+import freezeGrid from "../../../scripts/fit_beta_freeze_realdata.json";
+import brLine from "../../../scripts/fit_beta_mystery_royale.json";
 
 /**
  * Critical canary tests on the σ-fit coefficients. These fits drive every
@@ -104,7 +109,7 @@ describe("evalSigma — coefficient shape", () => {
   it("MBR single-beta clamps the linear part at zero (no negative σ at extreme ROI)", () => {
     if (SIGMA_ROI_MYSTERY_ROYALE.kind !== "single-beta") return;
     // At very negative ROI: C0 + C1·ROI could go negative without clamp.
-    // C0=5.485, C1=3.119 → would cross zero at ROI ≈ -1.76. The fit-box
+    // C0=7.504, C1=4.031 → would cross zero at ROI ≈ -1.86. The fit-box
     // floor is -0.10 so this matters only as a defensive guard, but assert
     // the clamp is in place.
     const extreme = evalSigma(SIGMA_ROI_MYSTERY_ROYALE, 18, -10);
@@ -112,39 +117,52 @@ describe("evalSigma — coefficient shape", () => {
     expect(Number.isFinite(extreme)).toBe(true);
   });
 
-  it("residual coefficients are within plausible 5–25 % range", () => {
+  it("residual coefficients are within a plausible 1–25 % range", () => {
+    // 1 % is the floor of the rounding: the BR line reaches the card's exact σ
+    // to 0.08 % over its whole box.
     for (const format of ["freeze", "pko", "mystery", "mystery-royale"] as const) {
       const coef = SIGMA_COEF_BY_FORMAT[format];
-      expect(coef.resid).toBeGreaterThan(0.04);
+      expect(coef.resid).toBeGreaterThanOrEqual(0.01);
       expect(coef.resid).toBeLessThan(0.25);
     }
   });
 
   it("PKO residual ≤ Mystery residual (the envelope tail is the harder surface)", () => {
     // Freeze is not ordered against them: its single-β form misses its own grid
-    // by up to 12 %, while the 2D PKO surface fits a noise-free grid to 5 % at p95.
+    // by up to 14 % with the field held out, while the 2D PKO surface fits a
+    // noise-free grid to 5 % at p95.
     expect(SIGMA_ROI_PKO.resid).toBeLessThanOrEqual(SIGMA_ROI_MYSTERY.resid);
   });
 });
+
+/** σ per tournament in buy-ins of one canonical-grid cell, read off the compile as `resweep_sigma.ts` does. */
+function compiledGridSigma(
+  recipe: Pick<TournamentRow, "payoutStructure" | "gameType" | "bountyFraction" | "mysteryBountyVariance">,
+  finishModel: FinishModelId,
+) {
+  return (field: number, roi: number) => {
+    const row: TournamentRow = {
+      id: "p", label: "p", players: field, buyIn: 50, rake: 0.1, roi, count: 1, ...recipe,
+    };
+    const input: SimulationInput = {
+      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1,
+      finishModel: { id: finishModel },
+    };
+    const entry = compileSchedule(input, "alpha").flat[0];
+    const m = compiledEntryMoments(entry);
+    return Math.sqrt(m.secondDollar - m.meanDollar * m.meanDollar) / entry.singleCost;
+  };
+}
 
 describe("SIGMA_ROI_PKO and its canonical grid", () => {
   // The grid must be the engine's: a stale grid is refitted faithfully and the
   // surface inherits its error. 1 % lets a sub-percent engine tweak through; a
   // payout-curve or knockout-model change fails here, and the fix is
   // `FORMAT=pko npx tsx scripts/resweep_sigma.ts`, then the refit.
-  const cellSigma = (field: number, roi: number) => {
-    const row: TournamentRow = {
-      id: "p", label: "p", players: field, buyIn: 50, rake: 0.1, roi, count: 1,
-      payoutStructure: "mtt-gg-bounty", gameType: "pko", bountyFraction: 0.5,
-    };
-    const input: SimulationInput = {
-      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1,
-      finishModel: { id: "pko-realdata-linear" },
-    };
-    const entry = compileSchedule(input, "alpha").flat[0];
-    const m = compiledEntryMoments(entry);
-    return Math.sqrt(m.secondDollar - m.meanDollar * m.meanDollar) / entry.singleCost;
-  };
+  const cellSigma = compiledGridSigma(
+    { payoutStructure: "mtt-gg-bounty", gameType: "pko", bountyFraction: 0.5 },
+    "pko-realdata-linear",
+  );
   const table = pkoGrid.table as Record<string, number[]>;
 
   it("is the current engine's σ of the canonical row in every cell", () => {
@@ -167,6 +185,128 @@ describe("SIGMA_ROI_PKO and its canonical grid", () => {
     expect(misses).toHaveLength(198);
     expect(misses[Math.floor(0.95 * misses.length)]).toBeLessThanOrEqual(SIGMA_ROI_PKO.resid);
     expect(misses[misses.length - 1]).toBeLessThan(0.09);
+  });
+});
+
+/** |surface / stored − 1| over the cells of a canonical grid from `minField` up, sorted. */
+function gridMisses(
+  coef: SigmaCoef,
+  grid: { fields: number[]; rois: number[]; table: Record<string, number[]> },
+  minField = 0,
+) {
+  const misses: number[] = [];
+  for (const roi of grid.rois) {
+    grid.fields.forEach((field, i) => {
+      if (field < minField) return;
+      misses.push(Math.abs(evalSigma(coef, field, roi) / grid.table[String(roi)][i] - 1));
+    });
+  }
+  return misses.sort((a, b) => a - b);
+}
+
+describe("SIGMA_ROI_MYSTERY and its canonical grid", () => {
+  // Same contract as PKO; the fix is `FORMAT=mystery npx tsx scripts/resweep_sigma.ts`, then the refit.
+  const cellSigma = compiledGridSigma(
+    { payoutStructure: "mtt-gg-mystery", gameType: "mystery", bountyFraction: 0.5, mysteryBountyVariance: 2.0 },
+    "mystery-realdata-linear",
+  );
+  const table = mysteryGrid.table as Record<string, number[]>;
+
+  it("is the current engine's σ of the canonical row in every cell", () => {
+    for (const roi of mysteryGrid.rois) {
+      mysteryGrid.fields.forEach((field, i) => {
+        expect(Math.abs(table[String(roi)][i] / cellSigma(field, roi) - 1), `field ${field} roi ${roi}`).toBeLessThan(0.01);
+      });
+    }
+  });
+
+  it("fits that grid within its resid at p95 and from field 75 up; field 50 is the far miss", () => {
+    const misses = gridMisses(SIGMA_ROI_MYSTERY, mysteryGrid);
+    expect(misses).toHaveLength(198);
+    expect(misses[Math.floor(0.95 * misses.length)]).toBeLessThanOrEqual(SIGMA_ROI_MYSTERY.resid);
+    expect(misses[misses.length - 1]).toBeLessThan(0.36);
+    const from75 = gridMisses(SIGMA_ROI_MYSTERY, mysteryGrid, 75);
+    expect(from75[from75.length - 1]).toBeLessThan(SIGMA_ROI_MYSTERY.resid);
+  });
+});
+
+describe("SIGMA_ROI_FREEZE and its canonical grid", () => {
+  // Same contract as PKO; the fix is `FORMAT=freeze npx tsx scripts/resweep_sigma.ts`, then the refit.
+  const cellSigma = compiledGridSigma(
+    { payoutStructure: "mtt-standard", gameType: "freezeout" },
+    "freeze-realdata-linear",
+  );
+  const table = freezeGrid.table as Record<string, number[]>;
+
+  it("is the current engine's σ of the canonical row in every cell, the same at every ROI", () => {
+    for (const roi of freezeGrid.rois) {
+      freezeGrid.fields.forEach((field, i) => {
+        expect(Math.abs(table[String(roi)][i] / cellSigma(field, roi) - 1), `field ${field} roi ${roi}`).toBeLessThan(0.01);
+      });
+      expect(table[String(roi)]).toEqual(table["0"]);
+    }
+  });
+
+  // The columns are copies, so the grid holds 18 distinct cells: σ by field.
+  const fields = freezeGrid.fields;
+  const sigmas = table["0"];
+  const lineThrough = (keep: number[]) => {
+    const xs = keep.map((i) => Math.log(fields[i]));
+    const ys = keep.map((i) => Math.log(sigmas[i]));
+    const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+    let num = 0;
+    let den = 0;
+    xs.forEach((x, k) => {
+      num += (x - mx) * (ys[k] - my);
+      den += (x - mx) ** 2;
+    });
+    const beta = num / den;
+    return { C0: Math.exp(my - beta * mx), beta };
+  };
+  const everyField = fields.map((_, i) => i);
+
+  it("is the least-squares line through that grid", () => {
+    if (SIGMA_ROI_FREEZE.kind !== "single-beta") throw new Error("freeze is a single-β line");
+    const fit = lineThrough(everyField);
+    expect(SIGMA_ROI_FREEZE.C0).toBeCloseTo(fit.C0, 4);
+    expect(SIGMA_ROI_FREEZE.beta).toBeCloseTo(fit.beta, 4);
+    expect(SIGMA_ROI_FREEZE.C1).toBe(0);
+  });
+
+  it("misses every field held out of the fit by at most its resid", () => {
+    // Leaving out one cell would keep its six copies in the fit (the in-sample
+    // miss); the held-out unit is the field. With 18 fields the p95 is the max:
+    // 14.24 % at field 50 000.
+    const misses = everyField.map((i) => {
+      const fit = lineThrough(everyField.filter((j) => j !== i));
+      return Math.abs((fit.C0 * Math.pow(fields[i], fit.beta)) / sigmas[i] - 1);
+    });
+    expect(Math.max(...misses)).toBeGreaterThan(0.14);
+    expect(Math.max(...misses)).toBeLessThanOrEqual(SIGMA_ROI_FREEZE.resid);
+  });
+});
+
+describe("SIGMA_ROI_MYSTERY_ROYALE follows the BR card's own row", () => {
+  const cardSigma = (roi: number) =>
+    formatRuntimeSigma("mystery-royale", {
+      afs: 18, roi, rake: 0.08, finishModel: { id: "powerlaw-realdata-influenced" },
+    })!;
+
+  it("every stored point is the card's σ today, within 1 %", () => {
+    expect(brLine.meta.ticket).toBe(RUNTIME_SIGMA_BR_TICKET);
+    brLine.rois.forEach((roi, i) => {
+      expect(Math.abs(brLine.sigmas[i] / cardSigma(roi) - 1), `roi ${roi}`).toBeLessThan(0.01);
+    });
+  });
+
+  it("stays within its resid of the card's σ over the whole BR slider box", () => {
+    // Another ticket draws another envelope table: a line through a $50 row
+    // reads 27 % under the card here.
+    for (let roi = -0.1; roi <= 0.1 + 1e-9; roi += 0.01) {
+      expect(Math.abs(evalSigma(SIGMA_ROI_MYSTERY_ROYALE, 18, roi) / cardSigma(roi) - 1), `roi ${roi}`)
+        .toBeLessThanOrEqual(SIGMA_ROI_MYSTERY_ROYALE.resid);
+    }
   });
 });
 
@@ -279,11 +419,10 @@ describe("sigmaRoiForRow", () => {
  * a fit is regenerated without UI/policy review.
  */
 describe("σ reference canaries (5% tolerance)", () => {
-  it("freeze @ AFS=500 ROI=0% lands near the 2026-04 calibration", () => {
-    // SIGMA_ROI_FREEZE: C0=0.6564, C1=0, beta=0.3694
-    // 0.6564 × 500^0.3694 ≈ 0.6564 × 9.516 ≈ 6.247
+  it("freeze @ AFS=500 ROI=0% lands near the engine's 6.28", () => {
+    // 0.6459 × 500^0.3715 ≈ 6.50: the line sits 3.5 % over the grid here.
     const s = evalSigma(SIGMA_ROI_FREEZE, 500, 0);
-    expect(s).toBeGreaterThan(5.9);
+    expect(s).toBeGreaterThan(5.97);
     expect(s).toBeLessThan(6.6);
   });
 
@@ -293,15 +432,17 @@ describe("σ reference canaries (5% tolerance)", () => {
     expect(s).toBeLessThan(4.45);
   });
 
-  it("Mystery @ AFS=500 ROI=10% lands in the validated band", () => {
+  it("Mystery @ AFS=500 ROI=10% lands near the engine's 5.29", () => {
     const s = evalSigma(SIGMA_ROI_MYSTERY, 500, 0.10);
-    expect(s).toBeGreaterThan(3.5);
-    expect(s).toBeLessThan(7.0);
+    expect(s).toBeGreaterThan(5.03);
+    expect(s).toBeLessThan(5.55);
   });
 
-  it("MBR @ AFS=18 ROI=0% lands near 5.5 (C0)", () => {
+  it("MBR @ AFS=18 ROI=0% lands near the card's 7.51 (C0)", () => {
     if (SIGMA_ROI_MYSTERY_ROYALE.kind !== "single-beta") return;
     const s = evalSigma(SIGMA_ROI_MYSTERY_ROYALE, 18, 0);
     expect(s).toBeCloseTo(SIGMA_ROI_MYSTERY_ROYALE.C0, 6);
+    expect(s).toBeGreaterThan(7.13);
+    expect(s).toBeLessThan(7.89);
   });
 });

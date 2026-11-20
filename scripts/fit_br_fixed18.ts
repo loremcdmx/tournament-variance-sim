@@ -1,49 +1,43 @@
 /**
  * Refit the BR runtime helper line at the locked AFS = 18.
  *
- * The shipped BR convergence tab now centers on a runtime single-row compile,
- * not on the old wide sim-fit line. This script rebuilds the compact helper
- * line that tracks that runtime center inside the only user-visible BR box:
- * AFS fixed at 18, ROI in [-10%, +10%].
+ * The BR convergence tab centers on `formatRuntimeSigma("mystery-royale")`, the
+ * compile of the editor's default BR row on the $10 ticket. This script reads
+ * that same σ at a few ROIs inside the BR slider box (AFS fixed at 18, ROI in
+ * [-10%, +10%]) and fits the compact line `SIGMA_ROI_MYSTERY_ROYALE` that the
+ * fallback path of `computeConvergenceRows` evaluates. A row of another ticket
+ * draws another envelope table, so it is not this line's to describe.
  *
  * β stays 0 by construction because the BR widget never varies field size.
- * Independent sim validation of the helper band lives in xval_br.ts.
+ * `xval_br.ts` checks the line against the engine's Monte Carlo of that row.
  *
  *   npx tsx scripts/fit_br_fixed18.ts
  */
 
 import { promises as fs } from "node:fs";
-import { buildExactBreakdown } from "../src/lib/sim/convergenceMath";
-import type { TournamentRow } from "../src/lib/sim/types";
+import {
+  formatRuntimeSigma,
+  RUNTIME_SIGMA_BR_FIELD,
+  RUNTIME_SIGMA_BR_TICKET,
+} from "../src/lib/sim/formatRuntimeSigma";
 
-const BUY_IN = 50;
 const RAKE = 0.08; // GG Mystery Battle Royale real rake
-const AFS = 18;
+const AFS = RUNTIME_SIGMA_BR_FIELD;
+const FINISH_MODEL = "powerlaw-realdata-influenced";
 
 const ROIS = [-0.1, -0.05, 0, 0.05, 0.1];
 
 function measure(roi: number): number {
-  const row: TournamentRow = {
-    id: "br-fit",
-    label: `br-roi${roi}`,
-    players: AFS,
-    buyIn: BUY_IN,
-    rake: RAKE,
+  const sigma = formatRuntimeSigma("mystery-royale", {
+    afs: AFS,
     roi,
-    payoutStructure: "battle-royale",
-    gameType: "mystery-royale",
-    bountyFraction: 0.5,
-    mysteryBountyVariance: 1.8,
-    itmRate: 0.18,
-    count: 1,
-  };
-  const exact = buildExactBreakdown([row], {
-    finishModel: { id: "powerlaw-realdata-influenced" },
+    rake: RAKE,
+    finishModel: { id: FINISH_MODEL },
   });
-  if (!exact) {
+  if (sigma === null) {
     throw new Error(`failed to compile BR runtime row for roi=${roi}`);
   }
-  return exact.sigmaEff;
+  return sigma;
 }
 
 function linFit(xv: number[], yv: number[]) {
@@ -94,15 +88,16 @@ async function main() {
     JSON.stringify(
       {
         meta: {
-          buyIn: BUY_IN,
+          ticket: RUNTIME_SIGMA_BR_TICKET,
           rake: RAKE,
-          bountyFraction: 0.5,
+          row: "buildFormatRuntimeRow(\"mystery-royale\"): the editor's default Battle Royale row",
           payout: "battle-royale",
-          finishModel: "powerlaw-realdata-influenced",
+          finishModel: FINISH_MODEL,
           fixedAfs: AFS,
           roiMin: -0.1,
           roiMax: 0.1,
-          note: "BR runtime helper line for the validated UI box. Point estimate in the widget comes from runtime single-row compile; xval_br.ts validates the ±resid band against independent simulations.",
+          sigma: "formatRuntimeSigma: exact per-tournament sigma of the compiled row, in buy-ins",
+          regeneratedBy: "scripts/fit_br_fixed18.ts",
         },
         rois: xs,
         sigmas: ys,

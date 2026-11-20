@@ -260,9 +260,10 @@ describe("buildRuntimeSigmaOverrides", () => {
 });
 
 describe("the closed-form Mystery surface does not reach the planning chips", () => {
-  // SIGMA_ROI_MYSTERY was trained at a per-KO log-variance of 2.4, the engine
-  // compiles Mystery at 2.0. The surface only stays harmless while every chip
-  // that carries Mystery weight is built from the runtime override.
+  // SIGMA_ROI_MYSTERY is fitted to another row (mystery-realdata-linear) and
+  // misses even that grid by 13 % at p95 (leave-one-out). It only stays
+  // harmless while every chip that carries Mystery weight is built from the
+  // runtime override.
   const point = { afs: 1000, roi: 0.2, rake: 0.1 };
   const sigmaOf = (format: RuntimeSigmaFormat) => formatRuntimeSigma(format, point)!;
   const rowsFor = (format: "mystery" | "mix", mix: MixTuple) =>

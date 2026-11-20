@@ -298,6 +298,13 @@ for the same inputs, the entry says for which rows.
 
 ### Volume planning cards
 
+- The freezeout planning cards show a narrower range and the Battle Royale
+  ones a slightly wider one, both re-measured against the simulator's own
+  Monte Carlo on the current engine: freezeout σ ±2 % instead of ±3 % (about
+  ±4 % instead of ±6 % on the volume), Battle Royale ±7 % instead of ±6 %
+  (about ±14 % instead of ±12 %). Mix and Schedule mode ranges move in
+  proportion to the freezeout and Battle Royale share of the variance. The
+  volumes themselves do not change.
 - Volume needed to verify a chosen ROI is now sized for the confidence you
   pick: at 95 %, a player with exactly the tested ROI clears the bar 95 % of
   the time (it was sized for 97.5 %). Every volume on the prove-edge card, on

@@ -1,18 +1,20 @@
 /**
- * Refit PKO and Mystery σ surfaces from canonical fit_beta_{pko,mystery}.json
- * using 2D log-polynomial with ROI×log(field) interaction:
+ * Refit the σ surfaces from the canonical fit_beta_{pko,mystery}.json and
+ * fit_beta_freeze_realdata.json. PKO and Mystery promote Model B, a 2D
+ * log-polynomial with ROI×log(field) interaction; freeze promotes Model A, the
+ * single-β line (`SIGMA_ROI_FREEZE`):
  *
  *   log σ = a0 + a1·L + a2·L² + b1·R + b2·R² + c·R·L
  *   (L = log field, R = roi)
  *
- * Outputs per-format:
- *   - 6 coefficients
- *   - in-sample R²
- *   - leave-one-out xval residuals (mean |Δ/σ|, max, ±resid for UI)
- *   - comparison vs current production single-β constants
+ * Outputs per format, for both forms:
+ *   - the coefficients and the in-sample R²
+ *   - leave-one-cell-out and leave-one-field-out residuals (mean / p95 / p99 /
+ *     max |Δ/σ|)
+ *   - the promoted form's constants, `resid` = the held-out p95 rounded up
  *
- * No new measurements: it reads the 11×18 = 198 cells per format that
- * `resweep_sigma.ts` writes, so re-run that first whenever the engine has
+ * No new measurements: it reads the 11×18 = 198 cells per format (7×18 for
+ * freeze) that `resweep_sigma.ts` writes, so re-run that first whenever the engine has
  * changed (a stored grid describes the engine that measured it).
  *
  *   npx tsx scripts/refit_2d_logpoly.ts
@@ -216,14 +218,18 @@ function rSquared(data: DataPoint[], predict: (f: number, r: number) => number):
   return st > 0 ? 1 - sr / st : 1;
 }
 
+// `heldWith` removes the held cell's copies too: where the ROI columns are the
+// same σ (freeze), holding out one cell leaves six exact copies of it in the
+// training set and the "held-out" error is the in-sample one.
 function leaveOneOutXval(
   data: DataPoint[],
   fitter: (d: DataPoint[]) => (f: number, r: number) => number,
+  heldWith: (held: DataPoint, other: DataPoint) => boolean = (held, other) => held === other,
 ): { meanAbsPct: number; maxAbsPct: number; p95AbsPct: number; p99AbsPct: number; residuals: number[] } {
   const residuals: number[] = [];
   for (let i = 0; i < data.length; i++) {
     const held = data[i];
-    const train = data.filter((_, j) => j !== i);
+    const train = data.filter((d) => !heldWith(held, d));
     const predict = fitter(train);
     const pred = predict(held.field, held.roi);
     const rel = Math.abs((pred - held.sigma) / held.sigma) * 100;
@@ -245,72 +251,92 @@ function leaveOneOutXval(
 
 // =============================== Main ===================================
 
-function report(name: string, data: DataPoint[]) {
+type Xval = ReturnType<typeof leaveOneOutXval>;
+
+function printXval(label: string, x: Xval) {
+  console.log(`    ${label} mean / p95 / p99 / max |Δ/σ| = ${x.meanAbsPct.toFixed(2)} / ${x.p95AbsPct.toFixed(2)} / ${x.p99AbsPct.toFixed(2)} / ${x.maxAbsPct.toFixed(2)}%`);
+}
+
+function report(name: string, data: DataPoint[], promote: "A" | "B") {
   console.log(`\n================== ${name.toUpperCase()} ==================`);
   console.log(`  data points: ${data.length} (${new Set(data.map((d) => d.roi)).size} ROIs × ${new Set(data.map((d) => d.field)).size} fields)`);
   console.log(`  field range: ${Math.min(...data.map((d) => d.field))} – ${Math.max(...data.map((d) => d.field)).toLocaleString()}`);
   console.log(`  roi range: ${(Math.min(...data.map((d) => d.roi)) * 100).toFixed(0)}% – ${(Math.max(...data.map((d) => d.roi)) * 100).toFixed(0)}%`);
 
+  const sameField = (held: DataPoint, other: DataPoint) => held.field === other.field;
+  const columnsAreCopies = data.every((d) =>
+    data.every((o) => o.field !== d.field || o.sigma === d.sigma),
+  );
+
   const fitA = fitSingleBeta(data);
   const r2A = rSquared(data, fitA.predict);
   const xvalA = leaveOneOutXval(data, (train) => fitSingleBeta(train).predict);
+  const xvalAField = leaveOneOutXval(data, (train) => fitSingleBeta(train).predict, sameField);
 
   const fitB = fit2DLogPoly(data);
   const r2B = rSquared(data, fitB.predict);
   const xvalB = leaveOneOutXval(data, (train) => fit2DLogPoly(train).predict);
+  const xvalBField = leaveOneOutXval(data, (train) => fit2DLogPoly(train).predict, sameField);
 
   console.log("");
-  console.log("  === Model A: single-β (current production form) ===");
+  console.log("  === Model A: single-β ===");
   console.log(`    σ = (${fitA.C0.toFixed(4)} + ${fitA.C1.toFixed(4)}·roi) · field^${fitA.beta.toFixed(4)}`);
-  console.log(`    in-sample R²        = ${r2A.toFixed(5)}`);
-  console.log(`    LOO xval mean |Δ/σ| = ${xvalA.meanAbsPct.toFixed(2)}%`);
-  console.log(`    LOO xval p95  |Δ/σ| = ${xvalA.p95AbsPct.toFixed(2)}%`);
-  console.log(`    LOO xval p99  |Δ/σ| = ${xvalA.p99AbsPct.toFixed(2)}%`);
-  console.log(`    LOO xval max  |Δ/σ| = ${xvalA.maxAbsPct.toFixed(2)}%`);
+  console.log(`    in-sample R² = ${r2A.toFixed(5)}`);
+  printXval("leave-one-cell-out ", xvalA);
+  printXval("leave-one-field-out", xvalAField);
 
   console.log("");
   console.log("  === Model B: 2D log-poly with interaction ===");
   const [a0, a1, a2, b1, b2, c] = fitB.coef;
   console.log(`    log σ = ${a0.toFixed(4)} + ${a1.toFixed(4)}·L + ${a2.toFixed(4)}·L² + ${b1.toFixed(4)}·R + ${b2.toFixed(4)}·R² + ${c.toFixed(4)}·R·L`);
-  console.log(`    in-sample R²        = ${r2B.toFixed(5)}`);
-  console.log(`    LOO xval mean |Δ/σ| = ${xvalB.meanAbsPct.toFixed(2)}%`);
-  console.log(`    LOO xval p95  |Δ/σ| = ${xvalB.p95AbsPct.toFixed(2)}%`);
-  console.log(`    LOO xval p99  |Δ/σ| = ${xvalB.p99AbsPct.toFixed(2)}%`);
-  console.log(`    LOO xval max  |Δ/σ| = ${xvalB.maxAbsPct.toFixed(2)}%`);
+  console.log(`    in-sample R² = ${r2B.toFixed(5)}`);
+  printXval("leave-one-cell-out ", xvalB);
+  printXval("leave-one-field-out", xvalBField);
 
-  const improveMean = ((xvalA.meanAbsPct - xvalB.meanAbsPct) / xvalA.meanAbsPct) * 100;
-  const improveMax = ((xvalA.maxAbsPct - xvalB.maxAbsPct) / xvalA.maxAbsPct) * 100;
+  // resid is the p95 of the held-out miss. Where the ROI columns are copies the
+  // grid holds one distinct cell per field, so the held-out unit is the field.
+  const held = promote === "A"
+    ? (columnsAreCopies ? xvalAField : xvalA)
+    : (columnsAreCopies ? xvalBField : xvalB);
+  const heldLabel = columnsAreCopies ? "leave-one-field-out" : "leave-one-cell-out";
+  const residComment = `// ${heldLabel} p95 = ${held.p95AbsPct.toFixed(2)}% (mean ${held.meanAbsPct.toFixed(2)}%, max ${held.maxAbsPct.toFixed(2)}%), round up`;
   console.log("");
-  console.log(`  Improvement: mean −${improveMean.toFixed(1)}%, max −${improveMax.toFixed(1)}%`);
-  console.log("");
-  console.log(`  === Production-ready constants ===`);
-  console.log(`  const SIGMA_ROI_${name.toUpperCase()}_2D = {`);
-  console.log(`    a0: ${a0.toFixed(5)},`);
-  console.log(`    a1: ${a1.toFixed(5)},`);
-  console.log(`    a2: ${a2.toFixed(5)},`);
-  console.log(`    b1: ${b1.toFixed(5)},`);
-  console.log(`    b2: ${b2.toFixed(5)},`);
-  console.log(`    c:  ${c.toFixed(5)},`);
-  // Use p95 as resid — conservative band that encompasses 95% of observed drift.
-  console.log(`    resid: ${(xvalB.p95AbsPct / 100).toFixed(3)},  // p95 LOO = ${xvalB.p95AbsPct.toFixed(1)}% (mean ${xvalB.meanAbsPct.toFixed(1)}%, max ${xvalB.maxAbsPct.toFixed(1)}%)`);
+  console.log(`  === Production-ready constants (Model ${promote}) ===`);
+  console.log(`  export const SIGMA_ROI_${name.toUpperCase()}: SigmaCoef = {`);
+  if (promote === "A") {
+    console.log(`    kind: "single-beta",`);
+    console.log(`    C0: ${fitA.C0.toFixed(4)},`);
+    console.log(`    C1: ${columnsAreCopies ? 0 : fitA.C1.toFixed(4)},`);
+    console.log(`    beta: ${fitA.beta.toFixed(4)},`);
+  } else {
+    console.log(`    kind: "log-poly-2d",`);
+    console.log(`    a0: ${a0.toFixed(5)},`);
+    console.log(`    a1: ${a1.toFixed(5)},`);
+    console.log(`    a2: ${a2.toFixed(5)},`);
+    console.log(`    b1: ${b1.toFixed(5)},`);
+    console.log(`    b2: ${b2.toFixed(5)},`);
+    console.log(`    c: ${c.toFixed(5)},`);
+  }
+  console.log(`    resid: ${(Math.ceil(held.p95AbsPct) / 100).toFixed(2)},  ${residComment}`);
   console.log(`  };`);
-
-  return { fitA, fitB, r2A, r2B, xvalA, xvalB };
 }
 
 async function main() {
   const cwd = process.cwd();
   const pkoPath = `${cwd}/scripts/fit_beta_pko.json`;
   const mysteryPath = `${cwd}/scripts/fit_beta_mystery.json`;
+  const freezePath = `${cwd}/scripts/fit_beta_freeze_realdata.json`;
 
   const pkoData = loadData(pkoPath);
   const mysteryData = loadData(mysteryPath);
+  const freezeData = loadData(freezePath);
 
-  console.log(`refit_2d_logpoly: promoting 2D log-poly from canonical fit_beta_*.json`);
-  console.log(`  (no new simulator runs — 198 production data points per format)`);
+  console.log(`refit_2d_logpoly: refitting from canonical fit_beta_*.json`);
+  console.log(`  (no new simulator runs — 198 production data points per format, 126 for freeze)`);
 
-  report("pko", pkoData);
-  report("mystery", mysteryData);
+  report("pko", pkoData, "B");
+  report("mystery", mysteryData, "B");
+  report("freeze", freezeData, "A");
 }
 
 main();

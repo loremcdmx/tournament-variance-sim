@@ -63,7 +63,7 @@ interface FieldArtifact {
   rois: number[];
   table: Record<string, number[]>;
   globalBeta: number;
-  cRoiLinear: { C0: number; C1: number; r2: number };
+  cRoiLinear: { C0: number; C1: number; r2?: number };
   meta?: Record<string, unknown>;
 }
 
