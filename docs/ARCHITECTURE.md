@@ -181,7 +181,14 @@ the fixed point b = ceiling(solve(total - b)), and the cash side is asked for
 the rest: more cash lowers P(last) and lifts the ceiling, so a bracketed
 regula falsi (Illinois) between the first ceiling and the plan finds it in a
 few solves, and a pinned ITM with unpaid places (P(last) fixed by the pin)
-lands on it in one solve. A cash side that
+whose solve lands on its target lands on it in one solve. A row that plays
+what its cash side leaves (a pinned ITM, a fixed shape) and whose solve
+overshoots its target past the on-target tolerance is searched on that
+residual, total - cash(solve(total - b)), not on the ask b: near break-even
+the first-place floor lifts a pinned cash side past what it is asked, and a
+search on the ask settles below the ceiling there (a 4-player pinned row's KO
+end would play 14.4 % of its winnings in KOs where one drag step short of it
+plays 26.2 %). A cash side that
 cannot deliver the rest leaves the row short of its total: `validateSchedule`
 blocks it, and the engine raises `target-unreachable` (the PrimeDope pass its
 own two kinds) so the expected profit reads the pmf. A model that does not aim

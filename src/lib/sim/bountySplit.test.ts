@@ -102,6 +102,28 @@ describe("settleBountyAgainstPool", () => {
     }
   });
 
+  it("holds what an overshooting pinned cash side leaves, not the ask, to the ceiling", () => {
+    // The pin keeps P(last) at 0.4 (ceiling 45), but the cash side pays 1.5x
+    // what it is asked past 30, as the first-place floor does near break-even:
+    // asked for 35 it pays 37.5. A total of 80 then leaves KO EV of
+    // 1.5 ask - 25, which meets the ceiling at ask 140/3 (cash 35).
+    const overshooting = (target: number) => {
+      const cash = Math.min(60, Math.max(30, 30 + 1.5 * (target - 30)));
+      const first = (cash - 30) / 50;
+      return { pmf: Float64Array.from([first, 0.6 - first, 0.4]), prizeByPlace };
+    };
+    const s = settleBountyAgainstPool({
+      ...pool, totalWinningsEV: 80, plannedBountyMean: 60, residualCloses: true,
+      sitThrough: false, payJumpAggression: undefined, solve: overshooting,
+    });
+    // Held to the ask, the first ask (the ceiling, 45) fits and leaves 42.5.
+    expect(s.poolCut).toBe(true);
+    expect(s.bountyMean / 45).toBeGreaterThan(1 - 1e-9);
+    expect(s.bountyMean).toBeLessThanOrEqual(ceilingOf(s.solved.pmf));
+    expect(s.cashEV).toBeCloseTo(35, 6);
+    expect(s.cashEV + s.bountyMean).toBeCloseTo(80, 12);
+  });
+
   it("caps a residual past the ceiling by less than the on-target tolerance", () => {
     // Cash tops out at 60, so a 105.0225 total leaves 45.0225 of KO EV against a
     // ceiling of 45: 0.05 % over, which the 0.1 % tolerance on a total would pass.

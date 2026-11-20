@@ -121,6 +121,7 @@ export function mixRowStats(
     bountyEvPerEntry,
     jackpotBountyEvPerEntry: avg((s) => s.jackpotBountyEvPerEntry),
     bountyShare: evPerEntry > 1e-9 ? bountyEvPerEntry / evPerEntry : 0,
+    bountyAtPoolCeiling: parts.every((s) => s.bountyAtPoolCeiling),
     tiers: mixTiers(parts, repIdx),
     ftField: avg((s) => s.ftField),
     ftEvShare: evPerEntry > 1e-9 ? ftEv / evPerEntry : 0,

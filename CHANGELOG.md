@@ -278,6 +278,22 @@ for the same inputs, the entry says for which rows.
   several points, and the KO-share readout shows the share the row will
   really get while you drag. Moving either slider back to its stored value
   while the previous change is still being applied now takes effect.
+- The row preview's KO-share slider covers the field late registration brings
+  in: a Battle Royale row that late registration takes past 20 entrants shows
+  its one KO share with the slider locked, instead of offering 30 % to 65 %
+  the simulation ignores. A share typed above what the row can play lands on
+  the highest share it plays, and a note says why (the bounty pool's limit or
+  the row's range); a share the row jumps over lands on the nearest one it
+  plays. Dragging the slider on a large field or a field-size range no longer
+  stalls: points not yet worked out show '≈' until they are, and the share is
+  exact the moment you let go.
+- On small bounty tables with a fixed ITM (two to six players, roughly -20 %
+  to +20 % ROI), the KO end of the KO-share slider now plays all the
+  knockout EV the bounty pool can pay; before, the pool limit settled far
+  below it, so the KO share fell back toward cash at the end of the slider
+  (a 4-max GG bounty row at +10 % and a 66 % ITM played 14.4 % in KOs at the
+  end, now 27.4 %). Only the cash/KO split moves; the total stays on the ROI
+  you typed, and a few such rows that were blocked at the KO end now run.
 - A reference line's ROI box on the results chart keeps hundredths of a
   percent: a typed 7.5 is drawn, shown and labelled as 7.5 %, not shown as 8
   and labelled 'ROI +8%'. Lines saved before relabel themselves on load.

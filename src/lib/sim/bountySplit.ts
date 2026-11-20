@@ -1,4 +1,4 @@
-import { bountyEvCeiling, bountyResidualFits } from "./finishModel";
+import { bountyEvCeiling, bountyResidualFits, withinTargetEv } from "./finishModel";
 import { applySitThroughPayJumps } from "./sitThroughPayJumps";
 import type { TournamentRow } from "./types";
 
@@ -61,8 +61,14 @@ const SETTLE_REL_WIDTH = 1e-9;
  * That KO EV is therefore the fixed point
  * b = ceiling(solve(total - b)), searched for between the first ceiling and
  * the plan, and the same for every plan past it. Where the pin fixes
- * P(last) (a pinned ITM with unpaid places and no sit-through) the first
- * ceiling is the fixed point and one solve settles it. The KO EV is held to
+ * P(last) (a pinned ITM with unpaid places and no sit-through) and the solve
+ * lands on its target, the first ceiling is the fixed point and one solve
+ * settles it. A pinned ITM or a fixed shape plays what the cash side leaves,
+ * which is less than the ask where the solve overshoots its target (near
+ * break-even the first-place floor lifts a pinned cash side up to the total):
+ * the search then holds that residual, not the ask, to the ceiling, or it
+ * settles on KO EV the pool could pay and the share falls toward the KO end
+ * of the bias. The KO EV is held to
  * the ceiling of the pmf it settles on in any case, so a cash side that cannot
  * deliver the rest leaves the row short of its total, which validation blocks
  * and the engine flags. A fixed shape cannot deliver any of it, so `poolCut`
@@ -124,26 +130,34 @@ export function settleBountyAgainstPool<S extends { pmf: Float64Array; prizeByPl
   }
   if (plan <= ceiling) return settle(plan, solved, ceiling);
 
-  // The search runs on the room the pool leaves over the ask,
-  // ceiling(solve(total - ask)) - ask: it falls as the ask grows and is
-  // negative at the plan. Each step costs a whole solve, so it takes the
+  // The search runs on the room the pool leaves over the KO EV played at an
+  // ask, ceiling(solve(total - ask)) - played: it falls as the ask grows and
+  // is negative at the plan. Each step costs a whole solve, so it takes the
   // regula falsi point with the Illinois halving: the midpoint needs about 30
-  // solves to reach 1e-9 on rows whose P(last) moves.
+  // solves to reach 1e-9 on rows whose P(last) moves. Only an overshoot past
+  // the on-target tolerance reads the residual: a solve that lands on its
+  // target is searched on its ask, and a cash side short of its target is
+  // held to the ask while the cap below holds what it leaves to the ceiling.
+  const playedAt = (ask: number, solved: S): number => {
+    if (!residualCloses) return ask;
+    const target = Math.max(cashFloor, totalWinningsEV - ask);
+    const cash = cashOf(solved);
+    return cash > target && !withinTargetEv(cash, target) ? Math.max(0, totalWinningsEV - cash) : ask;
+  };
   let lo = 0;
   let roomLo = Number.NaN;
   let hi = plan;
-  let roomHi = ceiling - plan;
+  let roomHi = ceiling - playedAt(plan, solved);
   let keptSide = 0;
   let ask = ceiling;
   let fit: { ask: number; solved: S; ceiling: number } | null = null;
   for (let step = 0; step < SETTLE_STEPS; step++) {
     const candidate = solve(Math.max(cashFloor, totalWinningsEV - ask));
     const candidateCeiling = ceilingOf(candidate);
-    const room = candidateCeiling - ask;
+    const room = candidateCeiling - playedAt(ask, candidate);
     if (room >= 0) {
       fit = { ask, solved: candidate, ceiling: candidateCeiling };
-      // While the ceiling falls as the ask grows, the fixed point lies at most
-      // `room` above this ask.
+      // The KO EV played here is the ceiling to the search's precision.
       if (room <= SETTLE_REL_WIDTH * ask) break;
       if (keptSide > 0) roomHi /= 2;
       lo = ask;

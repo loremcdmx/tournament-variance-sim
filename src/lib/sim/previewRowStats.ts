@@ -1,5 +1,6 @@
 import {
   applyBountyBias,
+  bountyEvCeiling,
   buildFinishPMF,
   calibrateAlpha,
   calibrateShelledItm,
@@ -138,6 +139,10 @@ export interface RowStats {
    *  draws — same value for all rows so users compare apples to apples. */
   jackpotThreshold: number;
   bountyShare: number;
+  /** The KO EV is all the bounty pool can pay this entry (`bountyEvCeiling`
+   *  of the played pmf); on a range, at every field size. A row the pool cut
+   *  (`poolCut`) can still sit below it where its cash side cannot shrink. */
+  bountyAtPoolCeiling: boolean;
   progressivePko: boolean;
   topPlaces: number;
   /**
@@ -189,6 +194,13 @@ function shellSums(pmf: Float64Array, paidCount: number) {
  *  at 100× buy-in it captures the top 1-3 GG BR tiers (e.g. 10000×/1000×/100×
  *  at the $1 profile) and gives essentially 0 for PKO/thin log-normal. */
 const JACKPOT_THRESHOLD = 100;
+
+/** How close to the pool's ceiling a KO EV counts as all the pool can pay.
+ *  `settleBountyAgainstPool` stops on a bracket 1e-9 of the ask wide, which
+ *  leaves a KO EV the pool sets up to about 5e-9 under its ceiling (4.9e-9 the
+ *  most on 20 000 random bounty rows of 2-18 players), while a KO EV the cash
+ *  side or the plan sets sat at least 3.9e-4 under it there. */
+const POOL_CEILING_REL_TOL = 1e-6;
 
 /** Abramowitz & Stegun 7.1.26 approximation of the standard normal CDF
  *  Φ(x). Max error ≈ 1.5e-7 — more than enough for a UI readout. */
@@ -871,6 +883,10 @@ function computeRowStatsAtField(
     jackpotBountyEvPerEntry: jackpotBountyEv,
     jackpotThreshold: JACKPOT_THRESHOLD,
     bountyShare: bountyShareOfPayout,
+    bountyAtPoolCeiling:
+      bountyMean > 0 &&
+      N >= 2 &&
+      bountyMean >= bountyEvCeiling(N, row.buyIn, bountyFraction, pmf) * (1 - POOL_CEILING_REL_TOL),
     progressivePko: inferGameType(row) === "pko" || inferGameType(row) === "ocean-ko",
     topPlaces: Math.max(1, Math.ceil(N * 0.01)),
     tiers,

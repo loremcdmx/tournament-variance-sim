@@ -447,6 +447,77 @@ describe("computeRowStats shell feasibility agrees with validateSchedule on boun
     expect(stats.bountyEvPerEntry / ceiling).toBeGreaterThan(1 - 3e-9);
   });
 
+  it("runs a pinned 4-max at the KO end whose cash side overshoots what it is asked, with the KO EV the pool can pay", () => {
+    // $100 + 10 %, 5 % bounty, ITM 0.75, +10 %: $121 to win, and the pool pays
+    // one entry at most 4 x $5 x (1 - P(last)). Asked for the cash the first
+    // ceiling leaves, the first-place floor pays $128.25 and leaves no KO EV.
+    const row = pko({
+      players: 4, buyIn: 100, roi: 0.1, payoutStructure: "sng-65-35", bountyFraction: 0.05,
+      bountyEvBias: -0.25, itmRate: 0.75,
+    });
+    const stats = computeRowStats(row, model);
+    const entry = compileSchedule({
+      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model,
+    }).flat[0];
+    let lastPlace = 0;
+    for (let i = 0; i < 4; i++) {
+      if (i === 3) lastPlace += entry.aliasProb[i] / 4;
+      if (entry.aliasIdx[i] === 3) lastPlace += (1 - entry.aliasProb[i]) / 4;
+    }
+    expect(stats.bountyEvPerEntry / (4 * 100 * 0.05 * (1 - lastPlace))).toBeGreaterThan(1 - 1e-9);
+    expect(stats.bountyEvPerEntry).toBeCloseTo(17.5, 6);
+    expect(stats.evPerEntry).toBeCloseTo(121, 6);
+    expect(stats.evPerEntry).toBeCloseTo(entry.analyticMeanSingle, 9);
+    expect(stats.shellFeasible).toBe(true);
+    expect(validateSchedule([row], model).ok).toBe(true);
+  });
+
+  it("says the bounty pool sets the KO EV only where it is all the pool can pay, at every field size of a range", () => {
+    const pko3 = (over: Partial<TournamentRow>) => pko({
+      players: 3, buyIn: 100, roi: 0.2, payoutStructure: "sng-65-35", bountyFraction: 0.3,
+      itmRate: 0.66, ...over,
+    });
+    // At -0.25 the KO EV is the pool's $59.40; at -0.2 the plan, $58.08, is under it.
+    expect(computeRowStats(pko3({ bountyEvBias: -0.25 }), model).bountyAtPoolCeiling).toBe(true);
+    const under = computeRowStats(pko3({ bountyEvBias: -0.2 }), model);
+    expect(under.bountyEvPerEntry).toBeCloseTo(58.08, 9);
+    expect(under.bountyAtPoolCeiling).toBe(false);
+    const ranged = (min: number, max: number, over: Partial<TournamentRow>) => {
+      const row = pko3({
+        players: min, bountyEvBias: -0.25,
+        fieldVariability: { kind: "uniform", min, max, buckets: max - min + 1 }, ...over,
+      });
+      const sizes = Array.from({ length: max - min + 1 }, (_, k) => min + k);
+      const each = sizes.map((players) =>
+        computeRowStats({ ...row, players, fieldVariability: undefined }, model).bountyAtPoolCeiling,
+      );
+      return { each, mixed: computeRowStats(row, model).bountyAtPoolCeiling };
+    };
+    expect(ranged(3, 6, {})).toEqual({ each: [true, false, false, false], mixed: false });
+    expect(ranged(3, 4, { roi: 0.4, bountyFraction: 0.1, itmRate: 0.6 })).toEqual({ each: [true, true], mixed: true });
+  });
+
+  it("counts a KO EV the pool search left a few 1e-9 under the ceiling as the pool's cap", () => {
+    // Free ITM, 50/30/20, +6 %: the search's bracket closes 1.7e-9 under the ceiling.
+    const row = pko({
+      players: 3, buyIn: 100, roi: 0.06, payoutStructure: "sng-50-30-20", bountyFraction: 0.3,
+      itmRate: undefined, bountyEvBias: -0.25,
+    });
+    const stats = computeRowStats(row, model);
+    const entry = compileSchedule({
+      schedule: [row], scheduleRepeats: 1, samples: 1, bankroll: 0, seed: 1, finishModel: model,
+    }).flat[0];
+    let lastPlace = 0;
+    for (let i = 0; i < 3; i++) {
+      if (i === 2) lastPlace += entry.aliasProb[i] / 3;
+      if (entry.aliasIdx[i] === 2) lastPlace += (1 - entry.aliasProb[i]) / 3;
+    }
+    const gap = 1 - stats.bountyEvPerEntry / (3 * 100 * 0.3 * (1 - lastPlace));
+    expect(gap).toBeGreaterThan(1e-9);
+    expect(gap).toBeLessThan(1e-8);
+    expect(stats.bountyAtPoolCeiling).toBe(true);
+  });
+
   it("keeps a freezeout row's own feasibility rule", () => {
     const row: TournamentRow = {
       id: "f", label: "f", players: 100, buyIn: 50, rake: 0.1, roi: 1,
