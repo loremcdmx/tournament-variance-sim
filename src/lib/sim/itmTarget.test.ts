@@ -168,6 +168,17 @@ describe("applyItmTarget on a table whose paid places all pay the same", () => {
     expect(validateSchedule(live, model).ok).toBe(false);
   });
 
+  it("stamps the ITM a losing heads-up ROI implies: the zero-skill one leaves the winner short of the pool", () => {
+    // $100+$10 heads-up, half of it bounty, ROI -30 %: at ITM 0.5 the cash side
+    // pays $50 and leaves $27 of KO EV, but a winner always collects the whole
+    // $100 pool, $50 at that win rate. ITM 0.385 pays the $77 at ITM x $200.
+    const hu: TournamentRow = { ...oneLevel("mtt-gg-bounty", 2, -0.3), gameType: "pko", bountyFraction: 0.5 };
+    const live = applyItmTarget([hu], off, model);
+    expect(live[0].itmRate).toBeCloseTo(0.385, 12);
+    expect(validateSchedule(live, model).ok).toBe(true);
+    expect(validateSchedule([{ ...hu, itmRate: 0.5 }], model).ok).toBe(false);
+  });
+
   it("stamps the ROI's own ITM where the zero-skill one leaves the pool a little short", () => {
     // Heads-up winner-takes-all, $100+$10, half of it bounty, ROI -9.05 %: the
     // $100.045 target leaves $50.045 of KO EV at ITM 0.5, where a winner

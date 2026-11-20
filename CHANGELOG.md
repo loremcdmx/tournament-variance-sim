@@ -92,6 +92,16 @@ for the same inputs, the entry says for which rows.
   that needs no more KO EV than the pool holds.
 - 'Fit closest inputs' no longer writes an ROI that is still blocked; when
   nothing fits it leaves the row as it is and says so.
+- Bounty rows no longer play less knockout EV than their own finishes
+  guarantee: a PKO or Ocean KO winner always keeps their own starting head
+  and takes the runner-up's, a Mystery winner always opens at least one
+  envelope, and a Battle Royale winner at least one envelope of the table the
+  simulator draws. Before, a pinned ITM could move the whole ROI into cash and
+  leave knockouts at $0 (an 18-max Battle Royale with late registration at
+  ITM 54 %). Rows that no split of cash and knockouts can pay are now blocked
+  and say why, and a blank ITM on a heads-up bounty row follows a losing ROI
+  too (ITM 38.5 % for a $100+$10 PKO at -30 %), so default heads-up rows stay
+  runnable. The KO-share slider stops at that minimum.
 - A blocked row now says why it is blocked instead of always blaming locked
   shell probabilities: finish locks that contradict each other, an ITM at
   which no finish shape pays the ROI, finish locks that leave no shape paying

@@ -293,10 +293,12 @@ configurations; 0 after). Rules that keep it working:
 - The mixture's cash winnings stay inside the window above: a validated non-bounty row
   whose natural solution is on target pays its target to 1e-9 (the typed ROI is the
   contract, the floor a preference), a natural solution already off target keeps its own
-  winnings, and a bounty row's cash side may rise to `totalWinningsEV` with the KO residual
-  closing the total. compileEntry, validation and previewRowStats pass that total as
-  `maxCashWinnings` whenever `bountyFraction > 0`; all three must pass the same value
-  (previewRowStats.test.ts and validation.cashCap.test.ts pin it). The Battle Royale
+  winnings, and a bounty row's cash side may rise to the total less the KO EV asked for, with the KO
+  residual closing the total: settleBountyAgainstPool hands every solve its cap
+  (`solve(target, maxCashWinnings)`), `totalWinningsEV` for the plan's solve and the
+  ceiling's search and less inside the KO floor's search. compileEntry, validation and
+  previewRowStats forward that cap as `maxCashWinnings` whenever `bountyFraction > 0`; all
+  three must forward it unchanged (validation.cashCap.test.ts pins it). The Battle Royale
   neutral solves deliberately pass nothing. Keep FIRST_PLACE_EV_SLACK at 1e-9: at 0,
   bisection noise slides on-target 1/N solutions and changes their bytes.
 - The gate and the share read the natural P(1st) BEFORE the unplacedFreeMass repair; the
@@ -882,10 +884,11 @@ statistically misleading. Do not undo these without re-measuring:
   twice as uncertain as the normal formula says). The path-based risk of ruin and
   minimum bankroll are the stable ones and stay unmarked.
 - Models that ignore the row ROI (uniform, empirical, `*-realdata-*`, a pinned α) report
-  `expectedProfit` from their own finish pmf. A bounty row on such a model reads cost × ROI
-  where the bounty channel closes the gap, which it does only up to what the bounty pool
-  can pay; a row the pool cuts short (`poolCut`) reads less, gets target-unreachable and is
-  blocked by validateSchedule. A test that
+  `expectedProfit` from their own finish pmf. A bounty row on such a model reads cost × ROI where the bounty channel closes the gap,
+  which it does only with a KO EV between what its finishing places guarantee
+  (`knockoutFloor`) and what the bounty pool can pay; a row the pool cuts short (`poolCut`)
+  reads less, one whose places hold the KO EV above what closes the total (`floorLift`)
+  reads more, and both get target-unreachable and are blocked by validateSchedule. A test that
   expects cost × ROI for a fixed-shape model without a bounty is wrong.
 - The diagnostic σ (the preview's `payoutStd` and `stats.sigmaPerTournamentAnalytic`)
   is `compiledEntryMoments`; do not write a second σ formula next to it. The old
@@ -1224,18 +1227,21 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   the ask, a 4-max pinned GG row's KO end played 14.4 % in KOs against 26.2 % one drag step
   short of it). Only an overshoot reads the residual: reading it on every solve moved 361
   on-target rows by about 1e-10. bountyResidualFits is
-  rounding-only (ceiling x (1 + 1e-9)); do not put the 0.1 % on-target slack back. A
-  fixed-shape model aims at the ROI on a bounty row exactly when the pool cut its KO EV
-  (`poolCut`): do not drop `!poolCut` from validation's or the preview's 'locks only' pass
+  rounding-only (ceiling x (1 + 1e-9)); do not put the 0.1 % on-target slack back. A fixed-shape model aims at the ROI on a bounty row exactly when the pool cut its KO EV
+  (`poolCut`) or the KO floor held it above what closes the total (`floorLift`): do not drop
+  `!poolCut` or `!floorLift` from validation's or the preview's 'locks only' pass, nor
+  either from compileEntry's aimsAtRoi
   (37 748 grid lines then played far below the typed ROI with Run open). The PrimeDope pass
-  never plays sit-through, so its ceiling is read on its own pmf. A heads-up bounty row at a typed ITM of 0.5 is blocked at every ROI above
-  -rake/(1+rake). That is correct, and the blank-ITM default above is what keeps default
-  heads-up rows runnable. Do not remove one without the other.
+  never plays sit-through, so its ceiling is read on its own pmf. A heads-up bounty row at a typed ITM of 0.5 is blocked at every ROI but its zero-skill one
+  (-rake/(1+rake) on PKO and Mystery): heads-up the KO floor meets the ceiling, so the KO EV
+  is exactly the pool's share of a win. That is correct, and the blank-ITM default above,
+  which stamps the ITM the ROI implies at losing ROIs too (0.385 at -30 % on a $100+$10 PKO,
+  half bounty), is what keeps default heads-up rows runnable. Do not remove one without the
+  other.
 - An empty KO window (a Mystery table paying one place, heads-up included) pays the whole
   bounty budget to the winner: bountyByPlace[0] = bountyMean / pmf[0]. A lump on every place
-  paid the loser and halved the heads-up sigma. A heads-up regression test must use a row
-  validateSchedule accepts (ITM 0.605 for $10+$1 at +10%, 50% bounty), not ITM 0.5 with a
-  winning ROI.
+  paid the loser and halved the heads-up sigma. A heads-up regression test must use a row validateSchedule accepts (ITM 0.605 for $10+$1 at
+  +10%, 50% bounty), not ITM 0.5 at any ROI but the zero-skill one.
 - The ITM top-heaviness bias is applied only for power-law and powerlaw-realdata-influenced
   (`finishModelSupportsItmTopHeavy`). Plackett-Luce, stretched-exp and linear skill do have
   a skill curve, but the alpha re-solve reverses, absorbs or saturates the bias at a fixed
@@ -1449,6 +1455,21 @@ a decision that was left open on purpose. Do not undo these without re-checking:
 - Card-level σ tests must not use the default finish model: `powerlaw-realdata-influenced`
   gives exactly power-law's σ at the planning rows, so a band built without the card's
   finish model would pass. `PlanningCardsSigma.test.tsx` uses plackett-luce for that reason.
+- The KO EV a row plays is held at or above `knockoutFloor` of the pmf it plays
+  (bountySplit.ts): winnerTake x Σ pmf·w / w[0], where w is the place shape the engine
+  spreads the KO EV over (PKO tree hauls, envelope-window knockout counts, Ocean collected
+  heads) and winnerTake what winning guarantees: 2 x buyIn x share for PKO and Ocean KO
+  (own head plus the runner-up's), one envelope of the row's pool for Mystery (the whole
+  pool for an empty window), and for Battle Royale min(makeBrTierSampler(buyIn).meanValue,
+  N x head), the envelope the hot loop draws, not the pool's own. The floor is never above
+  the ceiling; heads-up they are equal. Do not replace it with the no-edge KO EV (it sits
+  under the old split on about half the grid and kills the cash half of the slider) or
+  with pmf[0] x winnerTake (it still pays a PKO winner less than the own head).
+  `holdToFloor` runs after BOTH exits of settleBountyAgainstPool, the plan's and the
+  ceiling search's: heads-up the floor is the ceiling, and a cash side the first-place
+  floor lifts at the ceiling's fixed point leaves a residual under both. A row the floor
+  pushes over its ROI is blocked with the cause `knockout-floor` (pinned ITM) or
+  `fixed-shape-over` (a fixed shape).
 - `scripts/fit_runtime_sigma_bands.ts` with `BANDS_FILTER` writes only the filtered cells
   to `scripts/fit_runtime_sigma_bands.json`, overwriting the other formats. Save the file
   first and merge in node so the `JSON.stringify(..., null, 1)` formatting stays identical.
@@ -1515,12 +1536,12 @@ a decision that was left open on purpose. Do not undo these without re-checking:
   target-unreachable (alpha pass).
 - compileSingleEntry raises calibrationWarning kind "target-unreachable" on the alpha path
   when an alpha-adjustable model, or any model whose KO EV the bounty pool cut
-  (`settled.poolCut`), misses withinTargetEv. It uses the same tolerance as
+  (`settled.poolCut`) or the KO floor lifted (`settled.floorLift`), misses withinTargetEv. It uses the same tolerance as
   validateSchedule, and validateSchedule checks every field size on both ITM branches
   with the engine's own Battle Royale centre, so a validated row never gets it (0 over a
-  75,600-row grid, 80,000 fuzz rows and 43,560 free-ITM ranged rows). The engine no longer pays rows more bounty EV than the pool holds, so a row whose cash side
-  cannot carry the rest falls short in the engine too, gets target-unreachable and is
-  blocked; validation, preview and engine agree on every line of a 1.59 M-line grid. Do not replace it with "always take expectedProfit from the pmf": that moves
+  75,600-row grid, 80,000 fuzz rows and 43,560 free-ITM ranged rows). The engine pays no row more bounty EV than the pool holds nor less than its finishing
+  places guarantee, so a row whose cash side cannot carry the rest, or cannot come down far
+  enough, misses in the engine too, gets target-unreachable and is blocked; validation, preview and engine agree on every line of a 1.59 M-line grid. Do not replace it with "always take expectedProfit from the pmf": that moves
   expectedProfit by 1e-13..1e-10 for every row and breaks byte-identity.
 - tiltChannelsActive and noiseChannelsActive both live in convergencePolicy.ts, and the
   first calls the second's tilt half. They must mirror simulateShard's tiltFastOn /

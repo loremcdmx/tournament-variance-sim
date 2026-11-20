@@ -1260,13 +1260,21 @@ describe("bountyEvBias", () => {
         finishModel: { id: "power-law" },
       }).flat[0];
 
-    for (const itmRate of [0.16, 0.25, 0.5]) {
+    for (const itmRate of [0.16, 0.25, 0.45]) {
       for (const bias of [-0.25, 0, 0.25]) {
         expect(compileRoyale(itmRate, bias).analyticMeanSingle).toBeCloseTo(
           targetWinnings,
           10,
         );
       }
+    }
+    // At ITM 50 % even all of it on 3rd pays $10 of cash, and the $2.10 left
+    // is less than the KO EV those finishes guarantee ($2.39: the knockout edge
+    // that pays them must still pay a winner the last $9.45 envelope).
+    for (const bias of [-0.25, 0, 0.25]) {
+      const entry = compileRoyale(0.5, bias);
+      expect(entry.analyticMeanSingle).toBeCloseTo(12.3892, 4);
+      expect(entry.calibrationWarning?.kind).toBe("target-unreachable");
     }
   });
 
