@@ -44,9 +44,9 @@ const ROI_SEARCH_STEPS = 24;
  * below. Moving the target to the nearest bound and asking again tightens the
  * bracket until a ROI passes or the bounds cross, which means no single ROI
  * fits every size. Matching the worst size alone flips the failure to another
- * size and back. A single field can need the same walk: its reachable EV jumps
- * where the first-place floor switches on at break-even, so the EV reached
- * under the old target need not be reachable under the new one.
+ * size and back. A single field can need the same walk: how much of the
+ * first-place floor's mixture a row takes depends on its target, so the EV
+ * reached under the old target need not be reachable under the new one.
  */
 function fitRoiAcrossFields(
   row: TournamentRow,

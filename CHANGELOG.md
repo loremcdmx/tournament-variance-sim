@@ -56,9 +56,21 @@ for the same inputs, the entry says for which rows.
   target needs x1.04 the volume between -9.5 % and -9.0 %, where it needed
   x2.49. Numbers move only for pinned-ITM rows just below break-even (about
   -18 % to -9 % ROI at 10 % rake) and for bounty rows whose cash share falls
-  there, where σ is now higher than before. Rows at or above break-even are
-  unchanged unless the ITM top-heaviness slider is off centre, and no row
-  changes between blocked and runnable.
+  there, where σ is now higher than before. Rows at or above break-even change
+  only where the no-skill first-place share alone would miss the ROI, the ITM
+  top-heaviness slider is off centre, or a Top-3 share is locked.
+- Rows with a fixed ITM now play exactly the ROI you typed. Where giving first
+  place its no-skill share would pay more than that ROI, first place gets as
+  much as the ROI can carry; before, such a row paid up to 0.1 % of its cash
+  winnings too much (a 30-runner freezeout at a 20 % ITM and -13.65 %
+  averaged -13.56 %) or was blocked above break-even. In a scan of 346,150
+  fixed-ITM rows, 8,906 blocked rows above break-even now run, and σ moves by
+  at most 0.17 % above break-even (up to 17 % on freezeouts just below it).
+- With a Top-3 share locked in the Finish shape panel, the no-skill
+  first-place share now leaves 2nd and 3rd shaped by the finish model instead
+  of splitting the rest of the Top-3 share evenly, so such rows no longer jump
+  in variance between neighbouring ROIs; their σ moves by a median of 1-2 %,
+  up to 8.5 % on PKO and Mystery rows.
 - With the ITM top-heaviness slider off centre, a fixed-ITM row no longer
   steps in variance above break-even either (up to 14 % between two
   neighbouring ROIs on small Mystery fields, where first place reaches its

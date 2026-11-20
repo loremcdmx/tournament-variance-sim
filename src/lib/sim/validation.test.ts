@@ -457,8 +457,8 @@ describe("validateSchedule plays every field of a Field-size range", () => {
 describe("validateSchedule gates the Battle Royale solve the engine plays", () => {
   // The editor's $10 BR row. Off the 18-max table (late registration pays 4+
   // places, finish locks) the BR solver steps aside and the shelled solve aims
-  // at the KO-pool centre, 54 % of the winnings in cash. A gate that aims at
-  // 50 % passes rows whose engine solve overshoots the target.
+  // at the KO-pool centre, 54 % of the winnings in cash. The gate judges that
+  // solve, the one the run plays.
   const editorRow = row({ players: 18, buyIn: 10 });
   const br = (over: Partial<TournamentRow>): TournamentRow => ({
     ...editorRow,
@@ -474,7 +474,9 @@ describe("validateSchedule gates the Battle Royale solve the engine plays", () =
     withinTargetEv(engineEntry(r).analyticMeanSingle, r.buyIn * (1 + r.rake) * (1 + r.roi));
 
   it("blocks a late-registration row whose cash side alone passes the target", () => {
-    const r = br({ itmRate: 0.54, roi: -0.05, lateRegMultiplier: 1.17 });
+    // At a pinned 54 % ITM the 21-entrant table pays at least $8.56 in cash
+    // (α at the bottom of its range, P(1st) near 0), against an $8.00 target.
+    const r = br({ itmRate: 0.54, roi: -0.2, lateRegMultiplier: 1.17 });
     const entry = engineEntry(r);
     expect(entry.fieldSize).toBe(21);
     expect(entry.paidCount).toBe(4);
@@ -482,7 +484,7 @@ describe("validateSchedule gates the Battle Royale solve the engine plays", () =
 
     const res = validateSchedule([r], baseModel);
     expect(res.ok).toBe(false);
-    expect(res.issues[0].targetEv).toBeCloseTo(9.5, 9);
+    expect(res.issues[0].targetEv).toBeCloseTo(8, 9);
     expect(res.issues[0].currentEv).toBeCloseTo(entry.analyticMeanSingle, 9);
   });
 
@@ -635,12 +637,13 @@ describe("validateSchedule: how close counts as on target", () => {
   };
 
   it("accepts a row the engine hits to within a thousandth of the target", () => {
-    // Best reachable EV is 1.3e-4 of the target away; the $0.001 slack refused it.
+    // Best reachable EV is 1.7e-4 of the target away, at the bottom of the α
+    // range; the $0.001 slack refused it.
     const r = row({
       players: 51,
       buyIn: 19.412,
       rake: 0.08,
-      roi: 0,
+      roi: -0.241,
       payoutStructure: "mtt-primedope",
       itmRate: 0.25,
     });

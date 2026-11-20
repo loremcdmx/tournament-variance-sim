@@ -443,11 +443,18 @@ const FIRST_PLACE_FLOOR_BAND = 0.1;
 const FIRST_PLACE_LOCK_FADE = 0.1;
 
 /**
- * The least P(1st) a fixed-ITM row is held to: the no-skill 1/N from the
- * no-skill cash winnings up, falling linearly to nothing over
- * `FIRST_PLACE_FLOOR_BAND` of them. A floor that switched on at break-even
- * swapped the pmf between two neighbouring ROIs whenever the pinned ITM sat
- * above the table's paid share.
+ * How far past its bound the first-place mixture's cash winnings may land:
+ * room for the bisection noise of two solves that both hit the target, a
+ * million times finer than the on-target tolerance.
+ */
+const FIRST_PLACE_EV_SLACK = 1e-9;
+
+/**
+ * The P(1st) a fixed-ITM row is lifted to as far as its cash target allows:
+ * the no-skill 1/N from the no-skill cash winnings up, falling linearly to
+ * nothing over `FIRST_PLACE_FLOOR_BAND` of them. A floor that switched on at
+ * break-even swapped the pmf between two neighbouring ROIs whenever the
+ * pinned ITM sat above the table's paid share.
  */
 function firstPlaceFloor(
   targetWinnings: number,
@@ -474,6 +481,12 @@ export function calibrateShelledItm(
   // The most cash EV the caller still plays at this target: a bounty row
   // hands an overpaid cash side's excess back through its KO budget.
   maxCashWinnings = targetWinnings,
+  // The first-place floor's own solves: their first-place lock leaves 2nd and
+  // 3rd to the model's shape inside a top-3 lock, as the free solution does,
+  // where a typed one splits the rest of that lock evenly. The floor mixes
+  // the two solutions, and a mixture is continuous only if they meet where
+  // their P(1st) does.
+  floorSolve = false,
 ): ShelledCalibrationResult {
   const pmf = new Float64Array(N);
   const paid = Math.max(0, Math.min(paidCount, N));
@@ -583,16 +596,18 @@ export function calibrateShelledItm(
   const layers: Layer[] = [];
   let prevEnd = 0;
   let prevCum: number | undefined = 0;
-  const pushBoundary = (endIdx: number, cum: number | undefined) => {
+  const pushBoundary = (endIdx: number, cum: number | undefined, shaped = false) => {
     if (endIdx <= prevEnd) return;
-    const locked = prevCum != null && cum != null;
+    const locked = !shaped && prevCum != null && cum != null;
     const mass = locked ? Math.max(0, (cum as number) - (prevCum as number)) : 0;
     layers.push({ start: prevEnd, end: endIdx, locked, mass });
     prevEnd = endIdx;
     prevCum = cum;
   };
   pushBoundary(1, cumFirst);
-  pushBoundary(Math.min(3, paid), cumTop3);
+  // A floor solve keeps 2nd and 3rd free under a top-3 lock. A model with no
+  // α would land the same even split there, only rounded otherwise.
+  pushBoundary(Math.min(3, paid), cumTop3, floorSolve && !ignoresTarget);
   pushBoundary(ftEnd, cumFt);
   pushBoundary(paid, clampedItm); // outermost = itmRate
 
@@ -749,8 +764,9 @@ export function calibrateShelledItm(
       { ...locks, first: equilibriumFirst },
       model,
       itmTopHeavyBias,
+      targetWinnings,
+      true,
     );
-    if (belowFloor && targetWinnings >= equilibriumWinnings - 1e-9) return floored;
   }
 
   if (unplacedFreeMass > 0) {
@@ -765,48 +781,94 @@ export function calibrateShelledItm(
     shells = shellsOf();
   }
 
-  // Short of the full 1/N lock the floor is met by a mixture with the 1/N
-  // solution. Both solve the same target at the same ITM and locks, so the
-  // mixture keeps them. Without a tilt the share is the least that lifts
-  // P(1st) to the floor: 0 where the natural P(1st) meets it and 1 at
-  // break-even. Under a tilt the two solutions differ below first place even
-  // at equal P(1st), so the share is the floor's ramp times a fade over the
-  // natural P(1st) from 1/N to FIRST_PLACE_LOCK_FADE above it: 1 where the
-  // full lock applies, 0 at the band's onset and past the fade. Either share
-  // is continuous in the target wherever the row stays on target. Where the
-  // 1/N solution sits at an end of its α range, the share also stops where
-  // the mixture's winnings would leave the target's tolerance or, on a bounty
-  // row, pass what the caller plays (a natural solution already outside keeps
-  // its own winnings as that bound); a 1/N solution that misses its target at
-  // break-even itself is the old blocked row, and the mixture ends there.
+  // The typed ROI is the contract and the floor only a preference, so the
+  // floor yields wherever it cannot be met at the target. The row's cash
+  // winnings stay between the target and the natural solution's own (a
+  // natural solution already off target keeps its winnings as the bound); a
+  // bounty row may go up to what the caller plays, its KO budget hands the
+  // excess back. A model that ignores the target has no such contract.
   if (floored) {
-    const flooredWinnings = floored.currentWinnings;
-    const ceiling = Math.max(targetWinnings, maxCashWinnings);
-    const high = Math.max(
-      currentWinnings,
-      (ceiling + targetEvTolerance(ceiling)) * (1 - 1e-9),
-    );
-    const low = Math.min(
-      currentWinnings,
-      (targetWinnings - targetEvTolerance(targetWinnings)) * (1 + 1e-9),
-    );
+    const high = ignoresTarget
+      ? Infinity
+      : Math.max(currentWinnings, targetWinnings, maxCashWinnings) * (1 + FIRST_PLACE_EV_SLACK);
+    const low = ignoresTarget
+      ? -Infinity
+      : Math.min(currentWinnings, targetWinnings) * (1 - FIRST_PLACE_EV_SLACK);
+    let locked = floored.pmf;
+    let lockedFirst = equilibriumFirst;
+    let lockedWinnings = floored.currentWinnings;
+    let slide = 0;
+    const overpays = lockedWinnings > high;
+    if (overpays || lockedWinnings < low) {
+      // The 1/N solution sits at an end of its α range. There the solution is
+      // affine in the first-place lock, so the lock slides toward the other
+      // end of its range, 0 or as much as the locks and the ITM leave first
+      // place, until the solution pays the bound. A target of 0 (Infinity)
+      // pins that edge solution's α at the same end. Mixing in the 1/N
+      // solution instead could only stay on target at a share of 0, a cliff
+      // wherever its overpayment starts.
+      const edgeFirst = overpays ? 0 : Math.min(clampedItm, cumTop3 ?? 1, cumFt ?? 1);
+      const edge = calibrateShelledItm(
+        N,
+        paidCount,
+        payouts,
+        prizePool,
+        overpays ? 0 : Infinity,
+        itmRate,
+        { ...locks, first: edgeFirst },
+        model,
+        itmTopHeavyBias,
+        overpays ? 0 : Infinity,
+        true,
+      );
+      slide = Math.max(
+        0,
+        Math.min(
+          1,
+          ((overpays ? high : low) - lockedWinnings) / (edge.currentWinnings - lockedWinnings),
+        ),
+      );
+      locked = new Float64Array(N);
+      for (let i = 0; i < N; i++) locked[i] = floored.pmf[i] + slide * (edge.pmf[i] - floored.pmf[i]);
+      lockedFirst += slide * (edgeFirst - equilibriumFirst);
+      lockedWinnings += slide * (edge.currentWinnings - lockedWinnings);
+    } else if (belowFloor && targetWinnings >= equilibriumWinnings - 1e-9) {
+      return floored;
+    }
+    // Short of the full lock the floor is met by a mixture with the locked
+    // solution; both keep the ITM and the locks. Without a tilt the share is
+    // the least that lifts P(1st) to the floor, so P(1st) is the floor or the
+    // most the row can carry at its target, whichever is lower. Under a tilt
+    // the two solutions differ below first place even at equal P(1st), so the
+    // share is the floor's ramp times a fade over the natural P(1st) from 1/N
+    // to FIRST_PLACE_LOCK_FADE above it: 1 where the full lock applies, 0 at
+    // the band's onset and past the fade. A slid lock may move P(1st) toward
+    // 1/N no further than the 1/N lock would have and never away from it, so
+    // P(1st) stays between the natural value and where the 1/N lock would put
+    // it: a lock past 1/N takes the share over the ratio of the two moves, one
+    // between the natural value and 1/N fades out as it nears the natural
+    // value (the two solutions still differ there, so a cut would jump), and
+    // one beyond the natural value takes none. The bound only binds where even
+    // the end of the slide cannot reach the row's winnings.
     const bound =
-      flooredWinnings > high
-        ? (high - currentWinnings) / (flooredWinnings - currentWinnings)
-        : flooredWinnings < low
-          ? (currentWinnings - low) / (currentWinnings - flooredWinnings)
+      lockedWinnings > high
+        ? (high - currentWinnings) / (lockedWinnings - currentWinnings)
+        : lockedWinnings < low
+          ? (currentWinnings - low) / (currentWinnings - lockedWinnings)
           : 1;
+    const reach = (lockedFirst - naturalFirst) / (equilibriumFirst - naturalFirst);
     const wanted = tilted
       ? (firstFloor / equilibriumFirst) *
         Math.min(
           1,
           (equilibriumFirst * (1 + FIRST_PLACE_LOCK_FADE) - naturalFirst) /
             (equilibriumFirst * FIRST_PLACE_LOCK_FADE),
-        )
-      : (firstFloor - naturalFirst) / (equilibriumFirst - naturalFirst);
+        ) *
+        (slide === 0 ? 1 : reach > 0 ? Math.min(reach, 1 / reach) : 0)
+      : (firstFloor - naturalFirst) / (lockedFirst - naturalFirst);
     const share = Math.min(bound, wanted);
     if (share > 0) {
-      for (let i = 0; i < N; i++) pmf[i] += share * (floored.pmf[i] - pmf[i]);
+      for (let i = 0; i < N; i++) pmf[i] += share * (locked[i] - pmf[i]);
       alpha += share * (floored.alpha - alpha);
       currentWinnings = winningsOf();
       feasible = ignoresTarget || withinTargetEv(currentWinnings, targetWinnings);
