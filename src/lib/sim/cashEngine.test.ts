@@ -920,3 +920,65 @@ describe("cashEngine — normalised input edges", () => {
     expect(run(1e15 + 1).echoInput.baseSeed).not.toBe(a.echoInput.baseSeed);
   });
 });
+
+describe("cashEngine — regression fixes & MTT-parity stats", () => {
+  it("reports riskOfRuinAsymptotic = 0 (not 1) for a zero-drift, zero-variance path", () => {
+    const r = simulateCash(
+      baseInput({ wrBb100: 0, sdBb100: 0, hands: 1_000, nSimulations: 50 }),
+    );
+    expect(r.stats.riskOfRuinAsymptotic).toBe(0);
+    expect(r.stats.minBankrollRoR1pctBb).toBe(0);
+    expect(r.stats.minBankrollRoR5pctBb).toBe(0);
+  });
+
+  it("reports exact sdFinalBb = 0 and zero convergence SE width on constant (sd = 0) paths", () => {
+    const r = simulateCash(
+      baseInput({ wrBb100: 3, sdBb100: 0, hands: 1_000, nSimulations: 100 }),
+    );
+    expect(r.stats.sdFinalBb).toBe(0);
+    for (let i = 0; i < r.convergence.x.length; i++) {
+      expect(r.convergence.seHi[i] - r.convergence.seLo[i]).toBe(0);
+    }
+  });
+
+  it("adds persistent per-career variance when wrStdErr > 0 and preserves shard determinism", () => {
+    const inp = baseInput({
+      wrBb100: 4,
+      sdBb100: 80,
+      wrStdErr: 3,
+      hands: 10_000,
+      nSimulations: 600,
+    });
+    const whole = simulateCash(inp);
+    const envGrid = makeCashEnvGrid(inp.hands);
+    const hiGrid = makeCashHiResGrid(inp.hands);
+    const s1 = simulateCashShard(inp, 0, 200, envGrid, hiGrid);
+    const s2 = simulateCashShard(inp, 200, 600, envGrid, hiGrid);
+    const merged = buildCashResult(inp, [s2, s1], envGrid);
+    expect(Array.from(merged.finalBb)).toEqual(Array.from(whole.finalBb));
+    expect(merged.stats.sdFinalBb).toBe(whole.stats.sdFinalBb);
+
+    // Analytic SD with wrStdErr: sqrt((80*10)^2 + (3*100)^2) = sqrt(640000 + 90000) ≈ 854.4
+    const noUncert = simulateCash({ ...inp, wrStdErr: 0 });
+    expect(whole.stats.sdFinalBb).toBeGreaterThan(noUncert.stats.sdFinalBb);
+  });
+
+  it("computes hi-res clamped envelopes, all-sample real best/worst, swings, and Brownian bankrolls", () => {
+    const r = simulateCash(
+      baseInput({ wrBb100: 5, sdBb100: 100, hands: 5_000, nSimulations: 600 }),
+    );
+    expect(r.hiResEnvelopes.x.length).toBe(r.samplePaths.x.length);
+    for (let j = 0; j < r.hiResEnvelopes.x.length; j++) {
+      expect(r.hiResEnvelopes.p025[j]).toBeGreaterThanOrEqual(r.samplePaths.hiResMin[j] - 1e-12);
+      expect(r.hiResEnvelopes.p975[j]).toBeLessThanOrEqual(r.samplePaths.hiResMax[j] + 1e-12);
+    }
+    expect(r.samplePaths.realBestPath.at(-1)).toBeCloseTo(r.stats.finalBbMax, 9);
+    expect(r.samplePaths.realWorstPath.at(-1)).toBeCloseTo(r.stats.finalBbMin, 9);
+    expect(r.downswings).toHaveLength(3);
+    expect(r.upswings).toHaveLength(3);
+    expect(r.downswings[0].magnitudeBb).toBeGreaterThanOrEqual(r.downswings[1].magnitudeBb);
+    expect(r.stats.kellyBankrollBb).toBeCloseTo(2_000, 6);
+    expect(r.stats.minBankrollRoR5pctBb).toBeCloseTo(2_995.73, 1);
+    expect(r.stats.minBankrollRoR1pctBb).toBeCloseTo(4_605.17, 1);
+  });
+});

@@ -1,16 +1,18 @@
 /// <reference lib="webworker" />
 /**
- * Cash-mode worker. One-request-at-a-time: receives a slice of samples to
- * simulate, runs the pure engine, posts the shard back with zero-copy
- * transfer of typed-array buffers. No schedule compile, no build pass —
- * the main thread merges shards via `buildCashResult`.
+ * Cash-mode worker. Handles both shard simulation (`cash-shard`, with in-shard
+ * progress ticks and zero-copy buffer transfers) and final result assembly
+ * (`cash-build`, keeping envelope selection and histograms off the main thread).
  */
 import {
+  buildCashResult,
+  collectCashShardTransfers,
+  makeCashEnvGrid,
+  makeCashHiResGrid,
   simulateCashShard,
   type CashShard,
-  type CashCheckpointGrid,
 } from "./cashEngine";
-import type { CashInput } from "./cashTypes";
+import type { CashInput, CashResult } from "./cashTypes";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -21,8 +23,20 @@ export interface CashShardRequest {
   input: CashInput;
   sStart: number;
   sEnd: number;
-  envGrid: { K: number; checkpointIdx: Int32Array };
-  hiResGrid: { K: number; checkpointIdx: Int32Array };
+}
+
+export interface CashBuildRequest {
+  type: "cash-build";
+  jobId: number;
+  input: CashInput;
+  shards: CashShard[];
+}
+
+export interface CashShardProgressMsg {
+  type: "cash-shard-progress";
+  jobId: number;
+  shardId: number;
+  done: number;
 }
 
 export interface CashShardResultMsg {
@@ -39,58 +53,116 @@ export interface CashShardErrorMsg {
   message: string;
 }
 
-function collectShardTransfers(shard: CashShard): Transferable[] {
-  const out: Transferable[] = [
-    shard.finalBb.buffer,
-    shard.maxDrawdownBb.buffer,
-    shard.longestBreakevenHands.buffer,
-    shard.recoveryHands.buffer,
-    shard.hitBelowThreshold.buffer,
-    shard.envMatrix.buffer,
-    shard.hiResSampleIndices.buffer,
-    shard.hiResBestPath.buffer,
-    shard.hiResWorstPath.buffer,
-  ];
-  for (const p of shard.hiResPaths) out.push(p.buffer);
-  // hiCheckpointIdx is the shared env grid — do NOT transfer; main thread
-  // reconstructs it from the request.
+export interface CashBuildResultMsg {
+  type: "cash-build-result";
+  jobId: number;
+  result: CashResult;
+}
+
+export interface CashBuildErrorMsg {
+  type: "cash-build-error";
+  jobId: number;
+  message: string;
+}
+
+export type CashWorkerRequest = CashShardRequest | CashBuildRequest;
+export type CashWorkerResponse =
+  | CashShardProgressMsg
+  | CashShardResultMsg
+  | CashShardErrorMsg
+  | CashBuildResultMsg
+  | CashBuildErrorMsg;
+
+function collectCashResultTransfers(r: CashResult): Transferable[] {
+  const seen = new Set<ArrayBufferLike>();
+  const out: Transferable[] = [];
+  const push = (buf: ArrayBufferLike) => {
+    if (seen.has(buf)) return;
+    seen.add(buf);
+    out.push(buf as Transferable);
+  };
+  push(r.finalBb.buffer);
+  push(r.samplePaths.x.buffer);
+  push(r.samplePaths.maxDrawdownBb.buffer);
+  push(r.samplePaths.longestBelowPeakHands.buffer);
+  push(r.samplePaths.best.buffer);
+  push(r.samplePaths.worst.buffer);
+  push(r.samplePaths.realBestPath.buffer);
+  push(r.samplePaths.realWorstPath.buffer);
+  push(r.samplePaths.hiResMin.buffer);
+  push(r.samplePaths.hiResMax.buffer);
+  for (const p of r.samplePaths.paths) push(p.buffer);
+  for (const arr of Object.values(r.envelopes)) push(arr.buffer);
+  for (const arr of Object.values(r.hiResEnvelopes)) push(arr.buffer);
+  push(r.oddsOverDistance.x.buffer);
+  push(r.oddsOverDistance.profitShare.buffer);
+  push(r.oddsOverDistance.belowThresholdNowShare.buffer);
+  push(r.convergence.x.buffer);
+  push(r.convergence.mean.buffer);
+  push(r.convergence.seLo.buffer);
+  push(r.convergence.seHi.buffer);
   return out;
 }
 
-self.onmessage = (e: MessageEvent<CashShardRequest>) => {
+self.onmessage = (e: MessageEvent<CashWorkerRequest>) => {
   const req = e.data;
-  if (req.type !== "cash-shard") return;
-  try {
-    const envGrid: CashCheckpointGrid = {
-      K: req.envGrid.K,
-      checkpointIdx: req.envGrid.checkpointIdx,
-    };
-    const hiResGrid: CashCheckpointGrid = {
-      K: req.hiResGrid.K,
-      checkpointIdx: req.hiResGrid.checkpointIdx,
-    };
-    const shard = simulateCashShard(
-      req.input,
-      req.sStart,
-      req.sEnd,
-      envGrid,
-      hiResGrid,
-    );
-    const msg: CashShardResultMsg = {
-      type: "cash-shard-result",
-      jobId: req.jobId,
-      shardId: req.shardId,
-      shard,
-    };
-    self.postMessage(msg, collectShardTransfers(shard));
-  } catch (err) {
-    const msg: CashShardErrorMsg = {
-      type: "cash-shard-error",
-      jobId: req.jobId,
-      shardId: req.shardId,
-      message: err instanceof Error ? err.message : String(err),
-    };
-    self.postMessage(msg);
+  if (req.type === "cash-shard") {
+    try {
+      const envGrid = makeCashEnvGrid(req.input.hands);
+      const hiResGrid = makeCashHiResGrid(req.input.hands);
+      const shard = simulateCashShard(
+        req.input,
+        req.sStart,
+        req.sEnd,
+        envGrid,
+        hiResGrid,
+        (done) => {
+          const prog: CashShardProgressMsg = {
+            type: "cash-shard-progress",
+            jobId: req.jobId,
+            shardId: req.shardId,
+            done,
+          };
+          self.postMessage(prog);
+        },
+      );
+      const msg: CashShardResultMsg = {
+        type: "cash-shard-result",
+        jobId: req.jobId,
+        shardId: req.shardId,
+        shard,
+      };
+      self.postMessage(msg, collectCashShardTransfers(shard));
+    } catch (err) {
+      const msg: CashShardErrorMsg = {
+        type: "cash-shard-error",
+        jobId: req.jobId,
+        shardId: req.shardId,
+        message: err instanceof Error ? err.message : String(err),
+      };
+      self.postMessage(msg);
+    }
+    return;
+  }
+
+  if (req.type === "cash-build") {
+    try {
+      const envGrid = makeCashEnvGrid(req.input.hands);
+      const result = buildCashResult(req.input, req.shards, envGrid);
+      const msg: CashBuildResultMsg = {
+        type: "cash-build-result",
+        jobId: req.jobId,
+        result,
+      };
+      self.postMessage(msg, collectCashResultTransfers(result));
+    } catch (err) {
+      const msg: CashBuildErrorMsg = {
+        type: "cash-build-error",
+        jobId: req.jobId,
+        message: err instanceof Error ? err.message : String(err),
+      };
+      self.postMessage(msg);
+    }
   }
 };
 

@@ -24,6 +24,8 @@ export const MAX_BB_SIZE = 1_000_000;
 export const MAX_RAKE_CONTRIB_BB100 = 1_000;
 export const MAX_HANDS_PER_HOUR = 10_000;
 export const MAX_HAND_SHARE = 1_000_000;
+export const MAX_RISK_THRESHOLD_BB = 1_000_000;
+export const MAX_WR_STD_ERR_BB100 = 100;
 const MIN_BB_SIZE = 0.01;
 const MIN_SD_BB100 = 0;
 const MIN_RAKE_CONTRIB_BB100 = 0;
@@ -33,7 +35,7 @@ const MIN_HANDS_PER_HOUR = 1;
 const MIN_RISK_THRESHOLD_BB = 1;
 const UI_MIN_HANDS = 1_000;
 const UI_MIN_SAMPLES = 100;
-export const MAX_TOTAL_SIM_HANDS = 200_000_000;
+export const MAX_TOTAL_SIM_HANDS = 400_000_000;
 export const MAX_HANDS = Math.floor(MAX_TOTAL_SIM_HANDS / UI_MIN_SAMPLES);
 const UI_MIN_SD_BB100 = 1;
 const UI_MIN_HANDS_PER_HOUR = 50;
@@ -103,10 +105,6 @@ function finiteOr(value: unknown, fallback: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function clampMin(value: number, min: number): number {
-  return Math.max(min, value);
 }
 
 const MIN_SEED = -(2 ** 31);
@@ -225,6 +223,12 @@ export function normalizeCashInput(
   const baseSeed = wrapSeed(
     Math.floor(finiteOr(src.baseSeed, fallback.baseSeed)),
   );
+  const rawWrStdErr = clamp(
+    finiteOr(src.wrStdErr, fallback.wrStdErr ?? 0),
+    0,
+    MAX_WR_STD_ERR_BB100,
+  );
+  const wrStdErr = rawWrStdErr > 0 ? rawWrStdErr : undefined;
 
   const hasHoursBlock = Object.prototype.hasOwnProperty.call(src, "hoursBlock");
   let hoursBlock: CashInput["hoursBlock"];
@@ -254,12 +258,13 @@ export function normalizeCashInput(
     riskBlock = preserveOptionalOff ? undefined : fallback.riskBlock;
   } else if (isRecord(src.riskBlock)) {
     riskBlock = {
-      thresholdBb: clampMin(
+      thresholdBb: clamp(
         finiteOr(
           src.riskBlock.thresholdBb,
           fallback.riskBlock?.thresholdBb ?? 100,
         ),
         MIN_RISK_THRESHOLD_BB,
+        MAX_RISK_THRESHOLD_BB,
       ),
     };
   } else {
@@ -300,6 +305,7 @@ export function normalizeCashInput(
     ...(hoursBlock ? { hoursBlock } : {}),
     ...(riskBlock ? { riskBlock } : {}),
     baseSeed,
+    ...(wrStdErr !== undefined ? { wrStdErr } : {}),
     ...(stakes ? { stakes } : {}),
   };
 }
@@ -336,9 +342,10 @@ export function normalizeCashInputForUi(
     ...(normalized.riskBlock
       ? {
           riskBlock: {
-            thresholdBb: Math.max(
-              UI_MIN_RISK_THRESHOLD_BB,
+            thresholdBb: clamp(
               normalized.riskBlock.thresholdBb,
+              UI_MIN_RISK_THRESHOLD_BB,
+              MAX_RISK_THRESHOLD_BB,
             ),
           },
         }
@@ -366,6 +373,9 @@ export function serializeCashInput(input: CashInput): CashInputDraft {
     bbSize: normalized.bbSize,
     rake: { ...normalized.rake },
     baseSeed: normalized.baseSeed,
+    ...(normalized.wrStdErr !== undefined
+      ? { wrStdErr: normalized.wrStdErr }
+      : {}),
     hoursBlock: normalized.hoursBlock
       ? { ...normalized.hoursBlock }
       : null,

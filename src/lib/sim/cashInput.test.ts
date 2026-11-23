@@ -7,7 +7,10 @@ import {
   MAX_HAND_SHARE,
   MAX_HANDS_PER_HOUR,
   MAX_RAKE_CONTRIB_BB100,
+  MAX_RISK_THRESHOLD_BB,
   MAX_SD_BB100,
+  MAX_TOTAL_SIM_HANDS,
+  MAX_WR_STD_ERR_BB100,
   normalizeCashInput,
   normalizeCashInputForUi,
 } from "./cashInput";
@@ -16,7 +19,7 @@ describe("cashInput persistence guardrails", () => {
   it("caps persisted nSimulations to the tighter of the UI max and work budget", () => {
     const normalized = normalizeCashInput({ nSimulations: 1_000_000_000 });
 
-    expect(normalized.nSimulations).toBe(2_000);
+    expect(normalized.nSimulations).toBe(4_000);
   });
 
   it("caps destructive cash work budgets before they turn into runaway compute", () => {
@@ -193,18 +196,18 @@ describe("cashInput stake shares and seeds", () => {
 });
 
 describe("cashFieldMaxima", () => {
-  it("caps Hands at 100 000 for the default 2 000 simulations", () => {
+  it("leaves headroom above defaults for Hands and Simulations under the work budget", () => {
     expect(cashFieldMaxima(100_000, 2_000)).toEqual({
-      maxHands: 100_000,
-      maxSimulations: 2_000,
+      maxHands: 200_000,
+      maxSimulations: 4_000,
     });
   });
 
   it("raises the Hands ceiling when Simulations go down and stays inside the field bounds", () => {
-    expect(cashFieldMaxima(100_000, 200).maxHands).toBe(1_000_000);
+    expect(cashFieldMaxima(100_000, 200).maxHands).toBe(2_000_000);
     expect(cashFieldMaxima(100_000, 100).maxHands).toBe(MAX_HANDS);
     expect(cashFieldMaxima(1_000, 20_000)).toEqual({
-      maxHands: 10_000,
+      maxHands: 20_000,
       maxSimulations: 20_000,
     });
     expect(cashFieldMaxima(MAX_HANDS, 100).maxSimulations).toBe(100);
@@ -213,6 +216,15 @@ describe("cashFieldMaxima", () => {
   it("agrees with the work budget that normalizeCashInput enforces", () => {
     const { maxHands } = cashFieldMaxima(100_000, 2_000);
     const normalized = normalizeCashInput({ hands: maxHands * 10, nSimulations: 2_000 });
-    expect(normalized.hands * normalized.nSimulations).toBeLessThanOrEqual(200_000_000);
+    expect(normalized.hands * normalized.nSimulations).toBeLessThanOrEqual(MAX_TOTAL_SIM_HANDS);
+  });
+
+  it("caps riskBlock.thresholdBb and wrStdErr to finite safe ceilings", () => {
+    const normalized = normalizeCashInput({
+      riskBlock: { thresholdBb: 1e308 },
+      wrStdErr: 1e308,
+    });
+    expect(normalized.riskBlock?.thresholdBb).toBe(MAX_RISK_THRESHOLD_BB);
+    expect(normalized.wrStdErr).toBe(MAX_WR_STD_ERR_BB100);
   });
 });

@@ -74,6 +74,7 @@ export const STREAM_BOUNTY = 2;
 export const STREAM_OCEAN = 3;
 export const STREAM_LEADERBOARD = 4;
 export const STREAM_CASH = 5;
+export const STREAM_CASH_WR = 6;
 
 const STREAM_WORD_SALTS = [0x9e3779b9, 0x7f4a7c15, 0x94d049bb, 0xbf58476d];
 
@@ -96,7 +97,33 @@ function streamWord(
  * of overlapping windows of a 2^32 one, and for a given seed and channel no
  * two samples share a state word.
  */
-export function sampleStream(
+/**
+ * Four hashed 32-bit initial state words for xoshiro128** on one sample and
+ * channel (never all-zero). Lets tight hot loops keep the four state words in
+ * local registers without a per-draw closure call.
+ */
+export function sampleStreamState(
+  seed: number,
+  sampleIndex: number,
+  channel: number,
+  out: Uint32Array,
+): void {
+  const s0 = streamWord(seed, sampleIndex, channel, STREAM_WORD_SALTS[0]);
+  const s1 = streamWord(seed, sampleIndex, channel, STREAM_WORD_SALTS[1]);
+  const s2 = streamWord(seed, sampleIndex, channel, STREAM_WORD_SALTS[2]);
+  const s3 = streamWord(seed, sampleIndex, channel, STREAM_WORD_SALTS[3]);
+  out[0] = s0;
+  out[1] = s1;
+  out[2] = s2;
+  out[3] = (s0 | s1 | s2 | s3) === 0 ? 1 : s3;
+}
+
+/**
+ * Raw unsigned 32-bit xoshiro128** stream for a sample and channel.
+ * Shares the exact state hashing of `sampleStream`; avoids float division
+ * when the consumer operates directly on 32-bit bits (e.g. Ziggurat).
+ */
+export function sampleStreamUint32(
   seed: number,
   sampleIndex: number,
   channel: number,
@@ -106,7 +133,15 @@ export function sampleStream(
   const s2 = streamWord(seed, sampleIndex, channel, STREAM_WORD_SALTS[2]);
   const s3 = streamWord(seed, sampleIndex, channel, STREAM_WORD_SALTS[3]);
   // All four words zero is the one state the generator cannot leave.
-  const next = xoshiro128ss(s0, s1, s2, (s0 | s1 | s2 | s3) === 0 ? 1 : s3);
+  return xoshiro128ss(s0, s1, s2, (s0 | s1 | s2 | s3) === 0 ? 1 : s3);
+}
+
+export function sampleStream(
+  seed: number,
+  sampleIndex: number,
+  channel: number,
+): () => number {
+  const next = sampleStreamUint32(seed, sampleIndex, channel);
   return function () {
     return next() / 4294967296;
   };

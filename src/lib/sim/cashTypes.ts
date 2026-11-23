@@ -87,6 +87,13 @@ export interface CashInput {
   baseSeed: number;
 
   /**
+   * Optional true-winrate uncertainty σ (bb/100). When > 0, each simulated
+   * career draws one persistent shift `Δwr ~ N(0, wrStdErr)` applied to every
+   * row's winrate (scaled by `row.bbSize / bbSize`), matching MTT's `roiStdErr`.
+   */
+  wrStdErr?: number;
+
+  /**
  * Optional mix of stakes / rooms. When length ≥ 1, the engine runs
    * a deterministic interleaved schedule of fixed-size blocks. Each row owns
    * `round(share_r × hands)` hands of every path, but path-dependent metrics
@@ -119,6 +126,25 @@ export interface CashSamplePaths {
   /** Pointwise best / worst across the stored hi-res path bundle. */
   best: Float64Array;
   worst: Float64Array;
+  /** Actual single best / worst individual career across ALL simulated paths. */
+  realBestPath: Float64Array;
+  realWorstPath: Float64Array;
+  realBestSample: number;
+  realWorstSample: number;
+  /** Exact pointwise min / max across ALL simulated paths on the hi-res grid. */
+  hiResMin: Float64Array;
+  hiResMax: Float64Array;
+}
+
+export interface CashSwingEntry {
+  rank: number;
+  sampleIndex: number;
+  /** Positive magnitude in BB (drawdown depth for downswings, run-up height for upswings). */
+  magnitudeBb: number;
+  finalBb: number;
+  longestBreakevenHands: number;
+  /** Hands to recover from deepest drawdown (-1 unrecovered, -2 no drawdown). */
+  recoveryHands: number;
 }
 
 export interface CashEnvelopes {
@@ -169,6 +195,12 @@ export interface CashResult {
 
   samplePaths: CashSamplePaths;
   envelopes: CashEnvelopes;
+  /** Envelopes upsampled onto `samplePaths.x` and clamped to `[hiResMin, hiResMax]`. */
+  hiResEnvelopes: CashEnvelopes;
+  /** Top-3 worst downswings across all simulated paths. */
+  downswings: CashSwingEntry[];
+  /** Top-3 largest upswings (max run-up from trough) across all simulated paths. */
+  upswings: CashSwingEntry[];
 
   /** Max drawdown (BB, positive magnitude) per sample. */
   drawdownHistogram: { binEdges: number[]; counts: number[] };
@@ -208,14 +240,34 @@ export interface CashResult {
     meanFinalUsd: number;
     /** Distribution landmarks for final BR. */
     finalBbMedian: number;
+    finalBbP01: number;
     finalBbP05: number;
     finalBbP95: number;
+    finalBbP99: number;
+    finalBbMin: number;
+    finalBbMax: number;
     /** Realized SD of final BR. */
     sdFinalBb: number;
+    /** Higher moments & risk-adjusted ratios (matching MTT AdvancedStatsCard). */
+    skewness: number;
+    kurtosis: number;
+    sharpe: number;
+    sortino: number;
+    var95Bb: number;
+    cvar95Bb: number;
+    /** Aggregate theoretical drift (incl. RB) and SD in reference bb/100. */
+    effectiveWrBb100: number;
+    effectiveSdBb100: number;
+    /** Monte Carlo standard error of the simulated mean winrate (bb/100). */
+    mcSeMeanBb100: number;
     /** P(final > 0). */
     probProfit: number;
     /** P(final < 0). */
     probLoss: number;
+    /** Share of paths whose running minimum stayed >= 0 over the whole horizon. */
+    neverBelowZeroFrac: number;
+    /** Share of paths that finished > 0 AND never touched <= -thresholdBb. */
+    probUpNeverBelowThreshold: number;
     /** Share of paths whose running minimum touched `<= -thresholdBb`
      *  WITHIN the simulated horizon. This is finite-horizon RoR and
      *  underestimates the asymptotic risk on short samples. See
@@ -223,26 +275,24 @@ export interface CashResult {
     probBelowThresholdEver: number;
     /**
      * Closed-form infinite-horizon Risk of Ruin for the schedule's
-     * effective drift / variance per hand. Standard Brownian-motion
-     * absorbing-barrier formula:
-     *   - `wr_per_hand <= 0` → RoR = 1 (eventual ruin certain)
-     *   - else → `exp(-2 · thresholdBb · wr_per_hand / var_per_hand)`
-     *
-     * Effective drift includes rakeback (deterministic add). Variance
-     * is the random component only. In single-stake mode this reduces
-     * to Galfond's closed form `exp(-2 · br · wr_bb100 / sd_bb100²)`;
-     * in mix mode it uses the cost-weighted aggregate per-hand
-     * statistics from `compileStakeSchedule`.
-     *
-     * Reference for the user: `probBelowThresholdEver` is what they
-     * actually saw in the `hands`-long sample; `riskOfRuinAsymptotic`
-     * is what they would see if the same edge / variance kept playing
-     * forever. The first is observation, the second is asymptote.
+     * effective drift / variance per hand.
      */
     riskOfRuinAsymptotic: number;
+    /** Closed-form Brownian recommended bankrolls (BB) for 1% / 5% / 10% asymptotic RoR. */
+    minBankrollRoR1pctBb: number;
+    minBankrollRoR5pctBb: number;
+    minBankrollRoR10pctBb: number;
+    /** Empirical finite-horizon minimum bankrolls (BB) strictly exceeding (1 - alpha) of worst troughs. */
+    minBankrollEmpirical1pctBb: number;
+    minBankrollEmpirical5pctBb: number;
+    /** Full-Kelly optimal bankroll `σ² / μ` in BB (Infinity when μ <= 0). */
+    kellyBankrollBb: number;
     /** Distribution landmarks for max drawdown. */
+    maxDrawdownMean: number;
     maxDrawdownMedian: number;
     maxDrawdownP95: number;
+    maxDrawdownP99: number;
+    maxDrawdownWorst: number;
     /** Typical longest below-peak stretch, in hands. */
     longestBreakevenMedian: number;
     /** Recovery stats over recovered paths only; NaN when none recovered. */
