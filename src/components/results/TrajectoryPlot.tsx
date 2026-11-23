@@ -515,123 +515,134 @@ export function TrajectoryPlot({
       canvas.style.top = "0";
       canvas.style.pointerEvents = "none";
       canvas.style.zIndex = "5";
+      canvas.style.maxWidth = "100%";
+      canvas.style.maxHeight = "100%";
       plot.over.appendChild(canvas);
       hlCanvasRef.current = canvas;
     }
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const w = plot.over.clientWidth;
-    const h = plot.over.clientHeight;
-    const dpr = devicePixelRatio;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    const redrawOverlay = () => {
+      if (!canvas) return;
+      const w = plot.over.clientWidth;
+      const h = plot.over.clientHeight;
+      const dpr = devicePixelRatio;
+      canvas.width = Math.max(1, Math.round(w * dpr));
+      canvas.height = Math.max(1, Math.round(h * dpr));
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
 
-    if (focusedSeriesIdx == null || !focusedLine) return;
-    const dataArr = assets.data[focusedSeriesIdx] as ArrayLike<number> | undefined;
-    const xArr = assets.data[0] as ArrayLike<number>;
-    if (!dataArr || !xArr) return;
+      if (focusedSeriesIdx == null || !focusedLine) return;
+      const dataArr = assets.data[focusedSeriesIdx] as ArrayLike<number> | undefined;
+      const xArr = assets.data[0] as ArrayLike<number>;
+      if (!dataArr || !xArr) return;
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, w, h);
-    ctx.clip();
-
-    const strokeSegment = (
-      startIdx: number,
-      endIdx: number,
-      stroke: string,
-      width: number,
-    ) => {
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = width;
-      ctx.lineJoin = "round";
+      ctx.save();
       ctx.beginPath();
-      let started = false;
-      for (let i = startIdx; i <= endIdx; i++) {
-        const xVal = xArr[i];
-        const yVal = dataArr[i];
-        if (xVal == null || yVal == null || !Number.isFinite(yVal)) continue;
-        const px = plot.valToPos(xVal, "x", false);
-        const py = plot.valToPos(yVal, "y", false);
-        if (!started) { ctx.moveTo(px, py); started = true; }
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-    };
+      ctx.rect(0, 0, w, h);
+      ctx.clip();
 
-    if (focusedLine.kind === "band") {
-      const { dash, glowWidth, lineWidth } = trajectoryBandOverlayStyle(
-        focusedLine.percentile,
-      );
-      ctx.setLineDash(dash ?? []);
-      strokeSegment(
-        0,
-        xArr.length - 1,
-        rgbaWithAlpha(focusedLine.color, 0.2),
-        glowWidth,
-      );
-      ctx.setLineDash(dash ?? []);
-      strokeSegment(0, xArr.length - 1, focusedLine.color, lineWidth);
-      if (idx != null) {
-        const xVal = xArr[idx];
-        const yVal = dataArr[idx];
-        if (xVal != null && yVal != null && Number.isFinite(yVal)) {
+      const strokeSegment = (
+        startIdx: number,
+        endIdx: number,
+        stroke: string,
+        width: number,
+      ) => {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = width;
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        let started = false;
+        for (let i = startIdx; i <= endIdx; i++) {
+          const xVal = xArr[i];
+          const yVal = dataArr[i];
+          if (xVal == null || yVal == null || !Number.isFinite(yVal)) continue;
           const px = plot.valToPos(xVal, "x", false);
           const py = plot.valToPos(yVal, "y", false);
-          ctx.save();
-          ctx.setLineDash([]);
-          ctx.fillStyle = "rgba(10,12,16,0.96)";
-          ctx.strokeStyle = focusedLine.color;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(px, py, 4.75, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.restore();
+          if (!started) { ctx.moveTo(px, py); started = true; }
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      };
+
+      if (focusedLine.kind === "band") {
+        const { dash, glowWidth, lineWidth } = trajectoryBandOverlayStyle(
+          focusedLine.percentile,
+        );
+        ctx.setLineDash(dash ?? []);
+        strokeSegment(
+          0,
+          xArr.length - 1,
+          rgbaWithAlpha(focusedLine.color, 0.2),
+          glowWidth,
+        );
+        ctx.setLineDash(dash ?? []);
+        strokeSegment(0, xArr.length - 1, focusedLine.color, lineWidth);
+        if (idx != null) {
+          const xVal = xArr[idx];
+          const yVal = dataArr[idx];
+          if (xVal != null && yVal != null && Number.isFinite(yVal)) {
+            const px = plot.valToPos(xVal, "x", false);
+            const py = plot.valToPos(yVal, "y", false);
+            ctx.save();
+            ctx.setLineDash([]);
+            ctx.fillStyle = "rgba(10,12,16,0.96)";
+            ctx.strokeStyle = focusedLine.color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(px, py, 4.75, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+        ctx.restore();
+        return;
+      }
+
+      // Base: full path in amber.
+      strokeSegment(0, xArr.length - 1, "rgba(253,230,138,0.9)", 2.5);
+
+      // Stats-driven highlights. Only when mouse is actually focusing a path
+      // (deferredFocusedIdx matches focusedStatsSeriesIdx) to avoid flicker
+      // during fast scrubs across different paths.
+      if (
+        focusedPathStats &&
+        deferredFocusedIdx === focusedStatsSeriesIdx
+      ) {
+        const { ddStartIdx, ddEndIdx, ddPeakValue } = focusedPathStats;
+
+        if (ddStartIdx >= 0 && ddEndIdx > ddStartIdx) {
+          strokeSegment(ddStartIdx, ddEndIdx, "rgba(248,113,113,0.95)", 3);
+        }
+        if (ddStartIdx >= 0 && ddPeakValue != null) {
+          const xVal = xArr[ddStartIdx];
+          if (xVal != null) {
+            const px = plot.valToPos(xVal, "x", false);
+            const py = plot.valToPos(ddPeakValue, "y", false);
+            ctx.save();
+            ctx.fillStyle = "rgba(248,113,113,1)";
+            ctx.strokeStyle = "rgba(255,255,255,0.95)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
         }
       }
       ctx.restore();
-      return;
-    }
+    };
 
-    // Base: full path in amber.
-    strokeSegment(0, xArr.length - 1, "rgba(253,230,138,0.9)", 2.5);
-
-    // Stats-driven highlights. Only when mouse is actually focusing a path
-    // (deferredFocusedIdx matches focusedStatsSeriesIdx) to avoid flicker
-    // during fast scrubs across different paths.
-    if (
-      focusedPathStats &&
-      deferredFocusedIdx === focusedStatsSeriesIdx
-    ) {
-      const { ddStartIdx, ddEndIdx, ddPeakValue } = focusedPathStats;
-
-      if (ddStartIdx >= 0 && ddEndIdx > ddStartIdx) {
-        strokeSegment(ddStartIdx, ddEndIdx, "rgba(248,113,113,0.95)", 3);
-      }
-      if (ddStartIdx >= 0 && ddPeakValue != null) {
-        const xVal = xArr[ddStartIdx];
-        if (xVal != null) {
-          const px = plot.valToPos(xVal, "x", false);
-          const py = plot.valToPos(ddPeakValue, "y", false);
-          ctx.save();
-          ctx.fillStyle = "rgba(248,113,113,1)";
-          ctx.strokeStyle = "rgba(255,255,255,0.95)";
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(px, py, 4.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-    }
-    ctx.restore();
+    redrawOverlay();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(redrawOverlay);
+    ro.observe(plot.over);
+    return () => ro.disconnect();
   }, [
     focusedSeriesIdx,
     focusedLine,
@@ -761,7 +772,7 @@ export function TrajectoryPlot({
           <div
             className="flex items-center gap-2 px-3 py-1.5"
             style={{
-              background: `linear-gradient(90deg, ${nearest.color}22 0%, transparent 70%)`,
+              background: `linear-gradient(90deg, color-mix(in oklab, ${nearest.color} 16%, transparent) 0%, transparent 70%)`,
               borderBottom: "1px solid var(--color-border)",
             }}
           >

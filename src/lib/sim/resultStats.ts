@@ -6,6 +6,7 @@
  * contract is byte-identical output, not "close enough".
  */
 import type { BuildProgressCb } from "./engineTypes";
+import { selectQuantilesFromCopy } from "./orderStatistics";
 import { countProfits, normalCdf } from "./simNumerics";
 
 /** The smallest whole cent strictly above `value`: `x * 100` can land just
@@ -32,22 +33,29 @@ export function computeScalarStats(
   let expectedProfitAccum = 0;
   for (let s = 0; s < S; s++) expectedProfitAccum += finalProfits[s];
 
-  // Direct typed-array memcpy: .slice() on a Float64Array is a single
-  // memcpy, .from() iterates and boxes. Same for other sorted copies below.
-  const sorted = finalProfits.slice().sort();
+  const qRank = (p: number) =>
+    Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))));
+  const profitRanks = Int32Array.from([
+    0,
+    qRank(0.01),
+    qRank(0.05),
+    qRank(0.5),
+    qRank(0.95),
+    qRank(0.99),
+    S - 1,
+  ]);
+  const profitPicked = selectQuantilesFromCopy(finalProfits, profitRanks);
   onBuildProgress?.(0.10, "stats");
-  const pct = (p: number) =>
-    sorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
-  const median = pct(0.5);
-  const min = sorted[0];
-  const max = sorted[S - 1];
+  const min = profitPicked[0];
+  const p01 = profitPicked[1];
+  const p05 = profitPicked[2];
+  const median = profitPicked[3];
+  const p95 = profitPicked[4];
+  const p99 = profitPicked[5];
+  const max = profitPicked[6];
   // A sum of S copies of a decimal like -232.2 is off by a few ulps, which
   // gave every deviation the same tiny non-zero value and a σ of 1e-11.
   const mean = min === max ? min : expectedProfitAccum / S;
-  const p01 = pct(0.01);
-  const p05 = pct(0.05);
-  const p95 = pct(0.95);
-  const p99 = pct(0.99);
 
   let varAcc = 0;
   let downVarAcc = 0;
@@ -129,14 +137,14 @@ export function computeScalarStats(
   const probProfit = profitCount / S;
 
   // VaR/CVaR at 95 / 99 — positive numbers (losses)
-  const var95 = -pct(0.05);
-  const var99 = -pct(0.01);
+  const var95 = -p05;
+  const var99 = -p01;
   let cvar95Acc = 0;
   let cvar95N = 0;
   let cvar99Acc = 0;
   let cvar99N = 0;
-  const q95 = pct(0.05);
-  const q99 = pct(0.01);
+  const q95 = p05;
+  const q99 = p01;
   for (let s = 0; s < S; s++) {
     const v = finalProfits[s];
     if (v <= q95) {
@@ -242,18 +250,23 @@ export function computeScalarStats(
   // .from().map().sort() — three passes, two intermediate buffers).
   const worstLosses = new Float64Array(S);
   for (let s = 0; s < S; s++) worstLosses[s] = -runningMins[s];
-  worstLosses.sort();
-  const historicalBankroll = (alpha: number): number => {
-    const index = Math.max(0, S - Math.floor(alpha * S) - 1);
-    const threshold = worstLosses[index];
+  const rorIndex = (alpha: number) => Math.max(0, S - Math.floor(alpha * S) - 1);
+  // Ascending order of ranks: 50% <= 15% <= 5% <= 1%.
+  const rorRanks = Int32Array.from([
+    rorIndex(0.5),
+    rorIndex(0.15),
+    rorIndex(0.05),
+    rorIndex(0.01),
+  ]);
+  const rorPicked = selectQuantilesFromCopy(worstLosses, rorRanks);
+  const historicalFromThreshold = (threshold: number): number =>
     // Ruin includes equality. Quote a cent amount strictly above the loss
     // threshold so tied samples cannot invalidate the advertised risk bound.
-    return threshold > 0 ? centAbove(threshold) : 0;
-  };
-  const minBankrollRoR1pct = historicalBankroll(0.01);
-  const minBankrollRoR5pct = historicalBankroll(0.05);
-  const minBankrollRoR15pct = historicalBankroll(0.15);
-  const minBankrollRoR50pct = historicalBankroll(0.5);
+    threshold > 0 ? centAbove(threshold) : 0;
+  const minBankrollRoR50pct = historicalFromThreshold(rorPicked[0]);
+  const minBankrollRoR15pct = historicalFromThreshold(rorPicked[1]);
+  const minBankrollRoR5pct = historicalFromThreshold(rorPicked[2]);
+  const minBankrollRoR1pct = historicalFromThreshold(rorPicked[3]);
   // "Runs that never dipped below 0" — fraction of samples whose running
   // minimum profit stayed non-negative over the entire schedule.
   let neverBelowZero = 0;

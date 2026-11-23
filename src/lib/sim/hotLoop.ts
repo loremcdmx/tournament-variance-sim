@@ -82,6 +82,20 @@ function makeGauss(rng: () => number): () => number {
   };
 }
 
+const UNUSED_RNG = () => 0;
+
+function compiledNeedsBountyRng(compiled: CompiledSchedule): boolean {
+  for (const entry of compiled.flat) {
+    if (entry.bountyByPlace !== null || entry.heatBountyByPlace !== null) return true;
+    if (entry.variants) {
+      for (const v of entry.variants) {
+        if (v.bountyByPlace !== null || v.heatBountyByPlace !== null) return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function simulateShard(
   input: SimulationInput,
   compiled: CompiledSchedule,
@@ -299,17 +313,26 @@ function simulateShardInternal(
   const nextProgressStep = Math.max(1, Math.floor(shardSize / progressTicks));
   let nextProgressAt = nextProgressStep;
 
+  const needsSkillRng =
+    roiStdErr > 0 || sigSession > 0 || sigDrift > 0 || sigTourney > 0;
+  const needsBountyRng = compiledNeedsBountyRng(compiled);
+
   for (let s = sStart; s < sEnd; s++) {
     const localS = s - sStart;
     if (downsideState) resetDownsideReportState(downsideState);
     const rng = sampleStream(input.seed, s, STREAM_FINISH);
     // Per-sample shock RNG — decoupled from finish draws and
-    // independent of shard boundaries.
-    const skillRng = sampleStream(input.seed, s, STREAM_SKILL);
+    // independent of shard boundaries. Skipped when no skill noise channel
+    // is active (saves stream + closure allocations on short schedules).
+    const gaussSkill = needsSkillRng
+      ? makeGauss(sampleStream(input.seed, s, STREAM_SKILL))
+      : UNUSED_RNG;
     // Dedicated RNG for within-place bounty noise — kept separate so adding
     // a bounty flag doesn't perturb the finish-sampling stream (otherwise
     // same-seed comparison tests between bounty and non-bounty runs drift).
-    const bRng = sampleStream(input.seed, s, STREAM_BOUNTY);
+    const bRng = needsBountyRng
+      ? sampleStream(input.seed, s, STREAM_BOUNTY)
+      : UNUSED_RNG;
     const oceanRng = oceanScratch
       ? sampleStream(input.seed, s, STREAM_OCEAN)
       : null;
@@ -318,8 +341,7 @@ function simulateShardInternal(
       : null;
     // Cached-pair gaussians bound to each stream — halves log/sqrt cost
     // relative to the discarding boxMuller.
-    const gaussSkill = makeGauss(skillRng);
-    const gaussB = makeGauss(bRng);
+    const gaussB = needsBountyRng ? makeGauss(bRng) : UNUSED_RNG;
 
     const deltaROI = roiStdErr > 0 ? gaussSkill() * roiStdErr : 0;
     let drift = 0;

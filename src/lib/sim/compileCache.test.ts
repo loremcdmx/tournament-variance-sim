@@ -87,16 +87,19 @@ describe("createCompileCache", () => {
     expect(compile).toHaveBeenCalledTimes(2);
   });
 
-  it("holds one entry and lets go of it on clear", () => {
+  it("holds two entries (for twin passes) and lets go of them on clear", () => {
     const compile = fakeCompile();
     const cache = createCompileCache(compile);
     cache.get(input({ seed: 1 }), "alpha");
     cache.get(input({ seed: 2 }), "alpha");
     cache.get(input({ seed: 1 }), "alpha");
-    expect(compile).toHaveBeenCalledTimes(3);
-    cache.clear();
-    cache.get(input({ seed: 1 }), "alpha");
+    expect(compile).toHaveBeenCalledTimes(2);
+    cache.get(input({ seed: 3 }), "alpha");
+    cache.get(input({ seed: 2 }), "alpha");
     expect(compile).toHaveBeenCalledTimes(4);
+    cache.clear();
+    cache.get(input({ seed: 2 }), "alpha");
+    expect(compile).toHaveBeenCalledTimes(5);
   });
 
   it("keeps nothing when the compile throws", () => {

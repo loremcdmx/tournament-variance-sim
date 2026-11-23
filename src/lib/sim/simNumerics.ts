@@ -5,6 +5,8 @@
  * modules can all import it without cycles.
  */
 
+import { selectQuantilesFromCopy } from "./orderStatistics";
+
 // ---- PTRS Poisson sampler (Hörmann 1993) ----------------------------------
 // Unbiased, ~1.13 expected iterations, valid for λ ≥ 10. Replaces the Gaussian
 // approximation which introduces skewness bias at moderate λ.
@@ -199,21 +201,33 @@ export function histogramOf(
   // (drawdowns, recovery) keep lo = min(arr) — the left side carries
   // real information there, not a clipped tail.
   if (longTailClip && n > 1) {
-    const sorted = new Float64Array(arr);
-    sorted.sort();
-    const q = (p: number): number =>
-      sorted[Math.min(n - 1, Math.max(0, Math.floor(p * (n - 1))))];
-    const p999 = q(0.999);
-    if (p999 > lo + 1e-9 && p999 < hi) hi = p999;
+    const qRank = (p: number): number =>
+      Math.min(n - 1, Math.max(0, Math.floor(p * (n - 1))));
     if (!nonNegative && lo < 0) {
-      const med = q(0.5);
-      const iqr = q(0.75) - q(0.25);
+      const picked = selectQuantilesFromCopy(
+        arr,
+        Int32Array.from([qRank(0.25), qRank(0.5), qRank(0.75), qRank(0.999)]),
+      );
+      const q25 = picked[0];
+      const med = picked[1];
+      const q75 = picked[2];
+      const p999 = picked[3];
+      if (p999 > lo + 1e-9 && p999 < hi) hi = p999;
+      const iqr = q75 - q25;
       if (iqr > 0) {
         const upper = med + 4 * iqr;
         const lower = med - 4 * iqr;
         if (upper < hi) hi = upper;
         if (lower > lo) lo = lower;
       }
+      if (hi <= lo) hi = lo + 1;
+    } else {
+      const picked = selectQuantilesFromCopy(
+        arr,
+        Int32Array.from([qRank(0.999)]),
+      );
+      const p999 = picked[0];
+      if (p999 > lo + 1e-9 && p999 < hi) hi = p999;
     }
   }
   const span = hi - lo;

@@ -29,23 +29,31 @@ function keyOf(input: SimulationInput, mode: CalibrationMode): string {
   );
 }
 
+const MAX_ENTRIES = 2;
+
 export function createCompileCache(compile: CompileFn = compileSchedule): CompileCache {
-  let lastKey: string | null = null;
-  let last: CompiledSchedule | null = null;
+  // Two slots keep both passes of a twin (primary + comparison) run warm
+  // through shard execution and into build dispatch.
+  const entries: Array<{ key: string; value: CompiledSchedule }> = [];
   return {
     get(input, mode) {
       const key = keyOf(input, mode);
-      if (last !== null && key === lastKey) return last;
-      lastKey = null;
-      last = null;
+      const hitIdx = entries.findIndex((e) => e.key === key);
+      if (hitIdx >= 0) {
+        const hit = entries[hitIdx];
+        if (hitIdx !== entries.length - 1) {
+          entries.splice(hitIdx, 1);
+          entries.push(hit);
+        }
+        return hit.value;
+      }
       const compiled = compile(input, mode);
-      lastKey = key;
-      last = compiled;
+      if (entries.length >= MAX_ENTRIES) entries.shift();
+      entries.push({ key, value: compiled });
       return compiled;
     },
     clear() {
-      lastKey = null;
-      last = null;
+      entries.length = 0;
     },
   };
 }

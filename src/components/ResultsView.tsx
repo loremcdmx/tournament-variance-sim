@@ -2912,7 +2912,7 @@ function CollapsibleSection({
       <details
         ref={ref}
         onToggle={onToggle}
-        className="group rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev-1)]"
+        className="group rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-elev)]"
       >
         <summary className="flex cursor-pointer select-none items-center gap-3 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)]">
           <span>{title}</span>
@@ -3009,7 +3009,7 @@ function RefLineCustomizer({
           {value.map((ref, i) => {
             const hex = /^#([0-9a-f]{3}){1,2}$/i.test(ref.color) ? ref.color : "#94a3b8";
             return (
-              <div key={i} className="flex items-center gap-2 text-[11px]">
+              <div key={`${ref.roi}-${ref.color}-${i}`} className="flex items-center gap-2 text-[11px]">
                 <input
                   type="checkbox"
                   checked={ref.enabled}

@@ -46,7 +46,7 @@ export function buildEnvelopes(
   // neighbouring columns per pass over the rows instead; each column still
   // receives its samples in ascending order, so the means add up in the same
   // order as before.
-  const blockCols = Math.max(1, Math.min(32, K1, Math.floor(2_000_000 / envS)));
+  const blockCols = Math.max(1, Math.min(32, K1, Math.floor(6_400_000 / envS)));
   const block = new Float64Array(blockCols * envS);
   const acc = new Float64Array(blockCols);
   // Emit build-progress every ~8 columns so the main thread sees steady

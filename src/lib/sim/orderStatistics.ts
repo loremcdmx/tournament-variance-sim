@@ -133,3 +133,33 @@ export function selectSortedRanks(
     }
   }
 }
+
+/**
+ * Convenience wrapper for reading a small set of ascending ranks from a
+ * Float64Array without mutating the source array. Copies into a scratch buffer
+ * and uses Floyd-Rivest selection (falling back to `.sort()` only if a NaN is
+ * present, since `<` cannot order NaN). Bit-identical to `arr.slice().sort()`.
+ */
+export function selectQuantilesFromCopy(
+  arr: Float64Array,
+  ranks: Int32Array,
+): Float64Array {
+  const n = arr.length;
+  const out = new Float64Array(ranks.length);
+  if (n === 0 || ranks.length === 0) return out;
+  const buf = arr.slice();
+  let hasNaN = false;
+  for (let i = 0; i < n; i++) {
+    if (buf[i] !== buf[i]) {
+      hasNaN = true;
+      break;
+    }
+  }
+  if (hasNaN) {
+    buf.sort();
+    for (let r = 0; r < ranks.length; r++) out[r] = buf[ranks[r]];
+    return out;
+  }
+  selectSortedRanks(buf, 0, n, ranks, out);
+  return out;
+}

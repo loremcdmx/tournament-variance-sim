@@ -263,6 +263,7 @@ function savePendingHighRate(r: number | null) {
 
 export function useSimulation() {
   const poolRef = useRef<Pool | null>(null);
+  const poolBusyRef = useRef(false);
   const jobIdRef = useRef(0);
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState(0);
@@ -351,6 +352,7 @@ export function useSimulation() {
   const resetPool = useCallback(() => {
     const old = poolRef.current;
     if (old) for (const w of old.workers) w.terminate();
+    poolBusyRef.current = false;
     poolRef.current = spawnPool();
   }, []);
 
@@ -437,10 +439,11 @@ export function useSimulation() {
           result: null,
         };
         for (let i = 0; i < bounds.length; i++) {
+          const shardId = nextShardId++;
           allSlots.push({
             passKey: plan.key,
-            shardId: nextShardId++,
-            workerIdx: i % W, // round-robin across pool
+            shardId,
+            workerIdx: shardId % W, // round-robin across all passes
             sStart: bounds[i][0],
             sEnd: bounds[i][1],
             total: bounds[i][1] - bounds[i][0],
@@ -609,6 +612,11 @@ export function useSimulation() {
             out.push(sh.rowBountyProfits.buffer);
             out.push(sh.jackpotMask.buffer);
             if (sh.satelliteSeatsWon) out.push(sh.satelliteSeatsWon.buffer);
+            if (sh.downsideReport) {
+              for (const values of Object.values(sh.downsideReport)) {
+                out.push(values.buffer);
+              }
+            }
             if (sh.leaderboardPoints) out.push(sh.leaderboardPoints.buffer);
             if (sh.leaderboardPayouts) out.push(sh.leaderboardPayouts.buffer);
             if (sh.leaderboardExpectedPayouts) {
@@ -767,6 +775,8 @@ export function useSimulation() {
         };
 
         const detach = () => {
+          poolBusyRef.current = false;
+          if (signal) signal.removeEventListener("abort", onAbort);
           for (const w of pool.workers) {
             w.removeEventListener("message", handler as EventListener);
             w.removeEventListener("error", onWorkerError);
@@ -774,6 +784,7 @@ export function useSimulation() {
           }
         };
 
+        poolBusyRef.current = true;
         for (const w of pool.workers) {
           w.addEventListener("message", handler as EventListener);
           w.addEventListener("error", onWorkerError);
@@ -916,9 +927,10 @@ export function useSimulation() {
         setStage(null);
         return;
       }
+      const hadBg = bgAbortRef.current != null;
       bgAbortRef.current?.abort();
       bgAbortRef.current = null;
-      resetPool();
+      if (hadBg || poolBusyRef.current) resetPool();
       const jobId = ++jobIdRef.current;
       // Bump batch version to orphan any in-flight background loop from a
       // prior run — its post-await `version` check will fail and it'll bail
@@ -1094,9 +1106,10 @@ export function useSimulation() {
         setError(engineCrashMessage(pool.poisoned));
         return;
       }
+      const hadBg = bgAbortRef.current != null;
       bgAbortRef.current?.abort();
       bgAbortRef.current = null;
-      resetPool();
+      if (hadBg || poolBusyRef.current) resetPool();
       setBackgroundStatus("idle");
       const myPdJob = ++pdJobIdRef.current;
       const myJobId = ++jobIdRef.current;

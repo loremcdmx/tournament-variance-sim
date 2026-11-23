@@ -4,6 +4,7 @@
  * Owns the "streaks" phase of the build progress.
  */
 import type { BuildProgressCb } from "./engineTypes";
+import { selectQuantilesFromCopy, selectSortedRanks } from "./orderStatistics";
 import { histogramOfLengths } from "./simNumerics";
 import type { SimulationResult } from "./types";
 
@@ -28,13 +29,16 @@ export function computeStreakStats(
   // "how bad is a typical/5%/1% worst run". PrimeDope only shows a single
   // aggregate estimate; we expose the whole tail shape.
   onBuildProgress?.(0.83, "streaks");
-  const ddSorted = maxDrawdowns.slice().sort();
+  const ddRank = (p: number) =>
+    Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))));
+  const ddPicked = selectQuantilesFromCopy(
+    maxDrawdowns,
+    Int32Array.from([ddRank(0.5), ddRank(0.95), ddRank(0.99)]),
+  );
   onBuildProgress?.(0.85, "streaks");
-  const ddPct = (p: number) =>
-    ddSorted[Math.min(S - 1, Math.max(0, Math.floor(p * (S - 1))))];
-  const maxDrawdownMedian = ddPct(0.5);
-  const maxDrawdownP95 = ddPct(0.95);
-  const maxDrawdownP99 = ddPct(0.99);
+  const maxDrawdownMedian = ddPicked[0];
+  const maxDrawdownP95 = ddPicked[1];
+  const maxDrawdownP99 = ddPicked[2];
 
   let beMean = 0;
   for (let s = 0; s < S; s++) beMean += longestBreakevens[s];
@@ -63,34 +67,44 @@ export function computeStreakStats(
   // unrecovered share separately. With no recovered sample there is no time to
   // report: NaN, not 0, which would read as an instant recovery.
   let unrecoveredCount = 0;
-  const recoveredOnly: number[] = [];
+  let recoveredCount = 0;
+  let maxRecovered = 0;
+  let minRecovered = Infinity;
   for (let s = 0; s < S; s++) {
     const v = recoveryLengths[s];
     if (v === -1) unrecoveredCount++;
-    else if (v >= 0) recoveredOnly.push(v);
+    else if (v >= 0) {
+      recoveredCount++;
+      if (v > maxRecovered) maxRecovered = v;
+      if (v < minRecovered) minRecovered = v;
+    }
   }
-  recoveredOnly.sort((a, b) => a - b);
-  const recoveredCount = recoveredOnly.length;
-  const recoveryPct = (p: number) =>
-    recoveredCount === 0
-      ? Number.NaN
-      : recoveredOnly[
-          Math.min(
-            recoveredCount - 1,
-            Math.max(0, Math.floor(p * (recoveredCount - 1))),
-          )
-        ];
-  const recoveryMedian = recoveryPct(0.5);
-  const recoveryP90 = recoveryPct(0.9);
   const recoveryUnrecoveredShare = unrecoveredCount / S;
+  let recoveryMedian = Number.NaN;
+  let recoveryP90 = Number.NaN;
   let recoveryHistogram: { binEdges: number[]; counts: number[] } = { binEdges: [0, 1], counts: [0] };
   if (recoveredCount > 0) {
-    const countsByLen = new Int32Array(recoveredOnly[recoveredCount - 1] + 1);
-    for (let i = 0; i < recoveredCount; i++) countsByLen[recoveredOnly[i]]++;
+    const recoveredBuf = new Float64Array(recoveredCount);
+    const countsByLen = new Int32Array(maxRecovered + 1);
+    let k = 0;
+    for (let s = 0; s < S; s++) {
+      const v = recoveryLengths[s];
+      if (v >= 0) {
+        recoveredBuf[k++] = v;
+        countsByLen[v]++;
+      }
+    }
+    const rRank = (p: number) =>
+      Math.min(recoveredCount - 1, Math.max(0, Math.floor(p * (recoveredCount - 1))));
+    const rRanks = Int32Array.from([rRank(0.5), rRank(0.9), rRank(0.999)]);
+    const rPicked = new Float64Array(3);
+    selectSortedRanks(recoveredBuf, 0, recoveredCount, rRanks, rPicked);
+    recoveryMedian = rPicked[0];
+    recoveryP90 = rPicked[1];
     recoveryHistogram = histogramOfLengths(
       countsByLen,
-      Math.min(1, recoveredOnly[0]),
-      recoveryPct(0.999),
+      Math.min(1, minRecovered),
+      rPicked[2],
       40,
     );
   }
