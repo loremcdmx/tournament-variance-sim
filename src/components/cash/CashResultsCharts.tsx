@@ -1,25 +1,33 @@
 import { RangeInput } from "@/components/ui/RangeInput";
+import { LazyDisclosure } from "@/components/ui/LazyDisclosure";
 import {
   Fragment,
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import type uPlot from "uplot";
 import { UplotChart, type CursorInfo } from "@/components/charts/UplotChart";
+import { barsPath } from "@/components/charts/barsPath";
 import { useLocale, useT } from "@/lib/i18n/LocaleProvider";
 import { numberLocaleTag } from "@/lib/i18n/numberLocale";
 import { withPlural } from "@/lib/i18n/plural";
+import { countOrDash } from "@/lib/results/formatters";
+import { useOptionalTheme, type Theme } from "@/lib/theme/ThemeProvider";
 import { useLocalStorageState } from "@/lib/ui/useLocalStorageState";
 import {
   DEFAULT_LINE_STYLE_PRESET,
   LINE_STYLE_PRESETS,
+  LINE_STYLE_PRESET_META,
+  LINE_STYLE_PRESET_ORDER,
   loadLineStylePreset,
   saveLineStylePreset,
   type LineStyle,
+  type LineStylePresetId,
 } from "@/lib/lineStyles";
 import { visualDistanceToSeries } from "@/lib/results/trajectoryHitTest";
 import type { CashResult } from "@/lib/sim/cashTypes";
@@ -27,40 +35,60 @@ import { rankedRunIndices, type RunMode } from "@/lib/trajectorySelection";
 import {
   type CashMoneyUnit,
   type SuitAccent,
-  CASH_ACCENT_META,
   CashChartFrame,
-  ChartTitle,
   MiniChartTitle,
   UnitToggle,
+  cashSeriesColors,
   convertCashMoney,
 } from "./CashResultsShared";
 import { bankrollReadout, useCashFormat } from "./cashFormat";
 
 type UplotOptions = Parameters<typeof UplotChart>[0]["options"];
-
 type ChartAxes = Exclude<
   NonNullable<Parameters<typeof UplotChart>[0]["options"]>["axes"],
   undefined
 >;
 
+function themeAxisColors(theme: Theme) {
+  return theme === "light"
+    ? {
+        xStroke: "#475569",
+        yStroke: "#334155",
+        gridX: "rgba(15,23,42,0.08)",
+        gridY: "rgba(15,23,42,0.11)",
+        tickX: "rgba(15,23,42,0.22)",
+        tickY: "rgba(15,23,42,0.25)",
+      }
+    : {
+        xStroke: "#a4afc2",
+        yStroke: "#aeb8cb",
+        gridX: "rgba(148,163,184,0.1)",
+        gridY: "rgba(148,163,184,0.14)",
+        tickX: "rgba(148,163,184,0.22)",
+        tickY: "rgba(148,163,184,0.26)",
+      };
+}
+
 function cashAxes(
   xLabel: string,
   yLabel: string,
+  theme: Theme,
   ySize: number = 55,
 ): ChartAxes {
+  const c = themeAxisColors(theme);
   return [
     {
       label: xLabel,
-      stroke: "#a4afc2",
-      grid: { stroke: "rgba(148,163,184,0.1)", width: 1 },
-      ticks: { stroke: "rgba(148,163,184,0.22)" },
+      stroke: c.xStroke,
+      grid: { stroke: c.gridX, width: 1 },
+      ticks: { stroke: c.tickX },
     },
     {
       label: yLabel,
       size: ySize,
-      stroke: "#aeb8cb",
-      grid: { stroke: "rgba(148,163,184,0.14)", width: 1 },
-      ticks: { stroke: "rgba(148,163,184,0.26)" },
+      stroke: c.yStroke,
+      grid: { stroke: c.gridY, width: 1 },
+      ticks: { stroke: c.tickY },
     },
   ];
 }
@@ -68,29 +96,31 @@ function cashAxes(
 function cashPctAxes(
   xLabel: string,
   yLabel: string,
+  theme: Theme,
 ): ChartAxes {
+  const c = themeAxisColors(theme);
   return [
     {
       label: xLabel,
-      stroke: "#a4afc2",
-      grid: { stroke: "rgba(148,163,184,0.1)", width: 1 },
-      ticks: { stroke: "rgba(148,163,184,0.22)" },
+      stroke: c.xStroke,
+      grid: { stroke: c.gridX, width: 1 },
+      ticks: { stroke: c.tickX },
     },
     {
       label: yLabel,
       size: 64,
-      stroke: "#aeb8cb",
-      grid: { stroke: "rgba(148,163,184,0.14)", width: 1 },
-      ticks: { stroke: "rgba(148,163,184,0.26)" },
+      stroke: c.yStroke,
+      grid: { stroke: c.gridY, width: 1 },
+      ticks: { stroke: c.tickY },
       values: (_u, splits) => splits.map((value) => `${Math.round(value * 100)}%`),
     },
   ];
 }
 
-const CASH_TRAJECTORY_RUN_CAP = 120;
+export const CASH_TRAJECTORY_RUN_CAP = 500;
 const CASH_PATH_HIT_PX = 20;
 
-type CashTrajectoryLineKind = "mean" | "band" | "path" | "ref" | "risk";
+type CashTrajectoryLineKind = "mean" | "band" | "path" | "ref" | "risk" | "extreme" | "zero";
 
 interface CashTrajectoryLineMeta {
   label: string;
@@ -111,36 +141,30 @@ function parseRgb(css: string): [number, number, number] {
     const n = parseInt(hex[1], 16);
     return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
   }
-  return [200, 200, 200];
+  return [148, 163, 184];
 }
 
 function pathStyleForCount(
   base: LineStyle,
   count: number,
-): { stroke: string; width: number } {
-  const [r, g, b] = parseRgb(base.stroke);
+  theme: Theme,
+): { r: number; g: number; b: number; alpha: number; width: number } {
+  const [rawR, rawG, rawB] = parseRgb(base.stroke);
+  // On light background, darken very pale path strokes so individual runs stay readable.
+  const luma = 0.299 * rawR + 0.587 * rawG + 0.114 * rawB;
+  const scale = theme === "light" && luma > 155 ? 0.55 : 1;
+  const r = Math.round(rawR * scale);
+  const g = Math.round(rawG * scale);
+  const b = Math.round(rawB * scale);
   const n = Math.max(1, count);
-  const alpha = Math.min(0.9, Math.max(0.04, 0.9 / Math.sqrt(n)));
+  const alpha = Math.min(0.9, Math.max(0.05, 0.9 / Math.sqrt(n)));
   const width = Math.min(1.6, Math.max(0.55, 1.55 - 0.115 * Math.log2(n)));
-  return { stroke: `rgba(${r},${g},${b},${alpha.toFixed(3)})`, width };
+  return { r, g, b, alpha, width };
 }
 
-function buildLinearRef(x: readonly number[], slopePerX: number): number[] {
-  return x.map((value) => value * slopePerX);
-}
-
-function alignCashPathToEnvX(
-  envX: readonly number[],
-  hiX: ArrayLike<number>,
-  path: ArrayLike<number>,
-): number[] {
-  const out = new Array<number>(envX.length);
-  let j = 0;
-  for (let i = 0; i < envX.length; i++) {
-    const target = envX[i];
-    while (j + 1 < hiX.length && hiX[j + 1] <= target) j++;
-    out[i] = path[j] ?? 0;
-  }
+function buildLinearRef(x: ArrayLike<number>, slopePerX: number): number[] {
+  const out = new Array<number>(x.length);
+  for (let i = 0; i < x.length; i++) out[i] = x[i] * slopePerX;
   return out;
 }
 
@@ -154,6 +178,12 @@ export function TrajectoryToolbar({
   onMoneyUnitChange,
   riskThresholdBb,
   bbSize,
+  showRiskLine,
+  onShowRiskLineChange,
+  showExtremes,
+  onShowExtremesChange,
+  linePresetId,
+  onLinePresetChange,
 }: {
   visibleRuns: number;
   maxVisibleRuns: number;
@@ -164,11 +194,17 @@ export function TrajectoryToolbar({
   onMoneyUnitChange: (next: CashMoneyUnit) => void;
   riskThresholdBb: number;
   bbSize: number;
+  showRiskLine?: boolean;
+  onShowRiskLineChange?: (next: boolean) => void;
+  showExtremes?: boolean;
+  onShowExtremesChange?: (next: boolean) => void;
+  linePresetId?: LineStylePresetId;
+  onLinePresetChange?: (next: LineStylePresetId) => void;
 }) {
   const t = useT();
   const fmt = useCashFormat();
   return (
-    <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+    <div className="mb-3 flex flex-col gap-2.5 xl:flex-row xl:flex-wrap xl:items-center xl:justify-between">
       <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/42 px-3 py-2">
         <span className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
           {t("cash.toolbar.runs")}
@@ -190,7 +226,49 @@ export function TrajectoryToolbar({
         </span>
         <RunModeToggle value={runMode} onChange={onRunModeChange} />
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/42 px-3 py-2">
+
+      <div className="flex min-w-0 flex-wrap items-center gap-2.5 rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg)]/42 px-3 py-2">
+        {onShowExtremesChange && (
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]">
+            <input
+              type="checkbox"
+              checked={!!showExtremes}
+              onChange={(e) => onShowExtremesChange(e.target.checked)}
+              className="h-3.5 w-3.5 cursor-pointer accent-[color:var(--color-accent)]"
+            />
+            <span>{t("cash.toolbar.showExtremes")}</span>
+          </label>
+        )}
+        {onShowRiskLineChange && (
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]">
+            <input
+              type="checkbox"
+              checked={showRiskLine !== false}
+              onChange={(e) => onShowRiskLineChange(e.target.checked)}
+              className="h-3.5 w-3.5 cursor-pointer accent-[color:var(--color-accent)]"
+            />
+            <span>{t("cash.toolbar.showRiskLine")}</span>
+          </label>
+        )}
+        {onLinePresetChange && linePresetId && (
+          <label className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+            <span>{t("cash.toolbar.style")}</span>
+            <select
+              value={linePresetId}
+              onChange={(e) =>
+                onLinePresetChange(e.target.value as LineStylePresetId)
+              }
+              aria-label={t("cash.toolbar.style")}
+              className="rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)] py-0.5 pl-2 pr-7 text-[11px] font-medium normal-case tracking-normal text-[color:var(--color-fg)] focus:border-[color:var(--color-accent)] focus:outline-none"
+            >
+              {LINE_STYLE_PRESET_ORDER.map((id) => (
+                <option key={id} value={id}>
+                  {t(LINE_STYLE_PRESET_META[id].labelKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <span className="eyebrow text-[10px] tracking-[0.14em] text-[color:var(--color-fg-muted)]">
           {t("cash.toolbar.units")}
         </span>
@@ -217,6 +295,9 @@ export function TrajectoryChart({
   runMode,
   moneyUnit,
   riskThresholdBb,
+  showRiskLine = true,
+  showExtremes = false,
+  linePresetId: propPresetId,
 }: {
   result: CashResult;
   bbSize: number;
@@ -224,30 +305,43 @@ export function TrajectoryChart({
   runMode: RunMode;
   moneyUnit: CashMoneyUnit;
   riskThresholdBb: number;
+  showRiskLine?: boolean;
+  showExtremes?: boolean;
+  linePresetId?: LineStylePresetId;
 }) {
   const t = useT();
   const { locale } = useLocale();
+  const theme = useOptionalTheme();
   const numberLocale = numberLocaleTag(locale);
   const fmt = useCashFormat();
-  const [linePresetId] = useLocalStorageState(
+  const [storedPresetId] = useLocalStorageState(
     "tvs.lineStylePreset.v1",
     loadLineStylePreset,
     saveLineStylePreset,
     DEFAULT_LINE_STYLE_PRESET,
   );
+  const linePresetId = propPresetId ?? storedPresetId;
+  const linePreset = LINE_STYLE_PRESETS[linePresetId];
+
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const [xZoomed, setXZoomed] = useState(false);
+  const [scaleRev, setScaleRev] = useState(0);
   const plotRef = useRef<uPlot | null>(null);
   const hlCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const linePreset = LINE_STYLE_PRESETS[linePresetId];
+
   const maxRuns = Math.min(CASH_TRAJECTORY_RUN_CAP, result.samplePaths.paths.length);
   const clampedVisibleRuns =
     maxRuns <= 0 ? 0 : Math.max(0, Math.min(visibleRuns, maxRuns));
   const deferredVisibleRuns = useDeferredValue(clampedVisibleRuns);
 
+  // Build all series ONCE per (result, unit, runMode, linePreset, theme) —
+  // `deferredVisibleRuns`, `showRiskLine`, and `showExtremes` toggle visibility
+  // imperatively via `plot.batch` + `setSeries` so dragging the slider NEVER
+  // tears down or reconstructs uPlot!
   const assets = useMemo(() => {
-    const env = result.envelopes;
-    const x = Array.from(env.x, (h) => h);
+    // Use full 2001-pt hi-res envelopes & paths (no downsampling!).
+    const env = result.hiResEnvelopes ?? result.envelopes;
+    const x = Array.from(result.samplePaths.x);
     const convert = (v: number) => convertCashMoney(v, moneyUnit, bbSize);
     const data: Array<(number | null)[]> = [x];
     const rawBbData: Array<(number | null)[]> = [x];
@@ -256,17 +350,48 @@ export function TrajectoryChart({
       {},
     ];
     const lines: CashTrajectoryLineMeta[] = [];
+
     const pushSeries = (
-      rawBb: number[],
+      rawBb: ArrayLike<number>,
       opt: NonNullable<Parameters<typeof UplotChart>[0]["options"]>["series"][number],
       meta: Omit<CashTrajectoryLineMeta, "seriesIdx">,
     ) => {
       const idx = data.length;
-      data.push(rawBb.map(convert));
-      rawBbData.push(rawBb);
+      const converted = new Array<number>(rawBb.length);
+      const rawCopy = new Array<number>(rawBb.length);
+      for (let i = 0; i < rawBb.length; i++) {
+        const v = rawBb[i];
+        rawCopy[i] = v;
+        converted[i] = convert(v);
+      }
+      data.push(converted);
+      rawBbData.push(rawCopy);
       series.push(opt);
       lines.push({ ...meta, seriesIdx: idx });
+      return idx;
     };
+
+    const zeroColor =
+      theme === "light" ? "rgba(71,85,105,0.55)" : "rgba(148,163,184,0.45)";
+    const riskColor =
+      theme === "light" ? "rgba(194,65,12,0.88)" : "rgba(255,145,118,0.9)";
+    const bestColor =
+      theme === "light" ? "#15803d" : "#4ade80";
+    const worstColor =
+      theme === "light" ? "#b91c1c" : "#f87171";
+
+    // Zero breakeven reference line
+    pushSeries(
+      new Array<number>(x.length).fill(0),
+      {
+        stroke: zeroColor,
+        width: 1,
+        dash: [3, 4],
+        points: noPoints,
+        label: "0",
+      },
+      { label: t("cash.chart.trajectory.zero"), color: zeroColor, kind: "zero" },
+    );
 
     const maxX = Math.max(1, x[x.length - 1] ?? 1);
     pushSeries(
@@ -281,7 +406,7 @@ export function TrajectoryChart({
       { label: "EV", color: linePreset.ev.stroke, kind: "ref" },
     );
     pushSeries(
-      Array.from(env.p025),
+      env.p025,
       {
         stroke: linePreset.bandWide.stroke,
         width: linePreset.bandWide.width,
@@ -292,7 +417,7 @@ export function TrajectoryChart({
       { label: "p2.5", color: linePreset.bandWide.stroke, kind: "band", percentile: 0.025 },
     );
     pushSeries(
-      Array.from(env.p975),
+      env.p975,
       {
         stroke: linePreset.bandWide.stroke,
         width: linePreset.bandWide.width,
@@ -303,7 +428,7 @@ export function TrajectoryChart({
       { label: "p97.5", color: linePreset.bandWide.stroke, kind: "band", percentile: 0.975 },
     );
     pushSeries(
-      Array.from(env.p15),
+      env.p15,
       {
         stroke: linePreset.bandNarrow.stroke,
         width: linePreset.bandNarrow.width,
@@ -313,7 +438,7 @@ export function TrajectoryChart({
       { label: "p15", color: linePreset.bandNarrow.stroke, kind: "band", percentile: 0.15 },
     );
     pushSeries(
-      Array.from(env.p85),
+      env.p85,
       {
         stroke: linePreset.bandNarrow.stroke,
         width: linePreset.bandNarrow.width,
@@ -323,7 +448,7 @@ export function TrajectoryChart({
       { label: "p85", color: linePreset.bandNarrow.stroke, kind: "band", percentile: 0.85 },
     );
     pushSeries(
-      Array.from(env.mean),
+      env.mean,
       {
         stroke: linePreset.mean.stroke,
         width: linePreset.mean.width,
@@ -333,7 +458,7 @@ export function TrajectoryChart({
       { label: "mean", color: linePreset.mean.stroke, kind: "mean" },
     );
     pushSeries(
-      Array.from(env.p05),
+      env.p05,
       {
         stroke: linePreset.p05.stroke,
         width: linePreset.p05.width,
@@ -344,7 +469,7 @@ export function TrajectoryChart({
       { label: "p5", color: linePreset.p05.stroke, kind: "band", percentile: 0.05 },
     );
     pushSeries(
-      Array.from(env.p95),
+      env.p95,
       {
         stroke: linePreset.p95.stroke,
         width: linePreset.p95.width,
@@ -354,27 +479,73 @@ export function TrajectoryChart({
       },
       { label: "p95", color: linePreset.p95.stroke, kind: "band", percentile: 0.95 },
     );
-    pushSeries(
+
+    const riskSeriesIdx = pushSeries(
       new Array<number>(x.length).fill(-riskThresholdBb),
       {
-        stroke: "rgba(255,145,118,0.9)",
-        width: 1.4,
+        stroke: riskColor,
+        width: 1.5,
         dash: [6, 5],
         points: noPoints,
         label: "risk",
+        show: true,
       },
-      { label: fmt.riskThreshold(riskThresholdBb, moneyUnit, bbSize), color: "rgba(255,145,118,0.9)", kind: "risk" },
+      {
+        label: fmt.riskThreshold(riskThresholdBb, moneyUnit, bbSize),
+        color: riskColor,
+        kind: "risk",
+      },
     );
 
-    const ranked = rankedRunIndices(result.samplePaths.paths, runMode);
-    const pathCount = Math.min(deferredVisibleRuns, ranked.length);
-    const pathStyle = pathStyleForCount(linePreset.path, Math.max(1, pathCount));
-    const [pathR, pathG, pathB] = parseRgb(pathStyle.stroke);
-    const baseAlphaMatch = pathStyle.stroke.match(
-      /rgba\(\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([0-9.]+)\)/i,
+    // Real Best & Real Worst careers across ALL S simulated runs.
+    const bestSeriesIdx = pushSeries(
+      result.samplePaths.realBestPath,
+      {
+        stroke: bestColor,
+        width: 1.8,
+        points: noPoints,
+        label: "best",
+        show: false,
+      },
+      {
+        label: t("cash.chart.trajectory.bestRun").replace(
+          "{n}",
+          String(result.samplePaths.realBestSample + 1),
+        ),
+        color: bestColor,
+        kind: "extreme",
+      },
     );
-    const baseAlpha = baseAlphaMatch ? Number(baseAlphaMatch[1]) : 0.4;
-    const hiX = result.samplePaths.x;
+    const worstSeriesIdx = pushSeries(
+      result.samplePaths.realWorstPath,
+      {
+        stroke: worstColor,
+        width: 1.8,
+        points: noPoints,
+        label: "worst",
+        show: false,
+      },
+      {
+        label: t("cash.chart.trajectory.worstRun").replace(
+          "{n}",
+          String(result.samplePaths.realWorstSample + 1),
+        ),
+        color: worstColor,
+        kind: "extreme",
+      },
+    );
+
+    // Pre-build all hi-res candidate runs so slider drag toggles `show` without
+    // recreating the uPlot instance.
+    const ranked = rankedRunIndices(result.samplePaths.paths, runMode).slice(
+      0,
+      CASH_TRAJECTORY_RUN_CAP,
+    );
+    const pathStyle = pathStyleForCount(
+      linePreset.path,
+      Math.max(1, Math.min(80, ranked.length)),
+      theme,
+    );
     const pathFinals = result.samplePaths.paths.map((path, idx) => ({
       idx,
       final: path[path.length - 1] ?? 0,
@@ -387,23 +558,26 @@ export function TrajectoryChart({
       polarity[pathFinals[k].idx] = Math.abs(2 * q - 1);
     }
 
-    for (let rank = 0; rank < pathCount; rank++) {
+    const pathSeriesIndices: number[] = [];
+    const pathPolarities: number[] = [];
+    for (let rank = 0; rank < ranked.length; rank++) {
       const runIdx = ranked[rank];
       const runLabel = t("cash.chart.trajectory.runLabel").replace(
         "{n}",
         String(result.samplePaths.sampleIndices[runIdx] + 1),
       );
       const boost = polarity[runIdx] >= 0.98 ? 1.2 : 1;
-      const alpha = Math.min(0.95, baseAlpha * boost);
+      const alpha = Math.min(0.95, pathStyle.alpha * boost);
       const width = pathStyle.width * boost;
-      const stroke = `rgba(${pathR},${pathG},${pathB},${alpha.toFixed(3)})`;
-      pushSeries(
-        alignCashPathToEnvX(x, hiX, result.samplePaths.paths[runIdx]),
+      const stroke = `rgba(${pathStyle.r},${pathStyle.g},${pathStyle.b},${alpha.toFixed(3)})`;
+      const sIdx = pushSeries(
+        result.samplePaths.paths[runIdx],
         {
           stroke,
           width,
           points: noPoints,
           label: runLabel,
+          show: rank < 80,
         },
         {
           label: runLabel,
@@ -413,25 +587,52 @@ export function TrajectoryChart({
           runIdx,
         },
       );
+      pathSeriesIndices.push(sIdx);
+      pathPolarities.push(polarity[runIdx]);
+    }
+
+    // Precompute per-series [min, max] in display units so Y-range updates in O(K)
+    // without re-scanning 2001 points × 500 paths on every slider tick.
+    const seriesMin = new Float64Array(data.length);
+    const seriesMax = new Float64Array(data.length);
+    for (let s = 1; s < data.length; s++) {
+      const arr = data[s] as number[];
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i];
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      seriesMin[s] = lo;
+      seriesMax[s] = hi;
     }
 
     const axes = cashAxes(
       t("cash.axis.hands"),
       moneyUnit === "usd" ? t("cash.axis.usd") : t("cash.axis.bb"),
-      64,
+      theme,
+      68,
     );
 
     return {
       data: data as unknown as Parameters<typeof UplotChart>[0]["data"],
       rawBbData,
       lines,
+      riskSeriesIdx,
+      bestSeriesIdx,
+      worstSeriesIdx,
+      pathSeriesIndices,
+      pathPolarities,
+      seriesMin,
+      seriesMax,
       xMin: Number(x[0] ?? 0),
       xMax: Number(x[x.length - 1] ?? 0),
       options: {
         series,
         cursor: { show: true, points: { show: false } },
         legend: { show: false },
-        scales: { x: { time: false }, y: { auto: true } },
+        scales: { x: { time: false }, y: { auto: false } },
         axes: axes.map((axis, axisIdx) =>
           axisIdx === 1
             ? {
@@ -447,56 +648,112 @@ export function TrajectoryChart({
         ),
       } satisfies Omit<Parameters<typeof UplotChart>[0]["options"], "width" | "height">,
     };
-  }, [
-    bbSize,
-    deferredVisibleRuns,
-    fmt,
-    linePreset,
-    moneyUnit,
-    result,
-    riskThresholdBb,
-    runMode,
-    t,
-  ]);
+  }, [bbSize, fmt, linePreset, moneyUnit, result, riskThresholdBb, runMode, t, theme]);
 
-  const legendItems = useMemo(
-    () =>
-      [
-        {
-          key: "ev",
-          label: t("chart.traj.legend.ev"),
-          color: linePreset.ev.stroke,
-          dash: true,
-        },
-        deferredVisibleRuns > 0 && {
-          key: "runs",
-          label: withPlural(t("chart.traj.legend.runs"), locale, deferredVisibleRuns, "run").replace(
-            "{n}",
-            deferredVisibleRuns.toLocaleString(numberLocale),
-          ),
-          color: linePreset.path.stroke,
-        },
-        {
-          key: "bands",
-          label: t("cash.chart.trajectory.legend.bands"),
-          color: linePreset.bandNarrow.stroke,
-        },
-      ].filter(Boolean) as Array<{
-        key: string;
-        label: string;
-        color: string;
-        dash?: boolean;
-      }>,
-    [deferredVisibleRuns, linePreset, locale, numberLocale, t],
+  // Compute Y-range excluding the risk line so a huge bankroll threshold never
+  // squashes trajectories into a flat sliver at the top.
+  const yRange = useMemo<[number, number]>(() => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    const include = (sIdx: number) => {
+      if (assets.seriesMin[sIdx] < lo) lo = assets.seriesMin[sIdx];
+      if (assets.seriesMax[sIdx] > hi) hi = assets.seriesMax[sIdx];
+    };
+    // Include zero, EV, bands, mean (series 1..9).
+    for (let s = 1; s < assets.riskSeriesIdx; s++) include(s);
+    if (showExtremes) {
+      include(assets.bestSeriesIdx);
+      include(assets.worstSeriesIdx);
+    }
+    const visibleCount = Math.min(
+      deferredVisibleRuns,
+      assets.pathSeriesIndices.length,
+    );
+    for (let k = 0; k < visibleCount; k++) {
+      include(assets.pathSeriesIndices[k]);
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [-10, 10];
+    if (lo === hi) {
+      const pad = Math.max(1, Math.abs(lo) * 0.1);
+      return [lo - pad, hi + pad];
+    }
+    const pad = (hi - lo) * 0.06;
+    return [lo - pad, hi + pad];
+  }, [assets, deferredVisibleRuns, showExtremes]);
+
+  const applyVisibilityToPlot = useCallback(
+    (plot: uPlot | null) => {
+      if (!plot) return;
+      const visibleCount = Math.min(
+        deferredVisibleRuns,
+        assets.pathSeriesIndices.length,
+      );
+      const style = pathStyleForCount(
+        linePreset.path,
+        Math.max(1, visibleCount),
+        theme,
+      );
+      plot.batch(() => {
+        plot.setSeries(assets.riskSeriesIdx, { show: showRiskLine });
+        plot.setSeries(assets.bestSeriesIdx, { show: showExtremes });
+        plot.setSeries(assets.worstSeriesIdx, { show: showExtremes });
+        for (let k = 0; k < assets.pathSeriesIndices.length; k++) {
+          const sIdx = assets.pathSeriesIndices[k];
+          const show = k < visibleCount;
+          if (show) {
+            const boost = assets.pathPolarities[k] >= 0.98 ? 1.2 : 1;
+            const alpha = Math.min(0.95, style.alpha * boost);
+            const width = style.width * boost;
+            const sObj = plot.series[sIdx];
+            if (sObj) {
+              sObj.stroke = () =>
+                `rgba(${style.r},${style.g},${style.b},${alpha.toFixed(3)})`;
+              sObj.width = width;
+            }
+          }
+          plot.setSeries(sIdx, { show });
+        }
+        plot.setScale("y", { min: yRange[0], max: yRange[1] });
+      });
+    },
+    [
+      assets,
+      deferredVisibleRuns,
+      linePreset.path,
+      showExtremes,
+      showRiskLine,
+      theme,
+      yRange,
+    ],
   );
 
-  const handlePlotReady = useCallback((plot: uPlot | null) => {
-    plotRef.current = plot;
-  }, []);
+  // Sync visibility & Y-range imperatively — zero uPlot teardown on slider drag!
+  useLayoutEffect(() => {
+    applyVisibilityToPlot(plotRef.current);
+  }, [applyVisibilityToPlot]);
+
+  const handlePlotReady = useCallback(
+    (plot: uPlot | null) => {
+      plotRef.current = plot;
+      setXZoomed(false);
+      if (plot) {
+        applyVisibilityToPlot(plot);
+        setScaleRev((n) => n + 1);
+      }
+    },
+    [applyVisibilityToPlot],
+  );
+
   const handleScaleChange = useCallback(
     (scaleKey: string, min: number | null, max: number | null) => {
+      setScaleRev((n) => n + 1);
       if (scaleKey !== "x") return;
-      if (min == null || max == null || !Number.isFinite(min) || !Number.isFinite(max)) {
+      if (
+        min == null ||
+        max == null ||
+        !Number.isFinite(min) ||
+        !Number.isFinite(max)
+      ) {
         setXZoomed(false);
         return;
       }
@@ -508,12 +765,76 @@ export function TrajectoryChart({
     },
     [assets.xMax, assets.xMin],
   );
+
   const resetZoom = useCallback(() => {
     const plot = plotRef.current;
     if (!plot) return;
     plot.setScale("x", { min: assets.xMin, max: assets.xMax });
   }, [assets.xMax, assets.xMin]);
 
+  const legendItems = useMemo(
+    () => {
+      const runsStyle = pathStyleForCount(linePreset.path, 1, theme);
+      const runsSwatchColor = `rgb(${runsStyle.r},${runsStyle.g},${runsStyle.b})`;
+      return [
+        {
+          key: "ev",
+          label: t("chart.traj.legend.ev"),
+          color: linePreset.ev.stroke,
+          dash: true,
+        },
+        deferredVisibleRuns > 0 && {
+          key: "runs",
+          label: withPlural(
+            t("chart.traj.legend.runs"),
+            locale,
+            deferredVisibleRuns,
+            "run",
+          ).replace("{n}", deferredVisibleRuns.toLocaleString(numberLocale)),
+          color: runsSwatchColor,
+        },
+        {
+          key: "bands",
+          label: t("cash.chart.trajectory.legend.bands"),
+          color: linePreset.bandNarrow.stroke,
+        },
+        showExtremes && {
+          key: "best",
+          label: t("cash.chart.trajectory.bestRun").replace(
+            "{n}",
+            String(result.samplePaths.realBestSample + 1),
+          ),
+          color: theme === "light" ? "#15803d" : "#4ade80",
+        },
+        showExtremes && {
+          key: "worst",
+          label: t("cash.chart.trajectory.worstRun").replace(
+            "{n}",
+            String(result.samplePaths.realWorstSample + 1),
+          ),
+          color: theme === "light" ? "#b91c1c" : "#f87171",
+        },
+      ].filter(Boolean) as Array<{
+        key: string;
+        label: string;
+        color: string;
+        dash?: boolean;
+      }>;
+    },
+    [
+      deferredVisibleRuns,
+      linePreset,
+      locale,
+      numberLocale,
+      result.samplePaths.realBestSample,
+      result.samplePaths.realWorstSample,
+      showExtremes,
+      t,
+      theme,
+    ],
+  );
+
+  // Hit-test only VISIBLE series!
   const idx = cursor?.idx;
   let nearest: CashTrajectoryLineMeta | null = null;
   let nearestRawBbVal = 0;
@@ -523,6 +844,11 @@ export function TrajectoryChart({
     let bestDist = Infinity;
     let bestPathPxDist = Infinity;
     for (const line of assets.lines) {
+      if (line.kind === "risk" && !showRiskLine) continue;
+      if (line.kind === "extreme" && !showExtremes) continue;
+      if (line.kind === "path" && (line.rank ?? 0) >= deferredVisibleRuns) {
+        continue;
+      }
       const displayArr = assets.data[line.seriesIdx] as ArrayLike<number | null> | undefined;
       const rawBbArr = assets.rawBbData[line.seriesIdx] as ArrayLike<number | null> | undefined;
       if (!displayArr || !rawBbArr) continue;
@@ -567,9 +893,8 @@ export function TrajectoryChart({
     const yArr = assets.rawBbData[focusedSeriesIdx] as ArrayLike<number> | undefined;
     if (!yArr || yArr.length === 0) return null;
 
-    // The red highlight is drawn on the checkpoint grid, so its endpoints are
-    // located on the grid too. The numbers shown come from the engine's
-    // per-hand bookkeeping (see CashSamplePaths) — the grid under-reports.
+    // Searched on the full 2001-pt hi-res path; printed metrics come from the
+    // engine's exact per-hand bookkeeping.
     let peak = -Infinity;
     let gridMaxDd = 0;
     let ddStart = 0;
@@ -600,6 +925,11 @@ export function TrajectoryChart({
     };
   }, [assets.rawBbData, focusedRunIdx, focusedSeriesIdx, result]);
 
+  const highlightStroke =
+    theme === "light" ? "rgba(180,83,9,0.95)" : "rgba(253,230,138,0.92)";
+  const drawdownStroke =
+    theme === "light" ? "rgba(220,38,38,0.95)" : "rgba(248,113,113,0.95)";
+
   useEffect(() => {
     const plot = plotRef.current;
     if (!plot) return;
@@ -611,64 +941,83 @@ export function TrajectoryChart({
       canvas.style.top = "0";
       canvas.style.pointerEvents = "none";
       canvas.style.zIndex = "5";
+      canvas.style.maxWidth = "100%";
+      canvas.style.maxHeight = "100%";
       plot.over.appendChild(canvas);
       hlCanvasRef.current = canvas;
     }
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const width = plot.over.clientWidth;
-    const height = plot.over.clientHeight;
-    const dpr = devicePixelRatio;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    if (focusedSeriesIdx == null) return;
-    const xArr = assets.data[0] as ArrayLike<number>;
-    const yArr = assets.data[focusedSeriesIdx] as ArrayLike<number>;
-    if (!xArr || !yArr) return;
 
-    const strokeSegment = (
-      startIdx: number,
-      endIdx: number,
-      stroke: string,
-      lineWidth: number,
-    ) => {
-      ctx.save();
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = lineWidth;
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-      let started = false;
-      for (let i = startIdx; i <= endIdx; i++) {
-        const xVal = xArr[i];
-        const yVal = yArr[i];
-        if (xVal == null || yVal == null || !Number.isFinite(yVal)) continue;
-        const px = plot.valToPos(xVal, "x", false);
-        const py = plot.valToPos(yVal, "y", false);
-        if (!started) {
-          ctx.moveTo(px, py);
-          started = true;
-        } else {
-          ctx.lineTo(px, py);
+    const redrawOverlay = () => {
+      if (!canvas) return;
+      const width = plot.over.clientWidth;
+      const height = plot.over.clientHeight;
+      const dpr = devicePixelRatio;
+      canvas.width = Math.max(1, Math.round(width * dpr));
+      canvas.height = Math.max(1, Math.round(height * dpr));
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      if (focusedSeriesIdx == null) return;
+      const xArr = assets.data[0] as ArrayLike<number>;
+      const yArr = assets.data[focusedSeriesIdx] as ArrayLike<number>;
+      if (!xArr || !yArr) return;
+
+      const strokeSegment = (
+        startIdx: number,
+        endIdx: number,
+        stroke: string,
+        lineWidth: number,
+      ) => {
+        ctx.save();
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = lineWidth;
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        let started = false;
+        for (let i = startIdx; i <= endIdx; i++) {
+          const xVal = xArr[i];
+          const yVal = yArr[i];
+          if (xVal == null || yVal == null || !Number.isFinite(yVal)) continue;
+          const px = plot.valToPos(xVal, "x", false);
+          const py = plot.valToPos(yVal, "y", false);
+          if (!started) {
+            ctx.moveTo(px, py);
+            started = true;
+          } else {
+            ctx.lineTo(px, py);
+          }
         }
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      strokeSegment(0, xArr.length - 1, highlightStroke, 2.5);
+      if (focusedPathStats && focusedPathStats.ddEnd > focusedPathStats.ddStart) {
+        strokeSegment(
+          focusedPathStats.ddStart,
+          focusedPathStats.ddEnd,
+          drawdownStroke,
+          3,
+        );
       }
-      ctx.stroke();
-      ctx.restore();
     };
 
-    strokeSegment(0, xArr.length - 1, "rgba(253,230,138,0.9)", 2.5);
-    if (focusedPathStats && focusedPathStats.ddEnd > focusedPathStats.ddStart) {
-      strokeSegment(
-        focusedPathStats.ddStart,
-        focusedPathStats.ddEnd,
-        "rgba(248,113,113,0.95)",
-        3,
-      );
-    }
-  }, [assets.data, focusedPathStats, focusedSeriesIdx]);
+    redrawOverlay();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(redrawOverlay);
+    ro.observe(plot.over);
+    return () => ro.disconnect();
+  }, [
+    assets.data,
+    drawdownStroke,
+    focusedPathStats,
+    focusedSeriesIdx,
+    highlightStroke,
+    scaleRev,
+  ]);
 
   const kindLabel = (line: CashTrajectoryLineMeta): string => {
     switch (line.kind) {
@@ -682,11 +1031,18 @@ export function TrajectoryChart({
         return t("cash.chart.trajectory.kind.ev");
       case "risk":
         return t("cash.chart.trajectory.kind.risk");
+      case "extreme":
+        return t("cash.chart.trajectory.kind.extreme");
+      case "zero":
+        return t("cash.chart.trajectory.kind.zero");
     }
   };
 
   const hands = idx != null ? Math.round((assets.data[0] as number[])[idx] ?? 0) : 0;
-  const winrateSoFar = hands > 0 ? (nearestRawBbVal / hands) * 100 : null;
+  const showWinrateRow =
+    nearest != null && nearest.kind !== "risk" && nearest.kind !== "zero";
+  const winrateSoFar =
+    showWinrateRow && hands > 0 ? (nearestRawBbVal / hands) * 100 : null;
 
   return (
     <CashChartFrame>
@@ -707,13 +1063,15 @@ export function TrajectoryChart({
               </span>
             ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-[10px] text-[color:var(--color-fg-dim)]">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[color:var(--color-fg-dim)]">
             <span>{t("chart.traj.zoomHint")}</span>
-            <span className="text-[color:var(--color-border-strong)]">/</span>
+            <span className="hidden text-[color:var(--color-border-strong)] sm:inline" aria-hidden>
+              ·
+            </span>
             <span className="inline-flex items-center gap-1">
               <span
                 className="inline-block h-[3px] w-3 rounded-sm"
-                style={{ background: "rgba(248,113,113,0.95)" }}
+                style={{ background: drawdownStroke }}
                 aria-hidden
               />
               {t("chart.traj.hoverHint.maxDd")}
@@ -721,135 +1079,150 @@ export function TrajectoryChart({
           </div>
         </div>
 
-        {xZoomed && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={resetZoom}
-              className="rounded border border-[color:var(--color-accent)]/50 bg-[color:var(--color-bg)]/85 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] shadow-sm transition hover:bg-[color:var(--color-accent)] hover:text-[color:var(--c-on-accent)]"
-              title={t("chart.traj.resetZoom")}
-            >
-              {t("chart.traj.resetZoom")}
-            </button>
-          </div>
-        )}
-
-        <UplotChart
-          data={assets.data}
-          options={assets.options}
-          height={360}
-          onCursor={setCursor}
-          onPlotReady={handlePlotReady}
-          onScaleChange={handleScaleChange}
-          onDoubleClick={resetZoom}
-        />
-
-        {cursor && idx != null && nearest && (
-          <div className="overflow-hidden rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 text-[11px] shadow-xl backdrop-blur">
-            <div
-              className="flex items-center gap-2 px-3 py-1.5"
-              style={{
-                background: `linear-gradient(90deg, ${nearest.color}22 0%, transparent 70%)`,
-                borderBottom: "1px solid var(--color-border)",
-              }}
-            >
-              <span
-                className="inline-block h-2.5 w-3 rounded-sm"
-                style={{ background: nearest.color }}
-              />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
-                {nearest.label}
-              </span>
-              <span className="ml-auto text-[9px] text-[color:var(--color-fg-dim)]">
-                {kindLabel(nearest)}
-              </span>
+        <div className="relative">
+          {xZoomed && (
+            <div className="absolute right-2 top-2 z-20">
+              <button
+                type="button"
+                onClick={resetZoom}
+                className="rounded border border-[color:var(--color-accent)]/50 bg-[color:var(--color-bg)]/90 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-accent)] shadow-sm transition hover:bg-[color:var(--color-accent)] hover:text-[color:var(--c-on-accent)]"
+                title={t("chart.traj.resetZoom")}
+              >
+                {t("chart.traj.resetZoom")}
+              </button>
             </div>
-            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 tabular-nums">
-              <span className="text-[color:var(--color-fg-dim)]">{t("cash.hands.label")}</span>
-              <span className="text-right font-semibold text-[color:var(--color-fg)]">
-                {hands.toLocaleString(numberLocale)}
-              </span>
-              {bankrollReadout(nearestRawBbVal, bbSize, fmt, t).map((row) => (
-                <Fragment key={row.key}>
-                  <span className="text-[color:var(--color-fg-dim)]">
-                    {row.label}
-                  </span>
-                  <span
-                    className="text-right font-semibold"
-                    style={{
-                      color: row.negative
-                        ? "var(--color-danger)"
-                        : "var(--color-success)",
-                    }}
-                  >
-                    {row.value}
-                  </span>
-                </Fragment>
-              ))}
-              <span className="text-[color:var(--color-fg-dim)]">
-                {t("cash.wrBb100.label")}
-              </span>
-              <span
-                className="text-right font-semibold"
+          )}
+
+          <UplotChart
+            data={assets.data}
+            options={assets.options}
+            height={380}
+            onCursor={setCursor}
+            onPlotReady={handlePlotReady}
+            onScaleChange={handleScaleChange}
+            onDoubleClick={resetZoom}
+          />
+
+          {/* Overlay-anchored hover tooltip — never pushes content below down */}
+          {cursor && idx != null && nearest && (
+            <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[270px] overflow-hidden rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 text-[11px] shadow-xl backdrop-blur">
+              <div
+                className="flex items-center gap-2 px-3 py-1.5"
                 style={{
-                  color:
-                    winrateSoFar != null && winrateSoFar >= 0
-                      ? "var(--color-success)"
-                      : "var(--color-danger)",
+                  background: `linear-gradient(90deg, color-mix(in oklab, ${nearest.color} 18%, transparent) 0%, transparent 70%)`,
+                  borderBottom: "1px solid var(--color-border)",
                 }}
               >
-                {winrateSoFar != null ? fmt.winrate(winrateSoFar) : "—"}
-              </span>
-            </div>
-            {focusedPathStats && (
-              <div className="border-t border-[color:var(--color-border)]/50 px-3 py-2">
-                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
-                  {t("chart.traj.runStats")}
-                </div>
-                <div className="mb-1.5 rounded-sm bg-[color:var(--color-danger)]/8 px-2 py-1.5">
-                  <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-danger)]">
-                    <span
-                      className="inline-block h-0.5 w-3 rounded-full"
-                      style={{ background: "rgba(248,113,113,0.95)" }}
-                      aria-hidden
-                    />
-                    {t("chart.traj.maxDD")}
-                  </div>
-                  <div className="mt-0.5 flex items-baseline gap-1.5 tabular-nums">
-                    <span className="text-[13px] font-bold text-[color:var(--color-danger)]">
-                      {fmt.bb(focusedPathStats.maxDd)}
-                    </span>
-                    <span className="rounded-sm bg-[color:var(--color-danger)]/12 px-1 py-0.5 text-[9px] font-semibold text-[color:var(--color-danger)]">
-                      {fmt.amountUsd(focusedPathStats.maxDd * bbSize)}
-                    </span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
-                  <span className="text-[color:var(--color-fg-dim)]">
-                    {t("cash.chart.trajectory.finalBankroll")}
-                  </span>
-                  <span
-                    className="text-right font-semibold"
-                    style={{
-                      color:
-                        focusedPathStats.finalBb >= 0
-                          ? "var(--color-success)"
-                          : "var(--color-danger)",
-                    }}
-                  >
-                    {fmt.bb(focusedPathStats.finalBb)}
-                  </span>
-                  <span className="text-[color:var(--color-fg-dim)]">
-                    {t("chart.traj.longestBE")}
-                  </span>
-                  <span className="text-right text-[color:var(--color-fg)]">
-                    {focusedPathStats.belowPeakHands.toLocaleString(numberLocale)} {t("cash.hands.label").toLowerCase()}
-                  </span>
-                </div>
+                <span
+                  className="inline-block h-2.5 w-3 shrink-0 rounded-sm"
+                  style={{ background: nearest.color }}
+                />
+                <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-fg)]">
+                  {nearest.label}
+                </span>
+                <span className="ml-auto shrink-0 text-[9px] text-[color:var(--color-fg-dim)]">
+                  {kindLabel(nearest)}
+                </span>
               </div>
-            )}
-          </div>
-        )}
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 tabular-nums">
+                <span className="text-[color:var(--color-fg-dim)]">
+                  {t("cash.hands.label")}
+                </span>
+                <span className="text-right font-semibold text-[color:var(--color-fg)]">
+                  {hands.toLocaleString(numberLocale)}
+                </span>
+                {bankrollReadout(nearestRawBbVal, bbSize, fmt, t).map((row) => (
+                  <Fragment key={row.key}>
+                    <span className="text-[color:var(--color-fg-dim)]">
+                      {row.label}
+                    </span>
+                    <span
+                      className="text-right font-semibold"
+                      style={{
+                        color: row.negative
+                          ? "var(--color-danger)"
+                          : "var(--color-success)",
+                      }}
+                    >
+                      {row.value}
+                    </span>
+                  </Fragment>
+                ))}
+                {showWinrateRow && (
+                  <>
+                    <span className="text-[color:var(--color-fg-dim)]">
+                      {t("cash.wrBb100.label")}
+                    </span>
+                    <span
+                      className="text-right font-semibold"
+                      style={{
+                        color:
+                          winrateSoFar != null && winrateSoFar >= 0
+                            ? "var(--color-success)"
+                            : "var(--color-danger)",
+                      }}
+                    >
+                      {winrateSoFar != null ? fmt.winrate(winrateSoFar) : "—"}
+                    </span>
+                  </>
+                )}
+              </div>
+              {focusedPathStats && (
+                <div className="border-t border-[color:var(--color-border)]/50 px-3 py-2">
+                  <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-fg-dim)]">
+                    {t("chart.traj.runStats")}
+                  </div>
+                  <div className="mb-1.5 rounded-sm bg-[color:var(--color-danger)]/8 px-2 py-1.5">
+                    <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[color:var(--color-danger)]">
+                      <span
+                        className="inline-block h-0.5 w-3 rounded-full"
+                        style={{ background: drawdownStroke }}
+                        aria-hidden
+                      />
+                      {t("chart.traj.maxDD")}
+                    </div>
+                    <div className="mt-0.5 flex items-baseline gap-1.5 tabular-nums">
+                      <span className="text-[13px] font-bold text-[color:var(--color-danger)]">
+                        {fmt.bb(focusedPathStats.maxDd)}
+                      </span>
+                      <span className="rounded-sm bg-[color:var(--color-danger)]/12 px-1 py-0.5 text-[9px] font-semibold text-[color:var(--color-danger)]">
+                        {fmt.amountUsd(focusedPathStats.maxDd * bbSize)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
+                    <span className="text-[color:var(--color-fg-dim)]">
+                      {t("cash.chart.trajectory.finalBankroll")}
+                    </span>
+                    <span
+                      className="text-right font-semibold"
+                      style={{
+                        color:
+                          focusedPathStats.finalBb >= 0
+                            ? "var(--color-success)"
+                            : "var(--color-danger)",
+                      }}
+                    >
+                      {fmt.bb(focusedPathStats.finalBb)}
+                    </span>
+                    <span className="text-[color:var(--color-fg-dim)]">
+                      {t("chart.traj.longestBE")}
+                    </span>
+                    <span className="text-right text-[color:var(--color-fg)]">
+                      {countOrDash(
+                        focusedPathStats.belowPeakHands,
+                        t("cash.handCount"),
+                        locale,
+                        "hand",
+                        numberLocale,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </CashChartFrame>
   );
@@ -882,7 +1255,7 @@ function RunModeToggle({
             className={
               "px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors " +
               (active
-                ? "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"
+                ? "bg-[color:var(--color-accent)] text-[color:var(--c-on-accent)]"
                 : "bg-[color:var(--color-bg-elev)] text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-bg-elev-2)] hover:text-[color:var(--color-fg)]") +
               (idx > 0 ? " border-l border-[color:var(--color-border)]" : "")
             }
@@ -895,37 +1268,74 @@ function RunModeToggle({
   );
 }
 
+function compactHistValue(v: number, unit: string): string {
+  const sign = v < 0 ? "−" : "";
+  const abs = Math.abs(v);
+  const body =
+    abs >= 1_000_000
+      ? `${(abs / 1_000_000).toFixed(1)}M`
+      : abs >= 10_000
+        ? `${Math.round(abs / 1_000)}k`
+        : abs >= 1_000
+          ? `${(abs / 1_000).toFixed(1)}k`
+          : abs === 0
+            ? "0"
+            : abs < 10
+              ? abs.toFixed(1)
+              : String(Math.round(abs));
+  if (unit === "$") return `${sign}$${body}`;
+  return `${sign}${body}`;
+}
+
 export function HistogramChart({
   hist,
   xLabel,
-  yLabel,
   tone,
 }: {
   hist: { binEdges: number[]; counts: number[] };
   xLabel: string;
-  yLabel: string;
+  yLabel?: string;
   tone: SuitAccent;
 }) {
-  const palette = CASH_ACCENT_META[tone];
-  const data = useMemo(() => {
+  const t = useT();
+  const { locale } = useLocale();
+  const theme = useOptionalTheme();
+  const numberLocale = numberLocaleTag(locale);
+  const [cursor, setCursor] = useState<CursorInfo | null>(null);
+  const colors = cashSeriesColors(tone, theme);
+
+  const { data, total, cumCounts } = useMemo(() => {
     const xs: number[] = [];
     const ys: number[] = [];
+    let sum = 0;
+    for (let i = 0; i < hist.counts.length; i++) sum += hist.counts[i];
+    const denom = sum > 0 ? sum : 1;
+    const cum = new Int32Array(hist.counts.length);
+    let run = 0;
     for (let i = 0; i < hist.counts.length; i++) {
       xs.push((hist.binEdges[i] + hist.binEdges[i + 1]) / 2);
-      ys.push(hist.counts[i]);
+      ys.push((hist.counts[i] / denom) * 100);
+      run += hist.counts[i];
+      cum[i] = run;
     }
-    return [xs, ys] as Parameters<typeof UplotChart>[0]["data"];
+    return {
+      data: [xs, ys] as Parameters<typeof UplotChart>[0]["data"],
+      total: sum,
+      cumCounts: cum,
+    };
   }, [hist]);
-  // uPlot is rebuilt whenever `options` changes identity, so a parent render
-  // must not mint a new object.
-  const options = useMemo<UplotOptions>(
-    () => ({
+
+  // uPlot is rebuilt whenever `options` changes identity — keep strictly memoized.
+  const options = useMemo<UplotOptions>(() => {
+    const axes = cashAxes(xLabel, "%", theme, 52);
+    return {
       series: [
         {},
         {
-          stroke: palette.chartStroke,
-          fill: palette.chartFill,
-          width: 2,
+          stroke: colors.stroke,
+          fill: colors.fill,
+          width: 1,
+          paths: barsPath(),
           points: { show: false },
         },
       ],
@@ -933,22 +1343,104 @@ export function HistogramChart({
       legend: { show: false },
       scales: {
         x: { time: false },
-        y: { range: (_u, _min, max) => [0, max * 1.05] },
+        y: {
+          range: (_u, _min, max) => [
+            0,
+            max && Number.isFinite(max) && max > 0 ? max * 1.1 : 1,
+          ],
+        },
       },
-      axes: cashAxes(xLabel, yLabel),
-    }),
-    [palette, xLabel, yLabel],
-  );
+      axes: [
+        {
+          ...axes[0],
+          values: (_u: uPlot, splits: number[]) =>
+            splits.map((v) => compactHistValue(v, xLabel)),
+        },
+        {
+          ...axes[1],
+          values: (_u: uPlot, splits: number[]) =>
+            splits.map((v) => `${v >= 10 ? Math.round(v) : v.toFixed(1)}%`),
+        },
+      ],
+    };
+  }, [colors.fill, colors.stroke, theme, xLabel]);
+
+  const idx = cursor?.idx;
+  const hoveredBin =
+    idx != null && idx >= 0 && idx < hist.counts.length
+      ? {
+          lo: hist.binEdges[idx],
+          hi: hist.binEdges[idx + 1],
+          count: hist.counts[idx],
+          sharePct: total > 0 ? (hist.counts[idx] / total) * 100 : 0,
+          cumPct: total > 0 ? (cumCounts[idx] / total) * 100 : 0,
+        }
+      : null;
 
   return (
     <CashChartFrame>
-      <UplotChart data={data} options={options} height={220} />
+      <div className="relative">
+        <UplotChart
+          data={data}
+          options={options}
+          height={220}
+          onCursor={setCursor}
+        />
+        {hoveredBin && (
+          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 px-2.5 py-2 text-[10.5px] tabular-nums shadow-lg backdrop-blur">
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+              <span className="text-[color:var(--color-fg-dim)]">
+                {t("cash.chart.hist.range")}
+              </span>
+              <span className="text-right font-mono font-semibold text-[color:var(--color-fg)]">
+                {compactHistValue(hoveredBin.lo, xLabel)} ..{" "}
+                {compactHistValue(hoveredBin.hi, xLabel)}
+              </span>
+              <span className="text-[color:var(--color-fg-dim)]">
+                {t("cash.chart.hist.share")}
+              </span>
+              <span className="text-right font-mono font-semibold text-[color:var(--color-fg)]">
+                {hoveredBin.sharePct.toLocaleString(numberLocale, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}
+                %
+              </span>
+              <span className="text-[color:var(--color-fg-dim)]">
+                {t("cash.chart.hist.count")}
+              </span>
+              <span className="text-right font-mono text-[color:var(--color-fg-muted)]">
+                {hoveredBin.count.toLocaleString(numberLocale)}
+              </span>
+              <span className="text-[color:var(--color-fg-dim)]">
+                {t("cash.chart.hist.cum")}
+              </span>
+              <span className="text-right font-mono text-[color:var(--color-fg-muted)]">
+                {hoveredBin.cumPct.toLocaleString(numberLocale, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}
+                %
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
     </CashChartFrame>
   );
 }
 
 export function CashOddsChart({ result }: { result: CashResult }) {
   const t = useT();
+  const { locale } = useLocale();
+  const theme = useOptionalTheme();
+  const numberLocale = numberLocaleTag(locale);
+  const fmt = useCashFormat();
+  const [cursor, setCursor] = useState<CursorInfo | null>(null);
+
+  const upColor = cashSeriesColors("club", theme).stroke;
+  const riskColor = cashSeriesColors("heart", theme).stroke;
+
   const data = useMemo(
     () =>
       [
@@ -963,12 +1455,12 @@ export function CashOddsChart({ result }: { result: CashResult }) {
       series: [
         {},
         {
-          stroke: CASH_ACCENT_META.club.chartStroke,
+          stroke: upColor,
           width: 2.35,
           points: { show: false },
         },
         {
-          stroke: CASH_ACCENT_META.heart.chartStroke,
+          stroke: riskColor,
           width: 2.35,
           points: { show: false },
         },
@@ -979,61 +1471,215 @@ export function CashOddsChart({ result }: { result: CashResult }) {
         x: { time: false },
         y: { range: () => [0, 1] },
       },
-      axes: cashPctAxes(t("cash.axis.hands"), t("cash.axis.share")),
+      axes: cashPctAxes(t("cash.axis.hands"), t("cash.axis.share"), theme),
     }),
-    [t],
+    [riskColor, t, theme, upColor],
+  );
+
+  const idx = cursor?.idx;
+  const hover =
+    idx != null && idx >= 0 && idx < result.oddsOverDistance.x.length
+      ? {
+          hands: result.oddsOverDistance.x[idx],
+          up: result.oddsOverDistance.profitShare[idx] ?? 0,
+          risk: result.oddsOverDistance.belowThresholdNowShare[idx] ?? 0,
+        }
+      : null;
+
+  const thresholdLabel = fmt.riskThresholdBb(
+    result.oddsOverDistance.thresholdBb ?? 100,
   );
 
   return (
     <CashChartFrame>
-      <UplotChart data={data} options={options} height={240} />
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-[color:var(--color-fg-muted)]">
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-0.5 w-4"
+            style={{ background: upColor }}
+            aria-hidden
+          />
+          {t("cash.chart.odds.legendUp")}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-0.5 w-4"
+            style={{ background: riskColor }}
+            aria-hidden
+          />
+          {t("cash.chart.odds.legendRisk").replace("{threshold}", thresholdLabel)}
+        </span>
+      </div>
+      <div className="relative">
+        <UplotChart
+          data={data}
+          options={options}
+          height={240}
+          onCursor={setCursor}
+        />
+        {hover && (
+          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 px-2.5 py-2 text-[10.5px] tabular-nums shadow-lg backdrop-blur">
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+              <span className="text-[color:var(--color-fg-dim)]">
+                {t("cash.hands.label")}
+              </span>
+              <span className="text-right font-mono font-semibold text-[color:var(--color-fg)]">
+                {hover.hands.toLocaleString(numberLocale)}
+              </span>
+              <span style={{ color: upColor }}>{t("cash.summary.oddsUp")}</span>
+              <span className="text-right font-mono font-semibold text-[color:var(--color-fg)]">
+                {fmt.pct(hover.up)}
+              </span>
+              <span style={{ color: riskColor }}>
+                {t("cash.summary.oddsBelowThresholdNow").replace(
+                  "{threshold}",
+                  thresholdLabel,
+                )}
+              </span>
+              <span className="text-right font-mono font-semibold text-[color:var(--color-fg)]">
+                {fmt.pct(hover.risk)}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
     </CashChartFrame>
   );
 }
 
 export function CashConvergenceChart({ result }: { result: CashResult }) {
   const t = useT();
-  const data = useMemo(
-    () =>
-      [
-        Array.from(result.convergence.x),
-        Array.from(result.convergence.seLo),
-        Array.from(result.convergence.mean),
-        Array.from(result.convergence.seHi),
-      ] as Parameters<typeof UplotChart>[0]["data"],
-    [result],
-  );
+  const { locale } = useLocale();
+  const theme = useOptionalTheme();
+  const numberLocale = numberLocaleTag(locale);
+  const fmt = useCashFormat();
+  const [cursor, setCursor] = useState<CursorInfo | null>(null);
+
+  const meanColor = cashSeriesColors("spade", theme).stroke;
+  const bandColor =
+    theme === "light" ? "rgba(29,78,216,0.45)" : "rgba(118,176,255,0.65)";
+  const evColor = cashSeriesColors("diamond", theme).stroke;
+
+  const targetWr = result.stats?.effectiveWrBb100;
+  const data = useMemo(() => {
+    const xs = Array.from(result.convergence.x);
+    const targetLine = Number.isFinite(targetWr)
+      ? xs.map(() => targetWr!)
+      : xs.map(() => null);
+    return [
+      xs,
+      Array.from(result.convergence.seLo),
+      Array.from(result.convergence.mean),
+      Array.from(result.convergence.seHi),
+      targetLine,
+    ] as Parameters<typeof UplotChart>[0]["data"];
+  }, [result, targetWr]);
+
   const options = useMemo<UplotOptions>(
     () => ({
       series: [
         {},
         {
-          stroke: "rgba(118,176,255,0.7)",
+          stroke: bandColor,
           width: 1.25,
           points: { show: false },
         },
         {
-          stroke: "#9cc3ff",
+          stroke: meanColor,
           width: 2.35,
           points: { show: false },
         },
         {
-          stroke: "rgba(118,176,255,0.7)",
+          stroke: bandColor,
           width: 1.25,
+          points: { show: false },
+        },
+        {
+          stroke: evColor,
+          width: 1.4,
+          dash: [5, 4],
           points: { show: false },
         },
       ],
       cursor: { show: true, points: { show: false } },
       legend: { show: false },
       scales: { x: { time: false } },
-      axes: cashAxes(t("cash.axis.samples"), t("cash.axis.winrate")),
+      axes: cashAxes(t("cash.axis.samples"), t("cash.axis.winrate"), theme),
     }),
-    [t],
+    [bandColor, evColor, meanColor, t, theme],
   );
+
+  const idx = cursor?.idx;
+  const hover =
+    idx != null && idx >= 0 && idx < result.convergence.x.length
+      ? {
+          n: result.convergence.x[idx],
+          mean: result.convergence.mean[idx] ?? 0,
+          lo: result.convergence.seLo[idx] ?? 0,
+          hi: result.convergence.seHi[idx] ?? 0,
+        }
+      : null;
 
   return (
     <CashChartFrame>
-      <UplotChart data={data} options={options} height={220} />
+      <div className="mb-2 flex flex-wrap items-center gap-3 text-[10px] text-[color:var(--color-fg-muted)]">
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-0.5 w-4"
+            style={{ background: meanColor }}
+            aria-hidden
+          />
+          {t("cash.chart.conv.legendMean")}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-0.5 w-4"
+            style={{ background: bandColor }}
+            aria-hidden
+          />
+          {t("cash.chart.conv.legendBand")}
+        </span>
+        {Number.isFinite(targetWr) && (
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-0 w-4 border-t-2 border-dashed"
+              style={{ borderColor: evColor }}
+              aria-hidden
+            />
+            {t("cash.chart.conv.legendTarget")}
+          </span>
+        )}
+      </div>
+      <div className="relative">
+        <UplotChart
+          data={data}
+          options={options}
+          height={220}
+          onCursor={setCursor}
+        />
+        {hover && (
+          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]/95 px-2.5 py-2 text-[10.5px] tabular-nums shadow-lg backdrop-blur">
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+              <span className="text-[color:var(--color-fg-dim)]">
+                {t("cash.axis.samples")}
+              </span>
+              <span className="text-right font-mono font-semibold text-[color:var(--color-fg)]">
+                {hover.n.toLocaleString(numberLocale)}
+              </span>
+              <span className="text-[color:var(--color-fg-dim)]">
+                {t("cash.axis.winrate")}
+              </span>
+              <span className="text-right font-mono font-semibold text-[color:var(--color-fg)]">
+                {fmt.winrate(hover.mean)}
+              </span>
+              <span className="text-[color:var(--color-fg-dim)]">95% CI</span>
+              <span className="text-right font-mono text-[color:var(--color-fg-muted)]">
+                {fmt.winrate(hover.lo)} .. {fmt.winrate(hover.hi)}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
     </CashChartFrame>
   );
 }
@@ -1041,29 +1687,18 @@ export function CashConvergenceChart({ result }: { result: CashResult }) {
 export function DiagnosticsDisclosure({ result }: { result: CashResult }) {
   const t = useT();
   return (
-    <details className="data-surface-card rounded-sm border border-[color:var(--color-border)]/75 bg-[color:var(--color-bg-elev)]/68">
-      <summary className="cursor-pointer list-none px-4 py-4 [&::-webkit-details-marker]:hidden">
-        <div className="flex items-start justify-between gap-3">
-          <ChartTitle
-            suit="spade"
-            title={t("cash.section.diagnostics.title")}
-            note={t("cash.section.diagnostics.note")}
-          />
-          <span className="mt-0.5 text-[11px] text-[color:var(--color-fg-dim)]">
-            ▾
-          </span>
-        </div>
-      </summary>
-      <div className="px-4 pb-4">
-        <MiniChartTitle
-          suit="spade"
-          title={t("cash.chart.convergence.title")}
-          note={t("cash.chart.convergence.note")}
-        />
-        <div className="mt-3">
-          <CashConvergenceChart result={result} />
-        </div>
+    <LazyDisclosure
+      title={t("cash.section.diagnostics.title")}
+      description={t("cash.section.diagnostics.note")}
+    >
+      <MiniChartTitle
+        suit="spade"
+        title={t("cash.chart.convergence.title")}
+        note={t("cash.chart.convergence.note")}
+      />
+      <div className="mt-3">
+        <CashConvergenceChart result={result} />
       </div>
-    </details>
+    </LazyDisclosure>
   );
 }

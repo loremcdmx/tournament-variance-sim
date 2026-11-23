@@ -70,3 +70,8 @@ export function useTheme(): ThemeCtx {
   if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
   return ctx;
 }
+
+/** Non-throwing theme read for shared chart components rendered in unit tests without <ThemeProvider>. */
+export function useOptionalTheme(): Theme {
+  return useContext(Ctx)?.theme ?? "dark";
+}

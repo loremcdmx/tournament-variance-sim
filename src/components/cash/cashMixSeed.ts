@@ -1,4 +1,5 @@
 import type { DictKey } from "@/lib/i18n/dict";
+import { MAX_BB_SIZE } from "@/lib/sim/cashInput";
 import type { CashInput, CashStakeRow } from "@/lib/sim/cashTypes";
 
 type Translate = (key: DictKey) => string;
@@ -30,5 +31,5 @@ export function seedMixRows(
       rake: { ...input.rake },
     };
   };
-  return [row(input.bbSize, 0.7), row(input.bbSize * 2, 0.3)];
+  return [row(input.bbSize, 0.7), row(Math.min(MAX_BB_SIZE, input.bbSize * 2), 0.3)];
 }

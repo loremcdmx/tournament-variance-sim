@@ -242,8 +242,7 @@ export default function Home() {
   // The ITM target the app replaced on entering pure BR (memory only), so
   // leaving BR can put it back; any other writer of the target forgets it.
   const brItmReplacedRef = useRef<ItmTargetControls | null>(null);
-  // Advanced mode off → force MTT view regardless of persisted state.
-  const activeMode: "mtt" | "cash" = advanced ? mode : "mtt";
+  const activeMode: "mtt" | "cash" = mode;
   if (activeMode === "cash" && !cashVisited) setCashVisited(true);
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
   const abi = useMemo(() => {
@@ -283,6 +282,9 @@ export default function Home() {
     // so a second read would replace it with the older local autosave.
     if (initialStateLoadedRef.current) return;
     initialStateLoadedRef.current = true;
+    if (window.location.hash.startsWith("#c=")) {
+      setMode("cash");
+    }
     const share = loadFromUrlHash();
     if (share.kind !== "none") {
       // A share link is a one-shot import: once applied, the hash must not
@@ -318,7 +320,7 @@ export default function Home() {
       }
       setHydrated(true);
     });
-  }, []);
+  }, [setMode]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1033,7 +1035,7 @@ export default function Home() {
         </div>
 
         {/* User-saved presets — collapsible so they don't push the schedule below the fold */}
-        {advanced && (
+        {advanced && activeMode === "mtt" && (
         <details className="group border-t border-[color:var(--color-border)] pt-2">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-accent)]">
               <span className="eyebrow flex items-center gap-2">
@@ -1228,29 +1230,37 @@ export default function Home() {
         />
       )}
 
-      {advanced && (
-        <div className="flex gap-1 border-b border-[color:var(--color-border)] pb-0">
-          {(["mtt", "cash"] as const).map((m) => {
-            const active = activeMode === m;
-            return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={`border-b-2 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
-                  active
-                    ? "border-[color:var(--color-accent)] text-[color:var(--color-accent)]"
-                    : "border-transparent text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)]"
-                }`}
-              >
-                {t(m === "mtt" ? "mode.tab.mtt" : "mode.tab.cash")}
-              </button>
-            );
-          })}
+      <div
+        role="tablist"
+        aria-label={t("mode.tab.label")}
+        className="flex gap-1 border-b border-[color:var(--color-border)] pb-0"
+      >
+        {(["mtt", "cash"] as const).map((m) => {
+          const active = activeMode === m;
+          return (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setMode(m)}
+              className={`border-b-2 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors ${
+                active
+                  ? "border-[color:var(--color-accent)] text-[color:var(--color-accent)]"
+                  : "border-transparent text-[color:var(--color-fg-dim)] hover:text-[color:var(--color-fg)]"
+              }`}
+            >
+              {t(m === "mtt" ? "mode.tab.mtt" : "mode.tab.cash")}
+            </button>
+          );
+        })}
+      </div>
+
+      {cashVisited && (
+        <div hidden={activeMode !== "cash"}>
+          <CashApp active={activeMode === "cash"} />
         </div>
       )}
-
-      {cashVisited && <div hidden={activeMode !== "cash"}><CashApp /></div>}
 
         <section hidden={activeMode !== "mtt"} className="space-y-6" aria-label={t("empirical.modelChoice")}>
           <div className="grid min-w-0 grid-cols-2 gap-2" role="group" aria-label={t("empirical.modelChoice")}>
@@ -1541,7 +1551,7 @@ export default function Home() {
 
       <footer className="mt-4 flex flex-col gap-3 border-t border-[color:var(--color-border)] pt-6 text-xs text-[color:var(--color-fg-dim)]">
         <div>
-          {t("footer.line")}{" "}
+          {activeMode === "cash" ? t("footer.line.cash") : t("footer.line")}{" "}
           <span className="text-[color:var(--color-fg-muted)]">
             {t("footer.state")}
           </span>
@@ -1889,7 +1899,11 @@ const BankrollControl = memo(function BankrollControl({
           }}
           disabled={disabled}
           className="shrink-0 rounded border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-1.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[color:var(--color-fg-muted)] transition-colors hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-40"
-          title={brMode === "$" ? "Switch to ABI multiples" : "Switch to dollars"}
+          title={
+            brMode === "$"
+              ? t("controls.bankroll.toAbi")
+              : t("controls.bankroll.toUsd")
+          }
         >
           {brMode === "$" ? "$" : "ABI"}
         </button>

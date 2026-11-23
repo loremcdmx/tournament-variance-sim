@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from "react";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import type { Theme } from "@/lib/theme/ThemeProvider";
 
 export type CashMoneyUnit = "bb" | "usd";
 type ValueTone = "pos" | "neg";
@@ -29,6 +30,8 @@ export const CASH_ACCENT_META: Record<
     colorVar: string;
     chartStroke: string;
     chartFill: string;
+    lightChartStroke: string;
+    lightChartFill: string;
     panelBorder: string;
     panelBg: string;
     badgeBg: string;
@@ -40,10 +43,12 @@ export const CASH_ACCENT_META: Record<
     colorVar: "var(--color-spade)",
     chartStroke: "#83b7ff",
     chartFill: "rgba(131,183,255,0.24)",
+    lightChartStroke: "#1d4ed8",
+    lightChartFill: "rgba(29,78,216,0.18)",
     panelBorder:
       "color-mix(in oklab, var(--color-rival), var(--color-border) 56%)",
     panelBg:
-      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-rival) 8%) 0%, color-mix(in oklab, var(--color-bg-elev), black 8%) 100%)",
+      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-rival) 6%) 0%, var(--color-bg-elev) 100%)",
     badgeBg: "color-mix(in oklab, var(--color-rival), transparent 88%)",
     badgeBorder:
       "color-mix(in oklab, var(--color-rival), var(--color-border) 42%)",
@@ -53,10 +58,12 @@ export const CASH_ACCENT_META: Record<
     colorVar: "var(--color-heart)",
     chartStroke: "#ff9176",
     chartFill: "rgba(255,145,118,0.23)",
+    lightChartStroke: "#c2410c",
+    lightChartFill: "rgba(194,65,12,0.18)",
     panelBorder:
       "color-mix(in oklab, var(--color-heart), var(--color-border) 56%)",
     panelBg:
-      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-heart) 8%) 0%, color-mix(in oklab, var(--color-bg-elev), black 8%) 100%)",
+      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-heart) 6%) 0%, var(--color-bg-elev) 100%)",
     badgeBg: "color-mix(in oklab, var(--color-heart), transparent 88%)",
     badgeBorder:
       "color-mix(in oklab, var(--color-heart), var(--color-border) 42%)",
@@ -66,10 +73,12 @@ export const CASH_ACCENT_META: Record<
     colorVar: "var(--color-diamond)",
     chartStroke: "#f2cf45",
     chartFill: "rgba(242,207,69,0.24)",
+    lightChartStroke: "#9a6700",
+    lightChartFill: "rgba(154,103,0,0.18)",
     panelBorder:
       "color-mix(in oklab, var(--color-diamond), var(--color-border) 52%)",
     panelBg:
-      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-diamond) 8%) 0%, color-mix(in oklab, var(--color-bg-elev), black 8%) 100%)",
+      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-diamond) 6%) 0%, var(--color-bg-elev) 100%)",
     badgeBg: "color-mix(in oklab, var(--color-diamond), transparent 87%)",
     badgeBorder:
       "color-mix(in oklab, var(--color-diamond), var(--color-border) 40%)",
@@ -79,15 +88,27 @@ export const CASH_ACCENT_META: Record<
     colorVar: "var(--color-club)",
     chartStroke: "#7ccd96",
     chartFill: "rgba(124,205,150,0.23)",
+    lightChartStroke: "#15803d",
+    lightChartFill: "rgba(21,128,61,0.18)",
     panelBorder:
       "color-mix(in oklab, var(--color-club), var(--color-border) 54%)",
     panelBg:
-      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-club) 8%) 0%, color-mix(in oklab, var(--color-bg-elev), black 8%) 100%)",
+      "linear-gradient(180deg, color-mix(in oklab, var(--color-bg-elev), var(--color-club) 6%) 0%, var(--color-bg-elev) 100%)",
     badgeBg: "color-mix(in oklab, var(--color-club), transparent 88%)",
     badgeBorder:
       "color-mix(in oklab, var(--color-club), var(--color-border) 42%)",
   },
 };
+
+export function cashSeriesColors(
+  tone: SuitAccent,
+  theme: Theme,
+): { stroke: string; fill: string } {
+  const meta = CASH_ACCENT_META[tone];
+  return theme === "light"
+    ? { stroke: meta.lightChartStroke, fill: meta.lightChartFill }
+    : { stroke: meta.chartStroke, fill: meta.chartFill };
+}
 
 export function isEmptyHistogram(hist: {
   binEdges: number[];
@@ -138,9 +159,6 @@ export function ChartTitle({
           {accent.glyph}
         </span>
         <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--color-fg)]">
-          <span className="mr-2 hidden text-[color:var(--color-fg-dim)] sm:inline">
-            {accent.glyph}
-          </span>
           {title}
         </h3>
       </div>
@@ -255,8 +273,14 @@ export function SummaryStrip({
 }: {
   items: SummaryStat[];
 }) {
+  const gridCols =
+    items.length === 2
+      ? "grid-cols-1 sm:grid-cols-2"
+      : items.length === 4
+        ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"
+        : "grid-cols-1 sm:grid-cols-3";
   return (
-    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+    <div className={`mb-3 grid gap-2 ${gridCols}`}>
       {items.map((item) => (
         <SummaryPill key={item.label} {...item} />
       ))}
@@ -345,10 +369,10 @@ export function DetailList({
             key={r.label}
             className="flex items-start justify-between gap-4 border-b border-[color:var(--color-border)]/35 pb-2 last:border-b-0 last:pb-0"
           >
-            <dt className="max-w-[58%] text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
+            <dt className="max-w-[60%] text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">
               {r.label}
             </dt>
-            <dd className="text-right font-mono text-[15px] font-semibold tabular-nums leading-none text-[color:var(--color-fg)]">
+            <dd className="text-right font-mono text-[14px] font-semibold tabular-nums leading-none text-[color:var(--color-fg)]">
               {r.value}
             </dd>
           </div>
@@ -408,7 +432,7 @@ export function MixMetricBar({
           className="h-full rounded-full transition-[width] duration-200"
           style={{
             width: `${clampedShare * 100}%`,
-            background: meta.chartStroke,
+            background: meta.colorVar,
             boxShadow: `0 0 0 1px ${meta.badgeBorder} inset`,
           }}
         />

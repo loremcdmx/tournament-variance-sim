@@ -27,11 +27,11 @@ describe("cash inputs form", () => {
 
   it("explains the shared hands x simulations budget under both fields", () => {
     const handsHint = DICT["cash.hands.budgetHint"].ru
-      .replace("{max}", ruCount(100_000))
+      .replace("{max}", ruCount(200_000))
       .replace("{sims}", ruCount(2_000))
       .replace("{total}", ruCount(MAX_TOTAL_SIM_HANDS));
     const simsHint = DICT["cash.nSimulations.budgetHint"].ru
-      .replace("{max}", ruCount(2_000))
+      .replace("{max}", ruCount(4_000))
       .replace("{hands}", ruCount(100_000))
       .replace("{total}", ruCount(MAX_TOTAL_SIM_HANDS));
 

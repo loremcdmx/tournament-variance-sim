@@ -41,14 +41,16 @@ function hydrateAndRead<T>(slot: Slot<T>, load: () => T): T {
 
 function commit<T>(
   key: string,
-  next: T,
+  next: T | ((prev: T) => T),
   save: (next: T) => void,
 ): void {
   const slot = slots.get(key) as Slot<T> | undefined;
   if (!slot) return;
-  slot.value = next;
+  const resolved =
+    typeof next === "function" ? (next as (prev: T) => T)(slot.value) : next;
+  slot.value = resolved;
   slot.hydrated = true;
-  save(next);
+  save(resolved);
   slot.listeners.forEach((l) => l());
 }
 
@@ -57,7 +59,7 @@ export function useLocalStorageState<T>(
   load: () => T,
   save: (next: T) => void,
   fallback: T,
-): [T, (next: T) => void] {
+): [T, (next: T | ((prev: T) => T)) => void] {
   const slot = getSlot<T>(key, fallback);
 
   const value = useSyncExternalStore(
@@ -66,7 +68,7 @@ export function useLocalStorageState<T>(
     () => fallback,
   );
 
-  const setValue = (next: T) => commit(key, next, save);
+  const setValue = (next: T | ((prev: T) => T)) => commit(key, next, save);
 
   return [value, setValue];
 }
